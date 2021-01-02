@@ -65,10 +65,10 @@ pub fn write_definition<W: Write>(out: &mut W, definition: &Definition, pool: &C
             let code = Decompiler::new(&mut fun.bytecode(), pool).decompile()?;
 
             if fun.flags.has_body() {
-                write!(out, " {{")?;
+                write!(out, " {{\n")?;
                 for local in &fun.locals {
-                    write!(out, "\n")?;
                     write_definition(out, pool.definition(*local)?, pool)?;
+                    write!(out, "\n")?;
                 }
                 write_seq(out, &code, 2)?;
                 write!(out, "{}}}", INDENT)?
@@ -94,15 +94,10 @@ pub fn write_definition<W: Write>(out: &mut W, definition: &Definition, pool: &C
 }
 
 fn write_seq<W: Write>(out: &mut W, code: &Seq, indent: usize) -> Result<(), Error> {
-    let mut written = 0;
     for expr in code.exprs.iter().filter(|expr| !expr.is_empty()) {
-        write!(out, "\n{}", INDENT.repeat(indent))?;
+        write!(out, "{}", INDENT.repeat(indent))?;
         write_expr(out, &expr, indent)?;
-        write!(out, ";")?;
-        written += 1;
-    }
-    if written > 0 {
-        write!(out, "\n")?;
+        write!(out, ";\n")?;
     }
     Ok(())
 }
@@ -150,11 +145,11 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, indent: usize) -> Result<(), E
             for SwitchCase(matcher, body) in cases {
                 write!(out, "{}  case ", padding)?;
                 write_expr(out, matcher, 0)?;
-                write!(out, ":")?;
+                write!(out, ":\n")?;
                 write_seq(out, body, indent + 2)?;
             }
             if let Some(default_body) = default {
-                write!(out, "{}  default:", padding)?;
+                write!(out, "{}  default:\n", padding)?;
                 write_seq(out, default_body, indent + 2)?;
             }
             write!(out, "{}}}", padding)?
@@ -164,11 +159,11 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, indent: usize) -> Result<(), E
         Expr::If(condition, true_, false_) => {
             write!(out, "if(")?;
             write_expr(out, condition, 0)?;
-            write!(out, ") {{")?;
+            write!(out, ") {{\n")?;
             write_seq(out, true_, indent + 1)?;
             write!(out, "{}}}", padding)?;
             if let Some(branch) = false_ {
-                write!(out, " else {{")?;
+                write!(out, " else {{\n")?;
                 write_seq(out, branch, indent + 1)?;
                 write!(out, "{}}}", padding)?
             }
@@ -183,7 +178,7 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, indent: usize) -> Result<(), E
         Expr::While(condition, body) => {
             write!(out, "while(")?;
             write_expr(out, condition, 0)?;
-            write!(out, ") {{")?;
+            write!(out, ") {{\n")?;
             write_seq(out, body, indent + 1)?;
             write!(out, "{}}}", padding)?;
         }
@@ -231,6 +226,7 @@ fn write_call<W: Write>(out: &mut W, name: &Ident, params: &Vec<Expr>) -> Result
         "OperatorSubtract" => write_binop(out, &params[0], &params[1], "-"),
         "OperatorDivide" => write_binop(out, &params[0], &params[1], "/"),
         "OperatorMultiply" => write_binop(out, &params[0], &params[1], "*"),
+        "OperatorModulo" => write_binop(out, &params[0], &params[1], "%"),
         "OperatorGreaterEqual" => write_binop(out, &params[0], &params[1], ">="),
         "OperatorLessEqual" => write_binop(out, &params[0], &params[1], "<="),
         "OperatorAssignAdd" => write_binop(out, &params[0], &params[1], "+="),
@@ -238,6 +234,8 @@ fn write_call<W: Write>(out: &mut W, name: &Ident, params: &Vec<Expr>) -> Result
         "OperatorAssignMultiply" => write_binop(out, &params[0], &params[1], "*="),
         "OperatorAssignDivide" => write_binop(out, &params[0], &params[1], "/="),
         "OperatorLogicNot" => write_unop(out, &params[0], "!"),
+        "OperatorBitNot" => write_unop(out, &params[0], "~"),
+        "OperatorNeg" => write_unop(out, &params[0], "-"),
         _ => {
             write!(out, "{}(", prefix)?;
             if !params.is_empty() {
