@@ -4,6 +4,7 @@ use crate::script::definition::Definition;
 
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
+use std::fmt;
 use std::io;
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -222,7 +223,6 @@ impl Decode for DefinitionType {
     }
 }
 
-#[derive(Debug)]
 pub struct PoolIndex<A> {
     index: usize,
     phantom: PhantomData<A>,
@@ -252,6 +252,12 @@ impl<A> Clone for PoolIndex<A> {
 }
 
 impl<A> Copy for PoolIndex<A> {}
+
+impl<A> fmt::Debug for PoolIndex<A> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("PoolIndex").field(&self.index).finish()
+    }
+}
 
 #[derive(Debug)]
 pub struct Resource(String);

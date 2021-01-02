@@ -4,7 +4,7 @@ mod script;
 
 use script::bundle::ScriptBundle;
 use script::definition::AnyDefinition;
-use script::print::write_definition;
+use script::print::{write_definition, OutputMode};
 
 use gumdrop::Options;
 use std::fs::File;
@@ -17,6 +17,8 @@ struct Configuration {
     input: PathBuf,
     #[options(required, short = "o")]
     output: PathBuf,
+    #[options(short = "m")]
+    mode: String,
 }
 
 fn main() {
@@ -28,12 +30,18 @@ fn main() {
     let mut output = BufWriter::new(File::create(config.output).expect("Failed to create output file"));
     let pool = cache.pool();
 
+    let mode = match config.mode.as_str() {
+        "ast" => OutputMode::SyntaxTree,
+        "bytecode" => OutputMode::Bytecode,
+        _ => OutputMode::Code,
+    };
+
     for def in pool
         .definitions()
         .iter()
         .filter(|def| matches!(&def.value, AnyDefinition::Class(_)))
     {
-        match write_definition(&mut output, def, pool) {
+        match write_definition(&mut output, def, pool, mode) {
             Ok(()) => {}
             Err(err) => println!("Failed to process definition {:?}: {:?}", def, err),
         }

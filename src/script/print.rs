@@ -2,14 +2,26 @@ use crate::error::Error;
 use crate::script::ast::{BinOp, Expr, Ident, Seq, SwitchCase};
 use crate::script::bundle::ConstantPool;
 use crate::script::decompiler::Decompiler;
-use crate::script::definition::{AnyDefinition, Definition, Type};
+use crate::script::definition::{AnyDefinition, Definition, Function, Type};
 
 use std::io::Write;
 use std::ops::Deref;
 
 const INDENT: &str = "  ";
 
-pub fn write_definition<W: Write>(out: &mut W, definition: &Definition, pool: &ConstantPool) -> Result<(), Error> {
+#[derive(Debug, Clone, Copy)]
+pub enum OutputMode {
+    Code,
+    SyntaxTree,
+    Bytecode,
+}
+
+pub fn write_definition<W: Write>(
+    out: &mut W,
+    definition: &Definition,
+    pool: &ConstantPool,
+    mode: OutputMode,
+) -> Result<(), Error> {
     match &definition.value {
         AnyDefinition::Type(_) => write!(out, "{}", format_type(definition, pool)?)?,
         AnyDefinition::Class(class) => {
@@ -17,13 +29,13 @@ pub fn write_definition<W: Write>(out: &mut W, definition: &Definition, pool: &C
 
             for field_index in &class.fields {
                 let field = pool.definition(*field_index)?;
-                write_definition(out, field, pool)?;
+                write_definition(out, field, pool, mode)?;
                 write!(out, "\n")?;
             }
 
             for method_index in &class.functions {
                 let method = pool.definition(*method_index)?;
-                if let Err(err) = write_definition(out, method, pool) {
+                if let Err(err) = write_definition(out, method, pool, mode) {
                     println!("Method decompilation {:?} failed due to: {:?}", method_index, err)
                 }
                 write!(out, "\n")?;
@@ -35,7 +47,7 @@ pub fn write_definition<W: Write>(out: &mut W, definition: &Definition, pool: &C
             writeln!(out, "enum {} {{", pool.name(definition.name)?)?;
 
             for member in &enum_.members {
-                write_definition(out, pool.definition(*member)?, pool)?;
+                write_definition(out, pool.definition(*member)?, pool, mode)?;
             }
 
             writeln!(out, "}}")?
@@ -62,16 +74,8 @@ pub fn write_definition<W: Write>(out: &mut W, definition: &Definition, pool: &C
                 INDENT, fun.visibility, return_type, pretty_name, params
             )?;
 
-            let code = Decompiler::new(&mut fun.bytecode(), pool).decompile()?;
-
             if fun.flags.has_body() {
-                write!(out, " {{\n")?;
-                for local in &fun.locals {
-                    write_definition(out, pool.definition(*local)?, pool)?;
-                    write!(out, "\n")?;
-                }
-                write_seq(out, &code, 2)?;
-                write!(out, "{}}}", INDENT)?
+                write_function_body(out, fun, pool, mode)?;
             }
         }
         AnyDefinition::Parameter(param) => {
@@ -90,6 +94,40 @@ pub fn write_definition<W: Write>(out: &mut W, definition: &Definition, pool: &C
         }
         AnyDefinition::SourceFile(_) => panic!(),
     }
+    Ok(())
+}
+
+fn write_function_body<W: Write>(
+    out: &mut W,
+    fun: &Function,
+    pool: &ConstantPool,
+    mode: OutputMode,
+) -> Result<(), Error> {
+    write!(out, " {{\n")?;
+    for local in &fun.locals {
+        write_definition(out, pool.definition(*local)?, pool, mode)?;
+        write!(out, "\n")?;
+    }
+    match mode {
+        OutputMode::Code => {
+            let code = Decompiler::new(&mut fun.bytecode(), pool).decompile()?;
+            write_seq(out, &code, 2)?;
+        }
+        OutputMode::SyntaxTree => {
+            let code = Decompiler::new(&mut fun.bytecode(), pool).decompile()?;
+            for expr in code.exprs {
+                writeln!(out, "{}{:?}", INDENT.repeat(2), expr)?;
+            }
+        }
+        OutputMode::Bytecode => {
+            for (offset, instr) in fun.bytecode() {
+                let op = format!("{:?}", instr).to_lowercase();
+                writeln!(out, "{}{}: {}", INDENT.repeat(2), offset, op)?;
+            }
+        }
+    }
+
+    write!(out, "{}}}", INDENT)?;
     Ok(())
 }
 

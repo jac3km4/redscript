@@ -390,3 +390,12 @@ impl<'a> BytecodeReader<'a> {
         self.code_offset
     }
 }
+
+impl<'a> Iterator for BytecodeReader<'a> {
+    type Item = (u16, Instr);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let position = self.position();
+        self.pop().ok().map(|instr| (position, instr))
+    }
+}
