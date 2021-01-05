@@ -5,6 +5,7 @@ use crate::script::definition::Definition;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use std::fmt;
+use std::hash::Hash;
 use std::io;
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -133,8 +134,15 @@ impl ConstantPool {
         self.name(self.definition(index)?.name)
     }
 
-    pub fn definitions(&self) -> &[Definition] {
-        &self.definitions
+    pub fn definitions(&self) -> impl Iterator<Item = (PoolIndex<Definition>, &Definition)> {
+        self.definitions
+            .iter()
+            .enumerate()
+            .map(|(index, def)| (PoolIndex::new(index), def))
+    }
+
+    pub fn roots(&self) -> impl Iterator<Item = (PoolIndex<Definition>, &Definition)> {
+        self.definitions().filter(|(_, def)| def.parent.index == 0)
     }
 }
 
@@ -229,10 +237,21 @@ pub struct PoolIndex<A> {
 }
 
 impl<A> PoolIndex<A> {
+    fn new(index: usize) -> PoolIndex<A> {
+        PoolIndex {
+            index,
+            phantom: PhantomData,
+        }
+    }
+
     pub const ZERO: PoolIndex<A> = PoolIndex {
         index: 0,
         phantom: PhantomData,
     };
+
+    pub fn is_root(&self) -> bool {
+        self.index == 0
+    }
 }
 
 impl<A> Decode for PoolIndex<A> {
@@ -256,6 +275,20 @@ impl<A> Copy for PoolIndex<A> {}
 impl<A> fmt::Debug for PoolIndex<A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("PoolIndex").field(&self.index).finish()
+    }
+}
+
+impl<A> PartialEq for PoolIndex<A> {
+    fn eq(&self, other: &Self) -> bool {
+        self.index == other.index
+    }
+}
+
+impl<A> Eq for PoolIndex<A> {}
+
+impl<A> Hash for PoolIndex<A> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        Hash::hash(&self.index, state)
     }
 }
 

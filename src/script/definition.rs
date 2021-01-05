@@ -7,6 +7,7 @@ use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use std::fmt::Display;
 use std::io;
+use std::path::PathBuf;
 
 #[derive(Debug)]
 pub struct Definition {
@@ -44,13 +45,20 @@ impl Definition {
         };
         Ok(definition)
     }
+
+    pub fn source(&self) -> Option<&SourceReference> {
+        match self.value {
+            AnyDefinition::Function(ref fun) => fun.source.as_ref(),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug)]
 pub enum AnyDefinition {
     Type(Type),
     Class(Class),
-    EnumValue(u64),
+    EnumValue(i64),
     Enum(Enum),
     Function(Function),
     Parameter(Parameter),
@@ -132,8 +140,7 @@ impl Decode for Enum {
 pub struct Function {
     pub visibility: Visibility,
     pub flags: FunctionFlags,
-    pub source: Option<PoolIndex<Definition>>,
-    pub source_line: Option<u32>,
+    pub source: Option<SourceReference>,
     pub return_type: Option<PoolIndex<Definition>>,
     pub unk1: bool,
     pub unk2: Option<PoolIndex<String>>,
@@ -155,7 +162,6 @@ impl Decode for Function {
         let visibility = input.decode()?;
         let flags: FunctionFlags = input.decode()?;
         let source = if flags.is_native() { None } else { Some(input.decode()?) };
-        let source_line = if flags.is_native() { None } else { Some(input.decode()?) };
         let return_type = if flags.is_void() { None } else { Some(input.decode()?) };
         let unk1 = if flags.is_void() { false } else { input.decode()? };
         let unk2 = if flags.has_unk2() { Some(input.decode()?) } else { None };
@@ -181,7 +187,6 @@ impl Decode for Function {
             visibility,
             flags,
             source,
-            source_line,
             return_type,
             unk1,
             unk2,
@@ -290,14 +295,15 @@ impl Decode for Parameter {
 pub struct SourceFile {
     pub id: u32,
     pub path_hash: u64,
-    pub path: String,
+    pub path: PathBuf,
 }
 
 impl Decode for SourceFile {
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
         let id = input.decode()?;
         let path_hash = input.decode()?;
-        let path = input.decode_str_prefixed::<u16>()?;
+        let raw_path = input.decode_str_prefixed::<u16>()?;
+        let path = PathBuf::from(raw_path.replace("\\", "/"));
         let result = SourceFile { id, path_hash, path };
         Ok(result)
     }
@@ -436,6 +442,21 @@ impl Decode for Visibility {
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
         let res = FromPrimitive::from_u8(input.decode()?);
         Ok(res.expect("Invalid Visibility enum value"))
+    }
+}
+
+#[derive(Debug)]
+pub struct SourceReference {
+    pub file: PoolIndex<Definition>,
+    pub line: u32,
+}
+
+impl Decode for SourceReference {
+    fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
+        let file = input.decode()?;
+        let line = input.decode()?;
+        let result = SourceReference { file, line };
+        Ok(result)
     }
 }
 

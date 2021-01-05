@@ -20,34 +20,41 @@ pub fn write_definition<W: Write>(
     out: &mut W,
     definition: &Definition,
     pool: &ConstantPool,
+    indent: usize,
     mode: OutputMode,
 ) -> Result<(), Error> {
     match &definition.value {
         AnyDefinition::Type(_) => write!(out, "{}", format_type(definition, pool)?)?,
         AnyDefinition::Class(class) => {
+            writeln!(out)?;
             writeln!(out, "{} class {} {{", class.visibility, pool.name(definition.name)?)?;
 
             for field_index in &class.fields {
                 let field = pool.definition(*field_index)?;
-                write_definition(out, field, pool, mode)?;
-                write!(out, "\n")?;
+                write_definition(out, field, pool, indent + 1, mode)?;
             }
 
             for method_index in &class.functions {
                 let method = pool.definition(*method_index)?;
-                if let Err(err) = write_definition(out, method, pool, mode) {
+                if let Err(err) = write_definition(out, method, pool, indent + 1, mode) {
                     println!("Method decompilation {:?} failed due to: {:?}", method_index, err)
                 }
-                write!(out, "\n")?;
             }
-            writeln!(out, "}}\n")?
+            writeln!(out, "}}")?
         }
-        AnyDefinition::EnumValue(val) => writeln!(out, "{} = {},", pool.name(definition.name)?, val)?,
+        AnyDefinition::EnumValue(val) => writeln!(
+            out,
+            "{}{} = {},",
+            INDENT.repeat(indent),
+            pool.name(definition.name)?,
+            val
+        )?,
         AnyDefinition::Enum(enum_) => {
+            writeln!(out)?;
             writeln!(out, "enum {} {{", pool.name(definition.name)?)?;
 
             for member in &enum_.members {
-                write_definition(out, pool.definition(*member)?, pool, mode)?;
+                write_definition(out, pool.definition(*member)?, pool, indent + 1, mode)?;
             }
 
             writeln!(out, "}}")?
@@ -68,15 +75,21 @@ pub fn write_definition<W: Write>(
                 .collect::<Vec<_>>()
                 .join(", ");
 
+            writeln!(out)?;
             write!(
                 out,
-                "\n{}{} {} {}({})",
-                INDENT, fun.visibility, return_type, pretty_name, params
+                "{}{} {} {}({})",
+                INDENT.repeat(indent),
+                fun.visibility,
+                return_type,
+                pretty_name,
+                params
             )?;
 
             if fun.flags.has_body() {
-                write_function_body(out, fun, pool, mode)?;
+                write_function_body(out, fun, pool, indent, mode)?;
             }
+            write!(out, "\n")?;
         }
         AnyDefinition::Parameter(param) => {
             let type_name = format_type(pool.definition(param.type_)?, pool)?;
@@ -85,12 +98,19 @@ pub fn write_definition<W: Write>(
         AnyDefinition::Local(local) => {
             let type_name = format_type(pool.definition(local.type_)?, pool)?;
             let name = pool.name(definition.name)?;
-            write!(out, "{}{} {};", INDENT.repeat(2), type_name, name)?
+            write!(out, "{}{} {};", INDENT.repeat(indent), type_name, name)?
         }
         AnyDefinition::Field(field) => {
             let type_name = format_type(pool.definition(field.type_)?, pool)?;
             let field_name = pool.name(definition.name)?;
-            write!(out, "{}{} {} {};", INDENT, field.visibility, type_name, field_name)?
+            writeln!(
+                out,
+                "{}{} {} {};",
+                INDENT.repeat(indent),
+                field.visibility,
+                type_name,
+                field_name
+            )?
         }
         AnyDefinition::SourceFile(_) => panic!(),
     }
@@ -101,33 +121,34 @@ fn write_function_body<W: Write>(
     out: &mut W,
     fun: &Function,
     pool: &ConstantPool,
+    indent: usize,
     mode: OutputMode,
 ) -> Result<(), Error> {
     write!(out, " {{\n")?;
     for local in &fun.locals {
-        write_definition(out, pool.definition(*local)?, pool, mode)?;
+        write_definition(out, pool.definition(*local)?, pool, indent + 1, mode)?;
         write!(out, "\n")?;
     }
     match mode {
         OutputMode::Code => {
             let code = Decompiler::new(&mut fun.bytecode(), pool).decompile()?;
-            write_seq(out, &code, 2)?;
+            write_seq(out, &code, indent + 1)?;
         }
         OutputMode::SyntaxTree => {
             let code = Decompiler::new(&mut fun.bytecode(), pool).decompile()?;
             for expr in code.exprs {
-                writeln!(out, "{}{:?}", INDENT.repeat(2), expr)?;
+                writeln!(out, "{}{:?}", INDENT.repeat(indent + 1), expr)?;
             }
         }
         OutputMode::Bytecode => {
             for (offset, instr) in fun.bytecode() {
                 let op = format!("{:?}", instr).to_lowercase();
-                writeln!(out, "{}{}: {}", INDENT.repeat(2), offset, op)?;
+                writeln!(out, "{}{}: {}", INDENT.repeat(indent + 1), offset, op)?;
             }
         }
     }
 
-    write!(out, "{}}}", INDENT)?;
+    write!(out, "{}}}", INDENT.repeat(indent))?;
     Ok(())
 }
 
