@@ -1,8 +1,8 @@
+use crate::ast::{BinOp, Expr, Ident, Seq, SwitchCase};
+use crate::bundle::ConstantPool;
+use crate::decompiler::Decompiler;
+use crate::definition::{AnyDefinition, Definition, Function, Type};
 use crate::error::Error;
-use crate::script::ast::{BinOp, Expr, Ident, Seq, SwitchCase};
-use crate::script::bundle::ConstantPool;
-use crate::script::decompiler::Decompiler;
-use crate::script::definition::{AnyDefinition, Definition, Function, Type};
 
 use std::io::Write;
 use std::ops::Deref;

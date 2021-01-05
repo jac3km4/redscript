@@ -1,6 +1,6 @@
+use crate::bundle::{DefinitionHeader, DefinitionType, PoolIndex};
+use crate::bytecode::BytecodeReader;
 use crate::decode::{Decode, DecodeExt};
-use crate::script::bundle::{DefinitionHeader, DefinitionType, PoolIndex};
-use crate::script::bytecode::BytecodeReader;
 
 use core::panic;
 use num_derive::FromPrimitive;
