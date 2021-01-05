@@ -27,7 +27,11 @@ pub fn write_definition<W: Write>(
         AnyDefinition::Type(_) => write!(out, "{}", format_type(definition, pool)?)?,
         AnyDefinition::Class(class) => {
             writeln!(out)?;
-            writeln!(out, "{} class {} {{", class.visibility, pool.name(definition.name)?)?;
+            write!(out, "{} class {} ", class.visibility, pool.name(definition.name)?)?;
+            if !class.base.is_root() {
+                write!(out, "extends {} ", pool.definition_name(class.base)?)?;
+            }
+            write!(out, "{{\n")?;
 
             for field_index in &class.fields {
                 let field = pool.definition(*field_index)?;
