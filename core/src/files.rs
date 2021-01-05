@@ -1,5 +1,5 @@
-use crate::script::bundle::{ConstantPool, PoolIndex};
-use crate::script::definition::{AnyDefinition, Definition, SourceFile};
+use crate::bundle::{ConstantPool, PoolIndex};
+use crate::definition::{AnyDefinition, Definition, SourceFile};
 
 use std::collections::{HashMap, HashSet};
 use std::iter::{once, FromIterator};

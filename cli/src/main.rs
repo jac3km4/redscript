@@ -1,12 +1,8 @@
-mod decode;
-mod error;
-mod script;
-
-use error::Error;
-use script::bundle::ScriptBundle;
-use script::definition::AnyDefinition;
-use script::files::FileIndex;
-use script::print::{write_definition, OutputMode};
+use redscript::bundle::ScriptBundle;
+use redscript::definition::AnyDefinition;
+use redscript::error::Error;
+use redscript::files::FileIndex;
+use redscript::print::{write_definition, OutputMode};
 
 use gumdrop::Options;
 use std::fs::File;

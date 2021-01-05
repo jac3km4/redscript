@@ -1,8 +1,8 @@
+use crate::ast::{BinOp, Expr, Ident, Seq, SwitchCase, Target};
+use crate::bundle::{ConstantPool, PoolIndex, Resource, TweakDbIndex};
+use crate::bytecode::{BytecodeReader, Instr};
+use crate::definition::Definition;
 use crate::error::Error;
-use crate::script::ast::{BinOp, Expr, Ident, Seq, SwitchCase, Target};
-use crate::script::bundle::{ConstantPool, PoolIndex, Resource, TweakDbIndex};
-use crate::script::bytecode::{BytecodeReader, Instr};
-use crate::script::definition::Definition;
 
 use std::io;
 use std::ops::Deref;

@@ -1,6 +1,6 @@
 use crate::decode::{Decode, DecodeExt};
+use crate::definition::Definition;
 use crate::error::Error;
-use crate::script::definition::Definition;
 
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;

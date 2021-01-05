@@ -1,7 +1,7 @@
+use crate::bundle::{PoolIndex, Resource, TweakDbIndex};
 use crate::decode::{Decode, DecodeExt};
+use crate::definition::Definition;
 use crate::error::Error;
-use crate::script::bundle::{PoolIndex, Resource, TweakDbIndex};
-use crate::script::definition::Definition;
 
 use std::io;
 
