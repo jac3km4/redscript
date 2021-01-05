@@ -13,34 +13,40 @@ use std::path::PathBuf;
 pub struct Definition {
     pub name: PoolIndex<String>,
     pub parent: PoolIndex<Definition>,
-    pub value: AnyDefinition,
+    pub file_offset: u32,
+    pub size: u32,
+    pub value: DefinitionValue,
 }
 
 impl Definition {
     pub const DUMMY: Definition = Definition {
         name: PoolIndex::ZERO,
         parent: PoolIndex::ZERO,
-        value: AnyDefinition::Type(Type::Prim),
+        file_offset: 0,
+        size: 0,
+        value: DefinitionValue::Type(Type::Prim),
     };
 
     pub fn decode<I: io::Read + io::Seek>(input: &mut I, header: &DefinitionHeader) -> io::Result<Definition> {
         input.seek(io::SeekFrom::Start(header.offset.into()))?;
 
         let value = match header.type_ {
-            DefinitionType::Type => AnyDefinition::Type(input.decode()?),
-            DefinitionType::Class => AnyDefinition::Class(input.decode()?),
-            DefinitionType::EnumValue => AnyDefinition::EnumValue(input.decode()?),
-            DefinitionType::Enum => AnyDefinition::Enum(input.decode()?),
+            DefinitionType::Type => DefinitionValue::Type(input.decode()?),
+            DefinitionType::Class => DefinitionValue::Class(input.decode()?),
+            DefinitionType::EnumValue => DefinitionValue::EnumValue(input.decode()?),
+            DefinitionType::Enum => DefinitionValue::Enum(input.decode()?),
             DefinitionType::BitField => panic!("Bit field not supported"),
-            DefinitionType::Function => AnyDefinition::Function(input.decode()?),
-            DefinitionType::Parameter => AnyDefinition::Parameter(input.decode()?),
-            DefinitionType::Local => AnyDefinition::Local(input.decode()?),
-            DefinitionType::Field => AnyDefinition::Field(input.decode()?),
-            DefinitionType::SourceFile => AnyDefinition::SourceFile(input.decode()?),
+            DefinitionType::Function => DefinitionValue::Function(input.decode()?),
+            DefinitionType::Parameter => DefinitionValue::Parameter(input.decode()?),
+            DefinitionType::Local => DefinitionValue::Local(input.decode()?),
+            DefinitionType::Field => DefinitionValue::Field(input.decode()?),
+            DefinitionType::SourceFile => DefinitionValue::SourceFile(input.decode()?),
         };
         let definition = Definition {
             name: header.name,
             parent: header.parent,
+            file_offset: header.offset,
+            size: header.size,
             value,
         };
         Ok(definition)
@@ -48,14 +54,14 @@ impl Definition {
 
     pub fn source(&self) -> Option<&SourceReference> {
         match self.value {
-            AnyDefinition::Function(ref fun) => fun.source.as_ref(),
+            DefinitionValue::Function(ref fun) => fun.source.as_ref(),
             _ => None,
         }
     }
 }
 
 #[derive(Debug)]
-pub enum AnyDefinition {
+pub enum DefinitionValue {
     Type(Type),
     Class(Class),
     EnumValue(i64),

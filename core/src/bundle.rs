@@ -179,7 +179,7 @@ pub struct DefinitionHeader {
     pub name: PoolIndex<String>,
     pub parent: PoolIndex<Definition>,
     pub offset: u32,
-    size: u32,
+    pub size: u32,
     pub type_: DefinitionType,
     unk1: u8,
     unk2: u8,

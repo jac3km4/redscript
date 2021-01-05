@@ -1,5 +1,5 @@
 use redscript::bundle::ScriptBundle;
-use redscript::definition::AnyDefinition;
+use redscript::definition::DefinitionValue;
 use redscript::error::Error;
 use redscript::files::FileIndex;
 use redscript::print::{write_definition, OutputMode};
@@ -50,9 +50,9 @@ fn main() -> Result<(), Error> {
         let mut output = BufWriter::new(File::create(config.output).expect("Failed to create output file"));
 
         for (_, def) in pool.roots().filter(|(_, def)| {
-            matches!(&def.value, AnyDefinition::Class(_))
-                || matches!(&def.value, AnyDefinition::Enum(_))
-                || matches!(&def.value, AnyDefinition::Function(_))
+            matches!(&def.value, DefinitionValue::Class(_))
+                || matches!(&def.value, DefinitionValue::Enum(_))
+                || matches!(&def.value, DefinitionValue::Function(_))
         }) {
             if let Err(err) = write_definition(&mut output, def, pool, 0, mode) {
                 println!("Failed to process definition {:?}: {:?}", def, err);

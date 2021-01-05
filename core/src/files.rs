@@ -1,5 +1,5 @@
 use crate::bundle::{ConstantPool, PoolIndex};
-use crate::definition::{AnyDefinition, Definition, SourceFile};
+use crate::definition::{Definition, DefinitionValue, SourceFile};
 
 use std::collections::{HashMap, HashSet};
 use std::iter::{once, FromIterator};
@@ -30,7 +30,7 @@ impl<'a> FileIndex<'a> {
 
     pub fn files(&'a self) -> impl Iterator<Item = FileEntry<'a>> {
         self.file_map.iter().filter_map(move |(idx, children)| {
-            if let AnyDefinition::SourceFile(ref file) = self.pool.definition(*idx).unwrap().value {
+            if let DefinitionValue::SourceFile(ref file) = self.pool.definition(*idx).unwrap().value {
                 let mut definitions: Vec<&Definition> = children
                     .iter()
                     .filter_map(|child| self.pool.definition(*child).ok())
