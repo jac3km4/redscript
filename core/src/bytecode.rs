@@ -367,7 +367,7 @@ impl<'a> BytecodeReader<'a> {
         instr
     }
 
-    pub fn set_position(&mut self, position: u16) -> Result<(), Error> {
+    pub fn set_offset(&mut self, position: u16) -> Result<(), Error> {
         self.reset();
         while self.code_offset < position {
             self.pop()?;
@@ -378,7 +378,7 @@ impl<'a> BytecodeReader<'a> {
 
     pub fn seek(&mut self, offset: i32) -> Result<(), Error> {
         let target = (self.code_offset as i32 + offset) as u16;
-        self.set_position(target)
+        self.set_offset(target)
     }
 
     pub fn reset(&mut self) {
@@ -386,8 +386,12 @@ impl<'a> BytecodeReader<'a> {
         self.bytecode.set_position(0);
     }
 
-    pub fn position(&mut self) -> u16 {
+    pub fn offset(&self) -> u16 {
         self.code_offset
+    }
+
+    pub fn bytecode_offset(&self) -> u64 {
+        self.bytecode.position()
     }
 }
 
@@ -395,7 +399,7 @@ impl<'a> Iterator for BytecodeReader<'a> {
     type Item = (u16, Instr);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let position = self.position();
+        let position = self.offset();
         self.pop().ok().map(|instr| (position, instr))
     }
 }

@@ -48,7 +48,7 @@ impl<'a> Decompiler<'a> {
     fn consume_path(&mut self, target: u16) -> Result<Seq, Error> {
         let mut body = Vec::new();
         loop {
-            if self.code.position() >= target
+            if self.code.offset() >= target
                 || matches!(body.last(), Some(Expr::Goto(_)))
                 || matches!(body.last(), Some(Expr::Return(_)))
                 || matches!(self.code.peek(), Some(Instr::Nop))
@@ -88,7 +88,7 @@ impl<'a> Decompiler<'a> {
         let condition = self.consume()?;
         let target = (position as i16 + offset) as u16;
         let mut body = self.consume_path(target)?;
-        self.code.set_position(target)?;
+        self.code.set_offset(target)?;
 
         let result = if let Some(_) = resolve_jump(&mut body, Some(position)) {
             Expr::While(Box::new(condition), body)
@@ -106,26 +106,26 @@ impl<'a> Decompiler<'a> {
 
         let mut labels = Vec::new();
         while let Some(Instr::SwitchLabel(exit_offset, start_offset)) = self.code.peek() {
-            let position = self.code.position();
+            let position = self.code.offset();
             labels.push((position, (position as i32 + start_offset as i32) as u16));
             self.code.seek(exit_offset.into())?;
         }
         if let Some(Instr::SwitchDefault) = self.code.peek() {
-            labels.push((self.code.position(), self.code.position()));
+            labels.push((self.code.offset(), self.code.offset()));
         };
         labels.sort_by_key(|(_, start)| *start);
 
         let mut default = None;
         let mut cases = Vec::new();
         for (label, start_position) in labels {
-            self.code.set_position(label.into())?;
+            self.code.set_offset(label.into())?;
 
             match self.code.pop()? {
                 Instr::SwitchLabel(exit_offset, _) => {
                     let exit = (label as i32 + exit_offset as i32) as u16;
                     let matched = self.consume()?;
 
-                    self.code.set_position(start_position)?;
+                    self.code.set_offset(start_position)?;
                     let mut body = self.consume_path(exit)?;
                     if let Some(Expr::Goto(_)) = body.exprs.last() {
                         body.exprs.pop();
@@ -142,7 +142,7 @@ impl<'a> Decompiler<'a> {
     }
 
     fn consume(&mut self) -> Result<Expr, Error> {
-        let position = self.code.position();
+        let position = self.code.offset();
         let instr = self.code.pop()?;
         let res = match instr {
             Instr::Nop => Expr::EMPTY,
