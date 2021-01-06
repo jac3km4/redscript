@@ -1,6 +1,7 @@
 use crate::decode::{Decode, DecodeExt};
 use crate::definition::Definition;
 use crate::error::Error;
+use crate::files::FileIndex;
 
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
@@ -90,7 +91,10 @@ impl ConstantPool {
         for header in headers.iter().skip(1) {
             match Definition::decode(input, &header) {
                 Ok(definition) => definitions.push(definition),
-                Err(_) => definitions.push(Definition::DUMMY),
+                Err(err) => {
+                    println!("Error reading definition at {}: {:?}", header.offset, err);
+                    definitions.push(Definition::DUMMY)
+                }
             }
         }
 
@@ -143,6 +147,10 @@ impl ConstantPool {
 
     pub fn roots(&self) -> impl Iterator<Item = (PoolIndex<Definition>, &Definition)> {
         self.definitions().filter(|(_, def)| def.parent.index == 0)
+    }
+
+    pub fn files(&self) -> FileIndex {
+        FileIndex::from_pool(self)
     }
 }
 

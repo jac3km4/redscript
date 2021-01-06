@@ -28,7 +28,7 @@ impl<'a> FileIndex<'a> {
         FileIndex { file_map, pool }
     }
 
-    pub fn files(&'a self) -> impl Iterator<Item = FileEntry<'a>> {
+    pub fn iter(&'a self) -> impl Iterator<Item = FileEntry<'a>> {
         self.file_map.iter().filter_map(move |(idx, children)| {
             if let DefinitionValue::SourceFile(ref file) = self.pool.definition(*idx).unwrap().value {
                 let mut definitions: Vec<&Definition> = children
