@@ -34,7 +34,13 @@ pub fn write_definition<W: Write>(
             if class.flags.is_abstract() {
                 write!(out, "abstract ")?;
             }
-            if class.flags.is_value_type() {
+            if class.flags.is_final() {
+                write!(out, "final ")?;
+            }
+            if class.flags.is_native() {
+                write!(out, "native ")?;
+            }
+            if class.flags.is_struct() {
                 write!(out, "struct ")?;
             } else {
                 write!(out, "class ")?;
@@ -94,11 +100,17 @@ pub fn write_definition<W: Write>(
 
             writeln!(out)?;
             write!(out, "{}{} ", padding, fun.visibility)?;
+            if fun.flags.is_final() {
+                write!(out, "final ")?;
+            }
             if fun.flags.is_static() {
                 write!(out, "static ")?;
             }
             if fun.flags.is_native() {
                 write!(out, "native ")?;
+            }
+            if fun.flags.is_const() {
+                write!(out, "const ")?;
             }
             write!(out, "{} {}({})", return_type, pretty_name, params)?;
 
@@ -107,10 +119,7 @@ pub fn write_definition<W: Write>(
             }
             write!(out, "\n")?;
         }
-        DefinitionValue::Parameter(param) => {
-            let type_name = format_type(pool.definition(param.type_)?, pool)?;
-            write!(out, "{} {}", type_name, pool.name(definition.name)?)?
-        }
+        DefinitionValue::Parameter(_) => write!(out, "{}", format_param(definition, pool)?)?,
         DefinitionValue::Local(local) => {
             let type_name = format_type(pool.definition(local.type_)?, pool)?;
             let name = pool.name(definition.name)?;
@@ -344,7 +353,10 @@ fn write_unop<W: Write>(out: &mut W, param: &Expr, op: &str) -> Result<(), Error
 fn format_param(def: &Definition, pool: &ConstantPool) -> Result<String, Error> {
     if let DefinitionValue::Parameter(ref param) = def.value {
         let type_name = format_type(pool.definition(param.type_)?, pool)?;
-        Ok(format!("{} {}", type_name, pool.name(def.name)?))
+        let name = pool.name(def.name)?;
+        let qualifier = if param.flags.is_out_param() { "out " } else { "" };
+        let optional = if param.flags.is_optional() { "?" } else { "" };
+        Ok(format!("{}{} {}{}", qualifier, type_name, name, optional))
     } else {
         Err(Error::DecompileError("Invalid type definition received".to_owned()))
     }
@@ -361,7 +373,7 @@ fn format_type(def: &Definition, pool: &ConstantPool) -> Result<String, Error> {
             Type::StaticArray(nested, size) => {
                 format!("Array<{}; {}>", format_type(pool.definition(*nested)?, pool)?, size)
             }
-            Type::Unk1(nested) => format!("Unk1<{}>", format_type(pool.definition(*nested)?, pool)?),
+            Type::ScriptRef(nested) => format!("ScriptRef<{}>", format_type(pool.definition(*nested)?, pool)?),
         };
         Ok(result)
     } else {
