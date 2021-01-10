@@ -15,7 +15,7 @@ impl<'a> FileIndex<'a> {
 
         for (idx, def) in pool.definitions() {
             if let Some(source) = def.source() {
-                let root_idx = if def.parent.is_root() { idx } else { def.parent };
+                let root_idx = if def.parent.is_undefined() { idx } else { def.parent };
                 file_map
                     .entry(source.file)
                     .and_modify(|vec| {

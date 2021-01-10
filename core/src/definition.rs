@@ -1,5 +1,5 @@
 use crate::bundle::{DefinitionHeader, DefinitionType, PoolIndex};
-use crate::bytecode::BytecodeReader;
+use crate::bytecode::Code;
 use crate::decode::{Decode, DecodeExt};
 
 use core::panic;
@@ -149,18 +149,12 @@ pub struct Function {
     pub source: Option<SourceReference>,
     pub return_type: Option<PoolIndex<Definition>>,
     pub unk1: bool,
-    pub unk2: Option<PoolIndex<String>>,
+    pub base_method: Option<PoolIndex<Definition>>,
     pub parameters: Vec<PoolIndex<Definition>>,
     pub locals: Vec<PoolIndex<Definition>>,
-    pub unk3: u32,
-    pub unk4: u8,
-    pub code: Vec<u8>,
-}
-
-impl Function {
-    pub fn bytecode<'a>(&'a self) -> BytecodeReader<'a> {
-        BytecodeReader::new(&self.code)
-    }
+    pub operator: u32,
+    pub cast: u8,
+    pub code: Code,
 }
 
 impl Decode for Function {
@@ -170,7 +164,11 @@ impl Decode for Function {
         let source = if flags.is_native() { None } else { Some(input.decode()?) };
         let return_type = if flags.is_void() { None } else { Some(input.decode()?) };
         let unk1 = if flags.is_void() { false } else { input.decode()? };
-        let unk2 = if flags.has_unk2() { Some(input.decode()?) } else { None };
+        let base_method = if flags.has_base_method() {
+            Some(input.decode()?)
+        } else {
+            None
+        };
         let parameters = if flags.has_parameters() {
             input.decode_vec_prefixed::<u32, PoolIndex<Definition>>()?
         } else {
@@ -181,13 +179,13 @@ impl Decode for Function {
         } else {
             vec![]
         };
-        let unk3 = if flags.has_unk3() { input.decode()? } else { 0u32 };
-        let unk4 = if flags.has_unk4() { input.decode()? } else { 0u8 };
-        let code = if flags.has_body() {
-            input.decode_vec_prefixed::<u32, u8>()?
+        let unk3 = if flags.is_operator_overload() {
+            input.decode()?
         } else {
-            vec![]
+            0u32
         };
+        let unk4 = if flags.is_cast() { input.decode()? } else { 0u8 };
+        let code = if flags.has_body() { input.decode()? } else { Code::EMPTY };
 
         let result = Function {
             visibility,
@@ -195,11 +193,11 @@ impl Decode for Function {
             source,
             return_type,
             unk1,
-            unk2,
+            base_method,
             parameters,
             locals,
-            unk3,
-            unk4,
+            operator: unk3,
+            cast: unk4,
             code,
         };
 
@@ -213,8 +211,8 @@ pub struct Field {
     pub type_: PoolIndex<Definition>,
     pub flags: FieldFlags,
     pub hint: Option<String>,
-    pub editor_properties: Vec<Property>,
-    pub runtime_properties: Vec<Property>,
+    pub attributes: Vec<Property>,
+    pub defaults: Vec<Property>,
 }
 
 impl Decode for Field {
@@ -227,15 +225,15 @@ impl Decode for Field {
         } else {
             None
         };
-        let editor_properties = input.decode_vec_prefixed::<u32, Property>()?;
-        let runtime_properties = input.decode_vec_prefixed::<u32, Property>()?;
+        let attributes = input.decode_vec_prefixed::<u32, Property>()?;
+        let defaults = input.decode_vec_prefixed::<u32, Property>()?;
         let result = Field {
             visibility,
             type_,
             flags,
             hint,
-            editor_properties,
-            runtime_properties,
+            attributes,
+            defaults,
         };
 
         Ok(result)
@@ -360,7 +358,7 @@ impl ClassFlags {
         self.0 & (1 << 1) != 0
     }
 
-    pub fn is_ref_type(&self) -> bool {
+    pub fn is_value_type(&self) -> bool {
         self.0 & (1 << 3) != 0
     }
 
@@ -387,12 +385,32 @@ impl Decode for ClassFlags {
 pub struct FunctionFlags(u32);
 
 impl FunctionFlags {
+    pub fn is_static(&self) -> bool {
+        self.0 & (1 << 0) != 0
+    }
+
+    pub fn is_timer(&self) -> bool {
+        self.0 & (1 << 2) != 0
+    }
+
     pub fn is_native(&self) -> bool {
         self.0 & (1 << 4) != 0
     }
 
+    pub fn is_callback(&self) -> bool {
+        self.0 & (1 << 5) != 0
+    }
+
+    pub fn is_operator_overload(&self) -> bool {
+        self.0 & (1 << 6) != 0
+    }
+
     pub fn is_void(&self) -> bool {
         self.0 & (1 << 7) == 0
+    }
+
+    pub fn has_base_method(&self) -> bool {
+        self.0 & (1 << 8) != 0
     }
 
     pub fn has_parameters(&self) -> bool {
@@ -407,16 +425,16 @@ impl FunctionFlags {
         self.0 & (1 << 11) != 0
     }
 
-    pub fn has_unk2(&self) -> bool {
-        self.0 & (1 << 8) != 0
-    }
-
-    pub fn has_unk3(&self) -> bool {
-        self.0 & (1 << 6) != 0
-    }
-
-    pub fn has_unk4(&self) -> bool {
+    pub fn is_cast(&self) -> bool {
         self.0 & (1 << 12) != 0
+    }
+
+    pub fn is_safe(&self) -> bool {
+        self.0 & (1 << 13) != 0
+    }
+
+    pub fn is_getter(&self) -> bool {
+        self.0 & (1 << 18) != 0
     }
 }
 
@@ -468,14 +486,14 @@ impl Decode for SourceReference {
 
 #[derive(Debug)]
 pub struct Property {
-    pub a: String,
-    pub b: String,
+    pub name: String,
+    pub value: String,
 }
 
 impl Decode for Property {
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
-        let a = input.decode_str_prefixed::<u16>()?;
-        let b = input.decode_str_prefixed::<u16>()?;
-        Ok(Property { a, b })
+        let name = input.decode_str_prefixed::<u16>()?;
+        let value = input.decode_str_prefixed::<u16>()?;
+        Ok(Property { name, value })
     }
 }

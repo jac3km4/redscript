@@ -89,13 +89,8 @@ impl ConstantPool {
         definitions.push(Definition::DUMMY);
 
         for header in headers.iter().skip(1) {
-            match Definition::decode(input, &header) {
-                Ok(definition) => definitions.push(definition),
-                Err(err) => {
-                    println!("Error reading definition at {}: {:?}", header.offset, err);
-                    definitions.push(Definition::DUMMY)
-                }
-            }
+            let definition = Definition::decode(input, header)?;
+            definitions.push(definition);
         }
 
         let result = ConstantPool {
@@ -257,7 +252,7 @@ impl<A> PoolIndex<A> {
         phantom: PhantomData,
     };
 
-    pub fn is_root(&self) -> bool {
+    pub fn is_undefined(&self) -> bool {
         self.index == 0
     }
 }
