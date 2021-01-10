@@ -3,8 +3,7 @@ use crate::bytecode::Code;
 use crate::decode::{Decode, DecodeExt};
 
 use core::panic;
-use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
+use modular_bitfield::prelude::*;
 use std::fmt::Display;
 use std::io;
 use std::path::PathBuf;
@@ -162,8 +161,16 @@ impl Decode for Function {
         let visibility = input.decode()?;
         let flags: FunctionFlags = input.decode()?;
         let source = if flags.is_native() { None } else { Some(input.decode()?) };
-        let return_type = if flags.is_void() { None } else { Some(input.decode()?) };
-        let unk1 = if flags.is_void() { false } else { input.decode()? };
+        let return_type = if flags.has_return_value() {
+            Some(input.decode()?)
+        } else {
+            None
+        };
+        let unk1 = if flags.has_return_value() {
+            input.decode()?
+        } else {
+            false
+        };
         let base_method = if flags.has_base_method() {
             Some(input.decode()?)
         } else {
@@ -179,12 +186,12 @@ impl Decode for Function {
         } else {
             vec![]
         };
-        let unk3 = if flags.is_operator_overload() {
+        let operator = if flags.is_operator_overload() {
             input.decode()?
         } else {
             0u32
         };
-        let unk4 = if flags.is_cast() { input.decode()? } else { 0u8 };
+        let cast = if flags.is_cast() { input.decode()? } else { 0u8 };
         let code = if flags.has_body() { input.decode()? } else { Code::EMPTY };
 
         let result = Function {
@@ -196,8 +203,8 @@ impl Decode for Function {
             base_method,
             parameters,
             locals,
-            operator: unk3,
-            cast: unk4,
+            operator,
+            cast,
             code,
         };
 
@@ -248,7 +255,7 @@ pub enum Type {
     WeakHandle(PoolIndex<Definition>),
     Array(PoolIndex<Definition>),
     StaticArray(PoolIndex<Definition>, u32),
-    Unk1(PoolIndex<Definition>),
+    ScriptRef(PoolIndex<Definition>),
 }
 
 impl Decode for Type {
@@ -261,7 +268,7 @@ impl Decode for Type {
             3 => Ok(Type::WeakHandle(input.decode()?)),
             4 => Ok(Type::Array(input.decode()?)),
             5 => Ok(Type::StaticArray(input.decode()?, input.decode()?)),
-            6 => Ok(Type::Unk1(input.decode()?)),
+            6 => Ok(Type::ScriptRef(input.decode()?)),
             _ => panic!("Unknown Type enum value {}", tag),
         }
     }
@@ -313,138 +320,119 @@ impl Decode for SourceFile {
     }
 }
 
+#[bitfield(bits = 16)]
 #[derive(Debug)]
-pub struct FieldFlags(u16);
-
-impl FieldFlags {
-    pub fn is_native(&self) -> bool {
-        self.0 & (1 << 0) != 0
-    }
-
-    pub fn has_hint(&self) -> bool {
-        self.0 & (1 << 5) != 0
-    }
+pub struct FieldFlags {
+    pub is_native: bool,
+    pub is_edit: bool,
+    pub is_inline: bool,
+    pub is_const: bool,
+    pub is_rep: bool,
+    pub has_hint: bool,
+    pub is_inst_edit: bool,
+    pub has_default: bool,
+    pub is_persistent: bool,
+    pub bit9: bool,
+    pub bit10: bool,
+    #[skip]
+    pub remainder: B5,
 }
 
 impl Decode for FieldFlags {
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
-        Ok(FieldFlags(input.decode()?))
+        Ok(FieldFlags::from_bytes(input.decode()?))
     }
 }
 
+#[bitfield(bits = 8)]
 #[derive(Debug)]
-pub struct LocalFlags(u8);
+pub struct LocalFlags {
+    pub is_const: bool,
+    #[skip]
+    pub remainder: B7,
+}
 
 impl Decode for LocalFlags {
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
-        Ok(LocalFlags(input.decode()?))
+        Ok(LocalFlags::from_bytes(input.decode()?))
     }
 }
 
+#[bitfield(bits = 8)]
 #[derive(Debug)]
-pub struct ParameterFlags(u8);
+pub struct ParameterFlags {
+    pub is_optional: bool,
+    pub is_out_param: bool,
+    pub bit2: bool,
+    pub bit3: bool,
+    #[skip]
+    pub remainder: B4,
+}
 
 impl Decode for ParameterFlags {
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
-        Ok(ParameterFlags(input.decode()?))
+        Ok(ParameterFlags::from_bytes(input.decode()?))
     }
 }
 
+#[bitfield(bits = 16)]
 #[derive(Debug)]
-pub struct ClassFlags(u16);
-
-impl ClassFlags {
-    pub fn is_abstract(&self) -> bool {
-        self.0 & (1 << 1) != 0
-    }
-
-    pub fn is_value_type(&self) -> bool {
-        self.0 & (1 << 3) != 0
-    }
-
-    pub fn has_functions(&self) -> bool {
-        self.0 & (1 << 4) != 0
-    }
-
-    pub fn has_fields(&self) -> bool {
-        self.0 & (1 << 5) != 0
-    }
-
-    pub fn has_overrides(&self) -> bool {
-        self.0 & (1 << 8) != 0
-    }
+pub struct ClassFlags {
+    pub bit0: bool,
+    pub is_abstract: bool,
+    pub is_final: bool,
+    pub is_struct: bool,
+    pub has_functions: bool,
+    pub has_fields: bool,
+    pub is_native: bool,
+    pub bit7: bool,
+    pub has_overrides: bool,
+    #[skip]
+    pub remainder: B7,
 }
 
 impl Decode for ClassFlags {
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
-        Ok(ClassFlags(input.decode()?))
+        Ok(ClassFlags::from_bytes(input.decode()?))
     }
 }
 
-#[derive(Debug, FromPrimitive)]
-pub struct FunctionFlags(u32);
-
-impl FunctionFlags {
-    pub fn is_static(&self) -> bool {
-        self.0 & (1 << 0) != 0
-    }
-
-    pub fn is_timer(&self) -> bool {
-        self.0 & (1 << 2) != 0
-    }
-
-    pub fn is_native(&self) -> bool {
-        self.0 & (1 << 4) != 0
-    }
-
-    pub fn is_callback(&self) -> bool {
-        self.0 & (1 << 5) != 0
-    }
-
-    pub fn is_operator_overload(&self) -> bool {
-        self.0 & (1 << 6) != 0
-    }
-
-    pub fn is_void(&self) -> bool {
-        self.0 & (1 << 7) == 0
-    }
-
-    pub fn has_base_method(&self) -> bool {
-        self.0 & (1 << 8) != 0
-    }
-
-    pub fn has_parameters(&self) -> bool {
-        self.0 & (1 << 9) != 0
-    }
-
-    pub fn has_locals(&self) -> bool {
-        self.0 & (1 << 10) != 0
-    }
-
-    pub fn has_body(&self) -> bool {
-        self.0 & (1 << 11) != 0
-    }
-
-    pub fn is_cast(&self) -> bool {
-        self.0 & (1 << 12) != 0
-    }
-
-    pub fn is_safe(&self) -> bool {
-        self.0 & (1 << 13) != 0
-    }
-
-    pub fn is_getter(&self) -> bool {
-        self.0 & (1 << 18) != 0
-    }
+#[bitfield(bits = 32)]
+#[derive(Debug)]
+pub struct FunctionFlags {
+    pub is_static: bool,
+    pub is_console: bool,
+    pub is_timer: bool,
+    pub is_final: bool,
+    pub is_native: bool,
+    pub is_callback: bool,
+    pub is_operator_overload: bool,
+    pub has_return_value: bool,
+    pub has_base_method: bool,
+    pub has_parameters: bool,
+    pub has_locals: bool,
+    pub has_body: bool,
+    pub is_cast: bool,
+    pub is_safe: bool,
+    #[skip]
+    pub padding: B4,
+    pub is_const: bool,
+    pub bit19: bool,
+    pub bit20: bool,
+    pub bit21: bool,
+    #[skip]
+    pub remainder: B10,
 }
 
 impl Decode for FunctionFlags {
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
-        Ok(FunctionFlags(input.decode()?))
+        Ok(FunctionFlags::from_bytes(input.decode()?))
     }
 }
 
-#[derive(Debug, FromPrimitive)]
+#[derive(BitfieldSpecifier)]
+#[bits = 8]
+#[derive(Debug)]
 pub enum Visibility {
     Public = 0,
     Protected = 1,
@@ -464,8 +452,7 @@ impl Display for Visibility {
 
 impl Decode for Visibility {
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
-        let res = FromPrimitive::from_u8(input.decode()?);
-        Ok(res.expect("Invalid Visibility enum value"))
+        Ok(Visibility::from_bytes(input.decode()?).expect("Invalid Visibility enum value"))
     }
 }
 

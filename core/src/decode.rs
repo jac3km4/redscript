@@ -125,3 +125,11 @@ impl Decode for String {
         Ok(str)
     }
 }
+
+impl<const N: usize> Decode for [u8; N] {
+    fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
+        let mut buf: [u8; N] = [0; N];
+        input.read_exact(&mut buf)?;
+        Ok(buf)
+    }
+}

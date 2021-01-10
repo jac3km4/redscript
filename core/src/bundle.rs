@@ -3,8 +3,7 @@ use crate::definition::Definition;
 use crate::error::Error;
 use crate::files::FileIndex;
 
-use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
+use modular_bitfield::prelude::*;
 use std::fmt;
 use std::hash::Hash;
 use std::io;
@@ -213,7 +212,9 @@ impl Decode for DefinitionHeader {
     }
 }
 
-#[derive(Debug, FromPrimitive)]
+#[derive(BitfieldSpecifier)]
+#[bits = 8]
+#[derive(Debug)]
 pub enum DefinitionType {
     Type = 0,
     Class = 1,
@@ -229,8 +230,7 @@ pub enum DefinitionType {
 
 impl Decode for DefinitionType {
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
-        let res = FromPrimitive::from_u8(input.decode()?);
-        Ok(res.expect("Invalid DefinitionType enum value"))
+        Ok(DefinitionType::from_bytes(input.decode()?).expect("Invalid DefinitionType enum value"))
     }
 }
 

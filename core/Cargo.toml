@@ -8,6 +8,5 @@ edition = "2018"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-byteorder = "1.3"
-num-derive = "0.3"
-num-traits = "0.2"
+byteorder = "1.4"
+modular-bitfield = "0.11"
