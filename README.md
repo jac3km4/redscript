@@ -14,6 +14,7 @@ You can build the project and decompile all scripts in one command:
 ```bash
 cargo run --release -- -i '/mnt/d/games/Cyberpunk 2077/r6/cache/final.redscript' -o classes.redscript
 ```
+*__note__: current version requires nightly version of rust (`rustup default nightly`)*
 
 ## output
 The scripts are decompiled into a Java-like language:
