@@ -1,6 +1,6 @@
 use crate::ast::{BinOp, Expr, Ident, Seq, SwitchCase, Target};
 use crate::bundle::{ConstantPool, PoolIndex, Resource, TweakDbIndex};
-use crate::bytecode::{BytecodeReader, Instr};
+use crate::bytecode::{CodeCursor, Instr, Offset, Position};
 use crate::definition::Definition;
 use crate::error::Error;
 
@@ -8,17 +8,17 @@ use std::io;
 use std::ops::Deref;
 
 pub struct Decompiler<'a> {
-    code: &'a mut BytecodeReader<'a>,
+    code: &'a mut CodeCursor<'a>,
     pool: &'a ConstantPool,
 }
 
 impl<'a> Decompiler<'a> {
-    pub fn new(code: &'a mut BytecodeReader<'a>, pool: &'a ConstantPool) -> Decompiler<'a> {
+    pub fn new(code: &'a mut CodeCursor<'a>, pool: &'a ConstantPool) -> Decompiler<'a> {
         Decompiler { code, pool }
     }
 
     pub fn decompile(&mut self) -> Result<Seq, Error> {
-        self.consume_path(std::u16::MAX)
+        self.consume_path(Position::MAX)
     }
 
     fn definition_ident(&self, index: PoolIndex<Definition>) -> Result<Expr, Error> {
@@ -45,13 +45,12 @@ impl<'a> Decompiler<'a> {
         Ok(body)
     }
 
-    fn consume_path(&mut self, target: u16) -> Result<Seq, Error> {
+    fn consume_path(&mut self, target: Position) -> Result<Seq, Error> {
         let mut body = Vec::new();
         loop {
-            if self.code.offset() >= target
+            if self.code.pos() >= target
                 || matches!(body.last(), Some(Expr::Goto(_)))
                 || matches!(body.last(), Some(Expr::Return(_)))
-                || matches!(self.code.peek(), Some(Instr::Nop))
             {
                 break;
             }
@@ -84,16 +83,16 @@ impl<'a> Decompiler<'a> {
         Ok(params)
     }
 
-    fn consume_conditional_jump(&mut self, position: u16, offset: i16) -> Result<Expr, Error> {
+    fn consume_conditional_jump(&mut self, position: Position, offset: Offset) -> Result<Expr, Error> {
         let condition = self.consume()?;
-        let target = (position as i16 + offset) as u16;
+        let target = offset.absolute(position);
         let mut body = self.consume_path(target)?;
-        self.code.set_offset(target)?;
+        self.code.goto(target)?;
 
         let result = if let Some(_) = resolve_jump(&mut body, Some(position)) {
             Expr::While(Box::new(condition), body)
         } else if let Some(jump) = resolve_jump(&mut body, None) {
-            let else_case = self.consume_path(jump.absolute())?;
+            let else_case = self.consume_path(Position::new(jump.position))?;
             Expr::If(Box::new(condition), body, Some(else_case))
         } else {
             Expr::If(Box::new(condition), body, None)
@@ -106,26 +105,26 @@ impl<'a> Decompiler<'a> {
 
         let mut labels = Vec::new();
         while let Some(Instr::SwitchLabel(exit_offset, start_offset)) = self.code.peek() {
-            let position = self.code.offset();
-            labels.push((position, (position as i32 + start_offset as i32) as u16));
+            let position = self.code.pos();
+            labels.push((position, start_offset.absolute(position)));
             self.code.seek(exit_offset.into())?;
         }
         if let Some(Instr::SwitchDefault) = self.code.peek() {
-            labels.push((self.code.offset(), self.code.offset()));
+            labels.push((self.code.pos(), self.code.pos()));
         };
         labels.sort_by_key(|(_, start)| *start);
 
         let mut default = None;
         let mut cases = Vec::new();
         for (label, start_position) in labels {
-            self.code.set_offset(label.into())?;
+            self.code.goto(label.into())?;
 
             match self.code.pop()? {
                 Instr::SwitchLabel(exit_offset, _) => {
-                    let exit = (label as i32 + exit_offset as i32) as u16;
+                    let exit = exit_offset.absolute(label);
                     let matched = self.consume()?;
 
-                    self.code.set_offset(start_position)?;
+                    self.code.goto(start_position)?;
                     let mut body = self.consume_path(exit)?;
                     if let Some(Expr::Goto(_)) = body.exprs.last() {
                         body.exprs.pop();
@@ -142,9 +141,8 @@ impl<'a> Decompiler<'a> {
     }
 
     fn consume(&mut self) -> Result<Expr, Error> {
-        let position = self.code.offset();
-        let instr = self.code.pop()?;
-        let res = match instr {
+        let position = self.code.pos();
+        let res = match self.code.pop()? {
             Instr::Nop => Expr::EMPTY,
             Instr::Null => Expr::Null,
             Instr::I32One => Expr::NumLit("1".to_owned()),
@@ -187,13 +185,13 @@ impl<'a> Decompiler<'a> {
             Instr::Switch(_, _) => self.consume_switch()?,
             Instr::SwitchLabel(_, _) => Err(Error::DecompileError("Unexpected SwitchLabel".to_owned()))?,
             Instr::SwitchDefault => Err(Error::DecompileError("Unexpected SwitchDefault".to_owned()))?,
-            Instr::Jump(3) => Expr::EMPTY,
-            Instr::Jump(offset) => Expr::Goto(Target::new(position, offset)),
+            Instr::Jump(Offset { value: 3 }) => Expr::EMPTY,
+            Instr::Jump(offset) => Expr::Goto(Target::new(offset.absolute(position).value)),
             Instr::JumpIfFalse(offset) => {
-                assert!(offset >= 0, "negative offset is not supported for JumpIfFalse");
+                assert!(offset.value >= 0, "negative offset is not supported for JumpIfFalse");
                 self.consume_conditional_jump(position, offset)?
             }
-            Instr::Skip(offset) => Expr::Goto(Target::new(position, offset)),
+            Instr::Skip(offset) => Expr::Goto(Target::new(offset.absolute(position).value)),
             Instr::Conditional(_, _) => {
                 let expr = self.consume()?;
                 let true_case = self.consume()?;
@@ -286,7 +284,7 @@ impl<'a> Decompiler<'a> {
             Instr::VariantIsValid => self.consume_call("IsValid", 1)?,
             Instr::VariantIsHandle => self.consume_call("IsHandle", 1)?,
             Instr::VariantIsArray => self.consume_call("IsArray", 1)?,
-            Instr::Unk8 => Err(Error::DecompileError("Unexpected Unk8".to_owned()))?,
+            Instr::VatiantToCName => self.consume_call("Unknown", 1)?,
             Instr::VariantToString => self.consume_call("ToString", 1)?,
             Instr::WeakHandleToHandle => self.consume_call("ToHandle", 1)?,
             Instr::HandleToWeakHandle => self.consume_call("ToWeakHandle", 1)?,
@@ -299,14 +297,9 @@ impl<'a> Decompiler<'a> {
     }
 }
 
-fn resolve_jump(seq: &mut Seq, target: Option<u16>) -> Option<&mut Target> {
+fn resolve_jump(seq: &mut Seq, target: Option<Position>) -> Option<&mut Target> {
     seq.exprs.iter_mut().rev().find_map(|expr| match expr {
-        Expr::Goto(goto)
-            if !goto.resolved
-                && target
-                    .map(|target| goto.position as i32 + goto.offset as i32 == target as i32)
-                    .unwrap_or(true) =>
-        {
+        Expr::Goto(goto) if !goto.resolved && target.map(|target| goto.position == target.value).unwrap_or(true) => {
             goto.resolved = true;
             Some(goto)
         }

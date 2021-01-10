@@ -69,20 +69,14 @@ impl Seq {
 #[derive(Debug)]
 pub struct Target {
     pub position: u16,
-    pub offset: i16,
     pub resolved: bool,
 }
 
 impl Target {
-    pub fn new(position: u16, offset: i16) -> Target {
+    pub fn new(position: u16) -> Target {
         Target {
             position,
-            offset,
             resolved: false,
         }
-    }
-
-    pub fn absolute(&self) -> u16 {
-        (self.position as i32 + self.offset as i32) as u16
     }
 }

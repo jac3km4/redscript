@@ -5,7 +5,7 @@ use crate::error::Error;
 
 use std::io;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Instr {
     Nop,
     Null,
@@ -35,20 +35,20 @@ pub enum Instr {
     Param(PoolIndex<Definition>),
     ObjectField(PoolIndex<Definition>),
     Unk2,
-    Switch(PoolIndex<Definition>, i16),
-    SwitchLabel(i16, i16),
+    Switch(PoolIndex<Definition>, Offset),
+    SwitchLabel(Offset, Offset),
     SwitchDefault,
-    Jump(i16),
-    JumpIfFalse(i16),
-    Skip(i16),
-    Conditional(i16, i16),
+    Jump(Offset),
+    JumpIfFalse(Offset),
+    Skip(Offset),
+    Conditional(Offset, Offset),
     Construct(u8, PoolIndex<Definition>),
     InvokeStatic(i16, u16, PoolIndex<Definition>),
     InvokeVirtual(i16, u16, PoolIndex<String>),
     ParamEnd,
     Return,
     StructField(PoolIndex<Definition>),
-    Context(i16),
+    Context(Offset),
     Equals(PoolIndex<Definition>),
     NotEquals(PoolIndex<Definition>),
     New(PoolIndex<Definition>),
@@ -98,7 +98,7 @@ pub enum Instr {
     VariantIsValid,
     VariantIsHandle,
     VariantIsArray,
-    Unk8,
+    VatiantToCName,
     VariantToString,
     WeakHandleToHandle,
     HandleToWeakHandle,
@@ -196,7 +196,7 @@ impl Instr {
             Instr::VariantIsValid => 0,
             Instr::VariantIsHandle => 0,
             Instr::VariantIsArray => 0,
-            Instr::Unk8 => 0,
+            Instr::VatiantToCName => 0,
             Instr::VariantToString => 0,
             Instr::WeakHandleToHandle => 0,
             Instr::HandleToWeakHandle => 0,
@@ -247,18 +247,18 @@ impl Decode for Instr {
             25 => Ok(Instr::Param(input.decode()?)),
             26 => Ok(Instr::ObjectField(input.decode()?)),
             27 => Ok(Instr::Unk2),
-            28 => Ok(Instr::Switch(input.decode()?, input.decode::<i16>()? + 9)),
+            28 => Ok(Instr::Switch(input.decode()?, Offset::new(input.decode::<i16>()? + 9))),
             29 => Ok(Instr::SwitchLabel(
-                input.decode::<i16>()? + 3,
-                input.decode::<i16>()? + 5,
+                Offset::new(input.decode::<i16>()? + 3),
+                Offset::new(input.decode::<i16>()? + 5),
             )),
             30 => Ok(Instr::SwitchDefault),
-            31 => Ok(Instr::Jump(input.decode::<i16>()? + 3)),
-            32 => Ok(Instr::JumpIfFalse(input.decode::<i16>()? + 3)),
-            33 => Ok(Instr::Skip(input.decode::<i16>()? + 3)),
+            31 => Ok(Instr::Jump(Offset::new(input.decode::<i16>()? + 3))),
+            32 => Ok(Instr::JumpIfFalse(Offset::new(input.decode::<i16>()? + 3))),
+            33 => Ok(Instr::Skip(Offset::new(input.decode::<i16>()? + 3))),
             34 => Ok(Instr::Conditional(
-                input.decode::<i16>()? + 3,
-                input.decode::<i16>()? + 5,
+                Offset::new(input.decode::<i16>()? + 3),
+                Offset::new(input.decode::<i16>()? + 5),
             )),
             35 => Ok(Instr::Construct(input.decode()?, input.decode()?)),
             36 => Ok(Instr::InvokeStatic(input.decode()?, input.decode()?, input.decode()?)),
@@ -266,7 +266,7 @@ impl Decode for Instr {
             38 => Ok(Instr::ParamEnd),
             39 => Ok(Instr::Return),
             40 => Ok(Instr::StructField(input.decode()?)),
-            41 => Ok(Instr::Context(input.decode::<i16>()? + 3)),
+            41 => Ok(Instr::Context(Offset::new(input.decode::<i16>()? + 3))),
             42 => Ok(Instr::Equals(input.decode()?)),
             43 => Ok(Instr::NotEquals(input.decode()?)),
             44 => Ok(Instr::New(input.decode()?)),
@@ -316,7 +316,7 @@ impl Decode for Instr {
             88 => Ok(Instr::VariantIsValid),
             89 => Ok(Instr::VariantIsHandle),
             90 => Ok(Instr::VariantIsArray),
-            91 => Ok(Instr::Unk8),
+            91 => Ok(Instr::VatiantToCName),
             92 => Ok(Instr::VariantToString),
             93 => Ok(Instr::WeakHandleToHandle),
             94 => Ok(Instr::HandleToWeakHandle),
@@ -332,74 +332,122 @@ impl Decode for Instr {
     }
 }
 
-pub struct BytecodeReader<'a> {
-    bytecode: io::Cursor<&'a [u8]>,
-    length: usize,
-    code_offset: u16,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Position {
+    pub value: u16,
 }
 
-impl<'a> BytecodeReader<'a> {
-    pub fn new(body: &'a [u8]) -> BytecodeReader<'a> {
-        BytecodeReader {
-            bytecode: io::Cursor::new(body),
-            length: body.len(),
-            code_offset: 0,
+impl Position {
+    pub const MAX: Position = Position { value: std::u16::MAX };
+
+    pub fn new(value: u16) -> Position {
+        Position { value }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Offset {
+    pub value: i16,
+}
+
+impl Offset {
+    pub fn new(value: i16) -> Offset {
+        Offset { value }
+    }
+
+    pub fn absolute(&self, position: Position) -> Position {
+        Position::new((position.value as i32 + self.value as i32) as u16)
+    }
+}
+
+impl Decode for Offset {
+    fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
+        Ok(Offset::new(input.decode()?))
+    }
+}
+
+#[derive(Debug)]
+pub struct Code(Vec<Instr>);
+
+impl Code {
+    pub const EMPTY: Code = Code(vec![]);
+
+    pub fn cursor(&self) -> CodeCursor {
+        CodeCursor::new(self)
+    }
+}
+
+impl Decode for Code {
+    fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
+        let max_offset: u32 = input.decode()?;
+        let mut offset = 0;
+        let mut code = Vec::new();
+        while offset < max_offset {
+            let instr: Instr = input.decode()?;
+            offset += 1 + instr.size() as u32;
+            code.push(instr);
+        }
+        Ok(Code(code))
+    }
+}
+
+pub struct CodeCursor<'a> {
+    code: &'a [Instr],
+    position: Position,
+    index: u16,
+}
+
+impl<'a> CodeCursor<'a> {
+    pub fn new(code: &'a Code) -> CodeCursor<'a> {
+        CodeCursor {
+            code: &code.0,
+            position: Position { value: 0 },
+            index: 0,
         }
     }
 
     pub fn pop(&mut self) -> Result<Instr, Error> {
-        if self.bytecode.position() >= self.length as u64 {
-            let msg = format!("Attempted to read at past eof: {}", self.bytecode.position());
-            Err(Error::eof(msg))
-        } else {
-            let instr = self.bytecode.decode::<Instr>()?;
-            self.code_offset += 1 + instr.size();
-            Ok(instr)
-        }
+        let instr = self.code.get(self.index as usize).ok_or(Error::eof(format!(
+            "Attempted to read past eof: {}",
+            self.position.value
+        )))?;
+        self.index += 1;
+        self.position = Position::new(self.position.value + 1 + instr.size());
+        Ok(instr.clone())
     }
 
-    pub fn peek(&mut self) -> Option<Instr> {
-        let old_offset = self.code_offset;
-        let old_cursor = self.bytecode.position();
-        let instr = self.pop().ok();
-        self.code_offset = old_offset;
-        self.bytecode.set_position(old_cursor);
-        instr
+    pub fn peek(&self) -> Option<Instr> {
+        self.code.get(self.index as usize).cloned()
     }
 
-    pub fn set_offset(&mut self, position: u16) -> Result<(), Error> {
+    pub fn goto(&mut self, position: Position) -> Result<(), Error> {
         self.reset();
-        while self.code_offset < position {
+        while self.position < position {
             self.pop()?;
         }
-        assert_eq!(self.code_offset, position);
+        assert_eq!(self.position, position);
         Ok(())
     }
 
-    pub fn seek(&mut self, offset: i32) -> Result<(), Error> {
-        let target = (self.code_offset as i32 + offset) as u16;
-        self.set_offset(target)
+    pub fn seek(&mut self, offset: Offset) -> Result<(), Error> {
+        self.goto(offset.absolute(self.position))
     }
 
     pub fn reset(&mut self) {
-        self.code_offset = 0;
-        self.bytecode.set_position(0);
+        self.index = 0;
+        self.position = Position { value: 0 };
     }
 
-    pub fn offset(&self) -> u16 {
-        self.code_offset
-    }
-
-    pub fn bytecode_offset(&self) -> u64 {
-        self.bytecode.position()
+    pub fn pos(&self) -> Position {
+        self.position
     }
 }
 
-impl<'a> Iterator for BytecodeReader<'a> {
-    type Item = (u16, Instr);
+impl<'a> Iterator for CodeCursor<'a> {
+    type Item = (Position, Instr);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let position = self.offset();
+        let position = self.pos();
         self.pop().ok().map(|instr| (position, instr))
     }
 }

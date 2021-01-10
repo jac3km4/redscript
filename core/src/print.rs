@@ -6,6 +6,7 @@ use crate::error::Error;
 
 use std::io::Write;
 use std::ops::Deref;
+use std::rc::Rc;
 
 const INDENT: &str = "  ";
 
@@ -20,45 +21,57 @@ pub fn write_definition<W: Write>(
     out: &mut W,
     definition: &Definition,
     pool: &ConstantPool,
-    indent: usize,
+    depth: usize,
     mode: OutputMode,
 ) -> Result<(), Error> {
+    let padding = INDENT.repeat(depth);
+
     match &definition.value {
         DefinitionValue::Type(_) => write!(out, "{}", format_type(definition, pool)?)?,
         DefinitionValue::Class(class) => {
             writeln!(out)?;
-            write!(out, "{} class {} ", class.visibility, pool.name(definition.name)?)?;
-            if !class.base.is_root() {
+            write!(out, "{} ", class.visibility)?;
+            if class.flags.is_abstract() {
+                write!(out, "abstract ")?;
+            }
+            if class.flags.is_value_type() {
+                write!(out, "struct ")?;
+            } else {
+                write!(out, "class ")?;
+            }
+            write!(out, "{} ", pool.name(definition.name)?)?;
+            if !class.base.is_undefined() {
                 write!(out, "extends {} ", pool.definition_name(class.base)?)?;
             }
             write!(out, "{{\n")?;
 
             for field_index in &class.fields {
                 let field = pool.definition(*field_index)?;
-                write_definition(out, field, pool, indent + 1, mode)?;
+                write_definition(out, field, pool, depth + 1, mode)?;
             }
 
             for method_index in &class.functions {
                 let method = pool.definition(*method_index)?;
-                if let Err(err) = write_definition(out, method, pool, indent + 1, mode) {
+                if let Err(err) = write_definition(out, method, pool, depth + 1, mode) {
                     println!("Method decompilation {:?} failed due to: {:?}", method_index, err)
                 }
             }
             writeln!(out, "}}")?
         }
-        DefinitionValue::EnumValue(val) => writeln!(
-            out,
-            "{}{} = {},",
-            INDENT.repeat(indent),
-            pool.name(definition.name)?,
-            val
-        )?,
+        DefinitionValue::EnumValue(val) => {
+            let name = if definition.name.is_undefined() {
+                Rc::new("Undefined".to_owned())
+            } else {
+                pool.name(definition.name)?
+            };
+            writeln!(out, "{}{} = {},", padding, name, val)?
+        }
         DefinitionValue::Enum(enum_) => {
             writeln!(out)?;
             writeln!(out, "enum {} {{", pool.name(definition.name)?)?;
 
             for member in &enum_.members {
-                write_definition(out, pool.definition(*member)?, pool, indent + 1, mode)?;
+                write_definition(out, pool.definition(*member)?, pool, depth + 1, mode)?;
             }
 
             writeln!(out, "}}")?
@@ -80,18 +93,17 @@ pub fn write_definition<W: Write>(
                 .join(", ");
 
             writeln!(out)?;
-            write!(
-                out,
-                "{}{} {} {}({})",
-                INDENT.repeat(indent),
-                fun.visibility,
-                return_type,
-                pretty_name,
-                params
-            )?;
+            write!(out, "{}{} ", padding, fun.visibility)?;
+            if fun.flags.is_static() {
+                write!(out, "static ")?;
+            }
+            if fun.flags.is_native() {
+                write!(out, "native ")?;
+            }
+            write!(out, "{} {}({})", return_type, pretty_name, params)?;
 
             if fun.flags.has_body() {
-                write_function_body(out, fun, pool, indent, mode)?;
+                write_function_body(out, fun, pool, depth, mode)?;
             }
             write!(out, "\n")?;
         }
@@ -102,19 +114,22 @@ pub fn write_definition<W: Write>(
         DefinitionValue::Local(local) => {
             let type_name = format_type(pool.definition(local.type_)?, pool)?;
             let name = pool.name(definition.name)?;
-            write!(out, "{}{} {};", INDENT.repeat(indent), type_name, name)?
+            write!(out, "{}{} {};", padding, type_name, name)?
         }
         DefinitionValue::Field(field) => {
             let type_name = format_type(pool.definition(field.type_)?, pool)?;
             let field_name = pool.name(definition.name)?;
-            writeln!(
-                out,
-                "{}{} {} {};",
-                INDENT.repeat(indent),
-                field.visibility,
-                type_name,
-                field_name
-            )?
+
+            writeln!(out)?;
+            for property in &field.attributes {
+                writeln!(out, "{}[Attrib({}, \"{}\")]", padding, property.name, property.value)?;
+            }
+
+            for property in &field.defaults {
+                writeln!(out, "{}[Default({}, {}))]", padding, property.name, property.value)?;
+            }
+
+            writeln!(out, "{}{} {} {};", padding, field.visibility, type_name, field_name)?
         }
         DefinitionValue::SourceFile(_) => panic!(),
     }
@@ -135,19 +150,19 @@ fn write_function_body<W: Write>(
     }
     match mode {
         OutputMode::Code => {
-            let code = Decompiler::new(&mut fun.bytecode(), pool).decompile()?;
+            let code = Decompiler::new(&mut fun.code.cursor(), pool).decompile()?;
             write_seq(out, &code, indent + 1)?;
         }
         OutputMode::SyntaxTree => {
-            let code = Decompiler::new(&mut fun.bytecode(), pool).decompile()?;
+            let code = Decompiler::new(&mut fun.code.cursor(), pool).decompile()?;
             for expr in code.exprs {
                 writeln!(out, "{}{:?}", INDENT.repeat(indent + 1), expr)?;
             }
         }
         OutputMode::Bytecode => {
-            for (offset, instr) in fun.bytecode() {
+            for (offset, instr) in fun.code.cursor() {
                 let op = format!("{:?}", instr).to_lowercase();
-                writeln!(out, "{}{}: {}", INDENT.repeat(indent + 1), offset, op)?;
+                writeln!(out, "{}{}: {}", INDENT.repeat(indent + 1), offset.value, op)?;
             }
         }
     }
@@ -217,7 +232,7 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, indent: usize) -> Result<(), E
             }
             write!(out, "{}}}", padding)?
         }
-        Expr::Goto(jump) if !jump.resolved => write!(out, "goto {}", jump.absolute())?,
+        Expr::Goto(jump) if !jump.resolved => write!(out, "goto {}", jump.position)?,
         Expr::Goto(_) => (),
         Expr::If(condition, true_, false_) => {
             write!(out, "if(")?;
@@ -274,8 +289,9 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, indent: usize) -> Result<(), E
 }
 
 fn write_call<W: Write>(out: &mut W, name: &Ident, params: &Vec<Expr>) -> Result<(), Error> {
-    let prefix = name.0.split(";").next().expect("Empty function name");
-    match prefix {
+    let extracted = name.0.split(";").next().expect("Empty function name");
+    let fun_name = if extracted.is_empty() { "undefined" } else { extracted };
+    match fun_name {
         "OperatorLogicOr" => write_binop(out, &params[0], &params[1], "||"),
         "OperatorLogicAnd" => write_binop(out, &params[0], &params[1], "&&"),
         "OperatorOr" => write_binop(out, &params[0], &params[1], "|"),
@@ -300,7 +316,7 @@ fn write_call<W: Write>(out: &mut W, name: &Ident, params: &Vec<Expr>) -> Result
         "OperatorBitNot" => write_unop(out, &params[0], "~"),
         "OperatorNeg" => write_unop(out, &params[0], "-"),
         _ => {
-            write!(out, "{}(", prefix)?;
+            write!(out, "{}(", fun_name)?;
             if !params.is_empty() {
                 for param in params.iter().take(params.len() - 1) {
                     write_expr(out, param, 0)?;
