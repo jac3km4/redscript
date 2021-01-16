@@ -1,10 +1,11 @@
 [package]
-name = "redscript-cli"
+name = "redscript-decompiler"
 version = "0.1.0"
 authors = ["jac3km4 <jac3km4@pm.me>"]
 edition = "2018"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 redscript = { path = "../core" }
-redscript-decompiler = { path = "../decompiler" }
-gumdrop = "0.8"

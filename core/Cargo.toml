@@ -10,3 +10,4 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 byteorder = "1.4"
 modular-bitfield = "0.11"
+crc32fast = "1.2"

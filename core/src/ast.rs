@@ -4,7 +4,10 @@ use std::rc::Rc;
 pub enum Expr {
     Ident(Ident),
     StringLit(String),
-    NumLit(String),
+    FloatLit(f64),
+    IntLit(i64),
+    UintLit(u64),
+    Declare(TypeName, Ident, Option<Box<Expr>>),
     Assign(Box<Expr>, Box<Expr>),
     Call(Ident, Vec<Expr>),
     ArrayElem(Box<Expr>, Box<Expr>),
@@ -18,6 +21,7 @@ pub enum Expr {
     While(Box<Expr>, Seq),
     Member(Box<Expr>, Box<Expr>),
     BinOp(Box<Expr>, Box<Expr>, BinOp),
+    UnOp(Box<Expr>, UnOp),
     Break,
     True,
     False,
@@ -37,19 +41,44 @@ impl Expr {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ident(pub Rc<String>);
 
 impl Ident {
-    pub fn new(str: &str) -> Ident {
+    pub fn new(str: String) -> Ident {
         Ident(Rc::new(str.to_owned()))
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum BinOp {
+    AssignAdd,
+    AssignSub,
+    AssignMul,
+    AssignDiv,
+    LogicOr,
+    LogicAnd,
+    Or,
+    Xor,
+    And,
     Eq,
     Neq,
+    Less,
+    LessOrEqual,
+    Greater,
+    GreaterOrEqual,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum UnOp {
+    BitNot,
+    LogicNot,
+    Neg,
 }
 
 #[derive(Debug)]
@@ -77,6 +106,40 @@ impl Target {
         Target {
             position,
             resolved: false,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct TypeName {
+    pub name: String,
+    pub arguments: Vec<TypeName>,
+}
+
+impl TypeName {
+    // Used for identifying functions
+    pub fn mangled(&self) -> String {
+        if self.arguments.is_empty() {
+            self.name.clone()
+        } else {
+            let postfix = self
+                .arguments
+                .iter()
+                .fold(String::new(), |acc, t| format!("{},{}", acc, t.repr()));
+            format!("{}<{}>", self.name, postfix)
+        }
+    }
+
+    // Used for storing in the constant pool
+    pub fn repr(&self) -> String {
+        if self.arguments.is_empty() {
+            self.name.clone()
+        } else {
+            let postfix = self
+                .arguments
+                .iter()
+                .fold(String::new(), |acc, t| format!("{}:{}", acc, t.repr()));
+            format!("{}:{}", self.name, postfix)
         }
     }
 }

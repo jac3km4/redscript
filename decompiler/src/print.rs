@@ -2,11 +2,12 @@ use std::io::Write;
 use std::ops::Deref;
 use std::rc::Rc;
 
-use crate::ast::{BinOp, Expr, Ident, Seq, SwitchCase};
-use crate::bundle::ConstantPool;
-use crate::decompiler::Decompiler;
-use crate::definition::{Definition, DefinitionValue, Function, Type};
-use crate::error::Error;
+use redscript::ast::{BinOp, Expr, Ident, Seq, SwitchCase, UnOp};
+use redscript::bundle::ConstantPool;
+use redscript::definition::{Definition, DefinitionValue, Function, Type};
+use redscript::error::Error;
+
+use crate::Decompiler;
 
 const INDENT: &str = "  ";
 
@@ -45,7 +46,7 @@ pub fn write_definition<W: Write>(
             } else {
                 write!(out, "class ")?;
             }
-            write!(out, "{} ", pool.name(definition.name)?)?;
+            write!(out, "{} ", pool.names.get(definition.name)?)?;
             if !class.base.is_undefined() {
                 write!(out, "extends {} ", pool.definition_name(class.base)?)?;
             }
@@ -68,13 +69,13 @@ pub fn write_definition<W: Write>(
             let name = if definition.name.is_undefined() {
                 Rc::new("Undefined".to_owned())
             } else {
-                pool.name(definition.name)?
+                pool.names.get(definition.name)?
             };
             writeln!(out, "{}{} = {},", padding, name, val)?
         }
         DefinitionValue::Enum(enum_) => {
             writeln!(out)?;
-            writeln!(out, "enum {} {{", pool.name(definition.name)?)?;
+            writeln!(out, "enum {} {{", pool.names.get(definition.name)?)?;
 
             for member in &enum_.members {
                 write_definition(out, pool.definition(*member)?, pool, depth + 1, mode)?;
@@ -88,7 +89,7 @@ pub fn write_definition<W: Write>(
                 .map(|idx| format_type(pool.definition(idx).unwrap(), pool).unwrap())
                 .unwrap_or("void".to_owned());
 
-            let name = pool.name(definition.name)?;
+            let name = pool.names.get(definition.name)?;
             let pretty_name = name.split(";").next().expect("Function with empty name");
 
             let params = fun
@@ -125,7 +126,7 @@ pub fn write_definition<W: Write>(
         DefinitionValue::Parameter(_) => write!(out, "{}", format_param(definition, pool)?)?,
         DefinitionValue::Local(local) => {
             let type_name = format_type(pool.definition(local.type_)?, pool)?;
-            let name = pool.name(definition.name)?;
+            let name = pool.names.get(definition.name)?;
             write!(out, "{}", padding)?;
             if local.flags.is_const() {
                 write!(out, "const ")?;
@@ -134,7 +135,7 @@ pub fn write_definition<W: Write>(
         }
         DefinitionValue::Field(field) => {
             let type_name = format_type(pool.definition(field.type_)?, pool)?;
-            let field_name = pool.name(definition.name)?;
+            let field_name = pool.names.get(definition.name)?;
 
             writeln!(out)?;
             for property in &field.attributes {
@@ -175,53 +176,56 @@ fn write_function_body<W: Write>(
     out: &mut W,
     fun: &Function,
     pool: &ConstantPool,
-    indent: usize,
+    depth: usize,
     mode: OutputMode,
 ) -> Result<(), Error> {
     write!(out, " {{\n")?;
     for local in &fun.locals {
-        write_definition(out, pool.definition(*local)?, pool, indent + 1, mode)?;
+        write_definition(out, pool.definition(*local)?, pool, depth + 1, mode)?;
         write!(out, "\n")?;
     }
     match mode {
         OutputMode::Code => {
             let code = Decompiler::new(&mut fun.code.cursor(), pool).decompile()?;
-            write_seq(out, &code, indent + 1)?;
+            write_seq(out, &code, depth + 1)?;
         }
         OutputMode::SyntaxTree => {
             let code = Decompiler::new(&mut fun.code.cursor(), pool).decompile()?;
             for expr in code.exprs {
-                writeln!(out, "{}{:?}", INDENT.repeat(indent + 1), expr)?;
+                writeln!(out, "{}{:?}", INDENT.repeat(depth + 1), expr)?;
             }
         }
         OutputMode::Bytecode => {
             for (offset, instr) in fun.code.cursor() {
                 let op = format!("{:?}", instr).to_lowercase();
-                writeln!(out, "{}{}: {}", INDENT.repeat(indent + 1), offset.value, op)?;
+                writeln!(out, "{}{}: {}", INDENT.repeat(depth + 1), offset.value, op)?;
             }
         }
     }
 
-    write!(out, "{}}}", INDENT.repeat(indent))?;
+    write!(out, "{}}}", INDENT.repeat(depth))?;
     Ok(())
 }
 
-fn write_seq<W: Write>(out: &mut W, code: &Seq, indent: usize) -> Result<(), Error> {
+fn write_seq<W: Write>(out: &mut W, code: &Seq, depth: usize) -> Result<(), Error> {
     for expr in code.exprs.iter().filter(|expr| !expr.is_empty()) {
-        write!(out, "{}", INDENT.repeat(indent))?;
-        write_expr(out, &expr, indent)?;
+        write!(out, "{}", INDENT.repeat(depth))?;
+        write_expr(out, &expr, depth)?;
         write!(out, ";\n")?;
     }
     Ok(())
 }
 
-fn write_expr<W: Write>(out: &mut W, expr: &Expr, indent: usize) -> Result<(), Error> {
-    let padding = INDENT.repeat(indent);
+fn write_expr<W: Write>(out: &mut W, expr: &Expr, depth: usize) -> Result<(), Error> {
+    let padding = INDENT.repeat(depth);
 
     match expr {
         Expr::Ident(ident) => write!(out, "{}", ident.0)?,
         Expr::StringLit(str) => write!(out, "\"{}\"", str)?,
-        Expr::NumLit(lit) => write!(out, "{}", lit)?,
+        Expr::IntLit(lit) => write!(out, "{}", lit)?,
+        Expr::UintLit(lit) => write!(out, "{}", lit)?,
+        Expr::FloatLit(lit) => write!(out, "{}", lit)?,
+        Expr::Declare(__, _, _) => {}
         Expr::Assign(lhs, rhs) => {
             write_expr(out, lhs, 0)?;
             write!(out, " = ")?;
@@ -238,19 +242,19 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, indent: usize) -> Result<(), E
             write!(out, "new {}(", ident.0)?;
             if !params.is_empty() {
                 for param in params.iter().take(params.len() - 1) {
-                    write_expr(out, param, indent)?;
+                    write_expr(out, param, depth)?;
                     write!(out, ",")?;
                 }
-                write_expr(out, params.last().unwrap(), indent)?;
+                write_expr(out, params.last().unwrap(), depth)?;
             }
             write!(out, ")")?
         }
         Expr::Return(Some(expr)) => {
             write!(out, "return ")?;
-            write_expr(out, expr, indent)?
+            write_expr(out, expr, depth)?
         }
         Expr::Return(None) => write!(out, "return")?,
-        Expr::Seq(exprs) => write_seq(out, exprs, indent)?,
+        Expr::Seq(exprs) => write_seq(out, exprs, depth)?,
         Expr::Switch(expr, cases, default) => {
             write!(out, "switch(")?;
             write_expr(out, expr, 0)?;
@@ -259,11 +263,11 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, indent: usize) -> Result<(), E
                 write!(out, "{}  case ", padding)?;
                 write_expr(out, matcher, 0)?;
                 write!(out, ":\n")?;
-                write_seq(out, body, indent + 2)?;
+                write_seq(out, body, depth + 2)?;
             }
             if let Some(default_body) = default {
                 write!(out, "{}  default:\n", padding)?;
-                write_seq(out, default_body, indent + 2)?;
+                write_seq(out, default_body, depth + 2)?;
             }
             write!(out, "{}}}", padding)?
         }
@@ -273,11 +277,11 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, indent: usize) -> Result<(), E
             write!(out, "if(")?;
             write_expr(out, condition, 0)?;
             write!(out, ") {{\n")?;
-            write_seq(out, true_, indent + 1)?;
+            write_seq(out, true_, depth + 1)?;
             write!(out, "{}}}", padding)?;
             if let Some(branch) = false_ {
                 write!(out, " else {{\n")?;
-                write_seq(out, branch, indent + 1)?;
+                write_seq(out, branch, depth + 1)?;
                 write!(out, "{}}}", padding)?
             }
         }
@@ -292,7 +296,7 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, indent: usize) -> Result<(), E
             write!(out, "while(")?;
             write_expr(out, condition, 0)?;
             write!(out, ") {{\n")?;
-            write_seq(out, body, indent + 1)?;
+            write_seq(out, body, depth + 1)?;
             write!(out, "{}}}", padding)?;
         }
         Expr::Member(expr, accessor) => {
@@ -310,9 +314,10 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, indent: usize) -> Result<(), E
             write_expr(out, accessor, 0)?;
         }
         Expr::BinOp(lhs, rhs, op) => {
-            write_expr(out, lhs, 0)?;
-            write!(out, " {} ", format_op(op))?;
-            write_expr(out, rhs, 0)?;
+            write_binop(out, lhs, rhs, *op)?;
+        }
+        Expr::UnOp(val, op) => {
+            write_unop(out, val, *op)?;
         }
         Expr::Break => write!(out, "break")?,
         Expr::True => write!(out, "true")?,
@@ -327,29 +332,29 @@ fn write_call<W: Write>(out: &mut W, name: &Ident, params: &Vec<Expr>) -> Result
     let extracted = name.0.split(";").next().expect("Empty function name");
     let fun_name = if extracted.is_empty() { "undefined" } else { extracted };
     match fun_name {
-        "OperatorLogicOr" => write_binop(out, &params[0], &params[1], "||"),
-        "OperatorLogicAnd" => write_binop(out, &params[0], &params[1], "&&"),
-        "OperatorOr" => write_binop(out, &params[0], &params[1], "|"),
-        "OperatorAnd" => write_binop(out, &params[0], &params[1], "&"),
-        "OperatorXor" => write_binop(out, &params[0], &params[1], "^"),
-        "OperatorEqual" => write_binop(out, &params[0], &params[1], "=="),
-        "OperatorNotEqual" => write_binop(out, &params[0], &params[1], "!="),
-        "OperatorGreater" => write_binop(out, &params[0], &params[1], ">"),
-        "OperatorLess" => write_binop(out, &params[0], &params[1], "<"),
-        "OperatorAdd" => write_binop(out, &params[0], &params[1], "+"),
-        "OperatorSubtract" => write_binop(out, &params[0], &params[1], "-"),
-        "OperatorDivide" => write_binop(out, &params[0], &params[1], "/"),
-        "OperatorMultiply" => write_binop(out, &params[0], &params[1], "*"),
-        "OperatorModulo" => write_binop(out, &params[0], &params[1], "%"),
-        "OperatorGreaterEqual" => write_binop(out, &params[0], &params[1], ">="),
-        "OperatorLessEqual" => write_binop(out, &params[0], &params[1], "<="),
-        "OperatorAssignAdd" => write_binop(out, &params[0], &params[1], "+="),
-        "OperatorAssignSubtract" => write_binop(out, &params[0], &params[1], "-="),
-        "OperatorAssignMultiply" => write_binop(out, &params[0], &params[1], "*="),
-        "OperatorAssignDivide" => write_binop(out, &params[0], &params[1], "/="),
-        "OperatorLogicNot" => write_unop(out, &params[0], "!"),
-        "OperatorBitNot" => write_unop(out, &params[0], "~"),
-        "OperatorNeg" => write_unop(out, &params[0], "-"),
+        "OperatorLogicOr" => write_binop(out, &params[0], &params[1], BinOp::LogicOr),
+        "OperatorLogicAnd" => write_binop(out, &params[0], &params[1], BinOp::LogicAnd),
+        "OperatorOr" => write_binop(out, &params[0], &params[1], BinOp::Or),
+        "OperatorAnd" => write_binop(out, &params[0], &params[1], BinOp::And),
+        "OperatorXor" => write_binop(out, &params[0], &params[1], BinOp::Xor),
+        "OperatorEqual" => write_binop(out, &params[0], &params[1], BinOp::Eq),
+        "OperatorNotEqual" => write_binop(out, &params[0], &params[1], BinOp::Neq),
+        "OperatorGreater" => write_binop(out, &params[0], &params[1], BinOp::Greater),
+        "OperatorLess" => write_binop(out, &params[0], &params[1], BinOp::Less),
+        "OperatorAdd" => write_binop(out, &params[0], &params[1], BinOp::Add),
+        "OperatorSubtract" => write_binop(out, &params[0], &params[1], BinOp::Sub),
+        "OperatorDivide" => write_binop(out, &params[0], &params[1], BinOp::Div),
+        "OperatorMultiply" => write_binop(out, &params[0], &params[1], BinOp::Mul),
+        "OperatorModulo" => write_binop(out, &params[0], &params[1], BinOp::Mod),
+        "OperatorGreaterEqual" => write_binop(out, &params[0], &params[1], BinOp::GreaterOrEqual),
+        "OperatorLessEqual" => write_binop(out, &params[0], &params[1], BinOp::Less),
+        "OperatorAssignAdd" => write_binop(out, &params[0], &params[1], BinOp::AssignAdd),
+        "OperatorAssignSubtract" => write_binop(out, &params[0], &params[1], BinOp::AssignSub),
+        "OperatorAssignMultiply" => write_binop(out, &params[0], &params[1], BinOp::AssignMul),
+        "OperatorAssignDivide" => write_binop(out, &params[0], &params[1], BinOp::AssignDiv),
+        "OperatorLogicNot" => write_unop(out, &params[0], UnOp::LogicNot),
+        "OperatorBitNot" => write_unop(out, &params[0], UnOp::BitNot),
+        "OperatorNeg" => write_unop(out, &params[0], UnOp::Neg),
         _ => {
             write!(out, "{}(", fun_name)?;
             if !params.is_empty() {
@@ -365,21 +370,21 @@ fn write_call<W: Write>(out: &mut W, name: &Ident, params: &Vec<Expr>) -> Result
     }
 }
 
-fn write_binop<W: Write>(out: &mut W, lhs: &Expr, rhs: &Expr, op: &str) -> Result<(), Error> {
+fn write_binop<W: Write>(out: &mut W, lhs: &Expr, rhs: &Expr, op: BinOp) -> Result<(), Error> {
     write_expr(out, lhs, 0)?;
-    write!(out, " {} ", op)?;
+    write!(out, " {} ", format_binop(op))?;
     write_expr(out, rhs, 0)
 }
 
-fn write_unop<W: Write>(out: &mut W, param: &Expr, op: &str) -> Result<(), Error> {
-    write!(out, "{}", op)?;
+fn write_unop<W: Write>(out: &mut W, param: &Expr, op: UnOp) -> Result<(), Error> {
+    write!(out, "{}", format_unop(op))?;
     write_expr(out, param, 0)
 }
 
 fn format_param(def: &Definition, pool: &ConstantPool) -> Result<String, Error> {
     if let DefinitionValue::Parameter(ref param) = def.value {
         let type_name = format_type(pool.definition(param.type_)?, pool)?;
-        let name = pool.name(def.name)?;
+        let name = pool.names.get(def.name)?;
         let qualifier = if param.flags.is_out_param() { "out " } else { "" };
         let optional = if param.flags.is_optional() { "?" } else { "" };
         Ok(format!("{}{} {}{}", qualifier, type_name, name, optional))
@@ -391,15 +396,15 @@ fn format_param(def: &Definition, pool: &ConstantPool) -> Result<String, Error> 
 fn format_type(def: &Definition, pool: &ConstantPool) -> Result<String, Error> {
     if let DefinitionValue::Type(ref type_) = def.value {
         let result = match type_ {
-            Type::Prim => pool.name(def.name)?.to_lowercase(),
-            Type::Class => pool.name(def.name)?.deref().clone(),
-            Type::Handle(nested) => format!("Handle<{}>", format_type(pool.definition(*nested)?, pool)?),
-            Type::WeakHandle(nested) => format!("WHandle<{}>", format_type(pool.definition(*nested)?, pool)?),
-            Type::Array(nested) => format!("Array<{}>", format_type(pool.definition(*nested)?, pool)?),
+            Type::Prim => pool.names.get(def.name)?.deref().to_owned(),
+            Type::Class => pool.names.get(def.name)?.deref().to_owned(),
+            Type::Ref(nested) => format!("ref<{}>", format_type(pool.definition(*nested)?, pool)?),
+            Type::WeakRef(nested) => format!("wref<{}>", format_type(pool.definition(*nested)?, pool)?),
+            Type::Array(nested) => format!("array<{}>", format_type(pool.definition(*nested)?, pool)?),
             Type::StaticArray(nested, size) => {
-                format!("Array<{}; {}>", format_type(pool.definition(*nested)?, pool)?, size)
+                format!("array<{}; {}>", format_type(pool.definition(*nested)?, pool)?, size)
             }
-            Type::ScriptRef(nested) => format!("ScriptRef<{}>", format_type(pool.definition(*nested)?, pool)?),
+            Type::ScriptRef(nested) => format!("ref<{}>", format_type(pool.definition(*nested)?, pool)?),
         };
         Ok(result)
     } else {
@@ -407,9 +412,35 @@ fn format_type(def: &Definition, pool: &ConstantPool) -> Result<String, Error> {
     }
 }
 
-fn format_op(op: &BinOp) -> String {
+fn format_binop(op: BinOp) -> &'static str {
     match op {
-        BinOp::Eq => "==".to_owned(),
-        BinOp::Neq => "!=".to_owned(),
+        BinOp::AssignAdd => "+=",
+        BinOp::AssignSub => "-=",
+        BinOp::AssignMul => "*=",
+        BinOp::AssignDiv => "/=",
+        BinOp::LogicOr => "||",
+        BinOp::LogicAnd => "&&",
+        BinOp::Or => "||",
+        BinOp::Xor => "^",
+        BinOp::Eq => "==",
+        BinOp::Neq => "!=",
+        BinOp::And => "&",
+        BinOp::Less => "<",
+        BinOp::LessOrEqual => "<=",
+        BinOp::Greater => ">",
+        BinOp::GreaterOrEqual => ">=",
+        BinOp::Add => "+",
+        BinOp::Sub => "-",
+        BinOp::Mul => "*",
+        BinOp::Div => "/",
+        BinOp::Mod => "%",
+    }
+}
+
+fn format_unop(op: UnOp) -> &'static str {
+    match op {
+        UnOp::BitNot => "~",
+        UnOp::LogicNot => "!",
+        UnOp::Neg => "-",
     }
 }

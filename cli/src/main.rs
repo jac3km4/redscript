@@ -6,7 +6,7 @@ use gumdrop::Options;
 use redscript::bundle::ScriptBundle;
 use redscript::definition::DefinitionValue;
 use redscript::error::Error;
-use redscript::print::{write_definition, OutputMode};
+use redscript_decompiler::print::{write_definition, OutputMode};
 
 #[derive(Debug, Options)]
 struct Configuration {
@@ -39,7 +39,7 @@ fn main() -> Result<(), Error> {
         _ => OutputMode::Code,
     };
 
-    let pool = cache.pool();
+    let pool = &cache.pool;
 
     if config.dump_files {
         for entry in pool.files().iter() {
@@ -49,7 +49,7 @@ fn main() -> Result<(), Error> {
             let mut output = BufWriter::new(File::create(path)?);
             for def in entry.definitions {
                 if let Err(err) = write_definition(&mut output, def, pool, 0, mode) {
-                    println!("Failed to process definition at {}: {:?}", def.file_offset, err);
+                    println!("Failed to process definition at {:?}: {:?}", def, err);
                 }
             }
         }
@@ -62,7 +62,7 @@ fn main() -> Result<(), Error> {
                 || matches!(&def.value, DefinitionValue::Function(_))
         }) {
             if let Err(err) = write_definition(&mut output, def, pool, 0, mode) {
-                println!("Failed to process definition at {}: {:?}", def.file_offset, err);
+                println!("Failed to process definition at {:?}: {:?}", def, err);
             }
         }
     }
