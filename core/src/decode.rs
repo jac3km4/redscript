@@ -6,45 +6,6 @@ pub trait Decode: Sized {
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self>;
 }
 
-pub trait DecodeExt: io::Read + Sized {
-    fn decode<A: Decode>(&mut self) -> io::Result<A> {
-        Decode::decode(self)
-    }
-
-    fn decode_vec<S: Into<u32>, A: Decode>(&mut self, count: S) -> io::Result<Vec<A>> {
-        let size = count.into() as usize;
-        let mut vec = Vec::with_capacity(size);
-        for _ in 0..size {
-            vec.push(self.decode()?);
-        }
-        Ok(vec)
-    }
-
-    fn decode_vec_prefixed<S: Decode + Into<u32>, A: Decode>(&mut self) -> io::Result<Vec<A>> {
-        let size: S = self.decode()?;
-        self.decode_vec(size)
-    }
-
-    fn decode_bytes<S: Into<u32>>(&mut self, count: S) -> io::Result<Vec<u8>> {
-        let size = count.into() as usize;
-        let mut vec = Vec::with_capacity(size);
-        unsafe { vec.set_len(size) }
-        self.read_exact(&mut vec)?;
-        Ok(vec)
-    }
-
-    fn decode_str<S: Into<u32>>(&mut self, count: S) -> io::Result<String> {
-        String::from_utf8(self.decode_bytes(count)?).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
-    }
-
-    fn decode_str_prefixed<S: Decode + Into<u32>>(&mut self) -> io::Result<String> {
-        let size: S = self.decode()?;
-        self.decode_str(size)
-    }
-}
-
-impl<I: io::Read> DecodeExt for I {}
-
 impl Decode for i64 {
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
         input.read_i64::<LittleEndian>()
@@ -99,15 +60,15 @@ impl Decode for bool {
     }
 }
 
-impl Decode for f32 {
-    fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
-        input.read_f32::<LittleEndian>()
-    }
-}
-
 impl Decode for f64 {
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
         input.read_f64::<LittleEndian>()
+    }
+}
+
+impl Decode for f32 {
+    fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
+        input.read_f32::<LittleEndian>()
     }
 }
 
@@ -133,3 +94,42 @@ impl<const N: usize> Decode for [u8; N] {
         Ok(buf)
     }
 }
+
+pub trait DecodeExt: io::Read + Sized {
+    fn decode<A: Decode>(&mut self) -> io::Result<A> {
+        Decode::decode(self)
+    }
+
+    fn decode_vec<S: Into<u32>, A: Decode>(&mut self, count: S) -> io::Result<Vec<A>> {
+        let size = count.into() as usize;
+        let mut vec = Vec::with_capacity(size);
+        for _ in 0..size {
+            vec.push(self.decode()?);
+        }
+        Ok(vec)
+    }
+
+    fn decode_vec_prefixed<S: Decode + Into<u32>, A: Decode>(&mut self) -> io::Result<Vec<A>> {
+        let size: S = self.decode()?;
+        self.decode_vec(size)
+    }
+
+    fn decode_bytes<S: Into<u32>>(&mut self, count: S) -> io::Result<Vec<u8>> {
+        let size = count.into() as usize;
+        let mut vec = Vec::with_capacity(size);
+        unsafe { vec.set_len(size) }
+        self.read_exact(&mut vec)?;
+        Ok(vec)
+    }
+
+    fn decode_str<S: Into<u32>>(&mut self, count: S) -> io::Result<String> {
+        String::from_utf8(self.decode_bytes(count)?).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
+    }
+
+    fn decode_str_prefixed<S: Decode + Into<u32>>(&mut self) -> io::Result<String> {
+        let size: S = self.decode()?;
+        self.decode_str(size)
+    }
+}
+
+impl<I: io::Read> DecodeExt for I {}

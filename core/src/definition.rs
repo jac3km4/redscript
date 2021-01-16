@@ -1,4 +1,3 @@
-use core::panic;
 use std::fmt::Display;
 use std::io;
 use std::path::PathBuf;
@@ -8,22 +7,25 @@ use modular_bitfield::prelude::*;
 use crate::bundle::{DefinitionHeader, DefinitionType, PoolIndex};
 use crate::bytecode::Code;
 use crate::decode::{Decode, DecodeExt};
+use crate::encode::{Encode, EncodeExt};
 
 #[derive(Debug)]
 pub struct Definition {
     pub name: PoolIndex<String>,
     pub parent: PoolIndex<Definition>,
-    pub file_offset: u32,
-    pub size: u32,
+    pub unk1: u8,
+    pub unk2: u8,
+    pub unk3: u8,
     pub value: DefinitionValue,
 }
 
 impl Definition {
-    pub const DUMMY: Definition = Definition {
-        name: PoolIndex::ZERO,
-        parent: PoolIndex::ZERO,
-        file_offset: 0,
-        size: 0,
+    pub const DEFAULT: Definition = Definition {
+        name: PoolIndex::UNDEFINED,
+        parent: PoolIndex::UNDEFINED,
+        unk1: 0,
+        unk2: 0,
+        unk3: 0,
         value: DefinitionValue::Type(Type::Prim),
     };
 
@@ -45,8 +47,9 @@ impl Definition {
         let definition = Definition {
             name: header.name,
             parent: header.parent,
-            file_offset: header.offset,
-            size: header.size,
+            unk1: header.unk1,
+            unk2: header.unk2,
+            unk3: header.unk3,
             value,
         };
         Ok(definition)
@@ -57,6 +60,41 @@ impl Definition {
             DefinitionValue::Function(ref fun) => fun.source.as_ref(),
             _ => None,
         }
+    }
+
+    fn default(name: PoolIndex<String>, parent: PoolIndex<Definition>, value: DefinitionValue) -> Definition {
+        Definition {
+            name,
+            parent,
+            unk1: 0,
+            unk2: 0,
+            unk3: 0,
+            value,
+        }
+    }
+
+    pub fn local(name: PoolIndex<String>, parent: PoolIndex<Function>, local: Local) -> Definition {
+        Definition::default(name, parent.cast(), DefinitionValue::Local(local))
+    }
+
+    pub fn param(name: PoolIndex<String>, parent: PoolIndex<Function>, param: Parameter) -> Definition {
+        Definition::default(name, parent.cast(), DefinitionValue::Parameter(param))
+    }
+
+    pub fn class(name: PoolIndex<String>, class: Class) -> Definition {
+        Definition::default(name, PoolIndex::UNDEFINED, DefinitionValue::Class(class))
+    }
+
+    pub fn type_(name: PoolIndex<String>, type_: Type) -> Definition {
+        Definition::default(name, PoolIndex::UNDEFINED, DefinitionValue::Type(type_))
+    }
+
+    pub fn function(name: PoolIndex<String>, parent: PoolIndex<Class>, fun: Function) -> Definition {
+        Definition::default(name, parent.cast(), DefinitionValue::Function(fun))
+    }
+
+    pub fn field(name: PoolIndex<String>, parent: PoolIndex<Class>, field: Field) -> Definition {
+        Definition::default(name, parent.cast(), DefinitionValue::Field(field))
     }
 }
 
@@ -73,14 +111,46 @@ pub enum DefinitionValue {
     SourceFile(SourceFile),
 }
 
+impl DefinitionValue {
+    pub fn type_(&self) -> DefinitionType {
+        match self {
+            DefinitionValue::Type(_) => DefinitionType::Type,
+            DefinitionValue::Class(_) => DefinitionType::Class,
+            DefinitionValue::EnumValue(_) => DefinitionType::EnumValue,
+            DefinitionValue::Enum(_) => DefinitionType::Enum,
+            DefinitionValue::Function(_) => DefinitionType::Function,
+            DefinitionValue::Parameter(_) => DefinitionType::Parameter,
+            DefinitionValue::Local(_) => DefinitionType::Local,
+            DefinitionValue::Field(_) => DefinitionType::Field,
+            DefinitionValue::SourceFile(_) => DefinitionType::SourceFile,
+        }
+    }
+}
+
+impl Encode for DefinitionValue {
+    fn encode<O: io::Write>(output: &mut O, def: &Self) -> io::Result<()> {
+        match &def {
+            DefinitionValue::Type(type_) => output.encode(type_),
+            DefinitionValue::Class(class) => output.encode(class),
+            DefinitionValue::EnumValue(value) => output.encode(value),
+            DefinitionValue::Enum(enum_) => output.encode(enum_),
+            DefinitionValue::Function(fun) => output.encode(fun),
+            DefinitionValue::Parameter(param) => output.encode(param),
+            DefinitionValue::Local(local) => output.encode(local),
+            DefinitionValue::Field(field) => output.encode(field),
+            DefinitionValue::SourceFile(file) => output.encode(file),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Class {
     pub visibility: Visibility,
     pub flags: ClassFlags,
-    pub base: PoolIndex<Definition>,
-    pub functions: Vec<PoolIndex<Definition>>,
-    pub fields: Vec<PoolIndex<Definition>>,
-    pub overrides: Vec<PoolIndex<Definition>>,
+    pub base: PoolIndex<Class>,
+    pub functions: Vec<PoolIndex<Function>>,
+    pub fields: Vec<PoolIndex<Field>>,
+    pub overrides: Vec<PoolIndex<Field>>,
 }
 
 impl Decode for Class {
@@ -89,17 +159,17 @@ impl Decode for Class {
         let flags: ClassFlags = input.decode()?;
         let base = input.decode()?;
         let functions = if flags.has_functions() {
-            input.decode_vec_prefixed::<u32, PoolIndex<Definition>>()?
+            input.decode_vec_prefixed::<u32, PoolIndex<Function>>()?
         } else {
             vec![]
         };
         let fields = if flags.has_fields() {
-            input.decode_vec_prefixed::<u32, PoolIndex<Definition>>()?
+            input.decode_vec_prefixed::<u32, PoolIndex<Field>>()?
         } else {
             vec![]
         };
         let overrides = if flags.has_overrides() {
-            input.decode_vec_prefixed::<u32, PoolIndex<Definition>>()?
+            input.decode_vec_prefixed::<u32, PoolIndex<Field>>()?
         } else {
             vec![]
         };
@@ -117,11 +187,35 @@ impl Decode for Class {
     }
 }
 
+impl Encode for Class {
+    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
+        let flags = value
+            .flags
+            .with_has_functions(!value.functions.is_empty())
+            .with_has_fields(!value.fields.is_empty())
+            .with_has_overrides(!value.overrides.is_empty());
+
+        output.encode(&value.visibility)?;
+        output.encode(&flags)?;
+        output.encode(&value.base)?;
+        if flags.has_functions() {
+            output.encode_slice_prefixed::<u32, PoolIndex<Function>>(&value.functions)?;
+        }
+        if flags.has_fields() {
+            output.encode_slice_prefixed::<u32, PoolIndex<Field>>(&value.fields)?;
+        }
+        if flags.has_overrides() {
+            output.encode_slice_prefixed::<u32, PoolIndex<Field>>(&value.overrides)?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 pub struct Enum {
     pub flags: u8,
     pub size: u8,
-    pub members: Vec<PoolIndex<Definition>>,
+    pub members: Vec<PoolIndex<i64>>,
     pub unk1: bool,
 }
 
@@ -129,7 +223,7 @@ impl Decode for Enum {
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
         let flags = input.decode()?;
         let size = input.decode()?;
-        let members = input.decode_vec_prefixed::<u32, PoolIndex<Definition>>()?;
+        let members = input.decode_vec_prefixed::<u32, PoolIndex<i64>>()?;
         let unk1 = input.decode()?;
         let result = Enum {
             flags,
@@ -142,17 +236,26 @@ impl Decode for Enum {
     }
 }
 
+impl Encode for Enum {
+    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
+        output.encode(&value.flags)?;
+        output.encode(&value.size)?;
+        output.encode_slice_prefixed::<u32, PoolIndex<i64>>(&value.members)?;
+        output.encode(&value.unk1)
+    }
+}
+
 #[derive(Debug)]
 pub struct Function {
     pub visibility: Visibility,
     pub flags: FunctionFlags,
     pub source: Option<SourceReference>,
-    pub return_type: Option<PoolIndex<Definition>>,
+    pub return_type: Option<PoolIndex<Type>>,
     pub unk1: bool,
-    pub base_method: Option<PoolIndex<Definition>>,
-    pub parameters: Vec<PoolIndex<Definition>>,
-    pub locals: Vec<PoolIndex<Definition>>,
-    pub operator: u32,
+    pub base_method: Option<PoolIndex<Function>>,
+    pub parameters: Vec<PoolIndex<Parameter>>,
+    pub locals: Vec<PoolIndex<Local>>,
+    pub operator: Option<u32>,
     pub cast: u8,
     pub code: Code,
 }
@@ -178,19 +281,19 @@ impl Decode for Function {
             None
         };
         let parameters = if flags.has_parameters() {
-            input.decode_vec_prefixed::<u32, PoolIndex<Definition>>()?
+            input.decode_vec_prefixed::<u32, PoolIndex<Parameter>>()?
         } else {
             vec![]
         };
         let locals = if flags.has_locals() {
-            input.decode_vec_prefixed::<u32, PoolIndex<Definition>>()?
+            input.decode_vec_prefixed::<u32, PoolIndex<Local>>()?
         } else {
             vec![]
         };
         let operator = if flags.is_operator_overload() {
-            input.decode()?
+            Some(input.decode()?)
         } else {
-            0u32
+            None
         };
         let cast = if flags.is_cast() { input.decode()? } else { 0u8 };
         let code = if flags.has_body() { input.decode()? } else { Code::EMPTY };
@@ -213,10 +316,52 @@ impl Decode for Function {
     }
 }
 
+impl Encode for Function {
+    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
+        let flags = value
+            .flags
+            .with_has_return_value(value.return_type.is_some())
+            .with_has_base_method(value.base_method.is_some())
+            .with_has_parameters(!value.parameters.is_empty())
+            .with_has_locals(!value.locals.is_empty())
+            .with_is_operator_overload(value.operator.is_some())
+            .with_has_body(!value.code.is_empty());
+
+        output.encode(&value.visibility)?;
+        output.encode(&flags)?;
+        if let Some(ref source) = value.source {
+            output.encode(source)?;
+        }
+        if let Some(ref type_) = value.return_type {
+            output.encode(type_)?;
+            output.encode(&value.unk1)?;
+        }
+        if let Some(ref method) = value.base_method {
+            output.encode(method)?;
+        }
+        if flags.has_parameters() {
+            output.encode_slice_prefixed::<u32, PoolIndex<Parameter>>(&value.parameters)?;
+        }
+        if flags.has_locals() {
+            output.encode_slice_prefixed::<u32, PoolIndex<Local>>(&value.locals)?;
+        }
+        if let Some(ref operator) = value.operator {
+            output.encode(operator)?;
+        }
+        if flags.is_cast() {
+            output.encode(&value.cast)?;
+        }
+        if flags.has_body() {
+            output.encode(&value.code)?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 pub struct Field {
     pub visibility: Visibility,
-    pub type_: PoolIndex<Definition>,
+    pub type_: PoolIndex<Type>,
     pub flags: FieldFlags,
     pub hint: Option<String>,
     pub attributes: Vec<Property>,
@@ -248,15 +393,30 @@ impl Decode for Field {
     }
 }
 
-#[derive(Debug)]
+impl Encode for Field {
+    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
+        let flags = value.flags.with_has_hint(value.hint.is_some());
+
+        output.encode(&value.visibility)?;
+        output.encode(&value.type_)?;
+        output.encode(&flags)?;
+        if let Some(ref hint) = value.hint {
+            output.encode_str_prefixed::<u16>(hint)?;
+        }
+        output.encode_slice_prefixed::<u32, Property>(&value.attributes)?;
+        output.encode_slice_prefixed::<u32, Property>(&value.defaults)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 pub enum Type {
     Prim,
     Class,
-    Handle(PoolIndex<Definition>),
-    WeakHandle(PoolIndex<Definition>),
-    Array(PoolIndex<Definition>),
-    StaticArray(PoolIndex<Definition>, u32),
-    ScriptRef(PoolIndex<Definition>),
+    Ref(PoolIndex<Type>),
+    WeakRef(PoolIndex<Type>),
+    Array(PoolIndex<Type>),
+    StaticArray(PoolIndex<Type>, u32),
+    ScriptRef(PoolIndex<Type>),
 }
 
 impl Decode for Type {
@@ -265,8 +425,8 @@ impl Decode for Type {
         match tag {
             0 => Ok(Type::Prim),
             1 => Ok(Type::Class),
-            2 => Ok(Type::Handle(input.decode()?)),
-            3 => Ok(Type::WeakHandle(input.decode()?)),
+            2 => Ok(Type::Ref(input.decode()?)),
+            3 => Ok(Type::WeakRef(input.decode()?)),
             4 => Ok(Type::Array(input.decode()?)),
             5 => Ok(Type::StaticArray(input.decode()?, input.decode()?)),
             6 => Ok(Type::ScriptRef(input.decode()?)),
@@ -275,10 +435,46 @@ impl Decode for Type {
     }
 }
 
-#[derive(Debug)]
+impl Encode for Type {
+    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
+        match value {
+            Type::Prim => output.encode(&0u8),
+            Type::Class => output.encode(&1u8),
+            Type::Ref(inner) => {
+                output.encode(&2u8)?;
+                output.encode(inner)
+            }
+            Type::WeakRef(inner) => {
+                output.encode(&3u8)?;
+                output.encode(inner)
+            }
+            Type::Array(inner) => {
+                output.encode(&4u8)?;
+                output.encode(inner)
+            }
+            Type::StaticArray(inner, size) => {
+                output.encode(&5u8)?;
+                output.encode(inner)?;
+                output.encode(size)
+            }
+            Type::ScriptRef(inner) => {
+                output.encode(&6u8)?;
+                output.encode(inner)
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Local {
-    pub type_: PoolIndex<Definition>,
+    pub type_: PoolIndex<Type>,
     pub flags: LocalFlags,
+}
+
+impl Local {
+    pub fn new(type_: PoolIndex<Type>, flags: LocalFlags) -> Local {
+        Local { type_, flags }
+    }
 }
 
 impl Decode for Local {
@@ -289,9 +485,16 @@ impl Decode for Local {
     }
 }
 
+impl Encode for Local {
+    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
+        output.encode(&value.type_)?;
+        output.encode(&value.flags)
+    }
+}
+
 #[derive(Debug)]
 pub struct Parameter {
-    pub type_: PoolIndex<Definition>,
+    pub type_: PoolIndex<Type>,
     pub flags: ParameterFlags,
 }
 
@@ -300,6 +503,13 @@ impl Decode for Parameter {
         let type_ = input.decode()?;
         let flags = input.decode()?;
         Ok(Parameter { type_, flags })
+    }
+}
+
+impl Encode for Parameter {
+    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
+        output.encode(&value.type_)?;
+        output.encode(&value.flags)
     }
 }
 
@@ -321,8 +531,16 @@ impl Decode for SourceFile {
     }
 }
 
+impl Encode for SourceFile {
+    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
+        output.encode(&value.id)?;
+        output.encode(&value.path_hash)?;
+        output.encode_str_prefixed::<u16>(&value.path.to_str().unwrap().replace("/", "\\"))
+    }
+}
+
 #[bitfield(bits = 16)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct FieldFlags {
     pub is_native: bool,
     pub is_edit: bool,
@@ -345,8 +563,14 @@ impl Decode for FieldFlags {
     }
 }
 
+impl Encode for FieldFlags {
+    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
+        output.write_all(&FieldFlags::into_bytes(*value))
+    }
+}
+
 #[bitfield(bits = 8)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct LocalFlags {
     pub is_const: bool,
     #[skip]
@@ -359,8 +583,14 @@ impl Decode for LocalFlags {
     }
 }
 
+impl Encode for LocalFlags {
+    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
+        output.write_all(&LocalFlags::into_bytes(*value))
+    }
+}
+
 #[bitfield(bits = 8)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct ParameterFlags {
     pub is_optional: bool,
     pub is_out_param: bool,
@@ -376,8 +606,14 @@ impl Decode for ParameterFlags {
     }
 }
 
+impl Encode for ParameterFlags {
+    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
+        output.write_all(&ParameterFlags::into_bytes(*value))
+    }
+}
+
 #[bitfield(bits = 16)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct ClassFlags {
     pub bit0: bool,
     pub is_abstract: bool,
@@ -398,8 +634,14 @@ impl Decode for ClassFlags {
     }
 }
 
+impl Encode for ClassFlags {
+    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
+        output.write_all(&ClassFlags::into_bytes(*value))
+    }
+}
+
 #[bitfield(bits = 32)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct FunctionFlags {
     pub is_static: bool,
     pub is_exec: bool,
@@ -431,9 +673,15 @@ impl Decode for FunctionFlags {
     }
 }
 
+impl Encode for FunctionFlags {
+    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
+        output.write_all(&FunctionFlags::into_bytes(*value))
+    }
+}
+
 #[derive(BitfieldSpecifier)]
 #[bits = 8]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Visibility {
     Public = 0,
     Protected = 1,
@@ -457,6 +705,12 @@ impl Decode for Visibility {
     }
 }
 
+impl Encode for Visibility {
+    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
+        output.encode(&Visibility::into_bytes(*value).unwrap())
+    }
+}
+
 #[derive(Debug)]
 pub struct SourceReference {
     pub file: PoolIndex<Definition>,
@@ -472,6 +726,13 @@ impl Decode for SourceReference {
     }
 }
 
+impl Encode for SourceReference {
+    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
+        output.encode(&value.file)?;
+        output.encode(&value.line)
+    }
+}
+
 #[derive(Debug)]
 pub struct Property {
     pub name: String,
@@ -483,5 +744,12 @@ impl Decode for Property {
         let name = input.decode_str_prefixed::<u16>()?;
         let value = input.decode_str_prefixed::<u16>()?;
         Ok(Property { name, value })
+    }
+}
+
+impl Encode for Property {
+    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
+        output.encode_str_prefixed::<u16>(&value.name)?;
+        output.encode_str_prefixed::<u16>(&value.value)
     }
 }
