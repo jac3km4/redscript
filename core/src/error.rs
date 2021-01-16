@@ -5,6 +5,7 @@ use std::io;
 pub enum Error {
     IOError(io::Error),
     DecompileError(String),
+    CompileError(String),
     PoolError(String),
     FormatError(fmt::Error),
 }

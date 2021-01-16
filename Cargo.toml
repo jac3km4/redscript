@@ -2,4 +2,5 @@
 members = [
   "core",
   "cli",
+  "compiler"
 ]

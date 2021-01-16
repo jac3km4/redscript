@@ -1,11 +1,12 @@
 use std::io;
 use std::ops::Deref;
 
-use crate::ast::{BinOp, Expr, Ident, Seq, SwitchCase, Target};
-use crate::bundle::{ConstantPool, PoolIndex, Resource, TweakDbIndex};
-use crate::bytecode::{CodeCursor, Instr, Offset, Position};
-use crate::definition::Definition;
-use crate::error::Error;
+use redscript::ast::{BinOp, Expr, Ident, Seq, SwitchCase, Target};
+use redscript::bundle::{ConstantPool, PoolIndex, Resource, TweakDbId};
+use redscript::bytecode::{CodeCursor, Instr, Offset, Position};
+use redscript::error::Error;
+
+pub mod print;
 
 pub struct Decompiler<'a> {
     code: &'a mut CodeCursor<'a>,
@@ -21,20 +22,20 @@ impl<'a> Decompiler<'a> {
         self.consume_path(Position::MAX)
     }
 
-    fn definition_ident(&self, index: PoolIndex<Definition>) -> Result<Expr, Error> {
+    fn definition_ident<A>(&self, index: PoolIndex<A>) -> Result<Expr, Error> {
         Ok(Expr::Ident(Ident(self.pool.definition_name(index)?)))
     }
 
     fn resource_name(&self, index: PoolIndex<Resource>) -> Result<Expr, Error> {
-        Ok(Expr::StringLit(self.pool.resource(index)?.deref().clone()))
+        Ok(Expr::StringLit(self.pool.resources.get(index)?.deref().clone()))
     }
 
-    fn tweakdb_name(&self, index: PoolIndex<TweakDbIndex>) -> Result<Expr, Error> {
-        Ok(Expr::StringLit(self.pool.tweakdb_index(index)?.deref().clone()))
+    fn tweakdb_name(&self, index: PoolIndex<TweakDbId>) -> Result<Expr, Error> {
+        Ok(Expr::StringLit(self.pool.tweakdb_indexes.get(index)?.deref().clone()))
     }
 
     fn literal(&self, index: PoolIndex<String>) -> Result<Expr, Error> {
-        Ok(Expr::StringLit((self.pool.name(index)?).deref().clone()))
+        Ok(Expr::StringLit((self.pool.names.get(index)?).deref().clone()))
     }
 
     fn consume_n(&mut self, n: usize) -> Result<Vec<Expr>, Error> {
@@ -65,7 +66,7 @@ impl<'a> Decompiler<'a> {
 
     fn consume_call(&mut self, name: &str, param_count: usize) -> Result<Expr, Error> {
         let params = self.consume_n(param_count)?;
-        Ok(Expr::Call(Ident::new(name), params))
+        Ok(Expr::Call(Ident::new(name.to_owned()), params))
     }
 
     fn consume_params(&mut self) -> Result<Vec<Expr>, Error> {
@@ -145,18 +146,18 @@ impl<'a> Decompiler<'a> {
         let res = match self.code.pop()? {
             Instr::Nop => Expr::EMPTY,
             Instr::Null => Expr::Null,
-            Instr::I32One => Expr::NumLit("1".to_owned()),
-            Instr::I32Zero => Expr::NumLit("0".to_owned()),
-            Instr::I8Const(val) => Expr::NumLit(val.to_string()),
-            Instr::I16Const(val) => Expr::NumLit(val.to_string()),
-            Instr::I32Const(val) => Expr::NumLit(val.to_string()),
-            Instr::I64Const(val) => Expr::NumLit(val.to_string()),
-            Instr::U8Const(val) => Expr::NumLit(val.to_string()),
-            Instr::U16Const(val) => Expr::NumLit(val.to_string()),
-            Instr::U32Const(val) => Expr::NumLit(val.to_string()),
-            Instr::U64Const(val) => Expr::NumLit(val.to_string()),
-            Instr::F32Const(val) => Expr::NumLit(val.to_string()),
-            Instr::F64Const(val) => Expr::NumLit(val.to_string()),
+            Instr::I32One => Expr::IntLit(1),
+            Instr::I32Zero => Expr::IntLit(0),
+            Instr::I8Const(val) => Expr::IntLit(val.into()),
+            Instr::I16Const(val) => Expr::IntLit(val.into()),
+            Instr::I32Const(val) => Expr::IntLit(val.into()),
+            Instr::I64Const(val) => Expr::IntLit(val.into()),
+            Instr::U8Const(val) => Expr::UintLit(val.into()),
+            Instr::U16Const(val) => Expr::UintLit(val.into()),
+            Instr::U32Const(val) => Expr::UintLit(val.into()),
+            Instr::U64Const(val) => Expr::UintLit(val),
+            Instr::F32Const(val) => Expr::FloatLit(val.into()),
+            Instr::F64Const(val) => Expr::FloatLit(val),
             Instr::NameConst(idx) => self.literal(idx)?,
             Instr::EnumConst(enum_, member) => {
                 let enum_ident = self.definition_ident(enum_)?;
@@ -208,9 +209,9 @@ impl<'a> Decompiler<'a> {
                 // if let AnyDefinition::Function(ref fun) = def.value {
                 // assert_eq!(fun.parameters.len(), params.len(), "Invalid number of parameters {:?}", params);
                 // }
-                Expr::Call(Ident(self.pool.name(def.name)?), params)
+                Expr::Call(Ident(self.pool.names.get(def.name)?), params)
             }
-            Instr::InvokeVirtual(_, _, idx) => Expr::Call(Ident(self.pool.name(idx)?), self.consume_params()?),
+            Instr::InvokeVirtual(_, _, idx) => Expr::Call(Ident(self.pool.names.get(idx)?), self.consume_params()?),
             Instr::ParamEnd => Err(Error::DecompileError("Unexpected ParamEnd".to_owned()))?,
             Instr::Return => Expr::Return(self.consume().ok().map(|e| Box::new(e))),
             Instr::StructField(idx) => {
@@ -277,8 +278,8 @@ impl<'a> Decompiler<'a> {
                 let idx = self.consume()?;
                 Expr::ArrayElem(Box::new(arr), Box::new(idx))
             }
-            Instr::HandleToBool => self.consume_call("ToBool", 1)?,
-            Instr::WeakHandleToBool => self.consume_call("ToBool", 1)?,
+            Instr::RefToBool => self.consume_call("ToBool", 1)?,
+            Instr::WeakRefToBool => self.consume_call("ToBool", 1)?,
             Instr::EnumToI32(_, _) => self.consume_call("ToInt", 1)?,
             Instr::I32ToEnum(_, _) => self.consume_call("ToEnum", 1)?,
             Instr::DynamicCast(_, _) => self.consume_call("Cast", 1)?,
@@ -286,13 +287,13 @@ impl<'a> Decompiler<'a> {
             Instr::ToVariant(_) => self.consume_call("ToVariant", 1)?,
             Instr::FromVariant(_) => self.consume_call("FromVariant", 1)?,
             Instr::VariantIsValid => self.consume_call("IsValid", 1)?,
-            Instr::VariantIsHandle => self.consume_call("IsHandle", 1)?,
+            Instr::VariantIsRef => self.consume_call("IsHandle", 1)?,
             Instr::VariantIsArray => self.consume_call("IsArray", 1)?,
             Instr::VatiantToCName => self.consume_call("Unknown", 1)?,
             Instr::VariantToString => self.consume_call("ToString", 1)?,
-            Instr::WeakHandleToHandle => self.consume_call("ToHandle", 1)?,
-            Instr::HandleToWeakHandle => self.consume_call("ToWeakHandle", 1)?,
-            Instr::WeakHandleNull => Expr::Null,
+            Instr::WeakRefToRef => self.consume_call("ToHandle", 1)?,
+            Instr::RefToWeakRef => self.consume_call("ToWeakHandle", 1)?,
+            Instr::WeakRefNull => Expr::Null,
             Instr::ToScriptRef(_) => self.consume_call("ToScriptRef", 1)?,
             Instr::FromScriptRef(_) => self.consume_call("FromScriptRef", 1)?,
             Instr::Unk9 => Err(Error::DecompileError("Unexpected Unk9".to_owned()))?,
