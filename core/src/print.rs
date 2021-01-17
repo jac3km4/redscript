@@ -109,6 +109,9 @@ pub fn write_definition<W: Write>(
             if fun.flags.is_native() {
                 write!(out, "native ")?;
             }
+            if fun.flags.is_exec() {
+                write!(out, "exec ")?;
+            }
             if fun.flags.is_const() {
                 write!(out, "const ")?;
             }
@@ -123,7 +126,11 @@ pub fn write_definition<W: Write>(
         DefinitionValue::Local(local) => {
             let type_name = format_type(pool.definition(local.type_)?, pool)?;
             let name = pool.name(definition.name)?;
-            write!(out, "{}{} {};", padding, type_name, name)?
+            write!(out, "{}", padding)?;
+            if local.flags.is_const() {
+                write!(out, "const ")?;
+            }
+            write!(out, "{} {};", type_name, name)?
         }
         DefinitionValue::Field(field) => {
             let type_name = format_type(pool.definition(field.type_)?, pool)?;
@@ -138,7 +145,26 @@ pub fn write_definition<W: Write>(
                 writeln!(out, "{}[Default({}, {}))]", padding, property.name, property.value)?;
             }
 
-            writeln!(out, "{}{} {} {};", padding, field.visibility, type_name, field_name)?
+            write!(out, "{}{} ", padding, field.visibility)?;
+            if field.flags.is_inline() {
+                write!(out, "inline ")?;
+            }
+            if field.flags.is_rep() {
+                write!(out, "rep ")?;
+            }
+            if field.flags.is_edit() {
+                write!(out, "edit ")?;
+            }
+            if field.flags.is_native() {
+                write!(out, "native ")?;
+            }
+            if field.flags.is_persistent() {
+                write!(out, "persistent ")?;
+            }
+            if field.flags.is_const() {
+                write!(out, "const ")?;
+            }
+            writeln!(out, "{} {};", type_name, field_name)?
         }
         DefinitionValue::SourceFile(_) => panic!(),
     }

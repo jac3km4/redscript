@@ -272,7 +272,11 @@ impl<'a> Decompiler<'a> {
             Instr::Unk6(_) => Err(Error::DecompileError("Unexpected Unk6".to_owned()))?,
             Instr::Unk7(_) => Err(Error::DecompileError("Unexpected Unk7".to_owned()))?,
             Instr::StaticArrayLast(_) => self.consume_call("StaticArrayLast", 1)?,
-            Instr::StaticArrayElement(_) => self.consume_call("StaticArrayElement", 1)?,
+            Instr::StaticArrayElement(_) => {
+                let arr = self.consume()?;
+                let idx = self.consume()?;
+                Expr::ArrayElem(Box::new(arr), Box::new(idx))
+            }
             Instr::HandleToBool => self.consume_call("ToBool", 1)?,
             Instr::WeakHandleToBool => self.consume_call("ToBool", 1)?,
             Instr::EnumToI32(_, _) => self.consume_call("ToInt", 1)?,
