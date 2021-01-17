@@ -1,9 +1,9 @@
+use std::io;
+
 use crate::bundle::{PoolIndex, Resource, TweakDbIndex};
 use crate::decode::{Decode, DecodeExt};
 use crate::definition::Definition;
 use crate::error::Error;
-
-use std::io;
 
 #[derive(Debug, Clone)]
 pub enum Instr {

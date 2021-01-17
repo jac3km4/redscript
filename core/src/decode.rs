@@ -1,6 +1,6 @@
-use byteorder::{LittleEndian, ReadBytesExt};
-
 use std::io;
+
+use byteorder::{LittleEndian, ReadBytesExt};
 
 pub trait Decode: Sized {
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self>;

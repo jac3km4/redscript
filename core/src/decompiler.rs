@@ -1,11 +1,11 @@
+use std::io;
+use std::ops::Deref;
+
 use crate::ast::{BinOp, Expr, Ident, Seq, SwitchCase, Target};
 use crate::bundle::{ConstantPool, PoolIndex, Resource, TweakDbIndex};
 use crate::bytecode::{CodeCursor, Instr, Offset, Position};
 use crate::definition::Definition;
 use crate::error::Error;
-
-use std::io;
-use std::ops::Deref;
 
 pub struct Decompiler<'a> {
     code: &'a mut CodeCursor<'a>,
