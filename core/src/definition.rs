@@ -402,7 +402,7 @@ impl Decode for ClassFlags {
 #[derive(Debug)]
 pub struct FunctionFlags {
     pub is_static: bool,
-    pub is_console: bool,
+    pub is_exec: bool,
     pub is_timer: bool,
     pub is_final: bool,
     pub is_native: bool,
