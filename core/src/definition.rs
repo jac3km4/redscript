@@ -1,12 +1,13 @@
-use crate::bundle::{DefinitionHeader, DefinitionType, PoolIndex};
-use crate::bytecode::Code;
-use crate::decode::{Decode, DecodeExt};
-
 use core::panic;
-use modular_bitfield::prelude::*;
 use std::fmt::Display;
 use std::io;
 use std::path::PathBuf;
+
+use modular_bitfield::prelude::*;
+
+use crate::bundle::{DefinitionHeader, DefinitionType, PoolIndex};
+use crate::bytecode::Code;
+use crate::decode::{Decode, DecodeExt};
 
 #[derive(Debug)]
 pub struct Definition {

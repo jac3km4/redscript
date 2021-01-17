@@ -1,12 +1,12 @@
+use std::io::Write;
+use std::ops::Deref;
+use std::rc::Rc;
+
 use crate::ast::{BinOp, Expr, Ident, Seq, SwitchCase};
 use crate::bundle::ConstantPool;
 use crate::decompiler::Decompiler;
 use crate::definition::{Definition, DefinitionValue, Function, Type};
 use crate::error::Error;
-
-use std::io::Write;
-use std::ops::Deref;
-use std::rc::Rc;
 
 const INDENT: &str = "  ";
 

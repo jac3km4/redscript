@@ -1,8 +1,8 @@
-use crate::bundle::{ConstantPool, PoolIndex};
-use crate::definition::{Definition, DefinitionValue, SourceFile};
-
 use std::collections::{HashMap, HashSet};
 use std::iter::{once, FromIterator};
+
+use crate::bundle::{ConstantPool, PoolIndex};
+use crate::definition::{Definition, DefinitionValue, SourceFile};
 
 pub struct FileIndex<'a> {
     file_map: HashMap<PoolIndex<Definition>, HashSet<PoolIndex<Definition>>>,

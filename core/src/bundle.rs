@@ -1,14 +1,15 @@
-use crate::decode::{Decode, DecodeExt};
-use crate::definition::Definition;
-use crate::error::Error;
-use crate::files::FileIndex;
-
-use modular_bitfield::prelude::*;
 use std::fmt;
 use std::hash::Hash;
 use std::io;
 use std::marker::PhantomData;
 use std::rc::Rc;
+
+use modular_bitfield::prelude::*;
+
+use crate::decode::{Decode, DecodeExt};
+use crate::definition::Definition;
+use crate::error::Error;
+use crate::files::FileIndex;
 
 #[derive(Debug)]
 pub struct ScriptBundle {

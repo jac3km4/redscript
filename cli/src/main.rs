@@ -1,12 +1,12 @@
+use std::fs::File;
+use std::io::{BufReader, BufWriter};
+use std::path::PathBuf;
+
+use gumdrop::Options;
 use redscript::bundle::ScriptBundle;
 use redscript::definition::DefinitionValue;
 use redscript::error::Error;
 use redscript::print::{write_definition, OutputMode};
-
-use gumdrop::Options;
-use std::fs::File;
-use std::io::{BufReader, BufWriter};
-use std::path::PathBuf;
 
 #[derive(Debug, Options)]
 struct Configuration {
