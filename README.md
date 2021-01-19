@@ -1,6 +1,6 @@
 # redscript
 Toolkit for working with scripts used by REDengine in Cyberpunk 2077.
-Currently only includes a disassembler and a decompiler.
+Currently includes a compiler, a decompiler and a disassembler.
 
 ## usage
 ```
@@ -16,8 +16,8 @@ cargo run --release -- -i '/mnt/d/games/Cyberpunk 2077/r6/cache/final.redscript'
 ```
 *__note__: current version requires nightly version of rust (`rustup default nightly`)*
 
-## output
-The scripts are decompiled into a Java-like language:
+## language
+The scripts use a Java-like language:
 ```
   public Handle<GameObject> GetReprimandPerformer(EntityID target) {
     Agent agent;
