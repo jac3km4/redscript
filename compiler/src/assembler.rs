@@ -219,17 +219,23 @@ impl Assembler {
 
     fn compile_call<'a, I: Iterator<Item = &'a Expr>>(
         &mut self,
-        function: PoolIndex<Function>,
+        fun_idx: PoolIndex<Function>,
         params: I,
         pool: &mut ConstantPool,
         scope: &mut Scope,
     ) -> Result<(), Error> {
+        let flags = pool.function(fun_idx)?.flags;
+        let name_idx = pool.definition(fun_idx)?.name;
         let mut args_code = Assembler::new();
         for arg in params {
             args_code.compile(arg, pool, scope)?;
         }
         args_code.emit(Instr::ParamEnd);
-        self.emit(Instr::InvokeStatic(args_code.offset(), 0, function));
+        if !flags.is_final() && !flags.is_static() {
+            self.emit(Instr::InvokeVirtual(args_code.offset(), 0, name_idx));
+        } else {
+            self.emit(Instr::InvokeStatic(args_code.offset(), 0, fun_idx));
+        }
         self.append(args_code);
         Ok(())
     }
