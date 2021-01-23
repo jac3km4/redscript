@@ -8,6 +8,7 @@ pub enum Expr {
     IntLit(i64),
     UintLit(u64),
     Declare(TypeName, Ident, Option<Box<Expr>>),
+    Cast(TypeName, Box<Expr>),
     Assign(Box<Expr>, Box<Expr>),
     Call(Ident, Vec<Expr>),
     ArrayElem(Box<Expr>, Box<Expr>),
@@ -122,24 +123,22 @@ impl TypeName {
         if self.arguments.is_empty() {
             self.name.clone()
         } else {
-            let postfix = self
+            let args = self
                 .arguments
                 .iter()
                 .fold(String::new(), |acc, t| format!("{},{}", acc, t.repr()));
-            format!("{}<{}>", self.name, postfix)
+            format!("{}<{}>", self.name, args)
         }
     }
 
-    // Used for storing in the constant pool
+    // Used for storing types in the constant pool
     pub fn repr(&self) -> String {
         if self.arguments.is_empty() {
             self.name.clone()
         } else {
-            let postfix = self
-                .arguments
+            self.arguments
                 .iter()
-                .fold(String::new(), |acc, t| format!("{}:{}", acc, t.repr()));
-            format!("{}:{}", self.name, postfix)
+                .fold(self.name.to_owned(), |acc, t| format!("{}:{}", acc, t.repr()))
         }
     }
 }

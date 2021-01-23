@@ -225,6 +225,11 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, depth: usize) -> Result<(), Er
         Expr::IntLit(lit) => write!(out, "{}", lit)?,
         Expr::UintLit(lit) => write!(out, "{}", lit)?,
         Expr::FloatLit(lit) => write!(out, "{}", lit)?,
+        Expr::Cast(type_, expr) => {
+            write!(out, "cast<{}>(", type_.repr())?;
+            write_expr(out, expr, 0)?;
+            write!(out, ")")?;
+        }
         Expr::Declare(__, _, _) => {}
         Expr::Assign(lhs, rhs) => {
             write_expr(out, lhs, 0)?;

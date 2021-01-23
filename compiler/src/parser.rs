@@ -12,6 +12,7 @@ pub enum SourceEntry {
 pub struct ClassSource {
     pub qualifiers: Qualifiers,
     pub name: String,
+    pub base: Option<String>,
     pub members: Vec<MemberSource>,
 }
 
@@ -37,6 +38,7 @@ pub enum Qualifier {
     Final,
     Const,
     Native,
+    Exec,
 }
 
 #[derive(Debug)]
@@ -59,9 +61,26 @@ impl Qualifiers {
 
 #[derive(Debug)]
 pub struct Declaration {
+    pub annotations: Vec<Annotation>,
     pub qualifiers: Qualifiers,
     pub type_: TypeName,
     pub name: String,
+}
+
+#[derive(Debug)]
+pub struct Annotation {
+    pub name: String,
+    pub value: String,
+}
+
+impl Annotation {
+    pub fn get_insert_target(&self) -> Option<&str> {
+        if self.name == "insert" {
+            Some(&self.value)
+        } else {
+            None
+        }
+    }
 }
 
 pub fn parse(input: &str) -> Result<Vec<SourceEntry>, ParseError<LineCol>> {
@@ -81,6 +100,10 @@ peg::parser! {
             / "final" { Qualifier::Final }
             / "const" { Qualifier::Const }
             / "native" { Qualifier::Native }
+            / "exec" { Qualifier::Exec }
+
+        rule annotation() -> Annotation
+            = "@" name:ident() _ "(" _ value:ident() _ ")" { Annotation { name, value } }
 
         rule qualifiers() -> Qualifiers = qs:qualifier() ** _ { Qualifiers(qs) }
 
@@ -89,10 +112,10 @@ peg::parser! {
             { format!("{}{}", x, xs) }
 
         rule number() -> Expr
-            = n:$(['0'..='9' | '.']+)
+            = n:$(['0'..='9' | '.']+) postfix:$(['u'])?
             { if n.contains(".") { Expr::FloatLit(n.parse().unwrap()) }
-              else if n.starts_with("-") { Expr::IntLit(n.parse().unwrap()) }
-              else { Expr::UintLit(n.parse().unwrap()) }
+              else if postfix == Some("u") { Expr::UintLit(n.parse().unwrap()) }
+              else { Expr::IntLit(n.parse().unwrap()) }
             }
 
         rule seq() -> Seq = exprs:(stmt() ** _) { Seq::new(exprs) }
@@ -102,17 +125,19 @@ peg::parser! {
         rule type_args() -> Vec<TypeName> = "<" _ args:commasep(<type_()>) _ ">" { args }
 
         rule decl() -> Declaration
-            = qualifiers:qualifiers() _ type_:type_() _ name:ident()
-            { Declaration { qualifiers, type_, name } }
+            = annotations:(annotation() ** _) _ qualifiers:qualifiers() _ type_:type_() _ name:ident()
+            { Declaration { annotations, qualifiers, type_, name } }
 
         pub rule function() -> FunctionSource
             = declaration:decl() _ "(" parameters:commasep(<decl()>) ")" _ body:function_body()?
             { FunctionSource { declaration, parameters, body } }
         rule function_body() -> Seq = "{" _ body:seq() _ "}" { body }
 
+        rule extends() -> String = "extends" _ name:ident() { name }
+
         pub rule class() -> ClassSource
-            = qualifiers:qualifiers() _ "class" _ name:ident() _ "{" _ members:member()**_ _ "}"
-            { ClassSource { qualifiers, name, members } }
+            = qualifiers:qualifiers() _ "class" _ name:ident() _ base:extends()? _ "{" _ members:member()**_ _ "}"
+            { ClassSource { qualifiers, name, base, members } }
 
         rule member() -> MemberSource
             = fun:function() { MemberSource::Function(fun) }
@@ -123,6 +148,8 @@ peg::parser! {
             / class:class() { SourceEntry::Class(class) }
 
         pub rule source() -> Vec<SourceEntry> = _ decls:(source_entry() ** _) _ { decls }
+
+        rule initializer() -> Expr = "=" _ val:expr() { val }
 
         rule while_() -> Expr
             = "while" _ "(" _ cond:expr() _ ")" _ "{" _ body:seq() _ "}" _ ";"?
@@ -139,7 +166,7 @@ peg::parser! {
             / if_: if_() { if_ }
             / "return" _ val:expr()? ";" { Expr::Return(val.map(Box::new)) }
             / "break" _ ";" { Expr::Break }
-            / decl:decl() _ ";" { Expr::Declare(decl.type_, Ident::new(decl.name), None) }
+            / decl:decl() _ val:initializer()? _ ";" { Expr::Declare(decl.type_, Ident::new(decl.name), val.map(Box::new)) }
             / expr:expr() _ ";" { expr }
 
         pub rule expr() -> Expr = precedence!{
@@ -178,11 +205,13 @@ peg::parser! {
             --
             expr:(@) _ "[" _ idx:expr() _ "]" { Expr::ArrayElem(Box::new(expr), Box::new(idx)) }
             expr:(@) _ "." _ member:@ { Expr::Member(Box::new(expr), Box::new(member)) }
+            "cast" _ "<" _ type_:type_() _ ">" _ "(" _ expr:expr() _ ")" { Expr::Cast(type_, Box::new(expr)) }
             "(" _ v:expr() _ ")" { v }
             "true" { Expr::True }
             "false" { Expr::False }
             "null" { Expr::Null }
             "this" { Expr::This }
+            "\"" str:$((!['"'] [_])*) "\"" { Expr::StringLit(str.to_owned()) }
             n:number() { n }
             id:ident() _ "(" _ params:commasep(<expr()>) _ ")" { Expr::Call(Ident::new(id), params) }
             id:ident() { Expr::Ident(Ident::new(id)) }
@@ -199,14 +228,14 @@ mod tests {
         let expr = lang::expr("3.0 ? 5.0 : 5 + 4").unwrap();
         assert_eq!(
             format!("{:?}", expr),
-            "Conditional(FloatLit(3.0), FloatLit(5.0), BinOp(UintLit(5), UintLit(4), Add))"
+            "Conditional(FloatLit(3.0), FloatLit(5.0), BinOp(IntLit(5), IntLit(4), Add))"
         );
     }
 
     #[test]
     fn parse_simple_class() {
         let class = lang::source(
-            "public class A {
+            "public class A extends IScriptable {
                 private const int32 m_field;
 
                 public static int32 GetField() {
@@ -217,7 +246,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", class),
-            r#"[Class(SourceClass { qualifiers: Qualifiers([Public]), name: "A", members: [Field(Declaration { qualifiers: Qualifiers([Private, Const]), type_: TypeName { name: "int32", arguments: [] }, name: "m_field" }), Function(SourceFunction { declaration: Declaration { qualifiers: Qualifiers([Public, Static]), type_: TypeName { name: "int32", arguments: [] }, name: "GetField" }, parameters: [], body: Some(Seq { exprs: [Return(Some(Ident(Ident("m_field"))))] }) })] })]"#
+            r#"[Class(ClassSource { qualifiers: Qualifiers([Public]), name: "A", base: Some("IScriptable"), members: [Field(Declaration { annotations: [], qualifiers: Qualifiers([Private, Const]), type_: TypeName { name: "int32", arguments: [] }, name: "m_field" }), Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public, Static]), type_: TypeName { name: "int32", arguments: [] }, name: "GetField" }, parameters: [], body: Some(Seq { exprs: [Return(Some(Ident(Ident("m_field"))))] }) })] })]"#
         );
     }
 
@@ -232,7 +261,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", stmt),
-            r#"While(BinOp(Ident(Ident("i")), UintLit(1000), Less), Seq { exprs: [BinOp(Member(This, Ident(Ident("counter"))), Member(Ident(Ident("Object")), Ident(Ident("CONSTANT"))), AssignAdd), BinOp(Ident(Ident("i")), UintLit(1), AssignAdd)] })"#
+            r#"While(BinOp(Ident(Ident("i")), IntLit(1000), Less), Seq { exprs: [BinOp(Member(This, Ident(Ident("counter"))), Member(Ident(Ident("Object")), Ident(Ident("CONSTANT"))), AssignAdd), BinOp(Ident(Ident("i")), IntLit(1), AssignAdd)] })"#
         );
     }
 
