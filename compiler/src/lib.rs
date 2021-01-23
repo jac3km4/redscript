@@ -230,7 +230,8 @@ impl<'a> Compiler<'a> {
                     let fun = self.pool.function(*idx)?;
                     Ok((target_class, fun.base_method, *idx))
                 } else {
-                    Ok((target_class, None, self.pool.reserve().cast()))
+                    let error = format!("Method {} not found on {}", name.0, target_name);
+                    Err(Error::CompileError(error))
                 }
             } else {
                 let error = format!("Can't find object {} to insert method in", name.0);
