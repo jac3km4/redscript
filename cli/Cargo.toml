@@ -7,4 +7,5 @@ edition = "2018"
 [dependencies]
 redscript = { path = "../core" }
 redscript-decompiler = { path = "../decompiler" }
+redscript-compiler = { path = "../compiler" }
 gumdrop = "0.8"

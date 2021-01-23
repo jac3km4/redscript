@@ -160,6 +160,7 @@ version = "0.1.0"
 dependencies = [
  "gumdrop",
  "redscript",
+ "redscript-compiler",
  "redscript-decompiler",
 ]
 
