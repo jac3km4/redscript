@@ -118,16 +118,28 @@ pub struct TypeName {
 }
 
 impl TypeName {
+    fn unwrapped(&self) -> &TypeName {
+        match self.name.as_str() {
+            "ref" => &self.arguments[0].unwrapped(),
+            "wref" => &self.arguments[0].unwrapped(),
+            "array" => &self.arguments[0].unwrapped(),
+            _ => self,
+        }
+    }
+
     // Used for identifying functions
     pub fn mangled(&self) -> String {
-        if self.arguments.is_empty() {
-            self.name.clone()
+        let unwrapped = self.unwrapped();
+        if unwrapped.arguments.is_empty() {
+            unwrapped.name.clone()
         } else {
-            let args = self
+            let args = unwrapped
                 .arguments
                 .iter()
-                .fold(String::new(), |acc, t| format!("{},{}", acc, t.repr()));
-            format!("{}<{}>", self.name, args)
+                .map(|tp| tp.mangled())
+                .fold_first(|acc, el| format!("{},{}", acc, el))
+                .unwrap();
+            format!("{}<{}>", unwrapped.name, args)
         }
     }
 
@@ -138,7 +150,7 @@ impl TypeName {
         } else {
             self.arguments
                 .iter()
-                .fold(self.name.to_owned(), |acc, t| format!("{}:{}", acc, t.repr()))
+                .fold(self.name.to_owned(), |acc, tp| format!("{}:{}", acc, tp.repr()))
         }
     }
 }
