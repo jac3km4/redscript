@@ -4,6 +4,14 @@ Currently includes a compiler, a decompiler and a disassembler.
 
 ## usage
 ```
+Usage:
+  decompile [opts]
+  compile [opts]
+Compiler options:
+  -i, --input INPUT    input source file
+  -b, --bundle BUNDLE  redscript bundle file to read
+  -o, --output OUTPUT  redscript bundle file to write
+Decompiler options:
   -i, --input INPUT    input file
   -o, --output OUTPUT  output file or directory
   -m, --mode MODE      dump mode (one of: 'ast', 'bytecode' or 'code')
@@ -19,7 +27,7 @@ cargo run --release -- -i '/mnt/d/games/Cyberpunk 2077/r6/cache/final.redscript'
 ## language
 The scripts use a Java-like language:
 ```
-  public Handle<GameObject> GetReprimandPerformer(EntityID target) {
+  public ref<GameObject> GetReprimandPerformer(EntityID target) {
     Agent agent;
     Handle<GameObject> performer;
     Handle<DeviceComponentPS> ps;
