@@ -7,7 +7,7 @@ use im::hashmap::Entry;
 use parser::Annotation;
 use redscript::ast::{Ident, Seq, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
-use redscript::bytecode::Code;
+use redscript::bytecode::{Code, Instr};
 use redscript::definition::{
     Class, ClassFlags, Enum, FieldFlags, FunctionFlags, Local, Parameter, ParameterFlags, SourceReference, Visibility,
 };
@@ -143,7 +143,8 @@ impl<'a> Compiler<'a> {
         let name = Ident(self.pool.names.get(name_idx)?);
 
         let decl = source.declaration;
-        let (parent_idx, fun_idx) = self.determine_function_location(name, &decl.annotations, parent_idx)?;
+        let (parent_idx, base_method, fun_idx) =
+            self.determine_function_location(name, &decl.annotations, parent_idx)?;
         let visibility = decl.qualifiers.visibility().unwrap_or(Visibility::Private);
         let return_type = if decl.type_.name == "void" {
             None
@@ -169,7 +170,7 @@ impl<'a> Compiler<'a> {
         }
 
         let source_ref = SourceReference {
-            file: PoolIndex::UNDEFINED,
+            file: PoolIndex::DEFAULT_SOURCE,
             line: 0,
         };
 
@@ -179,7 +180,7 @@ impl<'a> Compiler<'a> {
             source: Some(source_ref),
             return_type,
             unk1: false,
-            base_method: None,
+            base_method,
             parameters,
             locals: vec![],
             operator: None,
@@ -217,7 +218,7 @@ impl<'a> Compiler<'a> {
         name: Ident,
         annotations: &[Annotation],
         parent: PoolIndex<Class>,
-    ) -> Result<(PoolIndex<Class>, PoolIndex<Function>), Error> {
+    ) -> Result<(PoolIndex<Class>, Option<PoolIndex<Function>>, PoolIndex<Function>), Error> {
         if let Some(target_name) = annotations.iter().find_map(|ann| ann.get_insert_target()) {
             if let Reference::Class(target_class) = self.scope.resolve(Ident::new(target_name.to_owned()))? {
                 let class = self.pool.class(target_class)?;
@@ -226,16 +227,17 @@ impl<'a> Compiler<'a> {
                     .iter()
                     .find(|fun| self.pool.definition_name(**fun).unwrap() == name.0);
                 if let Some(idx) = existing_idx {
-                    Ok((target_class, *idx))
+                    let fun = self.pool.function(*idx)?;
+                    Ok((target_class, fun.base_method, *idx))
                 } else {
-                    Ok((target_class, self.pool.reserve().cast()))
+                    Ok((target_class, None, self.pool.reserve().cast()))
                 }
             } else {
                 let error = format!("Can't find object {} to insert method in", name.0);
                 Err(Error::CompileError(error))
             }
         } else {
-            Ok((parent, self.pool.reserve().cast()))
+            Ok((parent, None, self.pool.reserve().cast()))
         }
     }
 
@@ -253,6 +255,7 @@ impl<'a> Compiler<'a> {
         let assembler = Assembler::from_seq(&seq, pool, &mut scope)?;
         let function = pool.function_mut(fun_idx)?;
         function.code = Code(assembler.code.into_iter().collect());
+        function.code.0.push(Instr::Nop);
         function.locals = assembler.locals.into_iter().collect();
         Ok(())
     }
@@ -273,6 +276,7 @@ pub enum TypeId {
     Prim(PoolIndex<Type>),
     Class(PoolIndex<Type>, PoolIndex<Class>),
     Struct(PoolIndex<Type>, PoolIndex<Class>),
+    Enum(PoolIndex<Type>, PoolIndex<Enum>),
     Ref(PoolIndex<Type>, Box<TypeId>),
     WeakRef(PoolIndex<Type>, Box<TypeId>),
     Array(PoolIndex<Type>, Box<TypeId>),
@@ -296,6 +300,7 @@ impl TypeId {
         let res = match self {
             TypeId::Prim(idx) => pool.definition_name(*idx)?,
             TypeId::Class(idx, _) => pool.definition_name(*idx)?,
+            TypeId::Enum(idx, _) => pool.definition_name(*idx)?,
             TypeId::Struct(idx, _) => pool.definition_name(*idx)?,
             TypeId::Ref(_, inner) => inner.mangled(pool)?,
             TypeId::WeakRef(_, inner) => inner.mangled(pool)?,
@@ -312,6 +317,7 @@ impl TypeId {
         match self {
             TypeId::Prim(idx) => Some(*idx),
             TypeId::Class(idx, _) => Some(*idx),
+            TypeId::Enum(idx, _) => Some(*idx),
             TypeId::Struct(idx, _) => Some(*idx),
             TypeId::Ref(idx, _) => Some(*idx),
             TypeId::WeakRef(idx, _) => Some(*idx),
