@@ -89,7 +89,7 @@ pub fn parse(input: &str) -> Result<Vec<SourceEntry>, ParseError<LineCol>> {
 
 peg::parser! {
     grammar lang() for str {
-        rule _() = [' ' | '\n']*
+        rule _() = [' ' | '\n' | '\r']*
         rule commasep<T>(x: rule<T>) -> Vec<T> = v:(x() ** ("," _)) {v}
 
         rule qualifier() -> Qualifier
