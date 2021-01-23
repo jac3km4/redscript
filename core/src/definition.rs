@@ -62,39 +62,45 @@ impl Definition {
         }
     }
 
-    fn default(name: PoolIndex<String>, parent: PoolIndex<Definition>, value: DefinitionValue) -> Definition {
+    fn default(
+        name: PoolIndex<String>,
+        parent: PoolIndex<Definition>,
+        value: DefinitionValue,
+        unk2: u8,
+        unk3: u8,
+    ) -> Definition {
         Definition {
             name,
             parent,
             unk1: 0,
-            unk2: 0,
-            unk3: 0,
+            unk2,
+            unk3,
             value,
         }
     }
 
     pub fn local(name: PoolIndex<String>, parent: PoolIndex<Function>, local: Local) -> Definition {
-        Definition::default(name, parent.cast(), DefinitionValue::Local(local))
+        Definition::default(name, parent.cast(), DefinitionValue::Local(local), 7, 60)
     }
 
     pub fn param(name: PoolIndex<String>, parent: PoolIndex<Function>, param: Parameter) -> Definition {
-        Definition::default(name, parent.cast(), DefinitionValue::Parameter(param))
+        Definition::default(name, parent.cast(), DefinitionValue::Parameter(param), 7, 60)
     }
 
     pub fn class(name: PoolIndex<String>, class: Class) -> Definition {
-        Definition::default(name, PoolIndex::UNDEFINED, DefinitionValue::Class(class))
+        Definition::default(name, PoolIndex::UNDEFINED, DefinitionValue::Class(class), 12, 60)
     }
 
     pub fn type_(name: PoolIndex<String>, type_: Type) -> Definition {
-        Definition::default(name, PoolIndex::UNDEFINED, DefinitionValue::Type(type_))
+        Definition::default(name, PoolIndex::UNDEFINED, DefinitionValue::Type(type_), 12, 60)
     }
 
     pub fn function(name: PoolIndex<String>, parent: PoolIndex<Class>, fun: Function) -> Definition {
-        Definition::default(name, parent.cast(), DefinitionValue::Function(fun))
+        Definition::default(name, parent.cast(), DefinitionValue::Function(fun), 12, 60)
     }
 
     pub fn field(name: PoolIndex<String>, parent: PoolIndex<Class>, field: Field) -> Definition {
-        Definition::default(name, parent.cast(), DefinitionValue::Field(field))
+        Definition::default(name, parent.cast(), DefinitionValue::Field(field), 12, 60)
     }
 }
 

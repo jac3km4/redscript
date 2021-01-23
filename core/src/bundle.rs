@@ -557,6 +557,11 @@ impl<A> PoolIndex<A> {
         phantom: PhantomData,
     };
 
+    pub const DEFAULT_SOURCE: PoolIndex<A> = PoolIndex {
+        index: 1,
+        phantom: PhantomData,
+    };
+
     pub fn is_undefined(&self) -> bool {
         self.index == 0
     }

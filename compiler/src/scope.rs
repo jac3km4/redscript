@@ -123,15 +123,15 @@ impl Scope {
     }
 
     pub fn resolve_function(&self, function_id: FunctionId) -> Result<PoolIndex<Function>, Error> {
-        let ident = Ident::new(function_id.mangled());
         let reference = self
             .names
-            .get(&ident)
-            .ok_or(Error::CompileError(format!("Function {} not found", ident.0)))?;
+            .get(&Ident::new(function_id.mangled()))
+            .or(self.names.get(&Ident::new(function_id.0.to_owned())))
+            .ok_or(Error::CompileError(format!("Function {} not found", function_id.0)))?;
         if let Reference::Function(idx) = reference {
             Ok(*idx)
         } else {
-            Err(Error::CompileError(format!("{} is not a function", ident.0)))
+            Err(Error::CompileError(format!("{} is not a function", function_id.0)))
         }
     }
 
@@ -154,8 +154,10 @@ impl Scope {
             Type::Prim => TypeId::Prim(index),
             Type::Class => {
                 let ident = Ident(pool.definition_name(index)?);
-                if let Some(Reference::Class(cls)) = self.names.get(&ident) {
-                    TypeId::Class(index, *cls)
+                if let Some(Reference::Class(class_idx)) = self.names.get(&ident) {
+                    TypeId::Class(index, *class_idx)
+                } else if let Some(Reference::Enum(enum_idx)) = self.names.get(&ident) {
+                    TypeId::Enum(index, *enum_idx)
                 } else {
                     Err(Error::CompileError(format!("Class {} not found", ident.0)))?
                 }
@@ -201,14 +203,11 @@ impl Scope {
                 Reference::Function(_) => Err(Error::CompileError("Functions can't be used as values".to_owned()))?,
             },
             Expr::Cast(type_, _) => self.resolve_type(self.resolve_type_name(&type_.repr())?, pool)?,
-            Expr::Call(name, _) => {
-                if let Reference::Function(idx) = self.resolve(name.clone())? {
-                    match pool.function(idx)?.return_type {
-                        Some(type_) => self.resolve_type(type_, pool)?,
-                        None => TypeId::Void,
-                    }
-                } else {
-                    Err(Error::CompileError(format!("{} can't be invoked", name.0)))?
+            Expr::Call(name, args) => {
+                let idx = self.resolve_function(FunctionId::by_name_and_args(name, args, pool, self)?)?;
+                match pool.function(idx)?.return_type {
+                    Some(type_) => self.resolve_type(type_, pool)?,
+                    None => TypeId::Void,
                 }
             }
             Expr::ArrayElem(expr, _) => match self.infer_type(expr, pool)? {
@@ -228,6 +227,7 @@ impl Scope {
                 let class = match self.infer_type(expr, pool)?.unwrapped() {
                     TypeId::Class(_, class) => *class,
                     TypeId::Struct(_, class) => *class,
+                    t @ TypeId::Enum(_, _) => return Ok(t.clone()),
                     _ => Err(Error::CompileError(format!("Can't access a member of {:?}", expr)))?,
                 };
                 match member.deref() {
