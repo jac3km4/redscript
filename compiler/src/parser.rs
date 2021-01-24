@@ -39,6 +39,7 @@ pub enum Qualifier {
     Const,
     Native,
     Exec,
+    Callback,
 }
 
 #[derive(Debug)]
@@ -94,13 +95,14 @@ peg::parser! {
 
         rule qualifier() -> Qualifier
             = "public" { Qualifier::Public }
-            / "protected" { Qualifier::Public }
+            / "protected" { Qualifier::Protected }
             / "private" { Qualifier::Private }
             / "static" { Qualifier::Static }
             / "final" { Qualifier::Final }
             / "const" { Qualifier::Const }
             / "native" { Qualifier::Native }
             / "exec" { Qualifier::Exec }
+            / "cb" { Qualifier::Callback }
 
         rule annotation() -> Annotation
             = "@" name:ident() _ "(" _ value:ident() _ ")" { Annotation { name, value } }
