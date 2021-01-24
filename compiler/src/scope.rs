@@ -142,11 +142,11 @@ impl Scope {
             .ok_or(Error::CompileError(format!("Unresolved name {}", name.0)))
     }
 
-    pub fn resolve_type_name(&self, name: &str) -> Result<PoolIndex<Type>, Error> {
+    pub fn resolve_type_name(&self, name: Ident) -> Result<PoolIndex<Type>, Error> {
         self.types
-            .get(&Ident::new(name.to_owned()))
+            .get(&name)
             .cloned()
-            .ok_or(Error::CompileError(format!("Unresolved type {}", name)))
+            .ok_or(Error::CompileError(format!("Unresolved type {}", name.0)))
     }
 
     fn resolve_type(&self, index: PoolIndex<Type>, pool: &ConstantPool) -> Result<TypeId, Error> {
@@ -194,15 +194,15 @@ impl Scope {
                 Reference::Field(idx) => self.resolve_type(pool.field(idx)?.type_, pool)?,
                 Reference::Class(idx) => {
                     let name = pool.definition_name(idx)?;
-                    self.resolve_type(self.resolve_type_name(&name)?, pool)?
+                    self.resolve_type(self.resolve_type_name(Ident(name))?, pool)?
                 }
                 Reference::Enum(idx) => {
                     let name = pool.definition_name(idx)?;
-                    self.resolve_type(self.resolve_type_name(&name)?, pool)?
+                    self.resolve_type(self.resolve_type_name(Ident(name))?, pool)?
                 }
                 Reference::Function(_) => Err(Error::CompileError("Functions can't be used as values".to_owned()))?,
             },
-            Expr::Cast(type_, _) => self.resolve_type(self.resolve_type_name(&type_.repr())?, pool)?,
+            Expr::Cast(type_, _) => self.resolve_type(self.resolve_type_name(Ident::new(type_.repr()))?, pool)?,
             Expr::Call(name, args) => {
                 let idx = self.resolve_function(FunctionId::by_name_and_args(name, args, pool, self)?)?;
                 match pool.function(idx)?.return_type {
@@ -218,7 +218,7 @@ impl Scope {
             Expr::New(name, _) => {
                 if let Reference::Class(cls) = self.resolve(name.clone())? {
                     let name = pool.definition_name(cls)?;
-                    self.resolve_type(self.resolve_type_name(&name)?, pool)?
+                    self.resolve_type(self.resolve_type_name(Ident(name))?, pool)?
                 } else {
                     Err(Error::CompileError(format!("{} can't be constructed", name.0)))?
                 }
@@ -260,17 +260,17 @@ impl Scope {
             }
             Expr::BinOp(lhs, _, _) => self.infer_type(lhs, pool)?,
             Expr::UnOp(expr, _) => self.infer_type(expr, pool)?,
-            Expr::StringLit(_) => self.resolve_type(self.resolve_type_name("String")?, pool)?,
-            Expr::FloatLit(_) => self.resolve_type(self.resolve_type_name("Float")?, pool)?,
-            Expr::IntLit(_) => self.resolve_type(self.resolve_type_name("Int32")?, pool)?,
-            Expr::UintLit(_) => self.resolve_type(self.resolve_type_name("Uint32")?, pool)?,
-            Expr::True => self.resolve_type(self.resolve_type_name("Bool")?, pool)?,
-            Expr::False => self.resolve_type(self.resolve_type_name("Bool")?, pool)?,
+            Expr::StringLit(_) => self.resolve_type(self.resolve_type_name(Ident::new("String".to_owned()))?, pool)?,
+            Expr::FloatLit(_) => self.resolve_type(self.resolve_type_name(Ident::new("Float".to_owned()))?, pool)?,
+            Expr::IntLit(_) => self.resolve_type(self.resolve_type_name(Ident::new("Int32".to_owned()))?, pool)?,
+            Expr::UintLit(_) => self.resolve_type(self.resolve_type_name(Ident::new("Uint32".to_owned()))?, pool)?,
+            Expr::True => self.resolve_type(self.resolve_type_name(Ident::new("Bool".to_owned()))?, pool)?,
+            Expr::False => self.resolve_type(self.resolve_type_name(Ident::new("Bool".to_owned()))?, pool)?,
             Expr::Null => TypeId::Null,
             Expr::This => match self.this {
                 Some(cls) => {
                     let name = pool.definition_name(cls)?;
-                    self.resolve_type(self.resolve_type_name(&name)?, pool)?
+                    self.resolve_type(self.resolve_type_name(Ident(name))?, pool)?
                 }
                 None => Err(Error::CompileError("No 'this' available".to_owned()))?,
             },

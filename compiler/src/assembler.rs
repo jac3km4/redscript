@@ -1,7 +1,7 @@
 use std::iter;
 use std::ops::Deref;
 
-use redscript::ast::{Expr, Seq};
+use redscript::ast::{Expr, Ident, Seq};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Instr, Offset};
 use redscript::definition::{Class, Local, LocalFlags};
@@ -63,13 +63,13 @@ impl Assembler {
                 self.emit(Instr::U32Const(*val as u32));
             }
             Expr::Cast(type_, expr) => {
-                let type_idx = scope.resolve_type_name(&type_.repr())?;
+                let type_idx = scope.resolve_type_name(Ident::new(type_.repr()))?;
                 self.emit(Instr::DynamicCast(type_idx, 0));
                 self.compile(expr, pool, scope)?;
             }
             Expr::Declare(type_, name, expr) => {
                 let name_idx = pool.names.add(name.0.deref().to_owned());
-                let type_ = scope.resolve_type_name(&type_.repr())?;
+                let type_ = scope.resolve_type_name(Ident::new(type_.repr()))?;
                 let local = Local::new(type_, LocalFlags::new());
                 let idx = pool.push_definition(Definition::local(name_idx, scope.function.unwrap().cast(), local));
                 self.locals.push_back(idx.cast());
