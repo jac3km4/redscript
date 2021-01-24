@@ -298,7 +298,7 @@ impl Scope {
     }
 }
 
-pub struct FunctionId<'a>(&'a str, String);
+pub struct FunctionId<'a>(pub &'a str, String);
 
 impl<'a> FunctionId<'a> {
     pub fn mangled(&self) -> String {

@@ -128,14 +128,10 @@ impl<'a> Compiler<'a> {
             .with_is_exec(decl.qualifiers.contain(Qualifier::Exec))
             .with_is_callback(decl.qualifiers.contain(Qualifier::Callback));
 
-        let name = if flags.is_static() || flags.is_final() {
-            FunctionId::from_source(&source)?.mangled()
-        } else {
-            decl.name.clone()
-        };
+        let name = FunctionId::from_source(&source)?;
         let (parent_idx, base_method, fun_idx) =
             self.determine_function_location(&name, &decl.annotations, parent_idx)?;
-        let name_idx = self.pool.names.add(name);
+        let name_idx = self.pool.names.add(name.mangled());
 
         let visibility = decl.qualifiers.visibility().unwrap_or(Visibility::Private);
         let return_type = if decl.type_.name == "void" {
@@ -203,26 +199,26 @@ impl<'a> Compiler<'a> {
 
     fn determine_function_location(
         &mut self,
-        name: &str,
+        name: &FunctionId,
         annotations: &[Annotation],
         parent: PoolIndex<Class>,
     ) -> Result<(PoolIndex<Class>, Option<PoolIndex<Function>>, PoolIndex<Function>), Error> {
         if let Some(target_name) = annotations.iter().find_map(|ann| ann.get_insert_target()) {
             if let Reference::Class(target_class) = self.scope.resolve(Ident::new(target_name.to_owned()))? {
                 let class = self.pool.class(target_class)?;
-                let existing_idx = class
-                    .functions
-                    .iter()
-                    .find(|fun| self.pool.definition_name(**fun).unwrap().as_str() == name);
+                let existing_idx = class.functions.iter().find(|fun| {
+                    let str = self.pool.definition_name(**fun).unwrap();
+                    str.as_str() == name.mangled() || str.as_str() == name.0
+                });
                 if let Some(idx) = existing_idx {
                     let fun = self.pool.function(*idx)?;
                     Ok((target_class, fun.base_method, *idx))
                 } else {
-                    let error = format!("Method {} not found on {}", name, target_name);
+                    let error = format!("Method {} not found on {}", name.0, target_name);
                     Err(Error::CompileError(error))
                 }
             } else {
-                let error = format!("Can't find object {} to insert method in", name);
+                let error = format!("Can't find object {} to insert method in", name.0);
                 Err(Error::CompileError(error))
             }
         } else {

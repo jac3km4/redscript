@@ -53,3 +53,17 @@ public final static Bool CanItemBeDisassembled(GameInstance gameInstance, ItemID
 public final static Bool CanPartBeUnequipped(ItemID itemID) {
   return true;
 }
+
+@insert(SingleplayerMenuGameController)
+private void PopulateMenuItemList() {
+  if(this.m_savesCount > 0) {
+    this.AddMenuItem(GetLocalizedText("UI-ScriptExports-Continue0"), PauseMenuAction.QuickLoad);
+  };
+  this.AddMenuItem(GetLocalizedText("UI-ScriptExports-NewGame0"), n"OnNewGame");
+  this.AddMenuItem(GetLocalizedText("UI-ScriptExports-LoadGame0"), n"OnLoadGame");
+  this.AddMenuItem(GetLocalizedText("UI-Labels-Settings"), n"OnSwitchToSettings");
+  this.AddMenuItem(GetLocalizedText("UI-Labels-Credits"), n"OnSwitchToCredits");
+  this.AddMenuItem("DEBUG NEW GAME", n"OnDebug");
+  this.AddMenuItem("TOGGLE GOG MENU", n"OnGOGProfile");
+  this.SetCursorOverWidget(inkCompoundRef.GetWidgetByIndex(this.m_menuList, 0));
+}
