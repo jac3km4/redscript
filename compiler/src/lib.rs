@@ -139,23 +139,30 @@ impl<'a> Compiler<'a> {
         source: FunctionSource,
         parent_idx: PoolIndex<Class>,
     ) -> Result<PoolIndex<Function>, Error> {
-        let name_idx = self.pool.names.add(FunctionId::from_source(&source)?.mangled());
-        let name = Ident(self.pool.names.get(name_idx)?);
+        let decl = &source.declaration;
+        let flags = FunctionFlags::new()
+            .with_is_static(decl.qualifiers.contain(Qualifier::Static))
+            .with_is_const(decl.qualifiers.contain(Qualifier::Const))
+            .with_is_final(decl.qualifiers.contain(Qualifier::Final))
+            .with_is_exec(decl.qualifiers.contain(Qualifier::Exec))
+            .with_is_callback(decl.qualifiers.contain(Qualifier::Callback));
 
-        let decl = source.declaration;
+        let name = if flags.is_static() || flags.is_final() {
+            FunctionId::from_source(&source)?.mangled()
+        } else {
+            decl.name.clone()
+        };
         let (parent_idx, base_method, fun_idx) =
-            self.determine_function_location(name, &decl.annotations, parent_idx)?;
+            self.determine_function_location(&name, &decl.annotations, parent_idx)?;
+        let name_idx = self.pool.names.add(name);
+
         let visibility = decl.qualifiers.visibility().unwrap_or(Visibility::Private);
         let return_type = if decl.type_.name == "void" {
             None
         } else {
             Some(self.define_type(&decl.type_)?)
         };
-        let flags = FunctionFlags::new()
-            .with_is_static(decl.qualifiers.contain(Qualifier::Static))
-            .with_is_const(decl.qualifiers.contain(Qualifier::Const))
-            .with_is_final(decl.qualifiers.contain(Qualifier::Final))
-            .with_is_exec(decl.qualifiers.contain(Qualifier::Exec));
+
         let mut parameters = Vec::new();
 
         for decl in &source.parameters {
@@ -215,7 +222,7 @@ impl<'a> Compiler<'a> {
 
     fn determine_function_location(
         &mut self,
-        name: Ident,
+        name: &str,
         annotations: &[Annotation],
         parent: PoolIndex<Class>,
     ) -> Result<(PoolIndex<Class>, Option<PoolIndex<Function>>, PoolIndex<Function>), Error> {
@@ -225,16 +232,16 @@ impl<'a> Compiler<'a> {
                 let existing_idx = class
                     .functions
                     .iter()
-                    .find(|fun| self.pool.definition_name(**fun).unwrap() == name.0);
+                    .find(|fun| self.pool.definition_name(**fun).unwrap().as_str() == name);
                 if let Some(idx) = existing_idx {
                     let fun = self.pool.function(*idx)?;
                     Ok((target_class, fun.base_method, *idx))
                 } else {
-                    let error = format!("Method {} not found on {}", name.0, target_name);
+                    let error = format!("Method {} not found on {}", name, target_name);
                     Err(Error::CompileError(error))
                 }
             } else {
-                let error = format!("Can't find object {} to insert method in", name.0);
+                let error = format!("Can't find object {} to insert method in", name);
                 Err(Error::CompileError(error))
             }
         } else {

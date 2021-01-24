@@ -116,6 +116,9 @@ pub fn write_definition<W: Write>(
             if fun.flags.is_const() {
                 write!(out, "const ")?;
             }
+            if fun.flags.is_callback() {
+                write!(out, "cb ")?;
+            }
             write!(out, "{} {}({})", return_type, pretty_name, params)?;
 
             if fun.flags.has_body() {
