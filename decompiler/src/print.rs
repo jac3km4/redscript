@@ -2,7 +2,7 @@ use std::io::Write;
 use std::ops::Deref;
 use std::rc::Rc;
 
-use redscript::ast::{BinOp, Expr, Ident, Seq, SwitchCase, UnOp};
+use redscript::ast::{BinOp, Expr, Ident, LiteralType, Seq, SwitchCase, UnOp};
 use redscript::bundle::ConstantPool;
 use redscript::definition::{Definition, DefinitionValue, Function, Type};
 use redscript::error::Error;
@@ -224,7 +224,10 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, depth: usize) -> Result<(), Er
 
     match expr {
         Expr::Ident(ident) => write!(out, "{}", ident.0)?,
-        Expr::StringLit(str) => write!(out, "\"{}\"", str)?,
+        Expr::StringLit(LiteralType::String, str) => write!(out, "\"{}\"", str)?,
+        Expr::StringLit(LiteralType::Name, str) => write!(out, "n\"{}\"", str)?,
+        Expr::StringLit(LiteralType::Resource, str) => write!(out, "r\"{}\"", str)?,
+        Expr::StringLit(LiteralType::TweakDbId, str) => write!(out, "t\"{}\"", str)?,
         Expr::IntLit(lit) => write!(out, "{}", lit)?,
         Expr::UintLit(lit) => write!(out, "{}", lit)?,
         Expr::FloatLit(lit) => write!(out, "{}", lit)?,

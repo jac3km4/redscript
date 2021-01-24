@@ -1,8 +1,8 @@
 use std::io;
 use std::ops::Deref;
 
-use redscript::ast::{BinOp, Expr, Ident, Seq, SwitchCase, Target, TypeName};
-use redscript::bundle::{ConstantPool, PoolIndex, Resource, TweakDbId};
+use redscript::ast::{BinOp, Expr, Ident, LiteralType, Seq, SwitchCase, Target, TypeName};
+use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{CodeCursor, Instr, Offset, Position};
 use redscript::error::Error;
 
@@ -24,18 +24,6 @@ impl<'a> Decompiler<'a> {
 
     fn definition_ident<A>(&self, index: PoolIndex<A>) -> Result<Ident, Error> {
         Ok(Ident(self.pool.definition_name(index)?))
-    }
-
-    fn resource_name(&self, index: PoolIndex<Resource>) -> Result<Expr, Error> {
-        Ok(Expr::StringLit(self.pool.resources.get(index)?.deref().clone()))
-    }
-
-    fn tweakdb_name(&self, index: PoolIndex<TweakDbId>) -> Result<Expr, Error> {
-        Ok(Expr::StringLit(self.pool.tweakdb_indexes.get(index)?.deref().clone()))
-    }
-
-    fn literal(&self, index: PoolIndex<String>) -> Result<Expr, Error> {
-        Ok(Expr::StringLit((self.pool.names.get(index)?).deref().clone()))
     }
 
     fn consume_n(&mut self, n: usize) -> Result<Vec<Expr>, Error> {
@@ -162,15 +150,19 @@ impl<'a> Decompiler<'a> {
             Instr::U64Const(val) => Expr::UintLit(val),
             Instr::F32Const(val) => Expr::FloatLit(val.into()),
             Instr::F64Const(val) => Expr::FloatLit(val),
-            Instr::NameConst(idx) => self.literal(idx)?,
+            Instr::NameConst(idx) => Expr::StringLit(LiteralType::Name, self.pool.names.get(idx)?.deref().clone()),
             Instr::EnumConst(enum_, member) => {
                 let enum_ident = self.definition_ident(enum_)?;
                 let member_ident = self.definition_ident(member)?;
                 Expr::Member(Box::new(Expr::Ident(enum_ident)), member_ident)
             }
-            Instr::StringConst(str) => Expr::StringLit(String::from_utf8(str).unwrap()),
-            Instr::TweakDBIdConst(idx) => self.tweakdb_name(idx)?,
-            Instr::ResourceConst(idx) => self.resource_name(idx)?,
+            Instr::StringConst(str) => Expr::StringLit(LiteralType::String, String::from_utf8(str).unwrap()),
+            Instr::TweakDbIdConst(idx) => {
+                Expr::StringLit(LiteralType::TweakDbId, self.pool.tweakdb_ids.get(idx)?.deref().clone())
+            }
+            Instr::ResourceConst(idx) => {
+                Expr::StringLit(LiteralType::Resource, self.pool.resources.get(idx)?.deref().clone())
+            }
             Instr::TrueConst => Expr::True,
             Instr::FalseConst => Expr::False,
             Instr::Unk1(_, _, _, _, _, _) => Err(Error::DecompileError("Unexpected Unk1".to_owned()))?,

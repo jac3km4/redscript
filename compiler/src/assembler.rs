@@ -1,7 +1,7 @@
 use std::iter;
 use std::ops::Deref;
 
-use redscript::ast::{Expr, Ident, Seq};
+use redscript::ast::{Expr, Ident, LiteralType, Seq};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Instr, Offset};
 use redscript::definition::{Definition, Function};
@@ -50,8 +50,20 @@ impl Assembler {
                     _ => panic!("Shouldn't get here"),
                 };
             }
-            Expr::StringLit(lit) => {
+            Expr::StringLit(LiteralType::String, lit) => {
                 self.emit(Instr::StringConst(lit.as_bytes().to_vec()));
+            }
+            Expr::StringLit(LiteralType::Name, lit) => {
+                let idx = pool.names.add(lit.clone());
+                self.emit(Instr::NameConst(idx));
+            }
+            Expr::StringLit(LiteralType::Resource, lit) => {
+                let idx = pool.resources.add(lit.clone());
+                self.emit(Instr::ResourceConst(idx));
+            }
+            Expr::StringLit(LiteralType::TweakDbId, lit) => {
+                let idx = pool.tweakdb_ids.add(lit.clone());
+                self.emit(Instr::TweakDbIdConst(idx));
             }
             Expr::FloatLit(val) => {
                 self.emit(Instr::F64Const(*val));
