@@ -30,6 +30,12 @@ impl Assembler {
         Offset::new(self.position as i16)
     }
 
+    fn prefix(mut self, instr: Instr) -> Self {
+        self.position += 1 + instr.size();
+        self.code.push_front(shifted(instr));
+        self
+    }
+
     fn emit(&mut self, instr: Instr) {
         self.position += 1 + instr.size();
         self.code.push_back(shifted(instr));
@@ -197,8 +203,7 @@ impl Assembler {
                 TypeId::Class(_, class) => {
                     let object = Assembler::from_expr(expr, pool, scope)?;
                     let field = scope.resolve_field(ident.clone(), *class, pool)?;
-                    let mut inner = Assembler::new();
-                    inner.emit(Instr::ObjectField(field));
+                    let inner = Assembler::from_instr(Instr::ObjectField(field));
                     self.emit(Instr::Context(object.offset() + inner.offset()));
                     self.append(object);
                     self.append(inner)
@@ -221,6 +226,7 @@ impl Assembler {
             }
             Expr::MethodCall(expr, ident, args) => {
                 let fun_id = FunctionId::by_name_and_args(ident, args, pool, scope)?;
+                let type_ = scope.infer_type(expr, pool)?;
                 if let Some(Reference::Class(class)) = Self::get_static_reference(expr, scope) {
                     let fun_idx = scope.resolve_method(fun_id, class, pool)?;
                     let fun = pool.function(fun_idx)?;
@@ -229,8 +235,12 @@ impl Assembler {
                     } else {
                         Err(Error::CompileError(format!("{} is not static", ident.0)))?
                     }
-                } else if let TypeId::Class(_, class) = scope.infer_type(expr, pool)?.unwrapped() {
-                    let object = Assembler::from_expr(expr, pool, scope)?;
+                } else if let TypeId::Class(_, class) = type_.unwrapped() {
+                    let object = if let TypeId::WeakRef(_, _) = type_ {
+                        Assembler::from_expr(expr, pool, scope)?.prefix(Instr::WeakRefToRef)
+                    } else {
+                        Assembler::from_expr(expr, pool, scope)?
+                    };
                     let fun = scope.resolve_method(fun_id, *class, pool)?;
                     let mut inner = Assembler::new();
                     inner.compile_call(fun, args.iter(), pool, scope)?;
@@ -290,6 +300,12 @@ impl Assembler {
         }
         self.append(args_code);
         Ok(())
+    }
+
+    fn from_instr(instr: Instr) -> Assembler {
+        let mut code = Assembler::new();
+        code.emit(instr);
+        code
     }
 
     fn from_expr(expr: &Expr, pool: &mut ConstantPool, scope: &mut Scope) -> Result<Assembler, Error> {
