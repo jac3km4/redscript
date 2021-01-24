@@ -26,7 +26,7 @@ pub enum Instr {
     NameConst(PoolIndex<String>),
     EnumConst(PoolIndex<Enum>, PoolIndex<i64>),
     StringConst(Vec<u8>),
-    TweakDBIdConst(PoolIndex<TweakDbId>),
+    TweakDbIdConst(PoolIndex<TweakDbId>),
     ResourceConst(PoolIndex<Resource>),
     TrueConst,
     FalseConst,
@@ -127,7 +127,7 @@ impl Instr {
             Instr::NameConst(_) => 8,
             Instr::EnumConst(_, _) => 16,
             Instr::StringConst(bytes) => 4 + bytes.len() as u16,
-            Instr::TweakDBIdConst(_) => 8,
+            Instr::TweakDbIdConst(_) => 8,
             Instr::ResourceConst(_) => 8,
             Instr::Unk1(_, _, _, _, _, _) => 19,
             Instr::Assign => 0,
@@ -231,7 +231,7 @@ impl Decode for Instr {
             14 => Ok(Instr::NameConst(input.decode()?)),
             15 => Ok(Instr::EnumConst(input.decode()?, input.decode()?)),
             16 => Ok(Instr::StringConst(input.decode_vec_prefixed::<u32, u8>()?)),
-            17 => Ok(Instr::TweakDBIdConst(input.decode()?)),
+            17 => Ok(Instr::TweakDbIdConst(input.decode()?)),
             18 => Ok(Instr::ResourceConst(input.decode()?)),
             19 => Ok(Instr::TrueConst),
             20 => Ok(Instr::FalseConst),
@@ -410,7 +410,7 @@ impl Encode for Instr {
                 output.encode(&16u8)?;
                 output.encode_slice_prefixed::<u32, u8>(str)?;
             }
-            Instr::TweakDBIdConst(idx) => {
+            Instr::TweakDbIdConst(idx) => {
                 output.encode(&17u8)?;
                 output.encode(idx)?;
             }

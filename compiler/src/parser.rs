@@ -1,6 +1,6 @@
 use peg::error::ParseError;
 use peg::str::LineCol;
-use redscript::ast::{BinOp, Expr, Ident, Seq, TypeName, UnOp};
+use redscript::ast::{BinOp, Expr, Ident, LiteralType, Seq, TypeName, UnOp};
 use redscript::definition::Visibility;
 
 #[derive(Debug)]
@@ -103,6 +103,11 @@ peg::parser! {
             / "native" { Qualifier::Native }
             / "exec" { Qualifier::Exec }
             / "cb" { Qualifier::Callback }
+
+        rule literal_type() -> LiteralType
+            = "n" { LiteralType::Name }
+            / "r" { LiteralType::Resource }
+            / "t" { LiteralType::TweakDbId }
 
         rule annotation() -> Annotation
             = "@" name:ident() _ "(" _ value:ident() _ ")" { Annotation { name, value } }
@@ -214,7 +219,7 @@ peg::parser! {
             "false" { Expr::False }
             "null" { Expr::Null }
             "this" { Expr::This }
-            "\"" str:$((!['"'] [_])*) "\"" { Expr::StringLit(str.to_owned()) }
+            lit_type:literal_type()? "\"" str:$((!['"'] [_])*) "\"" { Expr::StringLit(lit_type.unwrap_or(LiteralType::String), str.to_owned()) }
             n:number() { n }
             id:ident() _ "(" _ params:commasep(<expr()>) _ ")" { Expr::Call(Ident::new(id), params) }
             id:ident() { Expr::Ident(Ident::new(id)) }

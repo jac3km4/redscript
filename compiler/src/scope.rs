@@ -1,4 +1,4 @@
-use redscript::ast::{BinOp, Expr, Ident, UnOp};
+use redscript::ast::{BinOp, Expr, Ident, LiteralType, UnOp};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::definition::{Class, Enum};
 use redscript::definition::{DefinitionValue, Field, Function, Type};
@@ -259,7 +259,18 @@ impl Scope {
             }
             Expr::BinOp(lhs, _, _) => self.infer_type(lhs, pool)?,
             Expr::UnOp(expr, _) => self.infer_type(expr, pool)?,
-            Expr::StringLit(_) => self.resolve_type(self.resolve_type_name(Ident::new("String".to_owned()))?, pool)?,
+            Expr::StringLit(LiteralType::String, _) => {
+                self.resolve_type(self.resolve_type_name(Ident::new("String".to_owned()))?, pool)?
+            }
+            Expr::StringLit(LiteralType::Name, _) => {
+                self.resolve_type(self.resolve_type_name(Ident::new("CName".to_owned()))?, pool)?
+            }
+            Expr::StringLit(LiteralType::Resource, _) => {
+                self.resolve_type(self.resolve_type_name(Ident::new("ResRef".to_owned()))?, pool)?
+            }
+            Expr::StringLit(LiteralType::TweakDbId, _) => {
+                self.resolve_type(self.resolve_type_name(Ident::new("TweakDBID".to_owned()))?, pool)?
+            }
             Expr::FloatLit(_) => self.resolve_type(self.resolve_type_name(Ident::new("Float".to_owned()))?, pool)?,
             Expr::IntLit(_) => self.resolve_type(self.resolve_type_name(Ident::new("Int32".to_owned()))?, pool)?,
             Expr::UintLit(_) => self.resolve_type(self.resolve_type_name(Ident::new("Uint32".to_owned()))?, pool)?,

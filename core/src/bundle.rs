@@ -116,7 +116,7 @@ impl Encode for Header {
 pub struct ConstantPool {
     header: Header,
     pub names: Names<String>,
-    pub tweakdb_indexes: Names<TweakDbId>,
+    pub tweakdb_ids: Names<TweakDbId>,
     pub resources: Names<Resource>,
     definitions: Vec<Definition>,
 }
@@ -129,7 +129,7 @@ impl ConstantPool {
         let mut cursor = io::Cursor::new(buffer);
 
         let names = Names::decode_from(&mut cursor, &input.decode_vec(header.names.count)?)?;
-        let tweakdb_indexes = Names::decode_from(&mut cursor, &input.decode_vec(header.tweakdb_indexes.count)?)?;
+        let tweakdb_ids = Names::decode_from(&mut cursor, &input.decode_vec(header.tweakdb_indexes.count)?)?;
         let resources = Names::decode_from(&mut cursor, &input.decode_vec(header.resources.count)?)?;
 
         input.seek(io::SeekFrom::Start(header.definitions.offset.into()))?;
@@ -146,7 +146,7 @@ impl ConstantPool {
         let result = ConstantPool {
             header,
             names,
-            tweakdb_indexes,
+            tweakdb_ids,
             resources,
             definitions,
         };
@@ -160,7 +160,7 @@ impl ConstantPool {
             .names
             .strings
             .iter()
-            .chain(self.tweakdb_indexes.strings.iter())
+            .chain(self.tweakdb_ids.strings.iter())
             .chain(self.resources.strings.iter())
         {
             match dedup_map.entry(str.clone()) {
@@ -183,9 +183,9 @@ impl ConstantPool {
         let names = TableHeader::new(&name_offsets, self.names.strings.len() as u32, position)?;
         output.write_all(&name_offsets)?;
 
-        let tweakdb_offsets = self.tweakdb_indexes.encoded_offsets(&dedup_map)?;
+        let tweakdb_offsets = self.tweakdb_ids.encoded_offsets(&dedup_map)?;
         let position = output.stream_position()? as u32;
-        let tweakdb_indexes = TableHeader::new(&tweakdb_offsets, self.tweakdb_indexes.strings.len() as u32, position)?;
+        let tweakdb_indexes = TableHeader::new(&tweakdb_offsets, self.tweakdb_ids.strings.len() as u32, position)?;
         output.write_all(&tweakdb_offsets)?;
 
         let resource_offsets = self.resources.encoded_offsets(&dedup_map)?;

@@ -3,7 +3,7 @@ use std::rc::Rc;
 #[derive(Debug)]
 pub enum Expr {
     Ident(Ident),
-    StringLit(String),
+    StringLit(LiteralType, String),
     FloatLit(f64),
     IntLit(i64),
     UintLit(u64),
@@ -95,6 +95,14 @@ impl Seq {
     pub fn new(exprs: Vec<Expr>) -> Seq {
         Seq { exprs }
     }
+}
+
+#[derive(Debug)]
+pub enum LiteralType {
+    String,
+    Name,
+    Resource,
+    TweakDbId,
 }
 
 #[derive(Debug)]
