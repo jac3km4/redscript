@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use modular_bitfield::prelude::*;
 
-use crate::bundle::{DefinitionHeader, DefinitionType, PoolIndex};
+use crate::bundle::{ConstantPool, DefinitionHeader, DefinitionType, PoolIndex};
 use crate::bytecode::Code;
 use crate::decode::{Decode, DecodeExt};
 use crate::encode::{Encode, EncodeExt};
@@ -58,6 +58,23 @@ impl Definition {
     pub fn source(&self) -> Option<&SourceReference> {
         match self.value {
             DefinitionValue::Function(ref fun) => fun.source.as_ref(),
+            _ => None,
+        }
+    }
+
+    pub fn first_line(&self, pool: &ConstantPool) -> Option<u32> {
+        match self.value {
+            DefinitionValue::Function(ref fun) => fun.source.as_ref().map(|source| source.line),
+            DefinitionValue::Class(ref class) => class
+                .functions
+                .iter()
+                .filter_map(|idx| {
+                    pool.function(*idx)
+                        .ok()
+                        .and_then(|fun| fun.source.as_ref())
+                        .map(|source| source.line)
+                })
+                .min(),
             _ => None,
         }
     }
