@@ -1,7 +1,7 @@
 use std::io;
 use std::ops::Deref;
 
-use redscript::ast::{BinOp, Expr, Ident, Seq, SwitchCase, Target};
+use redscript::ast::{BinOp, Expr, Ident, Seq, SwitchCase, Target, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex, Resource, TweakDbId};
 use redscript::bytecode::{CodeCursor, Instr, Offset, Position};
 use redscript::error::Error;
@@ -282,14 +282,22 @@ impl<'a> Decompiler<'a> {
             Instr::WeakRefToBool => self.consume_call("ToBool", 1)?,
             Instr::EnumToI32(_, _) => self.consume_call("ToInt", 1)?,
             Instr::I32ToEnum(_, _) => self.consume_call("ToEnum", 1)?,
-            Instr::DynamicCast(_, _) => self.consume_call("Cast", 1)?,
+            Instr::DynamicCast(type_, _) => {
+                let name = self.pool.definition_name(type_)?;
+                let type_name = TypeName {
+                    name: name.deref().to_owned(),
+                    arguments: vec![],
+                };
+                let expr = self.consume()?;
+                Expr::Cast(type_name, Box::new(expr))
+            }
             Instr::ToString(_) => self.consume_call("ToString", 1)?,
             Instr::ToVariant(_) => self.consume_call("ToVariant", 1)?,
             Instr::FromVariant(_) => self.consume_call("FromVariant", 1)?,
             Instr::VariantIsValid => self.consume_call("IsValid", 1)?,
             Instr::VariantIsRef => self.consume_call("IsHandle", 1)?,
             Instr::VariantIsArray => self.consume_call("IsArray", 1)?,
-            Instr::VatiantToCName => self.consume_call("Unknown", 1)?,
+            Instr::VatiantToCName => self.consume_call("ToCName", 1)?,
             Instr::VariantToString => self.consume_call("ToString", 1)?,
             Instr::WeakRefToRef => self.consume_call("WeakRefToRef", 1)?,
             Instr::RefToWeakRef => self.consume_call("RefToWeakRef", 1)?,
