@@ -3,9 +3,8 @@ use core::panic;
 use std::rc::Rc;
 
 use assembler::Assembler;
-use im::hashmap::Entry;
 use parser::Annotation;
-use redscript::ast::{Ident, Seq, TypeName};
+use redscript::ast::{Ident, Seq};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Instr};
 use redscript::definition::{
@@ -66,24 +65,6 @@ impl<'a> Compiler<'a> {
         self.scope.names.insert(name, Reference::Class(idx));
 
         Ok(())
-    }
-
-    fn define_type(&mut self, type_name: &TypeName) -> Result<PoolIndex<Type>, Error> {
-        let type_ = match type_name.name.as_str() {
-            "ref" => Type::Ref(self.define_type(&type_name.arguments[0])?),
-            "wref" => Type::WeakRef(self.define_type(&type_name.arguments[0])?),
-            "array" => Type::Array(self.define_type(&type_name.arguments[0])?),
-            _ => Type::Class,
-        };
-
-        match self.scope.types.entry(Ident::new(type_name.repr())) {
-            Entry::Occupied(entry) => Ok(entry.get().clone()),
-            Entry::Vacant(slot) => {
-                let name = self.pool.names.add(type_name.repr());
-                let idx = self.pool.push_definition(Definition::type_(name, type_));
-                Ok(slot.insert(idx.cast()).clone())
-            }
-        }
     }
 
     fn define_class(&mut self, source: ClassSource) -> Result<(), Error> {
@@ -160,13 +141,13 @@ impl<'a> Compiler<'a> {
         let return_type = if decl.type_.name == "void" {
             None
         } else {
-            Some(self.define_type(&decl.type_)?)
+            Some(self.scope.resolve_type_name(Ident::new(decl.type_.repr()))?)
         };
 
         let mut parameters = Vec::new();
 
         for decl in &source.parameters {
-            let type_ = self.define_type(&decl.type_)?;
+            let type_ = self.scope.resolve_type_name(Ident::new(decl.type_.repr()))?;
             let flags = ParameterFlags::new();
             let param = Parameter { type_, flags };
             let name = self.pool.names.add(decl.name.clone());
@@ -205,7 +186,7 @@ impl<'a> Compiler<'a> {
     fn define_field(&mut self, field: Declaration, parent: PoolIndex<Class>) -> Result<PoolIndex<Field>, Error> {
         let name = self.pool.names.add(field.name);
         let visibility = field.qualifiers.visibility().unwrap_or(Visibility::Private);
-        let type_ = self.define_type(&field.type_)?;
+        let type_ = self.scope.resolve_type_name(Ident::new(field.type_.repr()))?;
         let flags = FieldFlags::new();
         let field = Field {
             visibility,
