@@ -4,8 +4,8 @@ use std::ops::Deref;
 use redscript::ast::{Expr, Ident, Seq};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Instr, Offset};
-use redscript::definition::{Class, Local, LocalFlags};
 use redscript::definition::{Definition, Function};
+use redscript::definition::{Local, LocalFlags};
 use redscript::error::Error;
 
 use crate::scope::{FunctionId, Scope};
@@ -181,13 +181,53 @@ impl Assembler {
                 self.append(cond_code);
                 self.append(body_code);
             }
-            Expr::Member(expr, member) => {
-                self.compile_member_expr(expr, member, pool, scope)?;
-            }
+            Expr::Member(expr, ident) => match scope.infer_type(expr, pool)?.unwrapped() {
+                TypeId::Class(_, class) => {
+                    let object = Assembler::from_expr(expr, pool, scope)?;
+                    let field = scope.resolve_field(ident.clone(), *class, pool)?;
+                    let mut inner = Assembler::new();
+                    inner.emit(Instr::ObjectField(field));
+                    self.emit(Instr::Context(object.offset() + inner.offset()));
+                    self.append(object);
+                    self.append(inner)
+                }
+                TypeId::Struct(_, class) => {
+                    let field = scope.resolve_field(ident.clone(), *class, pool)?;
+                    self.emit(Instr::StructField(field));
+                    self.compile(expr, pool, scope)?;
+                }
+                TypeId::Enum(_, enum_) => {
+                    let member_idx = scope.resolve_enum_member(ident.clone(), *enum_, pool)?;
+                    self.emit(Instr::EnumConst(*enum_, member_idx));
+                }
+                _ => Err(Error::CompileError(format!("Can't access a member of {:?}", expr)))?,
+            },
             Expr::Call(ident, args) => {
                 let fun_id = FunctionId::by_name_and_args(ident, args, pool, scope)?;
                 let fun = scope.resolve_function(fun_id)?;
                 self.compile_call(fun, args.iter(), pool, scope)?;
+            }
+            Expr::MethodCall(expr, ident, args) => {
+                let fun_id = FunctionId::by_name_and_args(ident, args, pool, scope)?;
+                if let Some(Reference::Class(class)) = Self::get_static_reference(expr, scope) {
+                    let fun_idx = scope.resolve_method(fun_id, class, pool)?;
+                    let fun = pool.function(fun_idx)?;
+                    if fun.flags.is_static() {
+                        self.compile_call(fun_idx, args.iter(), pool, scope)?
+                    } else {
+                        Err(Error::CompileError(format!("{} is not static", ident.0)))?
+                    }
+                } else if let TypeId::Class(_, class) = scope.infer_type(expr, pool)?.unwrapped() {
+                    let object = Assembler::from_expr(expr, pool, scope)?;
+                    let fun = scope.resolve_method(fun_id, *class, pool)?;
+                    let mut inner = Assembler::new();
+                    inner.compile_call(fun, args.iter(), pool, scope)?;
+                    self.emit(Instr::Context(object.offset() + inner.offset()));
+                    self.append(object);
+                    self.append(inner);
+                } else {
+                    Err(Error::CompileError(format!("Can't call methods on {:?}", expr)))?
+                }
             }
             Expr::BinOp(lhs, rhs, op) => {
                 let fun_id = FunctionId::by_binop(lhs, rhs, *op, pool, scope)?;
@@ -237,97 +277,6 @@ impl Assembler {
             self.emit(Instr::InvokeStatic(args_code.offset(), 0, fun_idx));
         }
         self.append(args_code);
-        Ok(())
-    }
-
-    fn compile_member_expr(
-        &mut self,
-        expr: &Expr,
-        member: &Expr,
-        pool: &mut ConstantPool,
-        scope: &mut Scope,
-    ) -> Result<(), Error> {
-        match Self::get_static_reference(expr, scope) {
-            None => self.compile_instance_access(expr, member, pool, scope),
-            Some(Reference::Class(class)) => self.compile_static_access(class, member, pool, scope),
-            Some(Reference::Enum(enum_)) => match member.deref() {
-                Expr::Ident(ident) => {
-                    let member_idx = scope.resolve_enum_member(ident.clone(), enum_, pool)?;
-                    self.emit(Instr::EnumConst(enum_, member_idx));
-                    Ok(())
-                }
-                _ => Err(Error::CompileError("Unknown operation on enum".to_owned())),
-            },
-            _ => panic!("Shouldn't get here"),
-        }
-    }
-
-    fn compile_static_access(
-        &mut self,
-        class: PoolIndex<Class>,
-        member: &Expr,
-        pool: &mut ConstantPool,
-        scope: &mut Scope,
-    ) -> Result<(), Error> {
-        match member.deref() {
-            Expr::Call(ident, args) => {
-                let fun_id = FunctionId::by_name_and_args(ident, args, pool, scope)?;
-                let fun_idx = scope.resolve_method(fun_id, class, pool)?;
-                let fun = pool.function(fun_idx)?;
-                if fun.flags.is_static() {
-                    self.compile_call(fun_idx, args.iter(), pool, scope)
-                } else {
-                    Err(Error::CompileError(format!("{} is not static", ident.0)))
-                }
-            }
-            _ => Err(Error::CompileError("Can't access fields statically".to_owned())),
-        }
-    }
-
-    fn compile_instance_access(
-        &mut self,
-        expr: &Expr,
-        member: &Expr,
-        pool: &mut ConstantPool,
-        scope: &mut Scope,
-    ) -> Result<(), Error> {
-        match scope.infer_type(expr, pool)?.unwrapped() {
-            TypeId::Class(_, class) => {
-                let code = match member.deref() {
-                    Expr::Ident(ident) => {
-                        let field = scope.resolve_field(ident.clone(), *class, pool)?;
-                        let mut code = Assembler::new();
-                        code.emit(Instr::ObjectField(field));
-                        code
-                    }
-                    Expr::Call(ident, args) => {
-                        let fun_id = FunctionId::by_name_and_args(ident, args, pool, scope)?;
-                        let fun = scope.resolve_method(fun_id, *class, pool)?;
-                        let mut code = Assembler::new();
-                        code.compile_call(fun, args.iter(), pool, scope)?;
-                        code
-                    }
-                    _ => {
-                        let error = format!("Invalid class instance operation: {:?}", member);
-                        Err(Error::CompileError(error))?
-                    }
-                };
-                let object = Assembler::from_expr(expr, pool, scope)?;
-                self.emit(Instr::Context(object.offset() + code.offset()));
-                self.append(object);
-                self.append(code)
-            }
-            TypeId::Struct(_, class) => {
-                if let Expr::Ident(ident) = member.deref() {
-                    let field = scope.resolve_field(ident.clone(), *class, pool)?;
-                    self.emit(Instr::StructField(field));
-                    self.compile(expr, pool, scope)?;
-                } else {
-                    Err(Error::CompileError(format!("Only field access allowed on structs")))?
-                }
-            }
-            other => Err(Error::CompileError(format!("Can't access members of {:?}", other)))?,
-        };
         Ok(())
     }
 
