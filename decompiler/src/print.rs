@@ -240,6 +240,11 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, depth: usize) -> Result<(), Er
             write_expr(out, rhs, 0)?
         }
         Expr::Call(fun, params) => write_call(out, fun, params)?,
+        Expr::MethodCall(obj, fun, params) => {
+            write_expr(out, obj, 0)?;
+            write!(out, ".")?;
+            write_call(out, fun, params)?
+        }
         Expr::ArrayElem(arr, idx) => {
             write_expr(out, arr, 0)?;
             write!(out, "[")?;
@@ -308,18 +313,8 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, depth: usize) -> Result<(), Er
             write!(out, "{}}}", padding)?;
         }
         Expr::Member(expr, accessor) => {
-            // remove intermediate .this
-            if let Expr::Member(lhs, rhs) = accessor.deref() {
-                if let Expr::This = lhs.deref() {
-                    write_expr(out, expr, 0)?;
-                    write!(out, ".")?;
-                    write_expr(out, rhs, 0)?;
-                    return Ok(());
-                }
-            }
             write_expr(out, expr, 0)?;
-            write!(out, ".")?;
-            write_expr(out, accessor, 0)?;
+            write!(out, ".{}", accessor.0)?;
         }
         Expr::BinOp(lhs, rhs, op) => {
             write_binop(out, lhs, rhs, *op)?;

@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use redscript::ast::{BinOp, Expr, Ident, UnOp};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::definition::{Class, Enum};
@@ -214,10 +212,23 @@ impl Scope {
                     None => TypeId::Void,
                 }
             }
+            Expr::MethodCall(expr, ident, args) => {
+                let class = match self.infer_type(expr, pool)?.unwrapped() {
+                    TypeId::Class(_, class) => *class,
+                    TypeId::Struct(_, class) => *class,
+                    _ => Err(Error::CompileError(format!("{:?} doesn't have methods", expr)))?,
+                };
+                let function_id = FunctionId::by_name_and_args(ident, args, pool, self)?;
+                let method = self.resolve_method(function_id, class, pool)?;
+                match pool.function(method)?.return_type {
+                    None => TypeId::Void,
+                    Some(return_type) => self.resolve_type(return_type, pool)?,
+                }
+            }
             Expr::ArrayElem(expr, _) => match self.infer_type(expr, pool)? {
                 TypeId::Array(_, inner) => *inner,
                 TypeId::StaticArray(_, inner, _) => *inner,
-                _ => Err(Error::CompileError("Can't be accessed as an array".to_owned()))?,
+                _ => Err(Error::CompileError(format!("{:?} can't be indexed", expr)))?,
             },
             Expr::New(name, _) => {
                 if let Reference::Class(cls) = self.resolve(name.clone())? {
@@ -227,31 +238,15 @@ impl Scope {
                     Err(Error::CompileError(format!("{} can't be constructed", name.0)))?
                 }
             }
-            Expr::Member(expr, member) => {
+            Expr::Member(expr, ident) => {
                 let class = match self.infer_type(expr, pool)?.unwrapped() {
                     TypeId::Class(_, class) => *class,
                     TypeId::Struct(_, class) => *class,
                     t @ TypeId::Enum(_, _) => return Ok(t.clone()),
                     _ => Err(Error::CompileError(format!("Can't access a member of {:?}", expr)))?,
                 };
-                match member.deref() {
-                    Expr::Ident(ident) => {
-                        let field = self.resolve_field(ident.clone(), class, pool)?;
-                        self.resolve_type(pool.field(field)?.type_, pool)?
-                    }
-                    Expr::Call(ident, args) => {
-                        let function_id = FunctionId::by_name_and_args(ident, args, pool, self)?;
-                        let method = self.resolve_method(function_id, class, pool)?;
-                        match pool.function(method)?.return_type {
-                            None => TypeId::Void,
-                            Some(return_type) => self.resolve_type(return_type, pool)?,
-                        }
-                    }
-                    _ => {
-                        let error = format!("Invalid member operation: {:?}", member);
-                        Err(Error::CompileError(error))?
-                    }
-                }
+                let field = self.resolve_field(ident.clone(), class, pool)?;
+                self.resolve_type(pool.field(field)?.type_, pool)?
             }
             Expr::Conditional(_, lhs, rhs) => {
                 let lt = self.infer_type(lhs, pool)?;

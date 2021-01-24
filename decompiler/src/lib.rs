@@ -22,8 +22,8 @@ impl<'a> Decompiler<'a> {
         self.consume_path(Position::MAX)
     }
 
-    fn definition_ident<A>(&self, index: PoolIndex<A>) -> Result<Expr, Error> {
-        Ok(Expr::Ident(Ident(self.pool.definition_name(index)?)))
+    fn definition_ident<A>(&self, index: PoolIndex<A>) -> Result<Ident, Error> {
+        Ok(Ident(self.pool.definition_name(index)?))
     }
 
     fn resource_name(&self, index: PoolIndex<Resource>) -> Result<Expr, Error> {
@@ -142,6 +142,10 @@ impl<'a> Decompiler<'a> {
     }
 
     fn consume(&mut self) -> Result<Expr, Error> {
+        self.consume_with(None)
+    }
+
+    fn consume_with(&mut self, context: Option<Expr>) -> Result<Expr, Error> {
         let position = self.code.pos();
         let res = match self.code.pop()? {
             Instr::Nop => Expr::EMPTY,
@@ -162,7 +166,7 @@ impl<'a> Decompiler<'a> {
             Instr::EnumConst(enum_, member) => {
                 let enum_ident = self.definition_ident(enum_)?;
                 let member_ident = self.definition_ident(member)?;
-                Expr::Member(Box::new(enum_ident), Box::new(member_ident))
+                Expr::Member(Box::new(Expr::Ident(enum_ident)), member_ident)
             }
             Instr::StringConst(str) => Expr::StringLit(String::from_utf8(str).unwrap()),
             Instr::TweakDBIdConst(idx) => self.tweakdb_name(idx)?,
@@ -176,11 +180,11 @@ impl<'a> Decompiler<'a> {
                 Expr::Assign(Box::new(lhs), Box::new(rhs))
             }
             Instr::Target => Err(Error::DecompileError("Unexpected Target".to_owned()))?,
-            Instr::Local(idx) => self.definition_ident(idx)?,
-            Instr::Param(idx) => self.definition_ident(idx)?,
+            Instr::Local(idx) => Expr::Ident(self.definition_ident(idx)?),
+            Instr::Param(idx) => Expr::Ident(self.definition_ident(idx)?),
             Instr::ObjectField(idx) => {
                 let field = self.definition_ident(idx)?;
-                Expr::Member(Box::new(Expr::This), Box::new(field))
+                Expr::Member(Box::new(Expr::This), field)
             }
             Instr::Unk2 => Err(Error::DecompileError("Unexpected Unk2".to_owned()))?,
             Instr::Switch(_, _) => self.consume_switch()?,
@@ -204,25 +208,44 @@ impl<'a> Decompiler<'a> {
                 Expr::New(Ident(self.pool.definition_name(class)?), params)
             }
             Instr::InvokeStatic(_, _, idx) => {
-                let params = self.consume_params()?;
                 let def = self.pool.definition(idx)?;
+                let name = Ident(self.pool.names.get(def.name)?);
+                let params = self.consume_params()?;
+                if let Some(ctx) = context {
+                    Expr::MethodCall(Box::new(ctx), name, params)
+                } else if self.pool.function(idx)?.flags.is_static() {
+                    if def.parent.is_undefined() {
+                        Expr::Call(name, params)
+                    } else {
+                        let class_name = Ident(self.pool.definition_name(def.parent)?);
+                        Expr::MethodCall(Box::new(Expr::Ident(class_name)), name, params)
+                    }
+                } else {
+                    Expr::MethodCall(Box::new(Expr::This), name, params)
+                }
                 // if let AnyDefinition::Function(ref fun) = def.value {
                 // assert_eq!(fun.parameters.len(), params.len(), "Invalid number of parameters {:?}", params);
                 // }
-                Expr::Call(Ident(self.pool.names.get(def.name)?), params)
             }
-            Instr::InvokeVirtual(_, _, idx) => Expr::Call(Ident(self.pool.names.get(idx)?), self.consume_params()?),
+            Instr::InvokeVirtual(_, _, idx) => {
+                let name = Ident(self.pool.names.get(idx)?);
+                let params = self.consume_params()?;
+                if let Some(ctx) = context {
+                    Expr::MethodCall(Box::new(ctx), name, params)
+                } else {
+                    Expr::MethodCall(Box::new(Expr::This), name, params)
+                }
+            }
             Instr::ParamEnd => Err(Error::DecompileError("Unexpected ParamEnd".to_owned()))?,
             Instr::Return => Expr::Return(self.consume().ok().map(|e| Box::new(e))),
             Instr::StructField(idx) => {
                 let target = self.consume()?;
                 let field = self.definition_ident(idx)?;
-                Expr::Member(Box::new(target), Box::new(field))
+                Expr::Member(Box::new(target), field)
             }
             Instr::Context(_) => {
                 let expr = self.consume()?;
-                let body = self.consume()?;
-                Expr::Member(Box::new(expr), Box::new(body))
+                self.consume_with(Some(expr))?
             }
             Instr::Equals(_) => {
                 let lhs = self.consume()?;

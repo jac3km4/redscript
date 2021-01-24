@@ -206,7 +206,8 @@ peg::parser! {
             "new" _ id:ident() _ "(" _ params:commasep(<expr()>) _ ")" { Expr::New(Ident::new(id), params) }
             --
             expr:(@) _ "[" _ idx:expr() _ "]" { Expr::ArrayElem(Box::new(expr), Box::new(idx)) }
-            expr:(@) _ "." _ member:@ { Expr::Member(Box::new(expr), Box::new(member)) }
+            expr:(@) _ "." _ ident:ident() _ "(" _ params:commasep(<expr()>) _ ")" { Expr::MethodCall(Box::new(expr), Ident::new(ident), params) }
+            expr:(@) _ "." _ ident:ident() { Expr::Member(Box::new(expr), Ident::new(ident)) }
             "cast" _ "<" _ type_:type_() _ ">" _ "(" _ expr:expr() _ ")" { Expr::Cast(type_, Box::new(expr)) }
             "(" _ v:expr() _ ")" { v }
             "true" { Expr::True }
@@ -263,7 +264,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", stmt),
-            r#"While(BinOp(Ident(Ident("i")), IntLit(1000), Less), Seq { exprs: [BinOp(Member(This, Ident(Ident("counter"))), Member(Ident(Ident("Object")), Ident(Ident("CONSTANT"))), AssignAdd), BinOp(Ident(Ident("i")), IntLit(1), AssignAdd)] })"#
+            r#"While(BinOp(Ident(Ident("i")), IntLit(1000), Less), Seq { exprs: [BinOp(Member(This, Ident("counter")), Member(Ident(Ident("Object")), Ident("CONSTANT")), AssignAdd), BinOp(Ident(Ident("i")), IntLit(1), AssignAdd)] })"#
         );
     }
 
@@ -279,7 +280,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", stmt),
-            r#"If(Member(This, Ident(Ident("m_fixBugs"))), Seq { exprs: [Member(This, Call(Ident("NoBugs"), []))] }, Some(Seq { exprs: [Member(This, Call(Ident("Bugs"), []))] }))"#
+            r#"If(Member(This, Ident("m_fixBugs")), Seq { exprs: [MethodCall(This, Ident("NoBugs"), [])] }, Some(Seq { exprs: [MethodCall(This, Ident("Bugs"), [])] }))"#
         );
     }
 }
