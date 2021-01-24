@@ -65,5 +65,6 @@ private void PopulateMenuItemList() {
   this.AddMenuItem(GetLocalizedText("UI-Labels-Credits"), n"OnSwitchToCredits");
   this.AddMenuItem("DEBUG NEW GAME", n"OnDebug");
   this.AddMenuItem("TOGGLE GOG MENU", n"OnGOGProfile");
+  this.m_menuListController.Refresh();
   this.SetCursorOverWidget(inkCompoundRef.GetWidgetByIndex(this.m_menuList, 0));
 }
