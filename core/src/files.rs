@@ -35,7 +35,7 @@ impl<'a> FileIndex<'a> {
                     .iter()
                     .filter_map(|child| self.pool.definition(*child).ok())
                     .collect();
-                definitions.sort_by_key(|def| def.source().map(|src| src.line).unwrap_or(0));
+                definitions.sort_by_key(|def| def.first_line(self.pool).unwrap_or(0));
 
                 let entry = FileEntry { file, definitions };
                 Some(entry)
