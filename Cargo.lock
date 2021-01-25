@@ -181,6 +181,7 @@ dependencies = [
  "im",
  "peg",
  "redscript",
+ "strum",
 ]
 
 [[package]]
