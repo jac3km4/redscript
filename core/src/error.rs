@@ -6,6 +6,7 @@ pub enum Error {
     IOError(io::Error),
     DecompileError(String),
     CompileError(String),
+    FunctionResolutionError(String),
     PoolError(String),
     FormatError(fmt::Error),
 }

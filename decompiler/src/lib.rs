@@ -242,12 +242,12 @@ impl<'a> Decompiler<'a> {
             Instr::Equals(_) => {
                 let lhs = self.consume()?;
                 let rhs = self.consume()?;
-                Expr::BinOp(Box::new(lhs), Box::new(rhs), BinOp::Eq)
+                Expr::BinOp(Box::new(lhs), Box::new(rhs), BinOp::Equal)
             }
             Instr::NotEquals(_) => {
                 let lhs = self.consume()?;
                 let rhs = self.consume()?;
-                Expr::BinOp(Box::new(lhs), Box::new(rhs), BinOp::Neq)
+                Expr::BinOp(Box::new(lhs), Box::new(rhs), BinOp::NotEqual)
             }
             Instr::New(class) => Expr::New(Ident(self.pool.definition_name(class)?), vec![]),
             Instr::Delete => self.consume_call("Delete", 1)?,
@@ -317,8 +317,8 @@ impl<'a> Decompiler<'a> {
             Instr::WeakRefToRef => self.consume_call("WeakRefToRef", 1)?,
             Instr::RefToWeakRef => self.consume_call("RefToWeakRef", 1)?,
             Instr::WeakRefNull => Expr::Null,
-            Instr::ToScriptRef(_) => self.consume_call("ToScriptRef", 1)?,
-            Instr::FromScriptRef(_) => self.consume_call("FromScriptRef", 1)?,
+            Instr::AsRef(_) => self.consume_call("AsRef", 1)?,
+            Instr::Deref(_) => self.consume_call("Deref", 1)?,
             Instr::Unk9 => Err(Error::DecompileError("Unexpected Unk9".to_owned()))?,
         };
         Ok(res)

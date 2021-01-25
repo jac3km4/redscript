@@ -4,11 +4,10 @@ use std::ops::Deref;
 use redscript::ast::{Expr, Ident, LiteralType, Seq};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Instr, Offset};
-use redscript::definition::{Definition, Function};
-use redscript::definition::{Local, LocalFlags};
+use redscript::definition::{Definition, Local, LocalFlags};
 use redscript::error::Error;
 
-use crate::scope::{FunctionId, Scope};
+use crate::scope::{Conversion, FunctionMatch, FunctionName, Scope};
 use crate::{Reference, TypeId};
 
 pub struct Assembler {
@@ -81,26 +80,31 @@ impl Assembler {
                 self.emit(Instr::U32Const(*val as u32));
             }
             Expr::Cast(type_, expr) => {
-                let type_idx = scope.resolve_type_name(Ident::new(type_.repr()))?;
+                let type_idx = scope.resolve_type_index(Ident::new(type_.repr()))?;
                 self.emit(Instr::DynamicCast(type_idx, 0));
                 self.compile(expr, pool, scope)?;
             }
             Expr::Declare(type_, name, expr) => {
                 let name_idx = pool.names.add(name.0.deref().to_owned());
-                let type_ = scope.resolve_type_name(Ident::new(type_.repr()))?;
-                let local = Local::new(type_, LocalFlags::new());
+                let type_ = scope.resolve_type(Ident::new(type_.repr()), pool)?;
+                let local = Local::new(type_.index().unwrap(), LocalFlags::new());
                 let idx = pool.push_definition(Definition::local(name_idx, scope.function.unwrap().cast(), local));
                 self.locals.push_back(idx.cast());
-                scope.push_reference(name.clone(), Reference::Local(idx.cast()));
+                scope.push_local(name.clone(), idx.cast());
                 if let Some(val) = expr {
+                    let val_type = scope.infer_type(val, pool)?;
+                    let conv = scope.convert_type(&val_type, &type_, pool)?;
                     self.emit(Instr::Assign);
                     self.emit(Instr::Local(idx.cast()));
+                    self.compile_conversion(conv);
                     self.compile(val, pool, scope)?;
                 }
             }
             Expr::Assign(lhs, rhs) => {
+                let conv = scope.convert_expr(&rhs, &lhs, pool)?;
                 self.emit(Instr::Assign);
                 self.compile(lhs, pool, scope)?;
+                self.compile_conversion(conv);
                 self.compile(rhs, pool, scope)?;
             }
             Expr::ArrayElem(expr, idx) => {
@@ -220,18 +224,16 @@ impl Assembler {
                 _ => Err(Error::CompileError(format!("Can't access a member of {:?}", expr)))?,
             },
             Expr::Call(ident, args) => {
-                let fun_id = FunctionId::by_name_and_args(ident, args, pool, scope)?;
-                let fun = scope.resolve_function(fun_id)?;
-                self.compile_call(fun, args.iter(), pool, scope)?;
+                let match_ = scope.resolve_function(FunctionName::global(ident.clone()), args.iter(), pool)?;
+                self.compile_call(match_, args.iter(), pool, scope)?;
             }
             Expr::MethodCall(expr, ident, args) => {
-                let fun_id = FunctionId::by_name_and_args(ident, args, pool, scope)?;
                 let type_ = scope.infer_type(expr, pool)?;
                 if let Some(Reference::Class(class)) = Self::get_static_reference(expr, scope) {
-                    let fun_idx = scope.resolve_method(fun_id, class, pool)?;
-                    let fun = pool.function(fun_idx)?;
+                    let match_ = scope.resolve_method(ident.clone(), class, args, pool)?;
+                    let fun = pool.function(match_.index)?;
                     if fun.flags.is_static() {
-                        self.compile_call(fun_idx, args.iter(), pool, scope)?
+                        self.compile_call(match_, args.iter(), pool, scope)?
                     } else {
                         Err(Error::CompileError(format!("{} is not static", ident.0)))?
                     }
@@ -241,7 +243,7 @@ impl Assembler {
                     } else {
                         Assembler::from_expr(expr, pool, scope)?
                     };
-                    let fun = scope.resolve_method(fun_id, *class, pool)?;
+                    let fun = scope.resolve_method(ident.clone(), *class, args, pool)?;
                     let mut inner = Assembler::new();
                     inner.compile_call(fun, args.iter(), pool, scope)?;
                     self.emit(Instr::Context(object.offset() + inner.offset()));
@@ -252,14 +254,15 @@ impl Assembler {
                 }
             }
             Expr::BinOp(lhs, rhs, op) => {
-                let fun_id = FunctionId::by_binop(lhs, rhs, *op, pool, scope)?;
-                let fun = scope.resolve_function(fun_id)?;
-                let params = iter::once(lhs.as_ref()).chain(iter::once(rhs.as_ref()));
-                self.compile_call(fun, params, pool, scope)?;
+                let ident = Ident::new(op.name());
+                let args = iter::once(lhs.as_ref()).chain(iter::once(rhs.as_ref()));
+                let fun = scope.resolve_function(FunctionName::global(ident), args.clone(), pool)?;
+                self.compile_call(fun, args, pool, scope)?;
             }
             Expr::UnOp(expr, op) => {
-                let fun_id = FunctionId::by_unop(expr, *op, pool, scope)?;
-                let fun = scope.resolve_function(fun_id)?;
+                let ident = Ident::new(op.name());
+                let args = iter::once(expr.as_ref());
+                let fun = scope.resolve_function(FunctionName::global(ident), args, pool)?;
                 self.compile_call(fun, iter::once(expr.as_ref()), pool, scope)?;
             }
             Expr::True => {
@@ -279,27 +282,39 @@ impl Assembler {
         Ok(())
     }
 
-    fn compile_call<'a, I: Iterator<Item = &'a Expr>>(
+    fn compile_call<'a>(
         &mut self,
-        fun_idx: PoolIndex<Function>,
-        params: I,
+        function: FunctionMatch,
+        args: impl Iterator<Item = &'a Expr>,
         pool: &mut ConstantPool,
         scope: &mut Scope,
     ) -> Result<(), Error> {
-        let flags = pool.function(fun_idx)?.flags;
-        let name_idx = pool.definition(fun_idx)?.name;
+        let flags = pool.function(function.index)?.flags;
+        let name_idx = pool.definition(function.index)?.name;
         let mut args_code = Assembler::new();
-        for arg in params {
+        for (arg, conversion) in args.zip(function.conversions) {
+            args_code.compile_conversion(conversion);
             args_code.compile(arg, pool, scope)?;
+        }
+        for _ in 0..function.unspecified_args {
+            args_code.emit(Instr::Nop);
         }
         args_code.emit(Instr::ParamEnd);
         if !flags.is_final() && !flags.is_static() {
             self.emit(Instr::InvokeVirtual(args_code.offset(), 0, name_idx));
         } else {
-            self.emit(Instr::InvokeStatic(args_code.offset(), 0, fun_idx));
+            self.emit(Instr::InvokeStatic(args_code.offset(), 0, function.index));
         }
         self.append(args_code);
         Ok(())
+    }
+
+    fn compile_conversion(&mut self, conv: Conversion) {
+        match conv {
+            Conversion::Identity => {}
+            Conversion::RefToWeakRef => self.emit(Instr::RefToWeakRef),
+            Conversion::WeakRefToRef => self.emit(Instr::WeakRefToRef),
+        }
     }
 
     fn from_instr(instr: Instr) -> Assembler {
