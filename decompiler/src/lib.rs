@@ -176,7 +176,11 @@ impl<'a> Decompiler<'a> {
             Instr::Param(idx) => Expr::Ident(self.definition_ident(idx)?),
             Instr::ObjectField(idx) => {
                 let field = self.definition_ident(idx)?;
-                Expr::Member(Box::new(Expr::This), field)
+                if let Some(object) = context {
+                    Expr::Member(Box::new(object), field)
+                } else {
+                    Expr::Member(Box::new(Expr::This), field)
+                }
             }
             Instr::Unk2 => Err(Error::DecompileError("Unexpected Unk2".to_owned()))?,
             Instr::Switch(_, _) => self.consume_switch()?,
