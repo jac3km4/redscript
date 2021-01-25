@@ -5,8 +5,8 @@ use redscript::error::Error;
 
 use crate::{parser::FunctionSource, Reference, TypeId};
 
-#[derive(Debug, Clone, Hash)]
-pub struct FunctionOverloads(im::Vector<PoolIndex<Function>>);
+#[derive(Debug, Clone)]
+pub struct FunctionOverloads(Vec<PoolIndex<Function>>);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FunctionName {
@@ -106,8 +106,8 @@ impl Scope {
     pub fn push_function(&mut self, name: FunctionName, index: PoolIndex<Function>) {
         self.functions
             .entry(name)
-            .and_modify(|overloads: &mut FunctionOverloads| overloads.0.push_back(index))
-            .or_insert_with(|| FunctionOverloads(im::vector![index]));
+            .and_modify(|overloads: &mut FunctionOverloads| overloads.0.push(index))
+            .or_insert_with(|| FunctionOverloads(vec![index]));
     }
 
     pub fn resolve_field(
