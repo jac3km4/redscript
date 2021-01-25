@@ -177,13 +177,18 @@ impl Assembler {
             }
             Expr::If(cond, if_, else_) => {
                 let cond_code = Assembler::from_expr(cond, pool, &mut scope.clone())?;
-                let if_code = Assembler::from_seq(if_, pool, &mut scope.clone())?;
-                self.emit(Instr::JumpIfFalse(cond_code.offset() + if_code.offset()));
+                let mut if_branch = Assembler::from_seq(if_, pool, &mut scope.clone())?;
+                let else_branch = if let Some(else_code) = else_ {
+                    let else_branch = Assembler::from_seq(else_code, pool, &mut scope.clone())?;
+                    if_branch.emit(Instr::Jump(else_branch.offset()));
+                    else_branch
+                } else {
+                    Assembler::new()
+                };
+                self.emit(Instr::JumpIfFalse(cond_code.offset() + if_branch.offset()));
                 self.append(cond_code);
-                self.append(if_code);
-                if let Some(else_code) = else_ {
-                    self.append(Assembler::from_seq(else_code, pool, &mut scope.clone())?);
-                }
+                self.append(if_branch);
+                self.append(else_branch);
             }
             Expr::Conditional(cond, true_, false_) => {
                 let cond_code = Assembler::from_expr(cond, pool, scope)?;
