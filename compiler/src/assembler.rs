@@ -1,11 +1,13 @@
 use std::iter;
 use std::ops::Deref;
+use std::str::FromStr;
 
 use redscript::ast::{Expr, Ident, LiteralType, Seq};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Instr, Offset};
 use redscript::definition::{Definition, Local, LocalFlags};
 use redscript::error::Error;
+use strum::{Display, EnumString};
 
 use crate::scope::{Conversion, FunctionMatch, FunctionName, Scope};
 use crate::{Reference, TypeId};
@@ -224,8 +226,12 @@ impl Assembler {
                 _ => Err(Error::CompileError(format!("Can't access a member of {:?}", expr)))?,
             },
             Expr::Call(ident, args) => {
-                let match_ = scope.resolve_function(FunctionName::global(ident.clone()), args.iter(), pool)?;
-                self.compile_call(match_, args.iter(), pool, scope)?;
+                if let Ok(intrinsic) = IntrinsicOp::from_str(&ident.0) {
+                    self.compile_intrinsic(intrinsic, args, pool, scope)?;
+                } else {
+                    let match_ = scope.resolve_function(FunctionName::global(ident.clone()), args.iter(), pool)?;
+                    self.compile_call(match_, args.iter(), pool, scope)?;
+                }
             }
             Expr::MethodCall(expr, ident, args) => {
                 let type_ = scope.infer_type(expr, pool)?;
@@ -317,6 +323,95 @@ impl Assembler {
         }
     }
 
+    fn compile_intrinsic(
+        &mut self,
+        intrinsic: IntrinsicOp,
+        args: &[Expr],
+        pool: &mut ConstantPool,
+        scope: &mut Scope,
+    ) -> Result<(), Error> {
+        if args.len() != intrinsic.arg_count().into() {
+            Err(Error::CompileError(format!(
+                "Invalid number of arguments for {}",
+                intrinsic
+            )))?
+        }
+        let type_ = scope.infer_type(&args[0], pool)?;
+
+        match (intrinsic, type_) {
+            (IntrinsicOp::ArrayClear, TypeId::Array(_, member)) => {
+                self.emit(Instr::ArrayClear(member.index().unwrap()));
+                self.compile(&args[0], pool, scope)
+            }
+            (IntrinsicOp::ArraySize, TypeId::Array(_, member)) => {
+                self.emit(Instr::ArraySize(member.index().unwrap()));
+                self.compile(&args[0], pool, scope)
+            }
+            (IntrinsicOp::ArrayResize, TypeId::Array(_, member)) => {
+                self.emit(Instr::ArrayResize(member.index().unwrap()));
+                self.compile(&args[0], pool, scope)?;
+                self.compile(&args[1], pool, scope)
+            }
+            (IntrinsicOp::ArrayFindFirst, TypeId::Array(_, member)) => {
+                self.emit(Instr::ArrayFindFirst(member.index().unwrap()));
+                self.compile(&args[0], pool, scope)?;
+                self.compile(&args[1], pool, scope)
+            }
+            (IntrinsicOp::ArrayFindLast, TypeId::Array(_, member)) => {
+                self.emit(Instr::ArrayFindLast(member.index().unwrap()));
+                self.compile(&args[0], pool, scope)?;
+                self.compile(&args[1], pool, scope)
+            }
+            (IntrinsicOp::ArrayContains, TypeId::Array(_, member)) => {
+                self.emit(Instr::ArrayContains(member.index().unwrap()));
+                self.compile(&args[0], pool, scope)?;
+                self.compile(&args[1], pool, scope)
+            }
+            (IntrinsicOp::ArrayPush, TypeId::Array(_, member)) => {
+                self.emit(Instr::ArrayPush(member.index().unwrap()));
+                self.compile(&args[0], pool, scope)?;
+                self.compile(&args[1], pool, scope)
+            }
+            (IntrinsicOp::ArrayPop, TypeId::Array(_, member)) => {
+                self.emit(Instr::ArrayPop(member.index().unwrap()));
+                self.compile(&args[0], pool, scope)
+            }
+            (IntrinsicOp::ArrayInsert, TypeId::Array(_, member)) => {
+                self.emit(Instr::ArrayInsert(member.index().unwrap()));
+                self.compile(&args[0], pool, scope)?;
+                self.compile(&args[1], pool, scope)?;
+                self.compile(&args[2], pool, scope)
+            }
+            (IntrinsicOp::ArrayRemove, TypeId::Array(_, member)) => {
+                self.emit(Instr::ArrayRemove(member.index().unwrap()));
+                self.compile(&args[0], pool, scope)?;
+                self.compile(&args[1], pool, scope)
+            }
+            (IntrinsicOp::ArrayGrow, TypeId::Array(_, member)) => {
+                self.emit(Instr::ArrayGrow(member.index().unwrap()));
+                self.compile(&args[0], pool, scope)?;
+                self.compile(&args[1], pool, scope)
+            }
+            (IntrinsicOp::ArrayErase, TypeId::Array(_, member)) => {
+                self.emit(Instr::ArrayErase(member.index().unwrap()));
+                self.compile(&args[0], pool, scope)?;
+                self.compile(&args[1], pool, scope)
+            }
+            (IntrinsicOp::ArrayLast, TypeId::Array(_, member)) => {
+                self.emit(Instr::ArrayLast(member.index().unwrap()));
+                self.compile(&args[0], pool, scope)
+            }
+            (IntrinsicOp::ToString, any) => {
+                self.emit(Instr::ToString(any.index().unwrap()));
+                self.compile(&args[0], pool, scope)
+            }
+            _ => {
+                let err = format!("Invalid intrinsic {} call", intrinsic);
+                Err(Error::CompileError(err))
+            }
+        }
+    }
+
     fn from_instr(instr: Instr) -> Assembler {
         let mut code = Assembler::new();
         code.emit(instr);
@@ -369,5 +464,44 @@ fn shifted(instr: Instr) -> Instr {
         Instr::Jump(offset) if offset.value < 0 => Instr::Jump(Offset::new(offset.value - size)),
         Instr::JumpIfFalse(offset) if offset.value < 0 => Instr::JumpIfFalse(Offset::new(offset.value - size)),
         other => other,
+    }
+}
+
+#[derive(Debug, Clone, Copy, EnumString, Display)]
+pub enum IntrinsicOp {
+    ArrayClear,
+    ArraySize,
+    ArrayResize,
+    ArrayFindFirst,
+    ArrayFindLast,
+    ArrayContains,
+    ArrayPush,
+    ArrayPop,
+    ArrayInsert,
+    ArrayRemove,
+    ArrayGrow,
+    ArrayErase,
+    ArrayLast,
+    ToString,
+}
+
+impl IntrinsicOp {
+    pub fn arg_count(&self) -> u8 {
+        match self {
+            IntrinsicOp::ArrayClear => 1,
+            IntrinsicOp::ArraySize => 1,
+            IntrinsicOp::ArrayResize => 2,
+            IntrinsicOp::ArrayFindFirst => 2,
+            IntrinsicOp::ArrayFindLast => 2,
+            IntrinsicOp::ArrayContains => 2,
+            IntrinsicOp::ArrayPush => 2,
+            IntrinsicOp::ArrayPop => 1,
+            IntrinsicOp::ArrayInsert => 3,
+            IntrinsicOp::ArrayRemove => 2,
+            IntrinsicOp::ArrayGrow => 2,
+            IntrinsicOp::ArrayErase => 2,
+            IntrinsicOp::ArrayLast => 1,
+            IntrinsicOp::ToString => 1,
+        }
     }
 }
