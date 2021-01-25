@@ -336,13 +336,10 @@ impl Assembler {
         scope: &mut Scope,
     ) -> Result<(), Error> {
         if args.len() != intrinsic.arg_count().into() {
-            Err(Error::CompileError(format!(
-                "Invalid number of arguments for {}",
-                intrinsic
-            )))?
+            let err = format!("Invalid number of arguments for {}", intrinsic);
+            Err(Error::CompileError(err))?
         }
         let type_ = scope.infer_type(&args[0], pool)?;
-
         match (intrinsic, type_) {
             (IntrinsicOp::ArrayClear, TypeId::Array(type_, _)) => {
                 self.emit(Instr::ArrayClear(type_));
@@ -408,6 +405,30 @@ impl Assembler {
             }
             (IntrinsicOp::ToString, any) => {
                 self.emit(Instr::ToString(any.index().unwrap()));
+                self.compile(&args[0], pool, scope)
+            }
+            (IntrinsicOp::EnumInt, any) => {
+                self.emit(Instr::EnumToI32(any.index().unwrap(), 4));
+                self.compile(&args[0], pool, scope)
+            }
+            (IntrinsicOp::IntEnum, any) => {
+                self.emit(Instr::I32ToEnum(any.index().unwrap(), 4));
+                self.compile(&args[0], pool, scope)
+            }
+            (IntrinsicOp::ToVariant, any) => {
+                self.emit(Instr::ToVariant(any.index().unwrap()));
+                self.compile(&args[0], pool, scope)
+            }
+            (IntrinsicOp::FromVariant, any) => {
+                self.emit(Instr::ToVariant(any.index().unwrap()));
+                self.compile(&args[0], pool, scope)
+            }
+            (IntrinsicOp::AsRef, any) => {
+                self.emit(Instr::AsRef(any.index().unwrap()));
+                self.compile(&args[0], pool, scope)
+            }
+            (IntrinsicOp::Deref, any) => {
+                self.emit(Instr::Deref(any.index().unwrap()));
                 self.compile(&args[0], pool, scope)
             }
             _ => {
@@ -488,6 +509,12 @@ pub enum IntrinsicOp {
     ArrayErase,
     ArrayLast,
     ToString,
+    EnumInt,
+    IntEnum,
+    ToVariant,
+    FromVariant,
+    AsRef,
+    Deref,
 }
 
 impl IntrinsicOp {
@@ -507,6 +534,12 @@ impl IntrinsicOp {
             IntrinsicOp::ArrayErase => 2,
             IntrinsicOp::ArrayLast => 1,
             IntrinsicOp::ToString => 1,
+            IntrinsicOp::EnumInt => 1,
+            IntrinsicOp::IntEnum => 1,
+            IntrinsicOp::ToVariant => 1,
+            IntrinsicOp::FromVariant => 1,
+            IntrinsicOp::AsRef => 1,
+            IntrinsicOp::Deref => 1,
         }
     }
 }

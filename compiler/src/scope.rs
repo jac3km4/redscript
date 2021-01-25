@@ -1,9 +1,13 @@
+use std::str::FromStr;
+
 use redscript::ast::{Expr, Ident, LiteralType};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::definition::{Class, DefinitionValue, Enum, Field, Function, Local, Type};
 use redscript::error::Error;
 
-use crate::{parser::FunctionSource, Reference, TypeId};
+use crate::assembler::IntrinsicOp;
+use crate::parser::FunctionSource;
+use crate::{Reference, TypeId};
 
 #[derive(Debug, Clone)]
 pub struct FunctionOverloads(Vec<PoolIndex<Function>>);
@@ -356,11 +360,15 @@ impl Scope {
             },
             Expr::Cast(type_, _) => self.resolve_type(Ident::new(type_.repr()), pool)?,
             Expr::Call(ident, args) => {
-                let name = FunctionName::global(ident.clone());
-                let match_ = self.resolve_function(name, args.iter(), pool)?;
-                match pool.function(match_.index)?.return_type {
-                    Some(type_) => self.resolve_type_by_index(type_, pool)?,
-                    None => TypeId::Void,
+                if let Ok(intrinsic) = IntrinsicOp::from_str(&ident.0) {
+                    self.infer_intrinsic_type(intrinsic, args, pool)?
+                } else {
+                    let name = FunctionName::global(ident.clone());
+                    let match_ = self.resolve_function(name, args.iter(), pool)?;
+                    match pool.function(match_.index)?.return_type {
+                        Some(type_) => self.resolve_type_by_index(type_, pool)?,
+                        None => TypeId::Void,
+                    }
                 }
             }
             Expr::MethodCall(expr, ident, args) => {
@@ -439,6 +447,46 @@ impl Scope {
             Expr::Assign(_, _) => TypeId::Void,
         };
         Ok(res)
+    }
+
+    fn infer_intrinsic_type(
+        &self,
+        intrinsic: IntrinsicOp,
+        args: &[Expr],
+        pool: &ConstantPool,
+    ) -> Result<TypeId, Error> {
+        if args.len() != intrinsic.arg_count().into() {
+            let err = format!("Invalid number of arguments for {}", intrinsic);
+            Err(Error::CompileError(err))?
+        }
+        let type_ = self.infer_type(&args[0], pool)?;
+        let result = match (intrinsic, type_) {
+            (IntrinsicOp::ArrayClear, _) => TypeId::Void,
+            (IntrinsicOp::ArraySize, _) => self.resolve_type(Ident::new("Int32".to_owned()), pool)?,
+            (IntrinsicOp::ArrayResize, _) => TypeId::Void,
+            (IntrinsicOp::ArrayFindFirst, TypeId::Array(_, member)) => *member,
+            (IntrinsicOp::ArrayFindLast, TypeId::Array(_, member)) => *member,
+            (IntrinsicOp::ArrayContains, _) => self.resolve_type(Ident::new("Bool".to_owned()), pool)?,
+            (IntrinsicOp::ArrayPush, _) => TypeId::Void,
+            (IntrinsicOp::ArrayPop, TypeId::Array(_, member)) => *member,
+            (IntrinsicOp::ArrayInsert, _) => TypeId::Void,
+            (IntrinsicOp::ArrayRemove, _) => TypeId::Void,
+            (IntrinsicOp::ArrayGrow, _) => TypeId::Void,
+            (IntrinsicOp::ArrayErase, _) => TypeId::Void,
+            (IntrinsicOp::ArrayLast, TypeId::Array(_, member)) => *member,
+            (IntrinsicOp::ToString, _) => self.resolve_type(Ident::new("String".to_owned()), pool)?,
+            (IntrinsicOp::EnumInt, _) => self.resolve_type(Ident::new("Int32".to_owned()), pool)?,
+            (IntrinsicOp::IntEnum, _) => panic!(),
+            (IntrinsicOp::ToVariant, _) => self.resolve_type(Ident::new("Variant".to_owned()), pool)?,
+            (IntrinsicOp::FromVariant, _) => panic!(),
+            (IntrinsicOp::AsRef, _) => panic!(),
+            (IntrinsicOp::Deref, _) => panic!(),
+            _ => {
+                let err = format!("Invalid intrinsic {} call", intrinsic);
+                Err(Error::CompileError(err))?
+            }
+        };
+        Ok(result)
     }
 }
 

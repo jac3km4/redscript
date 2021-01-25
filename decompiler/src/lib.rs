@@ -297,10 +297,10 @@ impl<'a> Decompiler<'a> {
                 let idx = self.consume()?;
                 Expr::ArrayElem(Box::new(arr), Box::new(idx))
             }
-            Instr::RefToBool => self.consume_call("ToBool", 1)?,
-            Instr::WeakRefToBool => self.consume_call("ToBool", 1)?,
-            Instr::EnumToI32(_, _) => self.consume_call("ToInt", 1)?,
-            Instr::I32ToEnum(_, _) => self.consume_call("ToEnum", 1)?,
+            Instr::RefToBool => self.consume_call("RefToBool", 1)?,
+            Instr::WeakRefToBool => self.consume_call("WeakRefToBool", 1)?,
+            Instr::EnumToI32(_, _) => self.consume_call("EnumInt", 1)?,
+            Instr::I32ToEnum(_, _) => self.consume_call("IntEnum", 1)?,
             Instr::DynamicCast(type_, _) => {
                 let name = self.pool.definition_name(type_)?;
                 let type_name = TypeName {
@@ -314,7 +314,7 @@ impl<'a> Decompiler<'a> {
             Instr::ToVariant(_) => self.consume_call("ToVariant", 1)?,
             Instr::FromVariant(_) => self.consume_call("FromVariant", 1)?,
             Instr::VariantIsValid => self.consume_call("IsValid", 1)?,
-            Instr::VariantIsRef => self.consume_call("IsHandle", 1)?,
+            Instr::VariantIsRef => self.consume_call("IsRef", 1)?,
             Instr::VariantIsArray => self.consume_call("IsArray", 1)?,
             Instr::VatiantToCName => self.consume_call("ToCName", 1)?,
             Instr::VariantToString => self.consume_call("ToString", 1)?,
