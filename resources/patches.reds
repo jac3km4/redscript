@@ -1,18 +1,5 @@
 
 @insert(CraftingMainGameController)
-private final void CraftItem() {
-  ref<CraftItemRequest> craftItemRequest = new CraftItemRequest();
-  craftItemRequest.target = this.m_player;
-  craftItemRequest.itemRecord = this.m_selectedRecipe.id;
-  craftItemRequest.amount = this.m_selectedRecipe.amount;
-  Int32 i = 0;
-  while (i < 10) {
-    this.m_craftingSystem.QueueRequest(craftItemRequest);
-    i += 1;
-  };
-}
-
-@insert(CraftingMainGameController)
 private final void UpgradeItem() {
   ref<UpgradeItemRequest> upgradeItemRequest = new UpgradeItemRequest();
   upgradeItemRequest.owner = this.m_player;
@@ -28,10 +15,13 @@ private final void UpgradeItem() {
 
 @insert(CraftingSystem)
 private final void ProcessCraftSkill(Int32 xpAmount, StatsObjectID craftedItem) {
-  ref<ExperiencePointsEvent> xpEvent = new ExperiencePointsEvent();
+  Int32 i;
+  TweakDBID rewardID;
+  ref<ExperiencePointsEvent> xpEvent;
+  xpEvent = new ExperiencePointsEvent();
   xpEvent.amount = xpAmount * 100;
   xpEvent.type = gamedataProficiencyType.Crafting;
-  xpEvent.isDebug = false;
+  GetPlayer(this.GetGameInstance()).QueueEvent(xpEvent);
 }
 
 @insert(EquipmentSystemPlayerData)
@@ -39,13 +29,8 @@ private final Bool EvaluateUnderwearVisibility(ItemID unequippedItem) {
   return false;
 }
 
-@insert(RPGManager)
-public final static Bool CanItemBeDisassembled(GameInstance gameInstance, wref<gameItemData> itemData) {
-  return true;
-}
-
-@insert(RPGManager)
-public final static Bool CanItemBeDisassembled(GameInstance gameInstance, ItemID itemID) {
+@insert(CraftingSystem)
+public final const Bool CanItemBeDisassembled(wref<gameItemData> itemData) {
   return true;
 }
 
