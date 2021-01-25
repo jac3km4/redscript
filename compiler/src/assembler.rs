@@ -344,66 +344,66 @@ impl Assembler {
         let type_ = scope.infer_type(&args[0], pool)?;
 
         match (intrinsic, type_) {
-            (IntrinsicOp::ArrayClear, TypeId::Array(_, member)) => {
-                self.emit(Instr::ArrayClear(member.index().unwrap()));
+            (IntrinsicOp::ArrayClear, TypeId::Array(type_, _)) => {
+                self.emit(Instr::ArrayClear(type_));
                 self.compile(&args[0], pool, scope)
             }
-            (IntrinsicOp::ArraySize, TypeId::Array(_, member)) => {
-                self.emit(Instr::ArraySize(member.index().unwrap()));
+            (IntrinsicOp::ArraySize, TypeId::Array(type_, _)) => {
+                self.emit(Instr::ArraySize(type_));
                 self.compile(&args[0], pool, scope)
             }
-            (IntrinsicOp::ArrayResize, TypeId::Array(_, member)) => {
-                self.emit(Instr::ArrayResize(member.index().unwrap()));
+            (IntrinsicOp::ArrayResize, TypeId::Array(type_, _)) => {
+                self.emit(Instr::ArrayResize(type_));
                 self.compile(&args[0], pool, scope)?;
                 self.compile(&args[1], pool, scope)
             }
-            (IntrinsicOp::ArrayFindFirst, TypeId::Array(_, member)) => {
-                self.emit(Instr::ArrayFindFirst(member.index().unwrap()));
+            (IntrinsicOp::ArrayFindFirst, TypeId::Array(type_, _)) => {
+                self.emit(Instr::ArrayFindFirst(type_));
                 self.compile(&args[0], pool, scope)?;
                 self.compile(&args[1], pool, scope)
             }
-            (IntrinsicOp::ArrayFindLast, TypeId::Array(_, member)) => {
-                self.emit(Instr::ArrayFindLast(member.index().unwrap()));
+            (IntrinsicOp::ArrayFindLast, TypeId::Array(type_, _)) => {
+                self.emit(Instr::ArrayFindLast(type_));
                 self.compile(&args[0], pool, scope)?;
                 self.compile(&args[1], pool, scope)
             }
-            (IntrinsicOp::ArrayContains, TypeId::Array(_, member)) => {
-                self.emit(Instr::ArrayContains(member.index().unwrap()));
+            (IntrinsicOp::ArrayContains, TypeId::Array(type_, _)) => {
+                self.emit(Instr::ArrayContains(type_));
                 self.compile(&args[0], pool, scope)?;
                 self.compile(&args[1], pool, scope)
             }
-            (IntrinsicOp::ArrayPush, TypeId::Array(_, member)) => {
-                self.emit(Instr::ArrayPush(member.index().unwrap()));
+            (IntrinsicOp::ArrayPush, TypeId::Array(type_, _)) => {
+                self.emit(Instr::ArrayPush(type_));
                 self.compile(&args[0], pool, scope)?;
                 self.compile(&args[1], pool, scope)
             }
-            (IntrinsicOp::ArrayPop, TypeId::Array(_, member)) => {
-                self.emit(Instr::ArrayPop(member.index().unwrap()));
+            (IntrinsicOp::ArrayPop, TypeId::Array(type_, _)) => {
+                self.emit(Instr::ArrayPop(type_));
                 self.compile(&args[0], pool, scope)
             }
-            (IntrinsicOp::ArrayInsert, TypeId::Array(_, member)) => {
-                self.emit(Instr::ArrayInsert(member.index().unwrap()));
+            (IntrinsicOp::ArrayInsert, TypeId::Array(type_, _)) => {
+                self.emit(Instr::ArrayInsert(type_));
                 self.compile(&args[0], pool, scope)?;
                 self.compile(&args[1], pool, scope)?;
                 self.compile(&args[2], pool, scope)
             }
-            (IntrinsicOp::ArrayRemove, TypeId::Array(_, member)) => {
-                self.emit(Instr::ArrayRemove(member.index().unwrap()));
+            (IntrinsicOp::ArrayRemove, TypeId::Array(type_, _)) => {
+                self.emit(Instr::ArrayRemove(type_));
                 self.compile(&args[0], pool, scope)?;
                 self.compile(&args[1], pool, scope)
             }
-            (IntrinsicOp::ArrayGrow, TypeId::Array(_, member)) => {
-                self.emit(Instr::ArrayGrow(member.index().unwrap()));
+            (IntrinsicOp::ArrayGrow, TypeId::Array(type_, _)) => {
+                self.emit(Instr::ArrayGrow(type_));
                 self.compile(&args[0], pool, scope)?;
                 self.compile(&args[1], pool, scope)
             }
-            (IntrinsicOp::ArrayErase, TypeId::Array(_, member)) => {
-                self.emit(Instr::ArrayErase(member.index().unwrap()));
+            (IntrinsicOp::ArrayErase, TypeId::Array(type_, _)) => {
+                self.emit(Instr::ArrayErase(type_));
                 self.compile(&args[0], pool, scope)?;
                 self.compile(&args[1], pool, scope)
             }
-            (IntrinsicOp::ArrayLast, TypeId::Array(_, member)) => {
-                self.emit(Instr::ArrayLast(member.index().unwrap()));
+            (IntrinsicOp::ArrayLast, TypeId::Array(type_, _)) => {
+                self.emit(Instr::ArrayLast(type_));
                 self.compile(&args[0], pool, scope)
             }
             (IntrinsicOp::ToString, any) => {
