@@ -1,6 +1,4 @@
 #![feature(option_result_contains)]
-use core::panic;
-use std::rc::Rc;
 
 use assembler::Assembler;
 use parser::Annotation;
@@ -12,7 +10,7 @@ use redscript::definition::{
 };
 use redscript::definition::{Definition, Field, Function, Type};
 use redscript::error::Error;
-use scope::{FunctionId, Scope};
+use scope::{FunctionId, FunctionName, Scope};
 
 use crate::parser::{ClassSource, Declaration, FunctionSource, MemberSource, Qualifier, SourceEntry};
 
@@ -27,10 +25,10 @@ pub struct Compiler<'a> {
 }
 
 impl<'a> Compiler<'a> {
-    pub fn new(pool: &'a mut ConstantPool) -> Compiler<'a> {
-        let scope = Scope::new(pool);
+    pub fn new(pool: &'a mut ConstantPool) -> Result<Compiler<'a>, Error> {
+        let scope = Scope::new(pool)?;
         let backlog = Vec::new();
-        Compiler { pool, scope, backlog }
+        Ok(Compiler { pool, scope, backlog })
     }
 
     pub fn compile(&mut self, sources: Vec<SourceEntry>) -> Result<(), Error> {
@@ -62,7 +60,7 @@ impl<'a> Compiler<'a> {
         let name = Ident(self.pool.names.get(name_idx)?);
 
         self.scope.types.insert(name.clone(), type_idx.cast());
-        self.scope.names.insert(name, Reference::Class(idx));
+        self.scope.references.insert(name, Reference::Class(idx));
 
         Ok(())
     }
@@ -128,22 +126,28 @@ impl<'a> Compiler<'a> {
             .with_is_exec(decl.qualifiers.contain(Qualifier::Exec))
             .with_is_callback(decl.qualifiers.contain(Qualifier::Callback));
 
-        let name = FunctionId::from_source(&source)?;
+        let fun_id = FunctionId::from_source(&source)?;
+        let ident = Ident::new(decl.name.clone());
+        let name = if parent_idx.is_undefined() {
+            FunctionName::global(ident)
+        } else {
+            FunctionName::instance(parent_idx, ident)
+        };
         let (parent_idx, base_method, fun_idx) =
-            self.determine_function_location(&name, &decl.annotations, parent_idx)?;
-        let name_idx = self.pool.names.add(name.mangled());
+            self.determine_function_location(&fun_id, &decl.annotations, parent_idx)?;
+        let name_idx = self.pool.names.add(fun_id.mangled());
 
         let visibility = decl.qualifiers.visibility().unwrap_or(Visibility::Private);
         let return_type = if decl.type_.name == "void" {
             None
         } else {
-            Some(self.scope.resolve_type_name(Ident::new(decl.type_.repr()))?)
+            Some(self.scope.resolve_type_index(Ident::new(decl.type_.repr()))?)
         };
 
         let mut parameters = Vec::new();
 
         for decl in &source.parameters {
-            let type_ = self.scope.resolve_type_name(Ident::new(decl.type_.repr()))?;
+            let type_ = self.scope.resolve_type_index(Ident::new(decl.type_.repr()))?;
             let flags = ParameterFlags::new();
             let param = Parameter { type_, flags };
             let name = self.pool.names.add(decl.name.clone());
@@ -176,13 +180,14 @@ impl<'a> Compiler<'a> {
         if let Some(seq) = source.body {
             self.backlog.push((parent_idx, fun_idx, seq))
         }
+        self.scope.push_function(name, fun_idx);
         Ok(fun_idx)
     }
 
     fn define_field(&mut self, field: Declaration, parent: PoolIndex<Class>) -> Result<PoolIndex<Field>, Error> {
         let name = self.pool.names.add(field.name);
         let visibility = field.qualifiers.visibility().unwrap_or(Visibility::Private);
-        let type_ = self.scope.resolve_type_name(Ident::new(field.type_.repr()))?;
+        let type_ = self.scope.resolve_type_index(Ident::new(field.type_.repr()))?;
         let flags = FieldFlags::new();
         let field = Field {
             visibility,
@@ -234,7 +239,7 @@ impl<'a> Compiler<'a> {
     ) -> Result<(), Error> {
         for param in &pool.function(fun_idx)?.parameters {
             let ident = Ident(pool.definition_name(*param)?);
-            scope.names.insert(ident, Reference::Parameter(*param));
+            scope.references.insert(ident, Reference::Parameter(*param));
         }
 
         let assembler = Assembler::from_seq(&seq, pool, &mut scope)?;
@@ -251,7 +256,6 @@ pub enum Reference {
     Local(PoolIndex<Local>),
     Parameter(PoolIndex<Parameter>),
     Field(PoolIndex<Field>),
-    Function(PoolIndex<Function>),
     Class(PoolIndex<Class>),
     Enum(PoolIndex<Enum>),
 }
@@ -259,7 +263,7 @@ pub enum Reference {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeId {
     Prim(PoolIndex<Type>),
-    Class(PoolIndex<Type>, PoolIndex<Class>),
+    Class(Option<PoolIndex<Type>>, PoolIndex<Class>),
     Struct(PoolIndex<Type>, PoolIndex<Class>),
     Enum(PoolIndex<Type>, PoolIndex<Enum>),
     Ref(PoolIndex<Type>, Box<TypeId>),
@@ -281,27 +285,10 @@ impl TypeId {
         }
     }
 
-    fn mangled(&self, pool: &ConstantPool) -> Result<Rc<String>, Error> {
-        let res = match self {
-            TypeId::Prim(idx) => pool.definition_name(*idx)?,
-            TypeId::Class(idx, _) => pool.definition_name(*idx)?,
-            TypeId::Enum(idx, _) => pool.definition_name(*idx)?,
-            TypeId::Struct(idx, _) => pool.definition_name(*idx)?,
-            TypeId::Ref(_, inner) => inner.mangled(pool)?,
-            TypeId::WeakRef(_, inner) => inner.mangled(pool)?,
-            TypeId::Array(_, inner) => Rc::new(format!("array<{}>", inner.mangled(pool)?)),
-            TypeId::StaticArray(_, inner, _) => Rc::new(format!("array<{}>", inner.mangled(pool)?)),
-            TypeId::ScriptRef(_, inner) => inner.mangled(pool)?,
-            TypeId::Null => panic!(),
-            TypeId::Void => panic!(),
-        };
-        Ok(res)
-    }
-
     fn index(&self) -> Option<PoolIndex<Type>> {
         match self {
             TypeId::Prim(idx) => Some(*idx),
-            TypeId::Class(idx, _) => Some(*idx),
+            TypeId::Class(idx, _) => *idx,
             TypeId::Enum(idx, _) => Some(*idx),
             TypeId::Struct(idx, _) => Some(*idx),
             TypeId::Ref(idx, _) => Some(*idx),
@@ -311,6 +298,22 @@ impl TypeId {
             TypeId::ScriptRef(idx, _) => Some(*idx),
             TypeId::Null => None,
             TypeId::Void => None,
+        }
+    }
+
+    fn pretty(&self, pool: &ConstantPool) -> Result<Ident, Error> {
+        match self {
+            TypeId::Prim(idx) => Ok(Ident(pool.definition_name(*idx)?)),
+            TypeId::Class(_, idx) => Ok(Ident(pool.definition_name(*idx)?)),
+            TypeId::Struct(_, idx) => Ok(Ident(pool.definition_name(*idx)?)),
+            TypeId::Enum(_, idx) => Ok(Ident(pool.definition_name(*idx)?)),
+            TypeId::Ref(_, idx) => Ok(Ident::new(format!("ref<{}>", idx.pretty(pool)?.0))),
+            TypeId::WeakRef(_, idx) => Ok(Ident::new(format!("wref<{}>", idx.pretty(pool)?.0))),
+            TypeId::Array(_, idx) => Ok(Ident::new(format!("array<{}>", idx.pretty(pool)?.0))),
+            TypeId::StaticArray(_, idx, size) => Ok(Ident::new(format!("array<{}, {}>", idx.pretty(pool)?.0, size))),
+            TypeId::ScriptRef(_, idx) => Ok(Ident::new(format!("ref<{}>", idx.pretty(pool)?.0))),
+            TypeId::Null => Ok(Ident::new("null".to_owned())),
+            TypeId::Void => Ok(Ident::new("void".to_owned())),
         }
     }
 }
@@ -345,7 +348,7 @@ mod tests {
         .unwrap();
 
         let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
-        let mut compiler = Compiler::new(&mut scripts.pool);
+        let mut compiler = Compiler::new(&mut scripts.pool)?;
         compiler.compile(sources)
     }
 
@@ -370,7 +373,7 @@ mod tests {
         .unwrap();
 
         let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
-        let mut compiler = Compiler::new(&mut scripts.pool);
+        let mut compiler = Compiler::new(&mut scripts.pool)?;
         compiler.compile(sources)
     }
 }

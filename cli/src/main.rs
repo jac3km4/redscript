@@ -66,7 +66,7 @@ fn compile(opts: CompileOpts) -> Result<(), Error> {
     let entries = parser::parse(&sources).unwrap();
 
     let mut bundle: ScriptBundle = ScriptBundle::load(&mut BufReader::new(File::open(opts.bundle)?))?;
-    let mut compiler = Compiler::new(&mut bundle.pool);
+    let mut compiler = Compiler::new(&mut bundle.pool)?;
 
     compiler.compile(entries)?;
     bundle.save(&mut BufWriter::new(File::create(&opts.output)?))?;

@@ -23,7 +23,7 @@ private final void UpgradeItem() {
     i += 1;
   };
   this.RefreshUI();
-  this.PlaySound("Item", "OnCraftted");
+  this.PlaySound(n"Item", n"OnCraftted");
 }
 
 @insert(CraftingSystem)

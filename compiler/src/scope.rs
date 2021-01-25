@@ -1,21 +1,49 @@
-use redscript::ast::{BinOp, Expr, Ident, LiteralType, UnOp};
+use redscript::ast::{Expr, Ident, LiteralType};
 use redscript::bundle::{ConstantPool, PoolIndex};
-use redscript::definition::{Class, Enum};
-use redscript::definition::{DefinitionValue, Field, Function, Type};
+use redscript::definition::{Class, DefinitionValue, Enum, Field, Function, Local, Type};
 use redscript::error::Error;
 
 use crate::{parser::FunctionSource, Reference, TypeId};
 
+#[derive(Debug, Clone, Hash)]
+pub struct FunctionOverloads(im::Vector<PoolIndex<Function>>);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FunctionName {
+    namespace: Option<PoolIndex<Class>>,
+    name: Ident,
+}
+
+impl FunctionName {
+    pub fn global(name: Ident) -> FunctionName {
+        FunctionName { namespace: None, name }
+    }
+
+    pub fn instance(class: PoolIndex<Class>, name: Ident) -> FunctionName {
+        FunctionName {
+            namespace: Some(class),
+            name,
+        }
+    }
+}
+
+pub struct FunctionMatch {
+    pub index: PoolIndex<Function>,
+    pub conversions: Vec<Conversion>,
+    pub unspecified_args: u8,
+}
+
 #[derive(Debug, Clone)]
 pub struct Scope {
-    pub names: im::HashMap<Ident, Reference>,
+    pub functions: im::HashMap<FunctionName, FunctionOverloads>,
+    pub references: im::HashMap<Ident, Reference>,
     pub types: im::HashMap<Ident, PoolIndex<Type>>,
     pub this: Option<PoolIndex<Class>>,
     pub function: Option<PoolIndex<Function>>,
 }
 
 impl Scope {
-    pub fn new(pool: &ConstantPool) -> Self {
+    pub fn new(pool: &ConstantPool) -> Result<Self, Error> {
         let names = pool
             .roots()
             .filter_map(|(idx, def)| {
@@ -23,7 +51,6 @@ impl Scope {
                 match def.value {
                     DefinitionValue::Class(_) => Some((id, Reference::Class(idx.cast()))),
                     DefinitionValue::Enum(_) => Some((id, Reference::Enum(idx.cast()))),
-                    DefinitionValue::Function(_) => Some((id, Reference::Function(idx.cast()))),
                     _ => None,
                 }
             })
@@ -40,12 +67,28 @@ impl Scope {
             })
             .collect();
 
-        Scope {
-            names,
+        let mut result = Scope {
+            functions: im::HashMap::new(),
+            references: names,
             types,
             this: None,
             function: None,
+        };
+
+        for (idx, def) in pool.definitions() {
+            if let DefinitionValue::Function(_) = def.value {
+                let mangled_name = pool.definition_name(idx)?;
+                let ident = Ident::new(mangled_name.split(";").next().unwrap().to_owned());
+                let name = if def.parent != PoolIndex::UNDEFINED {
+                    FunctionName::instance(def.parent.cast(), ident)
+                } else {
+                    FunctionName::global(ident)
+                };
+                result.push_function(name, idx.cast())
+            }
         }
+
+        Ok(result)
     }
 
     pub fn with_context(&self, this: PoolIndex<Class>, function: PoolIndex<Function>) -> Self {
@@ -56,31 +99,15 @@ impl Scope {
         }
     }
 
-    pub fn push_reference(&mut self, name: Ident, reference: Reference) {
-        self.names.insert(name, reference);
+    pub fn push_local(&mut self, name: Ident, local: PoolIndex<Local>) {
+        self.references.insert(name, Reference::Local(local));
     }
 
-    pub fn resolve_method(
-        &self,
-        fun_id: FunctionId,
-        class_idx: PoolIndex<Class>,
-        pool: &ConstantPool,
-    ) -> Result<PoolIndex<Function>, Error> {
-        let class = pool.class(class_idx)?;
-        let mangled = fun_id.mangled();
-        for fun in &class.functions {
-            let fun_name = pool.definition_name(*fun)?;
-            if fun_name.as_str() == fun_id.0 || fun_name.as_str() == mangled {
-                return Ok(*fun);
-            }
-        }
-        let err = format!("Method {} not found on {}", fun_id.0, pool.definition_name(class_idx)?);
-        if class.base != PoolIndex::UNDEFINED {
-            self.resolve_method(fun_id, class.base, pool)
-                .map_err(|_| Error::CompileError(err))
-        } else {
-            Err(Error::CompileError(err))
-        }
+    pub fn push_function(&mut self, name: FunctionName, index: PoolIndex<Function>) {
+        self.functions
+            .entry(name)
+            .and_modify(|overloads: &mut FunctionOverloads| overloads.0.push_back(index))
+            .or_insert_with(|| FunctionOverloads(im::vector![index]));
     }
 
     pub fn resolve_field(
@@ -120,69 +147,193 @@ impl Scope {
         Err(Error::CompileError(err))
     }
 
-    pub fn resolve_function(&self, function_id: FunctionId) -> Result<PoolIndex<Function>, Error> {
-        let reference = self
-            .names
-            .get(&Ident::new(function_id.mangled()))
-            .or(self.names.get(&Ident::new(function_id.0.to_owned())))
-            .ok_or(Error::CompileError(format!("Function {} not found", function_id.0)))?;
-        if let Reference::Function(idx) = reference {
-            Ok(*idx)
-        } else {
-            Err(Error::CompileError(format!("{} is not a function", function_id.0)))
+    pub fn resolve_function<'a>(
+        &self,
+        name: FunctionName,
+        args: impl Iterator<Item = &'a Expr>,
+        pool: &ConstantPool,
+    ) -> Result<FunctionMatch, Error> {
+        let overloads = self
+            .functions
+            .get(&name)
+            .ok_or(Error::CompileError(format!("Function {:?} not found", name)))?;
+
+        let mut types = Vec::new();
+        for arg in args {
+            types.push(self.infer_type(arg, pool)?);
+        }
+
+        for fun_idx in overloads.0.iter() {
+            let fun = pool.function(*fun_idx)?;
+            let mut conversions = Vec::new();
+            let mut undefined_args = 0;
+            for i in 0..fun.parameters.len() {
+                let param = pool.parameter(fun.parameters[i])?;
+                let param_type = self.resolve_type_by_index(param.type_, pool)?;
+                if let Some(arg_type) = types.get(i) {
+                    if let Some(conv) = self.find_conversion(&arg_type, &param_type, pool)? {
+                        conversions.push(conv);
+                    } else {
+                        break;
+                    }
+                } else if param.flags.is_optional() {
+                    undefined_args += 1;
+                } else {
+                    break;
+                }
+            }
+
+            if conversions.len() + undefined_args == fun.parameters.len() {
+                let match_ = FunctionMatch {
+                    index: *fun_idx,
+                    conversions,
+                    unspecified_args: undefined_args as u8,
+                };
+                return Ok(match_);
+            }
+        }
+        Err(Error::FunctionResolutionError(format!(
+            "Arguments passed to {} do not match any of the overloads",
+            name.name.0
+        )))
+    }
+
+    pub fn resolve_method(
+        &self,
+        name: Ident,
+        class_idx: PoolIndex<Class>,
+        args: &[Expr],
+        pool: &ConstantPool,
+    ) -> Result<FunctionMatch, Error> {
+        match self.resolve_function(FunctionName::instance(class_idx, name.clone()), args.iter(), pool) {
+            Ok(res) => Ok(res),
+            Err(err) => {
+                let class = pool.class(class_idx)?;
+                if class.base != PoolIndex::UNDEFINED {
+                    self.resolve_method(name, class.base, args, pool)
+                        .map_err(|base_err| match base_err {
+                            err @ Error::FunctionResolutionError(_) => err,
+                            _ => err,
+                        })
+                } else {
+                    Err(err)
+                }
+            }
         }
     }
 
     pub fn resolve(&self, name: Ident) -> Result<Reference, Error> {
-        self.names
+        self.references
             .get(&name)
             .cloned()
             .ok_or(Error::CompileError(format!("Unresolved name {}", name.0)))
     }
 
-    pub fn resolve_type_name(&self, name: Ident) -> Result<PoolIndex<Type>, Error> {
+    pub fn resolve_type_index(&self, name: Ident) -> Result<PoolIndex<Type>, Error> {
         self.types
             .get(&name)
             .cloned()
             .ok_or(Error::CompileError(format!("Unresolved type {}", name.0)))
     }
 
-    fn resolve_type(&self, index: PoolIndex<Type>, pool: &ConstantPool) -> Result<TypeId, Error> {
+    pub fn resolve_type(&self, name: Ident, pool: &ConstantPool) -> Result<TypeId, Error> {
+        let index = self.resolve_type_index(name)?;
+        self.resolve_type_by_index(index, pool)
+    }
+
+    fn resolve_type_by_index(&self, index: PoolIndex<Type>, pool: &ConstantPool) -> Result<TypeId, Error> {
         let result = match pool.type_(index)? {
             Type::Prim => TypeId::Prim(index),
             Type::Class => {
                 let ident = Ident(pool.definition_name(index)?);
-                if let Some(Reference::Class(class_idx)) = self.names.get(&ident) {
+                if let Some(Reference::Class(class_idx)) = self.references.get(&ident) {
                     if pool.class(*class_idx)?.flags.is_struct() {
                         TypeId::Struct(index, *class_idx)
                     } else {
-                        TypeId::Class(index, *class_idx)
+                        TypeId::Class(Some(index), *class_idx)
                     }
-                } else if let Some(Reference::Enum(enum_idx)) = self.names.get(&ident) {
+                } else if let Some(Reference::Enum(enum_idx)) = self.references.get(&ident) {
                     TypeId::Enum(index, *enum_idx)
                 } else {
                     Err(Error::CompileError(format!("Class {} not found", ident.0)))?
                 }
             }
             Type::Ref(type_) => {
-                let inner = self.resolve_type(*type_, pool)?;
+                let inner = self.resolve_type_by_index(*type_, pool)?;
                 TypeId::Ref(index, Box::new(inner))
             }
             Type::WeakRef(type_) => {
-                let inner = self.resolve_type(*type_, pool)?;
+                let inner = self.resolve_type_by_index(*type_, pool)?;
                 TypeId::WeakRef(index, Box::new(inner))
             }
             Type::Array(type_) => {
-                let inner = self.resolve_type(*type_, pool)?;
+                let inner = self.resolve_type_by_index(*type_, pool)?;
                 TypeId::Array(index, Box::new(inner))
             }
             Type::StaticArray(type_, size) => {
-                let inner = self.resolve_type(*type_, pool)?;
+                let inner = self.resolve_type_by_index(*type_, pool)?;
                 TypeId::StaticArray(index, Box::new(inner), *size)
             }
             Type::ScriptRef(type_) => {
-                let inner = self.resolve_type(*type_, pool)?;
+                let inner = self.resolve_type_by_index(*type_, pool)?;
                 TypeId::ScriptRef(index, Box::new(inner))
+            }
+        };
+        Ok(result)
+    }
+
+    pub fn convert_expr(&self, from: &Expr, to: &Expr, pool: &ConstantPool) -> Result<Conversion, Error> {
+        let from = self.infer_type(from, pool)?;
+        let to = self.infer_type(to, pool)?;
+        self.convert_type(&from, &to, pool)
+    }
+
+    pub fn convert_type(&self, from: &TypeId, to: &TypeId, pool: &ConstantPool) -> Result<Conversion, Error> {
+        self.find_conversion(&from, &to, pool)?
+            .ok_or(Error::CompileError(format!(
+                "Can't coerce {} to {}",
+                from.pretty(pool)?,
+                to.pretty(pool)?
+            )))
+    }
+
+    fn find_conversion(&self, from: &TypeId, to: &TypeId, pool: &ConstantPool) -> Result<Option<Conversion>, Error> {
+        let result = if from == to {
+            Some(Conversion::Identity)
+        } else {
+            match (from, to) {
+                (TypeId::Null, TypeId::Ref(_, _)) => Some(Conversion::Identity),
+                (TypeId::Null, TypeId::WeakRef(_, _)) => Some(Conversion::Identity),
+                (TypeId::Class(_, from), TypeId::Class(_, _)) => {
+                    let class = pool.class(*from)?;
+                    if class.base != PoolIndex::UNDEFINED {
+                        let base_name = Ident(pool.definition_name(class.base)?);
+                        let base_type = self.resolve_type(base_name, pool).ok().and_then(|t| t.index());
+                        self.find_conversion(&TypeId::Class(base_type, class.base), to, pool)?
+                    } else {
+                        None
+                    }
+                }
+                (from @ TypeId::Class(_, _), TypeId::Ref(_, to)) => self
+                    .find_conversion(from, to, pool)?
+                    .filter(|conv| *conv == Conversion::Identity),
+                (TypeId::Ref(_, from), TypeId::Ref(_, to)) => self
+                    .find_conversion(from, to, pool)?
+                    .filter(|conv| *conv == Conversion::Identity),
+                (TypeId::WeakRef(_, from), TypeId::WeakRef(_, to)) => self
+                    .find_conversion(from, to, pool)?
+                    .filter(|conv| *conv == Conversion::Identity),
+                (TypeId::WeakRef(_, from), TypeId::Ref(_, to))
+                    if self.find_conversion(from, to, pool)? == Some(Conversion::Identity) =>
+                {
+                    Some(Conversion::WeakRefToRef)
+                }
+                (TypeId::Ref(_, from), TypeId::WeakRef(_, to))
+                    if self.find_conversion(from, to, pool)? == Some(Conversion::Identity) =>
+                {
+                    Some(Conversion::RefToWeakRef)
+                }
+                _ => None,
             }
         };
         Ok(result)
@@ -191,24 +342,24 @@ impl Scope {
     pub fn infer_type(&self, expr: &Expr, pool: &ConstantPool) -> Result<TypeId, Error> {
         let res = match expr {
             Expr::Ident(name) => match self.resolve(name.clone())? {
-                Reference::Local(idx) => self.resolve_type(pool.local(idx)?.type_, pool)?,
-                Reference::Parameter(idx) => self.resolve_type(pool.parameter(idx)?.type_, pool)?,
-                Reference::Field(idx) => self.resolve_type(pool.field(idx)?.type_, pool)?,
+                Reference::Local(idx) => self.resolve_type_by_index(pool.local(idx)?.type_, pool)?,
+                Reference::Parameter(idx) => self.resolve_type_by_index(pool.parameter(idx)?.type_, pool)?,
+                Reference::Field(idx) => self.resolve_type_by_index(pool.field(idx)?.type_, pool)?,
                 Reference::Class(idx) => {
                     let name = pool.definition_name(idx)?;
-                    self.resolve_type(self.resolve_type_name(Ident(name))?, pool)?
+                    self.resolve_type(Ident(name), pool)?
                 }
                 Reference::Enum(idx) => {
                     let name = pool.definition_name(idx)?;
-                    self.resolve_type(self.resolve_type_name(Ident(name))?, pool)?
+                    self.resolve_type(Ident(name), pool)?
                 }
-                Reference::Function(_) => Err(Error::CompileError("Functions can't be used as values".to_owned()))?,
             },
-            Expr::Cast(type_, _) => self.resolve_type(self.resolve_type_name(Ident::new(type_.repr()))?, pool)?,
-            Expr::Call(name, args) => {
-                let idx = self.resolve_function(FunctionId::by_name_and_args(name, args, pool, self)?)?;
-                match pool.function(idx)?.return_type {
-                    Some(type_) => self.resolve_type(type_, pool)?,
+            Expr::Cast(type_, _) => self.resolve_type(Ident::new(type_.repr()), pool)?,
+            Expr::Call(ident, args) => {
+                let name = FunctionName::global(ident.clone());
+                let match_ = self.resolve_function(name, args.iter(), pool)?;
+                match pool.function(match_.index)?.return_type {
+                    Some(type_) => self.resolve_type_by_index(type_, pool)?,
                     None => TypeId::Void,
                 }
             }
@@ -218,11 +369,10 @@ impl Scope {
                     TypeId::Struct(_, class) => *class,
                     _ => Err(Error::CompileError(format!("{:?} doesn't have methods", expr)))?,
                 };
-                let function_id = FunctionId::by_name_and_args(ident, args, pool, self)?;
-                let method = self.resolve_method(function_id, class, pool)?;
-                match pool.function(method)?.return_type {
+                let match_ = self.resolve_method(ident.clone(), class, args, pool)?;
+                match pool.function(match_.index)?.return_type {
                     None => TypeId::Void,
-                    Some(return_type) => self.resolve_type(return_type, pool)?,
+                    Some(return_type) => self.resolve_type_by_index(return_type, pool)?,
                 }
             }
             Expr::ArrayElem(expr, _) => match self.infer_type(expr, pool)? {
@@ -233,7 +383,7 @@ impl Scope {
             Expr::New(name, _) => {
                 if let Reference::Class(cls) = self.resolve(name.clone())? {
                     let name = pool.definition_name(cls)?;
-                    self.resolve_type(self.resolve_type_name(Ident(name))?, pool)?
+                    self.resolve_type(Ident(name), pool)?
                 } else {
                     Err(Error::CompileError(format!("{} can't be constructed", name.0)))?
                 }
@@ -246,7 +396,7 @@ impl Scope {
                     _ => Err(Error::CompileError(format!("Can't access a member of {:?}", expr)))?,
                 };
                 let field = self.resolve_field(ident.clone(), class, pool)?;
-                self.resolve_type(pool.field(field)?.type_, pool)?
+                self.resolve_type_by_index(pool.field(field)?.type_, pool)?
             }
             Expr::Conditional(_, lhs, rhs) => {
                 let lt = self.infer_type(lhs, pool)?;
@@ -259,28 +409,22 @@ impl Scope {
             }
             Expr::BinOp(lhs, _, _) => self.infer_type(lhs, pool)?,
             Expr::UnOp(expr, _) => self.infer_type(expr, pool)?,
-            Expr::StringLit(LiteralType::String, _) => {
-                self.resolve_type(self.resolve_type_name(Ident::new("String".to_owned()))?, pool)?
-            }
-            Expr::StringLit(LiteralType::Name, _) => {
-                self.resolve_type(self.resolve_type_name(Ident::new("CName".to_owned()))?, pool)?
-            }
-            Expr::StringLit(LiteralType::Resource, _) => {
-                self.resolve_type(self.resolve_type_name(Ident::new("ResRef".to_owned()))?, pool)?
-            }
+            Expr::StringLit(LiteralType::String, _) => self.resolve_type(Ident::new("String".to_owned()), pool)?,
+            Expr::StringLit(LiteralType::Name, _) => self.resolve_type(Ident::new("CName".to_owned()), pool)?,
+            Expr::StringLit(LiteralType::Resource, _) => self.resolve_type(Ident::new("ResRef".to_owned()), pool)?,
             Expr::StringLit(LiteralType::TweakDbId, _) => {
-                self.resolve_type(self.resolve_type_name(Ident::new("TweakDBID".to_owned()))?, pool)?
+                self.resolve_type(Ident::new("TweakDBID".to_owned()), pool)?
             }
-            Expr::FloatLit(_) => self.resolve_type(self.resolve_type_name(Ident::new("Float".to_owned()))?, pool)?,
-            Expr::IntLit(_) => self.resolve_type(self.resolve_type_name(Ident::new("Int32".to_owned()))?, pool)?,
-            Expr::UintLit(_) => self.resolve_type(self.resolve_type_name(Ident::new("Uint32".to_owned()))?, pool)?,
-            Expr::True => self.resolve_type(self.resolve_type_name(Ident::new("Bool".to_owned()))?, pool)?,
-            Expr::False => self.resolve_type(self.resolve_type_name(Ident::new("Bool".to_owned()))?, pool)?,
+            Expr::FloatLit(_) => self.resolve_type(Ident::new("Float".to_owned()), pool)?,
+            Expr::IntLit(_) => self.resolve_type(Ident::new("Int32".to_owned()), pool)?,
+            Expr::UintLit(_) => self.resolve_type(Ident::new("Uint32".to_owned()), pool)?,
+            Expr::True => self.resolve_type(Ident::new("Bool".to_owned()), pool)?,
+            Expr::False => self.resolve_type(Ident::new("Bool".to_owned()), pool)?,
             Expr::Null => TypeId::Null,
             Expr::This => match self.this {
                 Some(cls) => {
                     let name = pool.definition_name(cls)?;
-                    self.resolve_type(self.resolve_type_name(Ident(name))?, pool)?
+                    self.resolve_type(Ident(name), pool)?
                 }
                 None => Err(Error::CompileError("No 'this' available".to_owned()))?,
             },
@@ -298,6 +442,13 @@ impl Scope {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum Conversion {
+    Identity,
+    RefToWeakRef,
+    WeakRefToRef,
+}
+
 pub struct FunctionId<'a>(pub &'a str, String);
 
 impl<'a> FunctionId<'a> {
@@ -311,76 +462,5 @@ impl<'a> FunctionId<'a> {
             signature.push_str(arg.type_.mangled().as_str());
         }
         Ok(FunctionId(&source.declaration.name, signature))
-    }
-
-    pub fn by_name_and_args(name: &'a Ident, args: &[Expr], pool: &ConstantPool, scope: &Scope) -> Result<Self, Error> {
-        let mut signature = String::new();
-        for arg in args {
-            let type_ = scope.infer_type(arg, pool)?;
-            signature.push_str(type_.mangled(pool)?.as_str());
-        }
-        Ok(FunctionId(&name.0, signature))
-    }
-
-    pub fn by_binop(lhs: &Expr, rhs: &Expr, op: BinOp, pool: &ConstantPool, scope: &Scope) -> Result<Self, Error> {
-        let lhs_type = scope.infer_type(lhs, pool)?.mangled(pool)?;
-        let rhs_type = scope.infer_type(rhs, pool)?.mangled(pool)?;
-        let type_sig = match op {
-            BinOp::LogicOr
-            | BinOp::LogicAnd
-            | BinOp::Eq
-            | BinOp::Neq
-            | BinOp::Less
-            | BinOp::LessOrEqual
-            | BinOp::Greater
-            | BinOp::GreaterOrEqual => format!("{}{};Bool", lhs_type, rhs_type),
-            BinOp::AssignAdd | BinOp::AssignDiv | BinOp::AssignMul | BinOp::AssignSub => {
-                format!("Out{}{};{}", lhs_type, rhs_type, lhs_type)
-            }
-            _ => format!("{}{};{}", lhs_type, rhs_type, lhs_type),
-        };
-        Ok(FunctionId(binop_name(op), type_sig))
-    }
-
-    pub fn by_unop(expr: &Expr, op: UnOp, pool: &ConstantPool, scope: &Scope) -> Result<Self, Error> {
-        let type_ = scope.infer_type(expr, pool)?.mangled(pool)?;
-        let type_sig = match op {
-            UnOp::LogicNot => format!("{};Bool", type_),
-            UnOp::BitNot | UnOp::Neg => format!("{};{}", type_, type_),
-        };
-        Ok(FunctionId(unop_name(op), type_sig))
-    }
-}
-
-fn binop_name(op: BinOp) -> &'static str {
-    match op {
-        BinOp::AssignAdd => "OperatorAssignAdd",
-        BinOp::AssignSub => "OperatorAssignSubtract",
-        BinOp::AssignMul => "OperatorAssignMultiply",
-        BinOp::AssignDiv => "OperatorAssignMultiply",
-        BinOp::LogicOr => "OperatorLogicOr",
-        BinOp::LogicAnd => "OperatorLogicAnd",
-        BinOp::Or => "OperatorOr",
-        BinOp::Xor => "OperatorXor",
-        BinOp::And => "OperatorAnd",
-        BinOp::Eq => "OperatorEqual",
-        BinOp::Neq => "OperatorNotEqual",
-        BinOp::Less => "OperatorLess",
-        BinOp::LessOrEqual => "OperatorLessEqual",
-        BinOp::Greater => "OperatorGreater",
-        BinOp::GreaterOrEqual => "OperatorGreaterEqual",
-        BinOp::Add => "OperatorAdd",
-        BinOp::Sub => "OperatorSubtract",
-        BinOp::Mul => "OperatorMultiply",
-        BinOp::Div => "OperatorDivide",
-        BinOp::Mod => "OperatorModulo",
-    }
-}
-
-fn unop_name(op: UnOp) -> &'static str {
-    match op {
-        UnOp::BitNot => "OperatorBitNot",
-        UnOp::LogicNot => "OperatorLogicNot",
-        UnOp::Neg => "OperatorNeg",
     }
 }

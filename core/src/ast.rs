@@ -1,4 +1,7 @@
+use std::fmt::Display;
 use std::rc::Rc;
+
+use strum::Display;
 
 #[derive(Debug)]
 pub enum Expr {
@@ -52,35 +55,53 @@ impl Ident {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+impl Display for Ident {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Display)]
 pub enum BinOp {
     AssignAdd,
     AssignSub,
-    AssignMul,
-    AssignDiv,
+    AssignMultiply,
+    AssignDivide,
     LogicOr,
     LogicAnd,
     Or,
     Xor,
     And,
-    Eq,
-    Neq,
+    Equal,
+    NotEqual,
     Less,
-    LessOrEqual,
+    LessEqual,
     Greater,
-    GreaterOrEqual,
+    GreaterEqual,
     Add,
-    Sub,
-    Mul,
-    Div,
-    Mod,
+    Subtract,
+    Multiply,
+    Divide,
+    Modulo,
 }
 
-#[derive(Debug, Clone, Copy)]
+impl BinOp {
+    pub fn name(&self) -> String {
+        format!("Operator{}", self)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Display)]
 pub enum UnOp {
     BitNot,
     LogicNot,
     Neg,
+}
+
+impl UnOp {
+    pub fn name(&self) -> String {
+        format!("Operator{}", self)
+    }
 }
 
 #[derive(Debug)]
@@ -131,7 +152,6 @@ impl TypeName {
         match self.name.as_str() {
             "ref" => &self.arguments[0].unwrapped(),
             "wref" => &self.arguments[0].unwrapped(),
-            "array" => &self.arguments[0].unwrapped(),
             _ => self,
         }
     }

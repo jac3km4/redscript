@@ -105,8 +105,8 @@ pub enum Instr {
     WeakRefToRef,
     RefToWeakRef,
     WeakRefNull,
-    ToScriptRef(PoolIndex<Type>),
-    FromScriptRef(PoolIndex<Type>),
+    AsRef(PoolIndex<Type>),
+    Deref(PoolIndex<Type>),
     Unk9,
 }
 
@@ -203,8 +203,8 @@ impl Instr {
             Instr::WeakRefToRef => 0,
             Instr::RefToWeakRef => 0,
             Instr::WeakRefNull => 0,
-            Instr::ToScriptRef(_) => 8,
-            Instr::FromScriptRef(_) => 8,
+            Instr::AsRef(_) => 8,
+            Instr::Deref(_) => 8,
             Instr::Unk9 => 0,
         }
     }
@@ -331,8 +331,8 @@ impl Decode for Instr {
             93 => Ok(Instr::WeakRefToRef),
             94 => Ok(Instr::RefToWeakRef),
             95 => Ok(Instr::WeakRefNull),
-            96 => Ok(Instr::ToScriptRef(input.decode()?)),
-            97 => Ok(Instr::FromScriptRef(input.decode()?)),
+            96 => Ok(Instr::AsRef(input.decode()?)),
+            97 => Ok(Instr::Deref(input.decode()?)),
             98 => Ok(Instr::Unk9),
             other => {
                 let msg = format!("Invalid instruction code: {}", other);
@@ -723,11 +723,11 @@ impl Encode for Instr {
             Instr::WeakRefNull => {
                 output.encode(&95u8)?;
             }
-            Instr::ToScriptRef(idx) => {
+            Instr::AsRef(idx) => {
                 output.encode(&96u8)?;
                 output.encode(idx)?;
             }
-            Instr::FromScriptRef(idx) => {
+            Instr::Deref(idx) => {
                 output.encode(&97u8)?;
                 output.encode(idx)?;
             }
