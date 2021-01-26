@@ -29,6 +29,13 @@ impl FunctionName {
             name,
         }
     }
+
+    pub fn pretty(&self, pool: &ConstantPool) -> String {
+        self.namespace
+            .and_then(|c| pool.definition_name(c).ok())
+            .map(|n| format!("{}::{}", n, self.name))
+            .unwrap_or(self.name.to_string())
+    }
 }
 
 pub struct FunctionMatch {
@@ -126,7 +133,7 @@ impl Scope {
                 return Ok(*field);
             }
         }
-        let err = format!("Field {} not found on {}", ident.0, pool.definition_name(class_idx)?);
+        let err = format!("Field {} not found on {}", ident, pool.definition_name(class_idx)?);
         if class.base != PoolIndex::UNDEFINED {
             self.resolve_field(ident, class.base, pool)
                 .map_err(|_| Error::CompileError(err))
@@ -147,7 +154,7 @@ impl Scope {
                 return Ok(*field);
             }
         }
-        let err = format!("Member {} not found on {}", ident.0, pool.definition_name(enum_idx)?);
+        let err = format!("Member {} not found on {}", ident, pool.definition_name(enum_idx)?);
         Err(Error::CompileError(err))
     }
 
@@ -160,7 +167,7 @@ impl Scope {
         let overloads = self
             .functions
             .get(&name)
-            .ok_or(Error::CompileError(format!("Function {:?} not found", name)))?;
+            .ok_or_else(|| Error::CompileError(format!("Function {} not found", name.pretty(pool))))?;
 
         let mut types = Vec::new();
         for arg in args {
@@ -198,7 +205,7 @@ impl Scope {
         }
         Err(Error::FunctionResolutionError(format!(
             "Arguments passed to {} do not match any of the overloads",
-            name.name.0
+            name.pretty(pool)
         )))
     }
 
@@ -226,18 +233,18 @@ impl Scope {
         }
     }
 
-    pub fn resolve(&self, name: Ident) -> Result<Reference, Error> {
+    pub fn resolve_reference(&self, name: Ident) -> Result<Reference, Error> {
         self.references
             .get(&name)
             .cloned()
-            .ok_or(Error::CompileError(format!("Unresolved name {}", name.0)))
+            .ok_or(Error::CompileError(format!("Unresolved reference {}", name)))
     }
 
     pub fn resolve_type_index(&self, name: Ident) -> Result<PoolIndex<Type>, Error> {
         self.types
             .get(&name)
             .cloned()
-            .ok_or(Error::CompileError(format!("Unresolved type {}", name.0)))
+            .ok_or(Error::CompileError(format!("Unresolved type {}", name)))
     }
 
     pub fn resolve_type(&self, name: Ident, pool: &ConstantPool) -> Result<TypeId, Error> {
@@ -259,7 +266,7 @@ impl Scope {
                 } else if let Some(Reference::Enum(enum_idx)) = self.references.get(&ident) {
                     TypeId::Enum(index, *enum_idx)
                 } else {
-                    Err(Error::CompileError(format!("Class {} not found", ident.0)))?
+                    Err(Error::CompileError(format!("Class {} not found", ident)))?
                 }
             }
             Type::Ref(type_) => {
@@ -345,7 +352,7 @@ impl Scope {
 
     pub fn infer_type(&self, expr: &Expr, pool: &ConstantPool) -> Result<TypeId, Error> {
         let res = match expr {
-            Expr::Ident(name) => match self.resolve(name.clone())? {
+            Expr::Ident(name) => match self.resolve_reference(name.clone())? {
                 Reference::Local(idx) => self.resolve_type_by_index(pool.local(idx)?.type_, pool)?,
                 Reference::Parameter(idx) => self.resolve_type_by_index(pool.parameter(idx)?.type_, pool)?,
                 Reference::Field(idx) => self.resolve_type_by_index(pool.field(idx)?.type_, pool)?,
@@ -386,14 +393,14 @@ impl Scope {
             Expr::ArrayElem(expr, _) => match self.infer_type(expr, pool)? {
                 TypeId::Array(_, inner) => *inner,
                 TypeId::StaticArray(_, inner, _) => *inner,
-                _ => Err(Error::CompileError(format!("{:?} can't be indexed", expr)))?,
+                type_ => Err(Error::CompileError(format!("{} can't be indexed", type_.pretty(pool)?)))?,
             },
             Expr::New(name, _) => {
-                if let Reference::Class(cls) = self.resolve(name.clone())? {
+                if let Reference::Class(cls) = self.resolve_reference(name.clone())? {
                     let name = pool.definition_name(cls)?;
                     self.resolve_type(Ident(name), pool)?
                 } else {
-                    Err(Error::CompileError(format!("{} can't be constructed", name.0)))?
+                    Err(Error::CompileError(format!("{} can't be constructed", name)))?
                 }
             }
             Expr::Member(expr, ident) => {
@@ -401,7 +408,10 @@ impl Scope {
                     TypeId::Class(_, class) => *class,
                     TypeId::Struct(_, class) => *class,
                     t @ TypeId::Enum(_, _) => return Ok(t.clone()),
-                    _ => Err(Error::CompileError(format!("Can't access a member of {:?}", expr)))?,
+                    t => {
+                        let err = format!("Can't access a member of {}", t.pretty(pool)?);
+                        Err(Error::CompileError(err))?
+                    }
                 };
                 let field = self.resolve_field(ident.clone(), class, pool)?;
                 self.resolve_type_by_index(pool.field(field)?.type_, pool)?
@@ -410,7 +420,7 @@ impl Scope {
                 let lt = self.infer_type(lhs, pool)?;
                 let rt = self.infer_type(rhs, pool)?;
                 if lt != rt {
-                    let error = format!("Incompatible types: {:?} and {:?}", lt, rt);
+                    let error = format!("Incompatible types: {} and {}", lt.pretty(pool)?, rt.pretty(pool)?);
                     Err(Error::CompileError(error))?
                 }
                 lt

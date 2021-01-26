@@ -69,7 +69,7 @@ impl<'a> Compiler<'a> {
         let name_idx = self.pool.names.add(source.name);
         let name = Ident(self.pool.names.get(name_idx)?);
 
-        if let Reference::Class(class_idx) = self.scope.resolve(name)? {
+        if let Reference::Class(class_idx) = self.scope.resolve_reference(name)? {
             let visibility = source.qualifiers.visibility().unwrap_or(Visibility::Private);
             let flags = ClassFlags::new();
             let mut functions = vec![];
@@ -88,7 +88,7 @@ impl<'a> Compiler<'a> {
 
             let base_idx = if let Some(base_name) = source.base {
                 let base_ident = Ident::new(base_name);
-                if let Reference::Class(base_idx) = self.scope.resolve(base_ident.clone())? {
+                if let Reference::Class(base_idx) = self.scope.resolve_reference(base_ident.clone())? {
                     base_idx
                 } else {
                     Err(Error::CompileError(format!("{} is not a class", base_ident.0)))?
@@ -209,7 +209,7 @@ impl<'a> Compiler<'a> {
         parent: PoolIndex<Class>,
     ) -> Result<(PoolIndex<Class>, Option<PoolIndex<Function>>, PoolIndex<Function>), Error> {
         if let Some(target_name) = annotations.iter().find_map(|ann| ann.get_insert_target()) {
-            if let Reference::Class(target_class) = self.scope.resolve(Ident::new(target_name.to_owned()))? {
+            if let Reference::Class(target_class) = self.scope.resolve_reference(Ident::new(target_name.to_owned()))? {
                 let class = self.pool.class(target_class)?;
                 let existing_idx = class.functions.iter().find(|fun| {
                     let str = self.pool.definition_name(**fun).unwrap();
