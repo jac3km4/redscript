@@ -148,7 +148,7 @@ impl<'a> Compiler<'a> {
 
         for decl in &source.parameters {
             let type_ = self.scope.resolve_type_index(Ident::new(decl.type_.repr()))?;
-            let flags = ParameterFlags::new();
+            let flags = ParameterFlags::new().with_is_out(decl.qualifiers.contain(Qualifier::Out));
             let param = Parameter { type_, flags };
             let name = self.pool.names.add(decl.name.clone());
             let idx = self
