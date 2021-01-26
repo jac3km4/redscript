@@ -176,7 +176,13 @@ impl Assembler {
                 }
             }
             Expr::If(cond, if_, else_) => {
+                let type_ = scope.infer_type(cond, pool)?;
                 let cond_code = Assembler::from_expr(cond, pool, &mut scope.clone())?;
+                let cond_code = match type_ {
+                    TypeId::Ref(_, _) => cond_code.prefix(Instr::RefToBool),
+                    TypeId::WeakRef(_, _) => cond_code.prefix(Instr::WeakRefToBool),
+                    _ => cond_code,
+                };
                 let mut if_branch = Assembler::from_seq(if_, pool, &mut scope.clone())?;
                 let else_branch = if let Some(else_code) = else_ {
                     let else_branch = Assembler::from_seq(else_code, pool, &mut scope.clone())?;
@@ -273,8 +279,8 @@ impl Assembler {
             Expr::UnOp(expr, op) => {
                 let ident = Ident::new(op.name());
                 let args = iter::once(expr.as_ref());
-                let fun = scope.resolve_function(FunctionName::global(ident), args, pool)?;
-                self.compile_call(fun, iter::once(expr.as_ref()), pool, scope)?;
+                let fun = scope.resolve_function(FunctionName::global(ident), args.clone(), pool)?;
+                self.compile_call(fun, args, pool, scope)?;
             }
             Expr::True => {
                 self.emit(Instr::TrueConst);
