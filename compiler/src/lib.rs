@@ -336,7 +336,7 @@ mod tests {
             public class A {
                 private const Int32 m_field;
 
-                public void DoStuff(Bool fieldOrNot) {
+                public Int32 DoStuff(Bool fieldOrNot) {
                     return fieldOrNot ? this.m_field : A.Ten();
                 }
 
