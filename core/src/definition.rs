@@ -616,7 +616,7 @@ impl Encode for LocalFlags {
 #[derive(Debug, Clone, Copy)]
 pub struct ParameterFlags {
     pub is_optional: bool,
-    pub is_out_param: bool,
+    pub is_out: bool,
     pub bit2: bool,
     pub bit3: bool,
     #[skip]

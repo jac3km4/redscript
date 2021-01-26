@@ -40,6 +40,7 @@ pub enum Qualifier {
     Native,
     Exec,
     Callback,
+    Out
 }
 
 #[derive(Debug)]
@@ -103,6 +104,7 @@ peg::parser! {
             / "native" { Qualifier::Native }
             / "exec" { Qualifier::Exec }
             / "cb" { Qualifier::Callback }
+            / "out" { Qualifier::Out }
 
         rule literal_type() -> LiteralType
             = "n" { LiteralType::Name }

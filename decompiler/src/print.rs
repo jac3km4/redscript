@@ -391,7 +391,7 @@ fn format_param(def: &Definition, pool: &ConstantPool) -> Result<String, Error> 
     if let DefinitionValue::Parameter(ref param) = def.value {
         let type_name = format_type(pool.definition(param.type_)?, pool)?;
         let name = pool.names.get(def.name)?;
-        let qualifier = if param.flags.is_out_param() { "out " } else { "" };
+        let qualifier = if param.flags.is_out() { "out " } else { "" };
         let optional = if param.flags.is_optional() { "?" } else { "" };
         Ok(format!("{}{} {}{}", qualifier, type_name, name, optional))
     } else {
