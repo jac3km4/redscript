@@ -51,7 +51,7 @@ impl Assembler {
     fn compile(&mut self, expr: &Expr, pool: &mut ConstantPool, scope: &mut Scope) -> Result<(), Error> {
         match expr {
             Expr::Ident(name) => {
-                match scope.resolve(name.clone())? {
+                match scope.resolve_reference(name.clone())? {
                     Reference::Local(idx) => self.emit(Instr::Local(idx)),
                     Reference::Parameter(idx) => self.emit(Instr::Param(idx)),
                     _ => panic!("Shouldn't get here"),
@@ -118,19 +118,19 @@ impl Assembler {
                         self.emit(Instr::StaticArrayElement(member.index().unwrap()));
                     }
                     other => {
-                        let error = format!("Array access not allowed on {:?}", other);
+                        let error = format!("Array access not allowed on {}", other.pretty(pool)?);
                         Err(Error::CompileError(error))?
                     }
                 }
                 self.compile(expr, pool, scope)?;
                 self.compile(idx, pool, scope)?;
             }
-            Expr::New(name, args) => match scope.resolve(name.clone())? {
+            Expr::New(name, args) => match scope.resolve_reference(name.clone())? {
                 Reference::Class(idx) => {
                     let cls = pool.class(idx)?;
                     if cls.flags.is_struct() {
                         if cls.fields.len() != args.len() {
-                            let err = format!("Expected {} parameters for {}", cls.fields.len(), name.0);
+                            let err = format!("Expected {} parameters for {}", cls.fields.len(), name);
                             Err(Error::CompileError(err))?
                         }
                         self.emit(Instr::Construct(args.len() as u8, idx));
@@ -140,11 +140,11 @@ impl Assembler {
                     } else if args.is_empty() {
                         self.emit(Instr::New(idx));
                     } else {
-                        let err = format!("Expected 0 parameters for {}", name.0);
+                        let err = format!("Expected 0 parameters for {}", name);
                         Err(Error::CompileError(err))?
                     }
                 }
-                _ => Err(Error::CompileError(format!("Cannot construct {}", name.0)))?,
+                _ => Err(Error::CompileError(format!("Cannot construct {}", name)))?,
             },
             Expr::Return(Some(expr)) => {
                 let fun = pool.function(scope.function.unwrap())?;
@@ -243,7 +243,10 @@ impl Assembler {
                     let member_idx = scope.resolve_enum_member(ident.clone(), *enum_, pool)?;
                     self.emit(Instr::EnumConst(*enum_, member_idx));
                 }
-                _ => Err(Error::CompileError(format!("Can't access a member of {:?}", expr)))?,
+                t => {
+                    let err = format!("Can't access a member of {}", t.pretty(pool)?);
+                    Err(Error::CompileError(err))?
+                }
             },
             Expr::Call(ident, args) => {
                 if let Ok(intrinsic) = IntrinsicOp::from_str(&ident.0) {
@@ -261,7 +264,7 @@ impl Assembler {
                     if fun.flags.is_static() {
                         self.compile_call(match_, args.iter(), pool, scope)?
                     } else {
-                        Err(Error::CompileError(format!("{} is not static", ident.0)))?
+                        Err(Error::CompileError(format!("Method {} is not static", ident)))?
                     }
                 } else if let TypeId::Class(_, class) = type_.unwrapped() {
                     let object = if let TypeId::WeakRef(_, _) = type_ {
@@ -276,7 +279,8 @@ impl Assembler {
                     self.append(object);
                     self.append(inner);
                 } else {
-                    Err(Error::CompileError(format!("Can't call methods on {:?}", expr)))?
+                    let err = format!("Can't call methods on {}", type_.pretty(pool)?);
+                    Err(Error::CompileError(err))?
                 }
             }
             Expr::BinOp(lhs, rhs, op) => {
@@ -475,7 +479,7 @@ impl Assembler {
 
     fn get_static_reference(expr: &Expr, scope: &Scope) -> Option<Reference> {
         if let Expr::Ident(ident) = expr.deref() {
-            match scope.resolve(ident.clone()).ok()? {
+            match scope.resolve_reference(ident.clone()).ok()? {
                 r @ Reference::Class(_) => Some(r),
                 r @ Reference::Enum(_) => Some(r),
                 _ => None,

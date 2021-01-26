@@ -63,7 +63,7 @@ fn main() -> Result<(), Error> {
 
 fn compile(opts: CompileOpts) -> Result<(), Error> {
     let sources = std::fs::read_to_string(opts.input)?;
-    let entries = parser::parse(&sources).unwrap();
+    let entries = parser::parse(&sources).map_err(|err| Error::CompileError(format!("Syntax error: {}", err)))?;
 
     let mut bundle: ScriptBundle = ScriptBundle::load(&mut BufReader::new(File::open(opts.bundle)?))?;
     let mut compiler = Compiler::new(&mut bundle.pool)?;
