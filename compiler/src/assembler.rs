@@ -147,8 +147,17 @@ impl Assembler {
                 _ => Err(Error::CompileError(format!("Cannot construct {}", name.0)))?,
             },
             Expr::Return(Some(expr)) => {
-                self.emit(Instr::Return);
-                self.compile(expr, pool, scope)?;
+                let fun = pool.function(scope.function.unwrap())?;
+                if let Some(ret_type) = fun.return_type {
+                    let type_ = scope.infer_type(expr, pool)?;
+                    let expected = scope.resolve_type_by_index(ret_type, pool)?;
+                    let conv = scope.convert_type(&type_, &expected, pool)?;
+                    self.emit(Instr::Return);
+                    self.compile_conversion(conv);
+                    self.compile(expr, pool, scope)?;
+                } else {
+                    Err(Error::CompileError(format!("Function should return nothing")))?
+                }
             }
             Expr::Return(None) => {
                 self.emit(Instr::Return);

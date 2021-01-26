@@ -245,7 +245,7 @@ impl Scope {
         self.resolve_type_by_index(index, pool)
     }
 
-    fn resolve_type_by_index(&self, index: PoolIndex<Type>, pool: &ConstantPool) -> Result<TypeId, Error> {
+    pub fn resolve_type_by_index(&self, index: PoolIndex<Type>, pool: &ConstantPool) -> Result<TypeId, Error> {
         let result = match pool.type_(index)? {
             Type::Prim => TypeId::Prim(index),
             Type::Class => {
