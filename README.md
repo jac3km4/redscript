@@ -26,17 +26,17 @@ cargo run --release -- decompile -i '/mnt/d/games/Cyberpunk 2077/r6/cache/final.
 
 ## language
 The scripts use a Java-like language:
-```
-  public ref<GameObject> GetReprimandPerformer(EntityID target) {
+```java
+  public final const ref<GameObject> GetReprimandPerformer(EntityID target?) {
     Agent agent;
-    Handle<GameObject> performer;
-    Handle<DeviceComponentPS> ps;
-    if(!IsDefined(target)) {
-      target = GetPlayer(GetGameInstance()).GetEntityID();
+    ref<GameObject> performer;
+    ref<DeviceComponentPS> ps;
+    if(!EntityID.IsDefined(target)) {
+      target = GetPlayer(this.GetGameInstance()).GetEntityID();
     };
     if(this.m_agentsRegistry.GetReprimandPerformer(target, agent)) {
-      ps = GetPS(agent.link);
-      return Cast(ToHandle(ps.GetOwnerEntityWeak()));
+      ps = this.GetPS(agent.link);
+      return cast<GameObject>(WeakRefToRef(ps.GetOwnerEntityWeak()));
     };
     return null;
   }
