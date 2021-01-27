@@ -4,4 +4,5 @@ members = [
   "compiler",
   "decompiler",
   "cli",
+  "scc"
 ]
