@@ -41,3 +41,33 @@ The scripts use a Java-like language:
     return null;
   }
 ```
+
+## Ingame Compiler
+
+Go to ini file (if not exist create it)
+``Cyberpunk 2077\engine\config\base\scripts.ini``
+
+Add to scripts.ini the following code:
+```
+[Scripts]
+EnableCompilation = "true"
+```
+
+Place the scc.exe tool in the following path:
+(The tool can be found in releases)
+``Cyberpunk 2077\engine\tools\scc.exe``
+
+Time for you to create the mod
+
+Add a file of your mod name
+``Cyberpunk 2077\r6\scripts\mod_name.reds``
+
+Add some code to the .reds, for example:
+```c++
+@insert(CrossingLight)
+protected final void PlayTrafficNotificationSound(worldTrafficLightColor status) {
+  return;
+}
+```
+
+Launch the game (this mod will disable the walk walk don't walk don't walk audio)
