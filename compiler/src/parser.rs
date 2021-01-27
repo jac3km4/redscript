@@ -40,7 +40,7 @@ pub enum Qualifier {
     Native,
     Exec,
     Callback,
-    Out
+    Out,
 }
 
 #[derive(Debug)]
