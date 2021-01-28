@@ -91,8 +91,15 @@ pub fn parse(input: &str) -> Result<Vec<SourceEntry>, ParseError<LineCol>> {
 
 peg::parser! {
     grammar lang() for str {
-        rule _() = [' ' | '\n' | '\r']*
+        rule _() = ([' ' | '\n' | '\r'] / comment())*
         rule commasep<T>(x: rule<T>) -> Vec<T> = v:(x() ** ("," _)) {v}
+
+        rule comment_start() = "/*"
+        rule comment_end() = "*/"
+        rule comment_content()
+            = comment() / (!comment_start() !comment_end() [_])
+        rule comment()
+            = comment_start() comment_content()* comment_end()
 
         rule qualifier() -> Qualifier
             = "public" { Qualifier::Public }
@@ -320,6 +327,19 @@ mod tests {
         assert_eq!(
             format!("{:?}", stmt),
             r#"Switch(Ident(Ident("value")), [SwitchCase(StringLit(String, "0"), Seq { exprs: [] }), SwitchCase(StringLit(String, "1"), Seq { exprs: [Call(Ident("Log"), [StringLit(String, "0 or 1")])] }), SwitchCase(StringLit(String, "2"), Seq { exprs: [Break] })], Some(Seq { exprs: [Call(Ident("Log"), [StringLit(String, "default")])] }))"#
+        );
+    }
+
+    #[test]
+    fn parse_with_comment() {
+        let stmt = lang::stmt(r#"
+            /* this is a multiline comment
+               blah blah blah
+            */
+            Int32 a = /* stuff */ 2;"#).unwrap();
+        assert_eq!(
+            format!("{:?}", stmt),
+            r#"Declare(TypeName { name: "Int32", arguments: [] }, Ident("a"), Some(IntLit(2)))"#
         );
     }
 }
