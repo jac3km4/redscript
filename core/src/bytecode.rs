@@ -112,7 +112,7 @@ pub enum Instr {
 
 impl Instr {
     pub fn size(&self) -> u16 {
-        match self {
+        let op_size = match self {
             Instr::Nop | Instr::Null | Instr::I32One | Instr::I32Zero | Instr::TrueConst | Instr::FalseConst => 0,
             Instr::I8Const(_) => 1,
             Instr::I16Const(_) => 2,
@@ -206,7 +206,8 @@ impl Instr {
             Instr::AsRef(_) => 8,
             Instr::Deref(_) => 8,
             Instr::Unk9 => 0,
-        }
+        };
+        1 + op_size
     }
 }
 
@@ -825,7 +826,7 @@ impl Decode for Code {
         let mut code = Vec::new();
         while offset < max_offset {
             let instr: Instr = input.decode()?;
-            offset += 1 + instr.size() as u32;
+            offset += instr.size() as u32;
             code.push(instr);
         }
         Ok(Code(code))
@@ -838,7 +839,7 @@ impl Encode for Code {
         let mut size = 0u32;
         for instr in &value.0 {
             buffer.encode(instr)?;
-            size += 1 + instr.size() as u32;
+            size += instr.size() as u32;
         }
         output.encode(&size)?;
         output.write_all(buffer.get_ref())
@@ -866,7 +867,7 @@ impl<'a> CodeCursor<'a> {
             self.position.value
         )))?;
         self.index += 1;
-        self.position = Position::new(self.position.value + 1 + instr.size());
+        self.position = Position::new(self.position.value + instr.size());
         Ok(instr.clone())
     }
 

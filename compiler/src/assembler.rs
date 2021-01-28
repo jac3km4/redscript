@@ -32,13 +32,13 @@ impl Assembler {
     }
 
     fn prefix(mut self, instr: Instr) -> Self {
-        self.position += 1 + instr.size();
+        self.position += instr.size();
         self.code.push_front(shifted(instr));
         self
     }
 
     fn emit(&mut self, instr: Instr) {
-        self.position += 1 + instr.size();
+        self.position += instr.size();
         self.code.push_back(shifted(instr));
     }
 
