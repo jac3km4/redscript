@@ -5,7 +5,7 @@ use std::str::FromStr;
 use redscript::ast::{Expr, Ident, LiteralType, Seq};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Instr, Offset};
-use redscript::definition::{Definition, Local, LocalFlags};
+use redscript::definition::{Definition, Local, LocalFlags, ParameterFlags};
 use redscript::error::Error;
 use strum::{Display, EnumString};
 
@@ -319,12 +319,24 @@ impl Assembler {
         pool: &mut ConstantPool,
         scope: &mut Scope,
     ) -> Result<(), Error> {
-        let flags = pool.function(function.index)?.flags;
+        let fun = pool.function(function.index)?;
+        let flags = fun.flags;
+        let params: Vec<ParameterFlags> = fun
+            .parameters
+            .iter()
+            .map(|idx| pool.parameter(*idx).unwrap().flags)
+            .collect();
         let name_idx = pool.definition(function.index)?.name;
+
         let mut args_code = Assembler::new();
-        for (arg, conversion) in args.zip(function.conversions) {
-            args_code.compile_conversion(conversion);
-            args_code.compile(arg, pool, scope)?;
+        for ((arg, conversion), flags) in args.zip(function.conversions).zip(params) {
+            let mut arg_code = Assembler::new();
+            arg_code.compile_conversion(conversion);
+            arg_code.compile(arg, pool, scope)?;
+            if flags.is_short_circuit() {
+                args_code.emit(Instr::Skip(arg_code.offset()));
+            }
+            args_code.append(arg_code);
         }
         for _ in 0..function.unspecified_args {
             args_code.emit(Instr::Nop);
