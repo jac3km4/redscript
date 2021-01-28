@@ -488,6 +488,8 @@ impl Scope {
         }
         let type_ = self.infer_type(&args[0], pool)?;
         let result = match (intrinsic, type_) {
+            (IntrinsicOp::Equals, _) => self.resolve_type(Ident::new("Bool".to_owned()), pool)?,
+            (IntrinsicOp::NotEquals, _) => self.resolve_type(Ident::new("Bool".to_owned()), pool)?,
             (IntrinsicOp::ArrayClear, _) => TypeId::Void,
             (IntrinsicOp::ArraySize, _) => self.resolve_type(Ident::new("Int32".to_owned()), pool)?,
             (IntrinsicOp::ArrayResize, _) => TypeId::Void,

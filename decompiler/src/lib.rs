@@ -1,7 +1,7 @@
 use std::io;
 use std::ops::Deref;
 
-use redscript::ast::{BinOp, Expr, Ident, LiteralType, Seq, SwitchCase, Target, TypeName};
+use redscript::ast::{Expr, Ident, LiteralType, Seq, SwitchCase, Target, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{CodeCursor, Instr, Offset, Position};
 use redscript::error::Error;
@@ -243,16 +243,8 @@ impl<'a> Decompiler<'a> {
                 let expr = self.consume()?;
                 self.consume_with(Some(expr))?
             }
-            Instr::Equals(_) => {
-                let lhs = self.consume()?;
-                let rhs = self.consume()?;
-                Expr::BinOp(Box::new(lhs), Box::new(rhs), BinOp::Equal)
-            }
-            Instr::NotEquals(_) => {
-                let lhs = self.consume()?;
-                let rhs = self.consume()?;
-                Expr::BinOp(Box::new(lhs), Box::new(rhs), BinOp::NotEqual)
-            }
+            Instr::Equals(_) => self.consume_call("Equals", 2)?,
+            Instr::NotEquals(_) => self.consume_call("NotEquals", 2)?,
             Instr::New(class) => Expr::New(Ident(self.pool.definition_name(class)?), vec![]),
             Instr::Delete => self.consume_call("Delete", 1)?,
             Instr::This => Expr::This,
