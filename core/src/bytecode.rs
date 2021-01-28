@@ -30,13 +30,13 @@ pub enum Instr {
     ResourceConst(PoolIndex<Resource>),
     TrueConst,
     FalseConst,
-    Unk1(u16, u32, u16, u16, u8, u64),
+    Breakpoint(u16, u32, u16, u16, u8, u64),
     Assign,
     Target,
     Local(PoolIndex<Local>),
     Param(PoolIndex<Parameter>),
     ObjectField(PoolIndex<Field>),
-    Unk2,
+    ExternalVar,
     Switch(PoolIndex<Type>, Offset),
     SwitchLabel(Offset, Offset),
     SwitchDefault,
@@ -56,7 +56,7 @@ pub enum Instr {
     New(PoolIndex<Class>),
     Delete,
     This,
-    Unk3(Vec<u8>, u8),
+    StartProfiling(Vec<u8>, u8),
     ArrayClear(PoolIndex<Type>),
     ArraySize(PoolIndex<Type>),
     ArrayResize(PoolIndex<Type>),
@@ -66,8 +66,8 @@ pub enum Instr {
     ArrayFindLastFast(PoolIndex<Type>),
     ArrayContains(PoolIndex<Type>),
     ArrayContainsFast(PoolIndex<Type>),
-    Unk4(PoolIndex<Type>),
-    Unk5(PoolIndex<Type>),
+    ArrayCount(PoolIndex<Type>),
+    ArrayCountFast(PoolIndex<Type>),
     ArrayPush(PoolIndex<Type>),
     ArrayPop(PoolIndex<Type>),
     ArrayInsert(PoolIndex<Type>),
@@ -85,8 +85,8 @@ pub enum Instr {
     StaticArrayFindLastFast(PoolIndex<Type>),
     StaticArrayContains(PoolIndex<Type>),
     StaticArrayContainsFast(PoolIndex<Type>),
-    Unk6(PoolIndex<Type>),
-    Unk7(PoolIndex<Type>),
+    StaticArrayCount(PoolIndex<Type>),
+    StaticArrayCountFast(PoolIndex<Type>),
     StaticArrayLast(PoolIndex<Type>),
     StaticArrayElement(PoolIndex<Type>),
     RefToBool,
@@ -107,7 +107,6 @@ pub enum Instr {
     WeakRefNull,
     AsRef(PoolIndex<Type>),
     Deref(PoolIndex<Type>),
-    Unk9,
 }
 
 impl Instr {
@@ -129,13 +128,13 @@ impl Instr {
             Instr::StringConst(bytes) => 4 + bytes.len() as u16,
             Instr::TweakDbIdConst(_) => 8,
             Instr::ResourceConst(_) => 8,
-            Instr::Unk1(_, _, _, _, _, _) => 19,
+            Instr::Breakpoint(_, _, _, _, _, _) => 19,
             Instr::Assign => 0,
             Instr::Target => 0,
             Instr::Local(_) => 8,
             Instr::Param(_) => 8,
             Instr::ObjectField(_) => 8,
-            Instr::Unk2 => 0,
+            Instr::ExternalVar => 0,
             Instr::Switch(_, _) => 10,
             Instr::SwitchLabel(_, _) => 4,
             Instr::SwitchDefault => 0,
@@ -154,7 +153,7 @@ impl Instr {
             Instr::New(_) => 8,
             Instr::Delete => 0,
             Instr::This => 0,
-            Instr::Unk3(bytes, _) => 5 + bytes.len() as u16,
+            Instr::StartProfiling(bytes, _) => 5 + bytes.len() as u16,
             Instr::ArrayClear(_) => 8,
             Instr::ArraySize(_) => 8,
             Instr::ArrayResize(_) => 8,
@@ -164,8 +163,8 @@ impl Instr {
             Instr::ArrayFindLastFast(_) => 8,
             Instr::ArrayContains(_) => 8,
             Instr::ArrayContainsFast(_) => 8,
-            Instr::Unk4(_) => 8,
-            Instr::Unk5(_) => 8,
+            Instr::ArrayCount(_) => 8,
+            Instr::ArrayCountFast(_) => 8,
             Instr::ArrayPush(_) => 8,
             Instr::ArrayPop(_) => 8,
             Instr::ArrayInsert(_) => 8,
@@ -183,8 +182,8 @@ impl Instr {
             Instr::StaticArrayFindLastFast(_) => 8,
             Instr::StaticArrayContains(_) => 8,
             Instr::StaticArrayContainsFast(_) => 8,
-            Instr::Unk6(_) => 8,
-            Instr::Unk7(_) => 8,
+            Instr::StaticArrayCount(_) => 8,
+            Instr::StaticArrayCountFast(_) => 8,
             Instr::StaticArrayLast(_) => 8,
             Instr::StaticArrayElement(_) => 8,
             Instr::RefToBool => 0,
@@ -205,7 +204,6 @@ impl Instr {
             Instr::WeakRefNull => 0,
             Instr::AsRef(_) => 8,
             Instr::Deref(_) => 8,
-            Instr::Unk9 => 0,
         };
         1 + op_size
     }
@@ -236,7 +234,7 @@ impl Decode for Instr {
             18 => Ok(Instr::ResourceConst(input.decode()?)),
             19 => Ok(Instr::TrueConst),
             20 => Ok(Instr::FalseConst),
-            21 => Ok(Instr::Unk1(
+            21 => Ok(Instr::Breakpoint(
                 input.decode()?,
                 input.decode()?,
                 input.decode()?,
@@ -249,7 +247,7 @@ impl Decode for Instr {
             24 => Ok(Instr::Local(input.decode()?)),
             25 => Ok(Instr::Param(input.decode()?)),
             26 => Ok(Instr::ObjectField(input.decode()?)),
-            27 => Ok(Instr::Unk2),
+            27 => Ok(Instr::ExternalVar),
             28 => Ok(Instr::Switch(input.decode()?, Offset::new(input.decode::<i16>()? + 9))),
             29 => Ok(Instr::SwitchLabel(
                 Offset::new(input.decode::<i16>()? + 3),
@@ -283,7 +281,7 @@ impl Decode for Instr {
             44 => Ok(Instr::New(input.decode()?)),
             45 => Ok(Instr::Delete),
             46 => Ok(Instr::This),
-            47 => Ok(Instr::Unk3(input.decode_vec_prefixed::<u32, u8>()?, input.decode()?)),
+            47 => Ok(Instr::StartProfiling(input.decode_vec_prefixed::<u32, u8>()?, input.decode()?)),
             48 => Ok(Instr::ArrayClear(input.decode()?)),
             49 => Ok(Instr::ArraySize(input.decode()?)),
             50 => Ok(Instr::ArrayResize(input.decode()?)),
@@ -293,8 +291,8 @@ impl Decode for Instr {
             54 => Ok(Instr::ArrayFindLastFast(input.decode()?)),
             55 => Ok(Instr::ArrayContains(input.decode()?)),
             56 => Ok(Instr::ArrayContainsFast(input.decode()?)),
-            57 => Ok(Instr::Unk4(input.decode()?)),
-            58 => Ok(Instr::Unk5(input.decode()?)),
+            57 => Ok(Instr::ArrayCount(input.decode()?)),
+            58 => Ok(Instr::ArrayCountFast(input.decode()?)),
             59 => Ok(Instr::ArrayPush(input.decode()?)),
             60 => Ok(Instr::ArrayPop(input.decode()?)),
             61 => Ok(Instr::ArrayInsert(input.decode()?)),
@@ -312,8 +310,8 @@ impl Decode for Instr {
             73 => Ok(Instr::StaticArrayFindLastFast(input.decode()?)),
             74 => Ok(Instr::StaticArrayContains(input.decode()?)),
             75 => Ok(Instr::StaticArrayContainsFast(input.decode()?)),
-            76 => Ok(Instr::Unk6(input.decode()?)),
-            77 => Ok(Instr::Unk7(input.decode()?)),
+            76 => Ok(Instr::StaticArrayCount(input.decode()?)),
+            77 => Ok(Instr::StaticArrayCountFast(input.decode()?)),
             78 => Ok(Instr::StaticArrayLast(input.decode()?)),
             79 => Ok(Instr::StaticArrayElement(input.decode()?)),
             80 => Ok(Instr::RefToBool),
@@ -334,7 +332,6 @@ impl Decode for Instr {
             95 => Ok(Instr::WeakRefNull),
             96 => Ok(Instr::AsRef(input.decode()?)),
             97 => Ok(Instr::Deref(input.decode()?)),
-            98 => Ok(Instr::Unk9),
             other => {
                 let msg = format!("Invalid instruction code: {}", other);
                 Err(io::Error::new(io::ErrorKind::InvalidData, msg))
@@ -425,7 +422,7 @@ impl Encode for Instr {
             Instr::FalseConst => {
                 output.encode(&20u8)?;
             }
-            Instr::Unk1(unk1, unk2, unk3, unk4, unk5, unk6) => {
+            Instr::Breakpoint(unk1, unk2, unk3, unk4, unk5, unk6) => {
                 output.encode(&21u8)?;
                 output.encode(unk1)?;
                 output.encode(unk2)?;
@@ -452,7 +449,7 @@ impl Encode for Instr {
                 output.encode(&26u8)?;
                 output.encode(idx)?;
             }
-            Instr::Unk2 => {
+            Instr::ExternalVar => {
                 output.encode(&27u8)?;
             }
             Instr::Switch(idx, offset) => {
@@ -534,7 +531,7 @@ impl Encode for Instr {
             Instr::This => {
                 output.encode(&46u8)?;
             }
-            Instr::Unk3(vec, byte) => {
+            Instr::StartProfiling(vec, byte) => {
                 output.encode(&47u8)?;
                 output.encode_slice_prefixed::<u32, u8>(vec)?;
                 output.encode(byte)?;
@@ -575,11 +572,11 @@ impl Encode for Instr {
                 output.encode(&56u8)?;
                 output.encode(idx)?;
             }
-            Instr::Unk4(idx) => {
+            Instr::ArrayCount(idx) => {
                 output.encode(&57u8)?;
                 output.encode(idx)?;
             }
-            Instr::Unk5(idx) => {
+            Instr::ArrayCountFast(idx) => {
                 output.encode(&58u8)?;
                 output.encode(idx)?;
             }
@@ -651,11 +648,11 @@ impl Encode for Instr {
                 output.encode(&75u8)?;
                 output.encode(idx)?;
             }
-            Instr::Unk6(idx) => {
+            Instr::StaticArrayCount(idx) => {
                 output.encode(&76u8)?;
                 output.encode(idx)?;
             }
-            Instr::Unk7(idx) => {
+            Instr::StaticArrayCountFast(idx) => {
                 output.encode(&77u8)?;
                 output.encode(idx)?;
             }
@@ -731,9 +728,6 @@ impl Encode for Instr {
             Instr::Deref(idx) => {
                 output.encode(&97u8)?;
                 output.encode(idx)?;
-            }
-            Instr::Unk9 => {
-                output.encode(&98u8)?;
             }
         }
         Ok(())

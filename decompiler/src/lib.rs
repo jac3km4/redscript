@@ -165,7 +165,7 @@ impl<'a> Decompiler<'a> {
             }
             Instr::TrueConst => Expr::True,
             Instr::FalseConst => Expr::False,
-            Instr::Unk1(_, _, _, _, _, _) => Err(Error::DecompileError("Unexpected Unk1".to_owned()))?,
+            Instr::Breakpoint(_, _, _, _, _, _) => Err(Error::DecompileError("Unexpected Breakpoint".to_owned()))?,
             Instr::Assign => {
                 let lhs = self.consume()?;
                 let rhs = self.consume()?;
@@ -182,7 +182,7 @@ impl<'a> Decompiler<'a> {
                     Expr::Member(Box::new(Expr::This), field)
                 }
             }
-            Instr::Unk2 => Err(Error::DecompileError("Unexpected Unk2".to_owned()))?,
+            Instr::ExternalVar => Err(Error::DecompileError("Unexpected ExternalVar".to_owned()))?,
             Instr::Switch(_, _) => self.consume_switch()?,
             Instr::SwitchLabel(_, _) => Err(Error::DecompileError("Unexpected SwitchLabel".to_owned()))?,
             Instr::SwitchDefault => Err(Error::DecompileError("Unexpected SwitchDefault".to_owned()))?,
@@ -248,7 +248,7 @@ impl<'a> Decompiler<'a> {
             Instr::New(class) => Expr::New(Ident(self.pool.definition_name(class)?), vec![]),
             Instr::Delete => self.consume_call("Delete", 1)?,
             Instr::This => Expr::This,
-            Instr::Unk3(_, _) => Err(Error::DecompileError("Unexpected Unk3".to_owned()))?,
+            Instr::StartProfiling(_, _) => Err(Error::DecompileError("Unexpected StartProfiling".to_owned()))?,
             Instr::ArrayClear(_) => self.consume_call("Clear", 1)?,
             Instr::ArraySize(_) => self.consume_call("Size", 1)?,
             Instr::ArrayResize(_) => self.consume_call("Resize", 2)?,
@@ -258,8 +258,8 @@ impl<'a> Decompiler<'a> {
             Instr::ArrayFindLastFast(_) => self.consume_call("FindLast", 2)?,
             Instr::ArrayContains(_) => self.consume_call("Contains", 2)?,
             Instr::ArrayContainsFast(_) => self.consume_call("Contains", 2)?,
-            Instr::Unk4(_) => Err(Error::DecompileError("Unexpected Unk4".to_owned()))?,
-            Instr::Unk5(_) => Err(Error::DecompileError("Unexpected Unk5".to_owned()))?,
+            Instr::ArrayCount(_) => self.consume_call("Count", 2)?,
+            Instr::ArrayCountFast(_) => self.consume_call("Count", 2)?,
             Instr::ArrayPush(_) => self.consume_call("Push", 2)?,
             Instr::ArrayPop(_) => self.consume_call("Pop", 1)?,
             Instr::ArrayInsert(_) => self.consume_call("Insert", 3)?,
@@ -281,8 +281,8 @@ impl<'a> Decompiler<'a> {
             Instr::StaticArrayFindLastFast(_) => self.consume_call("StaticArrayFindLastFast", 2)?,
             Instr::StaticArrayContains(_) => self.consume_call("StaticArrayContains", 2)?,
             Instr::StaticArrayContainsFast(_) => self.consume_call("StaticArrayContainsFast", 2)?,
-            Instr::Unk6(_) => Err(Error::DecompileError("Unexpected Unk6".to_owned()))?,
-            Instr::Unk7(_) => Err(Error::DecompileError("Unexpected Unk7".to_owned()))?,
+            Instr::StaticArrayCount(_) => self.consume_call("StaticArrayCount", 2)?,
+            Instr::StaticArrayCountFast(_) => self.consume_call("StaticArrayCountFast", 2)?,
             Instr::StaticArrayLast(_) => self.consume_call("StaticArrayLast", 1)?,
             Instr::StaticArrayElement(_) => {
                 let arr = self.consume()?;
@@ -315,7 +315,6 @@ impl<'a> Decompiler<'a> {
             Instr::WeakRefNull => Expr::Null,
             Instr::AsRef(_) => self.consume_call("AsRef", 1)?,
             Instr::Deref(_) => self.consume_call("Deref", 1)?,
-            Instr::Unk9 => Err(Error::DecompileError("Unexpected Unk9".to_owned()))?,
         };
         Ok(res)
     }
