@@ -332,11 +332,14 @@ mod tests {
 
     #[test]
     fn parse_with_comment() {
-        let stmt = lang::stmt(r#"
+        let stmt = lang::stmt(
+            r#"
             /* this is a multiline comment
                blah blah blah
             */
-            Int32 a = /* stuff */ 2;"#).unwrap();
+            Int32 a = /* stuff */ 2;"#,
+        )
+        .unwrap();
         assert_eq!(
             format!("{:?}", stmt),
             r#"Declare(TypeName { name: "Int32", arguments: [] }, Ident("a"), Some(IntLit(2)))"#

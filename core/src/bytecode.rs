@@ -281,7 +281,10 @@ impl Decode for Instr {
             44 => Ok(Instr::New(input.decode()?)),
             45 => Ok(Instr::Delete),
             46 => Ok(Instr::This),
-            47 => Ok(Instr::StartProfiling(input.decode_vec_prefixed::<u32, u8>()?, input.decode()?)),
+            47 => Ok(Instr::StartProfiling(
+                input.decode_vec_prefixed::<u32, u8>()?,
+                input.decode()?,
+            )),
             48 => Ok(Instr::ArrayClear(input.decode()?)),
             49 => Ok(Instr::ArraySize(input.decode()?)),
             50 => Ok(Instr::ArrayResize(input.decode()?)),
