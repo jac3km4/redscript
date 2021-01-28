@@ -1,6 +1,6 @@
 use peg::error::ParseError;
 use peg::str::LineCol;
-use redscript::ast::{BinOp, Expr, Ident, LiteralType, Seq, TypeName, UnOp};
+use redscript::ast::{BinOp, Expr, Ident, LiteralType, Seq, SwitchCase, TypeName, UnOp};
 use redscript::definition::Visibility;
 
 #[derive(Debug)]
@@ -160,6 +160,17 @@ peg::parser! {
 
         rule initializer() -> Expr = "=" _ val:expr() { val }
 
+        rule switch() -> Expr
+            = "switch" _ "(" _ matcher:expr() _ ")" _ "{" _ cases:(case() ** _) _ default:default()? _ "}" _ ";"?
+            { Expr::Switch(Box::new(matcher), cases, default) }
+
+        rule case() -> SwitchCase
+            = "case" _ matcher:expr() _ ":" _ body:seq()
+            { SwitchCase(matcher, body) }
+
+        rule default() -> Seq
+            = "default" _ ":" _ body:seq() { body }
+
         rule while_() -> Expr
             = "while" _ "(" _ cond:expr() _ ")" _ "{" _ body:seq() _ "}" _ ";"?
             { Expr::While(Box::new(cond), body) }
@@ -173,6 +184,7 @@ peg::parser! {
         pub rule stmt() -> Expr
             = while_: while_() { while_ }
             / if_: if_() { if_ }
+            / switch: switch() { switch }
             / "return" _ val:expr()? ";" { Expr::Return(val.map(Box::new)) }
             / "break" _ ";" { Expr::Break }
             / decl:decl() _ val:initializer()? _ ";" { Expr::Declare(decl.type_, Ident::new(decl.name), val.map(Box::new)) }
@@ -288,6 +300,26 @@ mod tests {
         assert_eq!(
             format!("{:?}", stmt),
             r#"If(Member(This, Ident("m_fixBugs")), Seq { exprs: [MethodCall(This, Ident("NoBugs"), [])] }, Some(Seq { exprs: [MethodCall(This, Ident("Bugs"), [])] }))"#
+        );
+    }
+
+    #[test]
+    fn parse_switch_case() {
+        let stmt = lang::stmt(
+            r#"switch(value) {
+                 case "0":
+                 case "1":
+                    Log("0 or 1");
+                 case "2":
+                    break;
+                 default:
+                    Log("default");
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(
+            format!("{:?}", stmt),
+            r#"Switch(Ident(Ident("value")), [SwitchCase(StringLit(String, "0"), Seq { exprs: [] }), SwitchCase(StringLit(String, "1"), Seq { exprs: [Call(Ident("Log"), [StringLit(String, "0 or 1")])] }), SwitchCase(StringLit(String, "2"), Seq { exprs: [Break] })], Some(Seq { exprs: [Call(Ident("Log"), [StringLit(String, "default")])] }))"#
         );
     }
 }
