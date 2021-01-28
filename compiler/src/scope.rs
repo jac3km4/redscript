@@ -1,3 +1,4 @@
+use std::iter;
 use std::str::FromStr;
 
 use redscript::ast::{Expr, Ident, LiteralType};
@@ -425,8 +426,24 @@ impl Scope {
                 }
                 lt
             }
-            Expr::BinOp(lhs, _, _) => self.infer_type(lhs, pool)?,
-            Expr::UnOp(expr, _) => self.infer_type(expr, pool)?,
+            Expr::BinOp(lhs, rhs, op) => {
+                let ident = Ident::new(op.name());
+                let args = iter::once(lhs.as_ref()).chain(iter::once(rhs.as_ref()));
+                let match_ = self.resolve_function(FunctionName::global(ident), args.clone(), pool)?;
+                match pool.function(match_.index)?.return_type {
+                    Some(type_) => self.resolve_type_by_index(type_, pool)?,
+                    None => TypeId::Void,
+                }
+            }
+            Expr::UnOp(expr, op) => {
+                let ident = Ident::new(op.name());
+                let args = iter::once(expr.as_ref());
+                let match_ = self.resolve_function(FunctionName::global(ident), args.clone(), pool)?;
+                match pool.function(match_.index)?.return_type {
+                    Some(type_) => self.resolve_type_by_index(type_, pool)?,
+                    None => TypeId::Void,
+                }
+            }
             Expr::StringLit(LiteralType::String, _) => self.resolve_type(Ident::new("String".to_owned()), pool)?,
             Expr::StringLit(LiteralType::Name, _) => self.resolve_type(Ident::new("CName".to_owned()), pool)?,
             Expr::StringLit(LiteralType::Resource, _) => self.resolve_type(Ident::new("ResRef".to_owned()), pool)?,
