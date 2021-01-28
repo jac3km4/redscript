@@ -426,7 +426,7 @@ fn format_binop(op: BinOp) -> &'static str {
         BinOp::AssignDivide => "/=",
         BinOp::LogicOr => "||",
         BinOp::LogicAnd => "&&",
-        BinOp::Or => "||",
+        BinOp::Or => "|",
         BinOp::Xor => "^",
         BinOp::Equal => "==",
         BinOp::NotEqual => "!=",
