@@ -398,6 +398,11 @@ impl Assembler {
                 self.compile(&args[0], pool, scope)?;
                 self.compile(&args[1], pool, scope)
             }
+            (IntrinsicOp::ArrayCount, TypeId::Array(type_, _)) => {
+                self.emit(Instr::ArrayCount(type_));
+                self.compile(&args[0], pool, scope)?;
+                self.compile(&args[1], pool, scope)
+            }
             (IntrinsicOp::ArrayPush, TypeId::Array(type_, _)) => {
                 self.emit(Instr::ArrayPush(type_));
                 self.compile(&args[0], pool, scope)?;
@@ -532,6 +537,7 @@ pub enum IntrinsicOp {
     ArrayFindFirst,
     ArrayFindLast,
     ArrayContains,
+    ArrayCount,
     ArrayPush,
     ArrayPop,
     ArrayInsert,
@@ -559,6 +565,7 @@ impl IntrinsicOp {
             IntrinsicOp::ArrayFindFirst => 2,
             IntrinsicOp::ArrayFindLast => 2,
             IntrinsicOp::ArrayContains => 2,
+            IntrinsicOp::ArrayCount => 2,
             IntrinsicOp::ArrayPush => 2,
             IntrinsicOp::ArrayPop => 1,
             IntrinsicOp::ArrayInsert => 3,
