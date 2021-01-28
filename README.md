@@ -42,32 +42,25 @@ The scripts use a Java-like language:
   }
 ```
 
-## Ingame Compiler
+## integrating with the game
+You can integrate this compiler with the game and make it compile your scripts on startup. To set that up, you need to follow these steps:
 
-Go to ini file (if not exist create it).<br/>
-``Cyberpunk 2077\engine\config\base\scripts.ini``
-
-Add to ``scripts.ini`` the following code:
-```
+- Create `Cyberpunk 2077\engine\config\base\scripts.ini` file with the contents below <br/>
+```ini
 [Scripts]
 EnableCompilation = "true"
 ```
-
-Place the ``scc.exe`` tool in the following path: <br/>
+- Place the `scc.exe` tool in the following location: <br/>
 ``Cyberpunk 2077\engine\tools\scc.exe``<br/>
-*(The tool can be found in releases)*
+*(The scc executable can be found in Releases)*
 
-Time for you to create the mod
+- Now you need to add some scripts. The compiler will look for scripts in `Cyberpunk 2077\r6\scripts\`<br />
+You can copy the script below to `Cyberpunk 2077\r6\scripts\lights.reds` as an example:
 
-Add a file of your mod name<br />
-``Cyberpunk 2077\r6\scripts\mod_name.reds``
-
-Add some code to the ``mod_name.reds``, for example:
-```c++
+```java
 @insert(CrossingLight)
 protected final void PlayTrafficNotificationSound(worldTrafficLightColor status) {
   return;
 }
 ```
-
-Launch the game *(this mod will disable the walk walk don't walk don't walk audio)*
+*this mod will disable the walk don't walk crosswalk audio*
