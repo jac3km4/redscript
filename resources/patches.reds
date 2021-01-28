@@ -53,3 +53,21 @@ private void PopulateMenuItemList() {
   this.m_menuListController.Refresh();
   this.SetCursorOverWidget(inkCompoundRef.GetWidgetByIndex(this.m_menuList, 0));
 }
+
+@insert(FullscreenVendorGameController)
+private final array<wref<gameItemData>> GetSellableJunk() {
+    Int32 i;
+    array<wref<gameItemData>> result;
+    array<ref<gameItemData>> sellableItems;
+    sellableItems = this.m_VendorDataManager.GetItemsPlayerCanSell();
+    i = 0;
+    while(i < ArraySize(sellableItems)) {
+        if(Equals(RPGManager.GetItemRecord(sellableItems[i].GetID()).ItemType().Type(), gamedataItemType.Gen_Junk)
+            || Equals(RPGManager.GetItemRecord(sellableItems[i].GetID()).ItemType().Type(), gamedataItemType.Con_Edible)) {
+            wref<gameItemData> tmp = sellableItems[i];
+            ArrayPush(result, tmp);
+        };
+        i += 1;
+    };
+    return result;
+}

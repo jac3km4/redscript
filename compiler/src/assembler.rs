@@ -360,6 +360,16 @@ impl Assembler {
         }
         let type_ = scope.infer_type(&args[0], pool)?;
         match (intrinsic, type_) {
+            (IntrinsicOp::Equals, type_) => {
+                self.emit(Instr::Equals(type_.index().unwrap()));
+                self.compile(&args[0], pool, scope)?;
+                self.compile(&args[1], pool, scope)
+            }
+            (IntrinsicOp::NotEquals, type_) => {
+                self.emit(Instr::NotEquals(type_.index().unwrap()));
+                self.compile(&args[0], pool, scope)?;
+                self.compile(&args[1], pool, scope)
+            }
             (IntrinsicOp::ArrayClear, TypeId::Array(type_, _)) => {
                 self.emit(Instr::ArrayClear(type_));
                 self.compile(&args[0], pool, scope)
@@ -491,7 +501,7 @@ impl Assembler {
 }
 
 fn shifted(instr: Instr) -> Instr {
-    let size = 1 + instr.size() as i16;
+    let size = instr.size() as i16;
     match instr {
         Instr::InvokeStatic(offset, line, idx) => Instr::InvokeStatic(Offset::new(offset.value + size), line, idx),
         Instr::InvokeVirtual(offset, line, idx) => Instr::InvokeVirtual(Offset::new(offset.value + size), line, idx),
@@ -514,6 +524,8 @@ fn shifted(instr: Instr) -> Instr {
 
 #[derive(Debug, Clone, Copy, EnumString, Display)]
 pub enum IntrinsicOp {
+    Equals,
+    NotEquals,
     ArrayClear,
     ArraySize,
     ArrayResize,
@@ -539,6 +551,8 @@ pub enum IntrinsicOp {
 impl IntrinsicOp {
     pub fn arg_count(&self) -> u8 {
         match self {
+            IntrinsicOp::Equals => 2,
+            IntrinsicOp::NotEquals => 2,
             IntrinsicOp::ArrayClear => 1,
             IntrinsicOp::ArraySize => 1,
             IntrinsicOp::ArrayResize => 2,
