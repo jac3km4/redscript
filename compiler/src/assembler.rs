@@ -111,11 +111,11 @@ impl Assembler {
             }
             Expr::ArrayElem(expr, idx) => {
                 match scope.infer_type(expr, pool)? {
-                    TypeId::Array(_, member) => {
-                        self.emit(Instr::ArrayElement(member.index().unwrap()));
+                    TypeId::Array(type_, _) => {
+                        self.emit(Instr::ArrayElement(type_));
                     }
-                    TypeId::StaticArray(_, member, _) => {
-                        self.emit(Instr::StaticArrayElement(member.index().unwrap()));
+                    TypeId::StaticArray(type_, _, _) => {
+                        self.emit(Instr::StaticArrayElement(type_));
                     }
                     other => {
                         let error = format!("Array access not allowed on {}", other.pretty(pool)?);
