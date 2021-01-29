@@ -504,7 +504,7 @@ impl Scope {
             (IntrinsicOp::ArrayErase, _) => TypeId::Void,
             (IntrinsicOp::ArrayLast, TypeId::Array(_, member)) => *member,
             (IntrinsicOp::ToString, _) => self.resolve_type(Ident::new("String".to_owned()), pool)?,
-            (IntrinsicOp::EnumInt, _) => self.resolve_type(Ident::new("Uint32".to_owned()), pool)?,
+            (IntrinsicOp::EnumInt, _) => self.resolve_type(Ident::new("Int32".to_owned()), pool)?,
             (IntrinsicOp::IntEnum, _) => panic!(),
             (IntrinsicOp::ToVariant, _) => self.resolve_type(Ident::new("Variant".to_owned()), pool)?,
             (IntrinsicOp::FromVariant, _) => panic!(),
