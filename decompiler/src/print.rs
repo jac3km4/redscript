@@ -87,7 +87,7 @@ pub fn write_definition<W: Write>(
             let return_type = fun
                 .return_type
                 .map(|idx| format_type(pool.definition(idx).unwrap(), pool).unwrap())
-                .unwrap_or("void".to_owned());
+                .unwrap_or("Void".to_owned());
 
             let name = pool.names.get(definition.name)?;
             let pretty_name = name.split(";").next().expect("Function with empty name");
@@ -119,7 +119,7 @@ pub fn write_definition<W: Write>(
             if fun.flags.is_callback() {
                 write!(out, "cb ")?;
             }
-            write!(out, "{}({}): {}", pretty_name, params, return_type)?;
+            write!(out, "func {}({}) -> {}", pretty_name, params, return_type)?;
 
             if fun.flags.has_body() {
                 write_function_body(out, fun, pool, depth, mode)?;
@@ -144,11 +144,11 @@ pub fn write_definition<W: Write>(
 
             writeln!(out)?;
             for property in &field.attributes {
-                writeln!(out, "{}@attrib({}, \"{}\")]", padding, property.name, property.value)?;
+                writeln!(out, "{}@attrib({}, \"{}\")", padding, property.name, property.value)?;
             }
 
             for property in &field.defaults {
-                writeln!(out, "{}@default({}, {}))]", padding, property.name, property.value)?;
+                writeln!(out, "{}@default({}, {})", padding, property.name, property.value)?;
             }
 
             write!(out, "{}{} ", padding, field.visibility)?;
@@ -170,7 +170,7 @@ pub fn write_definition<W: Write>(
             if field.flags.is_const() {
                 write!(out, "const ")?;
             }
-            writeln!(out, "{}: {};", field_name, type_name)?
+            writeln!(out, "let {}: {};", field_name, type_name)?
         }
         DefinitionValue::SourceFile(_) => panic!(),
     }
@@ -273,9 +273,9 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, depth: usize) -> Result<(), Er
         Expr::Return(None) => write!(out, "return")?,
         Expr::Seq(exprs) => write_seq(out, exprs, depth)?,
         Expr::Switch(expr, cases, default) => {
-            write!(out, "switch(")?;
+            write!(out, "switch ")?;
             write_expr(out, expr, 0)?;
-            write!(out, ") {{\n")?;
+            write!(out, " {{\n")?;
             for SwitchCase(matcher, body) in cases {
                 write!(out, "{}  case ", padding)?;
                 write_expr(out, matcher, 0)?;
@@ -291,9 +291,9 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, depth: usize) -> Result<(), Er
         Expr::Goto(jump) if !jump.resolved => write!(out, "goto {}", jump.position)?,
         Expr::Goto(_) => (),
         Expr::If(condition, true_, false_) => {
-            write!(out, "if(")?;
+            write!(out, "if ")?;
             write_expr(out, condition, 0)?;
-            write!(out, ") {{\n")?;
+            write!(out, " {{\n")?;
             write_seq(out, true_, depth + 1)?;
             write!(out, "{}}}", padding)?;
             if let Some(branch) = false_ {
@@ -310,9 +310,9 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, depth: usize) -> Result<(), Er
             write_expr(out, false_, 0)?;
         }
         Expr::While(condition, body) => {
-            write!(out, "while(")?;
+            write!(out, "while ")?;
             write_expr(out, condition, 0)?;
-            write!(out, ") {{\n")?;
+            write!(out, " {{\n")?;
             write_seq(out, body, depth + 1)?;
             write!(out, "{}}}", padding)?;
         }

@@ -140,6 +140,7 @@ impl<'a> Compiler<'a> {
         let visibility = decl.qualifiers.visibility().unwrap_or(Visibility::Private);
         let return_type = match source.type_ {
             None => None,
+            Some(type_) if type_.name == "Void" => None,
             Some(type_) => Some(self.scope.resolve_type_index(Ident::new(type_.repr()))?),
         };
 
@@ -148,9 +149,9 @@ impl<'a> Compiler<'a> {
         for param in &source.parameters {
             let type_ = self.scope.resolve_type_index(Ident::new(param.type_.repr()))?;
             let flags = ParameterFlags::new()
-                .with_is_out(param.declaration.qualifiers.contain(Qualifier::Out))
-                .with_is_optional(param.declaration.qualifiers.contain(Qualifier::Optional));
-            let name = self.pool.names.add(param.declaration.name.clone());
+                .with_is_out(param.qualifiers.contain(Qualifier::Out))
+                .with_is_optional(param.qualifiers.contain(Qualifier::Optional));
+            let name = self.pool.names.add(param.name.clone());
             let param = Parameter { type_, flags };
             let idx = self
                 .pool
@@ -318,8 +319,8 @@ impl TypeId {
             TypeId::Array(_, idx) => Ok(Ident::new(format!("array<{}>", idx.pretty(pool)?.0))),
             TypeId::StaticArray(_, idx, size) => Ok(Ident::new(format!("array<{}, {}>", idx.pretty(pool)?.0, size))),
             TypeId::ScriptRef(_, idx) => Ok(Ident::new(format!("ref<{}>", idx.pretty(pool)?.0))),
-            TypeId::Null => Ok(Ident::new("null".to_owned())),
-            TypeId::Void => Ok(Ident::new("void".to_owned())),
+            TypeId::Null => Ok(Ident::new("Null".to_owned())),
+            TypeId::Void => Ok(Ident::new("Void".to_owned())),
         }
     }
 }
@@ -340,13 +341,13 @@ mod tests {
         let sources = parser::parse(
             "
             public class A {
-                private const m_field: Int32;
+                private const let m_field: Int32;
 
-                public DoStuff(fieldOrNot: Bool): Int32 {
+                public func DoStuff(fieldOrNot: Bool) -> Int32 {
                     return fieldOrNot ? this.m_field : A.Ten();
                 }
 
-                public static Ten(): Int32 {
+                public static func Ten() -> Int32 {
                   return 10;
                 }
             }",
@@ -363,15 +364,15 @@ mod tests {
         let sources = parser::parse(
             "
             public class X {
-                private const m_base_field: Int32;
+                private const let m_base_field: Int32;
 
-                public BaseMethod(): Int32 {
+                public func BaseMethod() -> Int32 {
                     return this.m_base_field;
                 }
             }
 
             public class Y extends X {
-                public static CallBase(): Int32 {
+                public static func CallBase() -> Int32 {
                   return this.BaseMethod();
                 }
             }",

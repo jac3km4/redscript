@@ -27,14 +27,14 @@ cargo run --release -- decompile -i '/mnt/d/games/Cyberpunk 2077/r6/cache/final.
 ## language
 The scripts use a Java-like language:
 ```swift
-public final const GetReprimandPerformer(opt target: EntityID): ref<GameObject> {
+public final const func GetReprimandPerformer(opt target: EntityID) -> ref<GameObject> {
   let agent: Agent;
   let performer: ref<GameObject>;
   let ps: ref<DeviceComponentPS>;
-  if(!EntityID.IsDefined(target)) {
+  if !EntityID.IsDefined(target) {
     target = GetPlayer(this.GetGameInstance()).GetEntityID();
   };
-  if(this.m_agentsRegistry.GetReprimandPerformer(target, agent)) {
+  if this.m_agentsRegistry.GetReprimandPerformer(target, agent) {
     ps = this.GetPS(agent.link);
     return WeakRefToRef(ps.GetOwnerEntityWeak()) as GameObject;
   };

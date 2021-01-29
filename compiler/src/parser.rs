@@ -32,7 +32,8 @@ pub struct FunctionSource {
 
 #[derive(Debug)]
 pub struct ParameterSource {
-    pub declaration: Declaration,
+    pub qualifiers: Qualifiers,
+    pub name: String,
     pub type_: TypeName,
 }
 
@@ -98,6 +99,8 @@ pub fn parse(input: &str) -> Result<Vec<SourceEntry>, ParseError<LineCol>> {
 
 peg::parser! {
     grammar lang() for str {
+        use peg::ParseLiteral;
+        
         rule _() = ([' ' | '\n' | '\r'] / comment())*
         rule commasep<T>(x: rule<T>) -> Vec<T> = v:(x() ** ("," _)) {v}
 
@@ -148,26 +151,27 @@ peg::parser! {
             = name:ident() args:type_args()? { TypeName { name, arguments: args.unwrap_or(vec![]) } }
         rule type_args() -> Vec<TypeName> = "<" _ args:commasep(<type_()>) _ ">" { args }
 
-        rule type_spec() -> TypeName = ":" _ type_:type_() { type_ }
+        rule let_type() -> TypeName = ":" _ type_:type_() { type_ }
+        rule func_type() -> TypeName = "->" _ type_:type_() { type_ }
 
-        rule decl() -> Declaration
-            = annotations:(annotation() ** _) _ qualifiers:qualifiers() _ name:ident()
+        rule decl(word: &'static str) -> Declaration
+            = annotations:(annotation() ** _) _ qualifiers:qualifiers() _ ##parse_string_literal(word) _ name:ident()
             { Declaration { annotations, qualifiers, name } }
 
         rule let() -> Expr
-            = "let" _ name:ident() _ type_:type_spec()? _ val:initializer()? _ ";"
+            = "let" _ name:ident() _ type_:let_type()? _ val:initializer()? _ ";"
             { Expr::Declare(Ident::new(name), type_, val.map(Box::new)) }
 
         rule initializer() -> Expr = "=" _ val:expr() { val }
 
         pub rule function() -> FunctionSource
-            = declaration:decl() _ "(" parameters:commasep(<param()>) ")" _ type_:type_spec()? _ body:function_body()?
+            = declaration:decl("func") _ "(" parameters:commasep(<param()>) ")" _ type_:func_type()? _ body:function_body()?
             { FunctionSource { declaration, type_, parameters, body } }
         rule function_body() -> Seq = "{" _ body:seq() _ "}" { body }
 
         rule param() -> ParameterSource
-            = declaration:decl() _ type_:type_spec()
-            { ParameterSource { declaration, type_ } }
+            = qualifiers:qualifiers() _ name:ident() _ type_:let_type()
+            { ParameterSource { qualifiers, name, type_ } }
 
         rule extends() -> String = "extends" _ name:ident() { name }
 
@@ -177,7 +181,7 @@ peg::parser! {
 
         rule member() -> MemberSource
             = fun:function() { MemberSource::Function(fun) }
-            / decl:decl() _ type_:type_spec() _ ";" { MemberSource::Field(decl, type_) }
+            / decl:decl("let") _ type_:let_type() _ ";" { MemberSource::Field(decl, type_) }
 
         pub rule source_entry() -> SourceEntry
             = fun:function() { SourceEntry::Function(fun) }
@@ -283,17 +287,17 @@ mod tests {
     fn parse_simple_class() {
         let class = lang::source(
             "public class A extends IScriptable {
-                private const m_field: Int32;
+                private const let m_field: Int32;
 
-                public static GetField(): Int32 {
-                    return m_field;
+                public func GetField() -> Int32 {
+                    return this.m_field;
                 }
              }",
         )
         .unwrap();
         assert_eq!(
             format!("{:?}", class),
-            r#"[Class(ClassSource { qualifiers: Qualifiers([Public]), name: "A", base: Some("IScriptable"), members: [Field(Declaration { annotations: [], qualifiers: Qualifiers([Private, Const]), name: "m_field" }, TypeName { name: "Int32", arguments: [] }), Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public, Static]), name: "GetField" }, type_: Some(TypeName { name: "Int32", arguments: [] }), parameters: [], body: Some(Seq { exprs: [Return(Some(Ident(Ident("m_field"))))] }) })] })]"#
+            r#"[Class(ClassSource { qualifiers: Qualifiers([Public]), name: "A", base: Some("IScriptable"), members: [Field(Declaration { annotations: [], qualifiers: Qualifiers([Private, Const]), name: "m_field" }, TypeName { name: "Int32", arguments: [] }), Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public]), name: "GetField" }, type_: Some(TypeName { name: "Int32", arguments: [] }), parameters: [], body: Some(Seq { exprs: [Return(Some(Member(This, Ident("m_field"))))] }) })] })]"#
         );
     }
 
@@ -356,7 +360,7 @@ mod tests {
                blah blah blah
             */
             class Test {
-                private m_field /* cool stuff */: String;
+                private let m_field /* cool stuff */: String;
             }
             "#,
         )
