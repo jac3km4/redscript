@@ -9,14 +9,11 @@ use std::rc::Rc;
 
 use modular_bitfield::prelude::*;
 
-use crate::definition::{Class, Definition, Enum, Field, Local, Parameter, Type};
+use crate::decode::{Decode, DecodeExt};
+use crate::definition::{Class, Definition, DefinitionValue, Enum, Field, Function, Local, Parameter, Type};
 use crate::encode::{Encode, EncodeExt};
 use crate::error::Error;
 use crate::files::FileIndex;
-use crate::{
-    decode::{Decode, DecodeExt},
-    definition::{DefinitionValue, Function},
-};
 
 #[derive(Debug)]
 pub struct ScriptBundle {

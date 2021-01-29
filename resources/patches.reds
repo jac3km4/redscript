@@ -1,8 +1,8 @@
 
 /* multiply all crafting XP by 100 */
 @insert(CraftingSystem)
-private final void ProcessCraftSkill(Int32 xpAmount, StatsObjectID craftedItem) {
-  ref<ExperiencePointsEvent> xpEvent = new ExperiencePointsEvent();
+private final func ProcessCraftSkill(xpAmount: Int32, craftedItem: StatsObjectID) {
+  let xpEvent = new ExperiencePointsEvent();
   xpEvent.amount = xpAmount * 100;
   xpEvent.type = gamedataProficiencyType.Crafting;
   GetPlayer(this.GetGameInstance()).QueueEvent(xpEvent);
@@ -10,26 +10,26 @@ private final void ProcessCraftSkill(Int32 xpAmount, StatsObjectID craftedItem) 
 
 /* disable fake underwear when removing clothes */
 @insert(EquipmentSystemPlayerData)
-private final Bool EvaluateUnderwearVisibility(ItemID unequippedItem) {
+private final func EvaluateUnderwearVisibility(unequippedItem: ItemID) -> Bool {
   return false;
 }
 
 /* allow disassembling of all items */
 @insert(CraftingSystem)
-public final const Bool CanItemBeDisassembled(wref<gameItemData> itemData) {
+public final const func CanItemBeDisassembled(itemData: wref<gameItemData>) -> Bool {
   return true;
 }
 
 /* allow unequipping of all items */
 @insert(RPGManager)
-public final static Bool CanPartBeUnequipped(ItemID itemID) {
+public final static func CanPartBeUnequipped(itemID: ItemID) -> Bool {
   return true;
 }
 
 /* add main menu options */
 @insert(SingleplayerMenuGameController)
-private void PopulateMenuItemList() {
-  if(this.m_savesCount > 0) {
+private func PopulateMenuItemList() {
+  if this.m_savesCount > 0 {
     this.AddMenuItem(GetLocalizedText("UI-ScriptExports-Continue0"), PauseMenuAction.QuickLoad);
   };
   this.AddMenuItem(GetLocalizedText("UI-ScriptExports-NewGame0"), n"OnNewGame");
@@ -44,14 +44,14 @@ private void PopulateMenuItemList() {
 
 /* sell edibles as junk automatically at vendors */
 @insert(FullscreenVendorGameController)
-private final array<wref<gameItemData>> GetSellableJunk() {
-    array<wref<gameItemData>> result;
-    array<ref<gameItemData>> sellableItems = this.m_VendorDataManager.GetItemsPlayerCanSell();
-    Int32 i = 0;
-    while(i < ArraySize(sellableItems)) {
-        gamedataItemType type = RPGManager.GetItemRecord(sellableItems[i].GetID()).ItemType().Type();
+private final func GetSellableJunk() -> array<wref<gameItemData>> {
+    let result: array<wref<gameItemData>>;
+    let sellableItems = this.m_VendorDataManager.GetItemsPlayerCanSell();
+    let i = 0;
+    while i < ArraySize(sellableItems) {
+        let type = RPGManager.GetItemRecord(sellableItems[i].GetID()).ItemType().Type();
         if(Equals(type, gamedataItemType.Gen_Junk) || Equals(type, gamedataItemType.Con_Edible)) {
-            wref<gameItemData> tmp = sellableItems[i];
+            let tmp: wref<gameItemData> = sellableItems[i];
             ArrayPush(result, tmp);
         };
         i += 1;

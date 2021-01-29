@@ -86,19 +86,32 @@ impl Assembler {
                 self.emit(Instr::DynamicCast(type_idx, 0));
                 self.compile(expr, pool, scope)?;
             }
-            Expr::Declare(type_, name, expr) => {
+            Expr::Declare(name, type_, init) => {
                 let name_idx = pool.names.add(name.0.deref().to_owned());
-                let type_ = scope.resolve_type(Ident::new(type_.repr()), pool)?;
+                let (type_, conversion) = match (type_, init) {
+                    (None, None) => Err(Error::CompileError(
+                        "Type or initializer require on let binding".to_owned(),
+                    ))?,
+                    (None, Some(val)) => (scope.infer_type(val, pool)?, Conversion::Identity),
+                    (Some(type_name), None) => (
+                        scope.resolve_type(Ident::new(type_name.repr()), pool)?,
+                        Conversion::Identity,
+                    ),
+                    (Some(type_name), Some(val)) => {
+                        let val_type = scope.infer_type(val, pool)?;
+                        let type_ = scope.resolve_type(Ident::new(type_name.repr()), pool)?;
+                        let conv = scope.convert_type(&val_type, &type_, pool)?;
+                        (type_, conv)
+                    }
+                };
                 let local = Local::new(type_.index().unwrap(), LocalFlags::new());
                 let idx = pool.push_definition(Definition::local(name_idx, scope.function.unwrap().cast(), local));
                 self.locals.push_back(idx.cast());
                 scope.push_local(name.clone(), idx.cast());
-                if let Some(val) = expr {
-                    let val_type = scope.infer_type(val, pool)?;
-                    let conv = scope.convert_type(&val_type, &type_, pool)?;
+                if let Some(val) = init {
                     self.emit(Instr::Assign);
                     self.emit(Instr::Local(idx.cast()));
-                    self.compile_conversion(conv);
+                    self.compile_conversion(conversion);
                     self.compile(val, pool, scope)?;
                 }
             }
