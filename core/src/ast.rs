@@ -10,7 +10,7 @@ pub enum Expr {
     FloatLit(f64),
     IntLit(i64),
     UintLit(u64),
-    Declare(TypeName, Ident, Option<Box<Expr>>),
+    Declare(Ident, Option<TypeName>, Option<Box<Expr>>),
     Cast(TypeName, Box<Expr>),
     Assign(Box<Expr>, Box<Expr>),
     Call(Ident, Vec<Expr>),

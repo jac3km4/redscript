@@ -87,7 +87,7 @@ pub fn write_definition<W: Write>(
             let return_type = fun
                 .return_type
                 .map(|idx| format_type(pool.definition(idx).unwrap(), pool).unwrap())
-                .unwrap_or("void".to_owned());
+                .unwrap_or("Void".to_owned());
 
             let name = pool.names.get(definition.name)?;
             let pretty_name = name.split(";").next().expect("Function with empty name");
@@ -119,7 +119,7 @@ pub fn write_definition<W: Write>(
             if fun.flags.is_callback() {
                 write!(out, "cb ")?;
             }
-            write!(out, "{} {}({})", return_type, pretty_name, params)?;
+            write!(out, "func {}({}) -> {}", pretty_name, params, return_type)?;
 
             if fun.flags.has_body() {
                 write_function_body(out, fun, pool, depth, mode)?;
@@ -133,8 +133,10 @@ pub fn write_definition<W: Write>(
             write!(out, "{}", padding)?;
             if local.flags.is_const() {
                 write!(out, "const ")?;
+            } else {
+                write!(out, "let ")?;
             }
-            write!(out, "{} {};", type_name, name)?
+            write!(out, "{}: {};", name, type_name)?
         }
         DefinitionValue::Field(field) => {
             let type_name = format_type(pool.definition(field.type_)?, pool)?;
@@ -142,11 +144,11 @@ pub fn write_definition<W: Write>(
 
             writeln!(out)?;
             for property in &field.attributes {
-                writeln!(out, "{}[Attrib({}, \"{}\")]", padding, property.name, property.value)?;
+                writeln!(out, "{}@attrib({}, \"{}\")", padding, property.name, property.value)?;
             }
 
             for property in &field.defaults {
-                writeln!(out, "{}[Default({}, {}))]", padding, property.name, property.value)?;
+                writeln!(out, "{}@default({}, {})", padding, property.name, property.value)?;
             }
 
             write!(out, "{}{} ", padding, field.visibility)?;
@@ -168,7 +170,7 @@ pub fn write_definition<W: Write>(
             if field.flags.is_const() {
                 write!(out, "const ")?;
             }
-            writeln!(out, "{} {};", type_name, field_name)?
+            writeln!(out, "let {}: {};", field_name, type_name)?
         }
         DefinitionValue::SourceFile(_) => panic!(),
     }
@@ -232,9 +234,8 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, depth: usize) -> Result<(), Er
         Expr::UintLit(lit) => write!(out, "{}", lit)?,
         Expr::FloatLit(lit) => write!(out, "{}", lit)?,
         Expr::Cast(type_, expr) => {
-            write!(out, "cast<{}>(", type_.repr())?;
             write_expr(out, expr, 0)?;
-            write!(out, ")")?;
+            write!(out, " as {}", type_.repr())?;
         }
         Expr::Declare(__, _, _) => {}
         Expr::Assign(lhs, rhs) => {
@@ -272,9 +273,9 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, depth: usize) -> Result<(), Er
         Expr::Return(None) => write!(out, "return")?,
         Expr::Seq(exprs) => write_seq(out, exprs, depth)?,
         Expr::Switch(expr, cases, default) => {
-            write!(out, "switch(")?;
+            write!(out, "switch ")?;
             write_expr(out, expr, 0)?;
-            write!(out, ") {{\n")?;
+            write!(out, " {{\n")?;
             for SwitchCase(matcher, body) in cases {
                 write!(out, "{}  case ", padding)?;
                 write_expr(out, matcher, 0)?;
@@ -290,9 +291,9 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, depth: usize) -> Result<(), Er
         Expr::Goto(jump) if !jump.resolved => write!(out, "goto {}", jump.position)?,
         Expr::Goto(_) => (),
         Expr::If(condition, true_, false_) => {
-            write!(out, "if(")?;
+            write!(out, "if ")?;
             write_expr(out, condition, 0)?;
-            write!(out, ") {{\n")?;
+            write!(out, " {{\n")?;
             write_seq(out, true_, depth + 1)?;
             write!(out, "{}}}", padding)?;
             if let Some(branch) = false_ {
@@ -309,9 +310,9 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, depth: usize) -> Result<(), Er
             write_expr(out, false_, 0)?;
         }
         Expr::While(condition, body) => {
-            write!(out, "while(")?;
+            write!(out, "while ")?;
             write_expr(out, condition, 0)?;
-            write!(out, ") {{\n")?;
+            write!(out, " {{\n")?;
             write_seq(out, body, depth + 1)?;
             write!(out, "{}}}", padding)?;
         }
@@ -391,9 +392,9 @@ fn format_param(def: &Definition, pool: &ConstantPool) -> Result<String, Error> 
     if let DefinitionValue::Parameter(ref param) = def.value {
         let type_name = format_type(pool.definition(param.type_)?, pool)?;
         let name = pool.names.get(def.name)?;
-        let qualifier = if param.flags.is_out() { "out " } else { "" };
-        let optional = if param.flags.is_optional() { "?" } else { "" };
-        Ok(format!("{}{} {}{}", qualifier, type_name, name, optional))
+        let out = if param.flags.is_out() { "out " } else { "" };
+        let optional = if param.flags.is_optional() { "opt " } else { "" };
+        Ok(format!("{}{}{}: {}", out, optional, name, type_name))
     } else {
         Err(Error::DecompileError("Invalid type definition received".to_owned()))
     }
