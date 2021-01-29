@@ -397,9 +397,14 @@ impl Scope {
                 type_ => Err(Error::CompileError(format!("{} can't be indexed", type_.pretty(pool)?)))?,
             },
             Expr::New(name, _) => {
-                if let Reference::Class(cls) = self.resolve_reference(name.clone())? {
-                    let name = pool.definition_name(cls)?;
-                    self.resolve_type(Ident(name), pool)?
+                if let Reference::Class(class_idx) = self.resolve_reference(name.clone())? {
+                    let name = pool.definition_name(class_idx)?;
+                    let class = pool.class(class_idx)?;
+                    if class.flags.is_struct() {
+                        self.resolve_type(Ident(name), pool)?
+                    } else {
+                        self.resolve_type(Ident::new(format!("ref:{}", name)), pool)?
+                    }
                 } else {
                     Err(Error::CompileError(format!("{} can't be constructed", name)))?
                 }

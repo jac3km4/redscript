@@ -2,7 +2,7 @@
 
 use assembler::Assembler;
 use parser::Annotation;
-use redscript::ast::{Ident, Seq};
+use redscript::ast::{Ident, Seq, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Instr};
 use redscript::definition::{
@@ -80,8 +80,8 @@ impl<'a> Compiler<'a> {
                     MemberSource::Function(fun) => {
                         functions.push(self.define_function(fun, class_idx)?);
                     }
-                    MemberSource::Field(field) => {
-                        fields.push(self.define_field(field, class_idx)?);
+                    MemberSource::Field(field, type_) => {
+                        fields.push(self.define_field(field, type_, class_idx)?);
                     }
                 }
             }
@@ -138,19 +138,20 @@ impl<'a> Compiler<'a> {
         let name_idx = self.pool.names.add(fun_id.mangled());
 
         let visibility = decl.qualifiers.visibility().unwrap_or(Visibility::Private);
-        let return_type = if decl.type_.name == "void" {
-            None
-        } else {
-            Some(self.scope.resolve_type_index(Ident::new(decl.type_.repr()))?)
+        let return_type = match source.type_ {
+            None => None,
+            Some(type_) => Some(self.scope.resolve_type_index(Ident::new(type_.repr()))?),
         };
 
         let mut parameters = Vec::new();
 
-        for decl in &source.parameters {
-            let type_ = self.scope.resolve_type_index(Ident::new(decl.type_.repr()))?;
-            let flags = ParameterFlags::new().with_is_out(decl.qualifiers.contain(Qualifier::Out));
+        for param in &source.parameters {
+            let type_ = self.scope.resolve_type_index(Ident::new(param.type_.repr()))?;
+            let flags = ParameterFlags::new()
+                .with_is_out(param.declaration.qualifiers.contain(Qualifier::Out))
+                .with_is_optional(param.declaration.qualifiers.contain(Qualifier::Optional));
+            let name = self.pool.names.add(param.declaration.name.clone());
             let param = Parameter { type_, flags };
-            let name = self.pool.names.add(decl.name.clone());
             let idx = self
                 .pool
                 .push_definition(Definition::param(name, fun_idx.cast(), param));
@@ -184,10 +185,15 @@ impl<'a> Compiler<'a> {
         Ok(fun_idx)
     }
 
-    fn define_field(&mut self, field: Declaration, parent: PoolIndex<Class>) -> Result<PoolIndex<Field>, Error> {
+    fn define_field(
+        &mut self,
+        field: Declaration,
+        type_: TypeName,
+        parent: PoolIndex<Class>,
+    ) -> Result<PoolIndex<Field>, Error> {
         let name = self.pool.names.add(field.name);
         let visibility = field.qualifiers.visibility().unwrap_or(Visibility::Private);
-        let type_ = self.scope.resolve_type_index(Ident::new(field.type_.repr()))?;
+        let type_ = self.scope.resolve_type_index(Ident::new(type_.repr()))?;
         let flags = FieldFlags::new();
         let field = Field {
             visibility,
@@ -334,13 +340,13 @@ mod tests {
         let sources = parser::parse(
             "
             public class A {
-                private const Int32 m_field;
+                private const m_field: Int32;
 
-                public Int32 DoStuff(Bool fieldOrNot) {
+                public DoStuff(fieldOrNot: Bool): Int32 {
                     return fieldOrNot ? this.m_field : A.Ten();
                 }
 
-                public static Int32 Ten() {
+                public static Ten(): Int32 {
                   return 10;
                 }
             }",
@@ -357,15 +363,15 @@ mod tests {
         let sources = parser::parse(
             "
             public class X {
-                private const Int32 m_base_field;
+                private const m_base_field: Int32;
 
-                public Int32 BaseMethod() {
+                public BaseMethod(): Int32 {
                     return this.m_base_field;
                 }
             }
 
             public class Y extends X {
-                public static Int32 CallBase() {
+                public static CallBase(): Int32 {
                   return this.BaseMethod();
                 }
             }",

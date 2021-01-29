@@ -19,14 +19,21 @@ pub struct ClassSource {
 #[derive(Debug)]
 pub enum MemberSource {
     Function(FunctionSource),
-    Field(Declaration),
+    Field(Declaration, TypeName),
 }
 
 #[derive(Debug)]
 pub struct FunctionSource {
     pub declaration: Declaration,
-    pub parameters: Vec<Declaration>,
+    pub type_: Option<TypeName>,
+    pub parameters: Vec<ParameterSource>,
     pub body: Option<Seq>,
+}
+
+#[derive(Debug)]
+pub struct ParameterSource {
+    pub declaration: Declaration,
+    pub type_: TypeName,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -41,6 +48,7 @@ pub enum Qualifier {
     Exec,
     Callback,
     Out,
+    Optional
 }
 
 #[derive(Debug)]
@@ -65,7 +73,6 @@ impl Qualifiers {
 pub struct Declaration {
     pub annotations: Vec<Annotation>,
     pub qualifiers: Qualifiers,
-    pub type_: TypeName,
     pub name: String,
 }
 
@@ -112,6 +119,7 @@ peg::parser! {
             / "exec" { Qualifier::Exec }
             / "cb" { Qualifier::Callback }
             / "out" { Qualifier::Out }
+            / "opt" { Qualifier::Optional }
 
         rule literal_type() -> LiteralType
             = "n" { LiteralType::Name }
@@ -140,14 +148,26 @@ peg::parser! {
             = name:ident() args:type_args()? { TypeName { name, arguments: args.unwrap_or(vec![]) } }
         rule type_args() -> Vec<TypeName> = "<" _ args:commasep(<type_()>) _ ">" { args }
 
+        rule type_spec() -> TypeName = ":" _ type_:type_() { type_ }
+
         rule decl() -> Declaration
-            = annotations:(annotation() ** _) _ qualifiers:qualifiers() _ type_:type_() _ name:ident()
-            { Declaration { annotations, qualifiers, type_, name } }
+            = annotations:(annotation() ** _) _ qualifiers:qualifiers() _ name:ident()
+            { Declaration { annotations, qualifiers, name } }
+
+        rule let() -> Expr
+            = "let" _ name:ident() _ type_:type_spec()? _ val:initializer()? _ ";"
+            { Expr::Declare(Ident::new(name), type_, val.map(Box::new)) }
+
+        rule initializer() -> Expr = "=" _ val:expr() { val }
 
         pub rule function() -> FunctionSource
-            = declaration:decl() _ "(" parameters:commasep(<decl()>) ")" _ body:function_body()?
-            { FunctionSource { declaration, parameters, body } }
+            = declaration:decl() _ "(" parameters:commasep(<param()>) ")" _ type_:type_spec()? _ body:function_body()?
+            { FunctionSource { declaration, type_, parameters, body } }
         rule function_body() -> Seq = "{" _ body:seq() _ "}" { body }
+
+        rule param() -> ParameterSource
+            = declaration:decl() _ type_:type_spec()
+            { ParameterSource { declaration, type_ } }
 
         rule extends() -> String = "extends" _ name:ident() { name }
 
@@ -157,15 +177,13 @@ peg::parser! {
 
         rule member() -> MemberSource
             = fun:function() { MemberSource::Function(fun) }
-            / decl:decl() _ ";" { MemberSource::Field(decl) }
+            / decl:decl() _ type_:type_spec() _ ";" { MemberSource::Field(decl, type_) }
 
         pub rule source_entry() -> SourceEntry
             = fun:function() { SourceEntry::Function(fun) }
             / class:class() { SourceEntry::Class(class) }
 
         pub rule source() -> Vec<SourceEntry> = _ decls:(source_entry() ** _) _ { decls }
-
-        rule initializer() -> Expr = "=" _ val:expr() { val }
 
         rule switch() -> Expr
             = "switch" _ "(" _ matcher:expr() _ ")" _ "{" _ cases:(case() ** _) _ default:default()? _ "}" _ ";"?
@@ -194,7 +212,7 @@ peg::parser! {
             / switch: switch() { switch }
             / "return" _ val:expr()? ";" { Expr::Return(val.map(Box::new)) }
             / "break" _ ";" { Expr::Break }
-            / decl:decl() _ val:initializer()? _ ";" { Expr::Declare(decl.type_, Ident::new(decl.name), val.map(Box::new)) }
+            / let_:let() { let_ }
             / expr:expr() _ ";" { expr }
 
         pub rule expr() -> Expr = precedence!{
@@ -234,7 +252,7 @@ peg::parser! {
             expr:(@) _ "[" _ idx:expr() _ "]" { Expr::ArrayElem(Box::new(expr), Box::new(idx)) }
             expr:(@) _ "." _ ident:ident() _ "(" _ params:commasep(<expr()>) _ ")" { Expr::MethodCall(Box::new(expr), Ident::new(ident), params) }
             expr:(@) _ "." _ ident:ident() { Expr::Member(Box::new(expr), Ident::new(ident)) }
-            "cast" _ "<" _ type_:type_() _ ">" _ "(" _ expr:expr() _ ")" { Expr::Cast(type_, Box::new(expr)) }
+            expr:(@) _ "as" _ type_:type_() { Expr::Cast(type_, Box::new(expr)) }
             "(" _ v:expr() _ ")" { v }
             "true" { Expr::True }
             "false" { Expr::False }
@@ -265,9 +283,9 @@ mod tests {
     fn parse_simple_class() {
         let class = lang::source(
             "public class A extends IScriptable {
-                private const int32 m_field;
+                private const m_field: Int32;
 
-                public static int32 GetField() {
+                public static GetField(): Int32 {
                     return m_field;
                 }
              }",
@@ -275,7 +293,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", class),
-            r#"[Class(ClassSource { qualifiers: Qualifiers([Public]), name: "A", base: Some("IScriptable"), members: [Field(Declaration { annotations: [], qualifiers: Qualifiers([Private, Const]), type_: TypeName { name: "int32", arguments: [] }, name: "m_field" }), Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public, Static]), type_: TypeName { name: "int32", arguments: [] }, name: "GetField" }, parameters: [], body: Some(Seq { exprs: [Return(Some(Ident(Ident("m_field"))))] }) })] })]"#
+            r#"[Class(ClassSource { qualifiers: Qualifiers([Public]), name: "A", base: Some("IScriptable"), members: [Field(Declaration { annotations: [], qualifiers: Qualifiers([Private, Const]), name: "m_field" }, TypeName { name: "Int32", arguments: [] }), Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public, Static]), name: "GetField" }, type_: Some(TypeName { name: "Int32", arguments: [] }), parameters: [], body: Some(Seq { exprs: [Return(Some(Ident(Ident("m_field"))))] }) })] })]"#
         );
     }
 
@@ -332,17 +350,20 @@ mod tests {
 
     #[test]
     fn parse_with_comment() {
-        let stmt = lang::stmt(
+        let stmt = lang::source(
             r#"
             /* this is a multiline comment
                blah blah blah
             */
-            Int32 a = /* stuff */ 2;"#,
+            class Test {
+                private m_field /* cool stuff */: String;
+            }
+            "#,
         )
         .unwrap();
         assert_eq!(
             format!("{:?}", stmt),
-            r#"Declare(TypeName { name: "Int32", arguments: [] }, Ident("a"), Some(IntLit(2)))"#
+            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: "Test", base: None, members: [Field(Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: "m_field" }, TypeName { name: "String", arguments: [] })] })]"#
         );
     }
 }

@@ -26,20 +26,20 @@ cargo run --release -- decompile -i '/mnt/d/games/Cyberpunk 2077/r6/cache/final.
 
 ## language
 The scripts use a Java-like language:
-```java
-  public final const ref<GameObject> GetReprimandPerformer(EntityID target?) {
-    Agent agent;
-    ref<GameObject> performer;
-    ref<DeviceComponentPS> ps;
-    if(!EntityID.IsDefined(target)) {
-      target = GetPlayer(this.GetGameInstance()).GetEntityID();
-    };
-    if(this.m_agentsRegistry.GetReprimandPerformer(target, agent)) {
-      ps = this.GetPS(agent.link);
-      return cast<GameObject>(WeakRefToRef(ps.GetOwnerEntityWeak()));
-    };
-    return null;
-  }
+```swift
+public final const GetReprimandPerformer(opt target: EntityID): ref<GameObject> {
+  let agent: Agent;
+  let performer: ref<GameObject>;
+  let ps: ref<DeviceComponentPS>;
+  if(!EntityID.IsDefined(target)) {
+    target = GetPlayer(this.GetGameInstance()).GetEntityID();
+  };
+  if(this.m_agentsRegistry.GetReprimandPerformer(target, agent)) {
+    ps = this.GetPS(agent.link);
+    return WeakRefToRef(ps.GetOwnerEntityWeak()) as GameObject;
+  };
+  return null;
+}
 ```
 
 ## integrating with the game
@@ -57,9 +57,9 @@ EnableCompilation = "true"
 - Now you need to add some scripts. The compiler will look for scripts in `Cyberpunk 2077\r6\scripts\`<br />
 You can copy the script below to `Cyberpunk 2077\r6\scripts\lights.reds` as an example:
 
-```java
+```swift
 @insert(CrossingLight)
-protected final void PlayTrafficNotificationSound(worldTrafficLightColor status) {
+protected final PlayTrafficNotificationSound(status: worldTrafficLightColor) {
   return;
 }
 ```
