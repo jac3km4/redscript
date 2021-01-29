@@ -186,7 +186,7 @@ peg::parser! {
         pub rule source() -> Vec<SourceEntry> = _ decls:(source_entry() ** _) _ { decls }
 
         rule switch() -> Expr
-            = "switch" _ "(" _ matcher:expr() _ ")" _ "{" _ cases:(case() ** _) _ default:default()? _ "}" _ ";"?
+            = "switch" _ matcher:expr() _ "{" _ cases:(case() ** _) _ default:default()? _ "}" _ ";"?
             { Expr::Switch(Box::new(matcher), cases, default) }
 
         rule case() -> SwitchCase
@@ -197,11 +197,11 @@ peg::parser! {
             = "default" _ ":" _ body:seq() { body }
 
         rule while_() -> Expr
-            = "while" _ "(" _ cond:expr() _ ")" _ "{" _ body:seq() _ "}" _ ";"?
+            = "while" _ cond:expr() _ "{" _ body:seq() _ "}" _ ";"?
             { Expr::While(Box::new(cond), body) }
 
         rule if_() -> Expr
-            = "if" _ "(" _ cond:expr() _ ")" _ "{" _ if_:seq() _ "}" _ else_:else_()? ";"?
+            = "if" _ cond:expr() _ "{" _ if_:seq() _ "}" _ else_:else_()? ";"?
             { Expr::If(Box::new(cond), if_, else_) }
         rule else_() -> Seq
             = "else" _ "{" _ body:seq() _ "}" { body }
@@ -300,7 +300,7 @@ mod tests {
     #[test]
     fn parse_simple_loop() {
         let stmt = lang::stmt(
-            "while (i < 1000) {
+            "while i < 1000 {
                 this.counter += Object.CONSTANT;
                 i += 1;
              }",
@@ -315,7 +315,7 @@ mod tests {
     #[test]
     fn parse_simple_if_else() {
         let stmt = lang::stmt(
-            "if (this.m_fixBugs) {
+            "if this.m_fixBugs {
                 this.NoBugs();
              } else {
                 this.Bugs();
@@ -331,7 +331,7 @@ mod tests {
     #[test]
     fn parse_switch_case() {
         let stmt = lang::stmt(
-            r#"switch(value) {
+            r#"switch value {
                  case "0":
                  case "1":
                     Log("0 or 1");
