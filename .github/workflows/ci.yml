@@ -22,6 +22,10 @@ jobs:
         with:
           command: build
           args: --release --all-features
+      - name: Test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
       - name: Archive artifacts
         uses: actions/upload-artifact@v2
         with:
