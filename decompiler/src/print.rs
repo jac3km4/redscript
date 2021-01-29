@@ -411,7 +411,7 @@ fn format_type(def: &Definition, pool: &ConstantPool) -> Result<String, Error> {
             Type::StaticArray(nested, size) => {
                 format!("array<{}; {}>", format_type(pool.definition(*nested)?, pool)?, size)
             }
-            Type::ScriptRef(nested) => format!("ref<{}>", format_type(pool.definition(*nested)?, pool)?),
+            Type::ScriptRef(nested) => format!("script_ref<{}>", format_type(pool.definition(*nested)?, pool)?),
         };
         Ok(result)
     } else {
