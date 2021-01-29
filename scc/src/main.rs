@@ -31,10 +31,10 @@ fn main() -> Result<(), Error> {
             let bundle_path = cache_path.join("final.redscripts");
             let backup_path = cache_path.join("final.redscripts.bk");
             if !backup_path.exists() {
-                std::fs::copy(&bundle_path, backup_path)?;
+                std::fs::rename(&bundle_path, &backup_path)?;
             }
 
-            let mut bundle: ScriptBundle = ScriptBundle::load(&mut BufReader::new(File::open(&bundle_path)?))?;
+            let mut bundle: ScriptBundle = ScriptBundle::load(&mut BufReader::new(File::open(&backup_path)?))?;
             let mut compiler = Compiler::new(&mut bundle.pool)?;
 
             compiler.compile(defs)?;
