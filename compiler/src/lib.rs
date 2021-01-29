@@ -318,7 +318,7 @@ impl TypeId {
             TypeId::WeakRef(_, idx) => Ok(Ident::new(format!("wref<{}>", idx.pretty(pool)?.0))),
             TypeId::Array(_, idx) => Ok(Ident::new(format!("array<{}>", idx.pretty(pool)?.0))),
             TypeId::StaticArray(_, idx, size) => Ok(Ident::new(format!("array<{}, {}>", idx.pretty(pool)?.0, size))),
-            TypeId::ScriptRef(_, idx) => Ok(Ident::new(format!("ref<{}>", idx.pretty(pool)?.0))),
+            TypeId::ScriptRef(_, idx) => Ok(Ident::new(format!("script_ref<{}>", idx.pretty(pool)?.0))),
             TypeId::Null => Ok(Ident::new("Null".to_owned())),
             TypeId::Void => Ok(Ident::new("Void".to_owned())),
         }
