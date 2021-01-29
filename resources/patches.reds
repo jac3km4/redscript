@@ -45,16 +45,16 @@ private func PopulateMenuItemList() {
 /* sell edibles as junk automatically at vendors */
 @insert(FullscreenVendorGameController)
 private final func GetSellableJunk() -> array<wref<gameItemData>> {
-    let result: array<wref<gameItemData>>;
-    let sellableItems = this.m_VendorDataManager.GetItemsPlayerCanSell();
-    let i = 0;
-    while i < ArraySize(sellableItems) {
-        let type = RPGManager.GetItemRecord(sellableItems[i].GetID()).ItemType().Type();
-        if(Equals(type, gamedataItemType.Gen_Junk) || Equals(type, gamedataItemType.Con_Edible)) {
-            let tmp: wref<gameItemData> = sellableItems[i];
-            ArrayPush(result, tmp);
-        };
-        i += 1;
+  let result: array<wref<gameItemData>>;
+  let sellableItems = this.m_VendorDataManager.GetItemsPlayerCanSell();
+  let i = 0;
+  while i < ArraySize(sellableItems) {
+    let type = RPGManager.GetItemRecord(sellableItems[i].GetID()).ItemType().Type();
+    if(Equals(type, gamedataItemType.Gen_Junk) || Equals(type, gamedataItemType.Con_Edible)) {
+        let tmp: wref<gameItemData> = sellableItems[i];
+        ArrayPush(result, tmp);
     };
-    return result;
+    i += 1;
+  };
+  return result;
 }
