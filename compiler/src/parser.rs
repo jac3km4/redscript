@@ -49,7 +49,7 @@ pub enum Qualifier {
     Exec,
     Callback,
     Out,
-    Optional
+    Optional,
 }
 
 #[derive(Debug)]
@@ -100,7 +100,7 @@ pub fn parse(input: &str) -> Result<Vec<SourceEntry>, ParseError<LineCol>> {
 peg::parser! {
     grammar lang() for str {
         use peg::ParseLiteral;
-        
+
         rule _() = ([' ' | '\n' | '\r'] / comment())*
         rule commasep<T>(x: rule<T>) -> Vec<T> = v:(x() ** ("," _)) {v}
 
@@ -112,17 +112,17 @@ peg::parser! {
             = comment_start() comment_content()* comment_end()
 
         rule qualifier() -> Qualifier
-            = "public" { Qualifier::Public }
-            / "protected" { Qualifier::Protected }
-            / "private" { Qualifier::Private }
-            / "static" { Qualifier::Static }
-            / "final" { Qualifier::Final }
-            / "const" { Qualifier::Const }
-            / "native" { Qualifier::Native }
-            / "exec" { Qualifier::Exec }
-            / "cb" { Qualifier::Callback }
-            / "out" { Qualifier::Out }
-            / "opt" { Qualifier::Optional }
+            = keyword("public") { Qualifier::Public }
+            / keyword("protected") { Qualifier::Protected }
+            / keyword("private") { Qualifier::Private }
+            / keyword("static") { Qualifier::Static }
+            / keyword("final") { Qualifier::Final }
+            / keyword("const") { Qualifier::Const }
+            / keyword("native") { Qualifier::Native }
+            / keyword("exec") { Qualifier::Exec }
+            / keyword("cb") { Qualifier::Callback }
+            / keyword("out") { Qualifier::Out }
+            / keyword("opt") { Qualifier::Optional }
 
         rule literal_type() -> LiteralType
             = "n" { LiteralType::Name }
@@ -137,6 +137,9 @@ peg::parser! {
         rule ident() -> String
             = x:$(['a'..='z' | 'A'..='Z' | '_']) xs:$(['0'..='9' | 'a'..='z' | 'A'..='Z' | '_']*)
             { format!("{}{}", x, xs) }
+
+        rule keyword(id: &'static str) -> () =
+            ##parse_string_literal(id) !['0'..='9' | 'a'..='z' | 'A'..='Z' | '_']
 
         rule number() -> Expr
             = n:$(['0'..='9' | '.']+) postfix:$(['u'])?
@@ -154,18 +157,18 @@ peg::parser! {
         rule let_type() -> TypeName = ":" _ type_:type_() { type_ }
         rule func_type() -> TypeName = "->" _ type_:type_() { type_ }
 
-        rule decl(word: &'static str) -> Declaration
-            = annotations:(annotation() ** _) _ qualifiers:qualifiers() _ ##parse_string_literal(word) _ name:ident()
+        rule decl(inner: rule<()>) -> Declaration
+            = annotations:(annotation() ** _) _ qualifiers:qualifiers() _ inner() _ name:ident()
             { Declaration { annotations, qualifiers, name } }
 
         rule let() -> Expr
-            = "let" _ name:ident() _ type_:let_type()? _ val:initializer()? _ ";"
+            = keyword("let") _ name:ident() _ type_:let_type()? _ val:initializer()? _ ";"
             { Expr::Declare(Ident::new(name), type_, val.map(Box::new)) }
 
         rule initializer() -> Expr = "=" _ val:expr() { val }
 
         pub rule function() -> FunctionSource
-            = declaration:decl("func") _ "(" parameters:commasep(<param()>) ")" _ type_:func_type()? _ body:function_body()?
+            = declaration:decl(<keyword("func")>) _ "(" parameters:commasep(<param()>) ")" _ type_:func_type()? _ body:function_body()?
             { FunctionSource { declaration, type_, parameters, body } }
         rule function_body() -> Seq = "{" _ body:seq() _ "}" { body }
 
@@ -173,15 +176,15 @@ peg::parser! {
             = qualifiers:qualifiers() _ name:ident() _ type_:let_type()
             { ParameterSource { qualifiers, name, type_ } }
 
-        rule extends() -> String = "extends" _ name:ident() { name }
+        rule extends() -> String = keyword("extends") _ name:ident() { name }
 
         pub rule class() -> ClassSource
-            = qualifiers:qualifiers() _ "class" _ name:ident() _ base:extends()? _ "{" _ members:member()**_ _ "}"
+            = qualifiers:qualifiers() _ keyword("class") _ name:ident() _ base:extends()? _ "{" _ members:member()**_ _ "}"
             { ClassSource { qualifiers, name, base, members } }
 
         rule member() -> MemberSource
             = fun:function() { MemberSource::Function(fun) }
-            / decl:decl("let") _ type_:let_type() _ ";" { MemberSource::Field(decl, type_) }
+            / decl:decl(<keyword("let")>) _ type_:let_type() _ ";" { MemberSource::Field(decl, type_) }
 
         pub rule source_entry() -> SourceEntry
             = fun:function() { SourceEntry::Function(fun) }
@@ -190,32 +193,32 @@ peg::parser! {
         pub rule source() -> Vec<SourceEntry> = _ decls:(source_entry() ** _) _ { decls }
 
         rule switch() -> Expr
-            = "switch" _ matcher:expr() _ "{" _ cases:(case() ** _) _ default:default()? _ "}" _ ";"?
+            = keyword("switch") _ matcher:expr() _ "{" _ cases:(case() ** _) _ default:default()? _ "}" _ ";"?
             { Expr::Switch(Box::new(matcher), cases, default) }
 
         rule case() -> SwitchCase
-            = "case" _ matcher:expr() _ ":" _ body:seq()
+            = keyword("case") _ matcher:expr() _ ":" _ body:seq()
             { SwitchCase(matcher, body) }
 
         rule default() -> Seq
-            = "default" _ ":" _ body:seq() { body }
+            = keyword("default") _ ":" _ body:seq() { body }
 
         rule while_() -> Expr
-            = "while" _ cond:expr() _ "{" _ body:seq() _ "}" _ ";"?
+            = keyword("while") _ cond:expr() _ "{" _ body:seq() _ "}" _ ";"?
             { Expr::While(Box::new(cond), body) }
 
         rule if_() -> Expr
-            = "if" _ cond:expr() _ "{" _ if_:seq() _ "}" _ else_:else_()? ";"?
+            = keyword("if") _ cond:expr() _ "{" _ if_:seq() _ "}" _ else_:else_()? ";"?
             { Expr::If(Box::new(cond), if_, else_) }
         rule else_() -> Seq
-            = "else" _ "{" _ body:seq() _ "}" { body }
+            = keyword("else") _ "{" _ body:seq() _ "}" { body }
 
         pub rule stmt() -> Expr
             = while_: while_() { while_ }
             / if_: if_() { if_ }
             / switch: switch() { switch }
-            / "return" _ val:expr()? ";" { Expr::Return(val.map(Box::new)) }
-            / "break" _ ";" { Expr::Break }
+            / keyword("return") _ val:expr()? ";" { Expr::Return(val.map(Box::new)) }
+            / keyword("break") _ ";" { Expr::Break }
             / let_:let() { let_ }
             / expr:expr() _ ";" { expr }
 
@@ -298,6 +301,20 @@ mod tests {
         assert_eq!(
             format!("{:?}", class),
             r#"[Class(ClassSource { qualifiers: Qualifiers([Public]), name: "A", base: Some("IScriptable"), members: [Field(Declaration { annotations: [], qualifiers: Qualifiers([Private, Const]), name: "m_field" }, TypeName { name: "Int32", arguments: [] }), Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public]), name: "GetField" }, type_: Some(TypeName { name: "Int32", arguments: [] }), parameters: [], body: Some(Seq { exprs: [Return(Some(Member(This, Ident("m_field"))))] }) })] })]"#
+        );
+    }
+
+    #[test]
+    fn parse_simple_func() {
+        let class = lang::source(
+            "public static func GetField(optimum: Uint64) -> Uint64 {
+                return this.m_field > optimum ? this.m_field : optimum;
+             }",
+        )
+        .unwrap();
+        assert_eq!(
+            format!("{:?}", class),
+            r#"[Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public, Static]), name: "GetField" }, type_: Some(TypeName { name: "Uint64", arguments: [] }), parameters: [ParameterSource { qualifiers: Qualifiers([]), name: "optimum", type_: TypeName { name: "Uint64", arguments: [] } }], body: Some(Seq { exprs: [Return(Some(Conditional(BinOp(Member(This, Ident("m_field")), Ident(Ident("optimum")), Greater), Member(This, Ident("m_field")), Ident(Ident("optimum")))))] }) })]"#
         );
     }
 
