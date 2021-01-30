@@ -1,6 +1,6 @@
 
 /* multiply all crafting XP by 100 */
-@insert(CraftingSystem)
+@replaceMethod(CraftingSystem)
 private final func ProcessCraftSkill(xpAmount: Int32, craftedItem: StatsObjectID) {
   let xpEvent = new ExperiencePointsEvent();
   xpEvent.amount = xpAmount * 100;
@@ -9,25 +9,25 @@ private final func ProcessCraftSkill(xpAmount: Int32, craftedItem: StatsObjectID
 }
 
 /* disable fake underwear when removing clothes */
-@insert(EquipmentSystemPlayerData)
+@replaceMethod(EquipmentSystemPlayerData)
 private final func EvaluateUnderwearVisibility(unequippedItem: ItemID) -> Bool {
   return false;
 }
 
 /* allow disassembling of all items */
-@insert(CraftingSystem)
+@replaceMethod(CraftingSystem)
 public final const func CanItemBeDisassembled(itemData: wref<gameItemData>) -> Bool {
   return true;
 }
 
 /* allow unequipping of all items */
-@insert(RPGManager)
+@replaceMethod(RPGManager)
 public final static func CanPartBeUnequipped(itemID: ItemID) -> Bool {
   return true;
 }
 
 /* add main menu options */
-@insert(SingleplayerMenuGameController)
+@replaceMethod(SingleplayerMenuGameController)
 private func PopulateMenuItemList() {
   if this.m_savesCount > 0 {
     this.AddMenuItem(GetLocalizedText("UI-ScriptExports-Continue0"), PauseMenuAction.QuickLoad);
@@ -43,7 +43,7 @@ private func PopulateMenuItemList() {
 }
 
 /* sell edibles as junk automatically at vendors */
-@insert(FullscreenVendorGameController)
+@replaceMethod(FullscreenVendorGameController)
 private final func GetSellableJunk() -> array<wref<gameItemData>> {
   let result: array<wref<gameItemData>>;
   let sellableItems = this.m_VendorDataManager.GetItemsPlayerCanSell();

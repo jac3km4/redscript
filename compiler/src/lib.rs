@@ -215,7 +215,7 @@ impl<'a> Compiler<'a> {
         annotations: &[Annotation],
         parent: PoolIndex<Class>,
     ) -> Result<(PoolIndex<Class>, Option<PoolIndex<Function>>, PoolIndex<Function>), Error> {
-        if let Some(target_name) = annotations.iter().find_map(|ann| ann.get_insert_target()) {
+        if let Some(target_name) = annotations.iter().find_map(|ann| ann.get_replace_target()) {
             if let Reference::Class(target_class) = self.scope.resolve_reference(Ident::new(target_name.to_owned()))? {
                 let class = self.pool.class(target_class)?;
                 let existing_idx = class.functions.iter().find(|fun| {

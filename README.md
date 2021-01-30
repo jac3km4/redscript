@@ -58,9 +58,11 @@ EnableCompilation = "true"
 You can copy the script below to `Cyberpunk 2077\r6\scripts\lights.reds` as an example:
 
 ```swift
-@insert(CrossingLight)
+@replaceMethod(CrossingLight)
 protected final PlayTrafficNotificationSound(status: worldTrafficLightColor) {
   return;
 }
 ```
 *this mod will disable the walk don't walk crosswalk audio*
+
+You can find more script examples in `resources/patches.reds` in this repository.
