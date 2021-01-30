@@ -147,12 +147,32 @@ pub struct TypeName {
     pub arguments: Vec<TypeName>,
 }
 
+impl Display for TypeName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.mangled())
+    }
+}
+
 impl TypeName {
     fn unwrapped(&self) -> &TypeName {
         match self.name.as_str() {
             "ref" => &self.arguments[0].unwrapped(),
             "wref" => &self.arguments[0].unwrapped(),
             _ => self,
+        }
+    }
+
+    pub fn basic(name: String) -> TypeName {
+        TypeName {
+            name,
+            arguments: vec![],
+        }
+    }
+
+    pub fn generic(name: String, arg: TypeName) -> TypeName {
+        TypeName {
+            name,
+            arguments: vec![arg],
         }
     }
 

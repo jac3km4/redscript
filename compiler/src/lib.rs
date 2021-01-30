@@ -141,18 +141,22 @@ impl<'a> Compiler<'a> {
         let return_type = match source.type_ {
             None => None,
             Some(type_) if type_.name == "Void" => None,
-            Some(type_) => Some(self.scope.resolve_type_index(Ident::new(type_.repr()))?),
+            Some(type_) => {
+                let type_ = self.scope.resolve_type(&type_, self.pool)?;
+                Some(self.scope.get_type_index(&type_, self.pool)?)
+            }
         };
 
         let mut parameters = Vec::new();
 
         for param in &source.parameters {
-            let type_ = self.scope.resolve_type_index(Ident::new(param.type_.repr()))?;
+            let type_ = self.scope.resolve_type(&param.type_, self.pool)?;
+            let type_idx = self.scope.get_type_index(&type_, self.pool)?;
             let flags = ParameterFlags::new()
                 .with_is_out(param.qualifiers.contain(Qualifier::Out))
                 .with_is_optional(param.qualifiers.contain(Qualifier::Optional));
             let name = self.pool.names.add(param.name.clone());
-            let param = Parameter { type_, flags };
+            let param = Parameter { type_: type_idx, flags };
             let idx = self
                 .pool
                 .push_definition(Definition::param(name, fun_idx.cast(), param));
@@ -194,11 +198,12 @@ impl<'a> Compiler<'a> {
     ) -> Result<PoolIndex<Field>, Error> {
         let name = self.pool.names.add(field.name);
         let visibility = field.qualifiers.visibility().unwrap_or(Visibility::Private);
-        let type_ = self.scope.resolve_type_index(Ident::new(type_.repr()))?;
+        let type_ = self.scope.resolve_type(&type_, self.pool)?;
+        let type_idx = self.scope.get_type_index(&type_, self.pool)?;
         let flags = FieldFlags::new();
         let field = Field {
             visibility,
-            type_,
+            type_: type_idx,
             flags,
             hint: None,
             attributes: vec![],
@@ -270,14 +275,14 @@ pub enum Reference {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeId {
     Prim(PoolIndex<Type>),
-    Class(Option<PoolIndex<Type>>, PoolIndex<Class>),
-    Struct(PoolIndex<Type>, PoolIndex<Class>),
-    Enum(PoolIndex<Type>, PoolIndex<Enum>),
-    Ref(PoolIndex<Type>, Box<TypeId>),
-    WeakRef(PoolIndex<Type>, Box<TypeId>),
-    Array(PoolIndex<Type>, Box<TypeId>),
-    StaticArray(PoolIndex<Type>, Box<TypeId>, u32),
-    ScriptRef(PoolIndex<Type>, Box<TypeId>),
+    Class(PoolIndex<Class>),
+    Struct(PoolIndex<Class>),
+    Enum(PoolIndex<Enum>),
+    Ref(Box<TypeId>),
+    WeakRef(Box<TypeId>),
+    Array(Box<TypeId>),
+    StaticArray(Box<TypeId>, u32),
+    ScriptRef(Box<TypeId>),
     Null,
     Void,
 }
@@ -285,40 +290,40 @@ pub enum TypeId {
 impl TypeId {
     pub fn unwrapped(&self) -> &TypeId {
         match self {
-            TypeId::Ref(_, inner) => inner.unwrapped(),
-            TypeId::WeakRef(_, inner) => inner.unwrapped(),
-            TypeId::ScriptRef(_, inner) => inner.unwrapped(),
+            TypeId::Ref(inner) => inner.unwrapped(),
+            TypeId::WeakRef(inner) => inner.unwrapped(),
+            TypeId::ScriptRef(inner) => inner.unwrapped(),
             other => other,
         }
     }
 
-    fn index(&self) -> Option<PoolIndex<Type>> {
+    fn repr(&self, pool: &ConstantPool) -> Result<Ident, Error> {
         match self {
-            TypeId::Prim(idx) => Some(*idx),
-            TypeId::Class(idx, _) => *idx,
-            TypeId::Enum(idx, _) => Some(*idx),
-            TypeId::Struct(idx, _) => Some(*idx),
-            TypeId::Ref(idx, _) => Some(*idx),
-            TypeId::WeakRef(idx, _) => Some(*idx),
-            TypeId::Array(idx, _) => Some(*idx),
-            TypeId::StaticArray(idx, _, _) => Some(*idx),
-            TypeId::ScriptRef(idx, _) => Some(*idx),
-            TypeId::Null => None,
-            TypeId::Void => None,
+            TypeId::Prim(idx) => Ok(Ident(pool.definition_name(*idx)?)),
+            TypeId::Class(idx) => Ok(Ident(pool.definition_name(*idx)?)),
+            TypeId::Struct(idx) => Ok(Ident(pool.definition_name(*idx)?)),
+            TypeId::Enum(idx) => Ok(Ident(pool.definition_name(*idx)?)),
+            TypeId::Ref(idx) => Ok(Ident::new(format!("ref:{}", idx.repr(pool)?.0))),
+            TypeId::WeakRef(idx) => Ok(Ident::new(format!("wref:{}", idx.repr(pool)?.0))),
+            TypeId::Array(idx) => Ok(Ident::new(format!("array:{}", idx.repr(pool)?.0))),
+            TypeId::StaticArray(idx, size) => Ok(Ident::new(format!("{}[{}]", idx.repr(pool)?.0, size))),
+            TypeId::ScriptRef(idx) => Ok(Ident::new(format!("script_ref:{}", idx.repr(pool)?.0))),
+            TypeId::Null => panic!(),
+            TypeId::Void => panic!(),
         }
     }
 
     fn pretty(&self, pool: &ConstantPool) -> Result<Ident, Error> {
         match self {
             TypeId::Prim(idx) => Ok(Ident(pool.definition_name(*idx)?)),
-            TypeId::Class(_, idx) => Ok(Ident(pool.definition_name(*idx)?)),
-            TypeId::Struct(_, idx) => Ok(Ident(pool.definition_name(*idx)?)),
-            TypeId::Enum(_, idx) => Ok(Ident(pool.definition_name(*idx)?)),
-            TypeId::Ref(_, idx) => Ok(Ident::new(format!("ref<{}>", idx.pretty(pool)?.0))),
-            TypeId::WeakRef(_, idx) => Ok(Ident::new(format!("wref<{}>", idx.pretty(pool)?.0))),
-            TypeId::Array(_, idx) => Ok(Ident::new(format!("array<{}>", idx.pretty(pool)?.0))),
-            TypeId::StaticArray(_, idx, size) => Ok(Ident::new(format!("array<{}, {}>", idx.pretty(pool)?.0, size))),
-            TypeId::ScriptRef(_, idx) => Ok(Ident::new(format!("script_ref<{}>", idx.pretty(pool)?.0))),
+            TypeId::Class(idx) => Ok(Ident(pool.definition_name(*idx)?)),
+            TypeId::Struct(idx) => Ok(Ident(pool.definition_name(*idx)?)),
+            TypeId::Enum(idx) => Ok(Ident(pool.definition_name(*idx)?)),
+            TypeId::Ref(idx) => Ok(Ident::new(format!("ref<{}>", idx.pretty(pool)?.0))),
+            TypeId::WeakRef(idx) => Ok(Ident::new(format!("wref<{}>", idx.pretty(pool)?.0))),
+            TypeId::Array(idx) => Ok(Ident::new(format!("array<{}>", idx.pretty(pool)?.0))),
+            TypeId::StaticArray(idx, size) => Ok(Ident::new(format!("array<{}, {}>", idx.pretty(pool)?.0, size))),
+            TypeId::ScriptRef(idx) => Ok(Ident::new(format!("script_ref<{}>", idx.pretty(pool)?.0))),
             TypeId::Null => Ok(Ident::new("Null".to_owned())),
             TypeId::Void => Ok(Ident::new("Void".to_owned())),
         }

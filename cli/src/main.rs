@@ -68,10 +68,19 @@ fn compile(opts: CompileOpts) -> Result<(), Error> {
     let mut bundle: ScriptBundle = ScriptBundle::load(&mut BufReader::new(File::open(opts.bundle)?))?;
     let mut compiler = Compiler::new(&mut bundle.pool)?;
 
-    compiler.compile(entries)?;
-    bundle.save(&mut BufWriter::new(File::create(&opts.output)?))?;
-
-    println!("Output successfully saved to {:?}", opts.output);
+    match compiler.compile(entries) {
+        Ok(()) => {
+            bundle.save(&mut BufWriter::new(File::create(&opts.output)?))?;
+            println!("Output successfully saved to {:?}", opts.output);
+        }
+        Err(Error::CompileError(err)) => {
+            println!("{}", err)
+        }
+        Err(Error::FunctionResolutionError(err)) => {
+            println!("{}", err)
+        }
+        Err(other) => Err(other)?,
+    }
     Ok(())
 }
 
