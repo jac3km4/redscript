@@ -84,8 +84,8 @@ pub struct Annotation {
 }
 
 impl Annotation {
-    pub fn get_insert_target(&self) -> Option<&str> {
-        if self.name == "insert" {
+    pub fn get_replace_target(&self) -> Option<&str> {
+        if self.name == "replaceMethod" {
             Some(&self.value)
         } else {
             None
