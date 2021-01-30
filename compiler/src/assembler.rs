@@ -73,7 +73,7 @@ impl Assembler {
                 self.emit(Instr::TweakDbIdConst(idx));
             }
             Expr::FloatLit(val) => {
-                self.emit(Instr::F64Const(*val));
+                self.emit(Instr::F32Const(*val as f32));
             }
             Expr::IntLit(val) => {
                 self.emit(Instr::I32Const(*val as i32));
