@@ -8,6 +8,7 @@ use redscript::definition::DefinitionValue;
 use redscript::error::Error;
 use redscript_compiler::{parser, Compiler};
 use redscript_decompiler::print;
+use redscript_decompiler::print::OutputMode;
 
 #[derive(Debug, Options)]
 enum Command {
@@ -27,6 +28,8 @@ struct DecompileOpts {
     mode: String,
     #[options(short = "f", help = "split into individual files (doesn't work for everything yet)")]
     dump_files: bool,
+    #[options(short = "v", help = "verbose output (include implicit conversions)")]
+    verbose: bool,
 }
 
 #[derive(Debug, Options)]
@@ -89,9 +92,9 @@ fn decompile(opts: DecompileOpts) -> Result<(), Error> {
     let pool = &bundle.pool;
 
     let mode = match opts.mode.as_str() {
-        "ast" => print::OutputMode::SyntaxTree,
-        "bytecode" => print::OutputMode::Bytecode,
-        _ => print::OutputMode::Code,
+        "ast" => OutputMode::SyntaxTree,
+        "bytecode" => OutputMode::Bytecode,
+        _ => OutputMode::Code { verbose: opts.verbose },
     };
 
     if opts.dump_files {
