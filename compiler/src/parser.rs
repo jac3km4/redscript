@@ -168,7 +168,7 @@ peg::parser! {
         rule initializer() -> Expr = "=" _ val:expr() { val }
 
         pub rule function() -> FunctionSource
-            = declaration:decl(<keyword("func")>) _ "(" parameters:commasep(<param()>) ")" _ type_:func_type()? _ body:function_body()?
+            = declaration:decl(<keyword("func")>) _ "(" _ parameters:commasep(<param()>) _ ")" _ type_:func_type()? _ body:function_body()?
             { FunctionSource { declaration, type_, parameters, body } }
         rule function_body() -> Seq = "{" _ body:seq() _ "}" { body }
 
