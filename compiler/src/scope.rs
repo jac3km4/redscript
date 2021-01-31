@@ -472,8 +472,7 @@ impl Scope {
             },
             Expr::New(name, _) => {
                 if let Reference::Class(class_idx) = self.resolve_reference(name.clone())? {
-                    let name = pool.definition_name(class_idx)?;
-                    let type_ = self.resolve_type(&TypeName::basic(name.deref().clone()), pool)?;
+                    let type_ = TypeId::Class(class_idx);
                     if pool.class(class_idx)?.flags.is_struct() {
                         type_
                     } else {
@@ -540,10 +539,7 @@ impl Scope {
             Expr::False => self.resolve_type(&TypeName::basic("Bool".to_owned()), pool)?,
             Expr::Null => TypeId::Null,
             Expr::This => match self.this {
-                Some(cls) => {
-                    let name = pool.definition_name(cls)?;
-                    self.resolve_type(&TypeName::basic(name.deref().to_owned()), pool)?
-                }
+                Some(class_idx) => TypeId::Class(class_idx),
                 None => Err(Error::CompileError("No 'this' available".to_owned()))?,
             },
             Expr::While(_, _) => TypeId::Void,
