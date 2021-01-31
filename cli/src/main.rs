@@ -15,6 +15,8 @@ enum Command {
     Decompile(DecompileOpts),
     #[options(help = "[opts]")]
     Compile(CompileOpts),
+    #[options(help = "[opts]")]
+    Lint(LintOpts),
 }
 
 #[derive(Debug, Options)]
@@ -39,7 +41,19 @@ struct CompileOpts {
     output: PathBuf,
 }
 
+#[derive(Debug, Options)]
+struct LintOpts {
+    #[options(required, short = "i", help = "input source file")]
+    input: PathBuf,
+    #[options(short = "b", help = "redscript bundle file to use (enables type linting)")]
+    bundle: Option<PathBuf>,
+}
+
 fn main() -> Result<(), Error> {
+    run().or_else(|err| Ok(println!("{}", err)))
+}
+
+fn run() -> Result<(), Error> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let command: Command = match Command::parse_args_default(&args) {
         Ok(res) => res,
@@ -58,6 +72,7 @@ fn main() -> Result<(), Error> {
     match command {
         Command::Decompile(opts) => decompile(opts),
         Command::Compile(opts) => compile(opts),
+        Command::Lint(opts) => lint(opts),
     }
 }
 
@@ -121,4 +136,18 @@ fn decompile(opts: DecompileOpts) -> Result<(), Error> {
     }
     println!("Output successfully saved to {:?}", opts.output);
     Ok(())
+}
+
+fn lint(opts: LintOpts) -> Result<(), Error> {
+    let sources = std::fs::read_to_string(opts.input)?;
+    let entries = parser::parse(&sources).map_err(|err| Error::SyntaxError(err.to_string()))?;
+
+    match opts.bundle {
+        Some(bundle_path) => {
+            let mut bundle: ScriptBundle = ScriptBundle::load(&mut BufReader::new(File::open(bundle_path)?))?;
+            let mut compiler = Compiler::new(&mut bundle.pool)?;
+            compiler.compile(entries)
+        }
+        None => Ok(())
+    }
 }
