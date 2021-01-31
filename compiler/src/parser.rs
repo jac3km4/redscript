@@ -254,17 +254,17 @@ peg::parser! {
             "!" _ x:@ { Expr::UnOp(Box::new(x), UnOp::LogicNot) }
             "~" _ x:@ { Expr::UnOp(Box::new(x), UnOp::BitNot) }
             "-" _ x:@ { Expr::UnOp(Box::new(x), UnOp::Neg) }
-            "new" _ id:ident() _ "(" _ params:commasep(<expr()>) _ ")" { Expr::New(Ident::new(id), params) }
+            keyword("new") _ id:ident() _ "(" _ params:commasep(<expr()>) _ ")" { Expr::New(Ident::new(id), params) }
             --
             expr:(@) _ "[" _ idx:expr() _ "]" { Expr::ArrayElem(Box::new(expr), Box::new(idx)) }
             expr:(@) _ "." _ ident:ident() _ "(" _ params:commasep(<expr()>) _ ")" { Expr::MethodCall(Box::new(expr), Ident::new(ident), params) }
             expr:(@) _ "." _ ident:ident() { Expr::Member(Box::new(expr), Ident::new(ident)) }
-            expr:(@) _ "as" _ type_:type_() { Expr::Cast(type_, Box::new(expr)) }
+            expr:(@) _ keyword("as") _ type_:type_() { Expr::Cast(type_, Box::new(expr)) }
             "(" _ v:expr() _ ")" { v }
-            "true" { Expr::True }
-            "false" { Expr::False }
-            "null" { Expr::Null }
-            "this" { Expr::This }
+            keyword("true") { Expr::True }
+            keyword("false") { Expr::False }
+            keyword("null") { Expr::Null }
+            keyword("this") { Expr::This }
             lit_type:literal_type()? "\"" str:$((!['"'] [_])*) "\"" { Expr::StringLit(lit_type.unwrap_or(LiteralType::String), str.to_owned()) }
             n:number() { n }
             id:ident() _ "(" _ params:commasep(<expr()>) _ ")" { Expr::Call(Ident::new(id), params) }
