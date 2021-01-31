@@ -45,7 +45,7 @@ struct CompileOpts {
 struct LintOpts {
     #[options(required, short = "i", help = "input source file")]
     input: PathBuf,
-    #[options(short = "b", help = "redscript bundle file to use (enables type linting)")]
+    #[options(short = "b", help = "redscript bundle file to use, optional")]
     bundle: Option<PathBuf>,
 }
 
@@ -65,6 +65,8 @@ fn run() -> Result<(), Error> {
             println!("{}", CompileOpts::usage());
             println!("Decompiler options:");
             println!("{}", DecompileOpts::usage());
+            println!("Lint options:");
+            println!("{}", LintOpts::usage());
             return Ok(());
         }
     };
