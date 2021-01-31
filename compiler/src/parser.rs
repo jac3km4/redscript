@@ -101,7 +101,7 @@ peg::parser! {
     grammar lang() for str {
         use peg::ParseLiteral;
 
-        rule _() = ([' ' | '\n' | '\r'] / comment())*
+        rule _() = ([' ' | '\n' | '\r' | '\t'] / comment())*
         rule commasep<T>(x: rule<T>) -> Vec<T> = v:(x() ** ("," _)) {v}
 
         rule comment_start() = "/*"
