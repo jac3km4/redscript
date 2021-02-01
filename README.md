@@ -16,6 +16,7 @@ Decompiler options:
   -o, --output OUTPUT  output file or directory
   -m, --mode MODE      dump mode (one of: 'ast', 'bytecode' or 'code')
   -f, --dump-files     split into individual files (doesn't work for everything yet)
+  -v, --verbose        verbose output (include implicit conversions)
 Lint options:
 Optional arguments:
   -i, --input INPUT    input source file
@@ -40,7 +41,7 @@ public final const func GetReprimandPerformer(opt target: EntityID) -> ref<GameO
   };
   if this.m_agentsRegistry.GetReprimandPerformer(target, agent) {
     ps = this.GetPS(agent.link);
-    return WeakRefToRef(ps.GetOwnerEntityWeak()) as GameObject;
+    return ps.GetOwnerEntityWeak() as GameObject;
   };
   return null;
 }
