@@ -101,7 +101,7 @@ peg::parser! {
     grammar lang() for str {
         use peg::ParseLiteral;
 
-        rule _() = ([' ' | '\n' | '\r'] / comment())*
+        rule _() = ([' ' | '\n' | '\r' | '\t'] / comment())*
         rule commasep<T>(x: rule<T>) -> Vec<T> = v:(x() ** ("," _)) {v}
 
         rule comment_start() = "/*"
@@ -168,7 +168,7 @@ peg::parser! {
         rule initializer() -> Expr = "=" _ val:expr() { val }
 
         pub rule function() -> FunctionSource
-            = declaration:decl(<keyword("func")>) _ "(" parameters:commasep(<param()>) ")" _ type_:func_type()? _ body:function_body()?
+            = declaration:decl(<keyword("func")>) _ "(" _ parameters:commasep(<param()>) _ ")" _ type_:func_type()? _ body:function_body()?
             { FunctionSource { declaration, type_, parameters, body } }
         rule function_body() -> Seq = "{" _ body:seq() _ "}" { body }
 
