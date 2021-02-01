@@ -17,6 +17,10 @@ Decompiler options:
   -m, --mode MODE      dump mode (one of: 'ast', 'bytecode' or 'code')
   -f, --dump-files     split into individual files (doesn't work for everything yet)
   -v, --verbose        verbose output (include implicit conversions)
+Lint options:
+Optional arguments:
+  -i, --input INPUT    input source file
+  -b, --bundle BUNDLE  redscript bundle file to use, optional
 ```
 
 You can build the project and decompile all scripts in one command:
