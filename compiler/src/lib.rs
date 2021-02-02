@@ -1,8 +1,11 @@
 #![feature(option_result_contains)]
 
+use std::{ffi::OsStr, path::Path};
+
 use assembler::Assembler;
+use colored::*;
 use parser::Annotation;
-use redscript::ast::{Ident, Seq, TypeName};
+use redscript::ast::{Ident, Pos, Seq, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Instr};
 use redscript::definition::{
@@ -11,12 +14,15 @@ use redscript::definition::{
 use redscript::definition::{Definition, Field, Function, Type};
 use redscript::error::Error;
 use scope::{FunctionId, FunctionName, Scope};
+use source_map::Files;
+use walkdir::WalkDir;
 
 use crate::parser::{ClassSource, Declaration, FunctionSource, MemberSource, Qualifier, SourceEntry};
 
 pub mod assembler;
 pub mod parser;
 pub mod scope;
+pub mod source_map;
 
 pub struct Compiler<'a> {
     pool: &'a mut ConstantPool,
@@ -31,7 +37,48 @@ impl<'a> Compiler<'a> {
         Ok(Compiler { pool, scope, backlog })
     }
 
-    pub fn compile(&mut self, sources: Vec<SourceEntry>) -> Result<(), Error> {
+    pub fn compile_all(&mut self, path: &Path) -> Result<(), Error> {
+        let mut files = Files::new();
+        for entry in WalkDir::new(path)
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|e| e.path().extension() == Some(OsStr::new("reds")))
+        {
+            let sources = std::fs::read_to_string(entry.path())?;
+            files.add(entry.path().to_owned(), &sources);
+        }
+        let entries =
+            parser::parse(files.sources()).map_err(|err| Error::SyntaxError(format!("Syntax error: {}", err)))?;
+
+        match self.compile(entries) {
+            Ok(()) => {
+                println!("Compilation complete");
+                Ok(())
+            }
+            Err(Error::CompileError(err, pos)) => {
+                Self::print_errors(&files, &err, pos);
+                Err(Error::CompileError(err, pos))
+            }
+            Err(Error::FunctionResolutionError(err, pos)) => {
+                Self::print_errors(&files, &err, pos);
+                Err(Error::FunctionResolutionError(err, pos))
+            }
+            Err(other) => {
+                println!("{}: {:?}", "Unexpected error during compilation".red(), other);
+                Err(other)
+            }
+        }
+    }
+
+    fn print_errors(files: &Files, error: &str, pos: Pos) {
+        let loc = files.lookup(pos).unwrap();
+        println!("{}", format!("Compilation error at {}:", loc).red());
+        println!("{}", files.enclosing_line(&loc).trim_end().truecolor(128, 128, 128));
+        println!("{}^^^", " ".repeat(loc.position.col));
+        println!("{}", error);
+    }
+
+    fn compile(&mut self, sources: Vec<SourceEntry>) -> Result<(), Error> {
         for entry in &sources {
             if let SourceEntry::Class(class) = entry {
                 self.stub_type(class)?;
@@ -69,7 +116,7 @@ impl<'a> Compiler<'a> {
         let name_idx = self.pool.names.add(source.name);
         let name = Ident(self.pool.names.get(name_idx)?);
 
-        if let Reference::Class(class_idx) = self.scope.resolve_reference(name)? {
+        if let Reference::Class(class_idx) = self.scope.resolve_reference(name, source.pos)? {
             let visibility = source.qualifiers.visibility().unwrap_or(Visibility::Private);
             let flags = ClassFlags::new();
             let mut functions = vec![];
@@ -88,10 +135,13 @@ impl<'a> Compiler<'a> {
 
             let base_idx = if let Some(base_name) = source.base {
                 let base_ident = Ident::new(base_name);
-                if let Reference::Class(base_idx) = self.scope.resolve_reference(base_ident.clone())? {
+                if let Reference::Class(base_idx) = self.scope.resolve_reference(base_ident.clone(), source.pos)? {
                     base_idx
                 } else {
-                    Err(Error::CompileError(format!("{} is not a class", base_ident.0)))?
+                    Err(Error::CompileError(
+                        format!("{} is not a class", base_ident.0),
+                        source.pos,
+                    ))?
                 }
             } else {
                 PoolIndex::UNDEFINED
@@ -142,7 +192,7 @@ impl<'a> Compiler<'a> {
             None => None,
             Some(type_) if type_.name == "Void" => None,
             Some(type_) => {
-                let type_ = self.scope.resolve_type(&type_, self.pool)?;
+                let type_ = self.scope.resolve_type(&type_, self.pool, decl.pos)?;
                 Some(self.scope.get_type_index(&type_, self.pool)?)
             }
         };
@@ -150,7 +200,7 @@ impl<'a> Compiler<'a> {
         let mut parameters = Vec::new();
 
         for param in &source.parameters {
-            let type_ = self.scope.resolve_type(&param.type_, self.pool)?;
+            let type_ = self.scope.resolve_type(&param.type_, self.pool, decl.pos)?;
             let type_idx = self.scope.get_type_index(&type_, self.pool)?;
             let flags = ParameterFlags::new()
                 .with_is_out(param.qualifiers.contain(Qualifier::Out))
@@ -198,7 +248,7 @@ impl<'a> Compiler<'a> {
     ) -> Result<PoolIndex<Field>, Error> {
         let name = self.pool.names.add(field.name);
         let visibility = field.qualifiers.visibility().unwrap_or(Visibility::Private);
-        let type_ = self.scope.resolve_type(&type_, self.pool)?;
+        let type_ = self.scope.resolve_type(&type_, self.pool, field.pos)?;
         let type_idx = self.scope.get_type_index(&type_, self.pool)?;
         let flags = FieldFlags::new();
         let field = Field {
@@ -220,8 +270,12 @@ impl<'a> Compiler<'a> {
         annotations: &[Annotation],
         parent: PoolIndex<Class>,
     ) -> Result<(PoolIndex<Class>, Option<PoolIndex<Function>>, PoolIndex<Function>), Error> {
-        if let Some(target_name) = annotations.iter().find_map(|ann| ann.get_replace_target()) {
-            if let Reference::Class(target_class) = self.scope.resolve_reference(Ident::new(target_name.to_owned()))? {
+        if let Some((target_name, ann)) = annotations
+            .iter()
+            .find_map(|ann| ann.get_replace_target().map(|t| (t, ann)))
+        {
+            let ident = Ident::new(target_name.to_owned());
+            if let Reference::Class(target_class) = self.scope.resolve_reference(ident, ann.pos)? {
                 let class = self.pool.class(target_class)?;
                 let existing_idx = class.functions.iter().find(|fun| {
                     let str = self.pool.definition_name(**fun).unwrap();
@@ -232,11 +286,11 @@ impl<'a> Compiler<'a> {
                     Ok((target_class, fun.base_method, *idx))
                 } else {
                     let error = format!("Method {} not found on {}", name.0, target_name);
-                    Err(Error::CompileError(error))
+                    Err(Error::CompileError(error, ann.pos))
                 }
             } else {
                 let error = format!("Can't find object {} to insert method in", name.0);
-                Err(Error::CompileError(error))
+                Err(Error::CompileError(error, ann.pos))
             }
         } else {
             Ok((parent, None, self.pool.reserve().cast()))

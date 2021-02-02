@@ -6,7 +6,7 @@ use gumdrop::Options;
 use redscript::bundle::ScriptBundle;
 use redscript::definition::DefinitionValue;
 use redscript::error::Error;
-use redscript_compiler::{parser, Compiler};
+use redscript_compiler::Compiler;
 use redscript_decompiler::print;
 use redscript_decompiler::print::OutputMode;
 
@@ -22,13 +22,13 @@ enum Command {
 
 #[derive(Debug, Options)]
 struct DecompileOpts {
-    #[options(required, short = "i", help = "input file")]
+    #[options(required, short = "i", help = "input redscripts bundle file")]
     input: PathBuf,
     #[options(required, short = "o", help = "output file or directory")]
     output: PathBuf,
     #[options(short = "m", help = "dump mode (one of: 'ast', 'bytecode' or 'code')")]
     mode: String,
-    #[options(short = "f", help = "split into individual files (doesn't work for everything yet)")]
+    #[options(short = "f", help = "split output into individual files")]
     dump_files: bool,
     #[options(short = "v", help = "verbose output (include implicit conversions)")]
     verbose: bool,
@@ -36,8 +36,8 @@ struct DecompileOpts {
 
 #[derive(Debug, Options)]
 struct CompileOpts {
-    #[options(required, short = "i", help = "input source file")]
-    input: PathBuf,
+    #[options(required, short = "s", help = "source file or directory")]
+    src: PathBuf,
     #[options(required, short = "b", help = "redscript bundle file to use")]
     bundle: PathBuf,
     #[options(required, short = "o", help = "redscript bundle file to write")]
@@ -46,14 +46,14 @@ struct CompileOpts {
 
 #[derive(Debug, Options)]
 struct LintOpts {
-    #[options(required, short = "i", help = "input source file")]
-    input: PathBuf,
+    #[options(required, short = "s", help = "source file or directory")]
+    src: PathBuf,
     #[options(short = "b", help = "redscript bundle file to use, optional")]
     bundle: Option<PathBuf>,
 }
 
-fn main() -> Result<(), Error> {
-    run().or_else(|err| Ok(println!("{}", err)))
+fn main() {
+    run().unwrap_or_else(|err| println!("{:?}", err));
 }
 
 fn run() -> Result<(), Error> {
@@ -82,24 +82,17 @@ fn run() -> Result<(), Error> {
 }
 
 fn compile(opts: CompileOpts) -> Result<(), Error> {
-    let sources = std::fs::read_to_string(opts.input)?;
-    let entries = parser::parse(&sources).map_err(|err| Error::CompileError(format!("Syntax error: {}", err)))?;
-
     let mut bundle: ScriptBundle = ScriptBundle::load(&mut BufReader::new(File::open(opts.bundle)?))?;
     let mut compiler = Compiler::new(&mut bundle.pool)?;
 
-    match compiler.compile(entries) {
+    match compiler.compile_all(&opts.src) {
         Ok(()) => {
             bundle.save(&mut BufWriter::new(File::create(&opts.output)?))?;
             println!("Output successfully saved to {:?}", opts.output);
         }
-        Err(Error::CompileError(err)) => {
-            println!("{}", err)
+        Err(_) => {
+            println!("Build failed");
         }
-        Err(Error::FunctionResolutionError(err)) => {
-            println!("{}", err)
-        }
-        Err(other) => Err(other)?,
     }
     Ok(())
 }
@@ -144,15 +137,12 @@ fn decompile(opts: DecompileOpts) -> Result<(), Error> {
 }
 
 fn lint(opts: LintOpts) -> Result<(), Error> {
-    let sources = std::fs::read_to_string(opts.input)?;
-    let entries = parser::parse(&sources).map_err(|err| Error::SyntaxError(err.to_string()))?;
-
     match opts.bundle {
         Some(bundle_path) => {
             let mut bundle: ScriptBundle = ScriptBundle::load(&mut BufReader::new(File::open(bundle_path)?))?;
             let mut compiler = Compiler::new(&mut bundle.pool)?;
-            compiler.compile(entries)
+            compiler.compile_all(&opts.src)
         }
-        None => Ok(())
+        None => Ok(()),
     }
 }

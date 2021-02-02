@@ -1,37 +1,33 @@
-use std::fmt::Display;
+use std::fmt::{self, Display};
+use std::ops::{Add, Sub};
 use std::rc::Rc;
 
 use strum::Display;
 
 #[derive(Debug)]
 pub enum Expr {
-    Ident(Ident),
-    StringLit(LiteralType, String),
-    FloatLit(f64),
-    IntLit(i64),
-    UintLit(u64),
-    Declare(Ident, Option<TypeName>, Option<Box<Expr>>),
-    Cast(TypeName, Box<Expr>),
-    Assign(Box<Expr>, Box<Expr>),
-    Call(Ident, Vec<Expr>),
-    MethodCall(Box<Expr>, Ident, Vec<Expr>),
-    Member(Box<Expr>, Ident),
-    ArrayElem(Box<Expr>, Box<Expr>),
-    New(Ident, Vec<Expr>),
-    Return(Option<Box<Expr>>),
+    Ident(Ident, Pos),
+    Constant(Constant, Pos),
+    Declare(Ident, Option<TypeName>, Option<Box<Expr>>, Pos),
+    Cast(TypeName, Box<Expr>, Pos),
+    Assign(Box<Expr>, Box<Expr>, Pos),
+    Call(Ident, Vec<Expr>, Pos),
+    MethodCall(Box<Expr>, Ident, Vec<Expr>, Pos),
+    Member(Box<Expr>, Ident, Pos),
+    ArrayElem(Box<Expr>, Box<Expr>, Pos),
+    New(Ident, Vec<Expr>, Pos),
+    Return(Option<Box<Expr>>, Pos),
     Seq(Seq),
     Switch(Box<Expr>, Vec<SwitchCase>, Option<Seq>),
-    Goto(Target),
+    Goto(Target, Pos),
     If(Box<Expr>, Seq, Option<Seq>),
-    Conditional(Box<Expr>, Box<Expr>, Box<Expr>),
+    Conditional(Box<Expr>, Box<Expr>, Box<Expr>, Pos),
     While(Box<Expr>, Seq),
-    BinOp(Box<Expr>, Box<Expr>, BinOp),
-    UnOp(Box<Expr>, UnOp),
+    BinOp(Box<Expr>, Box<Expr>, BinOp, Pos),
+    UnOp(Box<Expr>, UnOp, Pos),
+    This(Pos),
     Break,
-    True,
-    False,
     Null,
-    This,
 }
 
 impl Expr {
@@ -40,10 +36,19 @@ impl Expr {
     pub fn is_empty(&self) -> bool {
         match self {
             Expr::Seq(seq) => seq.exprs.iter().all(|expr| expr.is_empty()),
-            Expr::Goto(target) => target.resolved,
+            Expr::Goto(target, _) => target.resolved,
             _ => false,
         }
     }
+}
+
+#[derive(Debug)]
+pub enum Constant {
+    String(LiteralType, String),
+    Float(f64),
+    Int(i64),
+    Uint(u64),
+    Bool(bool),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -124,6 +129,37 @@ pub enum LiteralType {
     Name,
     Resource,
     TweakDbId,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Pos(pub u32);
+
+impl Pos {
+    pub const ZERO: Pos = Pos(0);
+
+    pub fn new(n: usize) -> Self {
+        Pos(n as u32)
+    }
+}
+
+impl fmt::Display for Pos {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl Add<usize> for Pos {
+    type Output = Pos;
+    fn add(self, other: usize) -> Pos {
+        Pos(self.0 + other as u32)
+    }
+}
+
+impl Sub<Pos> for Pos {
+    type Output = Pos;
+    fn sub(self, other: Pos) -> Pos {
+        Pos(self.0 - other.0)
+    }
 }
 
 #[derive(Debug)]

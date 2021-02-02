@@ -1,7 +1,7 @@
 use std::io;
 use std::ops::Deref;
 
-use redscript::ast::{Expr, Ident, LiteralType, Seq, SwitchCase, Target, TypeName};
+use redscript::ast::{Constant, Expr, Ident, LiteralType, Pos, Seq, SwitchCase, Target, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{CodeCursor, Instr, Offset, Position};
 use redscript::error::Error;
@@ -38,8 +38,8 @@ impl<'a> Decompiler<'a> {
         let mut body = Vec::new();
         loop {
             if self.code.pos() >= target
-                || matches!(body.last(), Some(Expr::Goto(_)))
-                || matches!(body.last(), Some(Expr::Return(_)))
+                || matches!(body.last(), Some(Expr::Goto(_, _)))
+                || matches!(body.last(), Some(Expr::Return(_, _)))
             {
                 break;
             }
@@ -54,7 +54,7 @@ impl<'a> Decompiler<'a> {
 
     fn consume_call(&mut self, name: &str, param_count: usize) -> Result<Expr, Error> {
         let params = self.consume_n(param_count)?;
-        Ok(Expr::Call(Ident::new(name.to_owned()), params))
+        Ok(Expr::Call(Ident::new(name.to_owned()), params, Pos::ZERO))
     }
 
     fn consume_params(&mut self) -> Result<Vec<Expr>, Error> {
@@ -115,7 +115,7 @@ impl<'a> Decompiler<'a> {
 
                     self.code.goto(start_position)?;
                     let mut body = self.consume_path(exit)?;
-                    if let Some(Expr::Goto(_)) = body.exprs.last() {
+                    if let Some(Expr::Goto(_, _)) = body.exprs.last() {
                         body.exprs.pop();
                         body.exprs.push(Expr::Break);
                     }
@@ -138,48 +138,57 @@ impl<'a> Decompiler<'a> {
         let res = match self.code.pop()? {
             Instr::Nop => Expr::EMPTY,
             Instr::Null => Expr::Null,
-            Instr::I32One => Expr::IntLit(1),
-            Instr::I32Zero => Expr::IntLit(0),
-            Instr::I8Const(val) => Expr::IntLit(val.into()),
-            Instr::I16Const(val) => Expr::IntLit(val.into()),
-            Instr::I32Const(val) => Expr::IntLit(val.into()),
-            Instr::I64Const(val) => Expr::IntLit(val.into()),
-            Instr::U8Const(val) => Expr::UintLit(val.into()),
-            Instr::U16Const(val) => Expr::UintLit(val.into()),
-            Instr::U32Const(val) => Expr::UintLit(val.into()),
-            Instr::U64Const(val) => Expr::UintLit(val),
-            Instr::F32Const(val) => Expr::FloatLit(val.into()),
-            Instr::F64Const(val) => Expr::FloatLit(val),
-            Instr::NameConst(idx) => Expr::StringLit(LiteralType::Name, self.pool.names.get(idx)?.deref().clone()),
+            Instr::I32One => Expr::Constant(Constant::Int(1), Pos::ZERO),
+            Instr::I32Zero => Expr::Constant(Constant::Int(0), Pos::ZERO),
+            Instr::I8Const(val) => Expr::Constant(Constant::Int(val.into()), Pos::ZERO),
+            Instr::I16Const(val) => Expr::Constant(Constant::Int(val.into()), Pos::ZERO),
+            Instr::I32Const(val) => Expr::Constant(Constant::Int(val.into()), Pos::ZERO),
+            Instr::I64Const(val) => Expr::Constant(Constant::Int(val.into()), Pos::ZERO),
+            Instr::U8Const(val) => Expr::Constant(Constant::Uint(val.into()), Pos::ZERO),
+            Instr::U16Const(val) => Expr::Constant(Constant::Uint(val.into()), Pos::ZERO),
+            Instr::U32Const(val) => Expr::Constant(Constant::Uint(val.into()), Pos::ZERO),
+            Instr::U64Const(val) => Expr::Constant(Constant::Uint(val.into()), Pos::ZERO),
+            Instr::F32Const(val) => Expr::Constant(Constant::Float(val.into()), Pos::ZERO),
+            Instr::F64Const(val) => Expr::Constant(Constant::Float(val.into()), Pos::ZERO),
+            Instr::StringConst(str) => {
+                let decoded = String::from_utf8(str).unwrap();
+                Expr::Constant(Constant::String(LiteralType::String, decoded), Pos::ZERO)
+            }
+            Instr::NameConst(idx) => {
+                let str = self.pool.names.get(idx)?.deref().clone();
+                Expr::Constant(Constant::String(LiteralType::Name, str), Pos::ZERO)
+            }
+            Instr::TweakDbIdConst(idx) => {
+                let str = self.pool.tweakdb_ids.get(idx)?.deref().clone();
+                Expr::Constant(Constant::String(LiteralType::TweakDbId, str), Pos::ZERO)
+            }
+            Instr::ResourceConst(idx) => {
+                let str = self.pool.resources.get(idx)?.deref().clone();
+                Expr::Constant(Constant::String(LiteralType::Resource, str), Pos::ZERO)
+            }
+            Instr::TrueConst => Expr::Constant(Constant::Bool(true), Pos::ZERO),
+            Instr::FalseConst => Expr::Constant(Constant::Bool(false), Pos::ZERO),
             Instr::EnumConst(enum_, member) => {
                 let enum_ident = self.definition_ident(enum_)?;
                 let member_ident = self.definition_ident(member)?;
-                Expr::Member(Box::new(Expr::Ident(enum_ident)), member_ident)
+                let expr = Box::new(Expr::Ident(enum_ident, Pos::ZERO));
+                Expr::Member(expr, member_ident, Pos::ZERO)
             }
-            Instr::StringConst(str) => Expr::StringLit(LiteralType::String, String::from_utf8(str).unwrap()),
-            Instr::TweakDbIdConst(idx) => {
-                Expr::StringLit(LiteralType::TweakDbId, self.pool.tweakdb_ids.get(idx)?.deref().clone())
-            }
-            Instr::ResourceConst(idx) => {
-                Expr::StringLit(LiteralType::Resource, self.pool.resources.get(idx)?.deref().clone())
-            }
-            Instr::TrueConst => Expr::True,
-            Instr::FalseConst => Expr::False,
             Instr::Breakpoint(_, _, _, _, _, _) => Err(Error::DecompileError("Unexpected Breakpoint".to_owned()))?,
             Instr::Assign => {
                 let lhs = self.consume()?;
                 let rhs = self.consume()?;
-                Expr::Assign(Box::new(lhs), Box::new(rhs))
+                Expr::Assign(Box::new(lhs), Box::new(rhs), Pos::ZERO)
             }
             Instr::Target => Err(Error::DecompileError("Unexpected Target".to_owned()))?,
-            Instr::Local(idx) => Expr::Ident(self.definition_ident(idx)?),
-            Instr::Param(idx) => Expr::Ident(self.definition_ident(idx)?),
+            Instr::Local(idx) => Expr::Ident(self.definition_ident(idx)?, Pos::ZERO),
+            Instr::Param(idx) => Expr::Ident(self.definition_ident(idx)?, Pos::ZERO),
             Instr::ObjectField(idx) => {
                 let field = self.definition_ident(idx)?;
                 if let Some(object) = context {
-                    Expr::Member(Box::new(object), field)
+                    Expr::Member(Box::new(object), field, Pos::ZERO)
                 } else {
-                    Expr::Member(Box::new(Expr::This), field)
+                    Expr::Member(Box::new(Expr::This(Pos::ZERO)), field, Pos::ZERO)
                 }
             }
             Instr::ExternalVar => Err(Error::DecompileError("Unexpected ExternalVar".to_owned()))?,
@@ -187,37 +196,38 @@ impl<'a> Decompiler<'a> {
             Instr::SwitchLabel(_, _) => Err(Error::DecompileError("Unexpected SwitchLabel".to_owned()))?,
             Instr::SwitchDefault => Err(Error::DecompileError("Unexpected SwitchDefault".to_owned()))?,
             Instr::Jump(Offset { value: 3 }) => Expr::EMPTY,
-            Instr::Jump(offset) => Expr::Goto(Target::new(offset.absolute(position).value)),
+            Instr::Jump(offset) => Expr::Goto(Target::new(offset.absolute(position).value), Pos::ZERO),
             Instr::JumpIfFalse(offset) => {
                 assert!(offset.value >= 0, "negative offset is not supported for JumpIfFalse");
                 self.consume_conditional_jump(position, offset)?
             }
-            Instr::Skip(offset) => Expr::Goto(Target::new(offset.absolute(position).value)),
+            Instr::Skip(offset) => Expr::Goto(Target::new(offset.absolute(position).value), Pos::ZERO),
             Instr::Conditional(_, _) => {
                 let expr = self.consume()?;
                 let true_case = self.consume()?;
                 let false_case = self.consume()?;
-                Expr::Conditional(Box::new(expr), Box::new(true_case), Box::new(false_case))
+                Expr::Conditional(Box::new(expr), Box::new(true_case), Box::new(false_case), Pos::ZERO)
             }
             Instr::Construct(n, class) => {
                 let params = self.consume_n(n.into())?;
-                Expr::New(Ident(self.pool.definition_name(class)?), params)
+                Expr::New(Ident(self.pool.definition_name(class)?), params, Pos::ZERO)
             }
             Instr::InvokeStatic(_, _, idx) => {
                 let def = self.pool.definition(idx)?;
                 let name = Ident(self.pool.names.get(def.name)?);
                 let params = self.consume_params()?;
                 if let Some(ctx) = context {
-                    Expr::MethodCall(Box::new(ctx), name, params)
+                    Expr::MethodCall(Box::new(ctx), name, params, Pos::ZERO)
                 } else if self.pool.function(idx)?.flags.is_static() {
                     if def.parent.is_undefined() {
-                        Expr::Call(name, params)
+                        Expr::Call(name, params, Pos::ZERO)
                     } else {
                         let class_name = Ident(self.pool.definition_name(def.parent)?);
-                        Expr::MethodCall(Box::new(Expr::Ident(class_name)), name, params)
+                        let expr = Box::new(Expr::Ident(class_name, Pos::ZERO));
+                        Expr::MethodCall(expr, name, params, Pos::ZERO)
                     }
                 } else {
-                    Expr::MethodCall(Box::new(Expr::This), name, params)
+                    Expr::MethodCall(Box::new(Expr::This(Pos::ZERO)), name, params, Pos::ZERO)
                 }
                 // if let AnyDefinition::Function(ref fun) = def.value {
                 // assert_eq!(fun.parameters.len(), params.len(), "Invalid number of parameters {:?}", params);
@@ -227,17 +237,17 @@ impl<'a> Decompiler<'a> {
                 let name = Ident(self.pool.names.get(idx)?);
                 let params = self.consume_params()?;
                 if let Some(ctx) = context {
-                    Expr::MethodCall(Box::new(ctx), name, params)
+                    Expr::MethodCall(Box::new(ctx), name, params, Pos::ZERO)
                 } else {
-                    Expr::MethodCall(Box::new(Expr::This), name, params)
+                    Expr::MethodCall(Box::new(Expr::This(Pos::ZERO)), name, params, Pos::ZERO)
                 }
             }
             Instr::ParamEnd => Err(Error::DecompileError("Unexpected ParamEnd".to_owned()))?,
-            Instr::Return => Expr::Return(self.consume().ok().map(|e| Box::new(e))),
+            Instr::Return => Expr::Return(self.consume().ok().map(|e| Box::new(e)), Pos::ZERO),
             Instr::StructField(idx) => {
                 let target = self.consume()?;
                 let field = self.definition_ident(idx)?;
-                Expr::Member(Box::new(target), field)
+                Expr::Member(Box::new(target), field, Pos::ZERO)
             }
             Instr::Context(_) => {
                 let expr = self.consume()?;
@@ -245,9 +255,9 @@ impl<'a> Decompiler<'a> {
             }
             Instr::Equals(_) => self.consume_call("Equals", 2)?,
             Instr::NotEquals(_) => self.consume_call("NotEquals", 2)?,
-            Instr::New(class) => Expr::New(Ident(self.pool.definition_name(class)?), vec![]),
+            Instr::New(class) => Expr::New(Ident(self.pool.definition_name(class)?), vec![], Pos::ZERO),
             Instr::Delete => self.consume_call("Delete", 1)?,
-            Instr::This => Expr::This,
+            Instr::This => Expr::This(Pos::ZERO),
             Instr::StartProfiling(_, _) => Err(Error::DecompileError("Unexpected StartProfiling".to_owned()))?,
             Instr::ArrayClear(_) => self.consume_call("ArrayClear", 1)?,
             Instr::ArraySize(_) => self.consume_call("ArraySize", 1)?,
@@ -272,7 +282,7 @@ impl<'a> Decompiler<'a> {
             Instr::ArrayElement(_) => {
                 let arr = self.consume()?;
                 let idx = self.consume()?;
-                Expr::ArrayElem(Box::new(arr), Box::new(idx))
+                Expr::ArrayElem(Box::new(arr), Box::new(idx), Pos::ZERO)
             }
             Instr::StaticArraySize(_) => self.consume_call("StaticArraySize", 1)?,
             Instr::StaticArrayFindFirst(_) => self.consume_call("StaticArrayFindFirst", 2)?,
@@ -287,7 +297,7 @@ impl<'a> Decompiler<'a> {
             Instr::StaticArrayElement(_) => {
                 let arr = self.consume()?;
                 let idx = self.consume()?;
-                Expr::ArrayElem(Box::new(arr), Box::new(idx))
+                Expr::ArrayElem(Box::new(arr), Box::new(idx), Pos::ZERO)
             }
             Instr::RefToBool => self.consume_call("RefToBool", 1)?,
             Instr::WeakRefToBool => self.consume_call("WeakRefToBool", 1)?,
@@ -300,7 +310,7 @@ impl<'a> Decompiler<'a> {
                     arguments: vec![],
                 };
                 let expr = self.consume()?;
-                Expr::Cast(type_name, Box::new(expr))
+                Expr::Cast(type_name, Box::new(expr), Pos::ZERO)
             }
             Instr::ToString(_) => self.consume_call("ToString", 1)?,
             Instr::ToVariant(_) => self.consume_call("ToVariant", 1)?,
@@ -322,7 +332,7 @@ impl<'a> Decompiler<'a> {
 
 fn resolve_jump(seq: &mut Seq, target: Option<Position>) -> Option<&mut Target> {
     seq.exprs.iter_mut().rev().find_map(|expr| match expr {
-        Expr::Goto(goto) if !goto.resolved && target.map(|target| goto.position == target.value).unwrap_or(true) => {
+        Expr::Goto(goto, _) if !goto.resolved && target.map(|target| goto.position == target.value).unwrap_or(true) => {
             goto.resolved = true;
             Some(goto)
         }
