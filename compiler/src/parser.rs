@@ -1,7 +1,10 @@
+use std::str::FromStr;
+
 use peg::error::ParseError;
 use peg::str::LineCol;
 use redscript::ast::{BinOp, Constant, Expr, Ident, LiteralType, Pos, Seq, SwitchCase, TypeName, UnOp};
 use redscript::definition::Visibility;
+use strum::EnumString;
 
 #[derive(Debug)]
 pub enum SourceEntry {
@@ -81,19 +84,17 @@ pub struct Declaration {
 
 #[derive(Debug)]
 pub struct Annotation {
-    pub name: String,
+    pub name: AnnotationName,
     pub value: String,
     pub pos: Pos,
 }
 
-impl Annotation {
-    pub fn get_replace_target(&self) -> Option<&str> {
-        if self.name == "replaceMethod" {
-            Some(&self.value)
-        } else {
-            None
-        }
-    }
+impl Annotation {}
+
+#[derive(Debug, PartialEq, Eq, EnumString)]
+#[strum(serialize_all = "camelCase")]
+pub enum AnnotationName {
+    ReplaceMethod,
 }
 
 pub fn parse(input: &str) -> Result<Vec<SourceEntry>, ParseError<LineCol>> {
@@ -133,8 +134,11 @@ peg::parser! {
             / "t" { LiteralType::TweakDbId }
 
         rule annotation() -> Annotation
-            = quiet!{ pos:position!() "@" name:ident() _ "(" _ value:ident() _ ")" { Annotation { name, value, pos: Pos::new(pos) } } }
-            / expected!("annotation")
+            = pos:position!() "@" ident:ident() _ "(" _ value:ident() _ ")" {?
+                AnnotationName::from_str(&ident).map(|name| {
+                    Annotation { name, value, pos: Pos::new(pos) }
+                }).map_err(|_| "annotation")
+            }
 
         rule qualifiers() -> Qualifiers = qs:qualifier() ** _ { Qualifiers(qs) }
 

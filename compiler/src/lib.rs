@@ -4,7 +4,7 @@ use std::{ffi::OsStr, path::Path};
 
 use assembler::Assembler;
 use colored::*;
-use parser::Annotation;
+use parser::{Annotation, AnnotationName};
 use redscript::ast::{Ident, Pos, Seq, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Instr};
@@ -47,8 +47,14 @@ impl<'a> Compiler<'a> {
             let sources = std::fs::read_to_string(entry.path())?;
             files.add(entry.path().to_owned(), &sources);
         }
-        let entries =
-            parser::parse(files.sources()).map_err(|err| Error::SyntaxError(format!("Syntax error: {}", err)))?;
+        let entries = match parser::parse(files.sources()) {
+            Ok(res) => res,
+            Err(err) => {
+                let message = format!("Syntax error, expected {}", &err.expected);
+                Self::print_errors(&files, &message, Pos::new(err.location.offset));
+                Err(Error::SyntaxError(err.to_string()))?
+            }
+        };
 
         match self.compile(entries) {
             Ok(()) => {
@@ -270,11 +276,8 @@ impl<'a> Compiler<'a> {
         annotations: &[Annotation],
         parent: PoolIndex<Class>,
     ) -> Result<(PoolIndex<Class>, Option<PoolIndex<Function>>, PoolIndex<Function>), Error> {
-        if let Some((target_name, ann)) = annotations
-            .iter()
-            .find_map(|ann| ann.get_replace_target().map(|t| (t, ann)))
-        {
-            let ident = Ident::new(target_name.to_owned());
+        if let Some(ann) = annotations.iter().find(|ann| ann.name == AnnotationName::ReplaceMethod) {
+            let ident = Ident::new(ann.value.clone());
             if let Reference::Class(target_class) = self.scope.resolve_reference(ident, ann.pos)? {
                 let class = self.pool.class(target_class)?;
                 let existing_idx = class.functions.iter().find(|fun| {
@@ -285,7 +288,7 @@ impl<'a> Compiler<'a> {
                     let fun = self.pool.function(*idx)?;
                     Ok((target_class, fun.base_method, *idx))
                 } else {
-                    let error = format!("Method {} not found on {}", name.0, target_name);
+                    let error = format!("Method {} not found on {}", name.0, ann.value);
                     Err(Error::CompileError(error, ann.pos))
                 }
             } else {
