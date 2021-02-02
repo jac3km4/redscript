@@ -2,7 +2,7 @@ use std::iter;
 use std::ops::Deref;
 use std::str::FromStr;
 
-use redscript::ast::{Expr, Ident, LiteralType, Seq};
+use redscript::ast::{Constant, Expr, Ident, LiteralType, Pos, Seq};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Instr, Offset};
 use redscript::definition::{Definition, Local, LocalFlags, ParameterFlags, Type};
@@ -56,54 +56,63 @@ impl Assembler {
         scope: &mut Scope,
     ) -> Result<(), Error> {
         match expr {
-            Expr::Ident(name) => {
-                match scope.resolve_reference(name.clone())? {
+            Expr::Ident(name, pos) => {
+                match scope.resolve_reference(name.clone(), *pos)? {
                     Reference::Local(idx) => self.emit(Instr::Local(idx)),
                     Reference::Parameter(idx) => self.emit(Instr::Param(idx)),
                     _ => panic!("Shouldn't get here"),
                 };
             }
-            Expr::StringLit(LiteralType::String, lit) => {
-                self.emit(Instr::StringConst(lit.as_bytes().to_vec()));
-            }
-            Expr::StringLit(LiteralType::Name, lit) => {
-                let idx = pool.names.add(lit.clone());
-                self.emit(Instr::NameConst(idx));
-            }
-            Expr::StringLit(LiteralType::Resource, lit) => {
-                let idx = pool.resources.add(lit.clone());
-                self.emit(Instr::ResourceConst(idx));
-            }
-            Expr::StringLit(LiteralType::TweakDbId, lit) => {
-                let idx = pool.tweakdb_ids.add(lit.clone());
-                self.emit(Instr::TweakDbIdConst(idx));
-            }
-            Expr::FloatLit(val) => {
-                self.emit(Instr::F32Const(*val as f32));
-            }
-            Expr::IntLit(val) => {
-                self.emit(Instr::I32Const(*val as i32));
-            }
-            Expr::UintLit(val) => {
-                self.emit(Instr::U32Const(*val as u32));
-            }
-            Expr::Cast(type_name, expr) => {
-                let type_ = scope.resolve_type(type_name, pool)?;
+            Expr::Constant(cons, _) => match cons {
+                Constant::String(LiteralType::String, lit) => {
+                    self.emit(Instr::StringConst(lit.as_bytes().to_vec()));
+                }
+                Constant::String(LiteralType::Name, lit) => {
+                    let idx = pool.names.add(lit.clone());
+                    self.emit(Instr::NameConst(idx));
+                }
+                Constant::String(LiteralType::Resource, lit) => {
+                    let idx = pool.resources.add(lit.clone());
+                    self.emit(Instr::ResourceConst(idx));
+                }
+                Constant::String(LiteralType::TweakDbId, lit) => {
+                    let idx = pool.tweakdb_ids.add(lit.clone());
+                    self.emit(Instr::TweakDbIdConst(idx));
+                }
+                Constant::Float(val) => {
+                    self.emit(Instr::F32Const(*val as f32));
+                }
+                Constant::Int(val) => {
+                    self.emit(Instr::I32Const(*val as i32));
+                }
+                Constant::Uint(val) => {
+                    self.emit(Instr::U32Const(*val as u32));
+                }
+                Constant::Bool(true) => {
+                    self.emit(Instr::TrueConst);
+                }
+                Constant::Bool(false) => {
+                    self.emit(Instr::FalseConst);
+                }
+            },
+            Expr::Cast(type_name, expr, pos) => {
+                let type_ = scope.resolve_type(type_name, pool, *pos)?;
                 self.emit(Instr::DynamicCast(scope.get_type_index(&type_, pool)?, 0));
                 self.compile(expr, None, pool, scope)?;
             }
-            Expr::Declare(name, type_, init) => {
+            Expr::Declare(name, type_, init, pos) => {
                 let name_idx = pool.names.add(name.0.deref().to_owned());
                 let (type_, conversion) = match (type_, init) {
                     (None, None) => Err(Error::CompileError(
                         "Type or initializer require on let binding".to_owned(),
+                        *pos,
                     ))?,
                     (None, Some(val)) => (scope.infer_type(val, None, pool)?, Conversion::Identity),
-                    (Some(type_name), None) => (scope.resolve_type(type_name, pool)?, Conversion::Identity),
+                    (Some(type_name), None) => (scope.resolve_type(type_name, pool, *pos)?, Conversion::Identity),
                     (Some(type_name), Some(val)) => {
-                        let type_ = scope.resolve_type(type_name, pool)?;
+                        let type_ = scope.resolve_type(type_name, pool, *pos)?;
                         let val_type = scope.infer_type(val, Some(&type_), pool)?;
-                        let conv = scope.convert_type(&val_type, &type_, pool)?;
+                        let conv = scope.convert_type(&val_type, &type_, pool, *pos)?;
                         (type_, conv)
                     }
                 };
@@ -120,16 +129,16 @@ impl Assembler {
                     self.compile(val, Some(&type_), pool, scope)?;
                 }
             }
-            Expr::Assign(lhs, rhs) => {
+            Expr::Assign(lhs, rhs, pos) => {
                 let lhs_type = scope.infer_type(lhs, None, pool)?;
                 let rhs_type = scope.infer_type(rhs, Some(&lhs_type), pool)?;
-                let conv = scope.convert_type(&rhs_type, &lhs_type, pool)?;
+                let conv = scope.convert_type(&rhs_type, &lhs_type, pool, *pos)?;
                 self.emit(Instr::Assign);
                 self.compile(lhs, None, pool, scope)?;
                 self.compile_conversion(conv);
                 self.compile(rhs, Some(&lhs_type), pool, scope)?;
             }
-            Expr::ArrayElem(expr, idx) => {
+            Expr::ArrayElem(expr, idx, pos) => {
                 match scope.infer_type(expr, None, pool)? {
                     type_ @ TypeId::Array(_) => {
                         self.emit(Instr::ArrayElement(scope.get_type_index(&type_, pool)?));
@@ -139,50 +148,50 @@ impl Assembler {
                     }
                     other => {
                         let error = format!("Array access not allowed on {}", other.pretty(pool)?);
-                        Err(Error::CompileError(error))?
+                        Err(Error::CompileError(error, *pos))?
                     }
                 }
                 self.compile(expr, None, pool, scope)?;
                 self.compile(idx, None, pool, scope)?;
             }
-            Expr::New(name, args) => match scope.resolve_reference(name.clone())? {
+            Expr::New(name, args, pos) => match scope.resolve_reference(name.clone(), *pos)? {
                 Reference::Class(idx) => {
                     let cls = pool.class(idx)?;
                     if cls.flags.is_struct() {
                         if cls.fields.len() != args.len() {
                             let err = format!("Expected {} parameters for {}", cls.fields.len(), name);
-                            Err(Error::CompileError(err))?
+                            Err(Error::CompileError(err, *pos))?
                         }
                         let fields = cls.fields.clone();
                         self.emit(Instr::Construct(args.len() as u8, idx));
                         for (arg, field_idx) in args.iter().zip(fields) {
                             let field = pool.field(field_idx)?;
-                            let field_type = scope.resolve_type_from_pool(field.type_, pool)?;
+                            let field_type = scope.resolve_type_from_pool(field.type_, pool, *pos)?;
                             self.compile(arg, Some(&field_type), pool, scope)?;
                         }
                     } else if args.is_empty() {
                         self.emit(Instr::New(idx));
                     } else {
                         let err = format!("Expected 0 parameters for {}", name);
-                        Err(Error::CompileError(err))?
+                        Err(Error::CompileError(err, *pos))?
                     }
                 }
-                _ => Err(Error::CompileError(format!("Cannot construct {}", name)))?,
+                _ => Err(Error::CompileError(format!("Cannot construct {}", name), *pos))?,
             },
-            Expr::Return(Some(expr)) => {
+            Expr::Return(Some(expr), pos) => {
                 let fun = pool.function(scope.function.unwrap())?;
                 if let Some(ret_type) = fun.return_type {
-                    let expected = scope.resolve_type_from_pool(ret_type, pool)?;
+                    let expected = scope.resolve_type_from_pool(ret_type, pool, *pos)?;
                     let type_ = scope.infer_type(expr, Some(&expected), pool)?;
-                    let conv = scope.convert_type(&type_, &expected, pool)?;
+                    let conv = scope.convert_type(&type_, &expected, pool, *pos)?;
                     self.emit(Instr::Return);
                     self.compile_conversion(conv);
                     self.compile(expr, Some(&expected), pool, scope)?;
                 } else {
-                    Err(Error::CompileError(format!("Function should return nothing")))?
+                    Err(Error::CompileError(format!("Function should return nothing"), *pos))?
                 }
             }
-            Expr::Return(None) => {
+            Expr::Return(None, _) => {
                 self.emit(Instr::Return);
             }
             Expr::Seq(seq) => {
@@ -228,7 +237,7 @@ impl Assembler {
                 self.append(if_branch);
                 self.append(else_branch);
             }
-            Expr::Conditional(cond, true_, false_) => {
+            Expr::Conditional(cond, true_, false_, _) => {
                 let cond_code = Assembler::from_expr(cond, None, pool, scope)?;
                 let true_code = Assembler::from_expr(true_, expected, pool, scope)?;
                 self.emit(Instr::Conditional(
@@ -248,47 +257,52 @@ impl Assembler {
                 self.append(cond_code);
                 self.append(body_code);
             }
-            Expr::Member(expr, ident) => match scope.infer_type(expr, None, pool)?.unwrapped() {
+            Expr::Member(expr, ident, pos) => match scope.infer_type(expr, None, pool)?.unwrapped() {
                 TypeId::Class(class) => {
                     let object = Assembler::from_expr(expr, None, pool, scope)?;
-                    let field = scope.resolve_field(ident.clone(), *class, pool)?;
+                    let field = scope.resolve_field(ident.clone(), *class, pool, *pos)?;
                     let inner = Assembler::from_instr(Instr::ObjectField(field));
                     self.emit(Instr::Context(object.offset() + inner.offset()));
                     self.append(object);
                     self.append(inner)
                 }
                 TypeId::Struct(class) => {
-                    let field = scope.resolve_field(ident.clone(), *class, pool)?;
+                    let field = scope.resolve_field(ident.clone(), *class, pool, *pos)?;
                     self.emit(Instr::StructField(field));
                     self.compile(expr, None, pool, scope)?;
                 }
                 TypeId::Enum(enum_) => {
-                    let member_idx = scope.resolve_enum_member(ident.clone(), *enum_, pool)?;
+                    let member_idx = scope.resolve_enum_member(ident.clone(), *enum_, pool, *pos)?;
                     self.emit(Instr::EnumConst(*enum_, member_idx));
                 }
                 t => {
                     let err = format!("Can't access a member of {}", t.pretty(pool)?);
-                    Err(Error::CompileError(err))?
+                    Err(Error::CompileError(err, *pos))?
                 }
             },
-            Expr::Call(ident, args) => {
+            Expr::Call(ident, args, pos) => {
                 if let Ok(intrinsic) = IntrinsicOp::from_str(&ident.0) {
-                    self.compile_intrinsic(intrinsic, args, pool, scope)?;
+                    self.compile_intrinsic(intrinsic, args, pool, scope, *pos)?;
                 } else {
-                    let match_ =
-                        scope.resolve_function(FunctionName::global(ident.clone()), args.iter(), expected, pool)?;
-                    self.compile_call(match_, args.iter(), pool, scope)?;
+                    let match_ = scope.resolve_function(
+                        FunctionName::global(ident.clone()),
+                        args.iter(),
+                        expected,
+                        pool,
+                        *pos,
+                    )?;
+                    self.compile_call(match_, args.iter(), pool, scope, *pos)?;
                 }
             }
-            Expr::MethodCall(expr, ident, args) => {
+            Expr::MethodCall(expr, ident, args, pos) => {
                 let type_ = scope.infer_type(expr, None, pool)?;
                 if let Some(Reference::Class(class)) = Self::get_static_reference(expr, scope) {
-                    let match_ = scope.resolve_method(ident.clone(), class, args, expected, pool)?;
+                    let match_ = scope.resolve_method(ident.clone(), class, args, expected, pool, *pos)?;
                     let fun = pool.function(match_.index)?;
                     if fun.flags.is_static() {
-                        self.compile_call(match_, args.iter(), pool, scope)?
+                        self.compile_call(match_, args.iter(), pool, scope, *pos)?
                     } else {
-                        Err(Error::CompileError(format!("Method {} is not static", ident)))?
+                        Err(Error::CompileError(format!("Method {} is not static", ident), *pos))?
                     }
                 } else if let TypeId::Class(class) = type_.unwrapped() {
                     let object = if let TypeId::WeakRef(_) = type_ {
@@ -296,42 +310,36 @@ impl Assembler {
                     } else {
                         Assembler::from_expr(expr, None, pool, scope)?
                     };
-                    let fun = scope.resolve_method(ident.clone(), *class, args, expected, pool)?;
+                    let fun = scope.resolve_method(ident.clone(), *class, args, expected, pool, *pos)?;
                     let mut inner = Assembler::new();
-                    inner.compile_call(fun, args.iter(), pool, scope)?;
+                    inner.compile_call(fun, args.iter(), pool, scope, *pos)?;
                     self.emit(Instr::Context(object.offset() + inner.offset()));
                     self.append(object);
                     self.append(inner);
                 } else {
                     let err = format!("Can't call methods on {}", type_.pretty(pool)?);
-                    Err(Error::CompileError(err))?
+                    Err(Error::CompileError(err, *pos))?
                 }
             }
-            Expr::BinOp(lhs, rhs, op) => {
+            Expr::BinOp(lhs, rhs, op, pos) => {
                 let ident = Ident::new(op.name());
                 let args = iter::once(lhs.as_ref()).chain(iter::once(rhs.as_ref()));
-                let fun = scope.resolve_function(FunctionName::global(ident), args.clone(), expected, pool)?;
-                self.compile_call(fun, args, pool, scope)?;
+                let fun = scope.resolve_function(FunctionName::global(ident), args.clone(), expected, pool, *pos)?;
+                self.compile_call(fun, args, pool, scope, *pos)?;
             }
-            Expr::UnOp(expr, op) => {
+            Expr::UnOp(expr, op, pos) => {
                 let ident = Ident::new(op.name());
                 let args = iter::once(expr.as_ref());
-                let fun = scope.resolve_function(FunctionName::global(ident), args.clone(), expected, pool)?;
-                self.compile_call(fun, args, pool, scope)?;
-            }
-            Expr::True => {
-                self.emit(Instr::TrueConst);
-            }
-            Expr::False => {
-                self.emit(Instr::FalseConst);
+                let fun = scope.resolve_function(FunctionName::global(ident), args.clone(), expected, pool, *pos)?;
+                self.compile_call(fun, args, pool, scope, *pos)?;
             }
             Expr::Null => {
                 self.emit(Instr::Null);
             }
-            Expr::This => {
+            Expr::This(_) => {
                 self.emit(Instr::This);
             }
-            Expr::Goto(_) | Expr::Break => panic!("Not supported yet"),
+            Expr::Goto(_, _) | Expr::Break => panic!("Not supported yet"),
         };
         Ok(())
     }
@@ -342,6 +350,7 @@ impl Assembler {
         args: impl Iterator<Item = &'a Expr>,
         pool: &mut ConstantPool,
         scope: &mut Scope,
+        pos: Pos,
     ) -> Result<(), Error> {
         let fun = pool.function(function.index)?;
         let flags = fun.flags;
@@ -359,7 +368,7 @@ impl Assembler {
         for ((arg, conversion), (flags, type_idx)) in args.zip(function.conversions).zip(params) {
             let mut arg_code = Assembler::new();
             arg_code.compile_conversion(conversion);
-            let expected_type = scope.resolve_type_from_pool(type_idx, pool)?;
+            let expected_type = scope.resolve_type_from_pool(type_idx, pool, pos)?;
             arg_code.compile(arg, Some(&expected_type), pool, scope)?;
             if flags.is_short_circuit() {
                 args_code.emit(Instr::Skip(arg_code.offset()));
@@ -393,10 +402,11 @@ impl Assembler {
         args: &[Expr],
         pool: &mut ConstantPool,
         scope: &mut Scope,
+        pos: Pos,
     ) -> Result<(), Error> {
         if args.len() != intrinsic.arg_count().into() {
             let err = format!("Invalid number of arguments for {}", intrinsic);
-            Err(Error::CompileError(err))?
+            Err(Error::CompileError(err, pos))?
         }
         let type_ = scope.infer_type(&args[0], None, pool)?;
         let type_idx = scope.get_type_index(&type_, pool)?;
@@ -508,7 +518,7 @@ impl Assembler {
             }
             (_, type_) => {
                 let err = format!("Invalid intrinsic {} call: {:?}", intrinsic, type_);
-                Err(Error::CompileError(err))
+                Err(Error::CompileError(err, pos))
             }
         }
     }
@@ -539,8 +549,8 @@ impl Assembler {
     }
 
     fn get_static_reference(expr: &Expr, scope: &Scope) -> Option<Reference> {
-        if let Expr::Ident(ident) = expr.deref() {
-            match scope.resolve_reference(ident.clone()).ok()? {
+        if let Expr::Ident(ident, _) = expr.deref() {
+            match scope.resolve_reference(ident.clone(), Pos::ZERO).ok()? {
                 r @ Reference::Class(_) => Some(r),
                 r @ Reference::Enum(_) => Some(r),
                 _ => None,

@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::iter::{once, FromIterator};
 
-use crate::bundle::{ConstantPool, PoolIndex};
-use crate::definition::{Definition, DefinitionValue, SourceFile};
+use redscript::bundle::{ConstantPool, PoolIndex};
+use redscript::definition::{Definition, DefinitionValue, SourceFile};
 
 pub struct FileIndex<'a> {
     file_map: HashMap<PoolIndex<Definition>, HashSet<PoolIndex<Definition>>>,

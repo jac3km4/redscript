@@ -7,4 +7,3 @@ edition = "2018"
 [dependencies]
 redscript = { path = "../core" }
 redscript-compiler = { path = "../compiler" }
-walkdir = "2"

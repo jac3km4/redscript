@@ -12,14 +12,13 @@ Compiler options:
   -b, --bundle BUNDLE  redscript bundle file to read
   -o, --output OUTPUT  redscript bundle file to write
 Decompiler options:
-  -i, --input INPUT    input file
+  -s, --src SRC        source file or directory
   -o, --output OUTPUT  output file or directory
   -m, --mode MODE      dump mode (one of: 'ast', 'bytecode' or 'code')
   -f, --dump-files     split into individual files (doesn't work for everything yet)
   -v, --verbose        verbose output (include implicit conversions)
 Lint options:
-Optional arguments:
-  -i, --input INPUT    input source file
+  -s, --src SRC        source file or directory
   -b, --bundle BUNDLE  redscript bundle file to use, optional
 ```
 

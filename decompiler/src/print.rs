@@ -2,7 +2,7 @@ use std::io::Write;
 use std::ops::Deref;
 use std::rc::Rc;
 
-use redscript::ast::{BinOp, Expr, Ident, LiteralType, Seq, SwitchCase, UnOp};
+use redscript::ast::{BinOp, Constant, Expr, Ident, LiteralType, Seq, SwitchCase, UnOp};
 use redscript::bundle::ConstantPool;
 use redscript::definition::{Definition, DefinitionValue, Function, Type};
 use redscript::error::Error;
@@ -225,38 +225,42 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, verbose: bool, depth: usize) -
     let padding = INDENT.repeat(depth);
 
     match expr {
-        Expr::Ident(ident) => write!(out, "{}", ident.0)?,
-        Expr::StringLit(LiteralType::String, str) => write!(out, "\"{}\"", str)?,
-        Expr::StringLit(LiteralType::Name, str) => write!(out, "n\"{}\"", str)?,
-        Expr::StringLit(LiteralType::Resource, str) => write!(out, "r\"{}\"", str)?,
-        Expr::StringLit(LiteralType::TweakDbId, str) => write!(out, "t\"{}\"", str)?,
-        Expr::IntLit(lit) => write!(out, "{}", lit)?,
-        Expr::UintLit(lit) => write!(out, "{}", lit)?,
-        Expr::FloatLit(lit) => write!(out, "{:.2}", lit)?,
-        Expr::Cast(type_, expr) => {
+        Expr::Ident(ident, _) => write!(out, "{}", ident.0)?,
+        Expr::Constant(cons, _) => match cons {
+            Constant::String(LiteralType::String, str) => write!(out, "\"{}\"", str)?,
+            Constant::String(LiteralType::Name, str) => write!(out, "n\"{}\"", str)?,
+            Constant::String(LiteralType::Resource, str) => write!(out, "r\"{}\"", str)?,
+            Constant::String(LiteralType::TweakDbId, str) => write!(out, "t\"{}\"", str)?,
+            Constant::Int(lit) => write!(out, "{}", lit)?,
+            Constant::Uint(lit) => write!(out, "{}", lit)?,
+            Constant::Float(lit) => write!(out, "{:.2}", lit)?,
+            Constant::Bool(true) => write!(out, "true")?,
+            Constant::Bool(false) => write!(out, "false")?,
+        },
+        Expr::Cast(type_, expr, _) => {
             write!(out, "(")?;
             write_expr(out, expr, verbose, 0)?;
             write!(out, " as {})", type_.repr())?;
         }
-        Expr::Declare(__, _, _) => {}
-        Expr::Assign(lhs, rhs) => {
+        Expr::Declare(__, _, _, _) => {}
+        Expr::Assign(lhs, rhs, _) => {
             write_expr(out, lhs, verbose, 0)?;
             write!(out, " = ")?;
             write_expr(out, rhs, verbose, 0)?
         }
-        Expr::Call(fun, params) => write_call(out, fun, params, verbose)?,
-        Expr::MethodCall(obj, fun, params) => {
+        Expr::Call(fun, params, _) => write_call(out, fun, params, verbose)?,
+        Expr::MethodCall(obj, fun, params, _) => {
             write_expr(out, obj, verbose, 0)?;
             write!(out, ".")?;
             write_call(out, fun, params, verbose)?
         }
-        Expr::ArrayElem(arr, idx) => {
+        Expr::ArrayElem(arr, idx, _) => {
             write_expr(out, arr, verbose, 0)?;
             write!(out, "[")?;
             write_expr(out, idx, verbose, 0)?;
             write!(out, "]")?;
         }
-        Expr::New(ident, params) => {
+        Expr::New(ident, params, _) => {
             write!(out, "new {}(", ident.0)?;
             if !params.is_empty() {
                 for param in params.iter().take(params.len() - 1) {
@@ -267,11 +271,11 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, verbose: bool, depth: usize) -
             }
             write!(out, ")")?
         }
-        Expr::Return(Some(expr)) => {
+        Expr::Return(Some(expr), _) => {
             write!(out, "return ")?;
             write_expr(out, expr, verbose, depth)?
         }
-        Expr::Return(None) => write!(out, "return")?,
+        Expr::Return(None, _) => write!(out, "return")?,
         Expr::Seq(exprs) => write_seq(out, exprs, verbose, depth)?,
         Expr::Switch(expr, cases, default) => {
             write!(out, "switch ")?;
@@ -289,8 +293,8 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, verbose: bool, depth: usize) -
             }
             write!(out, "{}}}", padding)?
         }
-        Expr::Goto(jump) if !jump.resolved => write!(out, "goto {}", jump.position)?,
-        Expr::Goto(_) => (),
+        Expr::Goto(jump, _) if !jump.resolved => write!(out, "goto {}", jump.position)?,
+        Expr::Goto(_, _) => (),
         Expr::If(condition, true_, false_) => {
             write!(out, "if ")?;
             write_expr(out, condition, verbose, 0)?;
@@ -303,7 +307,7 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, verbose: bool, depth: usize) -
                 write!(out, "{}}}", padding)?
             }
         }
-        Expr::Conditional(condition, true_, false_) => {
+        Expr::Conditional(condition, true_, false_, _) => {
             write_expr(out, condition, verbose, 0)?;
             write!(out, " ? ")?;
             write_expr(out, true_, verbose, 0)?;
@@ -317,21 +321,19 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, verbose: bool, depth: usize) -
             write_seq(out, body, verbose, depth + 1)?;
             write!(out, "{}}}", padding)?;
         }
-        Expr::Member(expr, accessor) => {
+        Expr::Member(expr, accessor, _) => {
             write_expr(out, expr, verbose, 0)?;
             write!(out, ".{}", accessor.0)?;
         }
-        Expr::BinOp(lhs, rhs, op) => {
+        Expr::BinOp(lhs, rhs, op, _) => {
             write_binop(out, lhs, rhs, *op, verbose)?;
         }
-        Expr::UnOp(val, op) => {
+        Expr::UnOp(val, op, _) => {
             write_unop(out, val, *op, verbose)?;
         }
         Expr::Break => write!(out, "break")?,
-        Expr::True => write!(out, "true")?,
-        Expr::False => write!(out, "false")?,
         Expr::Null => write!(out, "null")?,
-        Expr::This => write!(out, "this")?,
+        Expr::This(_) => write!(out, "this")?,
     };
     Ok(())
 }
