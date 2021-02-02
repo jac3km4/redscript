@@ -6,6 +6,7 @@ use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{CodeCursor, Instr, Offset, Position};
 use redscript::error::Error;
 
+pub mod files;
 pub mod print;
 
 pub struct Decompiler<'a> {

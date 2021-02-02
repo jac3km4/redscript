@@ -7,4 +7,3 @@ pub mod decode;
 pub mod definition;
 pub mod encode;
 pub mod error;
-pub mod files;

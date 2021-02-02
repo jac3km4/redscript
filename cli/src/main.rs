@@ -7,8 +7,8 @@ use redscript::bundle::ScriptBundle;
 use redscript::definition::DefinitionValue;
 use redscript::error::Error;
 use redscript_compiler::Compiler;
-use redscript_decompiler::print;
-use redscript_decompiler::print::OutputMode;
+use redscript_decompiler::files::FileIndex;
+use redscript_decompiler::print::{write_definition, OutputMode};
 
 #[derive(Debug, Options)]
 enum Command {
@@ -108,13 +108,13 @@ fn decompile(opts: DecompileOpts) -> Result<(), Error> {
     };
 
     if opts.dump_files {
-        for entry in pool.files().iter() {
+        for entry in FileIndex::from_pool(pool).iter() {
             let path = opts.output.as_path().join(&entry.file.path);
 
             std::fs::create_dir_all(path.parent().unwrap())?;
             let mut output = BufWriter::new(File::create(path)?);
             for def in entry.definitions {
-                if let Err(err) = print::write_definition(&mut output, def, pool, 0, mode) {
+                if let Err(err) = write_definition(&mut output, def, pool, 0, mode) {
                     println!("Failed to process definition at {:?}: {:?}", def, err);
                 }
             }
@@ -127,7 +127,7 @@ fn decompile(opts: DecompileOpts) -> Result<(), Error> {
                 || matches!(&def.value, DefinitionValue::Enum(_))
                 || matches!(&def.value, DefinitionValue::Function(_))
         }) {
-            if let Err(err) = print::write_definition(&mut output, def, pool, 0, mode) {
+            if let Err(err) = write_definition(&mut output, def, pool, 0, mode) {
                 println!("Failed to process definition at {:?}: {:?}", def, err);
             }
         }
