@@ -13,7 +13,6 @@ use crate::decode::{Decode, DecodeExt};
 use crate::definition::{Class, Definition, DefinitionValue, Enum, Field, Function, Local, Parameter, Type};
 use crate::encode::{Encode, EncodeExt};
 use crate::error::Error;
-use crate::files::FileIndex;
 
 #[derive(Debug)]
 pub struct ScriptBundle {
@@ -328,10 +327,6 @@ impl ConstantPool {
 
     pub fn roots(&self) -> impl Iterator<Item = (PoolIndex<Definition>, &Definition)> {
         self.definitions().filter(|(_, def)| def.parent.is_undefined())
-    }
-
-    pub fn files(&self) -> FileIndex {
-        FileIndex::from_pool(self)
     }
 }
 
