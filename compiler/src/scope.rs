@@ -104,9 +104,9 @@ impl Scope {
         Ok(result)
     }
 
-    pub fn with_context(&self, this: PoolIndex<Class>, function: PoolIndex<Function>) -> Self {
+    pub fn with_context(&self, this: Option<PoolIndex<Class>>, function: PoolIndex<Function>) -> Self {
         Scope {
-            this: Some(this),
+            this,
             function: Some(function),
             ..self.clone()
         }
@@ -557,7 +557,7 @@ impl Scope {
             Expr::Null => TypeId::Null,
             Expr::This(pos) => match self.this {
                 Some(class_idx) => TypeId::Class(class_idx),
-                None => Err(Error::CompileError("No 'this' available".to_owned(), *pos))?,
+                None => Err(Error::CompileError("No 'this' in static context".to_owned(), *pos))?,
             },
             Expr::While(_, _) => TypeId::Void,
             Expr::Goto(_, _) => TypeId::Void,

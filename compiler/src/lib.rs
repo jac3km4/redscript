@@ -101,7 +101,7 @@ impl<'a> Compiler<'a> {
             }
         }
         for (this, fun_idx, seq) in self.backlog.drain(..) {
-            Self::compile_function(fun_idx, &seq, self.pool, self.scope.with_context(this, fun_idx))?;
+            Self::compile_function(fun_idx, this, &seq, self.pool, &self.scope)?;
         }
         Ok(())
     }
@@ -175,13 +175,6 @@ impl<'a> Compiler<'a> {
         parent_idx: PoolIndex<Class>,
     ) -> Result<PoolIndex<Function>, Error> {
         let decl = &source.declaration;
-        let flags = FunctionFlags::new()
-            .with_is_static(decl.qualifiers.contain(Qualifier::Static))
-            .with_is_const(decl.qualifiers.contain(Qualifier::Const))
-            .with_is_final(decl.qualifiers.contain(Qualifier::Final))
-            .with_is_exec(decl.qualifiers.contain(Qualifier::Exec))
-            .with_is_callback(decl.qualifiers.contain(Qualifier::Callback));
-
         let fun_id = FunctionId::from_source(&source)?;
         let ident = Ident::new(decl.name.clone());
         let name = if parent_idx.is_undefined() {
@@ -193,7 +186,22 @@ impl<'a> Compiler<'a> {
             self.determine_function_location(&fun_id, &decl.annotations, parent_idx)?;
         let name_idx = self.pool.names.add(fun_id.mangled());
 
-        let visibility = decl.qualifiers.visibility().unwrap_or(Visibility::Private);
+        let flags = FunctionFlags::new()
+            .with_is_static(decl.qualifiers.contain(Qualifier::Static) || parent_idx == PoolIndex::UNDEFINED)
+            .with_is_final(decl.qualifiers.contain(Qualifier::Final))
+            .with_is_const(decl.qualifiers.contain(Qualifier::Const))
+            .with_is_exec(decl.qualifiers.contain(Qualifier::Exec))
+            .with_is_callback(decl.qualifiers.contain(Qualifier::Callback));
+
+        let visibility = decl
+            .qualifiers
+            .visibility()
+            .unwrap_or(if parent_idx == PoolIndex::UNDEFINED {
+                Visibility::Public
+            } else {
+                Visibility::Public
+            });
+
         let return_type = match source.type_ {
             None => None,
             Some(type_) if type_.name == "Void" => None,
@@ -302,16 +310,24 @@ impl<'a> Compiler<'a> {
 
     fn compile_function(
         fun_idx: PoolIndex<Function>,
+        class_idx: PoolIndex<Class>,
         seq: &Seq,
         pool: &mut ConstantPool,
-        mut scope: Scope,
+        scope: &Scope,
     ) -> Result<(), Error> {
-        for param in &pool.function(fun_idx)?.parameters {
+        let fun = pool.function(fun_idx)?;
+        let mut local_scope = if fun.flags.is_static() {
+            scope.with_context(None, fun_idx)
+        } else {
+            scope.with_context(Some(class_idx), fun_idx)
+        };
+
+        for param in &fun.parameters {
             let ident = Ident(pool.definition_name(*param)?);
-            scope.references.insert(ident, Reference::Parameter(*param));
+            local_scope.references.insert(ident, Reference::Parameter(*param));
         }
 
-        let assembler = Assembler::from_seq(&seq, pool, &mut scope)?;
+        let assembler = Assembler::from_seq(&seq, pool, &mut local_scope)?;
         let function = pool.function_mut(fun_idx)?;
         function.code = Code(assembler.code.into_iter().collect());
         function.code.0.push(Instr::Nop);
@@ -434,7 +450,7 @@ mod tests {
             }
 
             public class Y extends X {
-                public static func CallBase() -> Int32 {
+                public func CallBase() -> Int32 {
                   return this.BaseMethod();
                 }
             }",
