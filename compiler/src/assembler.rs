@@ -215,7 +215,7 @@ impl Assembler {
                 for case in cases {
                     let matcher = Assembler::from_expr(&case.0, None, pool, &mut scope.clone())?;
                     let body = Assembler::from_seq(&case.1, pool, &mut scope.clone())?;
-                    self.emit(Instr::SwitchLabel(matcher.offset(), matcher.offset() + body.offset()));
+                    self.emit(Instr::SwitchLabel(matcher.offset() + body.offset(), matcher.offset()));
                     self.append(matcher);
                     self.append(body);
                 }

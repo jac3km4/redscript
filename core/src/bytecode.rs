@@ -248,7 +248,7 @@ impl Decode for Instr {
             25 => Ok(Instr::Param(input.decode()?)),
             26 => Ok(Instr::ObjectField(input.decode()?)),
             27 => Ok(Instr::ExternalVar),
-            28 => Ok(Instr::Switch(input.decode()?, Offset::new(input.decode::<i16>()? + 9))),
+            28 => Ok(Instr::Switch(input.decode()?, Offset::new(input.decode::<i16>()? + 11))),
             29 => Ok(Instr::SwitchLabel(
                 Offset::new(input.decode::<i16>()? + 3),
                 Offset::new(input.decode::<i16>()? + 5),
@@ -458,7 +458,7 @@ impl Encode for Instr {
             Instr::Switch(idx, offset) => {
                 output.encode(&28u8)?;
                 output.encode(idx)?;
-                output.encode(&Offset::new(offset.value - 9))?;
+                output.encode(&Offset::new(offset.value - 11))?;
             }
             Instr::SwitchLabel(start, exit) => {
                 output.encode(&29u8)?;
