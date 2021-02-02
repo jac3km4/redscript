@@ -194,8 +194,13 @@ impl Assembler {
                     Err(Error::CompileError(format!("Function should return nothing"), *pos))?
                 }
             }
-            Expr::Return(None, _) => {
-                self.emit(Instr::Return);
+            Expr::Return(None, pos) => {
+                let fun = pool.function(scope.function.unwrap())?;
+                if let None = fun.return_type {
+                    self.emit(Instr::Return);
+                } else {
+                    Err(Error::CompileError(format!("Function should return a value"), *pos))?
+                }
             }
             Expr::Seq(seq) => {
                 for expr in &seq.exprs {
