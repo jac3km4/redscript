@@ -167,6 +167,9 @@ impl Assembler {
                         for (arg, field_idx) in args.iter().zip(fields) {
                             let field = pool.field(field_idx)?;
                             let field_type = scope.resolve_type_from_pool(field.type_, pool, *pos)?;
+                            let arg_type = scope.infer_type(arg, Some(&field_type), pool)?;
+                            let conv = scope.convert_type(&arg_type, &field_type, pool, *pos)?;
+                            self.compile_conversion(conv);
                             self.compile(arg, Some(&field_type), pool, scope)?;
                         }
                     } else if args.is_empty() {
