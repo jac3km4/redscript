@@ -89,13 +89,7 @@ impl Assembler {
             }
             Expr::Cast(type_name, expr) => {
                 let type_ = scope.resolve_type(type_name, pool)?;
-                let new_type = match scope.infer_type(&expr, None, pool)? {
-                    TypeId::Ref(_) => TypeId::Ref(Box::new(type_)),
-                    TypeId::WeakRef(_) => TypeId::WeakRef(Box::new(type_)),
-                    TypeId::ScriptRef(_) => TypeId::ScriptRef(Box::new(type_)),
-                    _ => type_,
-                };
-                self.emit(Instr::DynamicCast(scope.get_type_index(&new_type, pool)?, 0));
+                self.emit(Instr::DynamicCast(scope.get_type_index(&type_, pool)?, 0));
                 self.compile(expr, None, pool, scope)?;
             }
             Expr::Declare(name, type_, init) => {
