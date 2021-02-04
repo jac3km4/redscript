@@ -58,6 +58,7 @@ impl Files {
     }
 }
 
+#[derive(Debug)]
 pub struct File {
     path: PathBuf,
     lines: NonEmptyVec<Pos>,
@@ -71,13 +72,13 @@ impl File {
     }
 
     fn lookup(&self, pos: Pos, source: &str) -> Option<FilePosition> {
-        let index = self.lines.1.binary_search(&pos).unwrap_or_else(|v| v - 1);
+        let index = self.lines.1.binary_search(&pos).map(|p| p + 1).unwrap_err();
         let (line, low) = if pos < self.lines.0 {
             None?
         } else if index == 0 {
             (0, self.lines.0)
         } else {
-            (index + 1, *self.lines.1.get(index)?)
+            (index, *self.lines.1.get(index - 1)?)
         };
         let line_span = Span { low, high: pos };
         let col = self.source_slice(line_span, source).chars().count();
@@ -102,6 +103,7 @@ impl File {
     }
 }
 
+#[derive(Debug)]
 struct NonEmptyVec<A>(pub A, pub Vec<A>);
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -131,6 +133,7 @@ impl fmt::Display for FilePosition {
     }
 }
 
+#[derive(Debug)]
 pub struct Location<'a> {
     pub file: &'a File,
     pub position: FilePosition,
