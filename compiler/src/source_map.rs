@@ -1,6 +1,6 @@
 use core::fmt;
 use std::cmp::Ordering;
-use std::ops::{Range, Sub};
+use std::ops::Range;
 use std::path::PathBuf;
 
 use redscript::ast::Pos;
@@ -16,10 +16,6 @@ impl Files {
             files: vec![],
             sources: String::new(),
         }
-    }
-
-    pub fn files(&self) -> &[File] {
-        &self.files
     }
 
     pub fn sources(&self) -> &str {
@@ -56,11 +52,8 @@ impl Files {
             })
             .ok()?;
         let file = self.files.get(index)?.clone();
-        let line_col = file.lookup(pos, &self.sources)?;
-        let result = Location {
-            file,
-            position: line_col,
-        };
+        let position = file.lookup(pos, &self.sources)?;
+        let result = Location { file, position };
         Some(result)
     }
 }
@@ -104,7 +97,7 @@ impl File {
     }
 
     fn source_slice<'a>(&self, span: Span, source: &'a str) -> &'a str {
-        let range: Range<usize> = (span - self.lines.0).into();
+        let range: Range<usize> = span.into();
         &source[range]
     }
 }
@@ -115,16 +108,6 @@ struct NonEmptyVec<A>(pub A, pub Vec<A>);
 pub struct Span {
     low: Pos,
     high: Pos,
-}
-
-impl Sub<Pos> for Span {
-    type Output = Span;
-    fn sub(self, other: Pos) -> Span {
-        Span {
-            low: self.low - other,
-            high: self.high - other,
-        }
-    }
 }
 
 impl Into<Range<usize>> for Span {
