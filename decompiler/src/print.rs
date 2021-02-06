@@ -334,6 +334,7 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, verbose: bool, depth: usize) -
         Expr::Break => write!(out, "break")?,
         Expr::Null => write!(out, "null")?,
         Expr::This(_) => write!(out, "this")?,
+        Expr::Super(_) => write!(out, "super")?,
     };
     Ok(())
 }

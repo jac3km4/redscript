@@ -291,6 +291,15 @@ impl ConstantPool {
         }
     }
 
+    pub fn class_mut(&mut self, index: PoolIndex<Class>) -> Result<&mut Class, Error> {
+        let result = self.definitions.get_mut(index.index).map(|def| &mut def.value);
+        if let Some(DefinitionValue::Class(fun)) = result {
+            Ok(fun)
+        } else {
+            Err(Error::PoolError(format!("{} is not a class", index.index)))
+        }
+    }
+
     pub fn enum_(&self, index: PoolIndex<Enum>) -> Result<&Enum, Error> {
         if let DefinitionValue::Enum(ref enum_) = self.definition(index)?.value {
             Ok(enum_)

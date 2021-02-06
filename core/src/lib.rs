@@ -1,4 +1,4 @@
-#![feature(result_cloned, iterator_fold_self)]
+#![feature(result_cloned)]
 
 pub mod ast;
 pub mod bundle;
