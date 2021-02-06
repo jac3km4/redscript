@@ -564,7 +564,7 @@ impl Scope {
                     let base_idx = pool.class(class_idx)?.base;
                     TypeId::Class(base_idx)
                 }
-                None => Err(Error::CompileError("No 'this' in static context".to_owned(), *pos))?,
+                None => Err(Error::CompileError("No 'super' in static context".to_owned(), *pos))?,
             },
             Expr::While(_, _) => TypeId::Void,
             Expr::Goto(_, _) => TypeId::Void,
