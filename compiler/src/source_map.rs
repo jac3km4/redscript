@@ -72,7 +72,8 @@ impl File {
     }
 
     fn lookup(&self, pos: Pos, source: &str) -> Option<FilePosition> {
-        let index = self.lines.1.binary_search(&pos).map(|p| p + 1).unwrap_err();
+        let res = self.lines.1.binary_search(&pos).map(|p| p + 1);
+        let index = res.err().or(res.ok()).unwrap();
         let (line, low) = if pos < self.lines.0 {
             None?
         } else if index == 0 {
