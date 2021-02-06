@@ -559,6 +559,13 @@ impl Scope {
                 Some(class_idx) => TypeId::Class(class_idx),
                 None => Err(Error::CompileError("No 'this' in static context".to_owned(), *pos))?,
             },
+            Expr::Super(pos) => match self.this {
+                Some(class_idx) => {
+                    let base_idx = pool.class(class_idx)?.base;
+                    TypeId::Class(base_idx)
+                }
+                None => Err(Error::CompileError("No 'this' in static context".to_owned(), *pos))?,
+            },
             Expr::While(_, _) => TypeId::Void,
             Expr::Goto(_, _) => TypeId::Void,
             Expr::If(_, _, _) => TypeId::Void,

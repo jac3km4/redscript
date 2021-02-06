@@ -344,7 +344,7 @@ impl Assembler {
             Expr::Null => {
                 self.emit(Instr::Null);
             }
-            Expr::This(_) => {
+            Expr::This(_) | Expr::Super(_) => {
                 self.emit(Instr::This);
             }
             Expr::Goto(_, _) | Expr::Break => panic!("Not supported yet"),
@@ -387,7 +387,7 @@ impl Assembler {
             args_code.emit(Instr::Nop);
         }
         args_code.emit(Instr::ParamEnd);
-        if !flags.is_final() && !flags.is_static() {
+        if !flags.is_final() && !flags.is_static() && !flags.has_body() && !flags.is_native() {
             self.emit(Instr::InvokeVirtual(args_code.offset(), 0, name_idx));
         } else {
             self.emit(Instr::InvokeStatic(args_code.offset(), 0, function.index));

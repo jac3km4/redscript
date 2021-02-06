@@ -26,6 +26,7 @@ pub enum Expr {
     BinOp(Box<Expr>, Box<Expr>, BinOp, Pos),
     UnOp(Box<Expr>, UnOp, Pos),
     This(Pos),
+    Super(Pos),
     Break,
     Null,
 }

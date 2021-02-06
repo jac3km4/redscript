@@ -1,6 +1,7 @@
 #![feature(option_result_contains)]
 
-use std::{ffi::OsStr, path::Path};
+use std::ffi::OsStr;
+use std::path::Path;
 
 use assembler::Assembler;
 use colored::*;
@@ -238,7 +239,7 @@ impl<'a> Compiler<'a> {
             source: Some(source_ref),
             return_type,
             unk1: false,
-            base_method,
+            base_method: base_method.filter(|_| !flags.is_static()),
             parameters,
             locals: vec![],
             operator: None,
@@ -300,7 +301,31 @@ impl<'a> Compiler<'a> {
                     Err(Error::CompileError(error, ann.pos))
                 }
             } else {
-                let error = format!("Can't find object {} to insert method in", name.0);
+                let error = format!("Can't find object {} to replace method on", name.0);
+                Err(Error::CompileError(error, ann.pos))
+            }
+        } else if let Some(ann) = annotations.iter().find(|ann| ann.name == AnnotationName::AddMethod) {
+            let ident = Ident::new(ann.value.clone());
+            if let Reference::Class(target_class) = self.scope.resolve_reference(ident, ann.pos)? {
+                let class = self.pool.class(target_class)?;
+                let base_method = if class.base != PoolIndex::UNDEFINED {
+                    let base = self.pool.class(class.base)?;
+                    base.functions
+                        .iter()
+                        .find(|fun| {
+                            let str = self.pool.definition_name(**fun).unwrap();
+                            str.as_str() == name.mangled() || str.as_str() == name.0
+                        })
+                        .cloned()
+                } else {
+                    None
+                };
+
+                let idx = self.pool.reserve().cast();
+                self.pool.class_mut(target_class)?.functions.push(idx);
+                Ok((target_class, base_method, idx))
+            } else {
+                let error = format!("Can't find object {} to add method on", name.0);
                 Err(Error::CompileError(error, ann.pos))
             }
         } else {
