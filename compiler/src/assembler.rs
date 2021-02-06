@@ -299,7 +299,7 @@ impl Assembler {
                         pool,
                         *pos,
                     )?;
-                    self.compile_call(match_, args.iter(), pool, scope, *pos)?;
+                    self.compile_call(match_, args.iter(), pool, scope, false, *pos)?;
                 }
             }
             Expr::MethodCall(expr, ident, args, pos) => {
@@ -308,7 +308,7 @@ impl Assembler {
                     let match_ = scope.resolve_method(ident.clone(), class, args, expected, pool, *pos)?;
                     let fun = pool.function(match_.index)?;
                     if fun.flags.is_static() {
-                        self.compile_call(match_, args.iter(), pool, scope, *pos)?
+                        self.compile_call(match_, args.iter(), pool, scope, true, *pos)?
                     } else {
                         Err(Error::CompileError(format!("Method {} is not static", ident), *pos))?
                     }
@@ -318,9 +318,14 @@ impl Assembler {
                     } else {
                         Assembler::from_expr(expr, None, pool, scope)?
                     };
+                    let force_static_call = if let Expr::Super(_) = expr.as_ref() {
+                        true
+                    } else {
+                        false
+                    };
                     let fun = scope.resolve_method(ident.clone(), *class, args, expected, pool, *pos)?;
                     let mut inner = Assembler::new();
-                    inner.compile_call(fun, args.iter(), pool, scope, *pos)?;
+                    inner.compile_call(fun, args.iter(), pool, scope, force_static_call, *pos)?;
                     self.emit(Instr::Context(object.offset() + inner.offset()));
                     self.append(object);
                     self.append(inner);
@@ -333,13 +338,13 @@ impl Assembler {
                 let ident = Ident::new(op.name());
                 let args = iter::once(lhs.as_ref()).chain(iter::once(rhs.as_ref()));
                 let fun = scope.resolve_function(FunctionName::global(ident), args.clone(), expected, pool, *pos)?;
-                self.compile_call(fun, args, pool, scope, *pos)?;
+                self.compile_call(fun, args, pool, scope, false, *pos)?;
             }
             Expr::UnOp(expr, op, pos) => {
                 let ident = Ident::new(op.name());
                 let args = iter::once(expr.as_ref());
                 let fun = scope.resolve_function(FunctionName::global(ident), args.clone(), expected, pool, *pos)?;
-                self.compile_call(fun, args, pool, scope, *pos)?;
+                self.compile_call(fun, args, pool, scope, false, *pos)?;
             }
             Expr::Null => {
                 self.emit(Instr::Null);
@@ -358,6 +363,7 @@ impl Assembler {
         args: impl Iterator<Item = &'a Expr>,
         pool: &mut ConstantPool,
         scope: &mut Scope,
+        force_static: bool,
         pos: Pos,
     ) -> Result<(), Error> {
         let fun = pool.function(function.index)?;
@@ -387,7 +393,7 @@ impl Assembler {
             args_code.emit(Instr::Nop);
         }
         args_code.emit(Instr::ParamEnd);
-        if !flags.is_final() && !flags.is_static() && !flags.has_body() && !flags.is_native() {
+        if !force_static && !flags.is_final() && !flags.is_static() && !flags.is_native() {
             self.emit(Instr::InvokeVirtual(args_code.offset(), 0, name_idx));
         } else {
             self.emit(Instr::InvokeStatic(args_code.offset(), 0, function.index));
