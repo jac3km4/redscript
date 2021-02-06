@@ -63,7 +63,7 @@ You can copy the script below to `Cyberpunk 2077\r6\scripts\lights.reds` as an e
 
 ```swift
 @replaceMethod(CrossingLight)
-protected final PlayTrafficNotificationSound(status: worldTrafficLightColor) {
+protected final func PlayTrafficNotificationSound(status: worldTrafficLightColor) {
   return;
 }
 ```
