@@ -248,13 +248,14 @@ impl Assembler {
             Expr::Conditional(cond, true_, false_, _) => {
                 let cond_code = Assembler::from_expr(cond, None, pool, scope)?;
                 let true_code = Assembler::from_expr(true_, expected, pool, scope)?;
+                let false_code = Assembler::from_expr(false_, expected, pool, scope)?;
                 self.emit(Instr::Conditional(
-                    cond_code.offset(),
                     cond_code.offset() + true_code.offset(),
+                    cond_code.offset() + true_code.offset() + false_code.offset(),
                 ));
                 self.append(cond_code);
                 self.append(true_code);
-                self.compile(false_, expected, pool, scope)?
+                self.append(false_code);
             }
             Expr::While(cond, body) => {
                 let cond_code = Assembler::from_expr(cond, None, pool, &mut scope.clone())?;
