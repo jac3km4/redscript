@@ -177,15 +177,17 @@ impl<'a> Compiler<'a> {
     ) -> Result<PoolIndex<Function>, Error> {
         let decl = &source.declaration;
         let fun_id = FunctionId::from_source(&source)?;
+        let name_idx = self.pool.names.add(fun_id.mangled());
+
         let ident = Ident::new(decl.name.clone());
+
+        let (parent_idx, base_method, fun_idx) =
+            self.determine_function_location(&fun_id, &decl.annotations, parent_idx)?;
         let name = if parent_idx.is_undefined() {
             FunctionName::global(ident)
         } else {
             FunctionName::instance(parent_idx, ident)
         };
-        let (parent_idx, base_method, fun_idx) =
-            self.determine_function_location(&fun_id, &decl.annotations, parent_idx)?;
-        let name_idx = self.pool.names.add(fun_id.mangled());
 
         let flags = FunctionFlags::new()
             .with_is_static(decl.qualifiers.contain(Qualifier::Static) || parent_idx == PoolIndex::UNDEFINED)
