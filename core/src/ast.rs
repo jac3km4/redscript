@@ -26,6 +26,7 @@ pub enum Expr {
     BinOp(Box<Expr>, Box<Expr>, BinOp, Pos),
     UnOp(Box<Expr>, UnOp, Pos),
     This(Pos),
+    Super(Pos),
     Break,
     Null,
 }
@@ -215,16 +216,17 @@ impl TypeName {
     // Used for identifying functions
     pub fn mangled(&self) -> String {
         let unwrapped = self.unwrapped();
-        if unwrapped.arguments.is_empty() {
-            unwrapped.name.clone()
-        } else {
-            let args = unwrapped
-                .arguments
-                .iter()
-                .map(|tp| tp.mangled())
-                .fold_first(|acc, el| format!("{},{}", acc, el))
-                .unwrap();
-            format!("{}<{}>", unwrapped.name, args)
+        match unwrapped.arguments.first() {
+            None => unwrapped.name.clone(),
+            Some(head) => {
+                let args = unwrapped
+                    .arguments
+                    .iter()
+                    .skip(1)
+                    .map(|tp| tp.mangled())
+                    .fold(head.mangled(), |acc, el| format!("{},{}", acc, el));
+                format!("{}<{}>", unwrapped.name, args)
+            }
         }
     }
 

@@ -95,6 +95,7 @@ impl Annotation {}
 #[strum(serialize_all = "camelCase")]
 pub enum AnnotationName {
     ReplaceMethod,
+    AddMethod,
 }
 
 pub fn parse(input: &str) -> Result<Vec<SourceEntry>, ParseError<LineCol>> {
@@ -281,6 +282,7 @@ peg::parser! {
             "(" _ v:expr() _ ")" { v }
             keyword("null") { Expr::Null }
             pos:position!() keyword("this") { Expr::This(Pos::new(pos)) }
+            pos:position!() keyword("super") { Expr::Super(Pos::new(pos)) }
             pos:position!() keyword("true") { Expr::Constant(Constant::Bool(true), Pos::new(pos)) }
             pos:position!() keyword("false") { Expr::Constant(Constant::Bool(false), Pos::new(pos)) }
             pos:position!() type_:literal_type()? "\"" str:$((!['"'] [_])*) "\""
