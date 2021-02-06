@@ -105,7 +105,7 @@ peg::parser! {
     grammar lang() for str {
         use peg::ParseLiteral;
 
-        rule _() = quiet!{ ([' ' | '\n' | '\r' | '\t'] / comment())* }
+        rule _() = quiet!{ ([' ' | '\n' | '\r' | '\t'] / comment() / line_comment())* }
         rule commasep<T>(x: rule<T>) -> Vec<T> = v:(x() ** ("," _)) {v}
 
         rule comment_start() = "/*"
@@ -114,6 +114,8 @@ peg::parser! {
             = comment() / (!comment_start() !comment_end() [_])
         rule comment()
             = comment_start() comment_content()* comment_end()
+
+        rule line_comment() = "//" $(!['\n'] [_])*
 
         rule qualifier() -> Qualifier
             = keyword("public") { Qualifier::Public }
@@ -405,6 +407,23 @@ mod tests {
         assert_eq!(
             format!("{:?}", stmt),
             r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: "Test", base: None, members: [Field(Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: "m_field", pos: Pos(130) }, TypeName { name: "String", arguments: [] })], pos: Pos(101) })]"#
+        );
+    }
+
+    #[test]
+    fn parse_with_line_comment() {
+        let stmt = lang::source(
+            r#"
+            class Test { // line comment
+                // private let m_comment_field: String;
+                private let m_field: String;
+            }
+            "#,
+        )
+        .unwrap();
+        assert_eq!(
+            format!("{:?}", stmt),
+            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: "Test", base: None, members: [Field(Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: "m_field", pos: Pos(114) }, TypeName { name: "String", arguments: [] })], pos: Pos(13) })]"#
         );
     }
 }
