@@ -1,11 +1,10 @@
 use std::collections::hash_map;
 use std::collections::hash_map::{Entry, HashMap};
-use std::fmt;
 use std::hash::Hash;
-use std::io;
 use std::io::Seek;
 use std::marker::PhantomData;
 use std::rc::Rc;
+use std::{fmt, io};
 
 use modular_bitfield::prelude::*;
 

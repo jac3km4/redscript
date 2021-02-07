@@ -10,9 +10,8 @@ use redscript::ast::{Ident, Pos, Seq, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Instr};
 use redscript::definition::{
-    Class, ClassFlags, Enum, FieldFlags, FunctionFlags, Local, Parameter, ParameterFlags, SourceReference, Visibility,
+    Class, ClassFlags, Definition, Enum, Field, FieldFlags, Function, FunctionFlags, Local, Parameter, ParameterFlags, SourceReference, Type, Visibility
 };
-use redscript::definition::{Definition, Field, Function, Type};
 use redscript::error::Error;
 use scope::{FunctionId, FunctionName, Scope};
 use source_map::Files;

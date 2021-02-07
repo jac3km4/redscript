@@ -1,5 +1,6 @@
+use std::fs::File;
 use std::io::{BufReader, BufWriter};
-use std::{fs::File, path::PathBuf};
+use std::path::PathBuf;
 
 use redscript::bundle::ScriptBundle;
 use redscript::error::Error;
