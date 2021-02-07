@@ -156,7 +156,7 @@ peg::parser! {
 
         rule number() -> Constant
             = n:$(['0'..='9' | '.']+) postfix:$(['u'])?
-            { if n.contains(".") { Constant::Float(n.parse().unwrap()) }
+            { if n.contains('.') { Constant::Float(n.parse().unwrap()) }
               else if postfix == Some("u") { Constant::Uint(n.parse().unwrap()) }
               else { Constant::Int(n.parse().unwrap()) }
             }
@@ -164,7 +164,7 @@ peg::parser! {
         rule seq() -> Seq = exprs:(stmt() ** _) { Seq::new(exprs) }
 
         rule type_() -> TypeName
-            = name:ident() args:type_args()? { TypeName { name, arguments: args.unwrap_or(vec![]) } }
+            = name:ident() args:type_args()? { TypeName { name, arguments: args.unwrap_or_default() } }
         rule type_args() -> Vec<TypeName> = "<" _ args:commasep(<type_()>) _ ">" { args }
 
         rule let_type() -> TypeName = ":" _ type_:type_() { type_ }

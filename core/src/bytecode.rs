@@ -859,10 +859,10 @@ impl<'a> CodeCursor<'a> {
     }
 
     pub fn pop(&mut self) -> Result<Instr, Error> {
-        let instr = self.code.get(self.index as usize).ok_or(Error::eof(format!(
-            "Attempted to read past eof: {}",
-            self.position.value
-        )))?;
+        let instr = self
+            .code
+            .get(self.index as usize)
+            .ok_or_else(|| Error::eof(format!("Attempted to read past eof: {}", self.position.value)))?;
         self.index += 1;
         self.position = Position::new(self.position.value + instr.size());
         Ok(instr.clone())

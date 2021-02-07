@@ -57,7 +57,7 @@ pub struct Ident(pub Rc<String>);
 
 impl Ident {
     pub fn new(str: String) -> Ident {
-        Ident(Rc::new(str.to_owned()))
+        Ident(Rc::new(str))
     }
 }
 

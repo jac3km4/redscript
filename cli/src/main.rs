@@ -141,9 +141,8 @@ fn lint(opts: LintOpts) -> Result<(), Error> {
         Some(bundle_path) => {
             let mut bundle: ScriptBundle = ScriptBundle::load(&mut BufReader::new(File::open(bundle_path)?))?;
             let mut compiler = Compiler::new(&mut bundle.pool)?;
-            match compiler.compile_all(&opts.src) {
-                Ok(()) => println!("Lint successful"),
-                Err(_) => {}
+            if compiler.compile_all(&opts.src).is_ok() {
+                println!("Lint successful");
             }
             Ok(())
         }

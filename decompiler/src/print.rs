@@ -50,7 +50,7 @@ pub fn write_definition<W: Write>(
             if !class.base.is_undefined() {
                 write!(out, "extends {} ", pool.definition_name(class.base)?)?;
             }
-            write!(out, "{{\n")?;
+            writeln!(out, "{{")?;
 
             for field_index in &class.fields {
                 let field = pool.definition(*field_index)?;
@@ -87,10 +87,10 @@ pub fn write_definition<W: Write>(
             let return_type = fun
                 .return_type
                 .map(|idx| format_type(pool.definition(idx).unwrap(), pool).unwrap())
-                .unwrap_or("Void".to_owned());
+                .unwrap_or_else(|| "Void".to_owned());
 
             let name = pool.names.get(definition.name)?;
-            let pretty_name = name.split(";").next().expect("Function with empty name");
+            let pretty_name = name.split(';').next().expect("Function with empty name");
 
             let params = fun
                 .parameters
@@ -124,7 +124,7 @@ pub fn write_definition<W: Write>(
             if fun.flags.has_body() {
                 write_function_body(out, fun, pool, depth, mode)?;
             }
-            write!(out, "\n")?;
+            writeln!(out)?;
         }
         DefinitionValue::Parameter(_) => write!(out, "{}", format_param(definition, pool)?)?,
         DefinitionValue::Local(local) => {
@@ -184,10 +184,10 @@ fn write_function_body<W: Write>(
     depth: usize,
     mode: OutputMode,
 ) -> Result<(), Error> {
-    write!(out, " {{\n")?;
+    writeln!(out, " {{")?;
     for local in &fun.locals {
         write_definition(out, pool.definition(*local)?, pool, depth + 1, mode)?;
-        write!(out, "\n")?;
+        writeln!(out)?;
     }
     match mode {
         OutputMode::Code { verbose } => {
@@ -216,7 +216,7 @@ fn write_seq<W: Write>(out: &mut W, code: &Seq, verbose: bool, depth: usize) -> 
     for expr in code.exprs.iter().filter(|expr| !expr.is_empty()) {
         write!(out, "{}", INDENT.repeat(depth))?;
         write_expr(out, &expr, verbose, depth)?;
-        write!(out, ";\n")?;
+        writeln!(out, ";")?;
     }
     Ok(())
 }
@@ -242,7 +242,7 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, verbose: bool, depth: usize) -
             write_expr(out, expr, verbose, 0)?;
             write!(out, " as {})", type_.repr())?;
         }
-        Expr::Declare(__, _, _, _) => {}
+        Expr::Declare(_, _, _, _) => {}
         Expr::Assign(lhs, rhs, _) => {
             write_expr(out, lhs, verbose, 0)?;
             write!(out, " = ")?;
@@ -280,15 +280,15 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, verbose: bool, depth: usize) -
         Expr::Switch(expr, cases, default) => {
             write!(out, "switch ")?;
             write_expr(out, expr, verbose, 0)?;
-            write!(out, " {{\n")?;
+            writeln!(out, " {{")?;
             for SwitchCase(matcher, body) in cases {
                 write!(out, "{}  case ", padding)?;
                 write_expr(out, matcher, verbose, 0)?;
-                write!(out, ":\n")?;
+                writeln!(out, ":")?;
                 write_seq(out, body, verbose, depth + 2)?;
             }
             if let Some(default_body) = default {
-                write!(out, "{}  default:\n", padding)?;
+                writeln!(out, "{}  default:", padding)?;
                 write_seq(out, default_body, verbose, depth + 2)?;
             }
             write!(out, "{}}}", padding)?
@@ -298,11 +298,11 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, verbose: bool, depth: usize) -
         Expr::If(condition, true_, false_) => {
             write!(out, "if ")?;
             write_expr(out, condition, verbose, 0)?;
-            write!(out, " {{\n")?;
+            writeln!(out, " {{")?;
             write_seq(out, true_, verbose, depth + 1)?;
             write!(out, "{}}}", padding)?;
             if let Some(branch) = false_ {
-                write!(out, " else {{\n")?;
+                writeln!(out, " else {{")?;
                 write_seq(out, branch, verbose, depth + 1)?;
                 write!(out, "{}}}", padding)?
             }
@@ -317,7 +317,7 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, verbose: bool, depth: usize) -
         Expr::While(condition, body) => {
             write!(out, "while ")?;
             write_expr(out, condition, verbose, 0)?;
-            write!(out, " {{\n")?;
+            writeln!(out, " {{")?;
             write_seq(out, body, verbose, depth + 1)?;
             write!(out, "{}}}", padding)?;
         }
@@ -339,8 +339,8 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, verbose: bool, depth: usize) -
     Ok(())
 }
 
-fn write_call<W: Write>(out: &mut W, name: &Ident, params: &Vec<Expr>, verbose: bool) -> Result<(), Error> {
-    let extracted = name.0.split(";").next().expect("Empty function name");
+fn write_call<W: Write>(out: &mut W, name: &Ident, params: &[Expr], verbose: bool) -> Result<(), Error> {
+    let extracted = name.0.split(';').next().expect("Empty function name");
     let fun_name = if extracted.is_empty() { "undefined" } else { extracted };
     match fun_name {
         "OperatorLogicOr" => write_binop(out, &params[0], &params[1], BinOp::LogicOr, verbose),
