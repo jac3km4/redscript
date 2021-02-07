@@ -1,8 +1,9 @@
 use std::collections::{HashMap, HashSet};
 use std::iter::{once, FromIterator};
+use std::path::Path;
 
 use redscript::bundle::{ConstantPool, PoolIndex};
-use redscript::definition::{Definition, DefinitionValue, SourceFile};
+use redscript::definition::{Definition, DefinitionValue};
 
 pub struct FileIndex<'a> {
     file_map: HashMap<PoolIndex<Definition>, HashSet<PoolIndex<Definition>>>,
@@ -29,7 +30,7 @@ impl<'a> FileIndex<'a> {
     }
 
     pub fn iter(&'a self) -> impl Iterator<Item = FileEntry<'a>> {
-        self.file_map.iter().filter_map(move |(idx, children)| {
+        let source_files = self.file_map.iter().filter_map(move |(idx, children)| {
             if let DefinitionValue::SourceFile(ref file) = self.pool.definition(*idx).unwrap().value {
                 let mut definitions: Vec<&Definition> = children
                     .iter()
@@ -37,16 +38,39 @@ impl<'a> FileIndex<'a> {
                     .collect();
                 definitions.sort_by_key(|def| def.first_line(self.pool).unwrap_or(0));
 
-                let entry = FileEntry { file, definitions };
+                let entry = FileEntry {
+                    path: &file.path,
+                    definitions,
+                };
                 Some(entry)
             } else {
                 None
             }
-        })
+        });
+
+        once(self.orphans()).chain(source_files)
+    }
+
+    fn orphans(&'a self) -> FileEntry<'a> {
+        let definitions = self
+            .pool
+            .definitions()
+            .filter(|(_, def)| match &def.value {
+                DefinitionValue::Class(cls) if cls.functions.is_empty() || cls.flags.is_native() => true,
+                DefinitionValue::Enum(_) => true,
+                DefinitionValue::Function(fun) if def.parent == PoolIndex::UNDEFINED && fun.flags.is_native() => true,
+                _ => false,
+            })
+            .map(|(_, def)| def)
+            .collect();
+        FileEntry {
+            path: Path::new("orphans.script"),
+            definitions,
+        }
     }
 }
 
 pub struct FileEntry<'a> {
-    pub file: &'a SourceFile,
+    pub path: &'a Path,
     pub definitions: Vec<&'a Definition>,
 }
