@@ -36,7 +36,7 @@ impl FunctionName {
         self.namespace
             .and_then(|c| pool.definition_name(c).ok())
             .map(|n| format!("{}::{}", n, self.name))
-            .unwrap_or(self.name.to_string())
+            .unwrap_or_else(|| self.name.to_string())
     }
 }
 
@@ -92,7 +92,7 @@ impl Scope {
         for (idx, def) in pool.definitions() {
             if let DefinitionValue::Function(_) = def.value {
                 let mangled_name = pool.definition_name(idx)?;
-                let ident = Ident::new(mangled_name.split(";").next().unwrap().to_owned());
+                let ident = Ident::new(mangled_name.split(';').next().unwrap().to_owned());
                 let name = if def.parent != PoolIndex::UNDEFINED {
                     FunctionName::instance(def.parent.cast(), ident)
                 } else {
@@ -181,7 +181,7 @@ impl Scope {
             match self.resolve_function_overload(*fun_idx, args.clone(), expected, pool, pos) {
                 Ok(res) => return Ok(res),
                 Err(Error::FunctionResolutionError(msg, _)) => errors.push(msg),
-                Err(other) => Err(other)?,
+                Err(other) => return Err(other),
             }
         }
         let message = format!(
@@ -205,7 +205,7 @@ impl Scope {
         if let Some(expected) = expected {
             let return_type_idx = fun
                 .return_type
-                .ok_or(Error::CompileError("Void value cannot be used".to_owned(), pos))?;
+                .ok_or_else(|| Error::CompileError("Void value cannot be used".to_owned(), pos))?;
             let return_type = self.resolve_type_from_pool(return_type_idx, pool, pos)?;
             if self.find_conversion(&return_type, &expected, pool)?.is_none() {
                 let message = format!(
@@ -213,7 +213,7 @@ impl Scope {
                     return_type.pretty(pool)?,
                     expected.pretty(pool)?
                 );
-                Err(Error::FunctionResolutionError(message, pos))?;
+                return Err(Error::FunctionResolutionError(message, pos));
             }
         }
 
@@ -234,7 +234,7 @@ impl Scope {
                     "Parameter at position {} expects type {} while provided type is {}",
                     idx, expected, given
                 );
-                Err(Error::FunctionResolutionError(message, pos))?;
+                return Err(Error::FunctionResolutionError(message, pos));
             }
         }
 
@@ -296,7 +296,7 @@ impl Scope {
         self.references
             .get(&name)
             .cloned()
-            .ok_or(Error::CompileError(format!("Unresolved reference {}", name), pos))
+            .ok_or_else(|| Error::CompileError(format!("Unresolved reference {}", name), pos))
     }
 
     pub fn get_type_index(&mut self, type_: &TypeId, pool: &mut ConstantPool) -> Result<PoolIndex<Type>, Error> {
@@ -330,7 +330,7 @@ impl Scope {
                 ("wref", [nested]) => TypeId::WeakRef(Box::new(self.resolve_type(nested, pool, location)?)),
                 ("script_ref", [nested]) => TypeId::ScriptRef(Box::new(self.resolve_type(nested, pool, location)?)),
                 ("array", [nested]) => TypeId::Array(Box::new(self.resolve_type(nested, pool, location)?)),
-                _ => Err(Error::CompileError(format!("Unresolved type {}", name), location))?,
+                _ => return Err(Error::CompileError(format!("Unresolved type {}", name), location)),
             }
         };
         Ok(result)
@@ -355,7 +355,7 @@ impl Scope {
                 } else if let Some(Reference::Enum(enum_idx)) = self.references.get(&ident) {
                     TypeId::Enum(*enum_idx)
                 } else {
-                    Err(Error::CompileError(format!("Class {} not found", ident), pos))?
+                    return Err(Error::CompileError(format!("Class {} not found", ident), pos));
                 }
             }
             Type::Ref(type_) => {
@@ -469,7 +469,7 @@ impl Scope {
                 let class = match self.infer_type(expr, None, pool)?.unwrapped() {
                     TypeId::Class(class) => *class,
                     TypeId::Struct(class) => *class,
-                    _ => Err(Error::CompileError(format!("{:?} doesn't have methods", expr), *pos))?,
+                    _ => return Err(Error::CompileError(format!("{:?} doesn't have methods", expr), *pos)),
                 };
                 let match_ = self.resolve_method(ident.clone(), class, args, expected, pool, *pos)?;
                 match pool.function(match_.index)?.return_type {
@@ -480,10 +480,12 @@ impl Scope {
             Expr::ArrayElem(expr, _, pos) => match self.infer_type(expr, None, pool)? {
                 TypeId::Array(inner) => *inner,
                 TypeId::StaticArray(inner, _) => *inner,
-                type_ => Err(Error::CompileError(
-                    format!("{} can't be indexed", type_.pretty(pool)?),
-                    *pos,
-                ))?,
+                type_ => {
+                    return Err(Error::CompileError(
+                        format!("{} can't be indexed", type_.pretty(pool)?),
+                        *pos,
+                    ))
+                }
             },
             Expr::New(name, _, pos) => {
                 if let Reference::Class(class_idx) = self.resolve_reference(name.clone(), *pos)? {
@@ -494,7 +496,7 @@ impl Scope {
                         TypeId::Ref(Box::new(type_))
                     }
                 } else {
-                    Err(Error::CompileError(format!("{} can't be constructed", name), *pos))?
+                    return Err(Error::CompileError(format!("{} can't be constructed", name), *pos));
                 }
             }
             Expr::Member(expr, ident, pos) => {
@@ -504,7 +506,7 @@ impl Scope {
                     t @ TypeId::Enum(_) => return Ok(t.clone()),
                     t => {
                         let err = format!("Can't access a member of {}", t.pretty(pool)?);
-                        Err(Error::CompileError(err, *pos))?
+                        return Err(Error::CompileError(err, *pos));
                     }
                 };
                 let field = self.resolve_field(ident.clone(), class, pool, *pos)?;
@@ -515,7 +517,7 @@ impl Scope {
                 let rt = self.infer_type(rhs, expected, pool)?;
                 if lt != rt {
                     let error = format!("Incompatible types: {} and {}", lt.pretty(pool)?, rt.pretty(pool)?);
-                    Err(Error::CompileError(error, *pos))?
+                    return Err(Error::CompileError(error, *pos));
                 }
                 lt
             }
@@ -558,14 +560,14 @@ impl Scope {
             Expr::Null => TypeId::Null,
             Expr::This(pos) => match self.this {
                 Some(class_idx) => TypeId::Class(class_idx),
-                None => Err(Error::CompileError("No 'this' in static context".to_owned(), *pos))?,
+                None => return Err(Error::CompileError("No 'this' in static context".to_owned(), *pos)),
             },
             Expr::Super(pos) => match self.this {
                 Some(class_idx) => {
                     let base_idx = pool.class(class_idx)?.base;
                     TypeId::Class(base_idx)
                 }
-                None => Err(Error::CompileError("No 'super' in static context".to_owned(), *pos))?,
+                None => return Err(Error::CompileError("No 'super' in static context".to_owned(), *pos)),
             },
             Expr::While(_, _) => TypeId::Void,
             Expr::Goto(_, _) => TypeId::Void,
@@ -590,7 +592,7 @@ impl Scope {
     ) -> Result<TypeId, Error> {
         if args.len() != intrinsic.arg_count().into() {
             let err = format!("Invalid number of arguments for {}", intrinsic);
-            Err(Error::CompileError(err, pos))?
+            return Err(Error::CompileError(err, pos));
         }
         let type_ = self.infer_type(&args[0], None, pool)?;
         let result = match (intrinsic, type_) {
@@ -618,7 +620,7 @@ impl Scope {
             (IntrinsicOp::Deref, TypeId::ScriptRef(inner)) => *inner,
             _ => {
                 let err = format!("Invalid intrinsic {} call", intrinsic);
-                Err(Error::CompileError(err, pos))?
+                return Err(Error::CompileError(err, pos));
             }
         };
         Ok(result)

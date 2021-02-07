@@ -103,10 +103,12 @@ impl Assembler {
             Expr::Declare(name, type_, init, pos) => {
                 let name_idx = pool.names.add(name.0.deref().to_owned());
                 let (type_, conversion) = match (type_, init) {
-                    (None, None) => Err(Error::CompileError(
-                        "Type or initializer require on let binding".to_owned(),
-                        *pos,
-                    ))?,
+                    (None, None) => {
+                        return Err(Error::CompileError(
+                            "Type or initializer require on let binding".to_owned(),
+                            *pos,
+                        ))
+                    }
                     (None, Some(val)) => (scope.infer_type(val, None, pool)?, Conversion::Identity),
                     (Some(type_name), None) => (scope.resolve_type(type_name, pool, *pos)?, Conversion::Identity),
                     (Some(type_name), Some(val)) => {
@@ -148,7 +150,7 @@ impl Assembler {
                     }
                     other => {
                         let error = format!("Array access not allowed on {}", other.pretty(pool)?);
-                        Err(Error::CompileError(error, *pos))?
+                        return Err(Error::CompileError(error, *pos));
                     }
                 }
                 self.compile(expr, None, pool, scope)?;
@@ -160,7 +162,7 @@ impl Assembler {
                     if cls.flags.is_struct() {
                         if cls.fields.len() != args.len() {
                             let err = format!("Expected {} parameters for {}", cls.fields.len(), name);
-                            Err(Error::CompileError(err, *pos))?
+                            return Err(Error::CompileError(err, *pos));
                         }
                         let fields = cls.fields.clone();
                         self.emit(Instr::Construct(args.len() as u8, idx));
@@ -176,10 +178,10 @@ impl Assembler {
                         self.emit(Instr::New(idx));
                     } else {
                         let err = format!("Expected 0 parameters for {}", name);
-                        Err(Error::CompileError(err, *pos))?
+                        return Err(Error::CompileError(err, *pos));
                     }
                 }
-                _ => Err(Error::CompileError(format!("Cannot construct {}", name), *pos))?,
+                _ => return Err(Error::CompileError(format!("Cannot construct {}", name), *pos)),
             },
             Expr::Return(Some(expr), pos) => {
                 let fun = pool.function(scope.function.unwrap())?;
@@ -191,15 +193,15 @@ impl Assembler {
                     self.compile_conversion(conv);
                     self.compile(expr, Some(&expected), pool, scope)?;
                 } else {
-                    Err(Error::CompileError(format!("Function should return nothing"), *pos))?
+                    return Err(Error::CompileError("Function should return nothing".to_string(), *pos));
                 }
             }
             Expr::Return(None, pos) => {
                 let fun = pool.function(scope.function.unwrap())?;
-                if let None = fun.return_type {
+                if fun.return_type.is_none() {
                     self.emit(Instr::Return);
                 } else {
-                    Err(Error::CompileError(format!("Function should return a value"), *pos))?
+                    return Err(Error::CompileError("Function should return a value".to_string(), *pos));
                 }
             }
             Expr::Seq(seq) => {
@@ -286,7 +288,7 @@ impl Assembler {
                 }
                 t => {
                     let err = format!("Can't access a member of {}", t.pretty(pool)?);
-                    Err(Error::CompileError(err, *pos))?
+                    return Err(Error::CompileError(err, *pos));
                 }
             },
             Expr::Call(ident, args, pos) => {
@@ -311,7 +313,7 @@ impl Assembler {
                     if fun.flags.is_static() {
                         self.compile_call(match_, args.iter(), pool, scope, true, *pos)?
                     } else {
-                        Err(Error::CompileError(format!("Method {} is not static", ident), *pos))?
+                        return Err(Error::CompileError(format!("Method {} is not static", ident), *pos));
                     }
                 } else if let TypeId::Class(class) = type_.unwrapped() {
                     let object = if let TypeId::WeakRef(_) = type_ {
@@ -319,11 +321,7 @@ impl Assembler {
                     } else {
                         Assembler::from_expr(expr, None, pool, scope)?
                     };
-                    let force_static_call = if let Expr::Super(_) = expr.as_ref() {
-                        true
-                    } else {
-                        false
-                    };
+                    let force_static_call = matches!(expr.as_ref(), Expr::Super(_));
                     let fun = scope.resolve_method(ident.clone(), *class, args, expected, pool, *pos)?;
                     let mut inner = Assembler::new();
                     inner.compile_call(fun, args.iter(), pool, scope, force_static_call, *pos)?;
@@ -332,7 +330,7 @@ impl Assembler {
                     self.append(inner);
                 } else {
                     let err = format!("Can't call methods on {}", type_.pretty(pool)?);
-                    Err(Error::CompileError(err, *pos))?
+                    return Err(Error::CompileError(err, *pos));
                 }
             }
             Expr::BinOp(lhs, rhs, op, pos) => {
@@ -421,7 +419,7 @@ impl Assembler {
     ) -> Result<(), Error> {
         if args.len() != intrinsic.arg_count().into() {
             let err = format!("Invalid number of arguments for {}", intrinsic);
-            Err(Error::CompileError(err, pos))?
+            return Err(Error::CompileError(err, pos));
         }
         let type_ = scope.infer_type(&args[0], None, pool)?;
         let type_idx = scope.get_type_index(&type_, pool)?;

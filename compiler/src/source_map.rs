@@ -51,7 +51,7 @@ impl Files {
                 _ => Ordering::Equal,
             })
             .ok()?;
-        let file = self.files.get(index)?.clone();
+        let file = self.files.get(index)?;
         let position = file.lookup(pos, &self.sources)?;
         let result = Location { file, position };
         Some(result)
@@ -73,7 +73,7 @@ impl File {
 
     fn lookup(&self, pos: Pos, source: &str) -> Option<FilePosition> {
         let res = self.lines.1.binary_search(&pos).map(|p| p + 1);
-        let index = res.err().or(res.ok()).unwrap();
+        let index = res.err().or_else(|| res.ok()).unwrap();
         let (line, low) = if pos < self.lines.0 {
             None?
         } else if index == 0 {
@@ -113,11 +113,11 @@ pub struct Span {
     high: Pos,
 }
 
-impl Into<Range<usize>> for Span {
-    fn into(self) -> Range<usize> {
+impl From<Span> for Range<usize> {
+    fn from(span: Span) -> Self {
         Range {
-            start: self.low.0 as usize,
-            end: self.high.0 as usize,
+            start: span.low.0 as usize,
+            end: span.high.0 as usize,
         }
     }
 }

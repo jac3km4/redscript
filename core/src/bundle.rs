@@ -55,7 +55,7 @@ impl Decode for Header {
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
         let magic: u32 = input.decode()?;
         if magic != Header::MAGIC {
-            Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid file header"))?
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid file header"));
         }
 
         let version: u32 = input.decode()?;
@@ -170,22 +170,22 @@ impl ConstantPool {
         output.seek(io::SeekFrom::Start(Header::SIZE as u64))?;
 
         let position = output.stream_position()? as u32;
-        let strings = TableHeader::new(buffer.get_ref(), buffer.position() as u32, position)?;
+        let strings = TableHeader::new(buffer.get_ref(), buffer.position() as u32, position);
         output.write_all(buffer.get_ref())?;
 
         let name_offsets = self.names.encoded_offsets(&dedup_map)?;
         let position = output.stream_position()? as u32;
-        let names = TableHeader::new(&name_offsets, self.names.strings.len() as u32, position)?;
+        let names = TableHeader::new(&name_offsets, self.names.strings.len() as u32, position);
         output.write_all(&name_offsets)?;
 
         let tweakdb_offsets = self.tweakdb_ids.encoded_offsets(&dedup_map)?;
         let position = output.stream_position()? as u32;
-        let tweakdb_indexes = TableHeader::new(&tweakdb_offsets, self.tweakdb_ids.strings.len() as u32, position)?;
+        let tweakdb_indexes = TableHeader::new(&tweakdb_offsets, self.tweakdb_ids.strings.len() as u32, position);
         output.write_all(&tweakdb_offsets)?;
 
         let resource_offsets = self.resources.encoded_offsets(&dedup_map)?;
         let position = output.stream_position()? as u32;
-        let resources = TableHeader::new(&resource_offsets, self.resources.strings.len() as u32, position)?;
+        let resources = TableHeader::new(&resource_offsets, self.resources.strings.len() as u32, position);
         output.write_all(&resource_offsets)?;
 
         let def_header_pos = output.stream_position()?;
@@ -204,7 +204,7 @@ impl ConstantPool {
         output.seek(io::SeekFrom::Start(def_header_pos))?;
         output.write_all(buffer.get_ref())?;
 
-        let definitions = TableHeader::new(buffer.get_ref(), self.definitions.len() as u32, def_header_pos as u32)?;
+        let definitions = TableHeader::new(buffer.get_ref(), self.definitions.len() as u32, def_header_pos as u32);
         let header_for_hash = Header {
             strings,
             names,
@@ -230,7 +230,7 @@ impl ConstantPool {
     pub fn definition<A>(&self, index: PoolIndex<A>) -> Result<&Definition, Error> {
         self.definitions
             .get(index.index)
-            .ok_or(Error::PoolError(format!("Definition {} not found", index.index)))
+            .ok_or_else(|| Error::PoolError(format!("Definition {} not found", index.index)))
     }
 
     pub fn function(&self, index: PoolIndex<Function>) -> Result<&Function, Error> {
@@ -374,7 +374,7 @@ impl<K> Names<K> {
     pub fn get(&self, index: PoolIndex<K>) -> Result<Rc<String>, Error> {
         self.strings
             .get(index.index)
-            .ok_or(Error::PoolError(format!("String {} not found", index.index)))
+            .ok_or_else(|| Error::PoolError(format!("String {} not found", index.index)))
             .cloned()
     }
 
@@ -382,10 +382,10 @@ impl<K> Names<K> {
         let idx = PoolIndex::new(self.strings.len());
         let rc = Rc::new(str);
         match self.mappings.entry(rc.clone()) {
-            Entry::Occupied(entry) => entry.get().clone(),
+            Entry::Occupied(entry) => *entry.get(),
             Entry::Vacant(slot) => {
                 self.strings.push(rc);
-                slot.insert(idx).clone()
+                *slot.insert(idx)
             }
         }
     }
@@ -399,13 +399,12 @@ struct TableHeader {
 }
 
 impl TableHeader {
-    fn new(bytes: &[u8], count: u32, offset: u32) -> io::Result<TableHeader> {
-        let result = TableHeader {
+    fn new(bytes: &[u8], count: u32, offset: u32) -> TableHeader {
+        TableHeader {
             offset,
             count,
             hash: crc(bytes),
-        };
-        Ok(result)
+        }
     }
 }
 

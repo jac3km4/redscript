@@ -47,7 +47,7 @@ impl<'a> Decompiler<'a> {
             match self.consume() {
                 Ok(expr) => body.push(expr),
                 Err(Error::IOError(err)) if err.kind() == io::ErrorKind::UnexpectedEof => break,
-                Err(err) => Err(err)?,
+                Err(err) => return Err(err),
             }
         }
         Ok(Seq::new(body))
@@ -79,7 +79,7 @@ impl<'a> Decompiler<'a> {
         let mut body = self.consume_path(target)?;
         self.code.goto(target)?;
 
-        let result = if let Some(_) = resolve_jump(&mut body, Some(position)) {
+        let result = if resolve_jump(&mut body, Some(position)).is_some() {
             Expr::While(Box::new(condition), body)
         } else if let Some(jump) = resolve_jump(&mut body, None) {
             let else_case = self.consume_path(Position::new(jump.position))?;
@@ -97,7 +97,7 @@ impl<'a> Decompiler<'a> {
         while let Some(Instr::SwitchLabel(exit_offset, start_offset)) = self.code.peek() {
             let position = self.code.pos();
             labels.push((position, start_offset.absolute(position)));
-            self.code.seek(exit_offset.into())?;
+            self.code.seek(exit_offset)?;
         }
         if let Some(Instr::SwitchDefault) = self.code.peek() {
             labels.push((self.code.pos(), self.code.pos()));
@@ -107,7 +107,7 @@ impl<'a> Decompiler<'a> {
         let mut default = None;
         let mut cases = Vec::new();
         for (label, start_position) in labels {
-            self.code.goto(label.into())?;
+            self.code.goto(label)?;
 
             match self.code.pop()? {
                 Instr::SwitchLabel(exit_offset, _) => {
@@ -123,7 +123,7 @@ impl<'a> Decompiler<'a> {
                     cases.push(SwitchCase(matched, body));
                 }
                 Instr::SwitchDefault => default = Some(Seq::new(vec![self.consume()?])),
-                _ => Err(Error::DecompileError("Unexpected switch label instruction".to_owned()))?,
+                _ => return Err(Error::DecompileError("Unexpected switch label instruction".to_owned())),
             }
         }
 
@@ -144,13 +144,13 @@ impl<'a> Decompiler<'a> {
             Instr::I8Const(val) => Expr::Constant(Constant::Int(val.into()), Pos::ZERO),
             Instr::I16Const(val) => Expr::Constant(Constant::Int(val.into()), Pos::ZERO),
             Instr::I32Const(val) => Expr::Constant(Constant::Int(val.into()), Pos::ZERO),
-            Instr::I64Const(val) => Expr::Constant(Constant::Int(val.into()), Pos::ZERO),
+            Instr::I64Const(val) => Expr::Constant(Constant::Int(val), Pos::ZERO),
             Instr::U8Const(val) => Expr::Constant(Constant::Uint(val.into()), Pos::ZERO),
             Instr::U16Const(val) => Expr::Constant(Constant::Uint(val.into()), Pos::ZERO),
             Instr::U32Const(val) => Expr::Constant(Constant::Uint(val.into()), Pos::ZERO),
-            Instr::U64Const(val) => Expr::Constant(Constant::Uint(val.into()), Pos::ZERO),
+            Instr::U64Const(val) => Expr::Constant(Constant::Uint(val), Pos::ZERO),
             Instr::F32Const(val) => Expr::Constant(Constant::Float(val.into()), Pos::ZERO),
-            Instr::F64Const(val) => Expr::Constant(Constant::Float(val.into()), Pos::ZERO),
+            Instr::F64Const(val) => Expr::Constant(Constant::Float(val), Pos::ZERO),
             Instr::StringConst(str) => {
                 let decoded = String::from_utf8(str).unwrap();
                 Expr::Constant(Constant::String(LiteralType::String, decoded), Pos::ZERO)
@@ -175,13 +175,15 @@ impl<'a> Decompiler<'a> {
                 let expr = Box::new(Expr::Ident(enum_ident, Pos::ZERO));
                 Expr::Member(expr, member_ident, Pos::ZERO)
             }
-            Instr::Breakpoint(_, _, _, _, _, _) => Err(Error::DecompileError("Unexpected Breakpoint".to_owned()))?,
+            Instr::Breakpoint(_, _, _, _, _, _) => {
+                return Err(Error::DecompileError("Unexpected Breakpoint".to_owned()))
+            }
             Instr::Assign => {
                 let lhs = self.consume()?;
                 let rhs = self.consume()?;
                 Expr::Assign(Box::new(lhs), Box::new(rhs), Pos::ZERO)
             }
-            Instr::Target => Err(Error::DecompileError("Unexpected Target".to_owned()))?,
+            Instr::Target => return Err(Error::DecompileError("Unexpected Target".to_owned())),
             Instr::Local(idx) => Expr::Ident(self.definition_ident(idx)?, Pos::ZERO),
             Instr::Param(idx) => Expr::Ident(self.definition_ident(idx)?, Pos::ZERO),
             Instr::ObjectField(idx) => {
@@ -192,10 +194,10 @@ impl<'a> Decompiler<'a> {
                     Expr::Member(Box::new(Expr::This(Pos::ZERO)), field, Pos::ZERO)
                 }
             }
-            Instr::ExternalVar => Err(Error::DecompileError("Unexpected ExternalVar".to_owned()))?,
+            Instr::ExternalVar => return Err(Error::DecompileError("Unexpected ExternalVar".to_owned())),
             Instr::Switch(_, _) => self.consume_switch()?,
-            Instr::SwitchLabel(_, _) => Err(Error::DecompileError("Unexpected SwitchLabel".to_owned()))?,
-            Instr::SwitchDefault => Err(Error::DecompileError("Unexpected SwitchDefault".to_owned()))?,
+            Instr::SwitchLabel(_, _) => return Err(Error::DecompileError("Unexpected SwitchLabel".to_owned())),
+            Instr::SwitchDefault => return Err(Error::DecompileError("Unexpected SwitchDefault".to_owned())),
             Instr::Jump(Offset { value: 3 }) => Expr::EMPTY,
             Instr::Jump(offset) => Expr::Goto(Target::new(offset.absolute(position).value), Pos::ZERO),
             Instr::JumpIfFalse(offset) => {
@@ -243,8 +245,8 @@ impl<'a> Decompiler<'a> {
                     Expr::MethodCall(Box::new(Expr::This(Pos::ZERO)), name, params, Pos::ZERO)
                 }
             }
-            Instr::ParamEnd => Err(Error::DecompileError("Unexpected ParamEnd".to_owned()))?,
-            Instr::Return => Expr::Return(self.consume().ok().map(|e| Box::new(e)), Pos::ZERO),
+            Instr::ParamEnd => return Err(Error::DecompileError("Unexpected ParamEnd".to_owned())),
+            Instr::Return => Expr::Return(self.consume().ok().map(Box::new), Pos::ZERO),
             Instr::StructField(idx) => {
                 let target = self.consume()?;
                 let field = self.definition_ident(idx)?;
@@ -259,7 +261,7 @@ impl<'a> Decompiler<'a> {
             Instr::New(class) => Expr::New(Ident(self.pool.definition_name(class)?), vec![], Pos::ZERO),
             Instr::Delete => self.consume_call("Delete", 1)?,
             Instr::This => Expr::This(Pos::ZERO),
-            Instr::StartProfiling(_, _) => Err(Error::DecompileError("Unexpected StartProfiling".to_owned()))?,
+            Instr::StartProfiling(_, _) => return Err(Error::DecompileError("Unexpected StartProfiling".to_owned())),
             Instr::ArrayClear(_) => self.consume_call("ArrayClear", 1)?,
             Instr::ArraySize(_) => self.consume_call("ArraySize", 1)?,
             Instr::ArrayResize(_) => self.consume_call("ArrayResize", 2)?,
@@ -338,7 +340,7 @@ fn resolve_jump(seq: &mut Seq, target: Option<Position>) -> Option<&mut Target> 
             Some(goto)
         }
         Expr::If(_, if_, None) => resolve_jump(if_, target),
-        Expr::If(_, if_, Some(else_)) => resolve_jump(if_, target).or(resolve_jump(else_, target)),
+        Expr::If(_, if_, Some(else_)) => resolve_jump(if_, target).or_else(move || resolve_jump(else_, target)),
         _ => None,
     })
 }

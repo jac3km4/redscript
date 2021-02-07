@@ -52,7 +52,7 @@ impl<'a> Compiler<'a> {
             Err(err) => {
                 let message = format!("Syntax error, expected {}", &err.expected);
                 Self::print_errors(&files, &message, Pos::new(err.location.offset));
-                Err(Error::SyntaxError(err.to_string()))?
+                return Err(Error::SyntaxError(err.to_string()));
             }
         };
 
@@ -144,10 +144,10 @@ impl<'a> Compiler<'a> {
                 if let Reference::Class(base_idx) = self.scope.resolve_reference(base_ident.clone(), source.pos)? {
                     base_idx
                 } else {
-                    Err(Error::CompileError(
+                    return Err(Error::CompileError(
                         format!("{} is not a class", base_ident.0),
                         source.pos,
-                    ))?
+                    ));
                 }
             } else {
                 PoolIndex::UNDEFINED
@@ -201,7 +201,7 @@ impl<'a> Compiler<'a> {
             .unwrap_or(if parent_idx == PoolIndex::UNDEFINED {
                 Visibility::Public
             } else {
-                Visibility::Public
+                Visibility::Private
             });
 
         let return_type = match source.type_ {

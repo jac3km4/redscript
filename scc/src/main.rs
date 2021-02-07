@@ -11,7 +11,7 @@ fn main() -> Result<(), Error> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match &args[..] {
         [cmd, path_str, ..] if cmd == "-compile" => {
-            let script_path = PathBuf::from(path_str.split("\"").next().unwrap());
+            let script_path = PathBuf::from(path_str.split('"').next().unwrap());
 
             let cache_path = script_path.parent().unwrap().join("cache");
             let bundle_path = cache_path.join("final.redscripts");

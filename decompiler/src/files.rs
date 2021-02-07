@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::iter::{once, FromIterator};
+use std::iter;
 use std::path::Path;
 
 use redscript::bundle::{ConstantPool, PoolIndex};
@@ -22,7 +22,7 @@ impl<'a> FileIndex<'a> {
                     .and_modify(|vec| {
                         vec.insert(root_idx);
                     })
-                    .or_insert(HashSet::from_iter(once(root_idx)));
+                    .or_insert_with(|| iter::once(root_idx).collect());
             }
         }
 
@@ -48,7 +48,7 @@ impl<'a> FileIndex<'a> {
             }
         });
 
-        once(self.orphans()).chain(source_files)
+        iter::once(self.orphans()).chain(source_files)
     }
 
     fn orphans(&'a self) -> FileEntry<'a> {
