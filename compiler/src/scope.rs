@@ -1,5 +1,6 @@
+use std::iter;
+use std::ops::Deref;
 use std::str::FromStr;
-use std::{iter, ops::Deref};
 
 use redscript::ast::{Constant, Expr, Ident, LiteralType, Pos, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};

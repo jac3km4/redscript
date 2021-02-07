@@ -306,7 +306,8 @@ mod tests {
         let expr = lang::expr("3.0 ? 5.0 : 5 + 4").unwrap();
         assert_eq!(
             format!("{:?}", expr),
-            "Conditional(Constant(Float(3.0), Pos(0)), Constant(Float(5.0), Pos(6)), BinOp(Constant(Int(5), Pos(12)), Constant(Int(4), Pos(16)), Add, Pos(14)), Pos(4))"
+            "Conditional(Constant(Float(3.0), Pos(0)), Constant(Float(5.0), Pos(6)), BinOp(Constant(Int(5), Pos(12)), \
+             Constant(Int(4), Pos(16)), Add, Pos(14)), Pos(4))"
         );
     }
 
