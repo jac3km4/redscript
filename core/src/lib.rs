@@ -1,4 +1,4 @@
-#![feature(result_cloned)]
+#![feature(result_cloned, const_fn)]
 
 pub mod ast;
 pub mod bundle;

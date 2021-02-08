@@ -23,13 +23,13 @@ pub struct ClassSource {
 #[derive(Debug)]
 pub enum MemberSource {
     Function(FunctionSource),
-    Field(Declaration, TypeName),
+    Field(Declaration, TypeName<String>),
 }
 
 #[derive(Debug)]
 pub struct FunctionSource {
     pub declaration: Declaration,
-    pub type_: Option<TypeName>,
+    pub type_: Option<TypeName<String>>,
     pub parameters: Vec<ParameterSource>,
     pub body: Option<Seq>,
 }
@@ -38,7 +38,7 @@ pub struct FunctionSource {
 pub struct ParameterSource {
     pub qualifiers: Qualifiers,
     pub name: String,
-    pub type_: TypeName,
+    pub type_: TypeName<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -163,12 +163,12 @@ peg::parser! {
 
         rule seq() -> Seq = exprs:(stmt() ** _) { Seq::new(exprs) }
 
-        rule type_() -> TypeName
+        rule type_() -> TypeName<String>
             = name:ident() args:type_args()? { TypeName { name, arguments: args.unwrap_or_default() } }
-        rule type_args() -> Vec<TypeName> = "<" _ args:commasep(<type_()>) _ ">" { args }
+        rule type_args() -> Vec<TypeName<String>> = "<" _ args:commasep(<type_()>) _ ">" { args }
 
-        rule let_type() -> TypeName = ":" _ type_:type_() { type_ }
-        rule func_type() -> TypeName = "->" _ type_:type_() { type_ }
+        rule let_type() -> TypeName<String> = ":" _ type_:type_() { type_ }
+        rule func_type() -> TypeName<String> = "->" _ type_:type_() { type_ }
 
         rule decl(inner: rule<()>) -> Declaration
             = pos:position!() annotations:(annotation() ** _) _ qualifiers:qualifiers() _ inner() _ name:ident()
