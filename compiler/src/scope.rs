@@ -321,11 +321,16 @@ impl Scope {
         }
     }
 
-    pub fn resolve_type(&self, name: &TypeName, pool: &ConstantPool, location: Pos) -> Result<TypeId, Error> {
+    pub fn resolve_type<S: AsRef<str>>(
+        &self,
+        name: &TypeName<S>,
+        pool: &ConstantPool,
+        location: Pos,
+    ) -> Result<TypeId, Error> {
         let result = if let Some(res) = self.types.get(&Ident::new(name.repr())) {
             self.resolve_type_from_pool(*res, pool, location)?
         } else {
-            match (name.name.as_str(), name.arguments.as_slice()) {
+            match (name.name.as_ref(), name.arguments.as_slice()) {
                 ("ref", [nested]) => TypeId::Ref(Box::new(self.resolve_type(nested, pool, location)?)),
                 ("wref", [nested]) => TypeId::WeakRef(Box::new(self.resolve_type(nested, pool, location)?)),
                 ("script_ref", [nested]) => TypeId::ScriptRef(Box::new(self.resolve_type(nested, pool, location)?)),
@@ -540,22 +545,14 @@ impl Scope {
                 }
             }
             Expr::Constant(cons, pos) => match cons {
-                Constant::String(LiteralType::String, _) => {
-                    self.resolve_type(&TypeName::basic("String".to_owned()), pool, *pos)?
-                }
-                Constant::String(LiteralType::Name, _) => {
-                    self.resolve_type(&TypeName::basic("CName".to_owned()), pool, *pos)?
-                }
-                Constant::String(LiteralType::Resource, _) => {
-                    self.resolve_type(&TypeName::basic("ResRef".to_owned()), pool, *pos)?
-                }
-                Constant::String(LiteralType::TweakDbId, _) => {
-                    self.resolve_type(&TypeName::basic("TweakDBID".to_owned()), pool, *pos)?
-                }
-                Constant::Float(_) => self.resolve_type(&TypeName::basic("Float".to_owned()), pool, *pos)?,
-                Constant::Int(_) => self.resolve_type(&TypeName::basic("Int32".to_owned()), pool, *pos)?,
-                Constant::Uint(_) => self.resolve_type(&TypeName::basic("Uint32".to_owned()), pool, *pos)?,
-                Constant::Bool(_) => self.resolve_type(&TypeName::basic("Bool".to_owned()), pool, *pos)?,
+                Constant::String(LiteralType::String, _) => self.resolve_type(&TypeName::STRING, pool, *pos)?,
+                Constant::String(LiteralType::Name, _) => self.resolve_type(&TypeName::CNAME, pool, *pos)?,
+                Constant::String(LiteralType::Resource, _) => self.resolve_type(&TypeName::RESOURCE, pool, *pos)?,
+                Constant::String(LiteralType::TweakDbId, _) => self.resolve_type(&TypeName::TWEAKDB_ID, pool, *pos)?,
+                Constant::Float(_) => self.resolve_type(&TypeName::FLOAT, pool, *pos)?,
+                Constant::Int(_) => self.resolve_type(&TypeName::INT32, pool, *pos)?,
+                Constant::Uint(_) => self.resolve_type(&TypeName::UINT32, pool, *pos)?,
+                Constant::Bool(_) => self.resolve_type(&TypeName::BOOL, pool, *pos)?,
             },
             Expr::Null => TypeId::Null,
             Expr::This(pos) => match self.this {
@@ -596,25 +593,25 @@ impl Scope {
         }
         let type_ = self.infer_type(&args[0], None, pool)?;
         let result = match (intrinsic, type_) {
-            (IntrinsicOp::Equals, _) => self.resolve_type(&TypeName::basic("Bool".to_owned()), pool, pos)?,
-            (IntrinsicOp::NotEquals, _) => self.resolve_type(&TypeName::basic("Bool".to_owned()), pool, pos)?,
+            (IntrinsicOp::Equals, _) => self.resolve_type(&TypeName::BOOL, pool, pos)?,
+            (IntrinsicOp::NotEquals, _) => self.resolve_type(&TypeName::BOOL, pool, pos)?,
             (IntrinsicOp::ArrayClear, _) => TypeId::Void,
-            (IntrinsicOp::ArraySize, _) => self.resolve_type(&TypeName::basic("Int32".to_owned()), pool, pos)?,
+            (IntrinsicOp::ArraySize, _) => self.resolve_type(&TypeName::INT32, pool, pos)?,
             (IntrinsicOp::ArrayResize, _) => TypeId::Void,
             (IntrinsicOp::ArrayFindFirst, TypeId::Array(member)) => *member,
             (IntrinsicOp::ArrayFindLast, TypeId::Array(member)) => *member,
-            (IntrinsicOp::ArrayContains, _) => self.resolve_type(&TypeName::basic("Bool".to_owned()), pool, pos)?,
+            (IntrinsicOp::ArrayContains, _) => self.resolve_type(&TypeName::BOOL, pool, pos)?,
             (IntrinsicOp::ArrayPush, _) => TypeId::Void,
             (IntrinsicOp::ArrayPop, TypeId::Array(member)) => *member,
             (IntrinsicOp::ArrayInsert, _) => TypeId::Void,
-            (IntrinsicOp::ArrayRemove, _) => TypeId::Void,
+            (IntrinsicOp::ArrayRemove, _) => self.resolve_type(&TypeName::BOOL, pool, pos)?,
             (IntrinsicOp::ArrayGrow, _) => TypeId::Void,
-            (IntrinsicOp::ArrayErase, _) => TypeId::Void,
+            (IntrinsicOp::ArrayErase, _) => self.resolve_type(&TypeName::BOOL, pool, pos)?,
             (IntrinsicOp::ArrayLast, TypeId::Array(member)) => *member,
-            (IntrinsicOp::ToString, _) => self.resolve_type(&TypeName::basic("String".to_owned()), pool, pos)?,
-            (IntrinsicOp::EnumInt, _) => self.resolve_type(&TypeName::basic("Int32".to_owned()), pool, pos)?,
+            (IntrinsicOp::ToString, _) => self.resolve_type(&TypeName::STRING, pool, pos)?,
+            (IntrinsicOp::EnumInt, _) => self.resolve_type(&TypeName::INT32, pool, pos)?,
             (IntrinsicOp::IntEnum, _) if expected.is_some() => expected.unwrap().clone(),
-            (IntrinsicOp::ToVariant, _) => self.resolve_type(&TypeName::basic("Variant".to_owned()), pool, pos)?,
+            (IntrinsicOp::ToVariant, _) => self.resolve_type(&TypeName::VARIANT, pool, pos)?,
             (IntrinsicOp::FromVariant, _) if expected.is_some() => expected.unwrap().clone(),
             (IntrinsicOp::AsRef, type_) => TypeId::ScriptRef(Box::new(type_)),
             (IntrinsicOp::Deref, TypeId::ScriptRef(inner)) => *inner,

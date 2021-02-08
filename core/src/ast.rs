@@ -8,8 +8,8 @@ use strum::Display;
 pub enum Expr {
     Ident(Ident, Pos),
     Constant(Constant, Pos),
-    Declare(Ident, Option<TypeName>, Option<Box<Expr>>, Pos),
-    Cast(TypeName, Box<Expr>, Pos),
+    Declare(Ident, Option<TypeName<String>>, Option<Box<Expr>>, Pos),
+    Cast(TypeName<String>, Box<Expr>, Pos),
     Assign(Box<Expr>, Box<Expr>, Pos),
     Call(Ident, Vec<Expr>, Pos),
     MethodCall(Box<Expr>, Ident, Vec<Expr>, Pos),
@@ -179,37 +179,36 @@ impl Target {
 }
 
 #[derive(Debug)]
-pub struct TypeName {
-    pub name: String,
-    pub arguments: Vec<TypeName>,
+pub struct TypeName<S: AsRef<str>> {
+    pub name: S,
+    pub arguments: Vec<TypeName<S>>,
 }
 
-impl Display for TypeName {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.mangled())
-    }
+impl TypeName<&str> {
+    pub const BOOL: Self = TypeName::basic("Bool");
+    pub const INT32: Self = TypeName::basic("Int32");
+    pub const UINT32: Self = TypeName::basic("Uint32");
+    pub const FLOAT: Self = TypeName::basic("Float");
+    pub const STRING: Self = TypeName::basic("String");
+    pub const VARIANT: Self = TypeName::basic("Variant");
+    pub const CNAME: Self = TypeName::basic("CName");
+    pub const RESOURCE: Self = TypeName::basic("ResRef");
+    pub const TWEAKDB_ID: Self = TypeName::basic("TweakDBID");
 }
 
-impl TypeName {
-    fn unwrapped(&self) -> &TypeName {
-        match self.name.as_str() {
+impl<S: AsRef<str>> TypeName<S> {
+    fn unwrapped(&self) -> &Self {
+        match self.name.as_ref() {
             "ref" => &self.arguments[0].unwrapped(),
             "wref" => &self.arguments[0].unwrapped(),
             _ => self,
         }
     }
 
-    pub fn basic(name: String) -> TypeName {
+    pub const fn basic(name: S) -> Self {
         TypeName {
             name,
             arguments: vec![],
-        }
-    }
-
-    pub fn generic(name: String, arg: TypeName) -> TypeName {
-        TypeName {
-            name,
-            arguments: vec![arg],
         }
     }
 
@@ -217,7 +216,7 @@ impl TypeName {
     pub fn mangled(&self) -> String {
         let unwrapped = self.unwrapped();
         match unwrapped.arguments.first() {
-            None => unwrapped.name.clone(),
+            None => unwrapped.name.as_ref().to_owned(),
             Some(head) => {
                 let args = unwrapped
                     .arguments
@@ -225,7 +224,7 @@ impl TypeName {
                     .skip(1)
                     .map(|tp| tp.mangled())
                     .fold(head.mangled(), |acc, el| format!("{},{}", acc, el));
-                format!("{}<{}>", unwrapped.name, args)
+                format!("{}<{}>", unwrapped.name.as_ref(), args)
             }
         }
     }
@@ -233,11 +232,17 @@ impl TypeName {
     // Used for storing types in the constant pool
     pub fn repr(&self) -> String {
         if self.arguments.is_empty() {
-            self.name.clone()
+            self.name.as_ref().to_owned()
         } else {
-            self.arguments
-                .iter()
-                .fold(self.name.to_owned(), |acc, tp| format!("{}:{}", acc, tp.repr()))
+            self.arguments.iter().fold(self.name.as_ref().to_owned(), |acc, tp| {
+                format!("{}:{}", acc, tp.repr())
+            })
         }
+    }
+}
+
+impl<S: AsRef<str>> Display for TypeName<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.mangled())
     }
 }

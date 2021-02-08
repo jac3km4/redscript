@@ -259,7 +259,7 @@ impl<'a> Compiler<'a> {
     fn define_field(
         &mut self,
         field: Declaration,
-        type_: TypeName,
+        type_: TypeName<String>,
         parent: PoolIndex<Class>,
     ) -> Result<PoolIndex<Field>, Error> {
         let name = self.pool.names.add(field.name);

@@ -544,22 +544,15 @@ pub struct PoolIndex<A> {
 }
 
 impl<A> PoolIndex<A> {
-    fn new(index: usize) -> PoolIndex<A> {
+    const fn new(index: usize) -> PoolIndex<A> {
         PoolIndex {
             index,
             phantom: PhantomData,
         }
     }
 
-    pub const UNDEFINED: PoolIndex<A> = PoolIndex {
-        index: 0,
-        phantom: PhantomData,
-    };
-
-    pub const DEFAULT_SOURCE: PoolIndex<A> = PoolIndex {
-        index: 1,
-        phantom: PhantomData,
-    };
+    pub const UNDEFINED: PoolIndex<A> = PoolIndex::new(0);
+    pub const DEFAULT_SOURCE: PoolIndex<A> = PoolIndex::new(1);
 
     pub fn is_undefined(&self) -> bool {
         self.index == 0
