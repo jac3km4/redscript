@@ -295,7 +295,7 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, verbose: bool, depth: usize) -
         }
         Expr::Goto(jump, _) if !jump.resolved => write!(out, "goto {}", jump.position)?,
         Expr::Goto(_, _) => (),
-        Expr::If(condition, true_, false_) => {
+        Expr::If(condition, true_, false_, _) => {
             write!(out, "if ")?;
             write_expr(out, condition, verbose, 0)?;
             writeln!(out, " {{")?;
@@ -314,7 +314,7 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, verbose: bool, depth: usize) -
             write!(out, " : ")?;
             write_expr(out, false_, verbose, 0)?;
         }
-        Expr::While(condition, body) => {
+        Expr::While(condition, body, _) => {
             write!(out, "while ")?;
             write_expr(out, condition, verbose, 0)?;
             writeln!(out, " {{")?;
