@@ -51,8 +51,7 @@ private final func GetSellableJunk() -> array<wref<gameItemData>> {
   while i < Cast(ArraySize(sellableItems)) {
     let type = RPGManager.GetItemRecord(sellableItems[i].GetID()).ItemType().Type();
     if Equals(type, gamedataItemType.Gen_Junk) || Equals(type, gamedataItemType.Con_Edible) {
-        let tmp: wref<gameItemData> = sellableItems[i];
-        ArrayPush(result, tmp);
+        ArrayPush(result, sellableItems[i]);
     };
     i += Cast(1);
   };

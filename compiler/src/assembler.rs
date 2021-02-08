@@ -2,7 +2,7 @@ use std::iter;
 use std::ops::Deref;
 use std::str::FromStr;
 
-use redscript::ast::{Constant, Expr, Ident, LiteralType, Pos, Seq};
+use redscript::ast::{Constant, Expr, Ident, LiteralType, Pos, Seq, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Instr, Offset};
 use redscript::definition::{Definition, Local, LocalFlags, ParameterFlags, Type};
@@ -133,12 +133,9 @@ impl Assembler {
             }
             Expr::Assign(lhs, rhs, pos) => {
                 let lhs_type = scope.infer_type(lhs, None, pool)?;
-                let rhs_type = scope.infer_type(rhs, Some(&lhs_type), pool)?;
-                let conv = scope.convert_type(&rhs_type, &lhs_type, pool, *pos)?;
                 self.emit(Instr::Assign);
                 self.compile(lhs, None, pool, scope)?;
-                self.compile_conversion(conv);
-                self.compile(rhs, Some(&lhs_type), pool, scope)?;
+                self.compile_with_conversion(&rhs, &lhs_type, pool, scope, *pos)?;
             }
             Expr::ArrayElem(expr, idx, pos) => {
                 match scope.infer_type(expr, None, pool)? {
@@ -169,10 +166,7 @@ impl Assembler {
                         for (arg, field_idx) in args.iter().zip(fields) {
                             let field = pool.field(field_idx)?;
                             let field_type = scope.resolve_type_from_pool(field.type_, pool, *pos)?;
-                            let arg_type = scope.infer_type(arg, Some(&field_type), pool)?;
-                            let conv = scope.convert_type(&arg_type, &field_type, pool, *pos)?;
-                            self.compile_conversion(conv);
-                            self.compile(arg, Some(&field_type), pool, scope)?;
+                            self.compile_with_conversion(arg, &field_type, pool, scope, *pos)?;
                         }
                     } else if args.is_empty() {
                         self.emit(Instr::New(idx));
@@ -187,11 +181,8 @@ impl Assembler {
                 let fun = pool.function(scope.function.unwrap())?;
                 if let Some(ret_type) = fun.return_type {
                     let expected = scope.resolve_type_from_pool(ret_type, pool, *pos)?;
-                    let type_ = scope.infer_type(expr, Some(&expected), pool)?;
-                    let conv = scope.convert_type(&type_, &expected, pool, *pos)?;
                     self.emit(Instr::Return);
-                    self.compile_conversion(conv);
-                    self.compile(expr, Some(&expected), pool, scope)?;
+                    self.compile_with_conversion(expr, &expected, pool, scope, *pos)?;
                 } else {
                     return Err(Error::CompileError("Function should return nothing".to_string(), *pos));
                 }
@@ -409,6 +400,20 @@ impl Assembler {
         }
     }
 
+    fn compile_with_conversion(
+        &mut self,
+        expr: &Expr,
+        expected: &TypeId,
+        pool: &mut ConstantPool,
+        scope: &mut Scope,
+        pos: Pos,
+    ) -> Result<(), Error> {
+        let type_ = scope.infer_type(expr, Some(expected), pool)?;
+        let conv = scope.convert_type(&type_, expected, pool, pos)?;
+        self.compile_conversion(conv);
+        self.compile(expr, Some(expected), pool, scope)
+    }
+
     fn compile_intrinsic(
         &mut self,
         intrinsic: IntrinsicOp,
@@ -443,59 +448,63 @@ impl Assembler {
                 self.compile(&args[0], None, pool, scope)
             }
             (IntrinsicOp::ArrayResize, TypeId::Array(_)) => {
+                let size_type = scope.resolve_type(&TypeName::INT32, pool, pos)?;
                 self.emit(Instr::ArrayResize(type_idx));
                 self.compile(&args[0], None, pool, scope)?;
-                self.compile(&args[1], None, pool, scope)
+                self.compile_with_conversion(&args[1], &size_type, pool, scope, pos)
             }
-            (IntrinsicOp::ArrayFindFirst, TypeId::Array(_)) => {
+            (IntrinsicOp::ArrayFindFirst, TypeId::Array(elem)) => {
                 self.emit(Instr::ArrayFindFirst(type_idx));
                 self.compile(&args[0], None, pool, scope)?;
-                self.compile(&args[1], None, pool, scope)
+                self.compile_with_conversion(&args[1], &elem, pool, scope, pos)
             }
-            (IntrinsicOp::ArrayFindLast, TypeId::Array(_)) => {
+            (IntrinsicOp::ArrayFindLast, TypeId::Array(elem)) => {
                 self.emit(Instr::ArrayFindLast(type_idx));
                 self.compile(&args[0], None, pool, scope)?;
-                self.compile(&args[1], None, pool, scope)
+                self.compile_with_conversion(&args[1], &elem, pool, scope, pos)
             }
-            (IntrinsicOp::ArrayContains, TypeId::Array(_)) => {
+            (IntrinsicOp::ArrayContains, TypeId::Array(elem)) => {
                 self.emit(Instr::ArrayContains(type_idx));
                 self.compile(&args[0], None, pool, scope)?;
-                self.compile(&args[1], None, pool, scope)
+                self.compile_with_conversion(&args[1], &elem, pool, scope, pos)
             }
-            (IntrinsicOp::ArrayCount, TypeId::Array(_)) => {
+            (IntrinsicOp::ArrayCount, TypeId::Array(elem)) => {
                 self.emit(Instr::ArrayCount(type_idx));
                 self.compile(&args[0], None, pool, scope)?;
-                self.compile(&args[1], None, pool, scope)
+                self.compile_with_conversion(&args[1], &elem, pool, scope, pos)
             }
-            (IntrinsicOp::ArrayPush, TypeId::Array(_)) => {
+            (IntrinsicOp::ArrayPush, TypeId::Array(elem)) => {
                 self.emit(Instr::ArrayPush(type_idx));
                 self.compile(&args[0], None, pool, scope)?;
-                self.compile(&args[1], None, pool, scope)
+                self.compile_with_conversion(&args[1], &elem, pool, scope, pos)
             }
             (IntrinsicOp::ArrayPop, TypeId::Array(_)) => {
                 self.emit(Instr::ArrayPop(type_idx));
                 self.compile(&args[0], None, pool, scope)
             }
-            (IntrinsicOp::ArrayInsert, TypeId::Array(_)) => {
+            (IntrinsicOp::ArrayInsert, TypeId::Array(elem)) => {
+                let idx_type = scope.resolve_type(&TypeName::INT32, pool, pos)?;
                 self.emit(Instr::ArrayInsert(type_idx));
                 self.compile(&args[0], None, pool, scope)?;
-                self.compile(&args[1], None, pool, scope)?;
-                self.compile(&args[2], None, pool, scope)
+                self.compile_with_conversion(&args[1], &idx_type, pool, scope, pos)?;
+                self.compile_with_conversion(&args[2], &elem, pool, scope, pos)
             }
-            (IntrinsicOp::ArrayRemove, TypeId::Array(_)) => {
+            (IntrinsicOp::ArrayRemove, TypeId::Array(elem)) => {
                 self.emit(Instr::ArrayRemove(type_idx));
                 self.compile(&args[0], None, pool, scope)?;
-                self.compile(&args[1], None, pool, scope)
+                self.compile_with_conversion(&args[1], &elem, pool, scope, pos)
             }
             (IntrinsicOp::ArrayGrow, TypeId::Array(_)) => {
+                let size_type = scope.resolve_type(&TypeName::INT32, pool, pos)?;
                 self.emit(Instr::ArrayGrow(type_idx));
                 self.compile(&args[0], None, pool, scope)?;
-                self.compile(&args[1], None, pool, scope)
+                self.compile_with_conversion(&args[1], &size_type, pool, scope, pos)
             }
             (IntrinsicOp::ArrayErase, TypeId::Array(_)) => {
+                let idx_type = scope.resolve_type(&TypeName::INT32, pool, pos)?;
                 self.emit(Instr::ArrayErase(type_idx));
                 self.compile(&args[0], None, pool, scope)?;
-                self.compile(&args[1], None, pool, scope)
+                self.compile_with_conversion(&args[1], &idx_type, pool, scope, pos)
             }
             (IntrinsicOp::ArrayLast, TypeId::Array(_)) => {
                 self.emit(Instr::ArrayLast(type_idx));
@@ -518,14 +527,15 @@ impl Assembler {
                 self.compile(&args[0], None, pool, scope)
             }
             (IntrinsicOp::FromVariant, _) => {
+                let expected = scope.resolve_type(&TypeName::VARIANT, pool, pos)?;
                 self.emit(Instr::ToVariant(type_idx));
-                self.compile(&args[0], None, pool, scope)
+                self.compile_with_conversion(&args[0], &expected, pool, scope, pos)
             }
-            (IntrinsicOp::AsRef, TypeId::ScriptRef(_)) => {
+            (IntrinsicOp::AsRef, _) => {
                 self.emit(Instr::AsRef(type_idx));
                 self.compile(&args[0], None, pool, scope)
             }
-            (IntrinsicOp::Deref, _) => {
+            (IntrinsicOp::Deref, TypeId::ScriptRef(_)) => {
                 self.emit(Instr::Deref(type_idx));
                 self.compile(&args[0], None, pool, scope)
             }
