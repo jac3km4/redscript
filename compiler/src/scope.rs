@@ -560,13 +560,13 @@ impl Scope {
             },
             Expr::Null => TypeId::Null,
             Expr::This(pos) => match self.this {
-                Some(class_idx) => TypeId::Class(class_idx),
+                Some(class_idx) => TypeId::Ref(Box::new(TypeId::Class(class_idx))),
                 None => return Err(Error::CompileError("No 'this' in static context".to_owned(), *pos)),
             },
             Expr::Super(pos) => match self.this {
                 Some(class_idx) => {
                     let base_idx = pool.class(class_idx)?.base;
-                    TypeId::Class(base_idx)
+                    TypeId::Ref(Box::new(TypeId::Class(base_idx)))
                 }
                 None => return Err(Error::CompileError("No 'super' in static context".to_owned(), *pos)),
             },
