@@ -442,7 +442,12 @@ impl Scope {
                 Reference::Field(idx) => self.resolve_type_from_pool(pool.field(idx)?.type_, pool, *pos)?,
                 Reference::Class(idx) => {
                     let name = pool.definition_name(idx)?;
-                    self.resolve_type(&TypeName::basic(name.deref().clone()), pool, *pos)?
+                    let class = pool.class(idx)?;
+                    if class.flags.is_struct() {
+                        self.resolve_type(&TypeName::basic(name.deref().clone()), pool, *pos)?
+                    } else {
+                        self.resolve_type(&TypeName::basic(name.deref().clone()), pool, *pos)?
+                    }
                 }
                 Reference::Enum(idx) => {
                     let name = pool.definition_name(idx)?;
@@ -494,11 +499,10 @@ impl Scope {
             },
             Expr::New(name, _, pos) => {
                 if let Reference::Class(class_idx) = self.resolve_reference(name.clone(), *pos)? {
-                    let type_ = TypeId::Class(class_idx);
                     if pool.class(class_idx)?.flags.is_struct() {
-                        type_
+                        TypeId::Struct(class_idx)
                     } else {
-                        TypeId::Ref(Box::new(type_))
+                        TypeId::Ref(Box::new(TypeId::Class(class_idx)))
                     }
                 } else {
                     return Err(Error::CompileError(format!("{} can't be constructed", name), *pos));
