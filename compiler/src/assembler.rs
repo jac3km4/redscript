@@ -217,14 +217,11 @@ impl Assembler {
                     self.append(Assembler::from_seq(body, pool, &mut scope.clone())?);
                 }
             }
-            Expr::If(cond, if_, else_) => {
-                let type_ = scope.infer_type(cond, None, pool)?;
-                let cond_code = Assembler::from_expr(cond, None, pool, &mut scope.clone())?;
-                let cond_code = match type_ {
-                    TypeId::Ref(_) => cond_code.prefix(Instr::RefToBool),
-                    TypeId::WeakRef(_) => cond_code.prefix(Instr::WeakRefToBool),
-                    _ => cond_code,
-                };
+            Expr::If(cond, if_, else_, pos) => {
+                let bool_type = scope.resolve_type(&TypeName::BOOL, pool, *pos)?;
+                let mut cond_code = Assembler::new();
+                cond_code.compile_with_conversion(cond, &bool_type, pool, scope, *pos)?;
+
                 let mut if_branch = Assembler::from_seq(if_, pool, &mut scope.clone())?;
                 let else_branch = if let Some(else_code) = else_ {
                     let else_branch = Assembler::from_seq(else_code, pool, &mut scope.clone())?;
@@ -238,8 +235,11 @@ impl Assembler {
                 self.append(if_branch);
                 self.append(else_branch);
             }
-            Expr::Conditional(cond, true_, false_, _) => {
-                let cond_code = Assembler::from_expr(cond, None, pool, scope)?;
+            Expr::Conditional(cond, true_, false_, pos) => {
+                let bool_type = scope.resolve_type(&TypeName::BOOL, pool, *pos)?;
+                let mut cond_code = Assembler::new();
+                cond_code.compile_with_conversion(cond, &bool_type, pool, scope, *pos)?;
+
                 let true_code = Assembler::from_expr(true_, expected, pool, scope)?;
                 let false_code = Assembler::from_expr(false_, expected, pool, scope)?;
                 self.emit(Instr::Conditional(
@@ -250,8 +250,11 @@ impl Assembler {
                 self.append(true_code);
                 self.append(false_code);
             }
-            Expr::While(cond, body) => {
-                let cond_code = Assembler::from_expr(cond, None, pool, &mut scope.clone())?;
+            Expr::While(cond, body, pos) => {
+                let bool_type = scope.resolve_type(&TypeName::BOOL, pool, *pos)?;
+                let mut cond_code = Assembler::new();
+                cond_code.compile_with_conversion(cond, &bool_type, pool, scope, *pos)?;
+
                 let mut body_code = Assembler::from_seq(body, pool, &mut scope.clone())?;
                 body_code.emit(Instr::Jump(-(cond_code.offset() + body_code.offset())));
 

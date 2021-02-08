@@ -80,12 +80,12 @@ impl<'a> Decompiler<'a> {
         self.code.goto(target)?;
 
         let result = if resolve_jump(&mut body, Some(position)).is_some() {
-            Expr::While(Box::new(condition), body)
+            Expr::While(Box::new(condition), body, Pos::ZERO)
         } else if let Some(jump) = resolve_jump(&mut body, None) {
             let else_case = self.consume_path(Position::new(jump.position))?;
-            Expr::If(Box::new(condition), body, Some(else_case))
+            Expr::If(Box::new(condition), body, Some(else_case), Pos::ZERO)
         } else {
-            Expr::If(Box::new(condition), body, None)
+            Expr::If(Box::new(condition), body, None, Pos::ZERO)
         };
         Ok(result)
     }
@@ -339,8 +339,8 @@ fn resolve_jump(seq: &mut Seq, target: Option<Position>) -> Option<&mut Target> 
             goto.resolved = true;
             Some(goto)
         }
-        Expr::If(_, if_, None) => resolve_jump(if_, target),
-        Expr::If(_, if_, Some(else_)) => resolve_jump(if_, target).or_else(move || resolve_jump(else_, target)),
+        Expr::If(_, if_, None, _) => resolve_jump(if_, target),
+        Expr::If(_, if_, Some(else_), _) => resolve_jump(if_, target).or_else(move || resolve_jump(else_, target)),
         _ => None,
     })
 }

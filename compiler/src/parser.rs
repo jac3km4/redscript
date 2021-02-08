@@ -217,12 +217,12 @@ peg::parser! {
             = keyword("default") _ ":" _ body:seq() { body }
 
         rule while_() -> Expr
-            = keyword("while") _ cond:expr() _ "{" _ body:seq() _ "}" _ ";"?
-            { Expr::While(Box::new(cond), body) }
+            = pos:position!() keyword("while") _ cond:expr() _ "{" _ body:seq() _ "}" _ ";"?
+            { Expr::While(Box::new(cond), body, Pos::new(pos)) }
 
         rule if_() -> Expr
-            = keyword("if") _ cond:expr() _ "{" _ if_:seq() _ "}" _ else_:else_()? ";"?
-            { Expr::If(Box::new(cond), if_, else_) }
+            = pos:position!() keyword("if") _ cond:expr() _ "{" _ if_:seq() _ "}" _ else_:else_()? ";"?
+            { Expr::If(Box::new(cond), if_, else_, Pos::new(pos)) }
         rule else_() -> Seq
             = keyword("else") _ "{" _ body:seq() _ "}" { body }
 
@@ -354,7 +354,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", stmt),
-            r#"While(BinOp(Ident(Ident("i"), Pos(6)), Constant(Int(1000), Pos(10)), Less, Pos(8)), Seq { exprs: [BinOp(Member(This(Pos(33)), Ident("counter"), Pos(37)), Member(Ident(Ident("Object"), Pos(49)), Ident("CONSTANT"), Pos(55)), AssignAdd, Pos(46)), BinOp(Ident(Ident("i"), Pos(82)), Constant(Int(1), Pos(87)), AssignAdd, Pos(84))] })"#
+            r#"While(BinOp(Ident(Ident("i"), Pos(6)), Constant(Int(1000), Pos(10)), Less, Pos(8)), Seq { exprs: [BinOp(Member(This(Pos(33)), Ident("counter"), Pos(37)), Member(Ident(Ident("Object"), Pos(49)), Ident("CONSTANT"), Pos(55)), AssignAdd, Pos(46)), BinOp(Ident(Ident("i"), Pos(82)), Constant(Int(1), Pos(87)), AssignAdd, Pos(84))] }, Pos(0))"#
         );
     }
 
@@ -370,7 +370,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", stmt),
-            r#"If(Member(This(Pos(3)), Ident("m_fixBugs"), Pos(7)), Seq { exprs: [MethodCall(This(Pos(36)), Ident("NoBugs"), [], Pos(40))] }, Some(Seq { exprs: [MethodCall(This(Pos(89)), Ident("Bugs"), [], Pos(93))] }))"#
+            r#"If(Member(This(Pos(3)), Ident("m_fixBugs"), Pos(7)), Seq { exprs: [MethodCall(This(Pos(36)), Ident("NoBugs"), [], Pos(40))] }, Some(Seq { exprs: [MethodCall(This(Pos(89)), Ident("Bugs"), [], Pos(93))] }), Pos(0))"#
         );
     }
 
