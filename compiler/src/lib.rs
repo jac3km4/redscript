@@ -46,6 +46,7 @@ impl<'a> Compiler<'a> {
         {
             let sources = std::fs::read_to_string(entry.path())?;
             files.add(entry.path().to_owned(), &sources);
+            println!("Compiling {}", entry.path().display());
         }
         let entries = match parser::parse(files.sources()) {
             Ok(res) => res,
