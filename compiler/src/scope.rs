@@ -61,10 +61,10 @@ impl Scope {
         let names = pool
             .roots()
             .filter_map(|(idx, def)| {
-                let id = Ident(pool.definition_name(idx).unwrap());
+                let ident = Ident(pool.definition_name(idx).ok()?);
                 match def.value {
-                    DefinitionValue::Class(_) => Some((id, Reference::Class(idx.cast()))),
-                    DefinitionValue::Enum(_) => Some((id, Reference::Enum(idx.cast()))),
+                    DefinitionValue::Class(_) => Some((ident, Reference::Class(idx.cast()))),
+                    DefinitionValue::Enum(_) => Some((ident, Reference::Enum(idx.cast()))),
                     _ => None,
                 }
             })
@@ -74,8 +74,8 @@ impl Scope {
             .roots()
             .filter_map(|(idx, def)| match def.value {
                 DefinitionValue::Type(_) => {
-                    let id = pool.definition_name(idx).unwrap();
-                    Some((Ident(id), idx.cast()))
+                    let ident = Ident(pool.definition_name(idx).ok()?);
+                    Some((ident, idx.cast()))
                 }
                 _ => None,
             })
@@ -325,17 +325,17 @@ impl Scope {
         &self,
         name: &TypeName<S>,
         pool: &ConstantPool,
-        location: Pos,
+        pos: Pos,
     ) -> Result<TypeId, Error> {
         let result = if let Some(res) = self.types.get(&Ident::new(name.repr())) {
-            self.resolve_type_from_pool(*res, pool, location)?
+            self.resolve_type_from_pool(*res, pool, pos)?
         } else {
             match (name.name.as_ref(), name.arguments.as_slice()) {
-                ("ref", [nested]) => TypeId::Ref(Box::new(self.resolve_type(nested, pool, location)?)),
-                ("wref", [nested]) => TypeId::WeakRef(Box::new(self.resolve_type(nested, pool, location)?)),
-                ("script_ref", [nested]) => TypeId::ScriptRef(Box::new(self.resolve_type(nested, pool, location)?)),
-                ("array", [nested]) => TypeId::Array(Box::new(self.resolve_type(nested, pool, location)?)),
-                _ => return Err(Error::CompileError(format!("Unresolved type {}", name), location)),
+                ("ref", [nested]) => TypeId::Ref(Box::new(self.resolve_type(nested, pool, pos)?)),
+                ("wref", [nested]) => TypeId::WeakRef(Box::new(self.resolve_type(nested, pool, pos)?)),
+                ("script_ref", [nested]) => TypeId::ScriptRef(Box::new(self.resolve_type(nested, pool, pos)?)),
+                ("array", [nested]) => TypeId::Array(Box::new(self.resolve_type(nested, pool, pos)?)),
+                _ => return Err(Error::CompileError(format!("Unresolved type {}", name), pos)),
             }
         };
         Ok(result)
