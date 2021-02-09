@@ -531,7 +531,7 @@ impl Assembler {
             }
             (IntrinsicOp::FromVariant, _) => {
                 let expected = scope.resolve_type(&TypeName::VARIANT, pool, pos)?;
-                self.emit(Instr::ToVariant(type_idx));
+                self.emit(Instr::FromVariant(type_idx));
                 self.compile_with_conversion(&args[0], &expected, pool, scope, pos)
             }
             (IntrinsicOp::AsRef, _) => {
