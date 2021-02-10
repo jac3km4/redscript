@@ -442,12 +442,7 @@ impl Scope {
                 Reference::Field(idx) => self.resolve_type_from_pool(pool.field(idx)?.type_, pool, *pos)?,
                 Reference::Class(idx) => {
                     let name = pool.definition_name(idx)?;
-                    let class = pool.class(idx)?;
-                    if class.flags.is_struct() {
-                        self.resolve_type(&TypeName::basic(name.deref().clone()), pool, *pos)?
-                    } else {
-                        self.resolve_type(&TypeName::basic(name.deref().clone()), pool, *pos)?
-                    }
+                    self.resolve_type(&TypeName::basic(name.deref().clone()), pool, *pos)?
                 }
                 Reference::Enum(idx) => {
                     let name = pool.definition_name(idx)?;
