@@ -474,7 +474,10 @@ impl Scope {
                 let class = match self.infer_type(expr, None, pool)?.unwrapped() {
                     TypeId::Class(class) => *class,
                     TypeId::Struct(class) => *class,
-                    _ => return Err(Error::CompileError(format!("{:?} doesn't have methods", expr), *pos)),
+                    type_ => {
+                        let error = format!("{} doesn't have methods", type_.pretty(pool)?);
+                        return Err(Error::CompileError(error, *pos));
+                    }
                 };
                 let match_ = self.resolve_method(ident.clone(), class, args, expected, pool, *pos)?;
                 match pool.function(match_.index)?.return_type {

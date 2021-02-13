@@ -1,3 +1,5 @@
+cargo-features = ["strip"]
+
 [workspace]
 members = [
   "core",
@@ -6,3 +8,6 @@ members = [
   "cli",
   "scc"
 ]
+
+[profile.release]
+strip = "symbols"
