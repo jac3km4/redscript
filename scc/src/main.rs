@@ -21,7 +21,7 @@ fn main() -> Result<(), Error> {
             load_scripts(&script_dir, &cache_dir)
         }
         _ => {
-            log::error!("Invalid arguments: {:?}", args);
+            log::error!("Invalid arguments");
             Ok(())
         }
     }
@@ -69,7 +69,7 @@ fn load_scripts(script_dir: &Path, cache_dir: &Path) -> Result<(), Error> {
 
     CompileTimestamp::of_cache_file(&file)?.write(&timestamp_path)?;
 
-    log::info!("Output successfully saved in {:?}", bundle_path);
+    log::info!("Output successfully saved to {}", bundle_path.display());
     Ok(())
 }
 

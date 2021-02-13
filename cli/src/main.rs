@@ -100,7 +100,7 @@ fn compile(opts: CompileOpts) -> Result<(), Error> {
     match compiler.compile_all(&opts.src) {
         Ok(()) => {
             bundle.save(&mut BufWriter::new(File::create(&opts.output)?))?;
-            log::info!("Output successfully saved to {:?}", opts.output);
+            log::info!("Output successfully saved to {}", opts.output.display());
         }
         Err(_) => {
             log::error!("Build failed");
@@ -144,7 +144,7 @@ fn decompile(opts: DecompileOpts) -> Result<(), Error> {
             }
         }
     }
-    log::info!("Output successfully saved to {:?}", opts.output);
+    log::info!("Output successfully saved to {}", opts.output.display());
     Ok(())
 }
 
