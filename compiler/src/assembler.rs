@@ -543,7 +543,7 @@ impl Assembler {
                 self.compile(&args[0], None, pool, scope)
             }
             (_, type_) => {
-                let err = format!("Invalid intrinsic {} call: {:?}", intrinsic, type_);
+                let err = format!("Invalid intrinsic {} call: {}", intrinsic, type_.pretty(pool)?);
                 Err(Error::CompileError(err, pos))
             }
         }

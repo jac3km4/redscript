@@ -9,3 +9,4 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 redscript = { path = "../core" }
+log = "0.4"

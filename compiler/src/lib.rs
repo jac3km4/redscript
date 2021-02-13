@@ -4,7 +4,6 @@ use std::ffi::OsStr;
 use std::path::Path;
 
 use assembler::Assembler;
-use colored::*;
 use parser::{Annotation, AnnotationName};
 use redscript::ast::{Ident, Pos, Seq, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
@@ -46,7 +45,7 @@ impl<'a> Compiler<'a> {
         {
             let sources = std::fs::read_to_string(entry.path())?;
             files.add(entry.path().to_owned(), &sources);
-            println!("Compiling {}", entry.path().display());
+            log::info!("Compiling {}", entry.path().display());
         }
         let entries = match parser::parse(files.sources()) {
             Ok(res) => res,
@@ -59,7 +58,7 @@ impl<'a> Compiler<'a> {
 
         match self.compile(entries) {
             Ok(()) => {
-                println!("Compilation complete");
+                log::info!("Compilation complete");
                 Ok(())
             }
             Err(Error::CompileError(err, pos)) => {
@@ -71,7 +70,7 @@ impl<'a> Compiler<'a> {
                 Err(Error::FunctionResolutionError(err, pos))
             }
             Err(other) => {
-                println!("{}: {:?}", "Unexpected error during compilation".red(), other);
+                log::error!("{}: {:?}", "Unexpected error during compilation", other);
                 Err(other)
             }
         }
@@ -79,10 +78,17 @@ impl<'a> Compiler<'a> {
 
     fn print_errors(files: &Files, error: &str, pos: Pos) {
         let loc = files.lookup(pos).unwrap();
-        println!("{}", format!("Compilation error at {}:", loc).red());
-        println!("{}", files.enclosing_line(&loc).trim_end().truecolor(128, 128, 128));
-        println!("{}^^^", " ".repeat(loc.position.col));
-        println!("{}", error);
+        let line = files.enclosing_line(&loc).trim_end();
+        log::error!(
+            "Failed at {}:\n \
+             {}\n \
+             {}^^^\n \
+             {}",
+            loc,
+            line,
+            " ".repeat(loc.position.col),
+            error
+        );
     }
 
     fn compile(&mut self, sources: Vec<SourceEntry>) -> Result<(), Error> {

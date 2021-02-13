@@ -8,3 +8,5 @@ edition = "2018"
 redscript = { path = "../core" }
 redscript-compiler = { path = "../compiler" }
 byteorder = "1.4"
+log = "0.4"
+simplelog = { version = "0.9", default_features = false }

@@ -13,4 +13,4 @@ peg = "0.6"
 im = "15"
 strum = { version = "0.20", features = ["derive"] }
 walkdir = "2"
-colored = "2"
+log = "0.4"
