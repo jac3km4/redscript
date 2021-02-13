@@ -453,7 +453,7 @@ impl Scope {
                 let type_ = self.resolve_type(type_name, pool, *pos)?;
                 match self.infer_type(&expr, None, pool)? {
                     TypeId::Ref(_) => TypeId::Ref(Box::new(type_)),
-                    TypeId::WeakRef(_) => TypeId::WeakRef(Box::new(type_)),
+                    TypeId::WeakRef(_) => TypeId::Ref(Box::new(type_)),
                     TypeId::ScriptRef(_) => TypeId::ScriptRef(Box::new(type_)),
                     _ => type_,
                 }

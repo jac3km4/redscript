@@ -98,6 +98,10 @@ impl Assembler {
             Expr::Cast(type_name, expr, pos) => {
                 if let TypeId::Class(class) = scope.resolve_type(type_name, pool, *pos)? {
                     self.emit(Instr::DynamicCast(class, 0));
+                    match scope.infer_type(expr, None, pool)? {
+                        TypeId::WeakRef(_) => self.compile_conversion(Conversion::WeakRefToRef),
+                        _ => {}
+                    };
                     self.compile(expr, None, pool, scope)?;
                 } else {
                     return Err(Error::CompileError(
