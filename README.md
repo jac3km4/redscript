@@ -29,22 +29,8 @@ cargo run --bin redscript-cli --release -- decompile -i '/mnt/d/games/Cyberpunk 
 *__note__: current version requires nightly version of rust (`rustup default nightly`)*
 
 ## language
-The scripts use a Swift-like language:
-```swift
-public final const func GetReprimandPerformer(opt target: EntityID) -> ref<GameObject> {
-  let agent: Agent;
-  let performer: ref<GameObject>;
-  let ps: ref<DeviceComponentPS>;
-  if !EntityID.IsDefined(target) {
-    target = GetPlayer(this.GetGameInstance()).GetEntityID();
-  };
-  if this.m_agentsRegistry.GetReprimandPerformer(target, agent) {
-    ps = this.GetPS(agent.link);
-    return ps.GetOwnerEntityWeak() as GameObject;
-  };
-  return null;
-}
-```
+The scripts use a Swift-like language.
+You can find a brief overview of it's features in the [wiki](https://github.com/jac3km4/redscript/wiki/redscript-tutorial).
 
 ## integrating with the game
 You can integrate this compiler with the game and make it compile your scripts on startup. To set that up, you need to follow these steps:
