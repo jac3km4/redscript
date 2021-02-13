@@ -46,7 +46,7 @@ impl<'a> Decompiler<'a> {
             }
             match self.consume() {
                 Ok(expr) => body.push(expr),
-                Err(Error::IOError(err)) if err.kind() == io::ErrorKind::UnexpectedEof => break,
+                Err(Error::IoError(err)) if err.kind() == io::ErrorKind::UnexpectedEof => break,
                 Err(err) => return Err(err),
             }
         }

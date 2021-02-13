@@ -4,7 +4,7 @@ use crate::ast::Pos;
 
 #[derive(Debug)]
 pub enum Error {
-    IOError(io::Error),
+    IoError(io::Error),
     DecompileError(String),
     SyntaxError(String),
     CompileError(String, Pos),
@@ -15,13 +15,13 @@ pub enum Error {
 
 impl Error {
     pub fn eof(hint: String) -> Error {
-        Error::IOError(io::Error::new(io::ErrorKind::UnexpectedEof, hint))
+        Error::IoError(io::Error::new(io::ErrorKind::UnexpectedEof, hint))
     }
 }
 
 impl From<io::Error> for Error {
     fn from(err: io::Error) -> Self {
-        Error::IOError(err)
+        Error::IoError(err)
     }
 }
 
