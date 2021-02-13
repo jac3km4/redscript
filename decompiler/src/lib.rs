@@ -118,7 +118,7 @@ impl<'a> Decompiler<'a> {
                     let mut body = self.consume_path(exit)?;
                     if let Some(Expr::Goto(_, _)) = body.exprs.last() {
                         body.exprs.pop();
-                        body.exprs.push(Expr::Break);
+                        body.exprs.push(Expr::Break(Pos::ZERO));
                     }
                     cases.push(SwitchCase(matched, body));
                 }

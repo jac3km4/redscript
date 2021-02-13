@@ -252,7 +252,7 @@ peg::parser! {
             / if_: if_() { if_ }
             / switch: switch() { switch }
             / pos:position!() keyword("return") _ val:expr()? ";" { Expr::Return(val.map(Box::new), Pos::new(pos)) }
-            / keyword("break") _ ";" { Expr::Break }
+            / pos:position!() keyword("break") _ ";" { Expr::Break(Pos::new(pos)) }
             / let_:let() { let_ }
             / expr:expr() _ ";" { expr }
 
@@ -406,7 +406,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", stmt),
-            r#"Switch(Ident(Ident("value"), Pos(7)), [SwitchCase(Constant(String(String, "0"), Pos(37)), Seq { exprs: [] }), SwitchCase(Constant(String(String, "1"), Pos(64)), Seq { exprs: [Call(Ident("Log"), [Constant(String(String, "0 or 1"), Pos(93))], Pos(89))] }), SwitchCase(Constant(String(String, "2"), Pos(126)), Seq { exprs: [Break] })], Some(Seq { exprs: [Call(Ident("Log"), [Constant(String(String, "default"), Pos(208))], Pos(204))] }))"#
+            r#"Switch(Ident(Ident("value"), Pos(7)), [SwitchCase(Constant(String(String, "0"), Pos(37)), Seq { exprs: [] }), SwitchCase(Constant(String(String, "1"), Pos(64)), Seq { exprs: [Call(Ident("Log"), [Constant(String(String, "0 or 1"), Pos(93))], Pos(89))] }), SwitchCase(Constant(String(String, "2"), Pos(126)), Seq { exprs: [Break(Pos(151))] })], Some(Seq { exprs: [Call(Ident("Log"), [Constant(String(String, "default"), Pos(208))], Pos(204))] }))"#
         );
     }
 
