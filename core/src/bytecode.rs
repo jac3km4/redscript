@@ -93,7 +93,7 @@ pub enum Instr {
     WeakRefToBool,
     EnumToI32(PoolIndex<Type>, u8),
     I32ToEnum(PoolIndex<Type>, u8),
-    DynamicCast(PoolIndex<Type>, u8),
+    DynamicCast(PoolIndex<Class>, u8),
     ToString(PoolIndex<Type>),
     ToVariant(PoolIndex<Type>),
     FromVariant(PoolIndex<Type>),

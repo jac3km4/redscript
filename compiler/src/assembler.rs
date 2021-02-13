@@ -96,9 +96,15 @@ impl Assembler {
                 }
             },
             Expr::Cast(type_name, expr, pos) => {
-                let type_ = scope.resolve_type(type_name, pool, *pos)?;
-                self.emit(Instr::DynamicCast(scope.get_type_index(&type_, pool)?, 0));
-                self.compile(expr, None, pool, scope)?;
+                if let TypeId::Class(class) = scope.resolve_type(type_name, pool, *pos)? {
+                    self.emit(Instr::DynamicCast(class, 0));
+                    self.compile(expr, None, pool, scope)?;
+                } else {
+                    return Err(Error::CompileError(
+                        "Dynamic cast is only allowed for class types".to_owned(),
+                        *pos,
+                    ));
+                }
             }
             Expr::Declare(name, type_, init, pos) => {
                 let name_idx = pool.names.add(name.0.deref().to_owned());
