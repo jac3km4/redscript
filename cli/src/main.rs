@@ -3,12 +3,14 @@ use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
 
 use gumdrop::Options;
+use log::LevelFilter;
 use redscript::bundle::ScriptBundle;
 use redscript::definition::DefinitionValue;
 use redscript::error::Error;
 use redscript_compiler::Compiler;
 use redscript_decompiler::files::FileIndex;
 use redscript_decompiler::print::{write_definition, OutputMode};
+use simplelog::{TermLogger, TerminalMode};
 
 #[derive(Debug, Options)]
 enum Command {
@@ -53,7 +55,10 @@ struct LintOpts {
 }
 
 fn main() {
-    run().unwrap_or_else(|err| println!("{:?}", err));
+    let log_config = simplelog::ConfigBuilder::new().set_time_format_str("").build();
+    TermLogger::init(LevelFilter::Info, log_config, TerminalMode::Mixed).unwrap();
+
+    run().unwrap_or_else(|err| log::error!("{:?}", err));
 }
 
 fn run() -> Result<(), Error> {
@@ -61,15 +66,22 @@ fn run() -> Result<(), Error> {
     let command: Command = match Command::parse_args_default(&args) {
         Ok(res) => res,
         Err(err) => {
-            println!("{}", err);
-            println!("Usage:");
-            println!("{}", Command::usage());
-            println!("Compiler options:");
-            println!("{}", CompileOpts::usage());
-            println!("Decompiler options:");
-            println!("{}", DecompileOpts::usage());
-            println!("Lint options:");
-            println!("{}", LintOpts::usage());
+            log::info!(
+                "{} \n\
+                 Usage: \n\
+                 {} \n\
+                 Compiler options: \n\
+                 {} \n\
+                 Decompiler options: \n\
+                 {} \n\
+                 Lint options \n\
+                 {}",
+                err,
+                Command::usage(),
+                CompileOpts::usage(),
+                DecompileOpts::usage(),
+                LintOpts::usage()
+            );
             return Ok(());
         }
     };
@@ -88,10 +100,10 @@ fn compile(opts: CompileOpts) -> Result<(), Error> {
     match compiler.compile_all(&opts.src) {
         Ok(()) => {
             bundle.save(&mut BufWriter::new(File::create(&opts.output)?))?;
-            println!("Output successfully saved to {:?}", opts.output);
+            log::info!("Output successfully saved to {:?}", opts.output);
         }
         Err(_) => {
-            println!("Build failed");
+            log::error!("Build failed");
         }
     }
     Ok(())
@@ -115,7 +127,7 @@ fn decompile(opts: DecompileOpts) -> Result<(), Error> {
             let mut output = BufWriter::new(File::create(path)?);
             for def in entry.definitions {
                 if let Err(err) = write_definition(&mut output, def, pool, 0, mode) {
-                    println!("Failed to process definition at {:?}: {:?}", def, err);
+                    log::error!("Failed to process definition at {:?}: {:?}", def, err);
                 }
             }
         }
@@ -128,11 +140,11 @@ fn decompile(opts: DecompileOpts) -> Result<(), Error> {
                 || matches!(&def.value, DefinitionValue::Function(_))
         }) {
             if let Err(err) = write_definition(&mut output, def, pool, 0, mode) {
-                println!("Failed to process definition at {:?}: {:?}", def, err);
+                log::error!("Failed to process definition at {:?}: {:?}", def, err);
             }
         }
     }
-    println!("Output successfully saved to {:?}", opts.output);
+    log::info!("Output successfully saved to {:?}", opts.output);
     Ok(())
 }
 
@@ -142,7 +154,7 @@ fn lint(opts: LintOpts) -> Result<(), Error> {
             let mut bundle: ScriptBundle = ScriptBundle::load(&mut BufReader::new(File::open(bundle_path)?))?;
             let mut compiler = Compiler::new(&mut bundle.pool)?;
             if compiler.compile_all(&opts.src).is_ok() {
-                println!("Lint successful");
+                log::info!("Lint successful");
             }
             Ok(())
         }
