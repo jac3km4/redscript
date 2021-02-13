@@ -287,7 +287,7 @@ impl Assembler {
             },
             Expr::Call(ident, args, pos) => {
                 if let Ok(intrinsic) = IntrinsicOp::from_str(&ident.0) {
-                    self.compile_intrinsic(intrinsic, args, pool, scope, *pos)?;
+                    self.compile_intrinsic(intrinsic, args, expected, pool, scope, *pos)?;
                 } else {
                     let match_ = scope.resolve_function(
                         FunctionName::global(ident.clone()),
@@ -423,6 +423,7 @@ impl Assembler {
         &mut self,
         intrinsic: IntrinsicOp,
         args: &[Expr],
+        expected: Option<&TypeId>,
         pool: &mut ConstantPool,
         scope: &mut Scope,
         pos: Pos,
@@ -523,7 +524,8 @@ impl Assembler {
                 self.emit(Instr::EnumToI32(type_idx, 4));
                 self.compile(&args[0], None, pool, scope)
             }
-            (IntrinsicOp::IntEnum, _) => {
+            (IntrinsicOp::IntEnum, _) if expected.is_some() => {
+                let type_idx = scope.get_type_index(&expected.unwrap(), pool)?;
                 self.emit(Instr::I32ToEnum(type_idx, 4));
                 self.compile(&args[0], None, pool, scope)
             }
@@ -531,10 +533,11 @@ impl Assembler {
                 self.emit(Instr::ToVariant(type_idx));
                 self.compile(&args[0], None, pool, scope)
             }
-            (IntrinsicOp::FromVariant, _) => {
-                let expected = scope.resolve_type(&TypeName::VARIANT, pool, pos)?;
+            (IntrinsicOp::FromVariant, _) if expected.is_some() => {
+                let type_idx = scope.get_type_index(&expected.unwrap(), pool)?;
+                let param_type = scope.resolve_type(&TypeName::VARIANT, pool, pos)?;
                 self.emit(Instr::FromVariant(type_idx));
-                self.compile_with_conversion(&args[0], &expected, pool, scope, pos)
+                self.compile_with_conversion(&args[0], &param_type, pool, scope, pos)
             }
             (IntrinsicOp::AsRef, _) => {
                 self.emit(Instr::AsRef(type_idx));
