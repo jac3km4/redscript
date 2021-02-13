@@ -10,7 +10,9 @@ use strum::EnumString;
 pub enum SourceEntry {
     Class(ClassSource),
     Function(FunctionSource),
+    GlobalLet(FieldSource),
 }
+
 #[derive(Debug)]
 pub struct ClassSource {
     pub qualifiers: Qualifiers,
@@ -23,7 +25,13 @@ pub struct ClassSource {
 #[derive(Debug)]
 pub enum MemberSource {
     Function(FunctionSource),
-    Field(Declaration, TypeName<String>),
+    Field(FieldSource),
+}
+
+#[derive(Debug)]
+pub struct FieldSource {
+    pub declaration: Declaration,
+    pub type_: TypeName<String>,
 }
 
 #[derive(Debug)]
@@ -96,6 +104,7 @@ impl Annotation {}
 pub enum AnnotationName {
     ReplaceMethod,
     AddMethod,
+    AddField,
 }
 
 pub fn parse(input: &str) -> Result<Vec<SourceEntry>, ParseError<LineCol>> {
@@ -161,6 +170,13 @@ peg::parser! {
               else { Constant::Int(n.parse().unwrap()) }
             }
 
+        rule constant() -> Constant
+            = keyword("true") { Constant::Bool(true) }
+            / keyword("false") { Constant::Bool(false) }
+            / n:number() { n }
+            / type_:literal_type()? "\"" str:$((!['"'] [_])*) "\""
+                { Constant::String(type_.unwrap_or(LiteralType::String), str.to_owned()) }
+
         rule seq() -> Seq = exprs:(stmt() ** _) { Seq::new(exprs) }
 
         rule type_() -> TypeName<String>
@@ -170,15 +186,19 @@ peg::parser! {
         rule let_type() -> TypeName<String> = ":" _ type_:type_() { type_ }
         rule func_type() -> TypeName<String> = "->" _ type_:type_() { type_ }
 
-        rule decl(inner: rule<()>) -> Declaration
-            = pos:position!() annotations:(annotation() ** _) _ qualifiers:qualifiers() _ inner() _ name:ident()
-            { Declaration { annotations, qualifiers, name, pos: Pos::new(pos) } }
+        rule initializer() -> Expr = "=" _ val:expr() { val }
 
         rule let() -> Expr
             = pos:position!() keyword("let") _ name:ident() _ type_:let_type()? _ val:initializer()? _ ";"
             { Expr::Declare(Ident::new(name), type_, val.map(Box::new), Pos::new(pos)) }
 
-        rule initializer() -> Expr = "=" _ val:expr() { val }
+        rule decl(inner: rule<()>) -> Declaration
+            = pos:position!() annotations:(annotation() ** _) _ qualifiers:qualifiers() _ inner() _ name:ident()
+            { Declaration { annotations, qualifiers, name, pos: Pos::new(pos) } }
+
+        rule field() -> FieldSource
+            = declaration:decl(<keyword("let")>) _ type_:let_type() _ ";"
+            { FieldSource { declaration, type_ }}
 
         pub rule function() -> FunctionSource
             = declaration:decl(<keyword("func")>) _ "(" _ parameters:commasep(<param()>) _ ")" _ type_:func_type()? _ body:function_body()?
@@ -197,11 +217,12 @@ peg::parser! {
 
         rule member() -> MemberSource
             = fun:function() { MemberSource::Function(fun) }
-            / decl:decl(<keyword("let")>) _ type_:let_type() _ ";" { MemberSource::Field(decl, type_) }
+            / field:field() { MemberSource::Field(field) }
 
         pub rule source_entry() -> SourceEntry
             = fun:function() { SourceEntry::Function(fun) }
             / class:class() { SourceEntry::Class(class) }
+            / field:field() { SourceEntry::GlobalLet(field) }
 
         pub rule source() -> Vec<SourceEntry> = _ decls:(source_entry() ** _) _ { decls }
 
@@ -283,12 +304,7 @@ peg::parser! {
             keyword("null") { Expr::Null }
             pos:position!() keyword("this") { Expr::This(Pos::new(pos)) }
             pos:position!() keyword("super") { Expr::Super(Pos::new(pos)) }
-            pos:position!() keyword("true") { Expr::Constant(Constant::Bool(true), Pos::new(pos)) }
-            pos:position!() keyword("false") { Expr::Constant(Constant::Bool(false), Pos::new(pos)) }
-            pos:position!() type_:literal_type()? "\"" str:$((!['"'] [_])*) "\""
-                { Expr::Constant(Constant::String(type_.unwrap_or(LiteralType::String), str.to_owned()), Pos::new(pos)) }
-            pos:position!() n:number()
-                { Expr::Constant(n, Pos::new(pos)) }
+            pos:position!() cons:constant() { Expr::Constant(cons, Pos::new(pos)) }
             pos:position!() id:ident() _ "(" _ params:commasep(<expr()>) _ ")"
                 { Expr::Call(Ident::new(id), params, Pos::new(pos)) }
             pos:position!() id:ident()
@@ -325,7 +341,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", class),
-            r#"[Class(ClassSource { qualifiers: Qualifiers([Public]), name: "A", base: Some("IScriptable"), members: [Field(Declaration { annotations: [], qualifiers: Qualifiers([Private, Const]), name: "m_field", pos: Pos(53) }, TypeName { name: "Int32", arguments: [] }), Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public]), name: "GetField", pos: Pos(104) }, type_: Some(TypeName { name: "Int32", arguments: [] }), parameters: [], body: Some(Seq { exprs: [Return(Some(Member(This(Pos(165)), Ident("m_field"), Pos(169))), Pos(158))] }) })], pos: Pos(0) })]"#
+            r#"[Class(ClassSource { qualifiers: Qualifiers([Public]), name: "A", base: Some("IScriptable"), members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private, Const]), name: "m_field", pos: Pos(53) }, type_: TypeName { name: "Int32", arguments: [] } }), Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public]), name: "GetField", pos: Pos(104) }, type_: Some(TypeName { name: "Int32", arguments: [] }), parameters: [], body: Some(Seq { exprs: [Return(Some(Member(This(Pos(165)), Ident("m_field"), Pos(169))), Pos(158))] }) })], pos: Pos(0) })]"#
         );
     }
 
@@ -409,7 +425,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", stmt),
-            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: "Test", base: None, members: [Field(Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: "m_field", pos: Pos(130) }, TypeName { name: "String", arguments: [] })], pos: Pos(101) })]"#
+            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: "Test", base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: "m_field", pos: Pos(130) }, type_: TypeName { name: "String", arguments: [] } })], pos: Pos(101) })]"#
         );
     }
 
@@ -426,7 +442,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", stmt),
-            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: "Test", base: None, members: [Field(Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: "m_field", pos: Pos(114) }, TypeName { name: "String", arguments: [] })], pos: Pos(13) })]"#
+            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: "Test", base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: "m_field", pos: Pos(114) }, type_: TypeName { name: "String", arguments: [] } })], pos: Pos(13) })]"#
         );
     }
 }
