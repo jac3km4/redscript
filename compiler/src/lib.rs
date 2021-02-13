@@ -4,8 +4,8 @@ use std::ffi::OsStr;
 use std::path::Path;
 
 use assembler::Assembler;
-use parser::{Annotation, AnnotationName};
-use redscript::ast::{Ident, Pos, Seq, TypeName};
+use parser::{Annotation, AnnotationName, FieldSource};
+use redscript::ast::{Ident, Pos, Seq};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Instr};
 use redscript::definition::{
@@ -16,7 +16,7 @@ use scope::{FunctionId, FunctionName, Scope};
 use source_map::Files;
 use walkdir::WalkDir;
 
-use crate::parser::{ClassSource, Declaration, FunctionSource, MemberSource, Qualifier, SourceEntry};
+use crate::parser::{ClassSource, FunctionSource, MemberSource, Qualifier, SourceEntry};
 
 pub mod assembler;
 pub mod parser;
@@ -126,6 +126,9 @@ impl<'a> Compiler<'a> {
                         compiled_funs.push(idx);
                     }
                 }
+                SourceEntry::GlobalLet(let_) => {
+                    self.define_global_let(let_)?;
+                }
             }
         }
         for (this, fun_idx, seq) in self.backlog.drain(..) {
@@ -161,8 +164,8 @@ impl<'a> Compiler<'a> {
                     MemberSource::Function(fun) => {
                         functions.push(self.define_function(fun, class_idx)?);
                     }
-                    MemberSource::Field(field, type_) => {
-                        fields.push(self.define_field(field, type_, class_idx)?);
+                    MemberSource::Field(let_) => {
+                        fields.push(self.define_field(let_, class_idx)?);
                     }
                 }
             }
@@ -284,15 +287,11 @@ impl<'a> Compiler<'a> {
         Ok(fun_idx)
     }
 
-    fn define_field(
-        &mut self,
-        field: Declaration,
-        type_: TypeName<String>,
-        parent: PoolIndex<Class>,
-    ) -> Result<PoolIndex<Field>, Error> {
-        let name = self.pool.names.add(field.name);
-        let visibility = field.qualifiers.visibility().unwrap_or(Visibility::Private);
-        let type_ = self.scope.resolve_type(&type_, self.pool, field.pos)?;
+    fn define_field(&mut self, source: FieldSource, parent: PoolIndex<Class>) -> Result<PoolIndex<Field>, Error> {
+        let decl = source.declaration;
+        let name = self.pool.names.add(decl.name);
+        let visibility = decl.qualifiers.visibility().unwrap_or(Visibility::Private);
+        let type_ = self.scope.resolve_type(&source.type_, self.pool, decl.pos)?;
         let type_idx = self.scope.get_type_index(&type_, self.pool)?;
         let flags = FieldFlags::new();
         let field = Field {
@@ -306,6 +305,26 @@ impl<'a> Compiler<'a> {
         let definition = Definition::field(name, parent.cast(), field);
         let idx = self.pool.push_definition(definition).cast();
         Ok(idx)
+    }
+
+    fn define_global_let(&mut self, source: FieldSource) -> Result<(), Error> {
+        let decl = &source.declaration;
+        if let Some(ann) = decl.annotations.iter().find(|ann| ann.name == AnnotationName::AddField) {
+            let ident = Ident::new(ann.value.clone());
+            if let Reference::Class(target_class) = self.scope.resolve_reference(ident.clone(), ann.pos)? {
+                let idx = self.define_field(source, target_class)?;
+                self.pool.class_mut(target_class)?.fields.push(idx);
+                Ok(())
+            } else {
+                let error = format!("Can't find object {} to add field on", ident);
+                Err(Error::CompileError(error, ann.pos))
+            }
+        } else {
+            Err(Error::CompileError(
+                "Global let binding not allowed".to_owned(),
+                decl.pos,
+            ))
+        }
     }
 
     fn determine_function_location(
