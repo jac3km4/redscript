@@ -51,22 +51,25 @@ impl<'a> Compiler<'a> {
             Ok(res) => res,
             Err(err) => {
                 let message = format!("Syntax error, expected {}", &err.expected);
-                Self::print_errors(&files, &message, Pos::new(err.location.offset));
+                Self::print_error(&files, &message, Pos::new(err.location.offset));
                 return Err(Error::SyntaxError(err.to_string()));
             }
         };
 
         match self.compile(entries) {
-            Ok(()) => {
+            Ok(diagnostics) => {
+                for diagnostic in diagnostics {
+                    Self::print_diagnostic(&files, diagnostic);
+                }
                 log::info!("Compilation complete");
                 Ok(())
             }
             Err(Error::CompileError(err, pos)) => {
-                Self::print_errors(&files, &err, pos);
+                Self::print_error(&files, &err, pos);
                 Err(Error::CompileError(err, pos))
             }
             Err(Error::FunctionResolutionError(err, pos)) => {
-                Self::print_errors(&files, &err, pos);
+                Self::print_error(&files, &err, pos);
                 Err(Error::FunctionResolutionError(err, pos))
             }
             Err(other) => {
@@ -76,7 +79,16 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn print_errors(files: &Files, error: &str, pos: Pos) {
+    fn print_diagnostic(files: &Files, diagnostic: Diagnostic) {
+        match diagnostic {
+            Diagnostic::MethodConflict(_, pos) => {
+                let loc = files.lookup(pos).unwrap();
+                log::warn!("Conflicting method replacement at {}", loc)
+            }
+        }
+    }
+
+    fn print_error(files: &Files, error: &str, pos: Pos) {
         let loc = files.lookup(pos).unwrap();
         let line = files.enclosing_line(&loc).trim_end();
         log::error!(
@@ -91,7 +103,10 @@ impl<'a> Compiler<'a> {
         );
     }
 
-    fn compile(&mut self, sources: Vec<SourceEntry>) -> Result<(), Error> {
+    fn compile(&mut self, sources: Vec<SourceEntry>) -> Result<Vec<Diagnostic>, Error> {
+        let mut compiled_funs = Vec::new();
+        let mut diagnostics = Vec::new();
+
         for entry in &sources {
             if let SourceEntry::Class(class) = entry {
                 self.stub_type(class)?;
@@ -103,14 +118,20 @@ impl<'a> Compiler<'a> {
                     self.define_class(class)?;
                 }
                 SourceEntry::Function(fun) => {
-                    self.define_function(fun, PoolIndex::UNDEFINED)?;
+                    let pos = fun.declaration.pos;
+                    let idx = self.define_function(fun, PoolIndex::UNDEFINED)?;
+                    if let Some(_) = compiled_funs.iter().find(|f| **f == idx) {
+                        diagnostics.push(Diagnostic::MethodConflict(idx, pos));
+                    } else {
+                        compiled_funs.push(idx);
+                    }
                 }
             }
         }
         for (this, fun_idx, seq) in self.backlog.drain(..) {
             Self::compile_function(fun_idx, this, &seq, self.pool, &self.scope)?;
         }
-        Ok(())
+        Ok(diagnostics)
     }
 
     fn stub_type(&mut self, class: &ClassSource) -> Result<(), Error> {
@@ -369,6 +390,11 @@ impl<'a> Compiler<'a> {
     }
 }
 
+#[derive(Debug)]
+pub enum Diagnostic {
+    MethodConflict(PoolIndex<Function>, Pos),
+}
+
 #[derive(Debug, Clone)]
 pub enum Reference {
     Local(PoolIndex<Local>),
@@ -467,7 +493,8 @@ mod tests {
 
         let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
         let mut compiler = Compiler::new(&mut scripts.pool)?;
-        compiler.compile(sources)
+        compiler.compile(sources)?;
+        Ok(())
     }
 
     #[test]
@@ -492,6 +519,7 @@ mod tests {
 
         let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
         let mut compiler = Compiler::new(&mut scripts.pool)?;
-        compiler.compile(sources)
+        compiler.compile(sources)?;
+        Ok(())
     }
 }
