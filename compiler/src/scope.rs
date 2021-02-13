@@ -571,7 +571,7 @@ impl Scope {
             Expr::While(_, _, _) => TypeId::Void,
             Expr::Goto(_, _) => TypeId::Void,
             Expr::If(_, _, _, _) => TypeId::Void,
-            Expr::Break => TypeId::Void,
+            Expr::Break(_) => TypeId::Void,
             Expr::Return(_, _) => TypeId::Void,
             Expr::Seq(_) => TypeId::Void,
             Expr::Switch(_, _, _) => TypeId::Void,

@@ -27,7 +27,7 @@ pub enum Expr {
     UnOp(Box<Expr>, UnOp, Pos),
     This(Pos),
     Super(Pos),
-    Break,
+    Break(Pos),
     Null,
 }
 

@@ -60,7 +60,7 @@ impl Assembler {
                 match scope.resolve_reference(name.clone(), *pos)? {
                     Reference::Local(idx) => self.emit(Instr::Local(idx)),
                     Reference::Parameter(idx) => self.emit(Instr::Param(idx)),
-                    _ => panic!("Shouldn't get here"),
+                    _ => return Err(Error::CompileError("Expected a value".to_owned(), *pos)),
                 };
             }
             Expr::Constant(cons, _) => match cons {
@@ -345,7 +345,9 @@ impl Assembler {
             Expr::This(_) | Expr::Super(_) => {
                 self.emit(Instr::This);
             }
-            Expr::Goto(_, _) | Expr::Break => panic!("Not supported yet"),
+            Expr::Goto(_, pos) | Expr::Break(pos) => {
+                return Err(Error::CompileError("Not supported yet".to_owned(), *pos))
+            }
         };
         Ok(())
     }
