@@ -321,13 +321,8 @@ impl Scope {
         }
     }
 
-    pub fn resolve_type<S: AsRef<str>>(
-        &self,
-        name: &TypeName<S>,
-        pool: &ConstantPool,
-        pos: Pos,
-    ) -> Result<TypeId, Error> {
-        let result = if let Some(res) = self.types.get(&Ident::new(name.repr())) {
+    pub fn resolve_type(&self, name: &TypeName, pool: &ConstantPool, pos: Pos) -> Result<TypeId, Error> {
+        let result = if let Some(res) = self.types.get(&Ident::new(name.repr().into_owned())) {
             self.resolve_type_from_pool(*res, pool, pos)?
         } else {
             match (name.name.as_ref(), name.arguments.as_slice()) {
@@ -450,11 +445,11 @@ impl Scope {
                 Reference::Field(idx) => self.resolve_type_from_pool(pool.field(idx)?.type_, pool, *pos)?,
                 Reference::Class(idx) => {
                     let name = pool.definition_name(idx)?;
-                    self.resolve_type(&TypeName::basic(name.deref().clone()), pool, *pos)?
+                    self.resolve_type(&TypeName::basic_owned(name.deref().clone()), pool, *pos)?
                 }
                 Reference::Enum(idx) => {
                     let name = pool.definition_name(idx)?;
-                    self.resolve_type(&TypeName::basic(name.deref().clone()), pool, *pos)?
+                    self.resolve_type(&TypeName::basic_owned(name.deref().clone()), pool, *pos)?
                 }
             },
             Expr::Cast(type_name, expr, pos) => {
@@ -651,7 +646,7 @@ impl<'a> FunctionId<'a> {
     pub fn from_source(source: &'a FunctionSource) -> Result<Self, Error> {
         let mut signature = String::new();
         for arg in &source.parameters {
-            signature.push_str(arg.type_.mangled().as_str());
+            signature.push_str(arg.type_.mangled().as_ref());
         }
         Ok(FunctionId(&source.declaration.name, signature))
     }

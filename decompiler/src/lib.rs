@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::io;
 use std::ops::Deref;
 
@@ -309,7 +310,7 @@ impl<'a> Decompiler<'a> {
             Instr::DynamicCast(type_, _) => {
                 let name = self.pool.definition_name(type_)?;
                 let type_name = TypeName {
-                    name: name.deref().to_owned(),
+                    name: Cow::Owned(name.deref().to_owned()),
                     arguments: vec![],
                 };
                 let expr = self.consume()?;

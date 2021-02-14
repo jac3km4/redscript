@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::fmt::{self, Display};
 use std::ops::{Add, Sub};
 use std::rc::Rc;
@@ -8,8 +9,8 @@ use strum::Display;
 pub enum Expr {
     Ident(Ident, Pos),
     Constant(Constant, Pos),
-    Declare(Ident, Option<TypeName<String>>, Option<Box<Expr>>, Pos),
-    Cast(TypeName<String>, Box<Expr>, Pos),
+    Declare(Ident, Option<TypeName>, Option<Box<Expr>>, Pos),
+    Cast(TypeName, Box<Expr>, Pos),
     Assign(Box<Expr>, Box<Expr>, Pos),
     Call(Ident, Vec<Expr>, Pos),
     MethodCall(Box<Expr>, Ident, Vec<Expr>, Pos),
@@ -179,12 +180,12 @@ impl Target {
 }
 
 #[derive(Debug)]
-pub struct TypeName<S: AsRef<str>> {
-    pub name: S,
-    pub arguments: Vec<TypeName<S>>,
+pub struct TypeName {
+    pub name: Cow<'static, str>,
+    pub arguments: Vec<TypeName>,
 }
 
-impl TypeName<&str> {
+impl TypeName {
     pub const BOOL: Self = TypeName::basic("Bool");
     pub const INT32: Self = TypeName::basic("Int32");
     pub const UINT32: Self = TypeName::basic("Uint32");
@@ -194,9 +195,7 @@ impl TypeName<&str> {
     pub const CNAME: Self = TypeName::basic("CName");
     pub const RESOURCE: Self = TypeName::basic("ResRef");
     pub const TWEAKDB_ID: Self = TypeName::basic("TweakDBID");
-}
 
-impl<S: AsRef<str>> TypeName<S> {
     fn unwrapped(&self) -> &Self {
         match self.name.as_ref() {
             "ref" => &self.arguments[0].unwrapped(),
@@ -205,43 +204,50 @@ impl<S: AsRef<str>> TypeName<S> {
         }
     }
 
-    pub const fn basic(name: S) -> Self {
+    pub const fn basic(name: &'static str) -> Self {
         TypeName {
-            name,
+            name: Cow::Borrowed(name),
+            arguments: vec![],
+        }
+    }
+
+    pub const fn basic_owned(name: String) -> Self {
+        TypeName {
+            name: Cow::Owned(name),
             arguments: vec![],
         }
     }
 
     // Used for identifying functions
-    pub fn mangled(&self) -> String {
+    pub fn mangled(&self) -> Cow<'static, str> {
         let unwrapped = self.unwrapped();
         match unwrapped.arguments.first() {
-            None => unwrapped.name.as_ref().to_owned(),
+            None => unwrapped.name.clone(),
             Some(head) => {
                 let args = unwrapped
                     .arguments
                     .iter()
                     .skip(1)
                     .map(|tp| tp.mangled())
-                    .fold(head.mangled(), |acc, el| format!("{},{}", acc, el));
-                format!("{}<{}>", unwrapped.name.as_ref(), args)
+                    .fold(head.mangled(), |acc, el| Cow::Owned(format!("{},{}", acc, el)));
+                Cow::Owned(format!("{}<{}>", unwrapped.name.as_ref(), args))
             }
         }
     }
 
     // Used for storing types in the constant pool
-    pub fn repr(&self) -> String {
+    pub fn repr(&self) -> Cow<'static, str> {
         if self.arguments.is_empty() {
-            self.name.as_ref().to_owned()
+            self.name.clone()
         } else {
-            self.arguments.iter().fold(self.name.as_ref().to_owned(), |acc, tp| {
-                format!("{}:{}", acc, tp.repr())
+            self.arguments.iter().fold(self.name.clone(), |acc, tp| {
+                Cow::Owned(format!("{}:{}", acc, tp.repr()))
             })
         }
     }
 }
 
-impl<S: AsRef<str>> Display for TypeName<S> {
+impl Display for TypeName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.mangled())
     }
