@@ -120,7 +120,7 @@ impl<'a> Compiler<'a> {
                 SourceEntry::Function(fun) => {
                     let pos = fun.declaration.pos;
                     let idx = self.define_function(fun, PoolIndex::UNDEFINED)?;
-                    if let Some(_) = compiled_funs.iter().find(|f| **f == idx) {
+                    if compiled_funs.iter().find(|f| **f == idx).is_some() {
                         diagnostics.push(Diagnostic::MethodConflict(idx, pos));
                     } else {
                         compiled_funs.push(idx);
