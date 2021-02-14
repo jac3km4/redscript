@@ -409,6 +409,14 @@ impl Scope {
                         None
                     }
                 }
+                (TypeId::Struct(from), TypeId::Struct(_)) => {
+                    let class = pool.class(*from)?;
+                    if class.base != PoolIndex::UNDEFINED {
+                        self.find_conversion(&TypeId::Struct(class.base), to, pool)?
+                    } else {
+                        None
+                    }
+                }
                 (from @ TypeId::Class(_), TypeId::Ref(to)) => self
                     .find_conversion(from, to, pool)?
                     .filter(|conv| *conv == Conversion::Identity),
