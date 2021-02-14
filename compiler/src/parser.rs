@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::str::FromStr;
 
 use peg::error::ParseError;
@@ -31,13 +32,13 @@ pub enum MemberSource {
 #[derive(Debug)]
 pub struct FieldSource {
     pub declaration: Declaration,
-    pub type_: TypeName<String>,
+    pub type_: TypeName,
 }
 
 #[derive(Debug)]
 pub struct FunctionSource {
     pub declaration: Declaration,
-    pub type_: Option<TypeName<String>>,
+    pub type_: Option<TypeName>,
     pub parameters: Vec<ParameterSource>,
     pub body: Option<Seq>,
 }
@@ -46,7 +47,7 @@ pub struct FunctionSource {
 pub struct ParameterSource {
     pub qualifiers: Qualifiers,
     pub name: String,
-    pub type_: TypeName<String>,
+    pub type_: TypeName,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -179,12 +180,12 @@ peg::parser! {
 
         rule seq() -> Seq = exprs:(stmt() ** _) { Seq::new(exprs) }
 
-        rule type_() -> TypeName<String>
-            = name:ident() args:type_args()? { TypeName { name, arguments: args.unwrap_or_default() } }
-        rule type_args() -> Vec<TypeName<String>> = "<" _ args:commasep(<type_()>) _ ">" { args }
+        rule type_() -> TypeName
+            = name:ident() args:type_args()? { TypeName { name: Cow::Owned(name), arguments: args.unwrap_or_default() } }
+        rule type_args() -> Vec<TypeName> = "<" _ args:commasep(<type_()>) _ ">" { args }
 
-        rule let_type() -> TypeName<String> = ":" _ type_:type_() { type_ }
-        rule func_type() -> TypeName<String> = "->" _ type_:type_() { type_ }
+        rule let_type() -> TypeName = ":" _ type_:type_() { type_ }
+        rule func_type() -> TypeName = "->" _ type_:type_() { type_ }
 
         rule initializer() -> Expr = "=" _ val:expr() { val }
 
