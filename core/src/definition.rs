@@ -575,7 +575,7 @@ pub struct FieldFlags {
     pub has_default: bool,
     pub is_persistent: bool,
     pub bit9: bool,
-    pub bit10: bool,
+    pub is_mutable: bool,
     #[skip]
     pub remainder: B5,
 }
