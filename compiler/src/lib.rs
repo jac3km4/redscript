@@ -551,4 +551,24 @@ mod tests {
         compiler.compile(sources)?;
         Ok(())
     }
+
+    #[test]
+    fn compile_class_with_forward_ref() -> Result<(), Error> {
+        let sources = parser::parse(
+            "
+            public class MyTestClass456 {
+                public let myOtherTestClass: ref<MyTestClass123>;
+            }
+            
+            public class MyTestClass123 {
+                public let myTestVar: String;
+            }",
+        )
+        .unwrap();
+
+        let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
+        let mut compiler = Compiler::new(&mut scripts.pool)?;
+        compiler.compile(sources)?;
+        Ok(())
+    }
 }

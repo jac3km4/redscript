@@ -347,10 +347,9 @@ impl Scope {
             Type::Class => {
                 let ident = Ident(pool.definition_name(index)?);
                 if let Some(Reference::Class(class_idx)) = self.references.get(&ident) {
-                    if pool.class(*class_idx)?.flags.is_struct() {
-                        TypeId::Struct(*class_idx)
-                    } else {
-                        TypeId::Class(*class_idx)
+                    match pool.class(*class_idx) {
+                        Ok(class) if class.flags.is_struct() => TypeId::Struct(*class_idx),
+                        _ => TypeId::Class(*class_idx),
                     }
                 } else if let Some(Reference::Enum(enum_idx)) = self.references.get(&ident) {
                     TypeId::Enum(*enum_idx)
