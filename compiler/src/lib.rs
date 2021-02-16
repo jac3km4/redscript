@@ -140,11 +140,11 @@ impl<'a> Compiler<'a> {
     fn stub_type(&mut self, class: &ClassSource) -> Result<(), Error> {
         let name_idx = self.pool.names.add(class.name.clone());
         let type_idx = self.pool.push_definition(Definition::type_(name_idx, Type::Class));
-        let idx = self.pool.reserve().cast();
+        let class_idx = self.pool.push_definition(Definition::type_(name_idx, Type::Class));
         let name = Ident(self.pool.names.get(name_idx)?);
 
         self.scope.types.insert(name.clone(), type_idx.cast());
-        self.scope.references.insert(name, Reference::Class(idx));
+        self.scope.references.insert(name, Reference::Class(class_idx.cast()));
 
         Ok(())
     }
@@ -558,6 +558,10 @@ mod tests {
             "
             public class MyTestClass456 {
                 public let myOtherTestClass: ref<MyTestClass123>;
+
+                public func DoStuff() -> ref<MyTestClass123> {
+                    return this.myOtherTestClass;
+                }
             }
             
             public class MyTestClass123 {
