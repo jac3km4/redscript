@@ -303,7 +303,7 @@ impl<'a> Compiler<'a> {
         let visibility = decl.qualifiers.visibility().unwrap_or(Visibility::Private);
         let type_ = self.scope.resolve_type(&source.type_, self.pool, decl.pos)?;
         let type_idx = self.scope.get_type_index(&type_, self.pool)?;
-        let flags = FieldFlags::new();
+        let flags = FieldFlags::new().with_is_mutable(true);
         let field = Field {
             visibility,
             type_: type_idx,
