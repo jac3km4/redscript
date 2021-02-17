@@ -638,13 +638,13 @@ impl Encode for ParameterFlags {
 #[bitfield(bits = 16)]
 #[derive(Debug, Clone, Copy)]
 pub struct ClassFlags {
-    pub bit0: bool,
+    pub is_native: bool,
     pub is_abstract: bool,
     pub is_final: bool,
     pub is_struct: bool,
     pub has_functions: bool,
     pub has_fields: bool,
-    pub is_native: bool,
+    pub bit6: bool,
     pub bit7: bool,
     pub has_overrides: bool,
     #[skip]
