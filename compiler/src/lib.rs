@@ -181,7 +181,16 @@ impl<'a> Compiler<'a> {
                     ));
                 }
             } else {
-                PoolIndex::UNDEFINED
+                if let Some(Reference::Class(class)) = self
+                    .scope
+                    .resolve_reference(Ident::new("IScriptable".to_owned()), source.pos)
+                    .ok()
+                {
+                    class
+                } else {
+                    log::warn!("No IScriptable in scope, defaulting to no implicit base class");
+                    PoolIndex::UNDEFINED
+                }
             };
 
             let class = Class {
