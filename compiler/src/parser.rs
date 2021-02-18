@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::str::FromStr;
 
 use peg::error::ParseError;
@@ -181,7 +180,7 @@ peg::parser! {
         rule seq() -> Seq = exprs:(stmt() ** _) { Seq::new(exprs) }
 
         rule type_() -> TypeName
-            = name:ident() args:type_args()? { TypeName { name: Cow::Owned(name), arguments: args.unwrap_or_default() } }
+            = name:ident() args:type_args()? { TypeName { name: Ident::new(name), arguments: args.unwrap_or_default() } }
         rule type_args() -> Vec<TypeName> = "<" _ args:commasep(<type_()>) _ ">" { args }
 
         rule let_type() -> TypeName = ":" _ type_:type_() { type_ }
@@ -342,7 +341,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", class),
-            r#"[Class(ClassSource { qualifiers: Qualifiers([Public]), name: "A", base: Some("IScriptable"), members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private, Const]), name: "m_field", pos: Pos(53) }, type_: TypeName { name: "Int32", arguments: [] } }), Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public]), name: "GetField", pos: Pos(104) }, type_: Some(TypeName { name: "Int32", arguments: [] }), parameters: [], body: Some(Seq { exprs: [Return(Some(Member(This(Pos(165)), Ident("m_field"), Pos(169))), Pos(158))] }) })], pos: Pos(0) })]"#
+            r#"[Class(ClassSource { qualifiers: Qualifiers([Public]), name: "A", base: Some("IScriptable"), members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private, Const]), name: "m_field", pos: Pos(53) }, type_: TypeName { name: Owned("Int32"), arguments: [] } }), Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public]), name: "GetField", pos: Pos(104) }, type_: Some(TypeName { name: Owned("Int32"), arguments: [] }), parameters: [], body: Some(Seq { exprs: [Return(Some(Member(This(Pos(165)), Owned("m_field"), Pos(169))), Pos(158))] }) })], pos: Pos(0) })]"#
         );
     }
 
@@ -356,7 +355,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", class),
-            r#"[Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public, Static]), name: "GetField", pos: Pos(0) }, type_: Some(TypeName { name: "Uint64", arguments: [] }), parameters: [ParameterSource { qualifiers: Qualifiers([]), name: "optimum", type_: TypeName { name: "Uint64", arguments: [] } }], body: Some(Seq { exprs: [Return(Some(Conditional(BinOp(Member(This(Pos(80)), Ident("m_field"), Pos(84)), Ident(Ident("optimum"), Pos(95)), Greater, Pos(93)), Member(This(Pos(105)), Ident("m_field"), Pos(109)), Ident(Ident("optimum"), Pos(120)), Pos(103))), Pos(73))] }) })]"#
+            r#"[Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public, Static]), name: "GetField", pos: Pos(0) }, type_: Some(TypeName { name: Owned("Uint64"), arguments: [] }), parameters: [ParameterSource { qualifiers: Qualifiers([]), name: "optimum", type_: TypeName { name: Owned("Uint64"), arguments: [] } }], body: Some(Seq { exprs: [Return(Some(Conditional(BinOp(Member(This(Pos(80)), Owned("m_field"), Pos(84)), Ident(Owned("optimum"), Pos(95)), Greater, Pos(93)), Member(This(Pos(105)), Owned("m_field"), Pos(109)), Ident(Owned("optimum"), Pos(120)), Pos(103))), Pos(73))] }) })]"#
         );
     }
 
@@ -371,7 +370,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", stmt),
-            r#"While(BinOp(Ident(Ident("i"), Pos(6)), Constant(Int(1000), Pos(10)), Less, Pos(8)), Seq { exprs: [BinOp(Member(This(Pos(33)), Ident("counter"), Pos(37)), Member(Ident(Ident("Object"), Pos(49)), Ident("CONSTANT"), Pos(55)), AssignAdd, Pos(46)), BinOp(Ident(Ident("i"), Pos(82)), Constant(Int(1), Pos(87)), AssignAdd, Pos(84))] }, Pos(0))"#
+            r#"While(BinOp(Ident(Owned("i"), Pos(6)), Constant(Int(1000), Pos(10)), Less, Pos(8)), Seq { exprs: [BinOp(Member(This(Pos(33)), Owned("counter"), Pos(37)), Member(Ident(Owned("Object"), Pos(49)), Owned("CONSTANT"), Pos(55)), AssignAdd, Pos(46)), BinOp(Ident(Owned("i"), Pos(82)), Constant(Int(1), Pos(87)), AssignAdd, Pos(84))] }, Pos(0))"#
         );
     }
 
@@ -387,7 +386,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", stmt),
-            r#"If(Member(This(Pos(3)), Ident("m_fixBugs"), Pos(7)), Seq { exprs: [MethodCall(This(Pos(36)), Ident("NoBugs"), [], Pos(40))] }, Some(Seq { exprs: [MethodCall(This(Pos(89)), Ident("Bugs"), [], Pos(93))] }), Pos(0))"#
+            r#"If(Member(This(Pos(3)), Owned("m_fixBugs"), Pos(7)), Seq { exprs: [MethodCall(This(Pos(36)), Owned("NoBugs"), [], Pos(40))] }, Some(Seq { exprs: [MethodCall(This(Pos(89)), Owned("Bugs"), [], Pos(93))] }), Pos(0))"#
         );
     }
 
@@ -407,7 +406,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", stmt),
-            r#"Switch(Ident(Ident("value"), Pos(7)), [SwitchCase(Constant(String(String, "0"), Pos(37)), Seq { exprs: [] }), SwitchCase(Constant(String(String, "1"), Pos(64)), Seq { exprs: [Call(Ident("Log"), [Constant(String(String, "0 or 1"), Pos(93))], Pos(89))] }), SwitchCase(Constant(String(String, "2"), Pos(126)), Seq { exprs: [Break(Pos(151))] })], Some(Seq { exprs: [Call(Ident("Log"), [Constant(String(String, "default"), Pos(208))], Pos(204))] }))"#
+            r#"Switch(Ident(Owned("value"), Pos(7)), [SwitchCase(Constant(String(String, "0"), Pos(37)), Seq { exprs: [] }), SwitchCase(Constant(String(String, "1"), Pos(64)), Seq { exprs: [Call(Owned("Log"), [Constant(String(String, "0 or 1"), Pos(93))], Pos(89))] }), SwitchCase(Constant(String(String, "2"), Pos(126)), Seq { exprs: [Break(Pos(151))] })], Some(Seq { exprs: [Call(Owned("Log"), [Constant(String(String, "default"), Pos(208))], Pos(204))] }))"#
         );
     }
 
@@ -426,7 +425,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", stmt),
-            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: "Test", base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: "m_field", pos: Pos(130) }, type_: TypeName { name: "String", arguments: [] } })], pos: Pos(101) })]"#
+            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: "Test", base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: "m_field", pos: Pos(130) }, type_: TypeName { name: Owned("String"), arguments: [] } })], pos: Pos(101) })]"#
         );
     }
 
@@ -443,7 +442,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", stmt),
-            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: "Test", base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: "m_field", pos: Pos(114) }, type_: TypeName { name: "String", arguments: [] } })], pos: Pos(13) })]"#
+            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: "Test", base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: "m_field", pos: Pos(114) }, type_: TypeName { name: Owned("String"), arguments: [] } })], pos: Pos(13) })]"#
         );
     }
 }

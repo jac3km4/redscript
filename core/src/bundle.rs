@@ -378,13 +378,12 @@ impl<K> Names<K> {
             .cloned()
     }
 
-    pub fn add(&mut self, str: String) -> PoolIndex<K> {
+    pub fn add(&mut self, str: Rc<String>) -> PoolIndex<K> {
         let idx = PoolIndex::new(self.strings.len());
-        let rc = Rc::new(str);
-        match self.mappings.entry(rc.clone()) {
+        match self.mappings.entry(str.clone()) {
             Entry::Occupied(entry) => *entry.get(),
             Entry::Vacant(slot) => {
-                self.strings.push(rc);
+                self.strings.push(str);
                 *slot.insert(idx)
             }
         }
