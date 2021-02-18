@@ -1,5 +1,4 @@
 use std::iter;
-use std::ops::Deref;
 use std::str::FromStr;
 
 use redscript::ast::{Constant, Expr, Ident, LiteralType, Pos, TypeName};
@@ -61,7 +60,7 @@ impl Scope {
         let names = pool
             .roots()
             .filter_map(|(idx, def)| {
-                let ident = Ident(pool.definition_name(idx).ok()?);
+                let ident = Ident::Owned(pool.definition_name(idx).ok()?);
                 match def.value {
                     DefinitionValue::Class(_) => Some((ident, Reference::Class(idx.cast()))),
                     DefinitionValue::Enum(_) => Some((ident, Reference::Enum(idx.cast()))),
@@ -74,7 +73,7 @@ impl Scope {
             .roots()
             .filter_map(|(idx, def)| match def.value {
                 DefinitionValue::Type(_) => {
-                    let ident = Ident(pool.definition_name(idx).ok()?);
+                    let ident = Ident::Owned(pool.definition_name(idx).ok()?);
                     Some((ident, idx.cast()))
                 }
                 _ => None,
@@ -133,7 +132,7 @@ impl Scope {
     ) -> Result<PoolIndex<Field>, Error> {
         let class = pool.class(class_idx)?;
         for field in &class.fields {
-            if pool.definition_name(*field)? == ident.0 {
+            if pool.definition_name(*field)?.as_ref() == ident.as_ref() {
                 return Ok(*field);
             }
         }
@@ -155,7 +154,7 @@ impl Scope {
     ) -> Result<PoolIndex<i64>, Error> {
         let enum_ = pool.enum_(enum_idx)?;
         for field in &enum_.members {
-            if pool.definition_name(*field)? == ident.0 {
+            if pool.definition_name(*field)?.as_ref() == ident.as_ref() {
                 return Ok(*field);
             }
         }
@@ -304,7 +303,7 @@ impl Scope {
         if let Some(t) = self.types.get(&name) {
             Ok(*t)
         } else {
-            let name_idx = pool.names.add(name.0.deref().clone());
+            let name_idx = pool.names.add(name.to_owned());
             let value = match type_ {
                 TypeId::Prim(_) => Type::Prim,
                 TypeId::Class(_) | TypeId::Struct(_) | TypeId::Enum(_) => Type::Class,
@@ -322,7 +321,7 @@ impl Scope {
     }
 
     pub fn resolve_type(&self, name: &TypeName, pool: &ConstantPool, pos: Pos) -> Result<TypeId, Error> {
-        let result = if let Some(res) = self.types.get(&Ident::new(name.repr().into_owned())) {
+        let result = if let Some(res) = self.types.get(&name.repr()) {
             self.resolve_type_from_pool(*res, pool, pos)?
         } else {
             match (name.name.as_ref(), name.arguments.as_slice()) {
@@ -345,7 +344,7 @@ impl Scope {
         let result = match pool.type_(index)? {
             Type::Prim => TypeId::Prim(index),
             Type::Class => {
-                let ident = Ident(pool.definition_name(index)?);
+                let ident = Ident::Owned(pool.definition_name(index)?);
                 if let Some(Reference::Class(class_idx)) = self.references.get(&ident) {
                     match pool.class(*class_idx) {
                         Ok(class) if class.flags.is_struct() => TypeId::Struct(*class_idx),
@@ -444,11 +443,11 @@ impl Scope {
                 Reference::Field(idx) => self.resolve_type_from_pool(pool.field(idx)?.type_, pool, *pos)?,
                 Reference::Class(idx) => {
                     let name = pool.definition_name(idx)?;
-                    self.resolve_type(&TypeName::basic_owned(name.deref().clone()), pool, *pos)?
+                    self.resolve_type(&TypeName::basic_owned(name), pool, *pos)?
                 }
                 Reference::Enum(idx) => {
                     let name = pool.definition_name(idx)?;
-                    self.resolve_type(&TypeName::basic_owned(name.deref().clone()), pool, *pos)?
+                    self.resolve_type(&TypeName::basic_owned(name), pool, *pos)?
                 }
             },
             Expr::Cast(type_name, expr, pos) => {
@@ -461,7 +460,7 @@ impl Scope {
                 }
             }
             Expr::Call(ident, args, pos) => {
-                if let Ok(intrinsic) = IntrinsicOp::from_str(&ident.0) {
+                if let Ok(intrinsic) = IntrinsicOp::from_str(ident.as_ref()) {
                     self.infer_intrinsic_type(intrinsic, args, expected, pool, *pos)?
                 } else {
                     let name = FunctionName::global(ident.clone());

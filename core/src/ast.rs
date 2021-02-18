@@ -1,5 +1,5 @@
-use std::borrow::Cow;
 use std::fmt::{self, Display};
+use std::hash::Hash;
 use std::ops::{Add, Sub};
 use std::rc::Rc;
 
@@ -53,18 +53,54 @@ pub enum Constant {
     Bool(bool),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Ident(pub Rc<String>);
+#[derive(Debug, Clone)]
+pub enum Ident {
+    Static(&'static str),
+    Owned(Rc<String>),
+}
 
 impl Ident {
     pub fn new(str: String) -> Ident {
-        Ident(Rc::new(str))
+        Ident::Owned(Rc::new(str))
+    }
+
+    pub fn to_owned(&self) -> Rc<String> {
+        match self {
+            Ident::Static(str) => Rc::new(str.to_string()),
+            Ident::Owned(rc) => rc.clone(),
+        }
+    }
+}
+
+impl PartialEq for Ident {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_ref() == other.as_ref()
+    }
+}
+
+impl Eq for Ident {}
+
+impl Hash for Ident {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.as_ref().hash(state)
     }
 }
 
 impl Display for Ident {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
+        match self {
+            Ident::Static(str) => f.write_str(str),
+            Ident::Owned(str) => f.write_str(&str),
+        }
+    }
+}
+
+impl AsRef<str> for Ident {
+    fn as_ref(&self) -> &str {
+        match self {
+            Ident::Static(str) => str,
+            Ident::Owned(rc) => rc,
+        }
     }
 }
 
@@ -181,7 +217,7 @@ impl Target {
 
 #[derive(Debug)]
 pub struct TypeName {
-    pub name: Cow<'static, str>,
+    pub name: Ident,
     pub arguments: Vec<TypeName>,
 }
 
@@ -206,20 +242,20 @@ impl TypeName {
 
     pub const fn basic(name: &'static str) -> Self {
         TypeName {
-            name: Cow::Borrowed(name),
+            name: Ident::Static(name),
             arguments: vec![],
         }
     }
 
-    pub const fn basic_owned(name: String) -> Self {
+    pub fn basic_owned(name: Rc<String>) -> Self {
         TypeName {
-            name: Cow::Owned(name),
+            name: Ident::Owned(name),
             arguments: vec![],
         }
     }
 
     // Used for identifying functions
-    pub fn mangled(&self) -> Cow<'static, str> {
+    pub fn mangled(&self) -> Ident {
         let unwrapped = self.unwrapped();
         match unwrapped.arguments.first() {
             None => unwrapped.name.clone(),
@@ -229,19 +265,19 @@ impl TypeName {
                     .iter()
                     .skip(1)
                     .map(|tp| tp.mangled())
-                    .fold(head.mangled(), |acc, el| Cow::Owned(format!("{},{}", acc, el)));
-                Cow::Owned(format!("{}<{}>", unwrapped.name.as_ref(), args))
+                    .fold(head.mangled(), |acc, el| Ident::new(format!("{},{}", acc, el)));
+                Ident::new(format!("{}<{}>", unwrapped.name.as_ref(), args))
             }
         }
     }
 
     // Used for storing types in the constant pool
-    pub fn repr(&self) -> Cow<'static, str> {
+    pub fn repr(&self) -> Ident {
         if self.arguments.is_empty() {
             self.name.clone()
         } else {
             self.arguments.iter().fold(self.name.clone(), |acc, tp| {
-                Cow::Owned(format!("{}:{}", acc, tp.repr()))
+                Ident::new(format!("{}:{}", acc, tp.repr()))
             })
         }
     }
@@ -249,6 +285,6 @@ impl TypeName {
 
 impl Display for TypeName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.mangled())
+        f.write_str(self.mangled().as_ref())
     }
 }

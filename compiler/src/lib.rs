@@ -2,6 +2,7 @@
 
 use std::ffi::OsStr;
 use std::path::Path;
+use std::rc::Rc;
 
 use assembler::Assembler;
 use parser::{Annotation, AnnotationName, FieldSource};
@@ -120,7 +121,7 @@ impl<'a> Compiler<'a> {
                 SourceEntry::Function(fun) => {
                     let pos = fun.declaration.pos;
                     let idx = self.define_function(fun, PoolIndex::UNDEFINED)?;
-                    if compiled_funs.iter().find(|f| **f == idx).is_some() {
+                    if compiled_funs.iter().any(|f| *f == idx) {
                         diagnostics.push(Diagnostic::MethodConflict(idx, pos));
                     } else {
                         compiled_funs.push(idx);
@@ -138,10 +139,10 @@ impl<'a> Compiler<'a> {
     }
 
     fn stub_type(&mut self, class: &ClassSource) -> Result<(), Error> {
-        let name_idx = self.pool.names.add(class.name.clone());
+        let name_idx = self.pool.names.add(Rc::new(class.name.clone()));
         let type_idx = self.pool.push_definition(Definition::type_(name_idx, Type::Class));
         let class_idx = self.pool.push_definition(Definition::type_(name_idx, Type::Class));
-        let name = Ident(self.pool.names.get(name_idx)?);
+        let name = Ident::Owned(self.pool.names.get(name_idx)?);
 
         self.scope.types.insert(name.clone(), type_idx.cast());
         self.scope.references.insert(name, Reference::Class(class_idx.cast()));
@@ -150,8 +151,8 @@ impl<'a> Compiler<'a> {
     }
 
     fn define_class(&mut self, source: ClassSource) -> Result<(), Error> {
-        let name_idx = self.pool.names.add(source.name);
-        let name = Ident(self.pool.names.get(name_idx)?);
+        let name_idx = self.pool.names.add(Rc::new(source.name));
+        let name = Ident::Owned(self.pool.names.get(name_idx)?);
 
         if let Reference::Class(class_idx) = self.scope.resolve_reference(name, source.pos)? {
             let visibility = source.qualifiers.visibility().unwrap_or(Visibility::Private);
@@ -176,21 +177,17 @@ impl<'a> Compiler<'a> {
                     base_idx
                 } else {
                     return Err(Error::CompileError(
-                        format!("{} is not a class", base_ident.0),
+                        format!("{} is not a class", base_ident),
                         source.pos,
                     ));
                 }
+            } else if let Ok(Reference::Class(class)) =
+                self.scope.resolve_reference(Ident::Static("IScriptable"), source.pos)
+            {
+                class
             } else {
-                if let Some(Reference::Class(class)) = self
-                    .scope
-                    .resolve_reference(Ident::new("IScriptable".to_owned()), source.pos)
-                    .ok()
-                {
-                    class
-                } else {
-                    log::warn!("No IScriptable in scope, defaulting to no implicit base class");
-                    PoolIndex::UNDEFINED
-                }
+                log::warn!("No IScriptable in scope, defaulting to no implicit base class");
+                PoolIndex::UNDEFINED
             };
 
             let class = Class {
@@ -229,7 +226,7 @@ impl<'a> Compiler<'a> {
         {
             fun.name
         } else {
-            self.pool.names.add(fun_id.mangled())
+            self.pool.names.add(Rc::new(fun_id.mangled()))
         };
 
         let name = if parent_idx.is_undefined() {
@@ -256,7 +253,7 @@ impl<'a> Compiler<'a> {
 
         let return_type = match source.type_ {
             None => None,
-            Some(type_) if type_.name == "Void" => None,
+            Some(type_) if type_.name.as_ref() == "Void" => None,
             Some(type_) => {
                 let type_ = self.scope.resolve_type(&type_, self.pool, decl.pos)?;
                 Some(self.scope.get_type_index(&type_, self.pool)?)
@@ -271,7 +268,7 @@ impl<'a> Compiler<'a> {
             let flags = ParameterFlags::new()
                 .with_is_out(param.qualifiers.contain(Qualifier::Out))
                 .with_is_optional(param.qualifiers.contain(Qualifier::Optional));
-            let name = self.pool.names.add(param.name.clone());
+            let name = self.pool.names.add(Rc::new(param.name.clone()));
             let param = Parameter { type_: type_idx, flags };
             let idx = self
                 .pool
@@ -308,7 +305,7 @@ impl<'a> Compiler<'a> {
 
     fn define_field(&mut self, source: FieldSource, parent: PoolIndex<Class>) -> Result<PoolIndex<Field>, Error> {
         let decl = source.declaration;
-        let name = self.pool.names.add(decl.name);
+        let name = self.pool.names.add(Rc::new(decl.name));
         let visibility = decl.qualifiers.visibility().unwrap_or(Visibility::Private);
         let type_ = self.scope.resolve_type(&source.type_, self.pool, decl.pos)?;
         let type_idx = self.scope.get_type_index(&type_, self.pool)?;
@@ -415,7 +412,7 @@ impl<'a> Compiler<'a> {
         };
 
         for param in &fun.parameters {
-            let ident = Ident(pool.definition_name(*param)?);
+            let ident = Ident::Owned(pool.definition_name(*param)?);
             local_scope.references.insert(ident, Reference::Parameter(*param));
         }
 
@@ -469,10 +466,10 @@ impl TypeId {
 
     fn repr(&self, pool: &ConstantPool) -> Result<Ident, Error> {
         match self {
-            TypeId::Prim(idx) => Ok(Ident(pool.definition_name(*idx)?)),
-            TypeId::Class(idx) => Ok(Ident(pool.definition_name(*idx)?)),
-            TypeId::Struct(idx) => Ok(Ident(pool.definition_name(*idx)?)),
-            TypeId::Enum(idx) => Ok(Ident(pool.definition_name(*idx)?)),
+            TypeId::Prim(idx) => Ok(Ident::Owned(pool.definition_name(*idx)?)),
+            TypeId::Class(idx) => Ok(Ident::Owned(pool.definition_name(*idx)?)),
+            TypeId::Struct(idx) => Ok(Ident::Owned(pool.definition_name(*idx)?)),
+            TypeId::Enum(idx) => Ok(Ident::Owned(pool.definition_name(*idx)?)),
             TypeId::Ref(idx) => Ok(Ident::new(format!("ref:{}", idx.repr(pool)?))),
             TypeId::WeakRef(idx) => Ok(Ident::new(format!("wref:{}", idx.repr(pool)?))),
             TypeId::Array(idx) => Ok(Ident::new(format!("array:{}", idx.repr(pool)?))),
@@ -485,17 +482,17 @@ impl TypeId {
 
     fn pretty(&self, pool: &ConstantPool) -> Result<Ident, Error> {
         match self {
-            TypeId::Prim(idx) => Ok(Ident(pool.definition_name(*idx)?)),
-            TypeId::Class(idx) => Ok(Ident(pool.definition_name(*idx)?)),
-            TypeId::Struct(idx) => Ok(Ident(pool.definition_name(*idx)?)),
-            TypeId::Enum(idx) => Ok(Ident(pool.definition_name(*idx)?)),
-            TypeId::Ref(idx) => Ok(Ident::new(format!("ref<{}>", idx.pretty(pool)?.0))),
-            TypeId::WeakRef(idx) => Ok(Ident::new(format!("wref<{}>", idx.pretty(pool)?.0))),
-            TypeId::Array(idx) => Ok(Ident::new(format!("array<{}>", idx.pretty(pool)?.0))),
-            TypeId::StaticArray(idx, size) => Ok(Ident::new(format!("array<{}, {}>", idx.pretty(pool)?.0, size))),
-            TypeId::ScriptRef(idx) => Ok(Ident::new(format!("script_ref<{}>", idx.pretty(pool)?.0))),
-            TypeId::Null => Ok(Ident::new("Null".to_owned())),
-            TypeId::Void => Ok(Ident::new("Void".to_owned())),
+            TypeId::Prim(idx) => Ok(Ident::Owned(pool.definition_name(*idx)?)),
+            TypeId::Class(idx) => Ok(Ident::Owned(pool.definition_name(*idx)?)),
+            TypeId::Struct(idx) => Ok(Ident::Owned(pool.definition_name(*idx)?)),
+            TypeId::Enum(idx) => Ok(Ident::Owned(pool.definition_name(*idx)?)),
+            TypeId::Ref(idx) => Ok(Ident::new(format!("ref<{}>", idx.pretty(pool)?))),
+            TypeId::WeakRef(idx) => Ok(Ident::new(format!("wref<{}>", idx.pretty(pool)?))),
+            TypeId::Array(idx) => Ok(Ident::new(format!("array<{}>", idx.pretty(pool)?))),
+            TypeId::StaticArray(idx, size) => Ok(Ident::new(format!("array<{}, {}>", idx.pretty(pool)?, size))),
+            TypeId::ScriptRef(idx) => Ok(Ident::new(format!("script_ref<{}>", idx.pretty(pool)?))),
+            TypeId::Null => Ok(Ident::Static("Null")),
+            TypeId::Void => Ok(Ident::Static("Void")),
         }
     }
 }

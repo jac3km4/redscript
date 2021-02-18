@@ -1,5 +1,4 @@
 use std::io::Write;
-use std::ops::Deref;
 use std::rc::Rc;
 
 use redscript::ast::{BinOp, Constant, Expr, Ident, LiteralType, Seq, SwitchCase, UnOp};
@@ -225,7 +224,7 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, verbose: bool, depth: usize) -
     let padding = INDENT.repeat(depth);
 
     match expr {
-        Expr::Ident(ident, _) => write!(out, "{}", ident.0)?,
+        Expr::Ident(ident, _) => write!(out, "{}", ident)?,
         Expr::Constant(cons, _) => match cons {
             Constant::String(LiteralType::String, str) => write!(out, "\"{}\"", str)?,
             Constant::String(LiteralType::Name, str) => write!(out, "n\"{}\"", str)?,
@@ -261,7 +260,7 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, verbose: bool, depth: usize) -
             write!(out, "]")?;
         }
         Expr::New(ident, params, _) => {
-            write!(out, "new {}(", ident.0)?;
+            write!(out, "new {}(", ident)?;
             if !params.is_empty() {
                 for param in params.iter().take(params.len() - 1) {
                     write_expr(out, param, verbose, depth)?;
@@ -323,7 +322,7 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, verbose: bool, depth: usize) -
         }
         Expr::Member(expr, accessor, _) => {
             write_expr(out, expr, verbose, 0)?;
-            write!(out, ".{}", accessor.0)?;
+            write!(out, ".{}", accessor)?;
         }
         Expr::BinOp(lhs, rhs, op, _) => {
             write_binop(out, lhs, rhs, *op, verbose)?;
@@ -340,7 +339,7 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, verbose: bool, depth: usize) -
 }
 
 fn write_call<W: Write>(out: &mut W, name: &Ident, params: &[Expr], verbose: bool) -> Result<(), Error> {
-    let extracted = name.0.split(';').next().expect("Empty function name");
+    let extracted = name.as_ref().split(';').next().expect("Empty function name");
     let fun_name = if extracted.is_empty() { "undefined" } else { extracted };
     match fun_name {
         "OperatorLogicOr" => write_binop(out, &params[0], &params[1], BinOp::LogicOr, verbose),
@@ -409,8 +408,8 @@ fn format_param(def: &Definition, pool: &ConstantPool) -> Result<String, Error> 
 fn format_type(def: &Definition, pool: &ConstantPool) -> Result<String, Error> {
     if let DefinitionValue::Type(ref type_) = def.value {
         let result = match type_ {
-            Type::Prim => pool.names.get(def.name)?.deref().to_owned(),
-            Type::Class => pool.names.get(def.name)?.deref().to_owned(),
+            Type::Prim => pool.names.get(def.name)?.to_string(),
+            Type::Class => pool.names.get(def.name)?.to_string(),
             Type::Ref(nested) => format!("ref<{}>", format_type(pool.definition(*nested)?, pool)?),
             Type::WeakRef(nested) => format!("wref<{}>", format_type(pool.definition(*nested)?, pool)?),
             Type::Array(nested) => format!("array<{}>", format_type(pool.definition(*nested)?, pool)?),

@@ -1,6 +1,4 @@
-use std::borrow::Cow;
 use std::io;
-use std::ops::Deref;
 
 use redscript::ast::{Constant, Expr, Ident, LiteralType, Pos, Seq, SwitchCase, Target, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
@@ -25,7 +23,7 @@ impl<'a> Decompiler<'a> {
     }
 
     fn definition_ident<A>(&self, index: PoolIndex<A>) -> Result<Ident, Error> {
-        Ok(Ident(self.pool.definition_name(index)?))
+        Ok(Ident::Owned(self.pool.definition_name(index)?))
     }
 
     fn consume_n(&mut self, n: usize) -> Result<Vec<Expr>, Error> {
@@ -54,9 +52,9 @@ impl<'a> Decompiler<'a> {
         Ok(Seq::new(body))
     }
 
-    fn consume_call(&mut self, name: &str, param_count: usize) -> Result<Expr, Error> {
+    fn consume_call(&mut self, name: &'static str, param_count: usize) -> Result<Expr, Error> {
         let params = self.consume_n(param_count)?;
-        Ok(Expr::Call(Ident::new(name.to_owned()), params, Pos::ZERO))
+        Ok(Expr::Call(Ident::Static(name), params, Pos::ZERO))
     }
 
     fn consume_params(&mut self) -> Result<Vec<Expr>, Error> {
@@ -157,15 +155,15 @@ impl<'a> Decompiler<'a> {
                 Expr::Constant(Constant::String(LiteralType::String, decoded), Pos::ZERO)
             }
             Instr::NameConst(idx) => {
-                let str = self.pool.names.get(idx)?.deref().clone();
+                let str = self.pool.names.get(idx)?.to_string();
                 Expr::Constant(Constant::String(LiteralType::Name, str), Pos::ZERO)
             }
             Instr::TweakDbIdConst(idx) => {
-                let str = self.pool.tweakdb_ids.get(idx)?.deref().clone();
+                let str = self.pool.tweakdb_ids.get(idx)?.to_string();
                 Expr::Constant(Constant::String(LiteralType::TweakDbId, str), Pos::ZERO)
             }
             Instr::ResourceConst(idx) => {
-                let str = self.pool.resources.get(idx)?.deref().clone();
+                let str = self.pool.resources.get(idx)?.to_string();
                 Expr::Constant(Constant::String(LiteralType::Resource, str), Pos::ZERO)
             }
             Instr::TrueConst => Expr::Constant(Constant::Bool(true), Pos::ZERO),
@@ -214,11 +212,11 @@ impl<'a> Decompiler<'a> {
             }
             Instr::Construct(n, class) => {
                 let params = self.consume_n(n.into())?;
-                Expr::New(Ident(self.pool.definition_name(class)?), params, Pos::ZERO)
+                Expr::New(Ident::Owned(self.pool.definition_name(class)?), params, Pos::ZERO)
             }
             Instr::InvokeStatic(_, _, idx) => {
                 let def = self.pool.definition(idx)?;
-                let name = Ident(self.pool.names.get(def.name)?);
+                let name = Ident::Owned(self.pool.names.get(def.name)?);
                 let params = self.consume_params()?;
                 if let Some(ctx) = context {
                     Expr::MethodCall(Box::new(ctx), name, params, Pos::ZERO)
@@ -226,7 +224,7 @@ impl<'a> Decompiler<'a> {
                     if def.parent.is_undefined() {
                         Expr::Call(name, params, Pos::ZERO)
                     } else {
-                        let class_name = Ident(self.pool.definition_name(def.parent)?);
+                        let class_name = Ident::Owned(self.pool.definition_name(def.parent)?);
                         let expr = Box::new(Expr::Ident(class_name, Pos::ZERO));
                         Expr::MethodCall(expr, name, params, Pos::ZERO)
                     }
@@ -238,7 +236,7 @@ impl<'a> Decompiler<'a> {
                 // }
             }
             Instr::InvokeVirtual(_, _, idx) => {
-                let name = Ident(self.pool.names.get(idx)?);
+                let name = Ident::Owned(self.pool.names.get(idx)?);
                 let params = self.consume_params()?;
                 if let Some(ctx) = context {
                     Expr::MethodCall(Box::new(ctx), name, params, Pos::ZERO)
@@ -259,7 +257,7 @@ impl<'a> Decompiler<'a> {
             }
             Instr::Equals(_) => self.consume_call("Equals", 2)?,
             Instr::NotEquals(_) => self.consume_call("NotEquals", 2)?,
-            Instr::New(class) => Expr::New(Ident(self.pool.definition_name(class)?), vec![], Pos::ZERO),
+            Instr::New(class) => Expr::New(Ident::Owned(self.pool.definition_name(class)?), vec![], Pos::ZERO),
             Instr::Delete => self.consume_call("Delete", 1)?,
             Instr::This => Expr::This(Pos::ZERO),
             Instr::StartProfiling(_, _) => return Err(Error::DecompileError("Unexpected StartProfiling".to_owned())),
@@ -310,7 +308,7 @@ impl<'a> Decompiler<'a> {
             Instr::DynamicCast(type_, _) => {
                 let name = self.pool.definition_name(type_)?;
                 let type_name = TypeName {
-                    name: Cow::Owned(name.deref().to_owned()),
+                    name: Ident::Owned(name),
                     arguments: vec![],
                 };
                 let expr = self.consume()?;

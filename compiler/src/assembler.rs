@@ -1,5 +1,5 @@
 use std::iter;
-use std::ops::Deref;
+use std::rc::Rc;
 use std::str::FromStr;
 
 use redscript::ast::{Constant, Expr, Ident, LiteralType, Pos, Seq, TypeName};
@@ -68,15 +68,15 @@ impl Assembler {
                     self.emit(Instr::StringConst(lit.as_bytes().to_vec()));
                 }
                 Constant::String(LiteralType::Name, lit) => {
-                    let idx = pool.names.add(lit.clone());
+                    let idx = pool.names.add(Rc::new(lit.clone()));
                     self.emit(Instr::NameConst(idx));
                 }
                 Constant::String(LiteralType::Resource, lit) => {
-                    let idx = pool.resources.add(lit.clone());
+                    let idx = pool.resources.add(Rc::new(lit.clone()));
                     self.emit(Instr::ResourceConst(idx));
                 }
                 Constant::String(LiteralType::TweakDbId, lit) => {
-                    let idx = pool.tweakdb_ids.add(lit.clone());
+                    let idx = pool.tweakdb_ids.add(Rc::new(lit.clone()));
                     self.emit(Instr::TweakDbIdConst(idx));
                 }
                 Constant::Float(val) => {
@@ -110,7 +110,7 @@ impl Assembler {
                 }
             }
             Expr::Declare(name, type_, init, pos) => {
-                let name_idx = pool.names.add(name.0.deref().to_owned());
+                let name_idx = pool.names.add(name.to_owned());
                 let (type_, conversion) = match (type_, init) {
                     (None, None) => {
                         return Err(Error::CompileError(
@@ -295,7 +295,7 @@ impl Assembler {
                 }
             },
             Expr::Call(ident, args, pos) => {
-                if let Ok(intrinsic) = IntrinsicOp::from_str(&ident.0) {
+                if let Ok(intrinsic) = IntrinsicOp::from_str(&ident.as_ref()) {
                     self.compile_intrinsic(intrinsic, args, expected, pool, scope, *pos)?;
                 } else {
                     let match_ = scope.resolve_function(
@@ -589,7 +589,7 @@ impl Assembler {
     }
 
     fn get_static_reference(expr: &Expr, scope: &Scope) -> Option<Reference> {
-        if let Expr::Ident(ident, _) = expr.deref() {
+        if let Expr::Ident(ident, _) = expr {
             match scope.resolve_reference(ident.clone(), Pos::ZERO).ok()? {
                 r @ Reference::Class(_) => Some(r),
                 r @ Reference::Enum(_) => Some(r),
