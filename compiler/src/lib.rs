@@ -355,7 +355,8 @@ impl<'a> Compiler<'a> {
             .with_is_final(decl.qualifiers.contain(Qualifier::Final))
             .with_is_const(decl.qualifiers.contain(Qualifier::Const))
             .with_is_exec(decl.qualifiers.contain(Qualifier::Exec))
-            .with_is_callback(decl.qualifiers.contain(Qualifier::Callback));
+            .with_is_callback(decl.qualifiers.contain(Qualifier::Callback))
+            .with_is_native(decl.qualifiers.contain(Qualifier::Native));
 
         let return_type = match source.type_ {
             None => None,
@@ -967,8 +968,10 @@ impl<'a> FunctionSignature<'a> {
         let qs = &source.declaration.qualifiers;
         let name = source.declaration.name.as_ref();
         let is_operator = BinOp::from_str(name).is_ok();
+        let is_cast = name == "Cast";
 
         if !is_operator
+            && !is_cast
             && (qs.contain(Qualifier::Callback) || qs.contain(Qualifier::Exec) || qs.contain(Qualifier::Native))
         {
             FunctionSignature(Cow::Borrowed(name))
@@ -979,7 +982,7 @@ impl<'a> FunctionSignature<'a> {
                 .fold(FunctionSignatureBuilder::new(name.to_owned()), |acc, param| {
                     acc.parameter(&param.type_, param.qualifiers.contain(Qualifier::Out) && is_operator)
                 });
-            if is_operator {
+            if is_operator || is_cast {
                 builder.return_type(source.type_.as_ref().unwrap_or(&TypeName::VOID))
             } else {
                 builder.build()
