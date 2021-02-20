@@ -553,7 +553,7 @@ impl Encode for DefinitionType {
 }
 
 pub struct PoolIndex<A> {
-    index: usize,
+    pub index: usize,
     phantom: PhantomData<A>,
 }
 
