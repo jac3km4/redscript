@@ -581,4 +581,21 @@ mod tests {
         compiler.compile(sources)?;
         Ok(())
     }
+
+    #[test]
+    fn compile_class_with_shorthand_funcs() -> Result<(), Error> {
+        let sources = parser::parse(
+            "
+            public class ShorthandTest {
+                public func InstanceVal() -> String = ShorthandTest.StaticVal()
+                public static func StaticVal() -> String = \"static\"
+            }",
+        )
+        .unwrap();
+
+        let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
+        let mut compiler = Compiler::new(&mut scripts.pool)?;
+        compiler.compile(sources)?;
+        Ok(())
+    }
 }
