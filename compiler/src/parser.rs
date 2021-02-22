@@ -203,7 +203,9 @@ peg::parser! {
         pub rule function() -> FunctionSource
             = declaration:decl(<keyword("func")>) _ "(" _ parameters:commasep(<param()>) _ ")" _ type_:func_type()? _ body:function_body()?
             { FunctionSource { declaration, type_, parameters, body } }
-        rule function_body() -> Seq = "{" _ body:seq() _ "}" { body }
+        rule function_body() -> Seq
+            = "{" _ body:seq() _ "}" { body }
+            / pos:position!() "=" _ expr:expr() { Seq::new(vec![Expr::Return(Some(Box::new(expr)), Pos::new(pos))]) }
 
         rule param() -> ParameterSource
             = qualifiers:qualifiers() _ name:ident() _ type_:let_type()
