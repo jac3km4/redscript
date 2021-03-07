@@ -12,7 +12,9 @@ use crate::parser::{FunctionSource, Qualifier};
 use crate::{Reference, TypeId};
 
 #[derive(Debug, Clone)]
-pub struct FunctionOverloads(Vec<PoolIndex<Function>>);
+pub struct FunctionOverloads {
+    pub functions: Vec<PoolIndex<Function>>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FunctionName {
@@ -120,8 +122,8 @@ impl Scope {
     pub fn push_function(&mut self, name: FunctionName, index: PoolIndex<Function>) {
         self.functions
             .entry(name)
-            .and_modify(|overloads: &mut FunctionOverloads| overloads.0.push(index))
-            .or_insert_with(|| FunctionOverloads(vec![index]));
+            .and_modify(|overloads: &mut FunctionOverloads| overloads.functions.push(index))
+            .or_insert_with(|| FunctionOverloads { functions: vec![index] });
     }
 
     pub fn resolve_field(
@@ -177,7 +179,7 @@ impl Scope {
             .ok_or_else(|| Error::CompileError(format!("Function {} not found", name.pretty(pool)), pos))?;
         let mut errors = Vec::new();
 
-        for fun_idx in overloads.0.iter() {
+        for fun_idx in overloads.functions.iter() {
             match self.resolve_function_overload(*fun_idx, args.clone(), expected, pool, pos) {
                 Ok(res) => return Ok(res),
                 Err(Error::FunctionResolutionError(msg, _)) => errors.push(msg),

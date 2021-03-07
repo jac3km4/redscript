@@ -93,16 +93,15 @@ pub struct Declaration {
 #[derive(Debug)]
 pub struct Annotation {
     pub name: AnnotationName,
-    pub value: String,
+    pub values: Vec<String>,
     pub pos: Pos,
 }
-
-impl Annotation {}
 
 #[derive(Debug, PartialEq, Eq, EnumString)]
 #[strum(serialize_all = "camelCase")]
 pub enum AnnotationName {
     ReplaceMethod,
+    ReplaceGlobal,
     AddMethod,
     AddField,
 }
@@ -146,9 +145,9 @@ peg::parser! {
             / "t" { LiteralType::TweakDbId }
 
         rule annotation() -> Annotation
-            = pos:position!() "@" ident:ident() _ "(" _ value:ident() _ ")" {?
+            = pos:position!() "@" ident:ident() _ "(" _ values:commasep(<ident()>) _ ")" {?
                 AnnotationName::from_str(&ident).map(|name| {
-                    Annotation { name, value, pos: Pos::new(pos) }
+                    Annotation { name, values, pos: Pos::new(pos) }
                 }).map_err(|_| "annotation")
             }
 
