@@ -212,7 +212,7 @@ impl<'a> Compiler<'a> {
         parent_idx: PoolIndex<Class>,
     ) -> Result<PoolIndex<Function>, Error> {
         let decl = &source.declaration;
-        let fun_id = FunctionId::from_source(&source)?;
+        let fun_id = FunctionId::from_source(&source);
         let ident = Ident::new(decl.name.clone());
 
         let (parent_idx, base_method, fun_idx) =
@@ -226,7 +226,7 @@ impl<'a> Compiler<'a> {
         {
             fun.name
         } else {
-            self.pool.names.add(Rc::new(fun_id.mangled()))
+            self.pool.names.add(Rc::new(fun_id.into_owned()))
         };
 
         let name = if parent_idx.is_undefined() {
@@ -349,52 +349,55 @@ impl<'a> Compiler<'a> {
         annotations: &[Annotation],
         parent: PoolIndex<Class>,
     ) -> Result<(PoolIndex<Class>, Option<PoolIndex<Function>>, PoolIndex<Function>), Error> {
-        if let Some(ann) = annotations.iter().find(|ann| ann.name == AnnotationName::ReplaceMethod) {
-            let ident = Ident::new(ann.value.clone());
-            if let Reference::Class(target_class) = self.scope.resolve_reference(ident, ann.pos)? {
-                let class = self.pool.class(target_class)?;
-                let existing_idx = class.functions.iter().find(|fun| {
-                    let str = self.pool.definition_name(**fun).unwrap();
-                    str.as_str() == name.mangled() || str.as_str() == name.0
-                });
-                if let Some(idx) = existing_idx {
-                    let fun = self.pool.function(*idx)?;
-                    Ok((target_class, fun.base_method, *idx))
-                } else {
-                    let error = format!("Method {} not found on {}", name.0, ann.value);
-                    Err(Error::CompileError(error, ann.pos))
+        for ann in annotations {
+            match ann.name {
+                AnnotationName::ReplaceMethod => {
+                    let ident = Ident::new(ann.value.clone());
+                    if let Reference::Class(target_class) = self.scope.resolve_reference(ident, ann.pos)? {
+                        let class = self.pool.class(target_class)?;
+                        let existing_idx = class
+                            .functions
+                            .iter()
+                            .find(|fun| self.pool.definition_name(**fun).unwrap().as_str() == name.as_ref());
+                        if let Some(idx) = existing_idx {
+                            let fun = self.pool.function(*idx)?;
+                            return Ok((target_class, fun.base_method, *idx));
+                        } else {
+                            let error = format!("Method {} not found on {}", name.as_ref(), ann.value);
+                            return Err(Error::CompileError(error, ann.pos));
+                        }
+                    } else {
+                        let error = format!("Can't find object {} to replace method on", name.as_ref());
+                        return Err(Error::CompileError(error, ann.pos));
+                    }
                 }
-            } else {
-                let error = format!("Can't find object {} to replace method on", name.0);
-                Err(Error::CompileError(error, ann.pos))
-            }
-        } else if let Some(ann) = annotations.iter().find(|ann| ann.name == AnnotationName::AddMethod) {
-            let ident = Ident::new(ann.value.clone());
-            if let Reference::Class(target_class) = self.scope.resolve_reference(ident, ann.pos)? {
-                let class = self.pool.class(target_class)?;
-                let base_method = if class.base != PoolIndex::UNDEFINED {
-                    let base = self.pool.class(class.base)?;
-                    base.functions
-                        .iter()
-                        .find(|fun| {
-                            let str = self.pool.definition_name(**fun).unwrap();
-                            str.as_str() == name.mangled() || str.as_str() == name.0
-                        })
-                        .cloned()
-                } else {
-                    None
-                };
+                AnnotationName::AddMethod => {
+                    let ident = Ident::new(ann.value.clone());
+                    if let Reference::Class(target_class) = self.scope.resolve_reference(ident, ann.pos)? {
+                        let class = self.pool.class(target_class)?;
+                        let base_method = if class.base != PoolIndex::UNDEFINED {
+                            let base = self.pool.class(class.base)?;
+                            base.functions
+                                .iter()
+                                .find(|fun| self.pool.definition_name(**fun).unwrap().as_str() == name.as_ref())
+                                .cloned()
+                        } else {
+                            None
+                        };
 
-                let idx = self.pool.reserve().cast();
-                self.pool.class_mut(target_class)?.functions.push(idx);
-                Ok((target_class, base_method, idx))
-            } else {
-                let error = format!("Can't find object {} to add method on", name.0);
-                Err(Error::CompileError(error, ann.pos))
+                        let idx = self.pool.reserve().cast();
+                        self.pool.class_mut(target_class)?.functions.push(idx);
+                        return Ok((target_class, base_method, idx));
+                    } else {
+                        let error = format!("Can't find object {} to add method on", name.as_ref());
+                        return Err(Error::CompileError(error, ann.pos));
+                    }
+                }
+                AnnotationName::AddField => {}
             }
-        } else {
-            Ok((parent, None, self.pool.reserve().cast()))
         }
+
+        Ok((parent, None, self.pool.reserve().cast()))
     }
 
     fn compile_function(

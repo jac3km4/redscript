@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::iter;
 use std::str::FromStr;
 
@@ -7,7 +8,7 @@ use redscript::definition::{Class, Definition, DefinitionValue, Enum, Field, Fun
 use redscript::error::Error;
 
 use crate::assembler::IntrinsicOp;
-use crate::parser::FunctionSource;
+use crate::parser::{FunctionSource, Qualifier};
 use crate::{Reference, TypeId};
 
 #[derive(Debug, Clone)]
@@ -634,18 +635,30 @@ pub enum Conversion {
     WeakRefToRef,
 }
 
-pub struct FunctionId<'a>(pub &'a str, String);
+pub struct FunctionId<'a>(Cow<'a, str>);
 
 impl<'a> FunctionId<'a> {
-    pub fn mangled(&self) -> String {
-        format!("{};{}", self.0, self.1)
+    pub fn from_source(source: &'a FunctionSource) -> Self {
+        let qs = &source.declaration.qualifiers;
+        if qs.contain(Qualifier::Callback) || qs.contain(Qualifier::Exec) || qs.contain(Qualifier::Native) {
+            FunctionId(Cow::Borrowed(&source.declaration.name))
+        } else {
+            let mut signature = String::new();
+            for arg in &source.parameters {
+                signature.push_str(arg.type_.mangled().as_ref());
+            }
+            let mangled = format!("{};{}", source.declaration.name, signature);
+            FunctionId(Cow::Owned(mangled))
+        }
     }
 
-    pub fn from_source(source: &'a FunctionSource) -> Result<Self, Error> {
-        let mut signature = String::new();
-        for arg in &source.parameters {
-            signature.push_str(arg.type_.mangled().as_ref());
-        }
-        Ok(FunctionId(&source.declaration.name, signature))
+    pub fn into_owned(self) -> String {
+        self.0.into_owned()
+    }
+}
+
+impl<'a> AsRef<str> for FunctionId<'a> {
+    fn as_ref(&self) -> &str {
+        self.0.as_ref()
     }
 }
