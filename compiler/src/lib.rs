@@ -34,7 +34,7 @@ impl<'a> Compiler<'a> {
     pub fn new(pool: &'a mut ConstantPool) -> Result<Compiler<'a>, Error> {
         let scope = Scope::new(pool)?;
         let backlog = Vec::new();
-        Ok(Compiler { pool, scope, backlog })
+        Ok(Compiler { pool, backlog, scope })
     }
 
     pub fn compile_all(&mut self, path: &Path) -> Result<(), Error> {
@@ -216,7 +216,7 @@ impl<'a> Compiler<'a> {
         let ident = Ident::new(decl.name.clone());
 
         let (parent_idx, base_method, fun_idx) =
-            self.determine_function_location(&fun_id, &decl.annotations, parent_idx)?;
+            self.determine_function_location(&fun_id, ident.clone(), &decl.annotations, parent_idx)?;
 
         let name_idx = if let Some(fun) = self
             .pool
@@ -325,54 +325,79 @@ impl<'a> Compiler<'a> {
 
     fn define_global_let(&mut self, source: FieldSource) -> Result<(), Error> {
         let decl = &source.declaration;
-        if let Some(ann) = decl.annotations.iter().find(|ann| ann.name == AnnotationName::AddField) {
-            let ident = Ident::new(ann.value.clone());
-            if let Reference::Class(target_class) = self.scope.resolve_reference(ident.clone(), ann.pos)? {
-                let idx = self.define_field(source, target_class)?;
-                self.pool.class_mut(target_class)?.fields.push(idx);
-                Ok(())
-            } else {
-                let error = format!("Can't find object {} to add field on", ident);
-                Err(Error::CompileError(error, ann.pos))
+        for ann in &source.declaration.annotations {
+            match ann.name {
+                AnnotationName::AddField => {
+                    let value = ann
+                        .values
+                        .first()
+                        .ok_or_else(|| Error::invalid_annotation_args(ann.pos))?;
+                    let ident = Ident::new(value.clone());
+                    if let Reference::Class(target_class) = self.scope.resolve_reference(ident.clone(), ann.pos)? {
+                        let idx = self.define_field(source, target_class)?;
+                        self.pool.class_mut(target_class)?.fields.push(idx);
+                        return Ok(());
+                    } else {
+                        return Err(Error::class_not_found(ident.as_ref(), ann.pos));
+                    }
+                }
+                _ => {}
             }
-        } else {
-            Err(Error::CompileError(
-                "Global let binding not allowed".to_owned(),
-                decl.pos,
-            ))
         }
+        Err(Error::CompileError(
+            "Global let binding not allowed".to_owned(),
+            decl.pos,
+        ))
     }
 
     fn determine_function_location(
         &mut self,
         name: &FunctionId,
+        ident: Ident,
         annotations: &[Annotation],
         parent: PoolIndex<Class>,
     ) -> Result<(PoolIndex<Class>, Option<PoolIndex<Function>>, PoolIndex<Function>), Error> {
         for ann in annotations {
             match ann.name {
                 AnnotationName::ReplaceMethod => {
-                    let ident = Ident::new(ann.value.clone());
+                    let value = ann
+                        .values
+                        .first()
+                        .ok_or_else(|| Error::invalid_annotation_args(ann.pos))?;
+                    let ident = Ident::new(value.clone());
                     if let Reference::Class(target_class) = self.scope.resolve_reference(ident, ann.pos)? {
                         let class = self.pool.class(target_class)?;
-                        let existing_idx = class
+                        let idx = class
                             .functions
                             .iter()
-                            .find(|fun| self.pool.definition_name(**fun).unwrap().as_str() == name.as_ref());
-                        if let Some(idx) = existing_idx {
-                            let fun = self.pool.function(*idx)?;
-                            return Ok((target_class, fun.base_method, *idx));
-                        } else {
-                            let error = format!("Method {} not found on {}", name.as_ref(), ann.value);
-                            return Err(Error::CompileError(error, ann.pos));
-                        }
+                            .find(|fun| self.pool.definition_name(**fun).unwrap().as_str() == name.as_ref())
+                            .ok_or_else(|| Error::method_not_found(name.as_ref(), value, ann.pos))?;
+                        let fun = self.pool.function(*idx)?;
+                        return Ok((target_class, fun.base_method, *idx));
                     } else {
-                        let error = format!("Can't find object {} to replace method on", name.as_ref());
-                        return Err(Error::CompileError(error, ann.pos));
+                        return Err(Error::class_not_found(name.as_ref(), ann.pos));
                     }
                 }
+                AnnotationName::ReplaceGlobal => {
+                    let fun_name = FunctionName::global(ident);
+                    let overloads = self
+                        .scope
+                        .functions
+                        .get(&fun_name)
+                        .ok_or_else(|| Error::global_not_found(&fun_name.pretty(self.pool), ann.pos))?;
+                    let fun_idx = overloads
+                        .functions
+                        .iter()
+                        .find(|f| self.pool.definition_name(**f).unwrap().as_str() == name.as_ref())
+                        .ok_or_else(|| Error::global_not_found(&fun_name.pretty(self.pool), ann.pos))?;
+                    return Ok((PoolIndex::UNDEFINED, None, *fun_idx));
+                }
                 AnnotationName::AddMethod => {
-                    let ident = Ident::new(ann.value.clone());
+                    let value = ann
+                        .values
+                        .first()
+                        .ok_or_else(|| Error::invalid_annotation_args(ann.pos))?;
+                    let ident = Ident::new(value.clone());
                     if let Reference::Class(target_class) = self.scope.resolve_reference(ident, ann.pos)? {
                         let class = self.pool.class(target_class)?;
                         let base_method = if class.base != PoolIndex::UNDEFINED {
@@ -389,8 +414,7 @@ impl<'a> Compiler<'a> {
                         self.pool.class_mut(target_class)?.functions.push(idx);
                         return Ok((target_class, base_method, idx));
                     } else {
-                        let error = format!("Can't find object {} to add method on", name.as_ref());
-                        return Err(Error::CompileError(error, ann.pos));
+                        return Err(Error::class_not_found(name.as_ref(), ann.pos));
                     }
                 }
                 AnnotationName::AddField => {}
