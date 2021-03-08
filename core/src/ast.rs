@@ -107,7 +107,7 @@ impl AsRef<str> for Ident {
 #[derive(Debug, Clone, Copy, Display)]
 pub enum BinOp {
     AssignAdd,
-    AssignSub,
+    AssignSubtract,
     AssignMultiply,
     AssignDivide,
     LogicOr,

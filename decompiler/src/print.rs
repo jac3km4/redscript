@@ -359,7 +359,7 @@ fn write_call<W: Write>(out: &mut W, name: &Ident, params: &[Expr], verbose: boo
         "OperatorGreaterEqual" => write_binop(out, &params[0], &params[1], BinOp::GreaterEqual, verbose),
         "OperatorLessEqual" => write_binop(out, &params[0], &params[1], BinOp::Less, verbose),
         "OperatorAssignAdd" => write_binop(out, &params[0], &params[1], BinOp::AssignAdd, verbose),
-        "OperatorAssignSubtract" => write_binop(out, &params[0], &params[1], BinOp::AssignSub, verbose),
+        "OperatorAssignSubtract" => write_binop(out, &params[0], &params[1], BinOp::AssignSubtract, verbose),
         "OperatorAssignMultiply" => write_binop(out, &params[0], &params[1], BinOp::AssignMultiply, verbose),
         "OperatorAssignDivide" => write_binop(out, &params[0], &params[1], BinOp::AssignDivide, verbose),
         "OperatorLogicNot" => write_unop(out, &params[0], UnOp::LogicNot, verbose),
@@ -427,7 +427,7 @@ fn format_type(def: &Definition, pool: &ConstantPool) -> Result<String, Error> {
 fn format_binop(op: BinOp) -> &'static str {
     match op {
         BinOp::AssignAdd => "+=",
-        BinOp::AssignSub => "-=",
+        BinOp::AssignSubtract => "-=",
         BinOp::AssignMultiply => "*=",
         BinOp::AssignDivide => "/=",
         BinOp::LogicOr => "||",
