@@ -243,7 +243,7 @@ peg::parser! {
             { Expr::While(Box::new(cond), body, Pos::new(pos)) }
 
         rule if_() -> Expr
-            = pos:position!() keyword("if") _ cond:expr() _ "{" _ if_:seq() _ "}" _ else_:else_()? ";"?
+            = pos:position!() keyword("if") _ cond:expr() _ "{" _ if_:seq() _ "}" _ else_:else_()? _ ";"?
             { Expr::If(Box::new(cond), if_, else_, Pos::new(pos)) }
         rule else_() -> Seq
             = keyword("else") _ "{" _ body:seq() _ "}" { body }
@@ -252,7 +252,7 @@ peg::parser! {
             = while_: while_() { while_ }
             / if_: if_() { if_ }
             / switch: switch() { switch }
-            / pos:position!() keyword("return") _ val:expr()? ";" { Expr::Return(val.map(Box::new), Pos::new(pos)) }
+            / pos:position!() keyword("return") _ val:expr()? _ ";" { Expr::Return(val.map(Box::new), Pos::new(pos)) }
             / pos:position!() keyword("break") _ ";" { Expr::Break(Pos::new(pos)) }
             / let_:let() { let_ }
             / expr:expr() _ ";" { expr }
