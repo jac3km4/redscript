@@ -461,7 +461,6 @@ pub enum Diagnostic {
 pub enum Reference {
     Local(PoolIndex<Local>),
     Parameter(PoolIndex<Parameter>),
-    Field(PoolIndex<Field>),
     Class(PoolIndex<Class>),
     Enum(PoolIndex<Enum>),
 }
