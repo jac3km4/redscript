@@ -443,7 +443,6 @@ impl Scope {
             Expr::Ident(name, pos) => match self.resolve_reference(name.clone(), *pos)? {
                 Reference::Local(idx) => self.resolve_type_from_pool(pool.local(idx)?.type_, pool, *pos)?,
                 Reference::Parameter(idx) => self.resolve_type_from_pool(pool.parameter(idx)?.type_, pool, *pos)?,
-                Reference::Field(idx) => self.resolve_type_from_pool(pool.field(idx)?.type_, pool, *pos)?,
                 Reference::Class(idx) => {
                     let name = pool.definition_name(idx)?;
                     self.resolve_type(&TypeName::basic_owned(name), pool, *pos)?
