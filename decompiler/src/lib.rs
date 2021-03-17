@@ -1,6 +1,7 @@
 use std::io;
+use std::rc::Rc;
 
-use redscript::ast::{Constant, Expr, Ident, LiteralType, Pos, Seq, SwitchCase, Target, TypeName};
+use redscript::ast::{Constant, Expr, Ident, Literal, Pos, Seq, Source, SwitchCase, Target, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{CodeCursor, Instr, Offset, Position};
 use redscript::error::Error;
@@ -18,7 +19,7 @@ impl<'a> Decompiler<'a> {
         Decompiler { code, pool }
     }
 
-    pub fn decompile(&mut self) -> Result<Seq, Error> {
+    pub fn decompile(&mut self) -> Result<Seq<Source>, Error> {
         self.consume_path(Position::MAX)
     }
 
@@ -26,7 +27,7 @@ impl<'a> Decompiler<'a> {
         Ok(Ident::Owned(self.pool.definition_name(index)?))
     }
 
-    fn consume_n(&mut self, n: usize) -> Result<Vec<Expr>, Error> {
+    fn consume_n(&mut self, n: usize) -> Result<Vec<Expr<Source>>, Error> {
         let mut body = Vec::new();
         for _ in 0..n {
             body.push(self.consume()?)
@@ -34,7 +35,7 @@ impl<'a> Decompiler<'a> {
         Ok(body)
     }
 
-    fn consume_path(&mut self, target: Position) -> Result<Seq, Error> {
+    fn consume_path(&mut self, target: Position) -> Result<Seq<Source>, Error> {
         let mut body = Vec::new();
         loop {
             if self.code.pos() >= target
@@ -52,12 +53,12 @@ impl<'a> Decompiler<'a> {
         Ok(Seq::new(body))
     }
 
-    fn consume_call(&mut self, name: &'static str, param_count: usize) -> Result<Expr, Error> {
+    fn consume_call(&mut self, name: &'static str, param_count: usize) -> Result<Expr<Source>, Error> {
         let params = self.consume_n(param_count)?;
         Ok(Expr::Call(Ident::Static(name), params, Pos::ZERO))
     }
 
-    fn consume_params(&mut self) -> Result<Vec<Expr>, Error> {
+    fn consume_params(&mut self) -> Result<Vec<Expr<Source>>, Error> {
         let mut params = Vec::new();
         loop {
             while matches!(self.code.peek(), Some(Instr::Skip(_))) || matches!(self.code.peek(), Some(Instr::Nop)) {
@@ -72,7 +73,7 @@ impl<'a> Decompiler<'a> {
         Ok(params)
     }
 
-    fn consume_conditional_jump(&mut self, position: Position, offset: Offset) -> Result<Expr, Error> {
+    fn consume_conditional_jump(&mut self, position: Position, offset: Offset) -> Result<Expr<Source>, Error> {
         let condition = self.consume()?;
         let target = offset.absolute(position);
         let mut body = self.consume_path(target)?;
@@ -89,7 +90,7 @@ impl<'a> Decompiler<'a> {
         Ok(result)
     }
 
-    fn consume_switch(&mut self) -> Result<Expr, Error> {
+    fn consume_switch(&mut self) -> Result<Expr<Source>, Error> {
         let subject = self.consume()?;
 
         let mut labels = Vec::new();
@@ -111,7 +112,7 @@ impl<'a> Decompiler<'a> {
             match self.code.pop()? {
                 Instr::SwitchLabel(exit_offset, _) => {
                     let exit = exit_offset.absolute(label);
-                    let matched = self.consume()?;
+                    let matcher = self.consume()?;
 
                     self.code.goto(start_position)?;
                     let mut body = self.consume_path(exit)?;
@@ -119,7 +120,7 @@ impl<'a> Decompiler<'a> {
                         body.exprs.pop();
                         body.exprs.push(Expr::Break(Pos::ZERO));
                     }
-                    cases.push(SwitchCase(matched, body));
+                    cases.push(SwitchCase { matcher, body });
                 }
                 Instr::SwitchDefault => default = Some(Seq::new(vec![self.consume()?])),
                 _ => return Err(Error::DecompileError("Unexpected switch label instruction".to_owned())),
@@ -129,11 +130,11 @@ impl<'a> Decompiler<'a> {
         Ok(Expr::Switch(Box::new(subject), cases, default))
     }
 
-    fn consume(&mut self) -> Result<Expr, Error> {
+    fn consume(&mut self) -> Result<Expr<Source>, Error> {
         self.consume_with(None)
     }
 
-    fn consume_with(&mut self, context: Option<Expr>) -> Result<Expr, Error> {
+    fn consume_with(&mut self, context: Option<Expr<Source>>) -> Result<Expr<Source>, Error> {
         let position = self.code.pos();
         let res = match self.code.pop()? {
             Instr::Nop => Expr::EMPTY,
@@ -152,19 +153,19 @@ impl<'a> Decompiler<'a> {
             Instr::F64Const(val) => Expr::Constant(Constant::Float(val), Pos::ZERO),
             Instr::StringConst(str) => {
                 let decoded = String::from_utf8(str).unwrap();
-                Expr::Constant(Constant::String(LiteralType::String, decoded), Pos::ZERO)
+                Expr::Constant(Constant::String(Literal::String, Rc::new(decoded)), Pos::ZERO)
             }
             Instr::NameConst(idx) => {
                 let str = self.pool.names.get(idx)?.to_string();
-                Expr::Constant(Constant::String(LiteralType::Name, str), Pos::ZERO)
+                Expr::Constant(Constant::String(Literal::Name, Rc::new(str)), Pos::ZERO)
             }
             Instr::TweakDbIdConst(idx) => {
                 let str = self.pool.tweakdb_ids.get(idx)?.to_string();
-                Expr::Constant(Constant::String(LiteralType::TweakDbId, str), Pos::ZERO)
+                Expr::Constant(Constant::String(Literal::TweakDbId, Rc::new(str)), Pos::ZERO)
             }
             Instr::ResourceConst(idx) => {
                 let str = self.pool.resources.get(idx)?.to_string();
-                Expr::Constant(Constant::String(LiteralType::Resource, str), Pos::ZERO)
+                Expr::Constant(Constant::String(Literal::Resource, Rc::new(str)), Pos::ZERO)
             }
             Instr::TrueConst => Expr::Constant(Constant::Bool(true), Pos::ZERO),
             Instr::FalseConst => Expr::Constant(Constant::Bool(false), Pos::ZERO),
@@ -212,7 +213,11 @@ impl<'a> Decompiler<'a> {
             }
             Instr::Construct(n, class) => {
                 let params = self.consume_n(n.into())?;
-                Expr::New(Ident::Owned(self.pool.definition_name(class)?), params, Pos::ZERO)
+                Expr::New(
+                    TypeName::basic_owned(self.pool.definition_name(class)?),
+                    params,
+                    Pos::ZERO,
+                )
             }
             Instr::InvokeStatic(_, _, idx) => {
                 let def = self.pool.definition(idx)?;
@@ -257,7 +262,11 @@ impl<'a> Decompiler<'a> {
             }
             Instr::Equals(_) => self.consume_call("Equals", 2)?,
             Instr::NotEquals(_) => self.consume_call("NotEquals", 2)?,
-            Instr::New(class) => Expr::New(Ident::Owned(self.pool.definition_name(class)?), vec![], Pos::ZERO),
+            Instr::New(class) => Expr::New(
+                TypeName::basic_owned(self.pool.definition_name(class)?),
+                vec![],
+                Pos::ZERO,
+            ),
             Instr::Delete => self.consume_call("Delete", 1)?,
             Instr::This => Expr::This(Pos::ZERO),
             Instr::StartProfiling(_, _) => return Err(Error::DecompileError("Unexpected StartProfiling".to_owned())),
@@ -332,7 +341,7 @@ impl<'a> Decompiler<'a> {
     }
 }
 
-fn resolve_jump(seq: &mut Seq, target: Option<Position>) -> Option<&mut Target> {
+fn resolve_jump(seq: &mut Seq<Source>, target: Option<Position>) -> Option<&mut Target> {
     seq.exprs.iter_mut().rev().find_map(|expr| match expr {
         Expr::Goto(goto, _) if !goto.resolved && target.map(|target| goto.position == target.value).unwrap_or(true) => {
             goto.resolved = true;

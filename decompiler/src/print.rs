@@ -1,7 +1,7 @@
 use std::io::Write;
 use std::rc::Rc;
 
-use redscript::ast::{BinOp, Constant, Expr, Ident, LiteralType, Seq, SwitchCase, UnOp};
+use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, Seq, Source, SwitchCase, UnOp};
 use redscript::bundle::ConstantPool;
 use redscript::definition::{Definition, DefinitionValue, Function, Type};
 use redscript::error::Error;
@@ -211,7 +211,7 @@ fn write_function_body<W: Write>(
     Ok(())
 }
 
-fn write_seq<W: Write>(out: &mut W, code: &Seq, verbose: bool, depth: usize) -> Result<(), Error> {
+fn write_seq<W: Write>(out: &mut W, code: &Seq<Source>, verbose: bool, depth: usize) -> Result<(), Error> {
     for expr in code.exprs.iter().filter(|expr| !expr.is_empty()) {
         write!(out, "{}", INDENT.repeat(depth))?;
         write_expr(out, &expr, verbose, depth)?;
@@ -220,16 +220,16 @@ fn write_seq<W: Write>(out: &mut W, code: &Seq, verbose: bool, depth: usize) -> 
     Ok(())
 }
 
-fn write_expr<W: Write>(out: &mut W, expr: &Expr, verbose: bool, depth: usize) -> Result<(), Error> {
+fn write_expr<W: Write>(out: &mut W, expr: &Expr<Source>, verbose: bool, depth: usize) -> Result<(), Error> {
     let padding = INDENT.repeat(depth);
 
     match expr {
         Expr::Ident(ident, _) => write!(out, "{}", ident)?,
         Expr::Constant(cons, _) => match cons {
-            Constant::String(LiteralType::String, str) => write!(out, "\"{}\"", str)?,
-            Constant::String(LiteralType::Name, str) => write!(out, "n\"{}\"", str)?,
-            Constant::String(LiteralType::Resource, str) => write!(out, "r\"{}\"", str)?,
-            Constant::String(LiteralType::TweakDbId, str) => write!(out, "t\"{}\"", str)?,
+            Constant::String(Literal::String, str) => write!(out, "\"{}\"", str)?,
+            Constant::String(Literal::Name, str) => write!(out, "n\"{}\"", str)?,
+            Constant::String(Literal::Resource, str) => write!(out, "r\"{}\"", str)?,
+            Constant::String(Literal::TweakDbId, str) => write!(out, "t\"{}\"", str)?,
             Constant::Int(lit) => write!(out, "{}", lit)?,
             Constant::Uint(lit) => write!(out, "{}", lit)?,
             Constant::Float(lit) => write!(out, "{:.2}", lit)?,
@@ -280,7 +280,7 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, verbose: bool, depth: usize) -
             write!(out, "switch ")?;
             write_expr(out, expr, verbose, 0)?;
             writeln!(out, " {{")?;
-            for SwitchCase(matcher, body) in cases {
+            for SwitchCase { matcher, body } in cases {
                 write!(out, "{}  case ", padding)?;
                 write_expr(out, matcher, verbose, 0)?;
                 writeln!(out, ":")?;
@@ -338,7 +338,7 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr, verbose: bool, depth: usize) -
     Ok(())
 }
 
-fn write_call<W: Write>(out: &mut W, name: &Ident, params: &[Expr], verbose: bool) -> Result<(), Error> {
+fn write_call<W: Write>(out: &mut W, name: &Ident, params: &[Expr<Source>], verbose: bool) -> Result<(), Error> {
     let extracted = name.as_ref().split(';').next().expect("Empty function name");
     let fun_name = if extracted.is_empty() { "undefined" } else { extracted };
     match fun_name {
@@ -382,13 +382,19 @@ fn write_call<W: Write>(out: &mut W, name: &Ident, params: &[Expr], verbose: boo
     }
 }
 
-fn write_binop<W: Write>(out: &mut W, lhs: &Expr, rhs: &Expr, op: BinOp, verbose: bool) -> Result<(), Error> {
+fn write_binop<W: Write>(
+    out: &mut W,
+    lhs: &Expr<Source>,
+    rhs: &Expr<Source>,
+    op: BinOp,
+    verbose: bool,
+) -> Result<(), Error> {
     write_expr(out, lhs, verbose, 0)?;
     write!(out, " {} ", format_binop(op))?;
     write_expr(out, rhs, verbose, 0)
 }
 
-fn write_unop<W: Write>(out: &mut W, param: &Expr, op: UnOp, verbose: bool) -> Result<(), Error> {
+fn write_unop<W: Write>(out: &mut W, param: &Expr<Source>, op: UnOp, verbose: bool) -> Result<(), Error> {
     write!(out, "{}", format_unop(op))?;
     write_expr(out, param, verbose, 0)
 }

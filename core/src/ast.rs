@@ -1,4 +1,4 @@
-use std::fmt::{self, Display};
+use std::fmt::{self, Debug, Display};
 use std::hash::Hash;
 use std::ops::{Add, Sub};
 use std::rc::Rc;
@@ -6,34 +6,73 @@ use std::rc::Rc;
 use strum::Display;
 
 #[derive(Debug)]
-pub enum Expr {
-    Ident(Ident, Pos),
+pub enum Expr<Name: NameKind>
+where
+    Name: NameKind,
+    Name::Reference: Debug,
+    Name::Callable: Debug,
+    Name::Local: Debug,
+    Name::Function: Debug,
+    Name::Member: Debug,
+    Name::Type: Debug,
+{
+    Ident(Name::Reference, Pos),
     Constant(Constant, Pos),
-    Declare(Ident, Option<TypeName>, Option<Box<Expr>>, Pos),
-    Cast(TypeName, Box<Expr>, Pos),
-    Assign(Box<Expr>, Box<Expr>, Pos),
-    Call(Ident, Vec<Expr>, Pos),
-    MethodCall(Box<Expr>, Ident, Vec<Expr>, Pos),
-    Member(Box<Expr>, Ident, Pos),
-    ArrayElem(Box<Expr>, Box<Expr>, Pos),
-    New(Ident, Vec<Expr>, Pos),
-    Return(Option<Box<Expr>>, Pos),
-    Seq(Seq),
-    Switch(Box<Expr>, Vec<SwitchCase>, Option<Seq>),
+    Declare(Name::Local, Option<Name::Type>, Option<Box<Self>>, Pos),
+    Cast(Name::Type, Box<Self>, Pos),
+    Assign(Box<Self>, Box<Self>, Pos),
+    Call(Name::Callable, Vec<Self>, Pos),
+    MethodCall(Box<Self>, Name::Function, Vec<Self>, Pos),
+    Member(Box<Self>, Name::Member, Pos),
+    ArrayElem(Box<Self>, Box<Self>, Pos),
+    New(Name::Type, Vec<Self>, Pos),
+    Return(Option<Box<Self>>, Pos),
+    Seq(Seq<Name>),
+    Switch(Box<Self>, Vec<SwitchCase<Name>>, Option<Seq<Name>>),
     Goto(Target, Pos),
-    If(Box<Expr>, Seq, Option<Seq>, Pos),
-    Conditional(Box<Expr>, Box<Expr>, Box<Expr>, Pos),
-    While(Box<Expr>, Seq, Pos),
-    BinOp(Box<Expr>, Box<Expr>, BinOp, Pos),
-    UnOp(Box<Expr>, UnOp, Pos),
+    If(Box<Self>, Seq<Name>, Option<Seq<Name>>, Pos),
+    Conditional(Box<Self>, Box<Self>, Box<Self>, Pos),
+    While(Box<Self>, Seq<Name>, Pos),
+    BinOp(Box<Self>, Box<Self>, BinOp, Pos),
+    UnOp(Box<Self>, UnOp, Pos),
     This(Pos),
     Super(Pos),
     Break(Pos),
     Null,
 }
 
-impl Expr {
-    pub const EMPTY: Expr = Expr::Seq(Seq { exprs: vec![] });
+pub trait NameKind {
+    type Reference;
+    type Callable;
+    type Local;
+    type Function;
+    type Member;
+    type Type;
+}
+
+#[derive(Debug)]
+pub struct Source;
+
+impl NameKind for Source {
+    type Reference = Ident;
+    type Callable = Ident;
+    type Local = Ident;
+    type Function = Ident;
+    type Member = Ident;
+    type Type = TypeName;
+}
+
+impl<N> Expr<N>
+where
+    N: NameKind,
+    N::Reference: Debug,
+    N::Callable: Debug,
+    N::Local: Debug,
+    N::Function: Debug,
+    N::Member: Debug,
+    N::Type: Debug,
+{
+    pub const EMPTY: Self = Expr::Seq(Seq { exprs: vec![] });
 
     pub fn is_empty(&self) -> bool {
         match self {
@@ -44,9 +83,9 @@ impl Expr {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Constant {
-    String(LiteralType, String),
+    String(Literal, Rc<String>),
     Float(f64),
     Int(i64),
     Uint(u64),
@@ -148,21 +187,51 @@ impl UnOp {
 }
 
 #[derive(Debug)]
-pub struct SwitchCase(pub Expr, pub Seq);
-
-#[derive(Debug)]
-pub struct Seq {
-    pub exprs: Vec<Expr>,
+pub struct SwitchCase<N>
+where
+    N: NameKind,
+    N::Reference: Debug,
+    N::Callable: Debug,
+    N::Local: Debug,
+    N::Function: Debug,
+    N::Member: Debug,
+    N::Type: Debug,
+{
+    pub matcher: Expr<N>,
+    pub body: Seq<N>,
 }
 
-impl Seq {
-    pub fn new(exprs: Vec<Expr>) -> Seq {
+#[derive(Debug)]
+pub struct Seq<N>
+where
+    N: NameKind,
+    N::Reference: Debug,
+    N::Callable: Debug,
+    N::Local: Debug,
+    N::Function: Debug,
+    N::Member: Debug,
+    N::Type: Debug,
+{
+    pub exprs: Vec<Expr<N>>,
+}
+
+impl<N> Seq<N>
+where
+    N: NameKind,
+    N::Reference: Debug,
+    N::Callable: Debug,
+    N::Local: Debug,
+    N::Function: Debug,
+    N::Member: Debug,
+    N::Type: Debug,
+{
+    pub fn new(exprs: Vec<Expr<N>>) -> Seq<N> {
         Seq { exprs }
     }
 }
 
-#[derive(Debug)]
-pub enum LiteralType {
+#[derive(Debug, Clone)]
+pub enum Literal {
     String,
     Name,
     Resource,
@@ -200,7 +269,7 @@ impl Sub<Pos> for Pos {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Target {
     pub position: u16,
     pub resolved: bool,
