@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use assembler::Assembler;
 use parser::{Annotation, AnnotationName, FieldSource};
-use redscript::ast::{Ident, Pos, Seq};
+use redscript::ast::{Ident, Pos, Seq, Source};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Instr};
 use redscript::definition::{
@@ -15,6 +15,7 @@ use redscript::definition::{
 use redscript::error::Error;
 use scope::{FunctionId, FunctionName, Scope};
 use source_map::Files;
+use typechecker::Typechecker;
 use walkdir::WalkDir;
 
 use crate::parser::{ClassSource, FunctionSource, MemberSource, Qualifier, SourceEntry};
@@ -23,10 +24,11 @@ pub mod assembler;
 pub mod parser;
 pub mod scope;
 pub mod source_map;
+pub mod typechecker;
 
 pub struct Compiler<'a> {
     pool: &'a mut ConstantPool,
-    backlog: Vec<(PoolIndex<Class>, PoolIndex<Function>, Seq)>,
+    backlog: Vec<(PoolIndex<Class>, PoolIndex<Function>, Seq<Source>)>,
     scope: Scope,
 }
 
@@ -68,10 +70,6 @@ impl<'a> Compiler<'a> {
             Err(Error::CompileError(err, pos)) => {
                 Self::print_error(&files, &err, pos);
                 Err(Error::CompileError(err, pos))
-            }
-            Err(Error::FunctionResolutionError(err, pos)) => {
-                Self::print_error(&files, &err, pos);
-                Err(Error::FunctionResolutionError(err, pos))
             }
             Err(other) => {
                 log::error!("{}: {:?}", "Unexpected error during compilation", other);
@@ -375,7 +373,7 @@ impl<'a> Compiler<'a> {
                         let fun = self.pool.function(*idx)?;
                         return Ok((target_class, fun.base_method, *idx));
                     } else {
-                        return Err(Error::class_not_found(name.as_ref(), ann.pos));
+                        return Err(Error::class_not_found(value, ann.pos));
                     }
                 }
                 AnnotationName::ReplaceGlobal => {
@@ -414,7 +412,7 @@ impl<'a> Compiler<'a> {
                         self.pool.class_mut(target_class)?.functions.push(idx);
                         return Ok((target_class, base_method, idx));
                     } else {
-                        return Err(Error::class_not_found(name.as_ref(), ann.pos));
+                        return Err(Error::class_not_found(&value, ann.pos));
                     }
                 }
                 AnnotationName::AddField => {}
@@ -427,7 +425,7 @@ impl<'a> Compiler<'a> {
     fn compile_function(
         fun_idx: PoolIndex<Function>,
         class_idx: PoolIndex<Class>,
-        seq: &Seq,
+        seq: &Seq<Source>,
         pool: &mut ConstantPool,
         scope: &Scope,
     ) -> Result<(), Error> {
@@ -443,11 +441,14 @@ impl<'a> Compiler<'a> {
             local_scope.references.insert(ident, Reference::Parameter(*param));
         }
 
-        let assembler = Assembler::from_seq(&seq, pool, &mut local_scope)?;
+        let mut checker = Typechecker::new(pool);
+        let checked = checker.check_seq(seq, &mut local_scope)?;
+        let locals = checker.locals;
+        let assembler = Assembler::from_seq(checked, pool, &mut local_scope)?;
         let function = pool.function_mut(fun_idx)?;
         function.code = Code(assembler.code.into_iter().collect());
         function.code.0.push(Instr::Nop);
-        function.locals = assembler.locals.into_iter().collect();
+        function.locals = locals;
         Ok(())
     }
 }
@@ -546,7 +547,7 @@ mod tests {
                 }
 
                 public static func Ten() -> Int32 {
-                  return 10;
+                    return 10;
                 }
             }",
         )
