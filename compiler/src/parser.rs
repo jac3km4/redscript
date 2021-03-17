@@ -1,8 +1,9 @@
+use std::rc::Rc;
 use std::str::FromStr;
 
 use peg::error::ParseError;
 use peg::str::LineCol;
-use redscript::ast::{BinOp, Constant, Expr, Ident, LiteralType, Pos, Seq, SwitchCase, TypeName, UnOp};
+use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, Pos, Seq, Source, SwitchCase, TypeName, UnOp};
 use redscript::definition::Visibility;
 use strum::EnumString;
 
@@ -39,7 +40,7 @@ pub struct FunctionSource {
     pub declaration: Declaration,
     pub type_: Option<TypeName>,
     pub parameters: Vec<ParameterSource>,
-    pub body: Option<Seq>,
+    pub body: Option<Seq<Source>>,
 }
 
 #[derive(Debug)]
@@ -139,10 +140,10 @@ peg::parser! {
             / keyword("out") { Qualifier::Out }
             / keyword("opt") { Qualifier::Optional }
 
-        rule literal_type() -> LiteralType
-            = "n" { LiteralType::Name }
-            / "r" { LiteralType::Resource }
-            / "t" { LiteralType::TweakDbId }
+        rule literal_type() -> Literal
+            = "n" { Literal::Name }
+            / "r" { Literal::Resource }
+            / "t" { Literal::TweakDbId }
 
         rule annotation() -> Annotation
             = pos:position!() "@" ident:ident() _ "(" _ values:commasep(<ident()>) _ ")" {?
@@ -174,9 +175,9 @@ peg::parser! {
             / keyword("false") { Constant::Bool(false) }
             / n:number() { n }
             / type_:literal_type()? "\"" str:$((!['"'] [_])*) "\""
-                { Constant::String(type_.unwrap_or(LiteralType::String), str.to_owned()) }
+                { Constant::String(type_.unwrap_or(Literal::String), Rc::new(str.to_owned())) }
 
-        rule seq() -> Seq = exprs:(stmt() ** _) { Seq::new(exprs) }
+        rule seq() -> Seq<Source> = exprs:(stmt() ** _) { Seq::new(exprs) }
 
         rule type_() -> TypeName
             = name:ident() args:type_args()? { TypeName { name: Ident::new(name), arguments: args.unwrap_or_default() } }
@@ -185,9 +186,9 @@ peg::parser! {
         rule let_type() -> TypeName = ":" _ type_:type_() { type_ }
         rule func_type() -> TypeName = "->" _ type_:type_() { type_ }
 
-        rule initializer() -> Expr = "=" _ val:expr() { val }
+        rule initializer() -> Expr<Source> = "=" _ val:expr() { val }
 
-        rule let() -> Expr
+        rule let() -> Expr<Source>
             = pos:position!() keyword("let") _ name:ident() _ type_:let_type()? _ val:initializer()? _ ";"
             { Expr::Declare(Ident::new(name), type_, val.map(Box::new), Pos::new(pos)) }
 
@@ -202,7 +203,7 @@ peg::parser! {
         pub rule function() -> FunctionSource
             = declaration:decl(<keyword("func")>) _ "(" _ parameters:commasep(<param()>) _ ")" _ type_:func_type()? _ body:function_body()?
             { FunctionSource { declaration, type_, parameters, body } }
-        rule function_body() -> Seq
+        rule function_body() -> Seq<Source>
             = "{" _ body:seq() _ "}" { body }
             / pos:position!() "=" _ expr:expr() { Seq::new(vec![Expr::Return(Some(Box::new(expr)), Pos::new(pos))]) }
 
@@ -227,28 +228,28 @@ peg::parser! {
 
         pub rule source() -> Vec<SourceEntry> = _ decls:(source_entry() ** _) _ { decls }
 
-        rule switch() -> Expr
+        rule switch() -> Expr<Source>
             = keyword("switch") _ matcher:expr() _ "{" _ cases:(case() ** _) _ default:default()? _ "}" _ ";"?
             { Expr::Switch(Box::new(matcher), cases, default) }
 
-        rule case() -> SwitchCase
+        rule case() -> SwitchCase<Source>
             = keyword("case") _ matcher:expr() _ ":" _ body:seq()
-            { SwitchCase(matcher, body) }
+            { SwitchCase { matcher, body } }
 
-        rule default() -> Seq
+        rule default() -> Seq<Source>
             = keyword("default") _ ":" _ body:seq() { body }
 
-        rule while_() -> Expr
+        rule while_() -> Expr<Source>
             = pos:position!() keyword("while") _ cond:expr() _ "{" _ body:seq() _ "}" _ ";"?
             { Expr::While(Box::new(cond), body, Pos::new(pos)) }
 
-        rule if_() -> Expr
+        rule if_() -> Expr<Source>
             = pos:position!() keyword("if") _ cond:expr() _ "{" _ if_:seq() _ "}" _ else_:else_()? _ ";"?
             { Expr::If(Box::new(cond), if_, else_, Pos::new(pos)) }
-        rule else_() -> Seq
+        rule else_() -> Seq<Source>
             = keyword("else") _ "{" _ body:seq() _ "}" { body }
 
-        pub rule stmt() -> Expr
+        pub rule stmt() -> Expr<Source>
             = while_: while_() { while_ }
             / if_: if_() { if_ }
             / switch: switch() { switch }
@@ -257,7 +258,7 @@ peg::parser! {
             / let_:let() { let_ }
             / expr:expr() _ ";" { expr }
 
-        pub rule expr() -> Expr = precedence!{
+        pub rule expr() -> Expr<Source> = precedence!{
             x:@ _ pos:position!() "?" _ y:expr() _ ":" _ z:expr()
                 { Expr::Conditional(Box::new(x), Box::new(y), Box::new(z), Pos::new(pos)) }
             x:@ _ pos:position!() "=" _ y:(@) { Expr::Assign(Box::new(x), Box::new(y), Pos::new(pos)) }
@@ -291,7 +292,7 @@ peg::parser! {
             pos:position!() "~" _ x:@ { Expr::UnOp(Box::new(x), UnOp::BitNot, Pos::new(pos)) }
             pos:position!() "-" _ x:@ { Expr::UnOp(Box::new(x), UnOp::Neg, Pos::new(pos)) }
             pos:position!() keyword("new") _ id:ident() _ "(" _ params:commasep(<expr()>) _ ")"
-                { Expr::New(Ident::new(id), params, Pos::new(pos)) }
+                { Expr::New(TypeName::basic_owned(Rc::new(id)), params, Pos::new(pos)) }
             --
             expr:(@) _ pos:position!() "[" _ idx:expr() _ "]"
                 { Expr::ArrayElem(Box::new(expr), Box::new(idx), Pos::new(pos)) }
@@ -407,7 +408,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", stmt),
-            r#"Switch(Ident(Owned("value"), Pos(7)), [SwitchCase(Constant(String(String, "0"), Pos(37)), Seq { exprs: [] }), SwitchCase(Constant(String(String, "1"), Pos(64)), Seq { exprs: [Call(Owned("Log"), [Constant(String(String, "0 or 1"), Pos(93))], Pos(89))] }), SwitchCase(Constant(String(String, "2"), Pos(126)), Seq { exprs: [Break(Pos(151))] })], Some(Seq { exprs: [Call(Owned("Log"), [Constant(String(String, "default"), Pos(208))], Pos(204))] }))"#
+            r#"Switch(Ident(Owned("value"), Pos(7)), [SwitchCase { matcher: Constant(String(String, "0"), Pos(37)), body: Seq { exprs: [] } }, SwitchCase { matcher: Constant(String(String, "1"), Pos(64)), body: Seq { exprs: [Call(Owned("Log"), [Constant(String(String, "0 or 1"), Pos(93))], Pos(89))] } }, SwitchCase { matcher: Constant(String(String, "2"), Pos(126)), body: Seq { exprs: [Break(Pos(151))] } }], Some(Seq { exprs: [Call(Owned("Log"), [Constant(String(String, "default"), Pos(208))], Pos(204))] }))"#
         );
     }
 

@@ -1,14 +1,12 @@
 use std::borrow::Cow;
-use std::iter;
-use std::str::FromStr;
 
-use redscript::ast::{Constant, Expr, Ident, LiteralType, Pos, TypeName};
+use redscript::ast::{Expr, Ident, Pos, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::definition::{Class, Definition, DefinitionValue, Enum, Field, Function, Local, Type};
 use redscript::error::Error;
 
-use crate::assembler::IntrinsicOp;
 use crate::parser::{FunctionSource, Qualifier};
+use crate::typechecker::Typed;
 use crate::{Reference, TypeId};
 
 #[derive(Debug, Clone)]
@@ -45,8 +43,7 @@ impl FunctionName {
 #[derive(Debug)]
 pub struct FunctionMatch {
     pub index: PoolIndex<Function>,
-    pub conversions: Vec<Conversion>,
-    pub unspecified_args: usize,
+    pub args: Vec<Expr<Typed>>,
 }
 
 #[derive(Debug, Clone)]
@@ -165,128 +162,31 @@ impl Scope {
         Err(Error::CompileError(err, pos))
     }
 
-    pub fn resolve_function<'a>(
+    pub fn resolve_function(
         &self,
         name: FunctionName,
-        args: impl Iterator<Item = &'a Expr> + Clone,
-        expected: Option<&TypeId>,
         pool: &ConstantPool,
         pos: Pos,
-    ) -> Result<FunctionMatch, Error> {
-        let overloads = self
-            .functions
+    ) -> Result<&FunctionOverloads, Error> {
+        self.functions
             .get(&name)
-            .ok_or_else(|| Error::CompileError(format!("Function {} not found", name.pretty(pool)), pos))?;
-        let mut errors = Vec::new();
-
-        for fun_idx in overloads.functions.iter() {
-            match self.resolve_function_overload(*fun_idx, args.clone(), expected, pool, pos) {
-                Ok(res) => return Ok(res),
-                Err(Error::FunctionResolutionError(msg, _)) => errors.push(msg),
-                Err(other) => return Err(other),
-            }
-        }
-        let message = format!(
-            "Arguments passed to {} do not match any of the overloads:\n{}",
-            name.pretty(pool),
-            errors.join("\n")
-        );
-        Err(Error::FunctionResolutionError(message, pos))
-    }
-
-    fn resolve_function_overload<'a>(
-        &self,
-        fun_idx: PoolIndex<Function>,
-        args: impl Iterator<Item = &'a Expr>,
-        expected: Option<&TypeId>,
-        pool: &ConstantPool,
-        pos: Pos,
-    ) -> Result<FunctionMatch, Error> {
-        let fun = pool.function(fun_idx)?;
-
-        if let Some(expected) = expected {
-            let return_type_idx = fun
-                .return_type
-                .ok_or_else(|| Error::CompileError("Void value cannot be used".to_owned(), pos))?;
-            let return_type = self.resolve_type_from_pool(return_type_idx, pool, pos)?;
-            if self.find_conversion(&return_type, &expected, pool)?.is_none() {
-                let message = format!(
-                    "Return type {} does not match expected {}",
-                    return_type.pretty(pool)?,
-                    expected.pretty(pool)?
-                );
-                return Err(Error::FunctionResolutionError(message, pos));
-            }
-        }
-
-        let mut conversions = Vec::new();
-        for (idx, arg) in args.enumerate() {
-            let param_idx = fun.parameters.get(idx).ok_or_else(|| {
-                Error::FunctionResolutionError(format!("Too many arguments, expected {}", fun.parameters.len()), pos)
-            })?;
-            let param = pool.parameter(*param_idx)?;
-            let param_type = self.resolve_type_from_pool(param.type_, pool, pos)?;
-            let arg_type = self.infer_type(arg, Some(&param_type), pool)?;
-            if let Some(conv) = self.find_conversion(&arg_type, &param_type, pool)? {
-                conversions.push(conv);
-            } else {
-                let expected = param_type.pretty(pool)?;
-                let given = arg_type.pretty(pool)?;
-                let message = format!(
-                    "Parameter at position {} expects type {} while provided type is {}",
-                    idx, expected, given
-                );
-                return Err(Error::FunctionResolutionError(message, pos));
-            }
-        }
-
-        let opt_param_count = fun
-            .parameters
-            .iter()
-            .filter_map(|idx| pool.parameter(*idx).ok())
-            .filter(|param| param.flags.is_optional())
-            .count();
-
-        let min_params = fun.parameters.len() - opt_param_count;
-        if conversions.len() >= min_params {
-            let unspecified_args = fun.parameters.len() - conversions.len();
-            let match_ = FunctionMatch {
-                index: fun_idx,
-                conversions,
-                unspecified_args,
-            };
-            Ok(match_)
-        } else {
-            let message = format!(
-                "Expected {}-{} parameters, given {}",
-                min_params,
-                fun.parameters.len(),
-                conversions.len()
-            );
-            Err(Error::FunctionResolutionError(message, pos))
-        }
+            .ok_or_else(|| Error::CompileError(format!("Function {} not found", name.pretty(pool)), pos))
     }
 
     pub fn resolve_method(
         &self,
         name: Ident,
         class_idx: PoolIndex<Class>,
-        args: &[Expr],
-        expected: Option<&TypeId>,
         pool: &ConstantPool,
         pos: Pos,
-    ) -> Result<FunctionMatch, Error> {
+    ) -> Result<&FunctionOverloads, Error> {
         let fun_name = FunctionName::instance(class_idx, name.clone());
-        match self.resolve_function(fun_name, args.iter(), expected, pool, pos) {
+        match self.resolve_function(fun_name, pool, pos) {
             Ok(res) => Ok(res),
             Err(err) => {
                 let class = pool.class(class_idx)?;
                 if class.base != PoolIndex::UNDEFINED {
-                    self.resolve_method(name, class.base, args, expected, pool, pos)
-                        .map_err(|base_err| match base_err {
-                            err @ Error::FunctionResolutionError(_, _) => err,
-                            _ => err,
-                        })
+                    self.resolve_method(name, class.base, pool, pos)
                 } else {
                     Err(err)
                 }
@@ -303,8 +203,8 @@ impl Scope {
 
     pub fn get_type_index(&mut self, type_: &TypeId, pool: &mut ConstantPool) -> Result<PoolIndex<Type>, Error> {
         let name = type_.repr(pool)?;
-        if let Some(t) = self.types.get(&name) {
-            Ok(*t)
+        if let Some(type_idx) = self.types.get(&name) {
+            Ok(*type_idx)
         } else {
             let name_idx = pool.names.add(name.to_owned());
             let value = match type_ {
@@ -317,9 +217,9 @@ impl Scope {
                 TypeId::ScriptRef(inner) => Type::ScriptRef(self.get_type_index(inner, pool)?),
                 TypeId::Null | TypeId::Void => panic!(),
             };
-            let idx = pool.push_definition(Definition::type_(name_idx, value)).cast();
-            self.types.insert(name, idx);
-            Ok(idx)
+            let type_idx = pool.push_definition(Definition::type_(name_idx, value)).cast();
+            self.types.insert(name, type_idx);
+            Ok(type_idx)
         }
     }
 
@@ -378,251 +278,6 @@ impl Scope {
             Type::ScriptRef(type_) => {
                 let inner = self.resolve_type_from_pool(*type_, pool, pos)?;
                 TypeId::ScriptRef(Box::new(inner))
-            }
-        };
-        Ok(result)
-    }
-
-    pub fn convert_type(&self, from: &TypeId, to: &TypeId, pool: &ConstantPool, pos: Pos) -> Result<Conversion, Error> {
-        self.find_conversion(&from, &to, pool)?.ok_or(Error::CompileError(
-            format!("Can't coerce {} to {}", from.pretty(pool)?, to.pretty(pool)?),
-            pos,
-        ))
-    }
-
-    fn find_conversion(&self, from: &TypeId, to: &TypeId, pool: &ConstantPool) -> Result<Option<Conversion>, Error> {
-        let result = if from == to {
-            Some(Conversion::Identity)
-        } else {
-            match (from, to) {
-                (TypeId::Null, TypeId::Ref(_)) => Some(Conversion::Identity),
-                (TypeId::Null, TypeId::WeakRef(_)) => Some(Conversion::RefToWeakRef),
-                (TypeId::Class(from), TypeId::Class(_)) => {
-                    let class = pool.class(*from)?;
-                    if class.base != PoolIndex::UNDEFINED {
-                        self.find_conversion(&TypeId::Class(class.base), to, pool)?
-                    } else {
-                        None
-                    }
-                }
-                (TypeId::Struct(from), TypeId::Struct(_)) => {
-                    let class = pool.class(*from)?;
-                    if class.base != PoolIndex::UNDEFINED {
-                        self.find_conversion(&TypeId::Struct(class.base), to, pool)?
-                    } else {
-                        None
-                    }
-                }
-                (from @ TypeId::Class(_), TypeId::Ref(to)) => self
-                    .find_conversion(from, to, pool)?
-                    .filter(|conv| *conv == Conversion::Identity),
-                (TypeId::Ref(from), TypeId::Ref(to)) => self
-                    .find_conversion(from, to, pool)?
-                    .filter(|conv| *conv == Conversion::Identity),
-                (TypeId::WeakRef(from), TypeId::WeakRef(to)) => self
-                    .find_conversion(from, to, pool)?
-                    .filter(|conv| *conv == Conversion::Identity),
-                (TypeId::WeakRef(from), TypeId::Ref(to))
-                    if self.find_conversion(from, to, pool)? == Some(Conversion::Identity) =>
-                {
-                    Some(Conversion::WeakRefToRef)
-                }
-                (TypeId::Ref(from), TypeId::WeakRef(to))
-                    if self.find_conversion(from, to, pool)? == Some(Conversion::Identity) =>
-                {
-                    Some(Conversion::RefToWeakRef)
-                }
-                _ => None,
-            }
-        };
-        Ok(result)
-    }
-
-    pub fn infer_type(&self, expr: &Expr, expected: Option<&TypeId>, pool: &ConstantPool) -> Result<TypeId, Error> {
-        let res = match expr {
-            Expr::Ident(name, pos) => match self.resolve_reference(name.clone(), *pos)? {
-                Reference::Local(idx) => self.resolve_type_from_pool(pool.local(idx)?.type_, pool, *pos)?,
-                Reference::Parameter(idx) => self.resolve_type_from_pool(pool.parameter(idx)?.type_, pool, *pos)?,
-                Reference::Class(idx) => {
-                    let name = pool.definition_name(idx)?;
-                    self.resolve_type(&TypeName::basic_owned(name), pool, *pos)?
-                }
-                Reference::Enum(idx) => {
-                    let name = pool.definition_name(idx)?;
-                    self.resolve_type(&TypeName::basic_owned(name), pool, *pos)?
-                }
-            },
-            Expr::Cast(type_name, expr, pos) => {
-                let type_ = self.resolve_type(type_name, pool, *pos)?;
-                match self.infer_type(&expr, None, pool)? {
-                    TypeId::Ref(_) => TypeId::Ref(Box::new(type_)),
-                    TypeId::WeakRef(_) => TypeId::Ref(Box::new(type_)),
-                    TypeId::ScriptRef(_) => TypeId::ScriptRef(Box::new(type_)),
-                    _ => type_,
-                }
-            }
-            Expr::Call(ident, args, pos) => {
-                if let Ok(intrinsic) = IntrinsicOp::from_str(ident.as_ref()) {
-                    self.infer_intrinsic_type(intrinsic, args, expected, pool, *pos)?
-                } else {
-                    let name = FunctionName::global(ident.clone());
-                    let match_ = self.resolve_function(name, args.iter(), expected, pool, *pos)?;
-                    match pool.function(match_.index)?.return_type {
-                        Some(type_) => self.resolve_type_from_pool(type_, pool, *pos)?,
-                        None => TypeId::Void,
-                    }
-                }
-            }
-            Expr::MethodCall(expr, ident, args, pos) => {
-                let class = match self.infer_type(expr, None, pool)?.unwrapped() {
-                    TypeId::Class(class) => *class,
-                    TypeId::Struct(class) => *class,
-                    type_ => {
-                        let error = format!("{} doesn't have methods", type_.pretty(pool)?);
-                        return Err(Error::CompileError(error, *pos));
-                    }
-                };
-                let match_ = self.resolve_method(ident.clone(), class, args, expected, pool, *pos)?;
-                match pool.function(match_.index)?.return_type {
-                    None => TypeId::Void,
-                    Some(return_type) => self.resolve_type_from_pool(return_type, pool, *pos)?,
-                }
-            }
-            Expr::ArrayElem(expr, _, pos) => match self.infer_type(expr, None, pool)? {
-                TypeId::Array(inner) => *inner,
-                TypeId::StaticArray(inner, _) => *inner,
-                type_ => {
-                    return Err(Error::CompileError(
-                        format!("{} can't be indexed", type_.pretty(pool)?),
-                        *pos,
-                    ))
-                }
-            },
-            Expr::New(name, _, pos) => {
-                if let Reference::Class(class_idx) = self.resolve_reference(name.clone(), *pos)? {
-                    if pool.class(class_idx)?.flags.is_struct() {
-                        TypeId::Struct(class_idx)
-                    } else {
-                        TypeId::Ref(Box::new(TypeId::Class(class_idx)))
-                    }
-                } else {
-                    return Err(Error::CompileError(format!("{} can't be constructed", name), *pos));
-                }
-            }
-            Expr::Member(expr, ident, pos) => {
-                let class = match self.infer_type(expr, None, pool)?.unwrapped() {
-                    TypeId::Class(class) => *class,
-                    TypeId::Struct(class) => *class,
-                    t @ TypeId::Enum(_) => return Ok(t.clone()),
-                    t => {
-                        let err = format!("Can't access a member of {}", t.pretty(pool)?);
-                        return Err(Error::CompileError(err, *pos));
-                    }
-                };
-                let field = self.resolve_field(ident.clone(), class, pool, *pos)?;
-                self.resolve_type_from_pool(pool.field(field)?.type_, pool, *pos)?
-            }
-            Expr::Conditional(_, lhs, rhs, pos) => {
-                let lt = self.infer_type(lhs, expected, pool)?;
-                let rt = self.infer_type(rhs, expected, pool)?;
-                if lt != rt {
-                    let error = format!("Incompatible types: {} and {}", lt.pretty(pool)?, rt.pretty(pool)?);
-                    return Err(Error::CompileError(error, *pos));
-                }
-                lt
-            }
-            Expr::BinOp(lhs, rhs, op, pos) => {
-                let ident = Ident::new(op.name());
-                let args = iter::once(lhs.as_ref()).chain(iter::once(rhs.as_ref()));
-                let match_ = self.resolve_function(FunctionName::global(ident), args.clone(), expected, pool, *pos)?;
-                match pool.function(match_.index)?.return_type {
-                    Some(type_) => self.resolve_type_from_pool(type_, pool, *pos)?,
-                    None => TypeId::Void,
-                }
-            }
-            Expr::UnOp(expr, op, pos) => {
-                let ident = Ident::new(op.name());
-                let args = iter::once(expr.as_ref());
-                let match_ = self.resolve_function(FunctionName::global(ident), args.clone(), expected, pool, *pos)?;
-                match pool.function(match_.index)?.return_type {
-                    Some(type_) => self.resolve_type_from_pool(type_, pool, *pos)?,
-                    None => TypeId::Void,
-                }
-            }
-            Expr::Constant(cons, pos) => match cons {
-                Constant::String(LiteralType::String, _) => self.resolve_type(&TypeName::STRING, pool, *pos)?,
-                Constant::String(LiteralType::Name, _) => self.resolve_type(&TypeName::CNAME, pool, *pos)?,
-                Constant::String(LiteralType::Resource, _) => self.resolve_type(&TypeName::RESOURCE, pool, *pos)?,
-                Constant::String(LiteralType::TweakDbId, _) => self.resolve_type(&TypeName::TWEAKDB_ID, pool, *pos)?,
-                Constant::Float(_) => self.resolve_type(&TypeName::FLOAT, pool, *pos)?,
-                Constant::Int(_) => self.resolve_type(&TypeName::INT32, pool, *pos)?,
-                Constant::Uint(_) => self.resolve_type(&TypeName::UINT32, pool, *pos)?,
-                Constant::Bool(_) => self.resolve_type(&TypeName::BOOL, pool, *pos)?,
-            },
-            Expr::Null => TypeId::Null,
-            Expr::This(pos) => match self.this {
-                Some(class_idx) => TypeId::Ref(Box::new(TypeId::Class(class_idx))),
-                None => return Err(Error::CompileError("No 'this' in static context".to_owned(), *pos)),
-            },
-            Expr::Super(pos) => match self.this {
-                Some(class_idx) => {
-                    let base_idx = pool.class(class_idx)?.base;
-                    TypeId::Ref(Box::new(TypeId::Class(base_idx)))
-                }
-                None => return Err(Error::CompileError("No 'super' in static context".to_owned(), *pos)),
-            },
-            Expr::While(_, _, _) => TypeId::Void,
-            Expr::Goto(_, _) => TypeId::Void,
-            Expr::If(_, _, _, _) => TypeId::Void,
-            Expr::Break(_) => TypeId::Void,
-            Expr::Return(_, _) => TypeId::Void,
-            Expr::Seq(_) => TypeId::Void,
-            Expr::Switch(_, _, _) => TypeId::Void,
-            Expr::Declare(_, _, _, _) => TypeId::Void,
-            Expr::Assign(_, _, _) => TypeId::Void,
-        };
-        Ok(res)
-    }
-
-    fn infer_intrinsic_type(
-        &self,
-        intrinsic: IntrinsicOp,
-        args: &[Expr],
-        expected: Option<&TypeId>,
-        pool: &ConstantPool,
-        pos: Pos,
-    ) -> Result<TypeId, Error> {
-        if args.len() != intrinsic.arg_count().into() {
-            let err = format!("Invalid number of arguments for {}", intrinsic);
-            return Err(Error::CompileError(err, pos));
-        }
-        let type_ = self.infer_type(&args[0], None, pool)?;
-        let result = match (intrinsic, type_) {
-            (IntrinsicOp::Equals, _) => self.resolve_type(&TypeName::BOOL, pool, pos)?,
-            (IntrinsicOp::NotEquals, _) => self.resolve_type(&TypeName::BOOL, pool, pos)?,
-            (IntrinsicOp::ArrayClear, _) => TypeId::Void,
-            (IntrinsicOp::ArraySize, _) => self.resolve_type(&TypeName::INT32, pool, pos)?,
-            (IntrinsicOp::ArrayResize, _) => TypeId::Void,
-            (IntrinsicOp::ArrayFindFirst, TypeId::Array(member)) => *member,
-            (IntrinsicOp::ArrayFindLast, TypeId::Array(member)) => *member,
-            (IntrinsicOp::ArrayContains, _) => self.resolve_type(&TypeName::BOOL, pool, pos)?,
-            (IntrinsicOp::ArrayPush, _) => TypeId::Void,
-            (IntrinsicOp::ArrayPop, TypeId::Array(member)) => *member,
-            (IntrinsicOp::ArrayInsert, _) => TypeId::Void,
-            (IntrinsicOp::ArrayRemove, _) => self.resolve_type(&TypeName::BOOL, pool, pos)?,
-            (IntrinsicOp::ArrayGrow, _) => TypeId::Void,
-            (IntrinsicOp::ArrayErase, _) => self.resolve_type(&TypeName::BOOL, pool, pos)?,
-            (IntrinsicOp::ArrayLast, TypeId::Array(member)) => *member,
-            (IntrinsicOp::ToString, _) => self.resolve_type(&TypeName::STRING, pool, pos)?,
-            (IntrinsicOp::EnumInt, _) => self.resolve_type(&TypeName::INT32, pool, pos)?,
-            (IntrinsicOp::IntEnum, _) if expected.is_some() => expected.unwrap().clone(),
-            (IntrinsicOp::ToVariant, _) => self.resolve_type(&TypeName::VARIANT, pool, pos)?,
-            (IntrinsicOp::FromVariant, _) if expected.is_some() => expected.unwrap().clone(),
-            (IntrinsicOp::AsRef, type_) => TypeId::ScriptRef(Box::new(type_)),
-            (IntrinsicOp::Deref, TypeId::ScriptRef(inner)) => *inner,
-            _ => {
-                let err = format!("Invalid intrinsic {} call", intrinsic);
-                return Err(Error::CompileError(err, pos));
             }
         };
         Ok(result)
