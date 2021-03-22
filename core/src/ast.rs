@@ -53,9 +53,9 @@ pub trait NameKind {
 }
 
 #[derive(Debug)]
-pub struct Source;
+pub struct SourceAst;
 
-impl NameKind for Source {
+impl NameKind for SourceAst {
     type Reference = Ident;
     type Callable = Ident;
     type Local = Ident;
