@@ -8,19 +8,24 @@ use redscript::error::Error;
 
 use crate::scope::{FunctionName, Scope};
 use crate::transform::ExprTransformer;
-use crate::typechecker::{type_of, Callable, IntrinsicOp, Typed};
+use crate::typechecker::{type_of, Callable, IntrinsicOp, TypedAst};
 use crate::{Reference, TypeId};
 
 pub struct Desugar<'a> {
     pool: &'a mut ConstantPool,
     scope: &'a mut Scope,
     name_count: usize,
-    prefix_exprs: Vec<Expr<Typed>>,
+    prefix_exprs: Vec<Expr<TypedAst>>,
     pub locals: Vec<PoolIndex<Local>>,
 }
 
-impl<'a> ExprTransformer<Typed> for Desugar<'a> {
-    fn on_array_lit(&mut self, exprs: Vec<Expr<Typed>>, type_: Option<TypeId>, pos: Pos) -> Result<Expr<Typed>, Error> {
+impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
+    fn on_array_lit(
+        &mut self,
+        exprs: Vec<Expr<TypedAst>>,
+        type_: Option<TypeId>,
+        pos: Pos,
+    ) -> Result<Expr<TypedAst>, Error> {
         let type_ = TypeId::Array(Box::new(type_.unwrap()));
         let local = self.fresh_local(&type_)?;
 
@@ -35,10 +40,10 @@ impl<'a> ExprTransformer<Typed> for Desugar<'a> {
     fn on_for_in(
         &mut self,
         name: PoolIndex<Local>,
-        array: Expr<Typed>,
-        seq: Seq<Typed>,
+        array: Expr<TypedAst>,
+        seq: Seq<TypedAst>,
         pos: Pos,
-    ) -> Result<Expr<Typed>, Error> {
+    ) -> Result<Expr<TypedAst>, Error> {
         let mut seq = self.on_seq(seq)?;
 
         let array = self.on_expr(array)?;
@@ -93,7 +98,7 @@ impl<'a> ExprTransformer<Typed> for Desugar<'a> {
         Ok(Expr::While(Box::new(condition), Seq::new(body), pos))
     }
 
-    fn on_seq(&mut self, seq: Seq<Typed>) -> Result<Seq<Typed>, Error> {
+    fn on_seq(&mut self, seq: Seq<TypedAst>) -> Result<Seq<TypedAst>, Error> {
         let mut processed = Vec::with_capacity(seq.exprs.len());
         for expr in seq.exprs {
             let done = self.on_expr(expr)?;
@@ -117,7 +122,7 @@ impl<'a> Desugar<'a> {
         }
     }
 
-    fn add_prefix(&mut self, expr: Expr<Typed>) {
+    fn add_prefix(&mut self, expr: Expr<TypedAst>) {
         self.prefix_exprs.push(expr)
     }
 

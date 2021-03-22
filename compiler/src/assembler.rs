@@ -5,7 +5,7 @@ use redscript::definition::{Function, ParameterFlags};
 use redscript::error::Error;
 
 use crate::scope::Scope;
-use crate::typechecker::{type_of, Callable, IntrinsicOp, Member, Typed};
+use crate::typechecker::{type_of, Callable, IntrinsicOp, Member, TypedAst};
 use crate::{Reference, TypeId};
 
 pub struct Assembler {
@@ -35,7 +35,7 @@ impl Assembler {
         self.code.append(code.code);
     }
 
-    fn compile(&mut self, expr: Expr<Typed>, scope: &mut Scope, pool: &mut ConstantPool) -> Result<(), Error> {
+    fn compile(&mut self, expr: Expr<TypedAst>, scope: &mut Scope, pool: &mut ConstantPool) -> Result<(), Error> {
         match expr {
             Expr::Ident(reference, pos) => {
                 match reference {
@@ -256,7 +256,7 @@ impl Assembler {
     fn compile_call(
         &mut self,
         function_idx: PoolIndex<Function>,
-        args: Vec<Expr<Typed>>,
+        args: Vec<Expr<TypedAst>>,
         scope: &mut Scope,
         pool: &mut ConstantPool,
         force_static: bool,
@@ -297,7 +297,7 @@ impl Assembler {
     fn compile_intrinsic(
         &mut self,
         intrinsic: IntrinsicOp,
-        args: Vec<Expr<Typed>>,
+        args: Vec<Expr<TypedAst>>,
         return_type: &TypeId,
         scope: &mut Scope,
         pool: &mut ConstantPool,
@@ -395,13 +395,13 @@ impl Assembler {
         code
     }
 
-    fn from_expr(expr: Expr<Typed>, scope: &mut Scope, pool: &mut ConstantPool) -> Result<Assembler, Error> {
+    fn from_expr(expr: Expr<TypedAst>, scope: &mut Scope, pool: &mut ConstantPool) -> Result<Assembler, Error> {
         let mut code = Assembler::new();
         code.compile(expr, scope, pool)?;
         Ok(code)
     }
 
-    pub fn from_seq(seq: Seq<Typed>, scope: &mut Scope, pool: &mut ConstantPool) -> Result<Assembler, Error> {
+    pub fn from_seq(seq: Seq<TypedAst>, scope: &mut Scope, pool: &mut ConstantPool) -> Result<Assembler, Error> {
         let mut code = Assembler::new();
         for expr in seq.exprs {
             code.compile(expr, scope, pool)?;

@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use peg::error::ParseError;
 use peg::str::LineCol;
-use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, Pos, Seq, Source, SwitchCase, TypeName, UnOp};
+use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, Pos, Seq, SourceAst, SwitchCase, TypeName, UnOp};
 use redscript::definition::Visibility;
 use strum::EnumString;
 
@@ -40,7 +40,7 @@ pub struct FunctionSource {
     pub declaration: Declaration,
     pub type_: Option<TypeName>,
     pub parameters: Vec<ParameterSource>,
-    pub body: Option<Seq<Source>>,
+    pub body: Option<Seq<SourceAst>>,
 }
 
 #[derive(Debug)]
@@ -177,7 +177,7 @@ peg::parser! {
             / type_:literal_type()? "\"" str:$((!['"'] [_])*) "\""
                 { Constant::String(type_.unwrap_or(Literal::String), Rc::new(str.to_owned())) }
 
-        rule seq() -> Seq<Source> = exprs:(stmt() ** _) { Seq::new(exprs) }
+        rule seq() -> Seq<SourceAst> = exprs:(stmt() ** _) { Seq::new(exprs) }
 
         rule type_() -> TypeName
             = name:ident() args:type_args()? { TypeName { name: Ident::new(name), arguments: args.unwrap_or_default() } }
@@ -186,9 +186,9 @@ peg::parser! {
         rule let_type() -> TypeName = ":" _ type_:type_() { type_ }
         rule func_type() -> TypeName = "->" _ type_:type_() { type_ }
 
-        rule initializer() -> Expr<Source> = "=" _ val:expr() { val }
+        rule initializer() -> Expr<SourceAst> = "=" _ val:expr() { val }
 
-        rule let() -> Expr<Source>
+        rule let() -> Expr<SourceAst>
             = pos:position!() keyword("let") _ name:ident() _ type_:let_type()? _ val:initializer()? _ ";"
             { Expr::Declare(Ident::new(name), type_, val.map(Box::new), Pos::new(pos)) }
 
@@ -203,7 +203,7 @@ peg::parser! {
         pub rule function() -> FunctionSource
             = declaration:decl(<keyword("func")>) _ "(" _ parameters:commasep(<param()>) _ ")" _ type_:func_type()? _ body:function_body()?
             { FunctionSource { declaration, type_, parameters, body } }
-        rule function_body() -> Seq<Source>
+        rule function_body() -> Seq<SourceAst>
             = "{" _ body:seq() _ "}" { body }
             / pos:position!() "=" _ expr:expr() { Seq::new(vec![Expr::Return(Some(Box::new(expr)), Pos::new(pos))]) }
 
@@ -228,32 +228,32 @@ peg::parser! {
 
         pub rule source() -> Vec<SourceEntry> = _ decls:(source_entry() ** _) _ { decls }
 
-        rule switch() -> Expr<Source>
+        rule switch() -> Expr<SourceAst>
             = keyword("switch") _ matcher:expr() _ "{" _ cases:(case() ** _) _ default:default()? _ "}" _ ";"?
             { Expr::Switch(Box::new(matcher), cases, default) }
 
-        rule case() -> SwitchCase<Source>
+        rule case() -> SwitchCase<SourceAst>
             = keyword("case") _ matcher:expr() _ ":" _ body:seq()
             { SwitchCase { matcher, body } }
 
-        rule default() -> Seq<Source>
+        rule default() -> Seq<SourceAst>
             = keyword("default") _ ":" _ body:seq() { body }
 
-        rule while_() -> Expr<Source>
+        rule while_() -> Expr<SourceAst>
             = pos:position!() keyword("while") _ cond:expr() _ "{" _ body:seq() _ "}" _ ";"?
             { Expr::While(Box::new(cond), body, Pos::new(pos)) }
 
-        rule for_() -> Expr<Source>
+        rule for_() -> Expr<SourceAst>
             = pos:position!() keyword("for") _ ident:ident() _ keyword("in") _ array:expr() _ "{" _ body:seq() _ "}" _ ";"?
             { Expr::ForIn(Ident::new(ident), Box::new(array), body, Pos::new(pos)) }
 
-        rule if_() -> Expr<Source>
+        rule if_() -> Expr<SourceAst>
             = pos:position!() keyword("if") _ cond:expr() _ "{" _ if_:seq() _ "}" _ else_:else_()? _ ";"?
             { Expr::If(Box::new(cond), if_, else_, Pos::new(pos)) }
-        rule else_() -> Seq<Source>
+        rule else_() -> Seq<SourceAst>
             = keyword("else") _ "{" _ body:seq() _ "}" { body }
 
-        pub rule stmt() -> Expr<Source>
+        pub rule stmt() -> Expr<SourceAst>
             = while_: while_() { while_ }
             / for_: for_() { for_ }
             / if_: if_() { if_ }
@@ -263,7 +263,7 @@ peg::parser! {
             / let_:let() { let_ }
             / expr:expr() _ ";" { expr }
 
-        pub rule expr() -> Expr<Source> = precedence!{
+        pub rule expr() -> Expr<SourceAst> = precedence!{
             x:@ _ pos:position!() "?" _ y:expr() _ ":" _ z:expr()
                 { Expr::Conditional(Box::new(x), Box::new(y), Box::new(z), Pos::new(pos)) }
             x:@ _ pos:position!() "=" _ y:(@) { Expr::Assign(Box::new(x), Box::new(y), Pos::new(pos)) }
