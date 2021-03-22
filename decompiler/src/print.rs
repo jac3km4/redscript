@@ -335,6 +335,7 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr<Source>, verbose: bool, depth: 
         Expr::This(_) => write!(out, "this")?,
         Expr::Super(_) => write!(out, "super")?,
         Expr::ArrayLit(_, _, _) => panic!("Shouldn't get here"),
+        Expr::ForIn(_, _, _, _) => panic!("Shouldn't get here"),
     };
     Ok(())
 }

@@ -70,6 +70,10 @@ impl Error {
         Error::CompileError(error, pos)
     }
 
+    pub fn array_expected_in_for(pos: Pos) -> Error {
+        Error::CompileError("Array expected in for expression".to_owned(), pos)
+    }
+
     pub fn no_matching_overload<N: Display>(name: N, errors: &[FunctionResolutionError], pos: Pos) -> Error {
         let error = format!(
             "Arguments passed to {} do not match any of the overloads:\n{}",

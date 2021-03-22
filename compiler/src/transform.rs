@@ -107,16 +107,16 @@ where
         cases: Vec<SwitchCase<N>>,
         default: Option<Seq<N>>,
     ) -> Result<Expr<N>, Error> {
-        let matched = self.on_expr(matched)?;
         let mut processed = Vec::with_capacity(cases.len());
         for case in cases {
-            let matcher = self.on_expr(case.matcher)?;
             let body = self.on_seq(case.body)?;
+            let matcher = self.on_expr(case.matcher)?;
             processed.push(SwitchCase { matcher, body });
         }
         let default = default
             .into_iter()
             .fold(Ok(None), |_, expr| self.on_seq(expr).map(Some))?;
+        let matched = self.on_expr(matched)?;
         Ok(Expr::Switch(Box::new(matched), processed, default))
     }
 
@@ -125,11 +125,11 @@ where
     }
 
     fn on_if(&mut self, cond: Expr<N>, if_: Seq<N>, else_: Option<Seq<N>>, pos: Pos) -> Result<Expr<N>, Error> {
-        let cond = self.on_expr(cond)?;
         let if_ = self.on_seq(if_)?;
         let else_ = else_
             .into_iter()
             .fold(Ok(None), |_, expr| self.on_seq(expr).map(Some))?;
+        let cond = self.on_expr(cond)?;
         Ok(Expr::If(Box::new(cond), if_, else_, pos))
     }
 
@@ -146,9 +146,15 @@ where
     }
 
     fn on_while(&mut self, cond: Expr<N>, body: Seq<N>, pos: Pos) -> Result<Expr<N>, Error> {
-        let cond = self.on_expr(cond)?;
         let body = self.on_seq(body)?;
+        let cond = self.on_expr(cond)?;
         Ok(Expr::While(Box::new(cond), body, pos))
+    }
+
+    fn on_for_in(&mut self, name: N::Local, array: Expr<N>, body: Seq<N>, pos: Pos) -> Result<Expr<N>, Error> {
+        let body = self.on_seq(body)?;
+        let array = self.on_expr(array)?;
+        Ok(Expr::ForIn(name, Box::new(array), body, pos))
     }
 
     fn on_binop(&mut self, lhs: Expr<N>, rhs: Expr<N>, op: BinOp, pos: Pos) -> Result<Expr<N>, Error> {
@@ -198,6 +204,7 @@ where
             Expr::If(cond, if_, else_, pos) => self.on_if(*cond, if_, else_, pos),
             Expr::Conditional(cond, true_, false_, pos) => self.on_conditional(*cond, *true_, *false_, pos),
             Expr::While(cond, body, pos) => self.on_while(*cond, body, pos),
+            Expr::ForIn(name, array, body, pos) => self.on_for_in(name, *array, body, pos),
             Expr::BinOp(lhs, rhs, op, pos) => self.on_binop(*lhs, *rhs, op, pos),
             Expr::UnOp(expr, op, pos) => self.on_unop(*expr, op, pos),
             Expr::This(pos) => self.on_this(pos),

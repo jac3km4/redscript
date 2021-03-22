@@ -3,7 +3,7 @@ use std::hash::Hash;
 use std::ops::{Add, Sub};
 use std::rc::Rc;
 
-use strum::Display;
+use strum::{Display, IntoStaticStr};
 
 #[derive(Debug)]
 pub enum Expr<Name: NameKind>
@@ -34,6 +34,7 @@ where
     If(Box<Self>, Seq<Name>, Option<Seq<Name>>, Pos),
     Conditional(Box<Self>, Box<Self>, Box<Self>, Pos),
     While(Box<Self>, Seq<Name>, Pos),
+    ForIn(Name::Local, Box<Self>, Seq<Name>, Pos),
     BinOp(Box<Self>, Box<Self>, BinOp, Pos),
     UnOp(Box<Self>, UnOp, Pos),
     This(Pos),
@@ -144,34 +145,48 @@ impl AsRef<str> for Ident {
     }
 }
 
-#[derive(Debug, Clone, Copy, Display)]
+#[derive(Debug, Clone, Copy, IntoStaticStr)]
 pub enum BinOp {
+    #[strum(serialize = "OperatorAssignAdd")]
     AssignAdd,
+    #[strum(serialize = "OperatorAssignSubtract")]
     AssignSubtract,
+    #[strum(serialize = "OperatorAssignMultiply")]
     AssignMultiply,
+    #[strum(serialize = "OperatorAssignDivide")]
     AssignDivide,
+    #[strum(serialize = "OperatorLogicOr")]
     LogicOr,
+    #[strum(serialize = "OperatorLogicAnd")]
     LogicAnd,
+    #[strum(serialize = "OperatorOr")]
     Or,
+    #[strum(serialize = "OperatorXor")]
     Xor,
+    #[strum(serialize = "OperatorAnd")]
     And,
+    #[strum(serialize = "OperatorEqual")]
     Equal,
+    #[strum(serialize = "OperatorNotEqual")]
     NotEqual,
+    #[strum(serialize = "OperatorLess")]
     Less,
+    #[strum(serialize = "OperatorLessEqual")]
     LessEqual,
+    #[strum(serialize = "OperatorGreater")]
     Greater,
+    #[strum(serialize = "OperatorGreaterEqual")]
     GreaterEqual,
+    #[strum(serialize = "OperatorAdd")]
     Add,
+    #[strum(serialize = "OperatorSubtract")]
     Subtract,
+    #[strum(serialize = "OperatorMultiply")]
     Multiply,
+    #[strum(serialize = "OperatorDivide")]
     Divide,
+    #[strum(serialize = "OperatorModulo")]
     Modulo,
-}
-
-impl BinOp {
-    pub fn name(&self) -> String {
-        format!("Operator{}", self)
-    }
 }
 
 #[derive(Debug, Clone, Copy, Display)]
