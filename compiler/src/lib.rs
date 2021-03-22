@@ -15,6 +15,8 @@ use redscript::definition::{
 use redscript::error::Error;
 use scope::{FunctionId, FunctionName, Scope};
 use source_map::Files;
+use sugar::Desugar;
+use transform::ExprTransformer;
 use typechecker::Typechecker;
 use walkdir::WalkDir;
 
@@ -24,6 +26,8 @@ pub mod assembler;
 pub mod parser;
 pub mod scope;
 pub mod source_map;
+pub mod sugar;
+pub mod transform;
 pub mod typechecker;
 
 pub struct Compiler<'a> {
@@ -444,7 +448,10 @@ impl<'a> Compiler<'a> {
         let mut checker = Typechecker::new(pool);
         let checked = checker.check_seq(seq, &mut local_scope)?;
         let locals = checker.locals;
-        let assembler = Assembler::from_seq(checked, pool, &mut local_scope)?;
+        let mut desugar = Desugar::new(pool, &mut local_scope);
+        let desugared = desugar.on_seq(checked)?;
+
+        let assembler = Assembler::from_seq(desugared, pool, &mut local_scope)?;
         let function = pool.function_mut(fun_idx)?;
         function.code = Code(assembler.code.into_iter().collect());
         function.code.0.push(Instr::Nop);
