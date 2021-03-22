@@ -302,6 +302,7 @@ peg::parser! {
                 { Expr::Member(Box::new(expr), Ident::new(ident), Pos::new(pos)) }
             expr:(@) _ pos:position!() keyword("as") _ type_:type_()
                 { Expr::Cast(type_, Box::new(expr), Pos::new(pos)) }
+            pos:position!() "[" _ exprs:commasep(<expr()>)_ "]" { Expr::ArrayLit(exprs, None, Pos::new(pos)) }
             "(" _ v:expr() _ ")" { v }
             keyword("null") { Expr::Null }
             pos:position!() keyword("this") { Expr::This(Pos::new(pos)) }

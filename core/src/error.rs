@@ -37,8 +37,8 @@ impl Error {
         Error::CompileError("Invalid arguments for annotation".to_owned(), pos)
     }
 
-    pub fn incomplete_let_binding(pos: Pos) -> Error {
-        Error::CompileError("Type or initializer required on let binding".to_owned(), pos)
+    pub fn type_annotation_required(pos: Pos) -> Error {
+        Error::CompileError("Type annotation required".to_owned(), pos)
     }
 
     pub fn type_error<N: Display>(from: N, to: N, pos: Pos) -> Error {

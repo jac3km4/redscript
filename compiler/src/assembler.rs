@@ -215,7 +215,7 @@ impl Assembler {
                     self.compile_call(fun, args, pool, scope, false)?;
                 }
                 Callable::Intrinsic(op, type_) => {
-                    self.compile_intrinsic(op, &args, &type_, pool, scope)?;
+                    self.compile_intrinsic(op, args, &type_, pool, scope)?;
                 }
             },
             Expr::MethodCall(expr, fun_idx, args, _) => match *expr {
@@ -238,6 +238,9 @@ impl Assembler {
                     self.append(inner);
                 }
             },
+            Expr::ArrayLit(_, _, pos) => {
+                return Err(Error::CompileError("ArrayLit not supported here".to_owned(), pos))
+            }
             Expr::BinOp(_, _, _, pos) => return Err(Error::CompileError("BinOp not supported here".to_owned(), pos)),
             Expr::UnOp(_, _, pos) => return Err(Error::CompileError("UnOp not supported here".to_owned(), pos)),
             Expr::Null => {
@@ -297,7 +300,7 @@ impl Assembler {
     fn compile_intrinsic(
         &mut self,
         intrinsic: IntrinsicOp,
-        args: &[Expr<Typed>],
+        args: Vec<Expr<Typed>>,
         return_type: &TypeId,
         pool: &mut ConstantPool,
         scope: &mut Scope,
@@ -383,6 +386,9 @@ impl Assembler {
                 self.emit(Instr::WeakRefToRef);
             }
         };
+        for arg in args {
+            self.compile(arg, pool, scope)?;
+        }
         Ok(())
     }
 
