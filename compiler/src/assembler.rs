@@ -110,15 +110,11 @@ impl Assembler {
                 self.compile(*idx, scope, pool)?;
             }
             Expr::New(type_, args, pos) => match type_ {
-                TypeId::Class(idx) => {
-                    let cls = pool.class(idx)?;
-                    if cls.flags.is_struct() {
-                        self.emit(Instr::Construct(args.len() as u8, idx));
-                        for arg in args {
-                            self.compile(arg, scope, pool)?;
-                        }
-                    } else {
-                        self.emit(Instr::New(idx));
+                TypeId::Class(idx) => self.emit(Instr::New(idx)),
+                TypeId::Struct(idx) => {
+                    self.emit(Instr::Construct(args.len() as u8, idx));
+                    for arg in args {
+                        self.compile(arg, scope, pool)?;
                     }
                 }
                 _ => return Err(Error::invalid_op(type_.pretty(pool)?, "Constructing", pos)),

@@ -76,7 +76,7 @@ impl Error {
 
     pub fn no_matching_overload<N: Display>(name: N, errors: &[FunctionResolutionError], pos: Pos) -> Error {
         let error = format!(
-            "Arguments passed to {} do not match any of the overloads:\n{}",
+            "Arguments passed to {} do not match any of the overloads:{}",
             name,
             errors.iter().fold(String::new(), |acc, str| acc + "\n" + &str.0)
         );
