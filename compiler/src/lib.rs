@@ -135,7 +135,7 @@ impl<'a> Compiler<'a> {
             }
         }
         for (this, fun_idx, seq) in self.backlog.drain(..) {
-            Self::compile_function(fun_idx, this, &seq, self.pool, &self.scope)?;
+            Self::compile_function(fun_idx, this, &seq, &self.scope, self.pool)?;
         }
         Ok(diagnostics)
     }
@@ -430,8 +430,8 @@ impl<'a> Compiler<'a> {
         fun_idx: PoolIndex<Function>,
         class_idx: PoolIndex<Class>,
         seq: &Seq<Source>,
-        pool: &mut ConstantPool,
         scope: &Scope,
+        pool: &mut ConstantPool,
     ) -> Result<(), Error> {
         let fun = pool.function(fun_idx)?;
         let mut local_scope = if fun.flags.is_static() {
@@ -447,11 +447,13 @@ impl<'a> Compiler<'a> {
 
         let mut checker = Typechecker::new(pool);
         let checked = checker.check_seq(seq, &mut local_scope)?;
-        let locals = checker.locals;
-        let mut desugar = Desugar::new(pool, &mut local_scope);
-        let desugared = desugar.on_seq(checked)?;
+        let mut locals = checker.locals;
 
-        let assembler = Assembler::from_seq(desugared, pool, &mut local_scope)?;
+        let mut desugar = Desugar::new(&mut local_scope, pool);
+        let desugared = desugar.on_seq(checked)?;
+        locals.append(&mut desugar.locals);
+
+        let assembler = Assembler::from_seq(desugared, &mut local_scope, pool)?;
         let function = pool.function_mut(fun_idx)?;
         function.code = Code(assembler.code.into_iter().collect());
         function.code.0.push(Instr::Nop);

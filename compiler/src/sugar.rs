@@ -1,34 +1,96 @@
-use redscript::ast::{Expr, Pos, Seq};
+use std::rc::Rc;
+use std::vec;
+
+use redscript::ast::{BinOp, Constant, Expr, Ident, Pos, Seq, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::definition::{Definition, Local, LocalFlags};
 use redscript::error::Error;
 
-use crate::scope::Scope;
+use crate::scope::{FunctionName, Scope};
 use crate::transform::ExprTransformer;
-use crate::typechecker::{Callable, IntrinsicOp, Typed};
+use crate::typechecker::{type_of, Callable, IntrinsicOp, Typed};
 use crate::{Reference, TypeId};
 
 pub struct Desugar<'a> {
     pool: &'a mut ConstantPool,
     scope: &'a mut Scope,
+    name_count: usize,
     prefix_exprs: Vec<Expr<Typed>>,
+    pub locals: Vec<PoolIndex<Local>>,
 }
 
 impl<'a> ExprTransformer<Typed> for Desugar<'a> {
     fn on_array_lit(&mut self, exprs: Vec<Expr<Typed>>, type_: Option<TypeId>, pos: Pos) -> Result<Expr<Typed>, Error> {
         let type_ = TypeId::Array(Box::new(type_.unwrap()));
         let local = self.fresh_local(&type_)?;
-        let reference = Expr::Ident(Reference::Local(local), pos);
 
-        self.add_prefix(Expr::Declare(local, Some(type_), None, pos));
         for expr in exprs {
-            self.add_prefix(Expr::Call(
-                Callable::Intrinsic(IntrinsicOp::ArrayPush, TypeId::Void),
-                vec![Expr::Ident(Reference::Local(local), pos), expr],
-                pos,
-            ))
+            let callable = Callable::Intrinsic(IntrinsicOp::ArrayPush, TypeId::Void);
+            let expr = self.on_expr(expr)?;
+            self.add_prefix(Expr::Call(callable, vec![Expr::Ident(local.clone(), pos), expr], pos))
         }
-        Ok(reference)
+        Ok(Expr::Ident(local, pos))
+    }
+
+    fn on_for_in(
+        &mut self,
+        name: PoolIndex<Local>,
+        array: Expr<Typed>,
+        seq: Seq<Typed>,
+        pos: Pos,
+    ) -> Result<Expr<Typed>, Error> {
+        let mut seq = self.on_seq(seq)?;
+
+        let array = self.on_expr(array)?;
+        let arr_type = type_of(&array, self.scope, self.pool)?;
+        let arr_local = self.fresh_local(&arr_type)?;
+
+        let it_type = self.scope.resolve_type(&TypeName::INT32, self.pool, pos)?;
+        let counter_local = self.fresh_local(&it_type)?;
+
+        self.add_prefix(Expr::Assign(
+            Box::new(Expr::Ident(arr_local.clone(), pos)),
+            Box::new(array),
+            pos,
+        ));
+        self.add_prefix(Expr::Assign(
+            Box::new(Expr::Ident(counter_local.clone(), pos)),
+            Box::new(Expr::Constant(Constant::Int(0), pos)),
+            pos,
+        ));
+
+        let array_size = Callable::Intrinsic(IntrinsicOp::ArraySize, it_type);
+        let assign_add = self.binop_callable(BinOp::AssignAdd, pos)?;
+        let less_than = self.binop_callable(BinOp::Less, pos)?;
+
+        let condition = Expr::Call(
+            less_than,
+            vec![
+                Expr::Ident(counter_local.clone(), pos),
+                Expr::Call(array_size, vec![Expr::Ident(arr_local.clone(), pos)], pos),
+            ],
+            pos,
+        );
+        let assign_iter_value = Expr::Assign(
+            Box::new(Expr::Ident(Reference::Local(name), pos)),
+            Box::new(Expr::ArrayElem(
+                Box::new(Expr::Ident(arr_local, pos)),
+                Box::new(Expr::Ident(counter_local.clone(), pos)),
+                pos,
+            )),
+            pos,
+        );
+        let increment_counter = Expr::Call(
+            assign_add,
+            vec![Expr::Ident(counter_local, pos), Expr::Constant(Constant::Int(1), pos)],
+            pos,
+        );
+
+        let mut body = vec![assign_iter_value];
+        body.append(&mut seq.exprs);
+        body.push(increment_counter);
+
+        Ok(Expr::While(Box::new(condition), Seq::new(body), pos))
     }
 
     fn on_seq(&mut self, seq: Seq<Typed>) -> Result<Seq<Typed>, Error> {
@@ -45,11 +107,13 @@ impl<'a> ExprTransformer<Typed> for Desugar<'a> {
 }
 
 impl<'a> Desugar<'a> {
-    pub fn new(pool: &'a mut ConstantPool, scope: &'a mut Scope) -> Self {
+    pub fn new(scope: &'a mut Scope, pool: &'a mut ConstantPool) -> Self {
         Desugar {
             pool,
             scope,
             prefix_exprs: vec![],
+            locals: vec![],
+            name_count: 0,
         }
     }
 
@@ -57,11 +121,21 @@ impl<'a> Desugar<'a> {
         self.prefix_exprs.push(expr)
     }
 
-    fn fresh_local(&mut self, type_: &TypeId) -> Result<PoolIndex<Local>, Error> {
+    fn binop_callable(&self, binop: BinOp, pos: Pos) -> Result<Callable, Error> {
+        let fun_name = FunctionName::global(Ident::Static(binop.into()));
+        let fun_idx = self.scope.resolve_function(fun_name, self.pool, pos)?.functions[0];
+        Ok(Callable::Function(fun_idx))
+    }
+
+    fn fresh_local(&mut self, type_: &TypeId) -> Result<Reference, Error> {
+        let fun_idx = self.scope.function.unwrap();
+        let name_idx = self.pool.names.add(Rc::new(format!("synthetic${}", self.name_count)));
         let type_idx = self.scope.get_type_index(&type_, self.pool)?;
         let local = Local::new(type_idx, LocalFlags::new());
-        let def = Definition::local(PoolIndex::UNDEFINED, self.scope.function.unwrap(), local);
-        let idx = self.pool.push_definition(def);
-        Ok(idx.cast())
+        let def = Definition::local(name_idx, fun_idx, local);
+        let idx = self.pool.push_definition(def).cast();
+        self.locals.push(idx);
+        self.name_count += 1;
+        Ok(Reference::Local(idx))
     }
 }

@@ -35,7 +35,7 @@ impl Assembler {
         self.code.append(code.code);
     }
 
-    fn compile(&mut self, expr: Expr<Typed>, pool: &mut ConstantPool, scope: &mut Scope) -> Result<(), Error> {
+    fn compile(&mut self, expr: Expr<Typed>, scope: &mut Scope, pool: &mut ConstantPool) -> Result<(), Error> {
         match expr {
             Expr::Ident(reference, pos) => {
                 match reference {
@@ -79,7 +79,7 @@ impl Assembler {
             Expr::Cast(type_, expr, pos) => {
                 if let TypeId::Class(class) = type_ {
                     self.emit(Instr::DynamicCast(class, 0));
-                    self.compile(*expr, pool, scope)?;
+                    self.compile(*expr, scope, pool)?;
                 } else {
                     return Err(Error::invalid_op(type_.pretty(pool)?, "Casting", pos));
                 }
@@ -88,13 +88,13 @@ impl Assembler {
                 if let Some(val) = init {
                     self.emit(Instr::Assign);
                     self.emit(Instr::Local(local));
-                    self.compile(*val, pool, scope)?;
+                    self.compile(*val, scope, pool)?;
                 }
             }
             Expr::Assign(lhs, rhs, _) => {
                 self.emit(Instr::Assign);
-                self.compile(*lhs, pool, scope)?;
-                self.compile(*rhs, pool, scope)?;
+                self.compile(*lhs, scope, pool)?;
+                self.compile(*rhs, scope, pool)?;
             }
             Expr::ArrayElem(expr, idx, pos) => {
                 match type_of(&expr, scope, pool)? {
@@ -106,8 +106,8 @@ impl Assembler {
                     }
                     other => return Err(Error::invalid_op(other.pretty(pool)?, "Indexing", pos)),
                 }
-                self.compile(*expr, pool, scope)?;
-                self.compile(*idx, pool, scope)?;
+                self.compile(*expr, scope, pool)?;
+                self.compile(*idx, scope, pool)?;
             }
             Expr::New(type_, args, pos) => match type_ {
                 TypeId::Class(idx) => {
@@ -115,7 +115,7 @@ impl Assembler {
                     if cls.flags.is_struct() {
                         self.emit(Instr::Construct(args.len() as u8, idx));
                         for arg in args {
-                            self.compile(arg, pool, scope)?;
+                            self.compile(arg, scope, pool)?;
                         }
                     } else {
                         self.emit(Instr::New(idx));
@@ -125,40 +125,40 @@ impl Assembler {
             },
             Expr::Return(Some(expr), _) => {
                 self.emit(Instr::Return);
-                self.compile(*expr, pool, scope)?;
+                self.compile(*expr, scope, pool)?;
             }
             Expr::Return(None, _) => {
                 self.emit(Instr::Return);
             }
             Expr::Seq(seq) => {
                 for expr in seq.exprs {
-                    self.compile(expr, pool, scope)?;
+                    self.compile(expr, scope, pool)?;
                 }
             }
             Expr::Switch(expr, cases, default) => {
                 let type_ = type_of(&expr, scope, pool)?;
-                let matched = Assembler::from_expr(*expr, pool, scope)?;
+                let matched = Assembler::from_expr(*expr, scope, pool)?;
                 self.emit(Instr::Switch(scope.get_type_index(&type_, pool)?, matched.offset()));
                 self.append(matched);
                 for case in cases {
-                    let matcher = Assembler::from_expr(case.matcher, pool, scope)?;
-                    let body = Assembler::from_seq(case.body, pool, scope)?;
+                    let matcher = Assembler::from_expr(case.matcher, scope, pool)?;
+                    let body = Assembler::from_seq(case.body, scope, pool)?;
                     self.emit(Instr::SwitchLabel(matcher.offset() + body.offset(), matcher.offset()));
                     self.append(matcher);
                     self.append(body);
                 }
                 if let Some(body) = default {
                     self.emit(Instr::SwitchDefault);
-                    self.append(Assembler::from_seq(body, pool, scope)?);
+                    self.append(Assembler::from_seq(body, scope, pool)?);
                 }
             }
             Expr::If(cond, if_, else_, _) => {
                 let mut cond_code = Assembler::new();
-                cond_code.compile(*cond, pool, scope)?;
+                cond_code.compile(*cond, scope, pool)?;
 
-                let mut if_branch = Assembler::from_seq(if_, pool, scope)?;
+                let mut if_branch = Assembler::from_seq(if_, scope, pool)?;
                 let else_branch = if let Some(else_code) = else_ {
-                    let else_branch = Assembler::from_seq(else_code, pool, scope)?;
+                    let else_branch = Assembler::from_seq(else_code, scope, pool)?;
                     if_branch.emit(Instr::Jump(else_branch.offset()));
                     else_branch
                 } else {
@@ -171,10 +171,10 @@ impl Assembler {
             }
             Expr::Conditional(cond, true_, false_, _) => {
                 let mut cond_code = Assembler::new();
-                cond_code.compile(*cond, pool, scope)?;
+                cond_code.compile(*cond, scope, pool)?;
 
-                let true_code = Assembler::from_expr(*true_, pool, scope)?;
-                let false_code = Assembler::from_expr(*false_, pool, scope)?;
+                let true_code = Assembler::from_expr(*true_, scope, pool)?;
+                let false_code = Assembler::from_expr(*false_, scope, pool)?;
                 self.emit(Instr::Conditional(
                     cond_code.offset() + true_code.offset(),
                     cond_code.offset() + true_code.offset() + false_code.offset(),
@@ -185,9 +185,9 @@ impl Assembler {
             }
             Expr::While(cond, body, _) => {
                 let mut cond_code = Assembler::new();
-                cond_code.compile(*cond, pool, scope)?;
+                cond_code.compile(*cond, scope, pool)?;
 
-                let mut body_code = Assembler::from_seq(body, pool, scope)?;
+                let mut body_code = Assembler::from_seq(body, scope, pool)?;
                 body_code.emit(Instr::Jump(-(cond_code.offset() + body_code.offset())));
 
                 self.emit(Instr::JumpIfFalse(cond_code.offset() + body_code.offset()));
@@ -196,7 +196,7 @@ impl Assembler {
             }
             Expr::Member(expr, member, _) => match member {
                 Member::ClassField(field) => {
-                    let object = Assembler::from_expr(*expr, pool, scope)?;
+                    let object = Assembler::from_expr(*expr, scope, pool)?;
                     let inner = Assembler::from_instr(Instr::ObjectField(field));
                     self.emit(Instr::Context(object.offset() + inner.offset()));
                     self.append(object);
@@ -204,7 +204,7 @@ impl Assembler {
                 }
                 Member::StructField(field) => {
                     self.emit(Instr::StructField(field));
-                    self.compile(*expr, pool, scope)?;
+                    self.compile(*expr, scope, pool)?;
                 }
                 Member::EnumMember(enum_, member) => {
                     self.emit(Instr::EnumConst(enum_, member));
@@ -212,17 +212,17 @@ impl Assembler {
             },
             Expr::Call(callable, args, _) => match callable {
                 Callable::Function(fun) => {
-                    self.compile_call(fun, args, pool, scope, false)?;
+                    self.compile_call(fun, args, scope, pool, false)?;
                 }
                 Callable::Intrinsic(op, type_) => {
-                    self.compile_intrinsic(op, args, &type_, pool, scope)?;
+                    self.compile_intrinsic(op, args, &type_, scope, pool)?;
                 }
             },
             Expr::MethodCall(expr, fun_idx, args, _) => match *expr {
                 Expr::Ident(Reference::Class(_), pos) => {
                     let fun = pool.function(fun_idx)?;
                     if fun.flags.is_static() {
-                        self.compile_call(fun_idx, args, pool, scope, true)?
+                        self.compile_call(fun_idx, args, scope, pool, true)?
                     } else {
                         let name = pool.definition_name(fun_idx)?;
                         return Err(Error::CompileError(format!("Method {} is not static", name), pos));
@@ -230,9 +230,9 @@ impl Assembler {
                 }
                 other => {
                     let force_static_call = matches!(&other, Expr::Super(_));
-                    let object = Assembler::from_expr(other, pool, scope)?;
+                    let object = Assembler::from_expr(other, scope, pool)?;
                     let mut inner = Assembler::new();
-                    inner.compile_call(fun_idx, args, pool, scope, force_static_call)?;
+                    inner.compile_call(fun_idx, args, scope, pool, force_static_call)?;
                     self.emit(Instr::Context(object.offset() + inner.offset()));
                     self.append(object);
                     self.append(inner);
@@ -241,6 +241,7 @@ impl Assembler {
             Expr::ArrayLit(_, _, pos) => {
                 return Err(Error::CompileError("ArrayLit not supported here".to_owned(), pos))
             }
+            Expr::ForIn(_, _, _, pos) => return Err(Error::CompileError("ForIn not supported here".to_owned(), pos)),
             Expr::BinOp(_, _, _, pos) => return Err(Error::CompileError("BinOp not supported here".to_owned(), pos)),
             Expr::UnOp(_, _, pos) => return Err(Error::CompileError("UnOp not supported here".to_owned(), pos)),
             Expr::Null => {
@@ -260,8 +261,8 @@ impl Assembler {
         &mut self,
         function_idx: PoolIndex<Function>,
         args: Vec<Expr<Typed>>,
-        pool: &mut ConstantPool,
         scope: &mut Scope,
+        pool: &mut ConstantPool,
         force_static: bool,
     ) -> Result<(), Error> {
         let fun = pool.function(function_idx)?;
@@ -277,7 +278,7 @@ impl Assembler {
         let mut args_code = Assembler::new();
         for (arg, flags) in args.into_iter().zip(param_flags.iter()) {
             let mut arg_code = Assembler::new();
-            arg_code.compile(arg, pool, scope)?;
+            arg_code.compile(arg, scope, pool)?;
             if flags.is_short_circuit() {
                 args_code.emit(Instr::Skip(arg_code.offset()));
             }
@@ -302,8 +303,8 @@ impl Assembler {
         intrinsic: IntrinsicOp,
         args: Vec<Expr<Typed>>,
         return_type: &TypeId,
-        pool: &mut ConstantPool,
         scope: &mut Scope,
+        pool: &mut ConstantPool,
     ) -> Result<(), Error> {
         let type_ = type_of(&args[0], scope, pool)?;
         let type_idx = scope.get_type_index(&type_, pool)?;
@@ -387,7 +388,7 @@ impl Assembler {
             }
         };
         for arg in args {
-            self.compile(arg, pool, scope)?;
+            self.compile(arg, scope, pool)?;
         }
         Ok(())
     }
@@ -398,16 +399,16 @@ impl Assembler {
         code
     }
 
-    fn from_expr(expr: Expr<Typed>, pool: &mut ConstantPool, scope: &mut Scope) -> Result<Assembler, Error> {
+    fn from_expr(expr: Expr<Typed>, scope: &mut Scope, pool: &mut ConstantPool) -> Result<Assembler, Error> {
         let mut code = Assembler::new();
-        code.compile(expr, pool, scope)?;
+        code.compile(expr, scope, pool)?;
         Ok(code)
     }
 
-    pub fn from_seq(seq: Seq<Typed>, pool: &mut ConstantPool, scope: &mut Scope) -> Result<Assembler, Error> {
+    pub fn from_seq(seq: Seq<Typed>, scope: &mut Scope, pool: &mut ConstantPool) -> Result<Assembler, Error> {
         let mut code = Assembler::new();
         for expr in seq.exprs {
-            code.compile(expr, pool, scope)?;
+            code.compile(expr, scope, pool)?;
         }
         Ok(code)
     }
