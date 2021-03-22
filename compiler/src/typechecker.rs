@@ -57,10 +57,28 @@ impl<'a> Typechecker<'a> {
                 Expr::Ident(reference, *pos)
             }
             Expr::Constant(cons, pos) => Expr::Constant(cons.clone(), *pos),
+            Expr::ArrayLit(exprs, _, pos) => match exprs.split_first() {
+                Some((head, tail)) => {
+                    let head = self.check(head, None, scope)?;
+                    let type_ = type_of(&head, scope, self.pool)?;
+                    let mut checked = vec![head];
+                    for expr in tail {
+                        checked.push(self.check_and_convert(expr, &type_, scope, *pos)?);
+                    }
+                    Expr::ArrayLit(checked, Some(type_), *pos)
+                }
+                None => {
+                    if let Some(TypeId::Array(inner)) = expected {
+                        Expr::ArrayLit(vec![], Some(*inner.clone()), *pos)
+                    } else {
+                        return Err(Error::type_annotation_required(*pos));
+                    }
+                }
+            },
             Expr::Declare(name, type_, init, pos) => {
                 let name_idx = self.pool.names.add(name.to_owned());
                 let (initializer, type_) = match (type_, init) {
-                    (None, None) => return Err(Error::incomplete_let_binding(*pos)),
+                    (None, None) => return Err(Error::type_annotation_required(*pos)),
                     (None, Some(expr)) => {
                         let checked = self.check(expr, None, scope)?;
                         let type_ = type_of(&checked, scope, self.pool)?;
@@ -585,6 +603,7 @@ pub fn type_of(expr: &Expr<Typed>, scope: &Scope, pool: &ConstantPool) -> Result
             Constant::Uint(_) => scope.resolve_type(&TypeName::UINT32, pool, *pos)?,
             Constant::Bool(_) => scope.resolve_type(&TypeName::BOOL, pool, *pos)?,
         },
+        Expr::ArrayLit(_, type_, _) => TypeId::Array(Box::new(type_.clone().unwrap())),
         Expr::Declare(_, _, _, _) => TypeId::Void,
         Expr::Cast(type_, expr, _) => match type_of(expr, scope, pool)? {
             TypeId::Ref(_) => TypeId::Ref(Box::new(type_.clone())),

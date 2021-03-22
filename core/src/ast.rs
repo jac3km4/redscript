@@ -18,6 +18,7 @@ where
 {
     Ident(Name::Reference, Pos),
     Constant(Constant, Pos),
+    ArrayLit(Vec<Self>, Option<Name::Type>, Pos),
     Declare(Name::Local, Option<Name::Type>, Option<Box<Self>>, Pos),
     Cast(Name::Type, Box<Self>, Pos),
     Assign(Box<Self>, Box<Self>, Pos),
