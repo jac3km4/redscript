@@ -1,7 +1,7 @@
 use std::iter;
 use std::str::FromStr;
 
-use redscript::ast::{Constant, Expr, Ident, Literal, NameKind, Pos, Seq, Source, SwitchCase, TypeName};
+use redscript::ast::{Constant, Expr, Ident, Literal, NameKind, Pos, Seq, SourceAst, SwitchCase, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::definition::{Definition, Enum, Field, Function, Local, LocalFlags};
 use redscript::error::{Error, FunctionResolutionError};
@@ -11,9 +11,9 @@ use crate::scope::{FunctionMatch, FunctionName, FunctionOverloads, Scope};
 use crate::{Reference, TypeId};
 
 #[derive(Debug)]
-pub struct Typed;
+pub struct TypedAst;
 
-impl NameKind for Typed {
+impl NameKind for TypedAst {
     type Reference = Reference;
     type Callable = Callable;
     type Local = PoolIndex<Local>;
@@ -47,10 +47,10 @@ impl<'a> Typechecker<'a> {
 
     pub fn check(
         &mut self,
-        expr: &Expr<Source>,
+        expr: &Expr<SourceAst>,
         expected: Option<&TypeId>,
         scope: &mut Scope,
-    ) -> Result<Expr<Typed>, Error> {
+    ) -> Result<Expr<TypedAst>, Error> {
         let res = match expr {
             Expr::Ident(name, pos) => {
                 let reference = scope.resolve_reference(name.clone(), *pos)?;
@@ -295,7 +295,7 @@ impl<'a> Typechecker<'a> {
         Ok(res)
     }
 
-    pub fn check_seq(&mut self, seq: &Seq<Source>, scope: &mut Scope) -> Result<Seq<Typed>, Error> {
+    pub fn check_seq(&mut self, seq: &Seq<SourceAst>, scope: &mut Scope) -> Result<Seq<TypedAst>, Error> {
         let mut exprs = Vec::with_capacity(seq.exprs.len());
         for expr in &seq.exprs {
             exprs.push(self.check(&expr, None, scope)?);
@@ -306,11 +306,11 @@ impl<'a> Typechecker<'a> {
     fn check_intrinsic(
         &mut self,
         intrinsic: IntrinsicOp,
-        args: &[Expr<Source>],
+        args: &[Expr<SourceAst>],
         expected: Option<&TypeId>,
         scope: &mut Scope,
         pos: Pos,
-    ) -> Result<Expr<Typed>, Error> {
+    ) -> Result<Expr<TypedAst>, Error> {
         if args.len() != intrinsic.arg_count().into() {
             let err = format!("Invalid number of arguments for {}", intrinsic);
             return Err(Error::CompileError(err, pos));
@@ -440,11 +440,11 @@ impl<'a> Typechecker<'a> {
 
     fn check_and_convert(
         &mut self,
-        expr: &Expr<Source>,
+        expr: &Expr<SourceAst>,
         to: &TypeId,
         scope: &mut Scope,
         pos: Pos,
-    ) -> Result<Expr<Typed>, Error> {
+    ) -> Result<Expr<TypedAst>, Error> {
         let checked = self.check(expr, Some(to), scope)?;
         let from = type_of(&checked, scope, self.pool)?;
         let conversion = Self::find_conversion(&from, &to, self.pool)?
@@ -452,7 +452,7 @@ impl<'a> Typechecker<'a> {
         Ok(Self::insert_conversion(checked, to, conversion, pos))
     }
 
-    fn insert_conversion(expr: Expr<Typed>, type_: &TypeId, conversion: Conversion, pos: Pos) -> Expr<Typed> {
+    fn insert_conversion(expr: Expr<TypedAst>, type_: &TypeId, conversion: Conversion, pos: Pos) -> Expr<TypedAst> {
         match conversion {
             Conversion::Identity => expr,
             Conversion::RefToWeakRef => Expr::Call(
@@ -520,7 +520,7 @@ impl<'a> Typechecker<'a> {
         &mut self,
         name: Ident,
         overloads: FunctionOverloads,
-        args: impl Iterator<Item = &'b Expr<Source>> + Clone,
+        args: impl Iterator<Item = &'b Expr<SourceAst>> + Clone,
         expected: Option<&TypeId>,
         scope: &mut Scope,
         pos: Pos,
@@ -540,7 +540,7 @@ impl<'a> Typechecker<'a> {
     fn try_overload<'b>(
         &mut self,
         fun_idx: PoolIndex<Function>,
-        arg_iter: impl Iterator<Item = &'b Expr<Source>>,
+        arg_iter: impl Iterator<Item = &'b Expr<SourceAst>>,
         expected: Option<&TypeId>,
         scope: &mut Scope,
         pos: Pos,
@@ -601,7 +601,7 @@ impl<'a> Typechecker<'a> {
     }
 }
 
-pub fn type_of(expr: &Expr<Typed>, scope: &Scope, pool: &ConstantPool) -> Result<TypeId, Error> {
+pub fn type_of(expr: &Expr<TypedAst>, scope: &Scope, pool: &ConstantPool) -> Result<TypeId, Error> {
     let res = match expr {
         Expr::Ident(reference, pos) => match reference {
             Reference::Local(idx) => scope.resolve_type_from_pool(pool.local(*idx)?.type_, pool, *pos)?,

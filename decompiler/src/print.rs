@@ -1,7 +1,7 @@
 use std::io::Write;
 use std::rc::Rc;
 
-use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, Seq, Source, SwitchCase, UnOp};
+use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, Seq, SourceAst, SwitchCase, UnOp};
 use redscript::bundle::ConstantPool;
 use redscript::definition::{Definition, DefinitionValue, Function, Type};
 use redscript::error::Error;
@@ -211,7 +211,7 @@ fn write_function_body<W: Write>(
     Ok(())
 }
 
-fn write_seq<W: Write>(out: &mut W, code: &Seq<Source>, verbose: bool, depth: usize) -> Result<(), Error> {
+fn write_seq<W: Write>(out: &mut W, code: &Seq<SourceAst>, verbose: bool, depth: usize) -> Result<(), Error> {
     for expr in code.exprs.iter().filter(|expr| !expr.is_empty()) {
         write!(out, "{}", INDENT.repeat(depth))?;
         write_expr(out, &expr, verbose, depth)?;
@@ -220,7 +220,7 @@ fn write_seq<W: Write>(out: &mut W, code: &Seq<Source>, verbose: bool, depth: us
     Ok(())
 }
 
-fn write_expr<W: Write>(out: &mut W, expr: &Expr<Source>, verbose: bool, depth: usize) -> Result<(), Error> {
+fn write_expr<W: Write>(out: &mut W, expr: &Expr<SourceAst>, verbose: bool, depth: usize) -> Result<(), Error> {
     let padding = INDENT.repeat(depth);
 
     match expr {
@@ -340,7 +340,7 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr<Source>, verbose: bool, depth: 
     Ok(())
 }
 
-fn write_call<W: Write>(out: &mut W, name: &Ident, params: &[Expr<Source>], verbose: bool) -> Result<(), Error> {
+fn write_call<W: Write>(out: &mut W, name: &Ident, params: &[Expr<SourceAst>], verbose: bool) -> Result<(), Error> {
     let extracted = name.as_ref().split(';').next().expect("Empty function name");
     let fun_name = if extracted.is_empty() { "undefined" } else { extracted };
     match fun_name {
@@ -386,8 +386,8 @@ fn write_call<W: Write>(out: &mut W, name: &Ident, params: &[Expr<Source>], verb
 
 fn write_binop<W: Write>(
     out: &mut W,
-    lhs: &Expr<Source>,
-    rhs: &Expr<Source>,
+    lhs: &Expr<SourceAst>,
+    rhs: &Expr<SourceAst>,
     op: BinOp,
     verbose: bool,
 ) -> Result<(), Error> {
@@ -396,7 +396,7 @@ fn write_binop<W: Write>(
     write_expr(out, rhs, verbose, 0)
 }
 
-fn write_unop<W: Write>(out: &mut W, param: &Expr<Source>, op: UnOp, verbose: bool) -> Result<(), Error> {
+fn write_unop<W: Write>(out: &mut W, param: &Expr<SourceAst>, op: UnOp, verbose: bool) -> Result<(), Error> {
     write!(out, "{}", format_unop(op))?;
     write_expr(out, param, verbose, 0)
 }

@@ -3,7 +3,7 @@ use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::definition::{Class, Definition, DefinitionValue, Enum, Field, Function, Local, Type};
 use redscript::error::Error;
 
-use crate::typechecker::Typed;
+use crate::typechecker::TypedAst;
 use crate::{Reference, TypeId};
 
 #[derive(Debug, Clone)]
@@ -40,7 +40,7 @@ impl FunctionName {
 #[derive(Debug)]
 pub struct FunctionMatch {
     pub index: PoolIndex<Function>,
-    pub args: Vec<Expr<Typed>>,
+    pub args: Vec<Expr<TypedAst>>,
 }
 
 #[derive(Debug, Clone)]

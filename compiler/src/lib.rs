@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use assembler::Assembler;
 use parser::{Annotation, AnnotationName, FieldSource};
-use redscript::ast::{Ident, Pos, Seq, Source};
+use redscript::ast::{Ident, Pos, Seq, SourceAst};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Instr};
 use redscript::definition::{
@@ -33,7 +33,7 @@ pub mod typechecker;
 
 pub struct Compiler<'a> {
     pool: &'a mut ConstantPool,
-    backlog: Vec<(PoolIndex<Class>, PoolIndex<Function>, Seq<Source>)>,
+    backlog: Vec<(PoolIndex<Class>, PoolIndex<Function>, Seq<SourceAst>)>,
     scope: Scope,
 }
 
@@ -430,7 +430,7 @@ impl<'a> Compiler<'a> {
     fn compile_function(
         fun_idx: PoolIndex<Function>,
         class_idx: PoolIndex<Class>,
-        seq: &Seq<Source>,
+        seq: &Seq<SourceAst>,
         scope: &Scope,
         pool: &mut ConstantPool,
     ) -> Result<(), Error> {

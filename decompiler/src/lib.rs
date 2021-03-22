@@ -1,7 +1,7 @@
 use std::io;
 use std::rc::Rc;
 
-use redscript::ast::{Constant, Expr, Ident, Literal, Pos, Seq, Source, SwitchCase, Target, TypeName};
+use redscript::ast::{Constant, Expr, Ident, Literal, Pos, Seq, SourceAst, SwitchCase, Target, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{CodeCursor, Instr, Offset, Position};
 use redscript::error::Error;
@@ -19,7 +19,7 @@ impl<'a> Decompiler<'a> {
         Decompiler { code, pool }
     }
 
-    pub fn decompile(&mut self) -> Result<Seq<Source>, Error> {
+    pub fn decompile(&mut self) -> Result<Seq<SourceAst>, Error> {
         self.consume_path(Position::MAX)
     }
 
@@ -27,7 +27,7 @@ impl<'a> Decompiler<'a> {
         Ok(Ident::Owned(self.pool.definition_name(index)?))
     }
 
-    fn consume_n(&mut self, n: usize) -> Result<Vec<Expr<Source>>, Error> {
+    fn consume_n(&mut self, n: usize) -> Result<Vec<Expr<SourceAst>>, Error> {
         let mut body = Vec::new();
         for _ in 0..n {
             body.push(self.consume()?)
@@ -35,7 +35,7 @@ impl<'a> Decompiler<'a> {
         Ok(body)
     }
 
-    fn consume_path(&mut self, target: Position) -> Result<Seq<Source>, Error> {
+    fn consume_path(&mut self, target: Position) -> Result<Seq<SourceAst>, Error> {
         let mut body = Vec::new();
         loop {
             if self.code.pos() >= target
@@ -53,12 +53,12 @@ impl<'a> Decompiler<'a> {
         Ok(Seq::new(body))
     }
 
-    fn consume_call(&mut self, name: &'static str, param_count: usize) -> Result<Expr<Source>, Error> {
+    fn consume_call(&mut self, name: &'static str, param_count: usize) -> Result<Expr<SourceAst>, Error> {
         let params = self.consume_n(param_count)?;
         Ok(Expr::Call(Ident::Static(name), params, Pos::ZERO))
     }
 
-    fn consume_params(&mut self) -> Result<Vec<Expr<Source>>, Error> {
+    fn consume_params(&mut self) -> Result<Vec<Expr<SourceAst>>, Error> {
         let mut params = Vec::new();
         loop {
             while matches!(self.code.peek(), Some(Instr::Skip(_))) || matches!(self.code.peek(), Some(Instr::Nop)) {
@@ -73,7 +73,7 @@ impl<'a> Decompiler<'a> {
         Ok(params)
     }
 
-    fn consume_conditional_jump(&mut self, position: Position, offset: Offset) -> Result<Expr<Source>, Error> {
+    fn consume_conditional_jump(&mut self, position: Position, offset: Offset) -> Result<Expr<SourceAst>, Error> {
         let condition = self.consume()?;
         let target = offset.absolute(position);
         let mut body = self.consume_path(target)?;
@@ -90,7 +90,7 @@ impl<'a> Decompiler<'a> {
         Ok(result)
     }
 
-    fn consume_switch(&mut self) -> Result<Expr<Source>, Error> {
+    fn consume_switch(&mut self) -> Result<Expr<SourceAst>, Error> {
         let subject = self.consume()?;
 
         let mut labels = Vec::new();
@@ -130,11 +130,11 @@ impl<'a> Decompiler<'a> {
         Ok(Expr::Switch(Box::new(subject), cases, default))
     }
 
-    fn consume(&mut self) -> Result<Expr<Source>, Error> {
+    fn consume(&mut self) -> Result<Expr<SourceAst>, Error> {
         self.consume_with(None)
     }
 
-    fn consume_with(&mut self, context: Option<Expr<Source>>) -> Result<Expr<Source>, Error> {
+    fn consume_with(&mut self, context: Option<Expr<SourceAst>>) -> Result<Expr<SourceAst>, Error> {
         let position = self.code.pos();
         let res = match self.code.pop()? {
             Instr::Nop => Expr::EMPTY,
@@ -341,7 +341,7 @@ impl<'a> Decompiler<'a> {
     }
 }
 
-fn resolve_jump(seq: &mut Seq<Source>, target: Option<Position>) -> Option<&mut Target> {
+fn resolve_jump(seq: &mut Seq<SourceAst>, target: Option<Position>) -> Option<&mut Target> {
     seq.exprs.iter_mut().rev().find_map(|expr| match expr {
         Expr::Goto(goto, _) if !goto.resolved && target.map(|target| goto.position == target.value).unwrap_or(true) => {
             goto.resolved = true;
