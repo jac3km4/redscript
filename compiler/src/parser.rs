@@ -243,6 +243,10 @@ peg::parser! {
             = pos:position!() keyword("while") _ cond:expr() _ "{" _ body:seq() _ "}" _ ";"?
             { Expr::While(Box::new(cond), body, Pos::new(pos)) }
 
+        rule for_() -> Expr<Source>
+            = pos:position!() keyword("for") _ ident:ident() _ keyword("in") _ array:expr() _ "{" _ body:seq() _ "}" _ ";"?
+            { Expr::ForIn(Ident::new(ident), Box::new(array), body, Pos::new(pos)) }
+
         rule if_() -> Expr<Source>
             = pos:position!() keyword("if") _ cond:expr() _ "{" _ if_:seq() _ "}" _ else_:else_()? _ ";"?
             { Expr::If(Box::new(cond), if_, else_, Pos::new(pos)) }
@@ -251,6 +255,7 @@ peg::parser! {
 
         pub rule stmt() -> Expr<Source>
             = while_: while_() { while_ }
+            / for_: for_() { for_ }
             / if_: if_() { if_ }
             / switch: switch() { switch }
             / pos:position!() keyword("return") _ val:expr()? _ ";" { Expr::Return(val.map(Box::new), Pos::new(pos)) }

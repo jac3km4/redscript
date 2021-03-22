@@ -36,13 +36,13 @@ pub enum Member {
 }
 
 pub struct Typechecker<'a> {
-    pub locals: Vec<PoolIndex<Local>>,
     pool: &'a mut ConstantPool,
+    pub locals: Vec<PoolIndex<Local>>,
 }
 
 impl<'a> Typechecker<'a> {
     pub fn new(pool: &'a mut ConstantPool) -> Typechecker<'a> {
-        Typechecker { locals: vec![], pool }
+        Typechecker { pool, locals: vec![] }
     }
 
     pub fn check(
@@ -76,7 +76,6 @@ impl<'a> Typechecker<'a> {
                 }
             },
             Expr::Declare(name, type_, init, pos) => {
-                let name_idx = self.pool.names.add(name.to_owned());
                 let (initializer, type_) = match (type_, init) {
                     (None, None) => return Err(Error::type_annotation_required(*pos)),
                     (None, Some(expr)) => {
@@ -91,12 +90,8 @@ impl<'a> Typechecker<'a> {
                         (Some(checked), type_)
                     }
                 };
-                let local = Local::new(scope.get_type_index(&type_, self.pool)?, LocalFlags::new());
-                let local_def = Definition::local(name_idx, scope.function.unwrap().cast(), local);
-                let local_idx = self.pool.push_definition(local_def).cast();
-                self.locals.push(local_idx);
-                scope.push_local(name.clone(), local_idx);
-                Expr::Declare(local_idx, Some(type_), initializer.map(Box::new), *pos)
+                let local = self.add_local(name.clone(), &type_, scope)?;
+                Expr::Declare(local, Some(type_), initializer.map(Box::new), *pos)
             }
             Expr::Cast(type_name, expr, pos) => {
                 let type_ = scope.resolve_type(&type_name, self.pool, *pos)?;
@@ -147,7 +142,7 @@ impl<'a> Typechecker<'a> {
                 }
             }
             Expr::BinOp(lhs, rhs, op, pos) => {
-                let name = Ident::new(op.name());
+                let name = Ident::Static(op.into());
                 let args = iter::once(lhs.as_ref()).chain(iter::once(rhs.as_ref()));
                 let candidates = scope.resolve_function(FunctionName::global(name.clone()), self.pool, *pos)?;
                 let match_ = self.resolve_overload(name, candidates.clone(), args, expected, scope, *pos)?;
@@ -280,6 +275,17 @@ impl<'a> Typechecker<'a> {
                 let checked_body = self.check_seq(body, &mut scope.clone())?;
 
                 Expr::While(Box::new(checked_cond), checked_body, *pos)
+            }
+            Expr::ForIn(name, array, body, pos) => {
+                let array = self.check(array, None, scope)?;
+                if let TypeId::Array(inner) = type_of(&array, scope, self.pool)? {
+                    let mut local_scope = scope.clone();
+                    let local = self.add_local(name.clone(), &inner, &mut local_scope)?;
+                    let body = self.check_seq(body, &mut local_scope)?;
+                    Expr::ForIn(local, Box::new(array), body, *pos)
+                } else {
+                    return Err(Error::array_expected_in_for(*pos));
+                }
             }
             Expr::This(pos) => Expr::This(*pos),
             Expr::Super(pos) => Expr::Super(*pos),
@@ -583,6 +589,16 @@ impl<'a> Typechecker<'a> {
             Ok(Err(err))
         }
     }
+
+    fn add_local(&mut self, name: Ident, type_: &TypeId, scope: &mut Scope) -> Result<PoolIndex<Local>, Error> {
+        let name_idx = self.pool.names.add(name.to_owned());
+        let local = Local::new(scope.get_type_index(&type_, self.pool)?, LocalFlags::new());
+        let local_def = Definition::local(name_idx, scope.function.unwrap().cast(), local);
+        let local_idx = self.pool.push_definition(local_def).cast();
+        scope.push_local(name, local_idx);
+        self.locals.push(local_idx);
+        Ok(local_idx)
+    }
 }
 
 pub fn type_of(expr: &Expr<Typed>, scope: &Scope, pool: &ConstantPool) -> Result<TypeId, Error> {
@@ -643,6 +659,7 @@ pub fn type_of(expr: &Expr<Typed>, scope: &Scope, pool: &ConstantPool) -> Result
         Expr::If(_, _, _, _) => TypeId::Void,
         Expr::Conditional(_, lhs, _, _) => type_of(lhs, scope, pool)?,
         Expr::While(_, _, _) => TypeId::Void,
+        Expr::ForIn(_, _, _, _) => TypeId::Void,
         Expr::This(pos) => match scope.this {
             Some(class_idx) => TypeId::Ref(Box::new(TypeId::Class(class_idx))),
             None => return Err(Error::CompileError("No 'this' in static context".to_owned(), *pos)),
