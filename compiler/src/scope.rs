@@ -1,11 +1,8 @@
-use std::borrow::Cow;
-
 use redscript::ast::{Expr, Ident, Pos, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::definition::{Class, Definition, DefinitionValue, Enum, Field, Function, Local, Type};
 use redscript::error::Error;
 
-use crate::parser::{FunctionSource, Qualifier};
 use crate::typechecker::Typed;
 use crate::{Reference, TypeId};
 
@@ -281,40 +278,5 @@ impl Scope {
             }
         };
         Ok(result)
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum Conversion {
-    Identity,
-    RefToWeakRef,
-    WeakRefToRef,
-}
-
-pub struct FunctionId<'a>(Cow<'a, str>);
-
-impl<'a> FunctionId<'a> {
-    pub fn from_source(source: &'a FunctionSource) -> Self {
-        let qs = &source.declaration.qualifiers;
-        if qs.contain(Qualifier::Callback) || qs.contain(Qualifier::Exec) || qs.contain(Qualifier::Native) {
-            FunctionId(Cow::Borrowed(&source.declaration.name))
-        } else {
-            let mut signature = String::new();
-            for arg in &source.parameters {
-                signature.push_str(arg.type_.mangled().as_ref());
-            }
-            let mangled = format!("{};{}", source.declaration.name, signature);
-            FunctionId(Cow::Owned(mangled))
-        }
-    }
-
-    pub fn into_owned(self) -> String {
-        self.0.into_owned()
-    }
-}
-
-impl<'a> AsRef<str> for FunctionId<'a> {
-    fn as_ref(&self) -> &str {
-        self.0.as_ref()
     }
 }

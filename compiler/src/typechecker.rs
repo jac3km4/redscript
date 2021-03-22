@@ -7,7 +7,7 @@ use redscript::definition::{Definition, Enum, Field, Function, Local, LocalFlags
 use redscript::error::{Error, FunctionResolutionError};
 use strum::{Display, EnumString};
 
-use crate::scope::{Conversion, FunctionMatch, FunctionName, FunctionOverloads, Scope};
+use crate::scope::{FunctionMatch, FunctionName, FunctionOverloads, Scope};
 use crate::{Reference, TypeId};
 
 #[derive(Debug)]
@@ -677,6 +677,13 @@ pub fn type_of(expr: &Expr<Typed>, scope: &Scope, pool: &ConstantPool) -> Result
         Expr::UnOp(_, _, pos) => return Err(Error::CompileError("UnOp not supported here".to_owned(), *pos)),
     };
     Ok(res)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Conversion {
+    Identity,
+    RefToWeakRef,
+    WeakRefToRef,
 }
 
 #[derive(Debug, Clone, Copy, EnumString, Display)]

@@ -47,13 +47,11 @@ private func PopulateMenuItemList() {
 private final func GetSellableJunk() -> array<wref<gameItemData>> {
   let result: array<wref<gameItemData>>;
   let sellableItems = this.m_VendorDataManager.GetItemsPlayerCanSell();
-  let i: Uint32 = Cast(0);
-  while i < Cast(ArraySize(sellableItems)) {
-    let type = RPGManager.GetItemRecord(sellableItems[i].GetID()).ItemType().Type();
+  for sellableItem in sellableItems {
+    let type = RPGManager.GetItemRecord(sellableItem.GetID()).ItemType().Type();
     if Equals(type, gamedataItemType.Gen_Junk) || Equals(type, gamedataItemType.Con_Edible) {
-        ArrayPush(result, sellableItems[i]);
+        ArrayPush(result, sellableItem);
     };
-    i += Cast(1);
   };
   return result;
 }

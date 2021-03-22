@@ -1,5 +1,6 @@
 #![feature(option_result_contains)]
 
+use std::borrow::Cow;
 use std::ffi::OsStr;
 use std::path::Path;
 use std::rc::Rc;
@@ -13,7 +14,7 @@ use redscript::definition::{
     Class, ClassFlags, Definition, Enum, Field, FieldFlags, Function, FunctionFlags, Local, Parameter, ParameterFlags, SourceReference, Type, Visibility
 };
 use redscript::error::Error;
-use scope::{FunctionId, FunctionName, Scope};
+use scope::{FunctionName, Scope};
 use source_map::Files;
 use sugar::Desugar;
 use transform::ExprTransformer;
@@ -530,6 +531,34 @@ impl TypeId {
             TypeId::Null => Ok(Ident::Static("Null")),
             TypeId::Void => Ok(Ident::Static("Void")),
         }
+    }
+}
+
+pub struct FunctionId<'a>(Cow<'a, str>);
+
+impl<'a> FunctionId<'a> {
+    pub fn from_source(source: &'a FunctionSource) -> Self {
+        let qs = &source.declaration.qualifiers;
+        if qs.contain(Qualifier::Callback) || qs.contain(Qualifier::Exec) || qs.contain(Qualifier::Native) {
+            FunctionId(Cow::Borrowed(&source.declaration.name))
+        } else {
+            let mut signature = String::new();
+            for arg in &source.parameters {
+                signature.push_str(arg.type_.mangled().as_ref());
+            }
+            let mangled = format!("{};{}", source.declaration.name, signature);
+            FunctionId(Cow::Owned(mangled))
+        }
+    }
+
+    pub fn into_owned(self) -> String {
+        self.0.into_owned()
+    }
+}
+
+impl<'a> AsRef<str> for FunctionId<'a> {
+    fn as_ref(&self) -> &str {
+        self.0.as_ref()
     }
 }
 
