@@ -107,7 +107,7 @@ impl<'a> Typechecker<'a> {
             Expr::Assign(lhs, rhs, pos) => {
                 let lhs_typed = self.check(lhs, None, scope)?;
                 let type_ = type_of(&lhs_typed, scope, self.pool)?;
-                let rhs_typed = self.check(rhs, Some(&type_), scope)?;
+                let rhs_typed = self.check_and_convert(rhs, &type_, scope, *pos)?;
                 Expr::Assign(Box::new(lhs_typed), Box::new(rhs_typed), *pos)
             }
             Expr::Call(name, args, pos) => {
