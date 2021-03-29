@@ -7,6 +7,7 @@ use log::LevelFilter;
 use redscript::bundle::ScriptBundle;
 use redscript::definition::DefinitionValue;
 use redscript::error::Error;
+use redscript_compiler::source_map::{Files, SourceFilter};
 use redscript_compiler::Compiler;
 use redscript_decompiler::files::FileIndex;
 use redscript_decompiler::print::{write_definition, OutputMode};
@@ -97,7 +98,8 @@ fn compile(opts: CompileOpts) -> Result<(), Error> {
     let mut bundle: ScriptBundle = ScriptBundle::load(&mut BufReader::new(File::open(opts.bundle)?))?;
     let mut compiler = Compiler::new(&mut bundle.pool)?;
 
-    match compiler.compile_all(&opts.src) {
+    let files = Files::from_dir(&opts.src, SourceFilter::None)?;
+    match compiler.compile(&files) {
         Ok(()) => {
             bundle.save(&mut BufWriter::new(File::create(&opts.output)?))?;
             log::info!("Output successfully saved to {}", opts.output.display());
@@ -153,7 +155,8 @@ fn lint(opts: LintOpts) -> Result<(), Error> {
         Some(bundle_path) => {
             let mut bundle: ScriptBundle = ScriptBundle::load(&mut BufReader::new(File::open(bundle_path)?))?;
             let mut compiler = Compiler::new(&mut bundle.pool)?;
-            if compiler.compile_all(&opts.src).is_ok() {
+            let files = Files::from_dir(&opts.src, SourceFilter::None)?;
+            if compiler.compile(&files).is_ok() {
                 log::info!("Lint successful");
             }
             Ok(())

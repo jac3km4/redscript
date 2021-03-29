@@ -1,8 +1,6 @@
 #![feature(option_result_contains)]
 
 use std::borrow::Cow;
-use std::ffi::OsStr;
-use std::path::Path;
 use std::rc::Rc;
 
 use assembler::Assembler;
@@ -19,7 +17,6 @@ use source_map::Files;
 use sugar::Desugar;
 use transform::ExprTransformer;
 use typechecker::Typechecker;
-use walkdir::WalkDir;
 
 use crate::parser::{ClassSource, FunctionSource, MemberSource, Qualifier, SourceEntry};
 
@@ -44,17 +41,8 @@ impl<'a> Compiler<'a> {
         Ok(Compiler { pool, backlog, scope })
     }
 
-    pub fn compile_all(&mut self, path: &Path) -> Result<(), Error> {
-        let mut files = Files::new();
-        for entry in WalkDir::new(path)
-            .into_iter()
-            .filter_map(Result::ok)
-            .filter(|e| e.path().extension() == Some(OsStr::new("reds")))
-        {
-            let sources = std::fs::read_to_string(entry.path())?;
-            files.add(entry.path().to_owned(), &sources);
-            log::info!("Compiling {}", entry.path().display());
-        }
+    pub fn compile(&mut self, files: &Files) -> Result<(), Error> {
+        log::info!("Compiling files: {}", files);
         let entries = match parser::parse(files.sources()) {
             Ok(res) => res,
             Err(err) => {
@@ -64,7 +52,7 @@ impl<'a> Compiler<'a> {
             }
         };
 
-        match self.compile(entries) {
+        match self.compile_entries(entries) {
             Ok(diagnostics) => {
                 for diagnostic in diagnostics {
                     Self::print_diagnostic(&files, diagnostic);
@@ -107,7 +95,7 @@ impl<'a> Compiler<'a> {
         );
     }
 
-    fn compile(&mut self, sources: Vec<SourceEntry>) -> Result<Vec<Diagnostic>, Error> {
+    fn compile_entries(&mut self, sources: Vec<SourceEntry>) -> Result<Vec<Diagnostic>, Error> {
         let mut compiled_funs = Vec::new();
         let mut diagnostics = Vec::new();
 
@@ -593,7 +581,7 @@ mod tests {
 
         let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
         let mut compiler = Compiler::new(&mut scripts.pool)?;
-        compiler.compile(sources)?;
+        compiler.compile_entries(sources)?;
         Ok(())
     }
 
@@ -619,7 +607,7 @@ mod tests {
 
         let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
         let mut compiler = Compiler::new(&mut scripts.pool)?;
-        compiler.compile(sources)?;
+        compiler.compile_entries(sources)?;
         Ok(())
     }
 
@@ -643,7 +631,7 @@ mod tests {
 
         let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
         let mut compiler = Compiler::new(&mut scripts.pool)?;
-        compiler.compile(sources)?;
+        compiler.compile_entries(sources)?;
         Ok(())
     }
 
@@ -660,7 +648,7 @@ mod tests {
 
         let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
         let mut compiler = Compiler::new(&mut scripts.pool)?;
-        compiler.compile(sources)?;
+        compiler.compile_entries(sources)?;
         Ok(())
     }
 }

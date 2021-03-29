@@ -1,21 +1,42 @@
-use core::fmt;
 use std::cmp::Ordering;
+use std::collections::HashSet;
+use std::ffi::OsStr;
+use std::fmt;
 use std::ops::Range;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use redscript::ast::Pos;
+use redscript::error::Error;
+use walkdir::WalkDir;
 
+#[derive(Debug)]
 pub struct Files {
     files: Vec<File>,
     sources: String,
 }
 
 impl Files {
-    pub fn new() -> Files {
-        Files {
-            files: vec![],
-            sources: String::new(),
+    pub fn new() -> Self {
+        Files::default()
+    }
+
+    pub fn from_dir(dir: &Path, filter: SourceFilter) -> Result<Self, Error> {
+        let iter = WalkDir::new(dir)
+            .into_iter()
+            .filter_map(Result::ok)
+            .map(|entry| entry.into_path())
+            .filter(|path| filter.apply(path.strip_prefix(dir).unwrap()));
+
+        Files::from_iter(iter)
+    }
+
+    pub fn from_iter(paths: impl Iterator<Item = PathBuf>) -> Result<Self, Error> {
+        let mut files = Files::new();
+        for path in paths {
+            let sources = std::fs::read_to_string(&path)?;
+            files.add(path, &sources);
         }
+        Ok(files)
     }
 
     pub fn sources(&self) -> &str {
@@ -55,6 +76,28 @@ impl Files {
         let position = file.lookup(pos, &self.sources)?;
         let result = Location { file, position };
         Some(result)
+    }
+}
+
+impl fmt::Display for Files {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (idx, file) in self.files.iter().enumerate() {
+            if idx == self.files.len() - 1 {
+                f.write_fmt(format_args!("{}", file))?;
+            } else {
+                f.write_fmt(format_args!("{}, ", file))?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Default for Files {
+    fn default() -> Self {
+        Files {
+            files: vec![],
+            sources: String::new(),
+        }
     }
 }
 
@@ -104,6 +147,12 @@ impl File {
     }
 }
 
+impl fmt::Display for File {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!("{}", self.path.display()))
+    }
+}
+
 #[derive(Debug)]
 struct NonEmptyVec<A>(pub A, pub Vec<A>);
 
@@ -143,5 +192,32 @@ pub struct Location<'a> {
 impl<'a> fmt::Display for Location<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:{}", self.file.path.display(), self.position)
+    }
+}
+
+pub enum SourceFilter {
+    None,
+    Exclude(HashSet<String>),
+}
+
+impl SourceFilter {
+    fn apply(&self, rel_path: &Path) -> bool {
+        let is_correct_extension = rel_path.extension() == Some(OsStr::new("reds"));
+        let is_matching = match self {
+            SourceFilter::None => true,
+            SourceFilter::Exclude(exclusions) => {
+                let without_ext = rel_path.with_extension("");
+                let top_level_name = without_ext
+                    .components()
+                    .next()
+                    .and_then(|comp| comp.as_os_str().to_str());
+                match top_level_name {
+                    Some(name) => !exclusions.contains(name),
+                    None => false,
+                }
+            }
+        };
+
+        is_correct_extension && is_matching
     }
 }
