@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{BufReader, BufWriter};
 use std::path::{Path, PathBuf};
@@ -7,7 +8,9 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use log::LevelFilter;
 use redscript::bundle::ScriptBundle;
 use redscript::error::Error;
+use redscript_compiler::source_map::{Files, SourceFilter};
 use redscript_compiler::Compiler;
+use serde_derive::Deserialize;
 use simplelog::{CombinedLogger, Config as LoggerConfig, SimpleLogger, WriteLogger};
 
 fn main() -> Result<(), Error> {
@@ -42,6 +45,7 @@ fn load_scripts(script_dir: &Path, cache_dir: &Path) -> Result<(), Error> {
     let backup_path = cache_dir.join("final.redscripts.bk");
     let timestamp_path = cache_dir.join("redscript.ts");
 
+    let manifest = ScriptManifest::load_with_fallback(script_dir)?;
     let write_timestamp = CompileTimestamp::of_cache_file(&File::open(&bundle_path)?)?;
     let saved_timestamp = CompileTimestamp::read(&timestamp_path).ok();
 
@@ -62,7 +66,8 @@ fn load_scripts(script_dir: &Path, cache_dir: &Path) -> Result<(), Error> {
     let mut bundle: ScriptBundle = ScriptBundle::load(&mut BufReader::new(File::open(&backup_path)?))?;
     let mut compiler = Compiler::new(&mut bundle.pool)?;
 
-    compiler.compile_all(&script_dir)?;
+    let files = Files::from_dir(script_dir, manifest.source_filter())?;
+    compiler.compile(&files)?;
     let mut file = File::create(&bundle_path)?;
     bundle.save(&mut BufWriter::new(&mut file))?;
     file.sync_all()?;
@@ -97,5 +102,27 @@ impl CompileTimestamp {
             .unwrap()
             .as_nanos();
         Ok(CompileTimestamp { nanos })
+    }
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ScriptManifest {
+    exclusions: HashSet<String>,
+}
+
+impl ScriptManifest {
+    pub fn load(script_dir: &Path) -> Result<Self, Error> {
+        let path = script_dir.join("redscript.toml");
+        let contents = std::fs::read_to_string(&path)?;
+        log::info!("Loaded script manfiest from {}", path.display());
+        Ok(toml::from_str(&contents).unwrap())
+    }
+
+    pub fn load_with_fallback(script_dir: &Path) -> Result<Self, Error> {
+        Ok(Self::load(script_dir).unwrap_or_default())
+    }
+
+    pub fn source_filter(self) -> SourceFilter {
+        SourceFilter::Exclude(self.exclusions)
     }
 }
