@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::fs::{self, File};
-use std::io::{BufReader, BufWriter};
+use std::io::{self, BufReader, BufWriter};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -115,7 +115,9 @@ impl ScriptManifest {
         let path = script_dir.join("redscript.toml");
         let contents = std::fs::read_to_string(&path)?;
         log::info!("Loaded script manfiest from {}", path.display());
-        Ok(toml::from_str(&contents).unwrap())
+        let manifest =
+            toml::from_str(&contents).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err.to_string()))?;
+        Ok(manifest)
     }
 
     pub fn load_with_fallback(script_dir: &Path) -> Result<Self, Error> {
