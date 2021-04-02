@@ -1,6 +1,7 @@
 #![feature(option_result_contains)]
 
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use assembler::Assembler;
@@ -30,7 +31,7 @@ pub mod typechecker;
 
 pub struct Compiler<'a> {
     pool: &'a mut ConstantPool,
-    backlog: Vec<(PoolIndex<Class>, PoolIndex<Function>, Seq<SourceAst>)>,
+    backlog: Vec<BacklogItem>,
     scope: Scope,
 }
 
@@ -96,7 +97,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn compile_entries(&mut self, sources: Vec<SourceEntry>) -> Result<Vec<Diagnostic>, Error> {
-        let mut compiled_funs = Vec::new();
+        let mut compiled_funs = HashSet::new();
         let mut diagnostics = Vec::new();
 
         for entry in &sources {
@@ -112,10 +113,10 @@ impl<'a> Compiler<'a> {
                 SourceEntry::Function(fun) => {
                     let pos = fun.declaration.pos;
                     let idx = self.define_function(fun, PoolIndex::UNDEFINED)?;
-                    if compiled_funs.iter().any(|f| *f == idx) {
+                    if compiled_funs.contains(&idx) {
                         diagnostics.push(Diagnostic::MethodConflict(idx, pos));
                     } else {
-                        compiled_funs.push(idx);
+                        compiled_funs.insert(idx);
                     }
                 }
                 SourceEntry::GlobalLet(let_) => {
@@ -123,8 +124,8 @@ impl<'a> Compiler<'a> {
                 }
             }
         }
-        for (this, fun_idx, seq) in self.backlog.drain(..) {
-            Self::compile_function(fun_idx, this, &seq, &self.scope, self.pool)?;
+        for item in self.backlog.drain(..) {
+            Self::compile_function(item.function, item.class, &item.code, &self.scope, self.pool)?;
         }
         Ok(diagnostics)
     }
@@ -287,8 +288,13 @@ impl<'a> Compiler<'a> {
         };
         let definition = Definition::function(name_idx, parent_idx.cast(), function);
         self.pool.put_definition(fun_idx.cast(), definition);
-        if let Some(seq) = source.body {
-            self.backlog.push((parent_idx, fun_idx, seq))
+        if let Some(code) = source.body {
+            let item = BacklogItem {
+                class: parent_idx,
+                function: fun_idx,
+                code,
+            };
+            self.backlog.push(item)
         }
         self.scope.push_function(name, fun_idx);
         Ok(fun_idx)
@@ -452,6 +458,13 @@ impl<'a> Compiler<'a> {
 }
 
 #[derive(Debug)]
+pub struct BacklogItem {
+    class: PoolIndex<Class>,
+    function: PoolIndex<Function>,
+    code: Seq<SourceAst>,
+}
+
+#[derive(Debug)]
 pub enum Diagnostic {
     MethodConflict(PoolIndex<Function>, Pos),
 }
@@ -554,7 +567,9 @@ impl<'a> AsRef<str> for FunctionId<'a> {
 mod tests {
     use std::io::Cursor;
 
-    use redscript::bundle::ScriptBundle;
+    use redscript::bundle::{PoolIndex, ScriptBundle};
+    use redscript::bytecode::{Code, Instr, Offset};
+    use redscript::definition::DefinitionValue;
     use redscript::error::Error;
 
     use crate::{parser, Compiler};
@@ -649,6 +664,268 @@ mod tests {
         let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
         let mut compiler = Compiler::new(&mut scripts.pool)?;
         compiler.compile_entries(sources)?;
+        Ok(())
+    }
+
+    #[test]
+    fn compile_dynamic_casts() -> Result<(), Error> {
+        let sources = "
+            func Testing() {
+                let b: wref<B> = new B();
+                let a: wref<A> = b as A;
+            }
+
+            class A {}
+            class B extends A {}
+            ";
+        let expected = vec![
+            Instr::Assign,
+            Instr::Local(PoolIndex::new(27)),
+            Instr::RefToWeakRef,
+            Instr::New(PoolIndex::new(24)),
+            Instr::Assign,
+            Instr::Local(PoolIndex::new(29)),
+            Instr::RefToWeakRef,
+            Instr::DynamicCast(PoolIndex::new(22), 0),
+            Instr::WeakRefToRef,
+            Instr::Local(PoolIndex::new(27)),
+            Instr::Nop,
+        ];
+        check_function_bytecode(sources, expected)
+    }
+
+    #[test]
+    fn compile_basic_casts() -> Result<(), Error> {
+        let sources = "
+            func Testing() {
+                let a: Float = Cast(1);
+                let b: String = Cast(2);
+            }
+
+            func Cast(i: Int32) -> Float = 0.0
+            func Cast(i: Int32) -> String = \"\"
+            ";
+        let expected = vec![
+            Instr::Assign,
+            Instr::Local(PoolIndex::new(26)),
+            Instr::InvokeStatic(Offset::new(19), 0, PoolIndex::new(22)),
+            Instr::I32Const(1),
+            Instr::ParamEnd,
+            Instr::Assign,
+            Instr::Local(PoolIndex::new(27)),
+            Instr::InvokeStatic(Offset::new(19), 0, PoolIndex::new(24)),
+            Instr::I32Const(2),
+            Instr::ParamEnd,
+            Instr::Nop,
+        ];
+        check_function_bytecode(sources, expected)
+    }
+
+    #[test]
+    fn compile_overloaded_call() -> Result<(), Error> {
+        let sources = "
+            func Testing() {
+                let val = new B();
+                TestingTarget(val, val);
+            }
+
+            func TestingTarget(x: wref<A>, y: ref<B>) {}
+            func TestingTarget(x: wref<A>, y: ref<C>) {}
+
+            class A {}
+            class B extends A {}
+            class C extends A {}
+            ";
+        let expected = vec![
+            Instr::Assign,
+            Instr::Local(PoolIndex::new(37)),
+            Instr::New(PoolIndex::new(24)),
+            Instr::InvokeStatic(Offset::new(33), 0, PoolIndex::new(28)),
+            Instr::RefToWeakRef,
+            Instr::Local(PoolIndex::new(37)),
+            Instr::Local(PoolIndex::new(37)),
+            Instr::ParamEnd,
+            Instr::Nop,
+        ];
+        check_function_bytecode(sources, expected)
+    }
+
+    #[test]
+    fn compile_for_loop() -> Result<(), Error> {
+        let sources = "
+            func Testing() {
+                for i in [0, 1] {
+                    Log(ToString(i));
+                }
+            }
+
+            func Log(str: String) {}
+            func OperatorAssignAdd(l: Int32, r: Int32) -> Int32 = 0
+            func OperatorLess(l: Int32, r: Int32) -> Bool = true
+            ";
+        let expected = vec![
+            Instr::ArrayPush(PoolIndex::new(31)),
+            Instr::Local(PoolIndex::new(32)),
+            Instr::I32Const(0),
+            Instr::ArrayPush(PoolIndex::new(31)),
+            Instr::Local(PoolIndex::new(32)),
+            Instr::I32Const(1),
+            Instr::Assign,
+            Instr::Local(PoolIndex::new(33)),
+            Instr::Local(PoolIndex::new(32)),
+            Instr::Assign,
+            Instr::Local(PoolIndex::new(34)),
+            Instr::I32Const(0),
+            Instr::JumpIfFalse(Offset::new(144)),
+            Instr::InvokeStatic(Offset::new(41), 0, PoolIndex::new(27)),
+            Instr::Local(PoolIndex::new(34)),
+            Instr::ArraySize(PoolIndex::new(31)),
+            Instr::Local(PoolIndex::new(33)),
+            Instr::ParamEnd,
+            Instr::Assign,
+            Instr::Local(PoolIndex::new(30)),
+            Instr::ArrayElement(PoolIndex::new(31)),
+            Instr::Local(PoolIndex::new(33)),
+            Instr::Local(PoolIndex::new(34)),
+            Instr::InvokeStatic(Offset::new(32), 0, PoolIndex::new(22)),
+            Instr::ToString(PoolIndex::new(8)),
+            Instr::Local(PoolIndex::new(30)),
+            Instr::ParamEnd,
+            Instr::InvokeStatic(Offset::new(28), 0, PoolIndex::new(24)),
+            Instr::Local(PoolIndex::new(34)),
+            Instr::I32Const(1),
+            Instr::ParamEnd,
+            Instr::Jump(Offset::new(-141)),
+            Instr::Nop,
+        ];
+        check_function_bytecode(sources, expected)
+    }
+
+    #[test]
+    fn compile_variant_conversions() -> Result<(), Error> {
+        let sources = "
+            func Testing() {
+                let x = ToVariant(new A());
+                let y: ref<A> = FromVariant(x);
+            }
+
+            class A {}
+            ";
+        let expected = vec![
+            Instr::Assign,
+            Instr::Local(PoolIndex::new(24)),
+            Instr::ToVariant(PoolIndex::new(25)),
+            Instr::New(PoolIndex::new(22)),
+            Instr::Assign,
+            Instr::Local(PoolIndex::new(26)),
+            Instr::FromVariant(PoolIndex::new(25)),
+            Instr::Local(PoolIndex::new(24)),
+            Instr::Nop,
+        ];
+        check_function_bytecode(sources, expected)
+    }
+
+    #[test]
+    fn compile_switch_case() -> Result<(), Error> {
+        let sources = "
+            func Testing(val: Int32) -> Bool {
+                switch val % 2 {
+                    case 0:
+                        return true;
+                    case 1:
+                        return false;
+                    default:
+                        return false;
+                }
+            }
+
+            func OperatorModulo(l: Int32, r: Int32) -> Int32 = 0
+            ";
+        let expected = vec![
+            Instr::Switch(PoolIndex::new(8), Offset::new(39)),
+            Instr::InvokeStatic(Offset::new(28), 0, PoolIndex::new(23)),
+            Instr::Param(PoolIndex::new(22)),
+            Instr::I32Const(2),
+            Instr::ParamEnd,
+            Instr::SwitchLabel(Offset::new(12), Offset::new(10)),
+            Instr::I32Const(0),
+            Instr::Return,
+            Instr::TrueConst,
+            Instr::SwitchLabel(Offset::new(12), Offset::new(10)),
+            Instr::I32Const(1),
+            Instr::Return,
+            Instr::FalseConst,
+            Instr::SwitchDefault,
+            Instr::Return,
+            Instr::FalseConst,
+            Instr::Nop,
+        ];
+        check_function_bytecode(sources, expected)
+    }
+
+    #[test]
+    fn compile_ternary_op() -> Result<(), Error> {
+        let sources = "
+            func Testing(val: Int32) -> Bool = val % 2 == 0 ? true : false
+
+            func OperatorModulo(l: Int32, r: Int32) -> Int32 = 0
+            func OperatorEqual(l: Int32, r: Int32) -> Bool = false
+            ";
+        let expected = vec![
+            Instr::Return,
+            Instr::Conditional(Offset::new(53), Offset::new(54)),
+            Instr::InvokeStatic(Offset::new(47), 0, PoolIndex::new(26)),
+            Instr::InvokeStatic(Offset::new(28), 0, PoolIndex::new(23)),
+            Instr::Param(PoolIndex::new(22)),
+            Instr::I32Const(2),
+            Instr::ParamEnd,
+            Instr::I32Const(0),
+            Instr::ParamEnd,
+            Instr::TrueConst,
+            Instr::FalseConst,
+            Instr::Nop,
+        ];
+        check_function_bytecode(sources, expected)
+    }
+
+    #[test]
+    fn compile_method_overload_call() -> Result<(), Error> {
+        let sources = "
+            class B extends A {
+                func Testing() -> Int32 = super.Testing()
+            }
+
+            class A {
+                func Testing() -> Int32 = 0
+            }
+            ";
+        let expected = vec![
+            Instr::Return,
+            Instr::Context(Offset::new(18)),
+            Instr::This,
+            Instr::InvokeStatic(Offset::new(14), 0, PoolIndex::new(26)),
+            Instr::ParamEnd,
+            Instr::Nop,
+        ];
+        check_function_bytecode(sources, expected)
+    }
+
+    fn check_function_bytecode(code: &str, instrs: Vec<Instr>) -> Result<(), Error> {
+        let entries = parser::parse(code).unwrap();
+        let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
+        let mut compiler = Compiler::new(&mut scripts.pool)?;
+        compiler.compile_entries(entries)?;
+        let match_ = scripts
+            .pool
+            .definitions()
+            .find(|(_, def)| matches!(def.value, DefinitionValue::Function(_)))
+            .map(|(_, def)| &def.value);
+
+        if let Some(DefinitionValue::Function(fun)) = match_ {
+            assert_eq!(fun.code, Code(instrs))
+        } else {
+            assert!(false, "No function found in the pool")
+        }
         Ok(())
     }
 }

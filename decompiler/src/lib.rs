@@ -151,10 +151,7 @@ impl<'a> Decompiler<'a> {
             Instr::U64Const(val) => Expr::Constant(Constant::Uint(val), Pos::ZERO),
             Instr::F32Const(val) => Expr::Constant(Constant::Float(val.into()), Pos::ZERO),
             Instr::F64Const(val) => Expr::Constant(Constant::Float(val), Pos::ZERO),
-            Instr::StringConst(str) => {
-                let decoded = String::from_utf8(str).unwrap();
-                Expr::Constant(Constant::String(Literal::String, Rc::new(decoded)), Pos::ZERO)
-            }
+            Instr::StringConst(str) => Expr::Constant(Constant::String(Literal::String, Rc::new(str)), Pos::ZERO),
             Instr::NameConst(idx) => {
                 let str = self.pool.names.get(idx)?.to_string();
                 Expr::Constant(Constant::String(Literal::Name, Rc::new(str)), Pos::ZERO)

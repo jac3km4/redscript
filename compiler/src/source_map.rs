@@ -27,10 +27,10 @@ impl Files {
             .map(|entry| entry.into_path())
             .filter(|path| filter.apply(path.strip_prefix(dir).unwrap()));
 
-        Files::from_iter(iter)
+        Files::from_files(iter)
     }
 
-    pub fn from_iter(paths: impl Iterator<Item = PathBuf>) -> Result<Self, Error> {
+    pub fn from_files(paths: impl Iterator<Item = PathBuf>) -> Result<Self, Error> {
         let mut files = Files::new();
         for path in paths {
             let sources = std::fs::read_to_string(&path)?;
