@@ -543,7 +543,7 @@ pub struct PoolIndex<A> {
 }
 
 impl<A> PoolIndex<A> {
-    const fn new(index: usize) -> PoolIndex<A> {
+    pub const fn new(index: usize) -> PoolIndex<A> {
         PoolIndex {
             index,
             phantom: PhantomData,

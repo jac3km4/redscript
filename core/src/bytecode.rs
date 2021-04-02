@@ -7,7 +7,7 @@ use crate::definition::{Class, Enum, Field, Function, Local, Parameter, Type};
 use crate::encode::{Encode, EncodeExt};
 use crate::error::Error;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Instr {
     Nop,
     Null,
@@ -25,7 +25,7 @@ pub enum Instr {
     F64Const(f64),
     NameConst(PoolIndex<String>),
     EnumConst(PoolIndex<Enum>, PoolIndex<i64>),
-    StringConst(Vec<u8>),
+    StringConst(String),
     TweakDbIdConst(PoolIndex<TweakDbId>),
     ResourceConst(PoolIndex<Resource>),
     TrueConst,
@@ -229,7 +229,7 @@ impl Decode for Instr {
             13 => Ok(Instr::F64Const(input.decode()?)),
             14 => Ok(Instr::NameConst(input.decode()?)),
             15 => Ok(Instr::EnumConst(input.decode()?, input.decode()?)),
-            16 => Ok(Instr::StringConst(input.decode_vec_prefixed::<u32, u8>()?)),
+            16 => Ok(Instr::StringConst(input.decode_str_prefixed::<u32>()?)),
             17 => Ok(Instr::TweakDbIdConst(input.decode()?)),
             18 => Ok(Instr::ResourceConst(input.decode()?)),
             19 => Ok(Instr::TrueConst),
@@ -409,7 +409,7 @@ impl Encode for Instr {
             }
             Instr::StringConst(str) => {
                 output.encode(&16u8)?;
-                output.encode_slice_prefixed::<u32, u8>(str)?;
+                output.encode_str_prefixed::<u32>(str)?;
             }
             Instr::TweakDbIdConst(idx) => {
                 output.encode(&17u8)?;
@@ -801,7 +801,7 @@ impl Neg for Offset {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Code(pub Vec<Instr>);
 
 impl Code {
