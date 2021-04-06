@@ -1,6 +1,5 @@
 use std::io::Write;
 use std::rc::Rc;
-use std::str;
 
 use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, Seq, SourceAst, SwitchCase, UnOp};
 use redscript::bundle::ConstantPool;
