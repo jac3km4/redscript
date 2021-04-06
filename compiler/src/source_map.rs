@@ -44,7 +44,7 @@ impl Files {
     }
 
     pub fn add(&mut self, path: PathBuf, source: &str) {
-        let low = self.files.last().map(|f| f.high).unwrap_or(Pos(0));
+        let low = self.files.last().map(|f| f.high + 1).unwrap_or(Pos(0));
         let high = low + source.len();
         let mut lines = vec![];
         for (offset, _) in source.match_indices('\n') {
@@ -56,6 +56,7 @@ impl Files {
             high,
         };
         self.sources.push_str(source);
+        self.sources.push('\n');
         self.files.push(file)
     }
 
@@ -219,5 +220,25 @@ impl SourceFilter {
         };
 
         is_correct_extension && is_matching
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser;
+
+    #[test]
+    fn correctly_handle_files_not_ending_with_newline() {
+        let mut files = Files::new();
+        files.add(PathBuf::new().join("a.reds"), "// comment");
+        files.add(PathBuf::new().join("b.reds"), r#"func Testing() { Log("test"); }"#);
+
+        let ast = parser::parse(files.sources()).unwrap();
+
+        assert_eq!(
+            format!("{:?}", ast),
+            "[Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([]), name: \"Testing\", pos: Pos(11) }, type_: None, parameters: [], body: Some(Seq { exprs: [Call(Owned(\"Log\"), [Constant(String(String, \"test\"), Pos(32))], Pos(28))] }) })]"
+        );
     }
 }
