@@ -1,5 +1,6 @@
 use std::io::Write;
 use std::rc::Rc;
+use std::str;
 
 use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, Seq, SourceAst, SwitchCase, UnOp};
 use redscript::bundle::ConstantPool;
@@ -226,10 +227,10 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr<SourceAst>, verbose: bool, dept
     match expr {
         Expr::Ident(ident, _) => write!(out, "{}", ident)?,
         Expr::Constant(cons, _) => match cons {
-            Constant::String(Literal::String, str) => write!(out, "\"{}\"", str)?,
-            Constant::String(Literal::Name, str) => write!(out, "n\"{}\"", str)?,
-            Constant::String(Literal::Resource, str) => write!(out, "r\"{}\"", str)?,
-            Constant::String(Literal::TweakDbId, str) => write!(out, "t\"{}\"", str)?,
+            Constant::String(Literal::String, str) => write!(out, "\"{}\"", str::escape_default(str))?,
+            Constant::String(Literal::Name, str) => write!(out, "n\"{}\"", str::escape_default(str))?,
+            Constant::String(Literal::Resource, str) => write!(out, "r\"{}\"", str::escape_default(str))?,
+            Constant::String(Literal::TweakDbId, str) => write!(out, "t\"{}\"", str::escape_default(str))?,
             Constant::Int(lit) => write!(out, "{}", lit)?,
             Constant::Uint(lit) => write!(out, "{}", lit)?,
             Constant::Float(lit) => write!(out, "{:.2}", lit)?,
