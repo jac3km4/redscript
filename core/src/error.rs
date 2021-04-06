@@ -7,7 +7,7 @@ use crate::ast::Pos;
 pub enum Error {
     IoError(io::Error),
     DecompileError(String),
-    SyntaxError(String),
+    SyntaxError(String, Pos),
     CompileError(String, Pos),
     PoolError(String),
     FormatError(fmt::Error),

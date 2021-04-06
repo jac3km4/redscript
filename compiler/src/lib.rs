@@ -44,16 +44,8 @@ impl<'a> Compiler<'a> {
 
     pub fn compile(&mut self, files: &Files) -> Result<(), Error> {
         log::info!("Compiling files: {}", files);
-        let entries = match parser::parse(files.sources()) {
-            Ok(res) => res,
-            Err(err) => {
-                let message = format!("Syntax error, expected {}", &err.expected);
-                Self::print_error(&files, &message, Pos::new(err.location.offset));
-                return Err(Error::SyntaxError(err.to_string()));
-            }
-        };
 
-        match self.compile_entries(entries) {
+        match self.try_compile(files) {
             Ok(diagnostics) => {
                 for diagnostic in diagnostics {
                     Self::print_diagnostic(&files, diagnostic);
@@ -62,14 +54,27 @@ impl<'a> Compiler<'a> {
                 Ok(())
             }
             Err(Error::CompileError(err, pos)) => {
-                Self::print_error(&files, &err, pos);
+                Self::print_error(files, &err, pos);
                 Err(Error::CompileError(err, pos))
+            }
+            Err(Error::SyntaxError(err, pos)) => {
+                Self::print_error(files, &err, pos);
+                Err(Error::SyntaxError(err, pos))
             }
             Err(other) => {
                 log::error!("{}: {:?}", "Unexpected error during compilation", other);
                 Err(other)
             }
         }
+    }
+
+    fn try_compile(&mut self, files: &Files) -> Result<Vec<Diagnostic>, Error> {
+        let entries = parser::parse(files.sources()).map_err(|err| {
+            let message = format!("Syntax error, expected {}", err.expected);
+            Error::SyntaxError(message, Pos::new(err.location.offset))
+        })?;
+
+        self.compile_entries(entries)
     }
 
     fn print_diagnostic(files: &Files, diagnostic: Diagnostic) {
