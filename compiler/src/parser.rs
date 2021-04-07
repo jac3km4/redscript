@@ -177,7 +177,7 @@ peg::parser! {
                 String::from(char::from_u32(u32::from_str_radix(u, 16).unwrap()).unwrap())
             }
         
-        rule escaped_string() -> String
+        pub rule escaped_string() -> String
             = "\"" s:escaped_char()* "\"" { s.join("") }
 
         rule constant() -> Constant
@@ -466,14 +466,13 @@ mod tests {
 
     #[test]
     fn parse_escaped_string() {
-        let expr = lang::expr(
+        let escaped = lang::escaped_string(
             r#""This is a backslash \'\\\' \"escaped\" string \u{03BB}""#
         ).unwrap();
 
         assert_eq!(
-            // Debug formatting will escape the slashes and quotes again, but leave the lambda
-            format!("{:?}", expr),
-            r#"Constant(String(String, "This is a backslash \'\\\' \"escaped\" string λ"), Pos(0))"#
+            escaped,
+            r#"This is a backslash '\' "escaped" string λ"#
         );
     }
 }
