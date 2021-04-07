@@ -429,10 +429,11 @@ impl<'a> Typechecker<'a> {
                 checked_args.push(self.check(&args[0], None, scope)?);
                 *inner
             }
-            (_, type_) => {
-                let err = format!("Invalid intrinsic {} call: {}", intrinsic, type_.pretty(self.pool)?);
-                return Err(Error::CompileError(err, pos));
+            (IntrinsicOp::ToBool, TypeId::Ref(_) | TypeId::WeakRef(_)) => {
+                checked_args.push(self.check(&args[0], None, scope)?);
+                scope.resolve_type(&TypeName::BOOL, self.pool, pos)?
             }
+            (_, type_) => return Err(Error::invalid_intrinsic(intrinsic, type_.pretty(self.pool)?, pos)),
         };
 
         Ok(Expr::Call(Callable::Intrinsic(intrinsic, type_), checked_args, pos))
@@ -713,6 +714,7 @@ pub enum IntrinsicOp {
     Deref,
     RefToWeakRef,
     WeakRefToRef,
+    ToBool,
 }
 
 impl IntrinsicOp {
@@ -743,6 +745,7 @@ impl IntrinsicOp {
             IntrinsicOp::Deref => 1,
             IntrinsicOp::RefToWeakRef => 1,
             IntrinsicOp::WeakRefToRef => 1,
+            IntrinsicOp::ToBool => 1,
         }
     }
 }

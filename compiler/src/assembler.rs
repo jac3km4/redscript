@@ -384,6 +384,11 @@ impl Assembler {
             IntrinsicOp::WeakRefToRef => {
                 self.emit(Instr::WeakRefToRef);
             }
+            IntrinsicOp::ToBool => match type_ {
+                TypeId::Ref(_) => self.emit(Instr::RefToBool),
+                TypeId::WeakRef(_) => self.emit(Instr::WeakRefToBool),
+                _ => panic!("Invalid ToBool parameter"),
+            },
         };
         for arg in args {
             self.compile(arg, scope, pool)?;

@@ -915,6 +915,37 @@ mod tests {
         check_function_bytecode(sources, expected)
     }
 
+    #[test]
+    fn compile_to_bool() -> Result<(), Error> {
+        let sources = "
+            func Testing() {
+                let x = new A();
+                if ToBool(x) {}
+                let y: wref<A> = new A();
+                if ToBool(y) {}
+            }
+
+            class A {}
+            ";
+        let expected = vec![
+            Instr::Assign,
+            Instr::Local(PoolIndex::new(25)),
+            Instr::New(PoolIndex::new(22)),
+            Instr::JumpIfFalse(Offset::new(13)),
+            Instr::RefToBool,
+            Instr::Local(PoolIndex::new(25)),
+            Instr::Assign,
+            Instr::Local(PoolIndex::new(27)),
+            Instr::RefToWeakRef,
+            Instr::New(PoolIndex::new(22)),
+            Instr::JumpIfFalse(Offset::new(13)),
+            Instr::WeakRefToBool,
+            Instr::Local(PoolIndex::new(27)),
+            Instr::Nop,
+        ];
+        check_function_bytecode(sources, expected)
+    }
+
     fn check_function_bytecode(code: &str, instrs: Vec<Instr>) -> Result<(), Error> {
         let entries = parser::parse(code).unwrap();
         let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;

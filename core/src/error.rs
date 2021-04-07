@@ -82,6 +82,11 @@ impl Error {
         );
         Error::CompileError(error, pos)
     }
+
+    pub fn invalid_intrinsic<N: Display, T: Display>(name: N, type_: T, pos: Pos) -> Error {
+        let err = format!("Invalid intrinsic {} call: unexpected {}", name, type_);
+        Error::CompileError(err, pos)
+    }
 }
 
 impl From<io::Error> for Error {
