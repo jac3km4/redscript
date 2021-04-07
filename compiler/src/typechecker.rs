@@ -67,13 +67,11 @@ impl<'a> Typechecker<'a> {
                     }
                     Expr::ArrayLit(checked, Some(type_), *pos)
                 }
-                None => {
-                    if let Some(TypeId::Array(inner)) = expected {
-                        Expr::ArrayLit(vec![], Some(*inner.clone()), *pos)
-                    } else {
-                        return Err(Error::type_annotation_required(*pos));
-                    }
-                }
+                None => match expected {
+                    Some(TypeId::Array(inner)) => Expr::ArrayLit(vec![], Some(*inner.clone()), *pos),
+                    Some(type_) => return Err(Error::type_error("array", type_.pretty(self.pool)?, *pos)),
+                    None => return Err(Error::type_annotation_required(*pos)),
+                },
             },
             Expr::Declare(name, type_, init, pos) => {
                 let (initializer, type_) = match (type_, init) {
@@ -278,13 +276,14 @@ impl<'a> Typechecker<'a> {
             }
             Expr::ForIn(name, array, body, pos) => {
                 let array = self.check(array, None, scope)?;
-                if let TypeId::Array(inner) = type_of(&array, scope, self.pool)? {
-                    let mut local_scope = scope.clone();
-                    let local = self.add_local(name.clone(), &inner, &mut local_scope)?;
-                    let body = self.check_seq(body, &mut local_scope)?;
-                    Expr::ForIn(local, Box::new(array), body, *pos)
-                } else {
-                    return Err(Error::array_expected_in_for(*pos));
+                match type_of(&array, scope, self.pool)? {
+                    TypeId::Array(inner) => {
+                        let mut local_scope = scope.clone();
+                        let local = self.add_local(name.clone(), &inner, &mut local_scope)?;
+                        let body = self.check_seq(body, &mut local_scope)?;
+                        Expr::ForIn(local, Box::new(array), body, *pos)
+                    }
+                    other => return Err(Error::type_error(other.pretty(self.pool)?, "array", *pos)),
                 }
             }
             Expr::This(pos) => Expr::This(*pos),

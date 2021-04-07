@@ -41,7 +41,7 @@ impl Error {
         Error::CompileError("Type annotation required".to_owned(), pos)
     }
 
-    pub fn type_error<N: Display>(from: N, to: N, pos: Pos) -> Error {
+    pub fn type_error<F: Display, T: Display>(from: F, to: T, pos: Pos) -> Error {
         let error = format!("Can't coerce {} to {}", from, to);
         Error::CompileError(error, pos)
     }
@@ -68,10 +68,6 @@ impl Error {
     pub fn return_type_mismatch<N: Display>(type_: N, pos: Pos) -> Error {
         let error = format!("Function should return {}", type_);
         Error::CompileError(error, pos)
-    }
-
-    pub fn array_expected_in_for(pos: Pos) -> Error {
-        Error::CompileError("Array expected in for expression".to_owned(), pos)
     }
 
     pub fn no_matching_overload<N: Display>(name: N, errors: &[FunctionResolutionError], pos: Pos) -> Error {
