@@ -806,6 +806,50 @@ mod tests {
         check_function_bytecode(sources, expected)
     }
 
+    
+    #[test]
+    fn compile_nested_array_literals() -> Result<(), Error> {
+        let sources = "
+            func Testing() {
+                let x = [[1, 2], [3, 4], [5, 6]];
+            }
+            ";
+        let expected = vec![
+            Instr::ArrayPush(PoolIndex::new(22)),
+            Instr::Local(PoolIndex::new(26)),
+            Instr::I32Const(1),
+            Instr::ArrayPush(PoolIndex::new(22)),
+            Instr::Local(PoolIndex::new(26)),
+            Instr::I32Const(2),
+            Instr::ArrayPush(PoolIndex::new(23)),
+            Instr::Local(PoolIndex::new(25)),
+            Instr::Local(PoolIndex::new(26)),
+            Instr::ArrayPush(PoolIndex::new(22)),
+            Instr::Local(PoolIndex::new(27)),
+            Instr::I32Const(3),
+            Instr::ArrayPush(PoolIndex::new(22)),
+            Instr::Local(PoolIndex::new(27)),
+            Instr::I32Const(4),
+            Instr::ArrayPush(PoolIndex::new(23)),
+            Instr::Local(PoolIndex::new(25)),
+            Instr::Local(PoolIndex::new(27)),
+            Instr::ArrayPush(PoolIndex::new(22)),
+            Instr::Local(PoolIndex::new(28)),
+            Instr::I32Const(5),
+            Instr::ArrayPush(PoolIndex::new(22)),
+            Instr::Local(PoolIndex::new(28)),
+            Instr::I32Const(6),
+            Instr::ArrayPush(PoolIndex::new(23)),
+            Instr::Local(PoolIndex::new(25)),
+            Instr::Local(PoolIndex::new(28)),
+            Instr::Assign,
+            Instr::Local(PoolIndex::new(24)),
+            Instr::Local(PoolIndex::new(25)),
+            Instr::Nop,
+        ];
+        check_function_bytecode(sources, expected)
+    }
+
     #[test]
     fn compile_variant_conversions() -> Result<(), Error> {
         let sources = "
