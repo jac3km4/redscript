@@ -334,79 +334,80 @@ impl Assembler {
         scope: &mut Scope,
         pool: &mut ConstantPool,
     ) -> Result<(), Error> {
-        let type_ = type_of(&args[0], scope, pool)?;
-        let type_idx = scope.get_type_index(&type_, pool)?;
+        let mut get_arg_type = #[inline(always)]
+        |i| type_of(&args[i], scope, pool).and_then(|typ| scope.get_type_index(&typ, pool));
+
         match intrinsic {
             IntrinsicOp::Equals => {
-                self.emit(Instr::Equals(type_idx));
+                self.emit(Instr::Equals(get_arg_type(0)?));
             }
             IntrinsicOp::NotEquals => {
-                self.emit(Instr::NotEquals(type_idx));
+                self.emit(Instr::NotEquals(get_arg_type(0)?));
             }
             IntrinsicOp::ArrayClear => {
-                self.emit(Instr::ArrayClear(type_idx));
+                self.emit(Instr::ArrayClear(get_arg_type(0)?));
             }
             IntrinsicOp::ArraySize => {
-                self.emit(Instr::ArraySize(type_idx));
+                self.emit(Instr::ArraySize(get_arg_type(0)?));
             }
             IntrinsicOp::ArrayResize => {
-                self.emit(Instr::ArrayResize(type_idx));
+                self.emit(Instr::ArrayResize(get_arg_type(0)?));
             }
             IntrinsicOp::ArrayFindFirst => {
-                self.emit(Instr::ArrayFindFirst(type_idx));
+                self.emit(Instr::ArrayFindFirst(get_arg_type(0)?));
             }
             IntrinsicOp::ArrayFindLast => {
-                self.emit(Instr::ArrayFindLast(type_idx));
+                self.emit(Instr::ArrayFindLast(get_arg_type(0)?));
             }
             IntrinsicOp::ArrayContains => {
-                self.emit(Instr::ArrayContains(type_idx));
+                self.emit(Instr::ArrayContains(get_arg_type(0)?));
             }
             IntrinsicOp::ArrayCount => {
-                self.emit(Instr::ArrayCount(type_idx));
+                self.emit(Instr::ArrayCount(get_arg_type(0)?));
             }
             IntrinsicOp::ArrayPush => {
-                self.emit(Instr::ArrayPush(type_idx));
+                self.emit(Instr::ArrayPush(get_arg_type(0)?));
             }
             IntrinsicOp::ArrayPop => {
-                self.emit(Instr::ArrayPop(type_idx));
+                self.emit(Instr::ArrayPop(get_arg_type(0)?));
             }
             IntrinsicOp::ArrayInsert => {
-                self.emit(Instr::ArrayInsert(type_idx));
+                self.emit(Instr::ArrayInsert(get_arg_type(0)?));
             }
             IntrinsicOp::ArrayRemove => {
-                self.emit(Instr::ArrayRemove(type_idx));
+                self.emit(Instr::ArrayRemove(get_arg_type(0)?));
             }
             IntrinsicOp::ArrayGrow => {
-                self.emit(Instr::ArrayGrow(type_idx));
+                self.emit(Instr::ArrayGrow(get_arg_type(0)?));
             }
             IntrinsicOp::ArrayErase => {
-                self.emit(Instr::ArrayErase(type_idx));
+                self.emit(Instr::ArrayErase(get_arg_type(0)?));
             }
             IntrinsicOp::ArrayLast => {
-                self.emit(Instr::ArrayLast(type_idx));
+                self.emit(Instr::ArrayLast(get_arg_type(0)?));
             }
             IntrinsicOp::ToString => {
-                self.emit(Instr::ToString(type_idx));
+                self.emit(Instr::ToString(get_arg_type(0)?));
             }
             IntrinsicOp::EnumInt => {
-                self.emit(Instr::EnumToI32(type_idx, 4));
+                self.emit(Instr::EnumToI32(get_arg_type(0)?, 4));
             }
             IntrinsicOp::IntEnum => {
                 let type_idx = scope.get_type_index(return_type, pool)?;
                 self.emit(Instr::I32ToEnum(type_idx, 4));
             }
             IntrinsicOp::ToVariant => {
-                self.emit(Instr::ToVariant(type_idx));
+                self.emit(Instr::ToVariant(get_arg_type(0)?));
             }
             IntrinsicOp::FromVariant => {
                 let type_idx = scope.get_type_index(return_type, pool)?;
                 self.emit(Instr::FromVariant(type_idx));
             }
             IntrinsicOp::AsRef => {
-                self.emit(Instr::AsRef(type_idx));
+                self.emit(Instr::AsRef(get_arg_type(0)?));
             }
             IntrinsicOp::Deref => {
-                self.emit(Instr::Deref(type_idx));
+                self.emit(Instr::Deref(get_arg_type(0)?));
             }
             IntrinsicOp::RefToWeakRef => {
                 self.emit(Instr::RefToWeakRef);
@@ -414,7 +415,7 @@ impl Assembler {
             IntrinsicOp::WeakRefToRef => {
                 self.emit(Instr::WeakRefToRef);
             }
-            IntrinsicOp::ToBool => match type_ {
+            IntrinsicOp::ToBool => match type_of(&args[0], scope, pool)? {
                 TypeId::Ref(_) => self.emit(Instr::RefToBool),
                 TypeId::WeakRef(_) => self.emit(Instr::WeakRefToBool),
                 _ => panic!("Invalid ToBool parameter"),
