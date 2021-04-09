@@ -170,11 +170,21 @@ peg::parser! {
               else { Constant::Int(n.parse().unwrap()) }
             }
 
+        rule escaped_char() -> String
+            = !['\\' | '\"'] c:$([_]) { String::from(c) }
+            / "\\" c:$(['t' | 'r' | 'n' | '\'' | '"' | '\\']) { String::from(c) }
+            / "\\u{" u:$(['a'..='f' | 'A'..='F' | '0'..='9']*<1,6>) "}" {
+                String::from(char::from_u32(u32::from_str_radix(u, 16).unwrap()).unwrap())
+            }
+        
+        pub rule escaped_string() -> String
+            = "\"" s:escaped_char()* "\"" { s.join("") }
+
         rule constant() -> Constant
             = keyword("true") { Constant::Bool(true) }
             / keyword("false") { Constant::Bool(false) }
             / n:number() { n }
-            / type_:literal_type()? "\"" str:$((!['"'] [_])*) "\""
+            / type_:literal_type()? str:escaped_string()
                 { Constant::String(type_.unwrap_or(Literal::String), Rc::new(str.to_owned())) }
 
         rule seq() -> Seq<SourceAst> = exprs:(stmt() ** _) { Seq::new(exprs) }
@@ -451,6 +461,18 @@ mod tests {
         assert_eq!(
             format!("{:?}", stmt),
             r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: "Test", base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: "m_field", pos: Pos(114) }, type_: TypeName { name: Owned("String"), arguments: [] } })], pos: Pos(13) })]"#
+        );
+    }
+
+    #[test]
+    fn parse_escaped_string() {
+        let escaped = lang::escaped_string(
+            r#""This is a backslash \'\\\' \"escaped\" string \u{03BB}""#
+        ).unwrap();
+
+        assert_eq!(
+            escaped,
+            r#"This is a backslash '\' "escaped" string λ"#
         );
     }
 }
