@@ -8,7 +8,7 @@ use assembler::Assembler;
 use parser::{Annotation, AnnotationName, FieldSource};
 use redscript::ast::{Ident, Pos, Seq, SourceAst};
 use redscript::bundle::{ConstantPool, PoolIndex};
-use redscript::bytecode::{Code, Instr};
+use redscript::bytecode::Code;
 use redscript::definition::{
     Class, ClassFlags, Definition, Enum, Field, FieldFlags, Function, FunctionFlags, Local, Parameter, ParameterFlags, SourceReference, Type, Visibility
 };
@@ -453,10 +453,9 @@ impl<'a> Compiler<'a> {
         let desugared = desugar.on_seq(checked)?;
         locals.append(&mut desugar.locals);
 
-        let assembler = Assembler::from_seq(desugared, &mut local_scope, pool)?;
+        let code = Assembler::from_body(desugared, &mut local_scope, pool)?;
         let function = pool.function_mut(fun_idx)?;
-        function.code = Code(assembler.code.into_iter().collect());
-        function.code.0.push(Instr::Nop);
+        function.code = code;
         function.locals = locals;
         Ok(())
     }
@@ -806,7 +805,6 @@ mod tests {
         check_function_bytecode(sources, expected)
     }
 
-    
     #[test]
     fn compile_nested_array_literals() -> Result<(), Error> {
         let sources = "
@@ -990,7 +988,7 @@ mod tests {
         check_function_bytecode(sources, expected)
     }
 
-    fn check_function_bytecode(code: &str, instrs: Vec<Instr>) -> Result<(), Error> {
+    fn check_function_bytecode(code: &str, instrs: Vec<Instr<Offset>>) -> Result<(), Error> {
         let entries = parser::parse(code).unwrap();
         let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
         let mut compiler = Compiler::new(&mut scripts.pool)?;
