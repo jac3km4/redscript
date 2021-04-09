@@ -367,18 +367,19 @@ impl<'a> Compiler<'a> {
                         .first()
                         .ok_or_else(|| Error::invalid_annotation_args(ann.pos))?;
                     let ident = Ident::new(value.clone());
-                    if let Reference::Class(target_class) = self.scope.resolve_reference(ident, ann.pos)? {
-                        let class = self.pool.class(target_class)?;
-                        let idx = class
-                            .functions
-                            .iter()
-                            .find(|fun| self.pool.definition_name(**fun).unwrap().as_str() == name.as_ref())
-                            .ok_or_else(|| Error::method_not_found(name.as_ref(), value, ann.pos))?;
-                        let fun = self.pool.function(*idx)?;
-                        return Ok((target_class, fun.base_method, *idx));
-                    } else {
-                        return Err(Error::class_not_found(value, ann.pos));
-                    }
+                    let target_class_idx = match self.scope.resolve_reference(ident, ann.pos)? {
+                        Reference::Class(idx) => idx,
+                        Reference::Struct(idx) => idx,
+                        _ => return Err(Error::class_not_found(value, ann.pos)),
+                    };
+                    let class = self.pool.class(target_class_idx)?;
+                    let idx = class
+                        .functions
+                        .iter()
+                        .find(|fun| self.pool.definition_name(**fun).unwrap().as_str() == name.as_ref())
+                        .ok_or_else(|| Error::method_not_found(name.as_ref(), value, ann.pos))?;
+                    let fun = self.pool.function(*idx)?;
+                    return Ok((target_class_idx, fun.base_method, *idx));
                 }
                 AnnotationName::ReplaceGlobal => {
                     let fun_name = FunctionName::global(ident);
@@ -400,24 +401,24 @@ impl<'a> Compiler<'a> {
                         .first()
                         .ok_or_else(|| Error::invalid_annotation_args(ann.pos))?;
                     let ident = Ident::new(value.clone());
-                    if let Reference::Class(target_class) = self.scope.resolve_reference(ident, ann.pos)? {
-                        let class = self.pool.class(target_class)?;
-                        let base_method = if class.base != PoolIndex::UNDEFINED {
-                            let base = self.pool.class(class.base)?;
-                            base.functions
-                                .iter()
-                                .find(|fun| self.pool.definition_name(**fun).unwrap().as_str() == name.as_ref())
-                                .cloned()
-                        } else {
-                            None
-                        };
-
-                        let idx = self.pool.reserve().cast();
-                        self.pool.class_mut(target_class)?.functions.push(idx);
-                        return Ok((target_class, base_method, idx));
+                    let target_class_idx = match self.scope.resolve_reference(ident, ann.pos)? {
+                        Reference::Class(idx) => idx,
+                        Reference::Struct(idx) => idx,
+                        _ => return Err(Error::class_not_found(value, ann.pos)),
+                    };
+                    let class = self.pool.class(target_class_idx)?;
+                    let base_method = if class.base != PoolIndex::UNDEFINED {
+                        let base = self.pool.class(class.base)?;
+                        base.functions
+                            .iter()
+                            .find(|fun| self.pool.definition_name(**fun).unwrap().as_str() == name.as_ref())
+                            .cloned()
                     } else {
-                        return Err(Error::class_not_found(&value, ann.pos));
-                    }
+                        None
+                    };
+                    let fun_idx = self.pool.reserve().cast();
+                    self.pool.class_mut(target_class_idx)?.functions.push(fun_idx);
+                    return Ok((target_class_idx, base_method, fun_idx));
                 }
                 AnnotationName::AddField => {}
             }
