@@ -938,6 +938,30 @@ mod tests {
     }
 
     #[test]
+    fn compile_if_else() -> Result<(), Error> {
+        let sources = "
+            func Testing(bool: Bool) -> Int32 {
+                if bool {
+                    return 1;
+                } else {
+                    return 0;
+                }
+            }
+            ";
+        let expected = vec![
+            Instr::JumpIfFalse(Offset::new(21)),
+            Instr::Param(PoolIndex::new(22)),
+            Instr::Return,
+            Instr::I32Const(1),
+            Instr::Jump(Offset::new(9)),
+            Instr::Return,
+            Instr::I32Const(0),
+            Instr::Nop,
+        ];
+        check_function_bytecode(sources, expected)
+    }
+
+    #[test]
     fn compile_method_overload_call() -> Result<(), Error> {
         let sources = "
             class B extends A {

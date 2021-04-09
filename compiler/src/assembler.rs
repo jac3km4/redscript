@@ -173,14 +173,15 @@ impl Assembler {
             }
             Expr::If(condition, if_, else_, _) => {
                 let else_label = self.new_label();
-                let exit_label = self.new_label();
                 self.emit(Instr::JumpIfFalse(else_label));
                 self.assemble(*condition, scope, pool, None)?;
                 self.assemble_seq(if_, scope, pool, None)?;
                 if let Some(else_code) = else_ {
+                    let exit_label = self.new_label();
                     self.emit(Instr::Jump(exit_label));
                     self.emit_label(else_label);
                     self.assemble_seq(else_code, scope, pool, None)?;
+                    self.emit_label(exit_label);
                 } else {
                     self.emit_label(else_label);
                 }
