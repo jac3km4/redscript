@@ -209,6 +209,7 @@ impl<L> Instr<L> {
 }
 
 impl Instr<Label> {
+    #[allow(clippy::just_underscores_and_digits)]
     pub fn resolve_labels(self, location: Location, targets: &[Location]) -> Instr<Offset> {
         match self {
             Instr::Nop => Instr::Nop,
