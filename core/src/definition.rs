@@ -4,8 +4,8 @@ use std::path::PathBuf;
 
 use modular_bitfield::prelude::*;
 
-use crate::{bundle::{ConstantPool, DefinitionHeader, DefinitionType, PoolIndex}, bytecode::Offset};
-use crate::bytecode::Code;
+use crate::bundle::{ConstantPool, DefinitionHeader, DefinitionType, PoolIndex};
+use crate::bytecode::{Code, Offset};
 use crate::decode::{Decode, DecodeExt};
 use crate::encode::{Encode, EncodeExt};
 

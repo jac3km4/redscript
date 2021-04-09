@@ -41,11 +41,6 @@ impl Error {
         Error::CompileError("Type annotation required".to_owned(), pos)
     }
 
-    pub fn type_error<F: Display, T: Display>(from: F, to: T, pos: Pos) -> Error {
-        let error = format!("Can't coerce {} to {}", from, to);
-        Error::CompileError(error, pos)
-    }
-
     pub fn invalid_context<N: Display>(type_: N, pos: Pos) -> Error {
         let error = format!("{} doesn't have members", type_);
         Error::CompileError(error, pos)
@@ -70,11 +65,16 @@ impl Error {
         Error::CompileError(error, pos)
     }
 
+    pub fn type_error<F: Display, T: Display>(from: F, to: T, pos: Pos) -> Error {
+        let error = format!("Can't coerce {} to {}", from, to);
+        Error::CompileError(error, pos)
+    }
+
     pub fn no_matching_overload<N: Display>(name: N, errors: &[FunctionResolutionError], pos: Pos) -> Error {
         let error = format!(
             "Arguments passed to {} do not match any of the overloads:{}",
             name,
-            errors.iter().fold(String::new(), |acc, str| acc + "\n" + &str.0)
+            errors.iter().fold(String::new(), |acc, str| acc + "\n " + &str.0)
         );
         Error::CompileError(error, pos)
     }
@@ -107,7 +107,7 @@ impl FunctionResolutionError {
     }
 
     pub fn return_mismatch<N: Display>(expected: N, given: N) -> FunctionResolutionError {
-        let message = format!("Return type {} does not match expected {}", expected, given);
+        let message = format!("Return type {} does not match expected {}", given, expected);
         FunctionResolutionError(message)
     }
 
