@@ -59,6 +59,9 @@ impl Scope {
             .filter_map(|(idx, def)| {
                 let ident = Ident::Owned(pool.definition_name(idx).ok()?);
                 match def.value {
+                    DefinitionValue::Class(ref class) if class.flags.is_struct() => {
+                        Some((ident, Reference::Struct(idx.cast())))
+                    }
                     DefinitionValue::Class(_) => Some((ident, Reference::Class(idx.cast()))),
                     DefinitionValue::Enum(_) => Some((ident, Reference::Enum(idx.cast()))),
                     _ => None,
@@ -229,7 +232,12 @@ impl Scope {
                 ("wref", [nested]) => TypeId::WeakRef(Box::new(self.resolve_type(nested, pool, pos)?)),
                 ("script_ref", [nested]) => TypeId::ScriptRef(Box::new(self.resolve_type(nested, pool, pos)?)),
                 ("array", [nested]) => TypeId::Array(Box::new(self.resolve_type(nested, pool, pos)?)),
-                _ => return Err(Error::CompileError(format!("Unresolved type {}", name), pos)),
+                _ => match self.references.get(&name.repr()) {
+                    Some(Reference::Class(idx)) => TypeId::Class(*idx),
+                    Some(Reference::Struct(idx)) => TypeId::Struct(*idx),
+                    Some(Reference::Enum(idx)) => TypeId::Enum(*idx),
+                    _ => return Err(Error::CompileError(format!("Unresolved type {}", name), pos)),
+                },
             }
         };
         Ok(result)
@@ -245,15 +253,11 @@ impl Scope {
             Type::Prim => TypeId::Prim(index),
             Type::Class => {
                 let ident = Ident::Owned(pool.definition_name(index)?);
-                if let Some(Reference::Class(class_idx)) = self.references.get(&ident) {
-                    match pool.class(*class_idx) {
-                        Ok(class) if class.flags.is_struct() => TypeId::Struct(*class_idx),
-                        _ => TypeId::Class(*class_idx),
-                    }
-                } else if let Some(Reference::Enum(enum_idx)) = self.references.get(&ident) {
-                    TypeId::Enum(*enum_idx)
-                } else {
-                    return Err(Error::CompileError(format!("Class {} not found", ident), pos));
+                match self.references.get(&ident) {
+                    Some(Reference::Class(class_idx)) => TypeId::Class(*class_idx),
+                    Some(Reference::Struct(struct_idx)) => TypeId::Struct(*struct_idx),
+                    Some(Reference::Enum(enum_idx)) => TypeId::Enum(*enum_idx),
+                    _ => return Err(Error::CompileError(format!("Unresolved reference to {}", ident), pos)),
                 }
             }
             Type::Ref(type_) => {

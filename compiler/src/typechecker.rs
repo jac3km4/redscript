@@ -607,6 +607,7 @@ pub fn type_of(expr: &Expr<TypedAst>, scope: &Scope, pool: &ConstantPool) -> Res
             Reference::Local(idx) => scope.resolve_type_from_pool(pool.local(*idx)?.type_, pool, *pos)?,
             Reference::Parameter(idx) => scope.resolve_type_from_pool(pool.parameter(*idx)?.type_, pool, *pos)?,
             Reference::Class(idx) => TypeId::Class(*idx),
+            Reference::Struct(idx) => TypeId::Struct(*idx),
             Reference::Enum(idx) => TypeId::Enum(*idx),
         },
         Expr::Constant(cons, pos) => match cons {

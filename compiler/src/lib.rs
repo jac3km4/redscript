@@ -478,6 +478,7 @@ pub enum Reference {
     Local(PoolIndex<Local>),
     Parameter(PoolIndex<Parameter>),
     Class(PoolIndex<Class>),
+    Struct(PoolIndex<Class>),
     Enum(PoolIndex<Enum>),
 }
 
