@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use redscript::ast::{Constant, Expr, Ident, Literal, Pos, Seq, SourceAst, SwitchCase, Target, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
-use redscript::bytecode::{CodeCursor, Instr, Offset, Location};
+use redscript::bytecode::{CodeCursor, Instr, Location, Offset};
 use redscript::error::Error;
 
 pub mod files;
@@ -77,7 +77,7 @@ impl<'a> Decompiler<'a> {
         let condition = self.consume()?;
         let target = offset.absolute(position);
         let mut body = self.consume_path(target)?;
-        self.code.goto(target)?;
+        self.code.set_pos(target)?;
 
         let result = if resolve_jump(&mut body, Some(position)).is_some() {
             Expr::While(Box::new(condition), body, Pos::ZERO)
@@ -107,14 +107,14 @@ impl<'a> Decompiler<'a> {
         let mut default = None;
         let mut cases = Vec::new();
         for (label, start_position) in labels {
-            self.code.goto(label)?;
+            self.code.set_pos(label)?;
 
             match self.code.pop()? {
                 Instr::SwitchLabel(exit_offset, _) => {
                     let exit = exit_offset.absolute(label);
                     let matcher = self.consume()?;
 
-                    self.code.goto(start_position)?;
+                    self.code.set_pos(start_position)?;
                     let mut body = self.consume_path(exit)?;
                     if let Some(Expr::Goto(_, _)) = body.exprs.last() {
                         body.exprs.pop();

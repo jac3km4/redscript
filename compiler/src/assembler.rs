@@ -11,24 +11,24 @@ use crate::typechecker::{type_of, Callable, IntrinsicOp, Member, TypedAst};
 use crate::{Reference, TypeId};
 
 pub struct Assembler {
-    code: Vec<Instr<Label>>,
+    instructions: Vec<Instr<Label>>,
     labels: usize,
 }
 
 impl Assembler {
     fn new() -> Assembler {
         Assembler {
-            code: Vec::new(),
+            instructions: Vec::new(),
             labels: 0,
         }
     }
 
     fn emit(&mut self, instr: Instr<Label>) {
-        self.code.push(instr);
+        self.instructions.push(instr);
     }
 
     fn emit_label(&mut self, label: Label) {
-        self.code.push(Instr::Target(label))
+        self.instructions.push(Instr::Target(label))
     }
 
     fn new_label(&mut self) -> Label {
@@ -429,18 +429,18 @@ impl Assembler {
         let mut locations = Vec::with_capacity(self.labels);
         locations.resize(self.labels, Location::new(0));
 
-        let code = Code(self.code);
+        let code = Code(self.instructions);
         for (loc, instr) in code.cursor() {
             if let Instr::Target(label) = instr {
                 locations[label.index] = loc;
             }
         }
 
-        let mut instructions = Vec::with_capacity(code.0.len());
+        let mut resolved = Vec::with_capacity(code.0.len());
         for (loc, instr) in code.cursor().filter(|(_, instr)| !matches!(instr, Instr::Target(_))) {
-            instructions.push(instr.resolved(loc, &locations));
+            resolved.push(instr.resolve_labels(loc, &locations));
         }
-        Code(instructions)
+        Code(resolved)
     }
 
     pub fn from_body(seq: Seq<TypedAst>, scope: &mut Scope, pool: &mut ConstantPool) -> Result<Code<Offset>, Error> {

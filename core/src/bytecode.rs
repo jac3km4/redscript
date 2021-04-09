@@ -209,7 +209,7 @@ impl<L> Instr<L> {
 }
 
 impl Instr<Label> {
-    pub fn resolved(self, location: Location, targets: &[Location]) -> Instr<Offset> {
+    pub fn resolve_labels(self, location: Location, targets: &[Location]) -> Instr<Offset> {
         match self {
             Instr::Nop => Instr::Nop,
             Instr::Null => Instr::Null,
@@ -901,16 +901,16 @@ pub struct Label {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Code<L>(pub Vec<Instr<L>>);
+pub struct Code<Loc>(pub Vec<Instr<Loc>>);
 
-impl<L: Clone> Code<L> {
+impl<Loc: Clone> Code<Loc> {
     pub const EMPTY: Self = Code(vec![]);
 
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
-    pub fn cursor(&self) -> CodeCursor<L> {
+    pub fn cursor(&self) -> CodeCursor<Loc> {
         CodeCursor::new(self)
     }
 }
@@ -942,14 +942,14 @@ impl Encode for Code<Offset> {
     }
 }
 
-pub struct CodeCursor<'a, L> {
-    code: &'a [Instr<L>],
+pub struct CodeCursor<'a, Loc> {
+    code: &'a [Instr<Loc>],
     position: Location,
     index: u16,
 }
 
-impl<'a, L: Clone> CodeCursor<'a, L> {
-    pub fn new(code: &'a Code<L>) -> Self {
+impl<'a, Loc: Clone> CodeCursor<'a, Loc> {
+    pub fn new(code: &'a Code<Loc>) -> Self {
         CodeCursor {
             code: &code.0,
             position: Location { value: 0 },
@@ -957,21 +957,25 @@ impl<'a, L: Clone> CodeCursor<'a, L> {
         }
     }
 
-    pub fn pop(&mut self) -> Result<Instr<L>, Error> {
+    pub fn pop(&mut self) -> Result<Instr<Loc>, Error> {
         let instr = self
             .code
             .get(self.index as usize)
-            .ok_or_else(|| Error::eof(format!("Attempted to read past eof: {}", self.position.value)))?;
+            .ok_or_else(|| Error::eof(format!("Attempted to read past EOF: {}", self.position.value)))?;
         self.index += 1;
         self.position = Location::new(self.position.value + instr.size());
         Ok(instr.clone())
     }
 
-    pub fn peek(&self) -> Option<Instr<L>> {
+    pub fn peek(&self) -> Option<Instr<Loc>> {
         self.code.get(self.index as usize).cloned()
     }
 
-    pub fn goto(&mut self, position: Location) -> Result<(), Error> {
+    pub fn pos(&self) -> Location {
+        self.position
+    }
+
+    pub fn set_pos(&mut self, position: Location) -> Result<(), Error> {
         self.reset();
         while self.position < position {
             self.pop()?;
@@ -981,21 +985,17 @@ impl<'a, L: Clone> CodeCursor<'a, L> {
     }
 
     pub fn seek(&mut self, offset: Offset) -> Result<(), Error> {
-        self.goto(offset.absolute(self.position))
+        self.set_pos(offset.absolute(self.position))
     }
 
     pub fn reset(&mut self) {
         self.index = 0;
         self.position = Location { value: 0 };
     }
-
-    pub fn pos(&self) -> Location {
-        self.position
-    }
 }
 
-impl<'a, L: Clone> Iterator for CodeCursor<'a, L> {
-    type Item = (Location, Instr<L>);
+impl<'a, Loc: Clone> Iterator for CodeCursor<'a, Loc> {
+    type Item = (Location, Instr<Loc>);
 
     fn next(&mut self) -> Option<Self::Item> {
         let position = self.pos();
