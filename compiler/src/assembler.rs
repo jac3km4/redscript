@@ -157,6 +157,7 @@ impl Assembler {
                     self.emit(Instr::SwitchDefault);
                     self.assemble_seq(body, scope, pool, Some(exit_label))?;
                 }
+                self.emit_label(exit_label);
             }
             Expr::If(condition, if_, else_, _) => {
                 let else_label = self.new_label();
@@ -247,9 +248,11 @@ impl Assembler {
             Expr::This(_) | Expr::Super(_) => {
                 self.emit(Instr::This);
             }
-            Expr::Goto(_, pos) | Expr::Break(pos) => {
-                return Err(Error::CompileError("Goto is not supported yet".to_owned(), pos))
+            Expr::Break(_) if exit.is_some() => {
+                self.emit(Instr::Jump(exit.unwrap()));
             }
+            Expr::Break(pos) => return Err(Error::CompileError("Break can't be used here".to_owned(), pos)),
+            Expr::Goto(_, pos) => return Err(Error::CompileError("Goto is not supported".to_owned(), pos)),
         };
         Ok(())
     }

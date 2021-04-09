@@ -878,12 +878,13 @@ mod tests {
             func Testing(val: Int32) -> Bool {
                 switch val % 2 {
                     case 0:
-                        return true;
+                        break;
                     case 1:
                         return false;
                     default:
                         return false;
                 }
+                return false;
             }
 
             func OperatorModulo(l: Int32, r: Int32) -> Int32 = 0
@@ -894,15 +895,16 @@ mod tests {
             Instr::Param(PoolIndex::new(22)),
             Instr::I32Const(2),
             Instr::ParamEnd,
-            Instr::SwitchLabel(Offset::new(12), Offset::new(10)),
+            Instr::SwitchLabel(Offset::new(13), Offset::new(10)),
             Instr::I32Const(0),
-            Instr::Return,
-            Instr::TrueConst,
+            Instr::Jump(Offset::new(18)),
             Instr::SwitchLabel(Offset::new(12), Offset::new(10)),
             Instr::I32Const(1),
             Instr::Return,
             Instr::FalseConst,
             Instr::SwitchDefault,
+            Instr::Return,
+            Instr::FalseConst,
             Instr::Return,
             Instr::FalseConst,
             Instr::Nop,
