@@ -4,11 +4,26 @@ use redscript::definition::{Class, Definition, DefinitionValue, Enum, Field, Fun
 use redscript::error::Error;
 
 use crate::typechecker::TypedAst;
-use crate::{Reference, TypeId};
+use crate::{FunctionId, Reference, TypeId};
 
 #[derive(Debug, Clone)]
-pub struct FunctionOverloads {
+pub struct FunctionCandidates {
     pub functions: Vec<PoolIndex<Function>>,
+}
+
+impl FunctionCandidates {
+    fn append(&mut self, other: &FunctionCandidates) {
+        self.functions.extend(other.functions.iter());
+    }
+
+    pub fn by_id(&self, fun_id: &FunctionId, pool: &ConstantPool) -> Option<PoolIndex<Function>> {
+        self.functions.iter().copied().find_map(|idx| {
+            pool.definition_name(idx)
+                .ok()
+                .filter(|name| name.as_ref() == fun_id.as_ref())
+                .map(|_| idx)
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -45,7 +60,7 @@ pub struct FunctionMatch {
 
 #[derive(Debug, Clone)]
 pub struct Scope {
-    pub functions: im::HashMap<FunctionName, FunctionOverloads>,
+    pub functions: im::HashMap<FunctionName, FunctionCandidates>,
     pub references: im::HashMap<Ident, Reference>,
     pub types: im::HashMap<Ident, PoolIndex<Type>>,
     pub this: Option<PoolIndex<Class>>,
@@ -119,8 +134,8 @@ impl Scope {
     pub fn push_function(&mut self, name: FunctionName, index: PoolIndex<Function>) {
         self.functions
             .entry(name)
-            .and_modify(|overloads: &mut FunctionOverloads| overloads.functions.push(index))
-            .or_insert_with(|| FunctionOverloads { functions: vec![index] });
+            .and_modify(|overloads: &mut FunctionCandidates| overloads.functions.push(index))
+            .or_insert_with(|| FunctionCandidates { functions: vec![index] });
     }
 
     pub fn resolve_field(
@@ -167,7 +182,7 @@ impl Scope {
         name: FunctionName,
         pool: &ConstantPool,
         pos: Pos,
-    ) -> Result<&FunctionOverloads, Error> {
+    ) -> Result<&FunctionCandidates, Error> {
         self.functions
             .get(&name)
             .ok_or_else(|| Error::CompileError(format!("Function {} not found", name.pretty(pool)), pos))
@@ -179,18 +194,22 @@ impl Scope {
         class_idx: PoolIndex<Class>,
         pool: &ConstantPool,
         pos: Pos,
-    ) -> Result<&FunctionOverloads, Error> {
-        let fun_name = FunctionName::instance(class_idx, name.clone());
-        match self.resolve_function(fun_name, pool, pos) {
-            Ok(res) => Ok(res),
-            Err(err) => {
-                let class = pool.class(class_idx)?;
-                if class.base != PoolIndex::UNDEFINED {
-                    self.resolve_method(name, class.base, pool, pos).map_err(|_| err)
-                } else {
-                    Err(err)
-                }
+    ) -> Result<FunctionCandidates, Error> {
+        let mut current_idx = class_idx;
+        let mut candidates = FunctionCandidates { functions: vec![] };
+
+        while current_idx != PoolIndex::UNDEFINED {
+            let fun_name = FunctionName::instance(current_idx, name.clone());
+            if let Ok(match_) = self.resolve_function(fun_name, pool, pos) {
+                candidates.append(match_)
             }
+            current_idx = pool.class(current_idx)?.base;
+        }
+        if candidates.functions.len() == 0 {
+            let fun_name = FunctionName::instance(class_idx, name.clone());
+            Err(Error::function_not_found(fun_name.pretty(pool), pos))
+        } else {
+            Ok(candidates)
         }
     }
 

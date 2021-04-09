@@ -366,34 +366,27 @@ impl<'a> Compiler<'a> {
                         .values
                         .first()
                         .ok_or_else(|| Error::invalid_annotation_args(ann.pos))?;
-                    let ident = Ident::new(value.clone());
-                    let target_class_idx = match self.scope.resolve_reference(ident, ann.pos)? {
+                    let class_name = Ident::new(value.clone());
+                    let target_class_idx = match self.scope.resolve_reference(class_name, ann.pos)? {
                         Reference::Class(idx) => idx,
                         Reference::Struct(idx) => idx,
                         _ => return Err(Error::class_not_found(value, ann.pos)),
                     };
-                    let class = self.pool.class(target_class_idx)?;
-                    let idx = class
-                        .functions
-                        .iter()
-                        .find(|fun| self.pool.definition_name(**fun).unwrap().as_str() == name.as_ref())
-                        .ok_or_else(|| Error::method_not_found(name.as_ref(), value, ann.pos))?;
-                    let fun = self.pool.function(*idx)?;
-                    return Ok((target_class_idx, fun.base_method, *idx));
+                    let fun_name = FunctionName::instance(target_class_idx, ident);
+                    let candidates = self.scope.resolve_function(fun_name.clone(), self.pool, ann.pos)?;
+                    let fun_idx = candidates
+                        .by_id(name, self.pool)
+                        .ok_or_else(|| Error::function_not_found(fun_name.pretty(self.pool), ann.pos))?;
+                    let fun = self.pool.function(fun_idx)?;
+                    return Ok((target_class_idx, fun.base_method, fun_idx));
                 }
                 AnnotationName::ReplaceGlobal => {
                     let fun_name = FunctionName::global(ident);
-                    let overloads = self
-                        .scope
-                        .functions
-                        .get(&fun_name)
-                        .ok_or_else(|| Error::global_not_found(&fun_name.pretty(self.pool), ann.pos))?;
-                    let fun_idx = overloads
-                        .functions
-                        .iter()
-                        .find(|f| self.pool.definition_name(**f).unwrap().as_str() == name.as_ref())
-                        .ok_or_else(|| Error::global_not_found(&fun_name.pretty(self.pool), ann.pos))?;
-                    return Ok((PoolIndex::UNDEFINED, None, *fun_idx));
+                    let candidates = self.scope.resolve_function(fun_name.clone(), self.pool, ann.pos)?;
+                    let fun_idx = candidates
+                        .by_id(name, self.pool)
+                        .ok_or_else(|| Error::function_not_found(fun_name.pretty(self.pool), ann.pos))?;
+                    return Ok((PoolIndex::UNDEFINED, None, fun_idx));
                 }
                 AnnotationName::AddMethod => {
                     let value = ann
@@ -695,6 +688,36 @@ mod tests {
             Instr::DynamicCast(PoolIndex::new(22), 0),
             Instr::WeakRefToRef,
             Instr::Local(PoolIndex::new(27)),
+            Instr::Nop,
+        ];
+        check_function_bytecode(sources, expected)
+    }
+
+    #[test]
+    fn compile_base_class_overload() -> Result<(), Error> {
+        let sources = "
+            func Testing() {
+                let b = new B();
+                b.Testing(1, 2);
+            }
+
+            class A {
+                final func Testing(a: Int32) -> Int32 = a
+            }
+            class B extends A {
+                final func Testing(a: Int32, b: Int32) -> Int32 = b
+            }
+            ";
+        let expected = vec![
+            Instr::Assign,
+            Instr::Local(PoolIndex::new(32)),
+            Instr::New(PoolIndex::new(24)),
+            Instr::Context(Offset::new(36)),
+            Instr::Local(PoolIndex::new(32)),
+            Instr::InvokeStatic(Offset::new(24), 0, PoolIndex::new(28)),
+            Instr::I32Const(1),
+            Instr::I32Const(2),
+            Instr::ParamEnd,
             Instr::Nop,
         ];
         check_function_bytecode(sources, expected)

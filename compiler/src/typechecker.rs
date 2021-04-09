@@ -7,7 +7,7 @@ use redscript::definition::{Definition, Enum, Field, Function, Local, LocalFlags
 use redscript::error::{Error, FunctionResolutionError};
 use strum::{Display, EnumString};
 
-use crate::scope::{FunctionMatch, FunctionName, FunctionOverloads, Scope};
+use crate::scope::{FunctionMatch, FunctionName, FunctionCandidates, Scope};
 use crate::{Reference, TypeId};
 
 #[derive(Debug)]
@@ -519,7 +519,7 @@ impl<'a> Typechecker<'a> {
     fn resolve_overload<'b>(
         &mut self,
         name: Ident,
-        overloads: FunctionOverloads,
+        overloads: FunctionCandidates,
         args: impl Iterator<Item = &'b Expr<SourceAst>> + Clone,
         expected: Option<&TypeId>,
         scope: &mut Scope,

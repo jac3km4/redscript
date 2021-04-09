@@ -18,12 +18,7 @@ impl Error {
         Error::IoError(io::Error::new(io::ErrorKind::UnexpectedEof, hint))
     }
 
-    pub fn method_not_found(fun_name: &str, scope: &str, pos: Pos) -> Error {
-        let error = format!("Method {} not found on {}", fun_name, scope);
-        Error::CompileError(error, pos)
-    }
-
-    pub fn global_not_found(fun_name: &str, pos: Pos) -> Error {
+    pub fn function_not_found<F: Display>(fun_name: F, pos: Pos) -> Error {
         let error = format!("Function {} not found", fun_name);
         Error::CompileError(error, pos)
     }
