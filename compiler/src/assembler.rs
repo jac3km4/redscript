@@ -140,19 +140,31 @@ impl Assembler {
             Expr::Switch(expr, cases, default) => {
                 let type_ = type_of(&expr, scope, pool)?;
                 let first_case_label = self.new_label();
+                let mut next_case_label = self.new_label();
                 let exit_label = self.new_label();
                 self.emit(Instr::Switch(scope.get_type_index(&type_, pool)?, first_case_label));
                 self.assemble(*expr, scope, pool, None)?;
                 self.emit_label(first_case_label);
-                for case in cases {
+
+                let mut case_iter = cases.into_iter().peekable();
+                while case_iter.peek().is_some() {
                     let body_label = self.new_label();
-                    let next_case_label = self.new_label();
-                    self.emit(Instr::SwitchLabel(next_case_label, body_label));
-                    self.assemble(case.matcher, scope, pool, None)?;
-                    self.emit_label(body_label);
-                    self.assemble_seq(case.body, scope, pool, Some(exit_label))?;
-                    self.emit_label(next_case_label);
+
+                    while let Some(case) = case_iter.next() {
+                        self.emit_label(next_case_label);
+                        next_case_label = self.new_label();
+                        self.emit(Instr::SwitchLabel(next_case_label, body_label));
+                        self.assemble(case.matcher, scope, pool, None)?;
+
+                        if !case.body.exprs.iter().all(|expr| expr.is_empty()) {
+                            self.emit_label(body_label);
+                            self.assemble_seq(case.body, scope, pool, Some(exit_label))?;
+                            break;
+                        }
+                    }
                 }
+                self.emit_label(next_case_label);
+
                 if let Some(body) = default {
                     self.emit(Instr::SwitchDefault);
                     self.assemble_seq(body, scope, pool, Some(exit_label))?;

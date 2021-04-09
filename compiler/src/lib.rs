@@ -876,13 +876,13 @@ mod tests {
     fn compile_switch_case() -> Result<(), Error> {
         let sources = "
             func Testing(val: Int32) -> Bool {
-                switch val % 2 {
-                    case 0:
-                        break;
+                switch val % 4 {
                     case 1:
-                        return false;
+                    case 2:
+                    case 3:
+                        break;
                     default:
-                        return false;
+                        return true;
                 }
                 return false;
             }
@@ -893,18 +893,18 @@ mod tests {
             Instr::Switch(PoolIndex::new(8), Offset::new(39)),
             Instr::InvokeStatic(Offset::new(28), 0, PoolIndex::new(23)),
             Instr::Param(PoolIndex::new(22)),
-            Instr::I32Const(2),
+            Instr::I32Const(4),
             Instr::ParamEnd,
-            Instr::SwitchLabel(Offset::new(13), Offset::new(10)),
-            Instr::I32Const(0),
-            Instr::Jump(Offset::new(18)),
-            Instr::SwitchLabel(Offset::new(12), Offset::new(10)),
+            Instr::SwitchLabel(Offset::new(10), Offset::new(30)),
             Instr::I32Const(1),
-            Instr::Return,
-            Instr::FalseConst,
+            Instr::SwitchLabel(Offset::new(10), Offset::new(20)),
+            Instr::I32Const(2),
+            Instr::SwitchLabel(Offset::new(13), Offset::new(10)),
+            Instr::I32Const(3),
+            Instr::Jump(Offset::new(6)),
             Instr::SwitchDefault,
             Instr::Return,
-            Instr::FalseConst,
+            Instr::TrueConst,
             Instr::Return,
             Instr::FalseConst,
             Instr::Nop,
