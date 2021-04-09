@@ -185,7 +185,7 @@ peg::parser! {
             / keyword("false") { Constant::Bool(false) }
             / n:number() { n }
             / type_:literal_type()? str:escaped_string()
-                { Constant::String(type_.unwrap_or(Literal::String), Rc::new(str.to_owned())) }
+                { Constant::String(type_.unwrap_or(Literal::String), Rc::new(str)) }
 
         rule seq() -> Seq<SourceAst> = exprs:(stmt() ** _) { Seq::new(exprs) }
 
