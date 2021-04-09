@@ -45,7 +45,7 @@ fn load_scripts(script_dir: &Path, cache_dir: &Path) -> Result<(), Error> {
     let backup_path = cache_dir.join("final.redscripts.bk");
     let timestamp_path = cache_dir.join("redscript.ts");
 
-    let manifest = ScriptManifest::load_with_fallback(script_dir)?;
+    let manifest = ScriptManifest::load_with_fallback(script_dir);
     let write_timestamp = CompileTimestamp::of_cache_file(&File::open(&bundle_path)?)?;
     let saved_timestamp = CompileTimestamp::read(&timestamp_path).ok();
 
@@ -120,8 +120,11 @@ impl ScriptManifest {
         Ok(manifest)
     }
 
-    pub fn load_with_fallback(script_dir: &Path) -> Result<Self, Error> {
-        Ok(Self::load(script_dir).unwrap_or_default())
+    pub fn load_with_fallback(script_dir: &Path) -> Self {
+        Self::load(script_dir).unwrap_or_else(|err| {
+            log::info!("Could not load the manifest: {:?}, falling back to defaults", err);
+            Self::default()
+        })
     }
 
     pub fn source_filter(self) -> SourceFilter {
