@@ -175,12 +175,12 @@ impl Assembler {
                 let else_label = self.new_label();
                 self.emit(Instr::JumpIfFalse(else_label));
                 self.assemble(*condition, scope, pool, None)?;
-                self.assemble_seq(if_, scope, pool, None)?;
+                self.assemble_seq(if_, scope, pool, exit)?;
                 if let Some(else_code) = else_ {
                     let exit_label = self.new_label();
                     self.emit(Instr::Jump(exit_label));
                     self.emit_label(else_label);
-                    self.assemble_seq(else_code, scope, pool, None)?;
+                    self.assemble_seq(else_code, scope, pool, exit)?;
                     self.emit_label(exit_label);
                 } else {
                     self.emit_label(else_label);
@@ -252,9 +252,6 @@ impl Assembler {
             Expr::ArrayLit(_, _, pos) => {
                 return Err(Error::CompileError("ArrayLit not supported here".to_owned(), pos))
             }
-            Expr::ForIn(_, _, _, pos) => return Err(Error::CompileError("ForIn not supported here".to_owned(), pos)),
-            Expr::BinOp(_, _, _, pos) => return Err(Error::CompileError("BinOp not supported here".to_owned(), pos)),
-            Expr::UnOp(_, _, pos) => return Err(Error::CompileError("UnOp not supported here".to_owned(), pos)),
             Expr::Null => {
                 self.emit(Instr::Null);
             }
@@ -264,6 +261,9 @@ impl Assembler {
             Expr::Break(_) if exit.is_some() => {
                 self.emit(Instr::Jump(exit.unwrap()));
             }
+            Expr::ForIn(_, _, _, pos) => return Err(Error::CompileError("ForIn not supported here".to_owned(), pos)),
+            Expr::BinOp(_, _, _, pos) => return Err(Error::CompileError("BinOp not supported here".to_owned(), pos)),
+            Expr::UnOp(_, _, pos) => return Err(Error::CompileError("UnOp not supported here".to_owned(), pos)),
             Expr::Break(pos) => return Err(Error::CompileError("Break can't be used here".to_owned(), pos)),
             Expr::Goto(_, pos) => return Err(Error::CompileError("Goto is not supported".to_owned(), pos)),
         };
