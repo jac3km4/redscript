@@ -186,7 +186,7 @@ impl Scope {
             Err(err) => {
                 let class = pool.class(class_idx)?;
                 if class.base != PoolIndex::UNDEFINED {
-                    self.resolve_method(name, class.base, pool, pos)
+                    self.resolve_method(name, class.base, pool, pos).map_err(|_| err)
                 } else {
                     Err(err)
                 }

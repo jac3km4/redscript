@@ -125,7 +125,7 @@ impl<'a> Typechecker<'a> {
                 let class = match type_.unwrapped() {
                     TypeId::Class(class) => *class,
                     TypeId::Struct(class) => *class,
-                    type_ => return Err(Error::invalid_context(type_.pretty(self.pool)?.as_ref(), *pos)),
+                    type_ => return Err(Error::invalid_context(type_.pretty(self.pool)?, *pos)),
                 };
                 let candidates = scope.resolve_method(name.clone(), class, self.pool, *pos)?;
                 let match_ =
@@ -551,7 +551,7 @@ impl<'a> Typechecker<'a> {
         if let Some(expected) = expected {
             let ret_type_idx = fun.return_type.ok_or_else(|| Error::void_cannot_be_used(pos))?;
             let ret_type = scope.resolve_type_from_pool(ret_type_idx, self.pool, pos)?;
-            if Self::find_conversion(&ret_type, &expected, self.pool)?.is_none() {
+            if Self::find_conversion(&ret_type, expected, self.pool)?.is_none() {
                 let err =
                     FunctionResolutionError::return_mismatch(expected.pretty(self.pool)?, ret_type.pretty(self.pool)?);
                 return Ok(Err(err));
@@ -561,10 +561,10 @@ impl<'a> Typechecker<'a> {
         let mut args = Vec::new();
         for (idx, arg) in arg_iter.enumerate() {
             let param_idx = match params.get(idx) {
-                Some(val) => val,
+                Some(val) => *val,
                 None => return Ok(Err(FunctionResolutionError::too_many_args(params.len()))),
             };
-            let param = self.pool.parameter(*param_idx)?;
+            let param = self.pool.parameter(param_idx)?;
             let param_type = scope.resolve_type_from_pool(param.type_, self.pool, pos)?;
             match self.check_and_convert(arg, &param_type, scope, pos) {
                 Ok(converted) => args.push(converted),
