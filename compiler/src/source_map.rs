@@ -60,11 +60,11 @@ impl Files {
         self.files.push(file)
     }
 
-    pub fn enclosing_line(&self, loc: &Location) -> &str {
+    pub fn enclosing_line(&self, loc: &SourceLocation) -> &str {
         loc.file.enclosing_line(loc.position.line, self.sources())
     }
 
-    pub fn lookup(&self, pos: Pos) -> Option<Location> {
+    pub fn lookup(&self, pos: Pos) -> Option<SourceLocation> {
         let index = self
             .files
             .binary_search_by(|file| match file.span() {
@@ -75,7 +75,7 @@ impl Files {
             .ok()?;
         let file = self.files.get(index)?;
         let position = file.lookup(pos, &self.sources)?;
-        let result = Location { file, position };
+        let result = SourceLocation { file, position };
         Some(result)
     }
 }
@@ -185,12 +185,12 @@ impl fmt::Display for FilePosition {
 }
 
 #[derive(Debug)]
-pub struct Location<'a> {
+pub struct SourceLocation<'a> {
     pub file: &'a File,
     pub position: FilePosition,
 }
 
-impl<'a> fmt::Display for Location<'a> {
+impl<'a> fmt::Display for SourceLocation<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:{}", self.file.path.display(), self.position)
     }

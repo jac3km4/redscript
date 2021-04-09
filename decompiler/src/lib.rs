@@ -3,24 +3,24 @@ use std::rc::Rc;
 
 use redscript::ast::{Constant, Expr, Ident, Literal, Pos, Seq, SourceAst, SwitchCase, Target, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
-use redscript::bytecode::{CodeCursor, Instr, Offset, Position};
+use redscript::bytecode::{CodeCursor, Instr, Location, Offset};
 use redscript::error::Error;
 
 pub mod files;
 pub mod print;
 
 pub struct Decompiler<'a> {
-    code: &'a mut CodeCursor<'a>,
+    code: &'a mut CodeCursor<'a, Offset>,
     pool: &'a ConstantPool,
 }
 
 impl<'a> Decompiler<'a> {
-    pub fn new(code: &'a mut CodeCursor<'a>, pool: &'a ConstantPool) -> Decompiler<'a> {
+    pub fn new(code: &'a mut CodeCursor<'a, Offset>, pool: &'a ConstantPool) -> Decompiler<'a> {
         Decompiler { code, pool }
     }
 
     pub fn decompile(&mut self) -> Result<Seq<SourceAst>, Error> {
-        self.consume_path(Position::MAX)
+        self.consume_path(Location::MAX)
     }
 
     fn definition_ident<A>(&self, index: PoolIndex<A>) -> Result<Ident, Error> {
@@ -35,7 +35,7 @@ impl<'a> Decompiler<'a> {
         Ok(body)
     }
 
-    fn consume_path(&mut self, target: Position) -> Result<Seq<SourceAst>, Error> {
+    fn consume_path(&mut self, target: Location) -> Result<Seq<SourceAst>, Error> {
         let mut body = Vec::new();
         loop {
             if self.code.pos() >= target
@@ -73,16 +73,16 @@ impl<'a> Decompiler<'a> {
         Ok(params)
     }
 
-    fn consume_conditional_jump(&mut self, position: Position, offset: Offset) -> Result<Expr<SourceAst>, Error> {
+    fn consume_conditional_jump(&mut self, position: Location, offset: Offset) -> Result<Expr<SourceAst>, Error> {
         let condition = self.consume()?;
         let target = offset.absolute(position);
         let mut body = self.consume_path(target)?;
-        self.code.goto(target)?;
+        self.code.set_pos(target)?;
 
         let result = if resolve_jump(&mut body, Some(position)).is_some() {
             Expr::While(Box::new(condition), body, Pos::ZERO)
         } else if let Some(jump) = resolve_jump(&mut body, None) {
-            let else_case = self.consume_path(Position::new(jump.position))?;
+            let else_case = self.consume_path(Location::new(jump.position))?;
             Expr::If(Box::new(condition), body, Some(else_case), Pos::ZERO)
         } else {
             Expr::If(Box::new(condition), body, None, Pos::ZERO)
@@ -107,14 +107,14 @@ impl<'a> Decompiler<'a> {
         let mut default = None;
         let mut cases = Vec::new();
         for (label, start_position) in labels {
-            self.code.goto(label)?;
+            self.code.set_pos(label)?;
 
             match self.code.pop()? {
                 Instr::SwitchLabel(exit_offset, _) => {
                     let exit = exit_offset.absolute(label);
                     let matcher = self.consume()?;
 
-                    self.code.goto(start_position)?;
+                    self.code.set_pos(start_position)?;
                     let mut body = self.consume_path(exit)?;
                     if let Some(Expr::Goto(_, _)) = body.exprs.last() {
                         body.exprs.pop();
@@ -180,7 +180,7 @@ impl<'a> Decompiler<'a> {
                 let rhs = self.consume()?;
                 Expr::Assign(Box::new(lhs), Box::new(rhs), Pos::ZERO)
             }
-            Instr::Target => return Err(Error::DecompileError("Unexpected Target".to_owned())),
+            Instr::Target(_) => return Err(Error::DecompileError("Unexpected Target".to_owned())),
             Instr::Local(idx) => Expr::Ident(self.definition_ident(idx)?, Pos::ZERO),
             Instr::Param(idx) => Expr::Ident(self.definition_ident(idx)?, Pos::ZERO),
             Instr::ObjectField(idx) => {
@@ -338,7 +338,7 @@ impl<'a> Decompiler<'a> {
     }
 }
 
-fn resolve_jump(seq: &mut Seq<SourceAst>, target: Option<Position>) -> Option<&mut Target> {
+fn resolve_jump(seq: &mut Seq<SourceAst>, target: Option<Location>) -> Option<&mut Target> {
     seq.exprs.iter_mut().rev().find_map(|expr| match expr {
         Expr::Goto(goto, _) if !goto.resolved && target.map(|target| goto.position == target.value).unwrap_or(true) => {
             goto.resolved = true;
