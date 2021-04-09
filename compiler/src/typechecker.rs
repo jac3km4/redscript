@@ -128,7 +128,7 @@ impl<'a> TypeChecker<'a> {
                 };
                 let candidates = scope.resolve_method(name.clone(), class, self.pool, *pos)?;
                 let match_ =
-                    self.resolve_overload(name.clone(), candidates.clone(), args.iter(), expected, scope, *pos)?;
+                    self.resolve_overload(name.clone(), candidates, args.iter(), expected, scope, *pos)?;
 
                 if let TypeId::WeakRef(inner) = type_ {
                     let converted =
@@ -146,7 +146,7 @@ impl<'a> TypeChecker<'a> {
                 Expr::Call(Callable::Function(match_.index), match_.args, *pos)
             }
             Expr::UnOp(expr, op, pos) => {
-                let name = Ident::new(op.name());
+                let name = Ident::Static(op.into());
                 let args = iter::once(expr.as_ref());
                 let candidates = scope.resolve_function(FunctionName::global(name.clone()), self.pool, *pos)?;
                 let match_ = self.resolve_overload(name, candidates.clone(), args, expected, scope, *pos)?;

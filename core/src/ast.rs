@@ -1,9 +1,9 @@
 use std::fmt::{self, Debug, Display};
 use std::hash::Hash;
-use std::ops::{Add, Sub};
+use std::ops::Add;
 use std::rc::Rc;
 
-use strum::{Display, IntoStaticStr};
+use strum::IntoStaticStr;
 
 #[derive(Debug)]
 pub enum Expr<Name: NameKind>
@@ -189,17 +189,14 @@ pub enum BinOp {
     Modulo,
 }
 
-#[derive(Debug, Clone, Copy, Display)]
+#[derive(Debug, Clone, Copy, IntoStaticStr)]
 pub enum UnOp {
+    #[strum(serialize = "OperatorBitNot")]
     BitNot,
+    #[strum(serialize = "OperatorLogicNot")]
     LogicNot,
+    #[strum(serialize = "OperatorNeg")]
     Neg,
-}
-
-impl UnOp {
-    pub fn name(&self) -> String {
-        format!("Operator{}", self)
-    }
 }
 
 #[derive(Debug)]
@@ -273,15 +270,10 @@ impl fmt::Display for Pos {
 
 impl Add<usize> for Pos {
     type Output = Pos;
+
+    #[inline(always)]
     fn add(self, other: usize) -> Pos {
         Pos(self.0 + other as u32)
-    }
-}
-
-impl Sub<Pos> for Pos {
-    type Output = Pos;
-    fn sub(self, other: Pos) -> Pos {
-        Pos(self.0 - other.0)
     }
 }
 
