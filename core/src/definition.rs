@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use modular_bitfield::prelude::*;
 
-use crate::bundle::{ConstantPool, DefinitionHeader, DefinitionType, PoolIndex};
+use crate::{bundle::{ConstantPool, DefinitionHeader, DefinitionType, PoolIndex}, bytecode::Offset};
 use crate::bytecode::Code;
 use crate::decode::{Decode, DecodeExt};
 use crate::encode::{Encode, EncodeExt};
@@ -280,7 +280,7 @@ pub struct Function {
     pub locals: Vec<PoolIndex<Local>>,
     pub operator: Option<u32>,
     pub cast: u8,
-    pub code: Code,
+    pub code: Code<Offset>,
 }
 
 impl Decode for Function {

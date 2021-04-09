@@ -1,5 +1,4 @@
-use std::io;
-use std::ops::{Add, Neg, Sub};
+use std::{io, usize};
 
 use crate::bundle::{PoolIndex, Resource, TweakDbId};
 use crate::decode::{Decode, DecodeExt};
@@ -8,7 +7,7 @@ use crate::encode::{Encode, EncodeExt};
 use crate::error::Error;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Instr {
+pub enum Instr<Loc> {
     Nop,
     Null,
     I32One,
@@ -32,25 +31,25 @@ pub enum Instr {
     FalseConst,
     Breakpoint(u16, u32, u16, u16, u8, u64),
     Assign,
-    Target,
+    Target(Loc),
     Local(PoolIndex<Local>),
     Param(PoolIndex<Parameter>),
     ObjectField(PoolIndex<Field>),
     ExternalVar,
-    Switch(PoolIndex<Type>, Offset),
-    SwitchLabel(Offset, Offset),
+    Switch(PoolIndex<Type>, Loc),
+    SwitchLabel(Loc, Loc),
     SwitchDefault,
-    Jump(Offset),
-    JumpIfFalse(Offset),
-    Skip(Offset),
-    Conditional(Offset, Offset),
+    Jump(Loc),
+    JumpIfFalse(Loc),
+    Skip(Loc),
+    Conditional(Loc, Loc),
     Construct(u8, PoolIndex<Class>),
-    InvokeStatic(Offset, u16, PoolIndex<Function>),
-    InvokeVirtual(Offset, u16, PoolIndex<String>),
+    InvokeStatic(Loc, u16, PoolIndex<Function>),
+    InvokeVirtual(Loc, u16, PoolIndex<String>),
     ParamEnd,
     Return,
     StructField(PoolIndex<Field>),
-    Context(Offset),
+    Context(Loc),
     Equals(PoolIndex<Type>),
     NotEquals(PoolIndex<Type>),
     New(PoolIndex<Class>),
@@ -109,7 +108,7 @@ pub enum Instr {
     Deref(PoolIndex<Type>),
 }
 
-impl Instr {
+impl<L> Instr<L> {
     pub fn size(&self) -> u16 {
         let op_size = match self {
             Instr::Nop | Instr::Null | Instr::I32One | Instr::I32Zero | Instr::TrueConst | Instr::FalseConst => 0,
@@ -130,7 +129,7 @@ impl Instr {
             Instr::ResourceConst(_) => 8,
             Instr::Breakpoint(_, _, _, _, _, _) => 19,
             Instr::Assign => 0,
-            Instr::Target => 0,
+            Instr::Target(_) => return 0, // not present in bytecode
             Instr::Local(_) => 8,
             Instr::Param(_) => 8,
             Instr::ObjectField(_) => 8,
@@ -209,7 +208,123 @@ impl Instr {
     }
 }
 
-impl Decode for Instr {
+impl Instr<Label> {
+    #[allow(clippy::just_underscores_and_digits)]
+    pub fn resolve_labels(self, location: Location, targets: &[Location]) -> Instr<Offset> {
+        match self {
+            Instr::Nop => Instr::Nop,
+            Instr::Null => Instr::Null,
+            Instr::I32One => Instr::I32One,
+            Instr::I32Zero => Instr::I32Zero,
+            Instr::I8Const(val) => Instr::I8Const(val),
+            Instr::I16Const(val) => Instr::I16Const(val),
+            Instr::I32Const(val) => Instr::I32Const(val),
+            Instr::I64Const(val) => Instr::I64Const(val),
+            Instr::U8Const(val) => Instr::U8Const(val),
+            Instr::U16Const(val) => Instr::U16Const(val),
+            Instr::U32Const(val) => Instr::U32Const(val),
+            Instr::U64Const(val) => Instr::U64Const(val),
+            Instr::F32Const(val) => Instr::F32Const(val),
+            Instr::F64Const(val) => Instr::F64Const(val),
+            Instr::NameConst(idx) => Instr::NameConst(idx),
+            Instr::EnumConst(enum_, member) => Instr::EnumConst(enum_, member),
+            Instr::StringConst(val) => Instr::StringConst(val),
+            Instr::TweakDbIdConst(idx) => Instr::TweakDbIdConst(idx),
+            Instr::ResourceConst(idx) => Instr::ResourceConst(idx),
+            Instr::TrueConst => Instr::TrueConst,
+            Instr::FalseConst => Instr::FalseConst,
+            Instr::Breakpoint(_0, _1, _2, _3, _4, _5) => Instr::Breakpoint(_0, _1, _2, _3, _4, _5),
+            Instr::Assign => Instr::Assign,
+            Instr::Target(label) => Instr::Target(targets[label.index].relative(location)),
+            Instr::Local(idx) => Instr::Local(idx),
+            Instr::Param(idx) => Instr::Param(idx),
+            Instr::ObjectField(idx) => Instr::ObjectField(idx),
+            Instr::ExternalVar => Instr::ExternalVar,
+            Instr::Switch(idx, label) => Instr::Switch(idx, targets[label.index].relative(location)),
+            Instr::SwitchLabel(first_case, exit) => Instr::SwitchLabel(
+                targets[first_case.index].relative(location),
+                targets[exit.index].relative(location),
+            ),
+            Instr::SwitchDefault => Instr::SwitchDefault,
+            Instr::Jump(label) => Instr::Jump(targets[label.index].relative(location)),
+            Instr::JumpIfFalse(label) => Instr::JumpIfFalse(targets[label.index].relative(location)),
+            Instr::Skip(label) => Instr::Skip(targets[label.index].relative(location)),
+            Instr::Conditional(false_, exit) => Instr::Conditional(
+                targets[false_.index].relative(location),
+                targets[exit.index].relative(location),
+            ),
+            Instr::Construct(args, idx) => Instr::Construct(args, idx),
+            Instr::InvokeStatic(label, line, idx) => {
+                Instr::InvokeStatic(targets[label.index].relative(location), line, idx)
+            }
+            Instr::InvokeVirtual(label, line, idx) => {
+                Instr::InvokeVirtual(targets[label.index].relative(location), line, idx)
+            }
+            Instr::ParamEnd => Instr::ParamEnd,
+            Instr::Return => Instr::Return,
+            Instr::StructField(idx) => Instr::StructField(idx),
+            Instr::Context(label) => Instr::Context(targets[label.index].relative(location)),
+            Instr::Equals(idx) => Instr::Equals(idx),
+            Instr::NotEquals(idx) => Instr::NotEquals(idx),
+            Instr::New(idx) => Instr::New(idx),
+            Instr::Delete => Instr::Delete,
+            Instr::This => Instr::This,
+            Instr::StartProfiling(_0, _1) => Instr::StartProfiling(_0, _1),
+            Instr::ArrayClear(idx) => Instr::ArrayClear(idx),
+            Instr::ArraySize(idx) => Instr::ArraySize(idx),
+            Instr::ArrayResize(idx) => Instr::ArrayResize(idx),
+            Instr::ArrayFindFirst(idx) => Instr::ArrayFindFirst(idx),
+            Instr::ArrayFindFirstFast(idx) => Instr::ArrayFindFirstFast(idx),
+            Instr::ArrayFindLast(idx) => Instr::ArrayFindLast(idx),
+            Instr::ArrayFindLastFast(idx) => Instr::ArrayFindLastFast(idx),
+            Instr::ArrayContains(idx) => Instr::ArrayContains(idx),
+            Instr::ArrayContainsFast(idx) => Instr::ArrayContainsFast(idx),
+            Instr::ArrayCount(idx) => Instr::ArrayCount(idx),
+            Instr::ArrayCountFast(idx) => Instr::ArrayCountFast(idx),
+            Instr::ArrayPush(idx) => Instr::ArrayPush(idx),
+            Instr::ArrayPop(idx) => Instr::ArrayPop(idx),
+            Instr::ArrayInsert(idx) => Instr::ArrayInsert(idx),
+            Instr::ArrayRemove(idx) => Instr::ArrayRemove(idx),
+            Instr::ArrayRemoveFast(idx) => Instr::ArrayRemoveFast(idx),
+            Instr::ArrayGrow(idx) => Instr::ArrayGrow(idx),
+            Instr::ArrayErase(idx) => Instr::ArrayErase(idx),
+            Instr::ArrayEraseFast(idx) => Instr::ArrayEraseFast(idx),
+            Instr::ArrayLast(idx) => Instr::ArrayLast(idx),
+            Instr::ArrayElement(idx) => Instr::ArrayElement(idx),
+            Instr::StaticArraySize(idx) => Instr::StaticArraySize(idx),
+            Instr::StaticArrayFindFirst(idx) => Instr::StaticArrayFindFirst(idx),
+            Instr::StaticArrayFindFirstFast(idx) => Instr::StaticArrayFindFirstFast(idx),
+            Instr::StaticArrayFindLast(idx) => Instr::StaticArrayFindLast(idx),
+            Instr::StaticArrayFindLastFast(idx) => Instr::StaticArrayFindLastFast(idx),
+            Instr::StaticArrayContains(idx) => Instr::StaticArrayContains(idx),
+            Instr::StaticArrayContainsFast(idx) => Instr::StaticArrayContainsFast(idx),
+            Instr::StaticArrayCount(idx) => Instr::StaticArrayCount(idx),
+            Instr::StaticArrayCountFast(idx) => Instr::StaticArrayCountFast(idx),
+            Instr::StaticArrayLast(idx) => Instr::StaticArrayLast(idx),
+            Instr::StaticArrayElement(idx) => Instr::StaticArrayElement(idx),
+            Instr::RefToBool => Instr::RefToBool,
+            Instr::WeakRefToBool => Instr::WeakRefToBool,
+            Instr::EnumToI32(idx, size) => Instr::EnumToI32(idx, size),
+            Instr::I32ToEnum(idx, size) => Instr::I32ToEnum(idx, size),
+            Instr::DynamicCast(idx, size) => Instr::DynamicCast(idx, size),
+            Instr::ToString(idx) => Instr::ToString(idx),
+            Instr::ToVariant(idx) => Instr::ToVariant(idx),
+            Instr::FromVariant(idx) => Instr::FromVariant(idx),
+            Instr::VariantIsValid => Instr::VariantIsValid,
+            Instr::VariantIsRef => Instr::VariantIsRef,
+            Instr::VariantIsArray => Instr::VariantIsArray,
+            Instr::VatiantToCName => Instr::VatiantToCName,
+            Instr::VariantToString => Instr::VariantToString,
+            Instr::WeakRefToRef => Instr::WeakRefToRef,
+            Instr::RefToWeakRef => Instr::RefToWeakRef,
+            Instr::WeakRefNull => Instr::WeakRefNull,
+            Instr::AsRef(idx) => Instr::AsRef(idx),
+            Instr::Deref(idx) => Instr::Deref(idx),
+        }
+    }
+}
+
+impl Decode for Instr<Offset> {
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
         let code: u8 = input.decode()?;
         match code {
@@ -243,7 +358,7 @@ impl Decode for Instr {
                 input.decode()?,
             )),
             22 => Ok(Instr::Assign),
-            23 => Ok(Instr::Target),
+            23 => Ok(Instr::Target(Offset::new(0))),
             24 => Ok(Instr::Local(input.decode()?)),
             25 => Ok(Instr::Param(input.decode()?)),
             26 => Ok(Instr::ObjectField(input.decode()?)),
@@ -343,7 +458,7 @@ impl Decode for Instr {
     }
 }
 
-impl Encode for Instr {
+impl Encode for Instr<Offset> {
     fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
         match value {
             Instr::Nop => {
@@ -437,7 +552,7 @@ impl Encode for Instr {
             Instr::Assign => {
                 output.encode(&22u8)?;
             }
-            Instr::Target => {
+            Instr::Target(_) => {
                 output.encode(&23u8)?;
             }
             Instr::Local(idx) => {
@@ -738,15 +853,19 @@ impl Encode for Instr {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Position {
+pub struct Location {
     pub value: u16,
 }
 
-impl Position {
-    pub const MAX: Position = Position { value: std::u16::MAX };
+impl Location {
+    pub const MAX: Location = Location { value: std::u16::MAX };
 
-    pub fn new(value: u16) -> Position {
-        Position { value }
+    pub fn new(value: u16) -> Location {
+        Location { value }
+    }
+
+    pub fn relative(&self, base: Location) -> Offset {
+        Offset::new(self.value as i16 - base.value as i16)
     }
 }
 
@@ -760,8 +879,8 @@ impl Offset {
         Offset { value }
     }
 
-    pub fn absolute(&self, position: Position) -> Position {
-        Position::new((position.value as i32 + self.value as i32) as u16)
+    pub fn absolute(&self, position: Location) -> Location {
+        Location::new((position.value as i32 + self.value as i32) as u16)
     }
 }
 
@@ -777,52 +896,33 @@ impl Encode for Offset {
     }
 }
 
-impl Add for Offset {
-    type Output = Offset;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        Offset::new(self.value + rhs.value)
-    }
-}
-
-impl Sub for Offset {
-    type Output = Offset;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        Offset::new(self.value - rhs.value)
-    }
-}
-
-impl Neg for Offset {
-    type Output = Offset;
-
-    fn neg(self) -> Self::Output {
-        Offset::new(-self.value)
-    }
+#[derive(Debug, Clone, Copy)]
+pub struct Label {
+    pub index: usize,
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Code(pub Vec<Instr>);
+pub struct Code<Loc>(pub Vec<Instr<Loc>>);
 
-impl Code {
-    pub const EMPTY: Code = Code(vec![]);
+impl<Loc: Clone> Code<Loc> {
+    pub const EMPTY: Self = Code(vec![]);
 
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
-    pub fn cursor(&self) -> CodeCursor {
+    pub fn cursor(&self) -> CodeCursor<Loc> {
         CodeCursor::new(self)
     }
 }
 
-impl Decode for Code {
+impl Decode for Code<Offset> {
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
         let max_offset: u32 = input.decode()?;
         let mut offset = 0;
         let mut code = Vec::new();
         while offset < max_offset {
-            let instr: Instr = input.decode()?;
+            let instr: Instr<Offset> = input.decode()?;
             offset += instr.size() as u32;
             code.push(instr);
         }
@@ -830,7 +930,7 @@ impl Decode for Code {
     }
 }
 
-impl Encode for Code {
+impl Encode for Code<Offset> {
     fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
         let mut buffer = io::Cursor::new(Vec::new());
         let mut size = 0u32;
@@ -843,36 +943,40 @@ impl Encode for Code {
     }
 }
 
-pub struct CodeCursor<'a> {
-    code: &'a [Instr],
-    position: Position,
+pub struct CodeCursor<'a, Loc> {
+    code: &'a [Instr<Loc>],
+    position: Location,
     index: u16,
 }
 
-impl<'a> CodeCursor<'a> {
-    pub fn new(code: &'a Code) -> CodeCursor<'a> {
+impl<'a, Loc: Clone> CodeCursor<'a, Loc> {
+    pub fn new(code: &'a Code<Loc>) -> Self {
         CodeCursor {
             code: &code.0,
-            position: Position { value: 0 },
+            position: Location { value: 0 },
             index: 0,
         }
     }
 
-    pub fn pop(&mut self) -> Result<Instr, Error> {
+    pub fn pop(&mut self) -> Result<Instr<Loc>, Error> {
         let instr = self
             .code
             .get(self.index as usize)
-            .ok_or_else(|| Error::eof(format!("Attempted to read past eof: {}", self.position.value)))?;
+            .ok_or_else(|| Error::eof(format!("Attempted to read past EOF: {}", self.position.value)))?;
         self.index += 1;
-        self.position = Position::new(self.position.value + instr.size());
+        self.position = Location::new(self.position.value + instr.size());
         Ok(instr.clone())
     }
 
-    pub fn peek(&self) -> Option<Instr> {
+    pub fn peek(&self) -> Option<Instr<Loc>> {
         self.code.get(self.index as usize).cloned()
     }
 
-    pub fn goto(&mut self, position: Position) -> Result<(), Error> {
+    pub fn pos(&self) -> Location {
+        self.position
+    }
+
+    pub fn set_pos(&mut self, position: Location) -> Result<(), Error> {
         self.reset();
         while self.position < position {
             self.pop()?;
@@ -882,21 +986,17 @@ impl<'a> CodeCursor<'a> {
     }
 
     pub fn seek(&mut self, offset: Offset) -> Result<(), Error> {
-        self.goto(offset.absolute(self.position))
+        self.set_pos(offset.absolute(self.position))
     }
 
     pub fn reset(&mut self) {
         self.index = 0;
-        self.position = Position { value: 0 };
-    }
-
-    pub fn pos(&self) -> Position {
-        self.position
+        self.position = Location { value: 0 };
     }
 }
 
-impl<'a> Iterator for CodeCursor<'a> {
-    type Item = (Position, Instr);
+impl<'a, Loc: Clone> Iterator for CodeCursor<'a, Loc> {
+    type Item = (Location, Instr<Loc>);
 
     fn next(&mut self) -> Option<Self::Item> {
         let position = self.pos();

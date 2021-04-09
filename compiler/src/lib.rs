@@ -8,7 +8,7 @@ use assembler::Assembler;
 use parser::{Annotation, AnnotationName, FieldSource};
 use redscript::ast::{Ident, Pos, Seq, SourceAst};
 use redscript::bundle::{ConstantPool, PoolIndex};
-use redscript::bytecode::{Code, Instr};
+use redscript::bytecode::Code;
 use redscript::definition::{
     Class, ClassFlags, Definition, Enum, Field, FieldFlags, Function, FunctionFlags, Local, Parameter, ParameterFlags, SourceReference, Type, Visibility
 };
@@ -453,10 +453,9 @@ impl<'a> Compiler<'a> {
         let desugared = desugar.on_seq(checked)?;
         locals.append(&mut desugar.locals);
 
-        let assembler = Assembler::from_seq(desugared, &mut local_scope, pool)?;
+        let code = Assembler::from_body(desugared, &mut local_scope, pool)?;
         let function = pool.function_mut(fun_idx)?;
-        function.code = Code(assembler.code.into_iter().collect());
-        function.code.0.push(Instr::Nop);
+        function.code = code;
         function.locals = locals;
         Ok(())
     }
@@ -806,7 +805,6 @@ mod tests {
         check_function_bytecode(sources, expected)
     }
 
-    
     #[test]
     fn compile_nested_array_literals() -> Result<(), Error> {
         let sources = "
@@ -878,14 +876,15 @@ mod tests {
     fn compile_switch_case() -> Result<(), Error> {
         let sources = "
             func Testing(val: Int32) -> Bool {
-                switch val % 2 {
-                    case 0:
-                        return true;
+                switch val % 4 {
                     case 1:
-                        return false;
+                    case 2:
+                    case 3:
+                        break;
                     default:
-                        return false;
+                        return true;
                 }
+                return false;
             }
 
             func OperatorModulo(l: Int32, r: Int32) -> Int32 = 0
@@ -894,17 +893,18 @@ mod tests {
             Instr::Switch(PoolIndex::new(8), Offset::new(39)),
             Instr::InvokeStatic(Offset::new(28), 0, PoolIndex::new(23)),
             Instr::Param(PoolIndex::new(22)),
-            Instr::I32Const(2),
+            Instr::I32Const(4),
             Instr::ParamEnd,
-            Instr::SwitchLabel(Offset::new(12), Offset::new(10)),
-            Instr::I32Const(0),
+            Instr::SwitchLabel(Offset::new(10), Offset::new(30)),
+            Instr::I32Const(1),
+            Instr::SwitchLabel(Offset::new(10), Offset::new(20)),
+            Instr::I32Const(2),
+            Instr::SwitchLabel(Offset::new(13), Offset::new(10)),
+            Instr::I32Const(3),
+            Instr::Jump(Offset::new(6)),
+            Instr::SwitchDefault,
             Instr::Return,
             Instr::TrueConst,
-            Instr::SwitchLabel(Offset::new(12), Offset::new(10)),
-            Instr::I32Const(1),
-            Instr::Return,
-            Instr::FalseConst,
-            Instr::SwitchDefault,
             Instr::Return,
             Instr::FalseConst,
             Instr::Nop,
@@ -932,6 +932,30 @@ mod tests {
             Instr::ParamEnd,
             Instr::TrueConst,
             Instr::FalseConst,
+            Instr::Nop,
+        ];
+        check_function_bytecode(sources, expected)
+    }
+
+    #[test]
+    fn compile_if_else() -> Result<(), Error> {
+        let sources = "
+            func Testing(bool: Bool) -> Int32 {
+                if bool {
+                    return 1;
+                } else {
+                    return 0;
+                }
+            }
+            ";
+        let expected = vec![
+            Instr::JumpIfFalse(Offset::new(21)),
+            Instr::Param(PoolIndex::new(22)),
+            Instr::Return,
+            Instr::I32Const(1),
+            Instr::Jump(Offset::new(9)),
+            Instr::Return,
+            Instr::I32Const(0),
             Instr::Nop,
         ];
         check_function_bytecode(sources, expected)
@@ -990,7 +1014,7 @@ mod tests {
         check_function_bytecode(sources, expected)
     }
 
-    fn check_function_bytecode(code: &str, instrs: Vec<Instr>) -> Result<(), Error> {
+    fn check_function_bytecode(code: &str, instrs: Vec<Instr<Offset>>) -> Result<(), Error> {
         let entries = parser::parse(code).unwrap();
         let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
         let mut compiler = Compiler::new(&mut scripts.pool)?;
