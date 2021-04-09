@@ -205,8 +205,8 @@ impl Scope {
             }
             current_idx = pool.class(current_idx)?.base;
         }
-        if candidates.functions.len() == 0 {
-            let fun_name = FunctionName::instance(class_idx, name.clone());
+        if candidates.functions.is_empty() {
+            let fun_name = FunctionName::instance(class_idx, name);
             Err(Error::function_not_found(fun_name.pretty(pool), pos))
         } else {
             Ok(candidates)

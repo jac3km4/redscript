@@ -23,14 +23,17 @@ impl Assembler {
         }
     }
 
+    #[inline(always)]
     fn emit(&mut self, instr: Instr<Label>) {
         self.instructions.push(instr);
     }
 
+    #[inline(always)]
     fn emit_label(&mut self, label: Label) {
         self.instructions.push(Instr::Target(label))
     }
 
+    #[inline(always)]
     fn new_label(&mut self) -> Label {
         let label = Label { index: self.labels };
         self.labels += 1;
