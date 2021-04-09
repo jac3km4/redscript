@@ -1,4 +1,4 @@
-#![feature(option_result_contains)]
+#![feature(option_result_contains, stmt_expr_attributes)]
 
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -17,7 +17,7 @@ use scope::{FunctionName, Scope};
 use source_map::Files;
 use sugar::Desugar;
 use transform::ExprTransformer;
-use typechecker::Typechecker;
+use typechecker::TypeChecker;
 
 use crate::parser::{ClassSource, FunctionSource, MemberSource, Qualifier, SourceEntry};
 
@@ -439,7 +439,7 @@ impl<'a> Compiler<'a> {
             local_scope.references.insert(ident, Reference::Parameter(*param));
         }
 
-        let mut checker = Typechecker::new(pool);
+        let mut checker = TypeChecker::new(pool);
         let checked = checker.check_seq(seq, &mut local_scope)?;
         let mut locals = checker.locals;
 
@@ -512,8 +512,8 @@ impl TypeId {
             TypeId::Array(idx) => Ok(Ident::new(format!("array:{}", idx.repr(pool)?))),
             TypeId::StaticArray(idx, size) => Ok(Ident::new(format!("{}[{}]", idx.repr(pool)?, size))),
             TypeId::ScriptRef(idx) => Ok(Ident::new(format!("script_ref:{}", idx.repr(pool)?))),
-            TypeId::Null => panic!(),
-            TypeId::Void => panic!(),
+            TypeId::Null => Err(Error::PoolError("Null type".to_owned())),
+            TypeId::Void => Err(Error::PoolError("Void type".to_owned())),
         }
     }
 
@@ -1003,6 +1003,25 @@ mod tests {
             Instr::This,
             Instr::InvokeStatic(Offset::new(14), 0, PoolIndex::new(26)),
             Instr::ParamEnd,
+            Instr::Nop,
+        ];
+        check_function_bytecode(sources, expected)
+    }
+
+    #[test]
+    fn compile_null_wref_assignment() -> Result<(), Error> {
+        let sources = "
+            func Testing() {
+                let a: wref<A> = null;
+            }
+
+            class A {}
+            ";
+        let expected = vec![
+            Instr::Assign,
+            Instr::Local(PoolIndex::new(25)),
+            Instr::RefToWeakRef,
+            Instr::Null,
             Instr::Nop,
         ];
         check_function_bytecode(sources, expected)

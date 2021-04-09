@@ -7,7 +7,7 @@ use redscript::definition::{Definition, Enum, Field, Function, Local, LocalFlags
 use redscript::error::{Error, FunctionResolutionError};
 use strum::{Display, EnumString};
 
-use crate::scope::{FunctionMatch, FunctionName, FunctionCandidates, Scope};
+use crate::scope::{FunctionCandidates, FunctionMatch, FunctionName, Scope};
 use crate::{Reference, TypeId};
 
 #[derive(Debug)]
@@ -35,14 +35,14 @@ pub enum Member {
     EnumMember(PoolIndex<Enum>, PoolIndex<i64>),
 }
 
-pub struct Typechecker<'a> {
+pub struct TypeChecker<'a> {
     pool: &'a mut ConstantPool,
     pub locals: Vec<PoolIndex<Local>>,
 }
 
-impl<'a> Typechecker<'a> {
-    pub fn new(pool: &'a mut ConstantPool) -> Typechecker<'a> {
-        Typechecker { pool, locals: vec![] }
+impl<'a> TypeChecker<'a> {
+    pub fn new(pool: &'a mut ConstantPool) -> TypeChecker<'a> {
+        TypeChecker { pool, locals: vec![] }
     }
 
     pub fn check(
@@ -95,8 +95,7 @@ impl<'a> Typechecker<'a> {
                 let type_ = scope.resolve_type(&type_name, self.pool, *pos)?;
                 let checked = self.check(expr, None, scope)?;
                 if let TypeId::WeakRef(inner) = type_of(&checked, scope, self.pool)? {
-                    let converted =
-                        Self::insert_conversion(checked, &TypeId::Ref(inner), Conversion::WeakRefToRef, *pos);
+                    let converted = insert_conversion(checked, &TypeId::Ref(inner), Conversion::WeakRefToRef, *pos);
                     Expr::Cast(type_, Box::new(converted), *pos)
                 } else {
                     Expr::Cast(type_, Box::new(checked), *pos)
@@ -133,7 +132,7 @@ impl<'a> Typechecker<'a> {
 
                 if let TypeId::WeakRef(inner) = type_ {
                     let converted =
-                        Self::insert_conversion(checked_context, &TypeId::Ref(inner), Conversion::WeakRefToRef, *pos);
+                        insert_conversion(checked_context, &TypeId::Ref(inner), Conversion::WeakRefToRef, *pos);
                     Expr::MethodCall(Box::new(converted), match_.index, match_.args, *pos)
                 } else {
                     Expr::MethodCall(Box::new(checked_context), match_.index, match_.args, *pos)
@@ -447,73 +446,9 @@ impl<'a> Typechecker<'a> {
     ) -> Result<Expr<TypedAst>, Error> {
         let checked = self.check(expr, Some(to), scope)?;
         let from = type_of(&checked, scope, self.pool)?;
-        let conversion = Self::find_conversion(&from, &to, self.pool)?
+        let conversion = find_conversion(&from, &to, self.pool)?
             .ok_or_else(|| Error::type_error(from.pretty(self.pool).unwrap(), to.pretty(self.pool).unwrap(), pos))?;
-        Ok(Self::insert_conversion(checked, to, conversion, pos))
-    }
-
-    fn insert_conversion(expr: Expr<TypedAst>, type_: &TypeId, conversion: Conversion, pos: Pos) -> Expr<TypedAst> {
-        match conversion {
-            Conversion::Identity => expr,
-            Conversion::RefToWeakRef => Expr::Call(
-                Callable::Intrinsic(IntrinsicOp::RefToWeakRef, type_.clone()),
-                vec![expr],
-                pos,
-            ),
-            Conversion::WeakRefToRef => Expr::Call(
-                Callable::Intrinsic(IntrinsicOp::WeakRefToRef, type_.clone()),
-                vec![expr],
-                pos,
-            ),
-        }
-    }
-
-    fn find_conversion(from: &TypeId, to: &TypeId, pool: &ConstantPool) -> Result<Option<Conversion>, Error> {
-        let result = if from == to {
-            Some(Conversion::Identity)
-        } else {
-            match (from, to) {
-                (TypeId::Null, TypeId::Ref(_)) => Some(Conversion::Identity),
-                (TypeId::Null, TypeId::WeakRef(_)) => Some(Conversion::RefToWeakRef),
-                (TypeId::Class(from), TypeId::Class(_)) => {
-                    let class = pool.class(*from)?;
-                    if class.base != PoolIndex::UNDEFINED {
-                        Self::find_conversion(&TypeId::Class(class.base), to, pool)?
-                    } else {
-                        None
-                    }
-                }
-                (TypeId::Struct(from), TypeId::Struct(_)) => {
-                    let class = pool.class(*from)?;
-                    if class.base != PoolIndex::UNDEFINED {
-                        Self::find_conversion(&TypeId::Struct(class.base), to, pool)?
-                    } else {
-                        None
-                    }
-                }
-                (from @ TypeId::Class(_), TypeId::Ref(to)) => {
-                    Self::find_conversion(from, to, pool)?.filter(|conv| *conv == Conversion::Identity)
-                }
-                (TypeId::Ref(from), TypeId::Ref(to)) => {
-                    Self::find_conversion(from, to, pool)?.filter(|conv| *conv == Conversion::Identity)
-                }
-                (TypeId::WeakRef(from), TypeId::WeakRef(to)) => {
-                    Self::find_conversion(from, to, pool)?.filter(|conv| *conv == Conversion::Identity)
-                }
-                (TypeId::WeakRef(from), TypeId::Ref(to))
-                    if Self::find_conversion(from, to, pool)? == Some(Conversion::Identity) =>
-                {
-                    Some(Conversion::WeakRefToRef)
-                }
-                (TypeId::Ref(from), TypeId::WeakRef(to))
-                    if Self::find_conversion(from, to, pool)? == Some(Conversion::Identity) =>
-                {
-                    Some(Conversion::RefToWeakRef)
-                }
-                _ => None,
-            }
-        };
-        Ok(result)
+        Ok(insert_conversion(checked, to, conversion, pos))
     }
 
     fn resolve_overload<'b>(
@@ -551,7 +486,7 @@ impl<'a> Typechecker<'a> {
         if let Some(expected) = expected {
             let ret_type_idx = fun.return_type.ok_or_else(|| Error::void_cannot_be_used(pos))?;
             let ret_type = scope.resolve_type_from_pool(ret_type_idx, self.pool, pos)?;
-            if Self::find_conversion(&ret_type, expected, self.pool)?.is_none() {
+            if find_conversion(&ret_type, expected, self.pool)?.is_none() {
                 let err =
                     FunctionResolutionError::return_mismatch(expected.pretty(self.pool)?, ret_type.pretty(self.pool)?);
                 return Ok(Err(err));
@@ -678,6 +613,70 @@ pub fn type_of(expr: &Expr<TypedAst>, scope: &Scope, pool: &ConstantPool) -> Res
         Expr::UnOp(_, _, pos) => return Err(Error::CompileError("UnOp not supported here".to_owned(), *pos)),
     };
     Ok(res)
+}
+
+fn find_conversion(from: &TypeId, to: &TypeId, pool: &ConstantPool) -> Result<Option<Conversion>, Error> {
+    let result = if from == to {
+        Some(Conversion::Identity)
+    } else {
+        match (from, to) {
+            (TypeId::Null, TypeId::Ref(_)) => Some(Conversion::Identity),
+            (TypeId::Null, TypeId::WeakRef(_)) => Some(Conversion::RefToWeakRef),
+            (TypeId::Class(from), TypeId::Class(_)) => {
+                let class = pool.class(*from)?;
+                if class.base != PoolIndex::UNDEFINED {
+                    find_conversion(&TypeId::Class(class.base), to, pool)?
+                } else {
+                    None
+                }
+            }
+            (TypeId::Struct(from), TypeId::Struct(_)) => {
+                let class = pool.class(*from)?;
+                if class.base != PoolIndex::UNDEFINED {
+                    find_conversion(&TypeId::Struct(class.base), to, pool)?
+                } else {
+                    None
+                }
+            }
+            (from @ TypeId::Class(_), TypeId::Ref(to)) => {
+                find_conversion(from, to, pool)?.filter(|conv| *conv == Conversion::Identity)
+            }
+            (TypeId::Ref(from), TypeId::Ref(to)) => {
+                find_conversion(from, to, pool)?.filter(|conv| *conv == Conversion::Identity)
+            }
+            (TypeId::WeakRef(from), TypeId::WeakRef(to)) => {
+                find_conversion(from, to, pool)?.filter(|conv| *conv == Conversion::Identity)
+            }
+            (TypeId::WeakRef(from), TypeId::Ref(to))
+                if find_conversion(from, to, pool)? == Some(Conversion::Identity) =>
+            {
+                Some(Conversion::WeakRefToRef)
+            }
+            (TypeId::Ref(from), TypeId::WeakRef(to))
+                if find_conversion(from, to, pool)? == Some(Conversion::Identity) =>
+            {
+                Some(Conversion::RefToWeakRef)
+            }
+            _ => None,
+        }
+    };
+    Ok(result)
+}
+
+fn insert_conversion(expr: Expr<TypedAst>, type_: &TypeId, conversion: Conversion, pos: Pos) -> Expr<TypedAst> {
+    match conversion {
+        Conversion::Identity => expr,
+        Conversion::RefToWeakRef => Expr::Call(
+            Callable::Intrinsic(IntrinsicOp::RefToWeakRef, type_.clone()),
+            vec![expr],
+            pos,
+        ),
+        Conversion::WeakRefToRef => Expr::Call(
+            Callable::Intrinsic(IntrinsicOp::WeakRefToRef, type_.clone()),
+            vec![expr],
+            pos,
+        ),
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
