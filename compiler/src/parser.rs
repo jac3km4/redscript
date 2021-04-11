@@ -172,7 +172,12 @@ peg::parser! {
 
         rule escaped_char() -> String
             = !['\\' | '\"'] c:$([_]) { String::from(c) }
-            / "\\" c:$(['t' | 'r' | 'n' | '\'' | '"' | '\\']) { String::from(c) }
+            / r#"\n"# { String::from('\n') }
+            / r#"\r"# { String::from('\r') }
+            / r#"\t"# { String::from('\t') }
+            / r#"\'"# { String::from('\'') }
+            / r#"\""# { String::from('\"') }
+            / r#"\\"# { String::from('\\') }
             / "\\u{" u:$(['a'..='f' | 'A'..='F' | '0'..='9']*<1,6>) "}" {
                 String::from(char::from_u32(u32::from_str_radix(u, 16).unwrap()).unwrap())
             }
@@ -466,13 +471,15 @@ mod tests {
 
     #[test]
     fn parse_escaped_string() {
-        let escaped = lang::escaped_string(
-            r#""This is a backslash \'\\\' \"escaped\" string \u{03BB}""#
-        ).unwrap();
+        let escaped = lang::escaped_string(r#""This is a backslash \'\\\' \"escaped\" string \t\u{03BB}\r\n""#);
 
-        assert_eq!(
-            escaped,
-            r#"This is a backslash '\' "escaped" string λ"#
-        );
+        assert_eq!(escaped, Ok(String::from(  "This is a backslash \'\\\' \"escaped\" string \t\u{03BB}\r\n")));
+    }
+
+    #[test]
+    fn fail_mangled_string() {
+        let mangled = lang::escaped_string(r#""These are invalid escape characters: \a \\" \u{1234567}""#);
+
+        assert!(mangled.is_err());
     }
 }
