@@ -3,7 +3,7 @@ use std::iter;
 use std::path::Path;
 
 use redscript::bundle::{ConstantPool, PoolIndex};
-use redscript::definition::{Definition, DefinitionValue};
+use redscript::definition::{AnyDefinition, Definition};
 
 pub struct FileIndex<'a> {
     file_map: HashMap<PoolIndex<Definition>, HashSet<PoolIndex<Definition>>>,
@@ -31,7 +31,7 @@ impl<'a> FileIndex<'a> {
 
     pub fn iter(&'a self) -> impl Iterator<Item = FileEntry<'a>> {
         let source_files = self.file_map.iter().filter_map(move |(idx, children)| {
-            if let DefinitionValue::SourceFile(ref file) = self.pool.definition(*idx).unwrap().value {
+            if let AnyDefinition::SourceFile(ref file) = self.pool.definition(*idx).unwrap().value {
                 let mut definitions: Vec<&Definition> = children
                     .iter()
                     .filter_map(|child| self.pool.definition(*child).ok())
@@ -56,9 +56,9 @@ impl<'a> FileIndex<'a> {
             .pool
             .definitions()
             .filter(|(_, def)| match &def.value {
-                DefinitionValue::Class(cls) if cls.functions.is_empty() || cls.flags.is_native() => true,
-                DefinitionValue::Enum(_) => true,
-                DefinitionValue::Function(fun) if def.parent == PoolIndex::UNDEFINED && fun.flags.is_native() => true,
+                AnyDefinition::Class(cls) if cls.functions.is_empty() || cls.flags.is_native() => true,
+                AnyDefinition::Enum(_) => true,
+                AnyDefinition::Function(fun) if def.parent == PoolIndex::UNDEFINED && fun.flags.is_native() => true,
                 _ => false,
             })
             .map(|(_, def)| def)

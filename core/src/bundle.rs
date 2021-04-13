@@ -9,7 +9,7 @@ use std::{fmt, io};
 use modular_bitfield::prelude::*;
 
 use crate::decode::{Decode, DecodeExt};
-use crate::definition::{Class, Definition, DefinitionValue, Enum, Field, Function, Local, Parameter, Type};
+use crate::definition::{AnyDefinition, Class, Definition, Enum, Field, Function, Local, Parameter, Type};
 use crate::encode::{Encode, EncodeExt};
 use crate::error::Error;
 
@@ -234,7 +234,7 @@ impl ConstantPool {
     }
 
     pub fn function(&self, index: PoolIndex<Function>) -> Result<&Function, Error> {
-        if let DefinitionValue::Function(ref fun) = self.definition(index)?.value {
+        if let AnyDefinition::Function(ref fun) = self.definition(index)?.value {
             Ok(fun)
         } else {
             Err(Error::PoolError(format!("{} is not a function", index.index)))
@@ -243,7 +243,7 @@ impl ConstantPool {
 
     pub fn function_mut(&mut self, index: PoolIndex<Function>) -> Result<&mut Function, Error> {
         let result = self.definitions.get_mut(index.index).map(|def| &mut def.value);
-        if let Some(DefinitionValue::Function(fun)) = result {
+        if let Some(AnyDefinition::Function(fun)) = result {
             Ok(fun)
         } else {
             Err(Error::PoolError(format!("{} is not a function", index.index)))
@@ -251,7 +251,7 @@ impl ConstantPool {
     }
 
     pub fn field(&self, index: PoolIndex<Field>) -> Result<&Field, Error> {
-        if let DefinitionValue::Field(ref field) = self.definition(index)?.value {
+        if let AnyDefinition::Field(ref field) = self.definition(index)?.value {
             Ok(field)
         } else {
             Err(Error::PoolError(format!("{} is not a field", index.index)))
@@ -259,7 +259,7 @@ impl ConstantPool {
     }
 
     pub fn parameter(&self, index: PoolIndex<Parameter>) -> Result<&Parameter, Error> {
-        if let DefinitionValue::Parameter(ref param) = self.definition(index)?.value {
+        if let AnyDefinition::Parameter(ref param) = self.definition(index)?.value {
             Ok(param)
         } else {
             Err(Error::PoolError(format!("{} is not a parameter", index.index)))
@@ -267,7 +267,7 @@ impl ConstantPool {
     }
 
     pub fn local(&self, index: PoolIndex<Local>) -> Result<&Local, Error> {
-        if let DefinitionValue::Local(ref local) = self.definition(index)?.value {
+        if let AnyDefinition::Local(ref local) = self.definition(index)?.value {
             Ok(local)
         } else {
             Err(Error::PoolError(format!("{} is not a local", index.index)))
@@ -275,7 +275,7 @@ impl ConstantPool {
     }
 
     pub fn type_(&self, index: PoolIndex<Type>) -> Result<&Type, Error> {
-        if let DefinitionValue::Type(ref type_) = self.definition(index)?.value {
+        if let AnyDefinition::Type(ref type_) = self.definition(index)?.value {
             Ok(type_)
         } else {
             Err(Error::PoolError(format!("{} is not a type", index.index)))
@@ -283,7 +283,7 @@ impl ConstantPool {
     }
 
     pub fn class(&self, index: PoolIndex<Class>) -> Result<&Class, Error> {
-        if let DefinitionValue::Class(ref class) = self.definition(index)?.value {
+        if let AnyDefinition::Class(ref class) = self.definition(index)?.value {
             Ok(class)
         } else {
             Err(Error::PoolError(format!("{} is not a class", index.index)))
@@ -292,7 +292,7 @@ impl ConstantPool {
 
     pub fn class_mut(&mut self, index: PoolIndex<Class>) -> Result<&mut Class, Error> {
         let result = self.definitions.get_mut(index.index).map(|def| &mut def.value);
-        if let Some(DefinitionValue::Class(fun)) = result {
+        if let Some(AnyDefinition::Class(fun)) = result {
             Ok(fun)
         } else {
             Err(Error::PoolError(format!("{} is not a class", index.index)))
@@ -300,7 +300,7 @@ impl ConstantPool {
     }
 
     pub fn enum_(&self, index: PoolIndex<Enum>) -> Result<&Enum, Error> {
-        if let DefinitionValue::Enum(ref enum_) = self.definition(index)?.value {
+        if let AnyDefinition::Enum(ref enum_) = self.definition(index)?.value {
             Ok(enum_)
         } else {
             Err(Error::PoolError(format!("{} is not an enum", index.index)))
@@ -320,14 +320,14 @@ impl ConstantPool {
     }
 
     pub fn reserve(&mut self) -> PoolIndex<Definition> {
-        self.push_definition(Definition::DEFAULT)
+        self.add_definition(Definition::DEFAULT)
     }
 
     pub fn put_definition(&mut self, index: PoolIndex<Definition>, definition: Definition) {
         self.definitions[index.index] = definition;
     }
 
-    pub fn push_definition(&mut self, definition: Definition) -> PoolIndex<Definition> {
+    pub fn add_definition(&mut self, definition: Definition) -> PoolIndex<Definition> {
         let position = self.definitions.len();
         self.definitions.push(definition);
         PoolIndex::new(position)

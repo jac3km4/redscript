@@ -7,37 +7,12 @@ use redscript::definition::{Definition, Enum, Field, Function, Local, LocalFlags
 use redscript::error::{Error, FunctionResolutionError};
 use strum::{Display, EnumString};
 
-use crate::scope::{FunctionCandidates, FunctionMatch, FunctionName, Scope};
-use crate::{Reference, TypeId};
-
-#[derive(Debug)]
-pub struct TypedAst;
-
-impl NameKind for TypedAst {
-    type Reference = Reference;
-    type Callable = Callable;
-    type Local = PoolIndex<Local>;
-    type Function = PoolIndex<Function>;
-    type Member = Member;
-    type Type = TypeId;
-}
-
-#[derive(Debug)]
-pub enum Callable {
-    Function(PoolIndex<Function>),
-    Intrinsic(IntrinsicOp, TypeId),
-}
-
-#[derive(Debug)]
-pub enum Member {
-    ClassField(PoolIndex<Field>),
-    StructField(PoolIndex<Field>),
-    EnumMember(PoolIndex<Enum>, PoolIndex<i64>),
-}
+use crate::scope::{FunctionCandidates, FunctionMatch, Scope};
+use crate::{Reference, Symbol, TypeId, Value};
 
 pub struct TypeChecker<'a> {
     pool: &'a mut ConstantPool,
-    pub locals: Vec<PoolIndex<Local>>,
+    locals: Vec<PoolIndex<Local>>,
 }
 
 impl<'a> TypeChecker<'a> {
@@ -111,10 +86,8 @@ impl<'a> TypeChecker<'a> {
                 if let Ok(intrinsic) = IntrinsicOp::from_str(name.as_ref()) {
                     self.check_intrinsic(intrinsic, args, expected, scope, *pos)?
                 } else {
-                    let fun_name = FunctionName::global(name.clone());
-                    let candidates = scope.resolve_function(fun_name, self.pool, *pos)?;
-                    let match_ =
-                        self.resolve_overload(name.clone(), candidates.clone(), args.iter(), expected, scope, *pos)?;
+                    let candidates = scope.resolve_function(name.clone(), *pos)?;
+                    let match_ = self.resolve_overload(name.clone(), candidates, args.iter(), expected, scope, *pos)?;
                     Expr::Call(Callable::Function(match_.index), match_.args, *pos)
                 }
             }
@@ -127,8 +100,7 @@ impl<'a> TypeChecker<'a> {
                     type_ => return Err(Error::invalid_context(type_.pretty(self.pool)?, *pos)),
                 };
                 let candidates = scope.resolve_method(name.clone(), class, self.pool, *pos)?;
-                let match_ =
-                    self.resolve_overload(name.clone(), candidates, args.iter(), expected, scope, *pos)?;
+                let match_ = self.resolve_overload(name.clone(), candidates, args.iter(), expected, scope, *pos)?;
 
                 if let TypeId::WeakRef(inner) = type_ {
                     let converted =
@@ -141,15 +113,15 @@ impl<'a> TypeChecker<'a> {
             Expr::BinOp(lhs, rhs, op, pos) => {
                 let name = Ident::Static(op.into());
                 let args = iter::once(lhs.as_ref()).chain(iter::once(rhs.as_ref()));
-                let candidates = scope.resolve_function(FunctionName::global(name.clone()), self.pool, *pos)?;
-                let match_ = self.resolve_overload(name, candidates.clone(), args, expected, scope, *pos)?;
+                let candidates = scope.resolve_function(name.clone(), *pos)?;
+                let match_ = self.resolve_overload(name, candidates, args, expected, scope, *pos)?;
                 Expr::Call(Callable::Function(match_.index), match_.args, *pos)
             }
             Expr::UnOp(expr, op, pos) => {
                 let name = Ident::Static(op.into());
                 let args = iter::once(expr.as_ref());
-                let candidates = scope.resolve_function(FunctionName::global(name.clone()), self.pool, *pos)?;
-                let match_ = self.resolve_overload(name, candidates.clone(), args, expected, scope, *pos)?;
+                let candidates = scope.resolve_function(name.clone(), *pos)?;
+                let match_ = self.resolve_overload(name, candidates, args, expected, scope, *pos)?;
                 Expr::Call(Callable::Function(match_.index), match_.args, *pos)
             }
             Expr::Member(context, name, pos) => {
@@ -529,21 +501,28 @@ impl<'a> TypeChecker<'a> {
         let name_idx = self.pool.names.add(name.to_owned());
         let local = Local::new(scope.get_type_index(&type_, self.pool)?, LocalFlags::new());
         let local_def = Definition::local(name_idx, scope.function.unwrap().cast(), local);
-        let local_idx = self.pool.push_definition(local_def).cast();
-        scope.push_local(name, local_idx);
+        let local_idx = self.pool.add_definition(local_def).cast();
+        scope.add_local(name, local_idx);
         self.locals.push(local_idx);
         Ok(local_idx)
+    }
+
+    pub fn locals(self) -> Vec<PoolIndex<Local>> {
+        self.locals
     }
 }
 
 pub fn type_of(expr: &Expr<TypedAst>, scope: &Scope, pool: &ConstantPool) -> Result<TypeId, Error> {
     let res = match expr {
         Expr::Ident(reference, pos) => match reference {
-            Reference::Local(idx) => scope.resolve_type_from_pool(pool.local(*idx)?.type_, pool, *pos)?,
-            Reference::Parameter(idx) => scope.resolve_type_from_pool(pool.parameter(*idx)?.type_, pool, *pos)?,
-            Reference::Class(idx) => TypeId::Class(*idx),
-            Reference::Struct(idx) => TypeId::Struct(*idx),
-            Reference::Enum(idx) => TypeId::Enum(*idx),
+            Reference::Value(Value::Local(idx)) => scope.resolve_type_from_pool(pool.local(*idx)?.type_, pool, *pos)?,
+            Reference::Value(Value::Parameter(idx)) => {
+                scope.resolve_type_from_pool(pool.parameter(*idx)?.type_, pool, *pos)?
+            }
+            Reference::Symbol(Symbol::Class(idx)) => TypeId::Class(*idx),
+            Reference::Symbol(Symbol::Struct(idx)) => TypeId::Struct(*idx),
+            Reference::Symbol(Symbol::Enum(idx)) => TypeId::Enum(*idx),
+            _ => panic!(),
         },
         Expr::Constant(cons, pos) => match cons {
             Constant::String(Literal::String, _) => scope.resolve_type(&TypeName::STRING, pool, *pos)?,
@@ -677,6 +656,31 @@ fn insert_conversion(expr: Expr<TypedAst>, type_: &TypeId, conversion: Conversio
             pos,
         ),
     }
+}
+
+#[derive(Debug)]
+pub struct TypedAst;
+
+impl NameKind for TypedAst {
+    type Reference = Reference;
+    type Callable = Callable;
+    type Local = PoolIndex<Local>;
+    type Function = PoolIndex<Function>;
+    type Member = Member;
+    type Type = TypeId;
+}
+
+#[derive(Debug)]
+pub enum Callable {
+    Function(PoolIndex<Function>),
+    Intrinsic(IntrinsicOp, TypeId),
+}
+
+#[derive(Debug)]
+pub enum Member {
+    ClassField(PoolIndex<Field>),
+    StructField(PoolIndex<Field>),
+    EnumMember(PoolIndex<Enum>, PoolIndex<i64>),
 }
 
 #[derive(Debug, PartialEq, Eq)]

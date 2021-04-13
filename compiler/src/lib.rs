@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 use assembler::Assembler;
-use parser::{Annotation, AnnotationName, FieldSource};
+use parser::{AnnotationName, FieldSource, SourceModule};
 use redscript::ast::{Ident, Pos, Seq, SourceAst};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::Code;
@@ -13,8 +13,8 @@ use redscript::definition::{
     Class, ClassFlags, Definition, Enum, Field, FieldFlags, Function, FunctionFlags, Local, Parameter, ParameterFlags, SourceReference, Type, Visibility
 };
 use redscript::error::Error;
-use scope::{FunctionName, Scope};
-use source_map::Files;
+use scope::{Scope, SymbolMap};
+use source_map::{Files, SourceLocation};
 use sugar::Desugar;
 use transform::ExprTransformer;
 use typechecker::TypeChecker;
@@ -31,15 +31,22 @@ pub mod typechecker;
 
 pub struct Compiler<'a> {
     pool: &'a mut ConstantPool,
-    backlog: Vec<BacklogItem>,
+    symbols: SymbolMap,
     scope: Scope,
+    backlog: Vec<BacklogItem>,
 }
 
 impl<'a> Compiler<'a> {
     pub fn new(pool: &'a mut ConstantPool) -> Result<Compiler<'a>, Error> {
+        let symbols = SymbolMap::new(pool)?;
         let scope = Scope::new(pool)?;
         let backlog = Vec::new();
-        Ok(Compiler { pool, backlog, scope })
+        Ok(Compiler {
+            pool,
+            symbols,
+            scope,
+            backlog,
+        })
     }
 
     pub fn compile(&mut self, files: &Files) -> Result<(), Error> {
@@ -54,11 +61,11 @@ impl<'a> Compiler<'a> {
                 Ok(())
             }
             Err(Error::CompileError(err, pos)) => {
-                Self::print_error(files, &err, pos);
+                Self::print_error(&err, files.lookup(pos).expect("Unknown file"));
                 Err(Error::CompileError(err, pos))
             }
             Err(Error::SyntaxError(err, pos)) => {
-                Self::print_error(files, &err, pos);
+                Self::print_error(&err, files.lookup(pos).expect("Unknown file"));
                 Err(Error::SyntaxError(err, pos))
             }
             Err(other) => {
@@ -69,12 +76,15 @@ impl<'a> Compiler<'a> {
     }
 
     fn try_compile(&mut self, files: &Files) -> Result<Vec<Diagnostic>, Error> {
-        let entries = parser::parse(files.sources()).map_err(|err| {
-            let message = format!("Syntax error, expected {}", err.expected);
-            Error::SyntaxError(message, Pos::new(err.location.offset))
-        })?;
-
-        self.compile_entries(entries)
+        let mut modules = vec![];
+        for file in files.files() {
+            let parsed = parser::parse(file.source()).map_err(|err| {
+                let message = format!("Syntax error, expected {}", err.expected);
+                Error::SyntaxError(message, Pos::new(err.location.offset))
+            })?;
+            modules.push(parsed);
+        }
+        self.compile_modules(modules)
     }
 
     fn print_diagnostic(files: &Files, diagnostic: Diagnostic) {
@@ -86,9 +96,8 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn print_error(files: &Files, error: &str, pos: Pos) {
-        let loc = files.lookup(pos).unwrap();
-        let line = files.enclosing_line(&loc).trim_end();
+    fn print_error(error: &str, loc: SourceLocation) {
+        let line = loc.enclosing_line().trim_end();
         log::error!(
             "Failed at {}:\n \
              {}\n \
@@ -101,137 +110,161 @@ impl<'a> Compiler<'a> {
         );
     }
 
-    fn compile_entries(&mut self, sources: Vec<SourceEntry>) -> Result<Vec<Diagnostic>, Error> {
+    fn compile_modules(&mut self, modules: Vec<SourceModule>) -> Result<Vec<Diagnostic>, Error> {
         let mut compiled_funs = HashSet::new();
         let mut diagnostics = Vec::new();
+        let mut queue = Vec::with_capacity(modules.len());
 
-        for entry in &sources {
-            if let SourceEntry::Class(class) = entry {
-                self.stub_type(class)?;
+        for module in modules {
+            let path = module.path.unwrap_or(ModulePath::EMPTY);
+            let mut slots = Vec::with_capacity(module.entries.len());
+            for entry in module.entries {
+                slots.push(self.define_symbol(entry, &path)?);
             }
+            queue.push((path, module.imports, slots));
         }
-        for entry in sources {
-            match entry {
-                SourceEntry::Class(class) => {
-                    self.define_class(class)?;
-                }
-                SourceEntry::Function(fun) => {
-                    let pos = fun.declaration.pos;
-                    let idx = self.define_function(fun, PoolIndex::UNDEFINED)?;
-                    if compiled_funs.contains(&idx) {
-                        diagnostics.push(Diagnostic::MethodConflict(idx, pos));
-                    } else {
-                        compiled_funs.insert(idx);
+
+        for (path, imports, slots) in queue {
+            let mut module_scope = self.scope.clone();
+
+            self.symbols
+                .populate_import(Import::All(path.clone(), Pos::ZERO), &mut module_scope)?;
+
+            for import in imports {
+                self.symbols.populate_import(import, &mut module_scope)?;
+            }
+
+            for slot in slots {
+                match slot {
+                    Slot::Function {
+                        index,
+                        parent,
+                        base,
+                        source,
+                    } => {
+                        let pos = source.declaration.pos;
+                        self.define_function(index, source, parent, base, &mut module_scope)?;
+                        if compiled_funs.contains(&index) {
+                            diagnostics.push(Diagnostic::MethodConflict(index, pos));
+                        } else {
+                            compiled_funs.insert(index);
+                        }
+                    }
+                    Slot::Class { index, source } => {
+                        self.define_class(index, source, &mut module_scope)?;
+                    }
+                    Slot::Field { index, source } => {
+                        self.define_global_let(index, source, &mut module_scope)?;
                     }
                 }
-                SourceEntry::GlobalLet(let_) => {
-                    self.define_global_let(let_)?;
-                }
             }
         }
+
         for item in self.backlog.drain(..) {
-            Self::compile_function(item.function, item.class, &item.code, &self.scope, self.pool)?;
+            Self::compile_function(item, self.pool)?;
         }
         Ok(diagnostics)
     }
 
-    fn stub_type(&mut self, class: &ClassSource) -> Result<(), Error> {
-        let name_idx = self.pool.names.add(Rc::new(class.name.clone()));
-        let type_idx = self.pool.push_definition(Definition::type_(name_idx, Type::Class));
-        let class_idx = self.pool.push_definition(Definition::type_(name_idx, Type::Class));
-        let name = Ident::Owned(self.pool.names.get(name_idx)?);
+    fn define_symbol(&mut self, entry: SourceEntry, module: &ModulePath) -> Result<Slot, Error> {
+        match entry {
+            SourceEntry::Class(class) => {
+                let path = module.with_child(class.name.clone());
+                let name_index = self.pool.names.add(path.render().to_owned());
+                let type_index = self.pool.add_definition(Definition::type_(name_index, Type::Class));
+                let index = self
+                    .pool
+                    .add_definition(Definition::type_(name_index, Type::Prim))
+                    .cast();
 
-        self.scope.types.insert(name.clone(), type_idx.cast());
-        self.scope.references.insert(name, Reference::Class(class_idx.cast()));
+                self.scope.add_type(path.render(), type_index.cast());
+                self.symbols.add_class(&path, index);
 
-        Ok(())
+                let slot = Slot::Class { index, source: class };
+                Ok(slot)
+            }
+            SourceEntry::Function(fun) => {
+                let slot = self.determine_function_location(fun, module)?;
+                Ok(slot)
+            }
+            SourceEntry::GlobalLet(source) => {
+                let name_idx = self.pool.names.add(source.declaration.name.to_owned());
+                let index = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
+
+                let slot = Slot::Field { index, source };
+                Ok(slot)
+            }
+        }
     }
 
-    fn define_class(&mut self, source: ClassSource) -> Result<(), Error> {
-        let name_idx = self.pool.names.add(Rc::new(source.name));
-        let name = Ident::Owned(self.pool.names.get(name_idx)?);
+    fn define_class(
+        &mut self,
+        class_idx: PoolIndex<Class>,
+        source: ClassSource,
+        scope: &mut Scope,
+    ) -> Result<(), Error> {
+        let visibility = source.qualifiers.visibility().unwrap_or(Visibility::Private);
+        let flags = ClassFlags::new();
+        let mut functions = vec![];
+        let mut fields = vec![];
 
-        if let Reference::Class(class_idx) = self.scope.resolve_reference(name, source.pos)? {
-            let visibility = source.qualifiers.visibility().unwrap_or(Visibility::Private);
-            let flags = ClassFlags::new();
-            let mut functions = vec![];
-            let mut fields = vec![];
+        for member in source.members {
+            match member {
+                MemberSource::Function(fun) => {
+                    let fun_id = FunctionId::from_source(&fun);
+                    let name_idx = self.pool.names.add(Rc::new(fun_id.into_owned()));
+                    let fun_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
 
-            for member in source.members {
-                match member {
-                    MemberSource::Function(fun) => {
-                        functions.push(self.define_function(fun, class_idx)?);
-                    }
-                    MemberSource::Field(let_) => {
-                        fields.push(self.define_field(let_, class_idx)?);
-                    }
+                    self.define_function(fun_idx, fun, class_idx, None, scope)?;
+                    functions.push(fun_idx);
+                }
+                MemberSource::Field(let_) => {
+                    let name_idx = self.pool.names.add(let_.declaration.name.to_owned());
+                    let field_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
+
+                    self.define_field(field_idx, let_, class_idx, scope)?;
+                    fields.push(field_idx);
                 }
             }
-
-            let base_idx = if let Some(base_name) = source.base {
-                let base_ident = Ident::new(base_name);
-                if let Reference::Class(base_idx) = self.scope.resolve_reference(base_ident.clone(), source.pos)? {
-                    base_idx
-                } else {
-                    return Err(Error::CompileError(
-                        format!("{} is not a class", base_ident),
-                        source.pos,
-                    ));
-                }
-            } else if let Ok(Reference::Class(class)) =
-                self.scope.resolve_reference(Ident::Static("IScriptable"), source.pos)
-            {
-                class
-            } else {
-                log::warn!("No IScriptable in scope, defaulting to no implicit base class");
-                PoolIndex::UNDEFINED
-            };
-
-            let class = Class {
-                visibility,
-                flags,
-                base: base_idx,
-                functions,
-                fields,
-                overrides: vec![],
-            };
-            self.pool
-                .put_definition(class_idx.cast(), Definition::class(name_idx, class));
-            Ok(())
-        } else {
-            panic!("Shouldn't get here")
         }
+
+        let base_idx = if let Some(base_name) = source.base {
+            if let Symbol::Class(base_idx) = scope.resolve_symbol(base_name.clone(), source.pos)? {
+                base_idx
+            } else {
+                return Err(Error::CompileError(format!("{} is not a class", base_name), source.pos));
+            }
+        } else if let Ok(Symbol::Class(class)) = scope.resolve_symbol(Ident::Static("IScriptable"), source.pos) {
+            class
+        } else {
+            log::warn!("No IScriptable in scope, defaulting to no implicit base class");
+            PoolIndex::UNDEFINED
+        };
+
+        let class = Class {
+            visibility,
+            flags,
+            base: base_idx,
+            functions,
+            fields,
+            overrides: vec![],
+        };
+        let name_idx = self.pool.definition(class_idx)?.name;
+
+        self.pool
+            .put_definition(class_idx.cast(), Definition::class(name_idx, class));
+        Ok(())
     }
 
     fn define_function(
         &mut self,
+        fun_idx: PoolIndex<Function>,
         source: FunctionSource,
         parent_idx: PoolIndex<Class>,
-    ) -> Result<PoolIndex<Function>, Error> {
+        base_method: Option<PoolIndex<Function>>,
+        scope: &mut Scope,
+    ) -> Result<(), Error> {
         let decl = &source.declaration;
-        let fun_id = FunctionId::from_source(&source);
-        let ident = Ident::new(decl.name.clone());
-
-        let (parent_idx, base_method, fun_idx) =
-            self.determine_function_location(&fun_id, ident.clone(), &decl.annotations, parent_idx)?;
-
-        let name_idx = if let Some(fun) = self
-            .pool
-            .definition(fun_idx)
-            .ok()
-            .filter(|d| d.name != PoolIndex::UNDEFINED)
-        {
-            fun.name
-        } else {
-            self.pool.names.add(Rc::new(fun_id.into_owned()))
-        };
-
-        let name = if parent_idx.is_undefined() {
-            FunctionName::global(ident)
-        } else {
-            FunctionName::instance(parent_idx, ident)
-        };
-
         let flags = FunctionFlags::new()
             .with_is_static(decl.qualifiers.contain(Qualifier::Static) || parent_idx == PoolIndex::UNDEFINED)
             .with_is_final(decl.qualifiers.contain(Qualifier::Final))
@@ -252,24 +285,22 @@ impl<'a> Compiler<'a> {
             None => None,
             Some(type_) if type_.name.as_ref() == "Void" => None,
             Some(type_) => {
-                let type_ = self.scope.resolve_type(&type_, self.pool, decl.pos)?;
-                Some(self.scope.get_type_index(&type_, self.pool)?)
+                let type_ = scope.resolve_type(&type_, self.pool, decl.pos)?;
+                Some(scope.get_type_index(&type_, self.pool)?)
             }
         };
 
         let mut parameters = Vec::new();
 
         for param in &source.parameters {
-            let type_ = self.scope.resolve_type(&param.type_, self.pool, decl.pos)?;
-            let type_idx = self.scope.get_type_index(&type_, self.pool)?;
+            let type_ = scope.resolve_type(&param.type_, self.pool, decl.pos)?;
+            let type_idx = scope.get_type_index(&type_, self.pool)?;
             let flags = ParameterFlags::new()
                 .with_is_out(param.qualifiers.contain(Qualifier::Out))
                 .with_is_optional(param.qualifiers.contain(Qualifier::Optional));
-            let name = self.pool.names.add(Rc::new(param.name.clone()));
+            let name = self.pool.names.add(param.name.to_owned());
             let param = Parameter { type_: type_idx, flags };
-            let idx = self
-                .pool
-                .push_definition(Definition::param(name, fun_idx.cast(), param));
+            let idx = self.pool.add_definition(Definition::param(name, fun_idx.cast(), param));
             parameters.push(idx.cast());
         }
 
@@ -291,26 +322,34 @@ impl<'a> Compiler<'a> {
             cast: 0,
             code: Code::EMPTY,
         };
+        let name_idx = self.pool.definition(fun_idx)?.name;
         let definition = Definition::function(name_idx, parent_idx.cast(), function);
-        self.pool.put_definition(fun_idx.cast(), definition);
+
         if let Some(code) = source.body {
             let item = BacklogItem {
                 class: parent_idx,
                 function: fun_idx,
                 code,
+                scope: scope.clone(),
             };
             self.backlog.push(item)
         }
-        self.scope.push_function(name, fun_idx);
-        Ok(fun_idx)
+
+        self.pool.put_definition(fun_idx.cast(), definition);
+        Ok(())
     }
 
-    fn define_field(&mut self, source: FieldSource, parent: PoolIndex<Class>) -> Result<PoolIndex<Field>, Error> {
+    fn define_field(
+        &mut self,
+        index: PoolIndex<Field>,
+        source: FieldSource,
+        parent: PoolIndex<Class>,
+        scope: &mut Scope,
+    ) -> Result<(), Error> {
         let decl = source.declaration;
-        let name = self.pool.names.add(Rc::new(decl.name));
         let visibility = decl.qualifiers.visibility().unwrap_or(Visibility::Private);
-        let type_ = self.scope.resolve_type(&source.type_, self.pool, decl.pos)?;
-        let type_idx = self.scope.get_type_index(&type_, self.pool)?;
+        let type_ = scope.resolve_type(&source.type_, self.pool, decl.pos)?;
+        let type_idx = scope.get_type_index(&type_, self.pool)?;
         let flags = FieldFlags::new().with_is_mutable(true);
         let field = Field {
             visibility,
@@ -320,27 +359,33 @@ impl<'a> Compiler<'a> {
             attributes: vec![],
             defaults: vec![],
         };
-        let definition = Definition::field(name, parent.cast(), field);
-        let idx = self.pool.push_definition(definition).cast();
-        Ok(idx)
+        let name_idx = self.pool.definition(index)?.name;
+        let definition = Definition::field(name_idx, parent.cast(), field);
+
+        self.pool.put_definition(index.cast(), definition);
+        Ok(())
     }
 
-    fn define_global_let(&mut self, source: FieldSource) -> Result<(), Error> {
+    fn define_global_let(
+        &mut self,
+        index: PoolIndex<Field>,
+        source: FieldSource,
+        scope: &mut Scope,
+    ) -> Result<(), Error> {
         let decl = &source.declaration;
         for ann in &source.declaration.annotations {
             match ann.name {
                 AnnotationName::AddField => {
-                    let value = ann
+                    let ident = ann
                         .values
                         .first()
                         .ok_or_else(|| Error::invalid_annotation_args(ann.pos))?;
-                    let ident = Ident::new(value.clone());
-                    if let Reference::Class(target_class) = self.scope.resolve_reference(ident.clone(), ann.pos)? {
-                        let idx = self.define_field(source, target_class)?;
-                        self.pool.class_mut(target_class)?.fields.push(idx);
+                    if let Symbol::Class(target_class) = scope.resolve_symbol(ident.clone(), ann.pos)? {
+                        self.define_field(index, source, target_class, scope)?;
+                        self.pool.class_mut(target_class)?.fields.push(index);
                         return Ok(());
                     } else {
-                        return Err(Error::class_not_found(ident.as_ref(), ann.pos));
+                        return Err(Error::class_not_found(ident, ann.pos));
                     }
                 }
                 _ => {}
@@ -352,51 +397,59 @@ impl<'a> Compiler<'a> {
         ))
     }
 
-    fn determine_function_location(
-        &mut self,
-        name: &FunctionId,
-        ident: Ident,
-        annotations: &[Annotation],
-        parent: PoolIndex<Class>,
-    ) -> Result<(PoolIndex<Class>, Option<PoolIndex<Function>>, PoolIndex<Function>), Error> {
-        for ann in annotations {
+    fn determine_function_location(&mut self, source: FunctionSource, module: &ModulePath) -> Result<Slot, Error> {
+        let name = source.declaration.name.clone();
+        let id = FunctionId::from_source(&source);
+
+        for ann in &source.declaration.annotations {
             match ann.name {
                 AnnotationName::ReplaceMethod => {
-                    let value = ann
+                    let class_name = ann
                         .values
                         .first()
                         .ok_or_else(|| Error::invalid_annotation_args(ann.pos))?;
-                    let class_name = Ident::new(value.clone());
-                    let target_class_idx = match self.scope.resolve_reference(class_name, ann.pos)? {
-                        Reference::Class(idx) => idx,
-                        Reference::Struct(idx) => idx,
-                        _ => return Err(Error::class_not_found(value, ann.pos)),
+                    let target_class_idx = match self.scope.resolve_symbol(class_name.clone(), ann.pos)? {
+                        Symbol::Class(idx) => idx,
+                        Symbol::Struct(idx) => idx,
+                        _ => return Err(Error::class_not_found(class_name, ann.pos)),
                     };
-                    let fun_name = FunctionName::instance(target_class_idx, ident);
-                    let candidates = self.scope.resolve_function(fun_name.clone(), self.pool, ann.pos)?;
+                    let candidates = self
+                        .scope
+                        .resolve_method(name.clone(), target_class_idx, self.pool, ann.pos)?;
                     let fun_idx = candidates
-                        .by_id(name, self.pool)
-                        .ok_or_else(|| Error::function_not_found(fun_name.pretty(self.pool), ann.pos))?;
+                        .by_id(&id, self.pool)
+                        .ok_or_else(|| Error::function_not_found(name, ann.pos))?;
                     let fun = self.pool.function(fun_idx)?;
-                    return Ok((target_class_idx, fun.base_method, fun_idx));
+                    let slot = Slot::Function {
+                        index: fun_idx,
+                        parent: target_class_idx,
+                        base: fun.base_method,
+                        source,
+                    };
+                    return Ok(slot);
                 }
                 AnnotationName::ReplaceGlobal => {
-                    let fun_name = FunctionName::global(ident);
-                    let candidates = self.scope.resolve_function(fun_name.clone(), self.pool, ann.pos)?;
+                    let candidates = self.scope.resolve_function(name.clone(), ann.pos)?;
                     let fun_idx = candidates
-                        .by_id(name, self.pool)
-                        .ok_or_else(|| Error::function_not_found(fun_name.pretty(self.pool), ann.pos))?;
-                    return Ok((PoolIndex::UNDEFINED, None, fun_idx));
+                        .by_id(&id, self.pool)
+                        .ok_or_else(|| Error::function_not_found(name, ann.pos))?;
+
+                    let slot = Slot::Function {
+                        index: fun_idx,
+                        parent: PoolIndex::UNDEFINED,
+                        base: None,
+                        source,
+                    };
+                    return Ok(slot);
                 }
                 AnnotationName::AddMethod => {
                     let value = ann
                         .values
                         .first()
                         .ok_or_else(|| Error::invalid_annotation_args(ann.pos))?;
-                    let ident = Ident::new(value.clone());
-                    let target_class_idx = match self.scope.resolve_reference(ident, ann.pos)? {
-                        Reference::Class(idx) => idx,
-                        Reference::Struct(idx) => idx,
+                    let target_class_idx = match self.scope.resolve_symbol(name, ann.pos)? {
+                        Symbol::Class(idx) => idx,
+                        Symbol::Struct(idx) => idx,
                         _ => return Err(Error::class_not_found(value, ann.pos)),
                     };
                     let class = self.pool.class(target_class_idx)?;
@@ -404,62 +457,129 @@ impl<'a> Compiler<'a> {
                         let base = self.pool.class(class.base)?;
                         base.functions
                             .iter()
-                            .find(|fun| self.pool.definition_name(**fun).unwrap().as_str() == name.as_ref())
+                            .find(|fun| self.pool.definition_name(**fun).unwrap().as_str() == id.as_ref())
                             .cloned()
                     } else {
                         None
                     };
                     let fun_idx = self.pool.reserve().cast();
                     self.pool.class_mut(target_class_idx)?.functions.push(fun_idx);
-                    return Ok((target_class_idx, base_method, fun_idx));
+
+                    let slot = Slot::Function {
+                        index: fun_idx,
+                        parent: target_class_idx,
+                        base: base_method,
+                        source,
+                    };
+                    return Ok(slot);
                 }
                 AnnotationName::AddField => {}
             }
         }
+        let path = module.with_child(name);
+        let name_idx = self
+            .pool
+            .names
+            .add(module.with_child(Ident::new(id.into_owned())).render().to_owned());
 
-        Ok((parent, None, self.pool.reserve().cast()))
+        let fun_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim));
+        self.symbols.add_function(&path, fun_idx.cast());
+
+        let slot = Slot::Function {
+            index: fun_idx.cast(),
+            parent: PoolIndex::UNDEFINED,
+            base: None,
+            source,
+        };
+        Ok(slot)
     }
 
-    fn compile_function(
-        fun_idx: PoolIndex<Function>,
-        class_idx: PoolIndex<Class>,
-        seq: &Seq<SourceAst>,
-        scope: &Scope,
-        pool: &mut ConstantPool,
-    ) -> Result<(), Error> {
-        let fun = pool.function(fun_idx)?;
+    fn compile_function(item: BacklogItem, pool: &mut ConstantPool) -> Result<(), Error> {
+        let fun = pool.function(item.function)?;
+
         let mut local_scope = if fun.flags.is_static() {
-            scope.with_context(None, fun_idx)
+            item.scope.with_context(None, item.function)
         } else {
-            scope.with_context(Some(class_idx), fun_idx)
+            item.scope.with_context(Some(item.class), item.function)
         };
 
         for param in &fun.parameters {
             let ident = Ident::Owned(pool.definition_name(*param)?);
-            local_scope.references.insert(ident, Reference::Parameter(*param));
+            local_scope.add_parameter(ident, *param);
         }
 
         let mut checker = TypeChecker::new(pool);
-        let checked = checker.check_seq(seq, &mut local_scope)?;
-        let mut locals = checker.locals;
+        let checked = checker.check_seq(&item.code, &mut local_scope)?;
+        let mut locals = checker.locals();
 
         let mut desugar = Desugar::new(&mut local_scope, pool);
         let desugared = desugar.on_seq(checked)?;
-        locals.append(&mut desugar.locals);
+        locals.extend(desugar.locals());
 
         let code = Assembler::from_body(desugared, &mut local_scope, pool)?;
-        let function = pool.function_mut(fun_idx)?;
+        let function = pool.function_mut(item.function)?;
         function.code = code;
         function.locals = locals;
         Ok(())
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ModulePath {
+    parts: Vec<Ident>,
+}
+
+impl ModulePath {
+    pub const EMPTY: ModulePath = ModulePath { parts: vec![] };
+
+    pub fn new(parts: Vec<Ident>) -> ModulePath {
+        ModulePath { parts }
+    }
+
+    pub fn parse(str: &str) -> ModulePath {
+        let parts = str
+            .split('.')
+            .map(|str| Ident::new(str.split(';').next().unwrap().to_owned()))
+            .collect();
+        ModulePath { parts }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.parts.is_empty()
+    }
+
+    pub fn with_child(&self, child: Ident) -> ModulePath {
+        let mut copy = self.clone();
+        copy.parts.push(child);
+        copy
+    }
+
+    pub fn render(&self) -> Ident {
+        self.parts
+            .iter()
+            .cloned()
+            .reduce(|acc, m| Ident::new(format!("{}.{}", acc, m)))
+            .unwrap_or(Ident::Static(""))
+    }
+}
+
+impl panoradix::RadixKey for ModulePath {
+    type Component = Ident;
+
+    fn as_slice(&self) -> &[Self::Component] {
+        &self.parts
+    }
+
+    fn from_vec(parts: Vec<Self::Component>) -> Self::Owned {
+        ModulePath { parts }
+    }
+}
+
 pub struct BacklogItem {
     class: PoolIndex<Class>,
     function: PoolIndex<Function>,
     code: Seq<SourceAst>,
+    scope: Scope,
 }
 
 #[derive(Debug)]
@@ -468,12 +588,47 @@ pub enum Diagnostic {
 }
 
 #[derive(Debug, Clone)]
-pub enum Reference {
+pub enum Value {
     Local(PoolIndex<Local>),
     Parameter(PoolIndex<Parameter>),
+}
+
+#[derive(Debug, Clone)]
+pub enum Symbol {
     Class(PoolIndex<Class>),
     Struct(PoolIndex<Class>),
     Enum(PoolIndex<Enum>),
+    Functions(Vec<PoolIndex<Function>>),
+}
+
+#[derive(Debug, Clone)]
+pub enum Import {
+    Exact(ModulePath, Pos),
+    Selected(ModulePath, Vec<Ident>, Pos),
+    All(ModulePath, Pos),
+}
+
+#[derive(Debug, Clone)]
+pub enum Reference {
+    Value(Value),
+    Symbol(Symbol),
+}
+
+pub enum Slot {
+    Function {
+        index: PoolIndex<Function>,
+        parent: PoolIndex<Class>,
+        base: Option<PoolIndex<Function>>,
+        source: FunctionSource,
+    },
+    Class {
+        index: PoolIndex<Class>,
+        source: ClassSource,
+    },
+    Field {
+        index: PoolIndex<Field>,
+        source: FieldSource,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -540,7 +695,7 @@ impl<'a> FunctionId<'a> {
     pub fn from_source(source: &'a FunctionSource) -> Self {
         let qs = &source.declaration.qualifiers;
         if qs.contain(Qualifier::Callback) || qs.contain(Qualifier::Exec) || qs.contain(Qualifier::Native) {
-            FunctionId(Cow::Borrowed(&source.declaration.name))
+            FunctionId(Cow::Borrowed(source.declaration.name.as_ref()))
         } else {
             let mut signature = String::new();
             for arg in &source.parameters {
@@ -568,7 +723,7 @@ mod tests {
 
     use redscript::bundle::{PoolIndex, ScriptBundle};
     use redscript::bytecode::{Code, Instr, Offset};
-    use redscript::definition::DefinitionValue;
+    use redscript::definition::AnyDefinition;
     use redscript::error::Error;
 
     use crate::{parser, Compiler};
@@ -595,7 +750,7 @@ mod tests {
 
         let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
         let mut compiler = Compiler::new(&mut scripts.pool)?;
-        compiler.compile_entries(sources)?;
+        compiler.compile_modules(vec![sources])?;
         Ok(())
     }
 
@@ -621,7 +776,7 @@ mod tests {
 
         let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
         let mut compiler = Compiler::new(&mut scripts.pool)?;
-        compiler.compile_entries(sources)?;
+        compiler.compile_modules(vec![sources])?;
         Ok(())
     }
 
@@ -645,7 +800,7 @@ mod tests {
 
         let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
         let mut compiler = Compiler::new(&mut scripts.pool)?;
-        compiler.compile_entries(sources)?;
+        compiler.compile_modules(vec![sources])?;
         Ok(())
     }
 
@@ -662,7 +817,7 @@ mod tests {
 
         let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
         let mut compiler = Compiler::new(&mut scripts.pool)?;
-        compiler.compile_entries(sources)?;
+        compiler.compile_modules(vec![sources])?;
         Ok(())
     }
 
@@ -681,11 +836,11 @@ mod tests {
             Instr::Assign,
             Instr::Local(PoolIndex::new(27)),
             Instr::RefToWeakRef,
-            Instr::New(PoolIndex::new(24)),
+            Instr::New(PoolIndex::new(25)),
             Instr::Assign,
             Instr::Local(PoolIndex::new(29)),
             Instr::RefToWeakRef,
-            Instr::DynamicCast(PoolIndex::new(22), 0),
+            Instr::DynamicCast(PoolIndex::new(23), 0),
             Instr::WeakRefToRef,
             Instr::Local(PoolIndex::new(27)),
             Instr::Nop,
@@ -711,7 +866,7 @@ mod tests {
         let expected = vec![
             Instr::Assign,
             Instr::Local(PoolIndex::new(32)),
-            Instr::New(PoolIndex::new(24)),
+            Instr::New(PoolIndex::new(25)),
             Instr::Context(Offset::new(36)),
             Instr::Local(PoolIndex::new(32)),
             Instr::InvokeStatic(Offset::new(24), 0, PoolIndex::new(28)),
@@ -742,7 +897,7 @@ mod tests {
             Instr::ParamEnd,
             Instr::Assign,
             Instr::Local(PoolIndex::new(27)),
-            Instr::InvokeStatic(Offset::new(19), 0, PoolIndex::new(24)),
+            Instr::InvokeStatic(Offset::new(19), 0, PoolIndex::new(23)),
             Instr::I32Const(2),
             Instr::ParamEnd,
             Instr::Nop,
@@ -767,12 +922,12 @@ mod tests {
             ";
         let expected = vec![
             Instr::Assign,
-            Instr::Local(PoolIndex::new(37)),
-            Instr::New(PoolIndex::new(24)),
-            Instr::InvokeStatic(Offset::new(33), 0, PoolIndex::new(28)),
+            Instr::Local(PoolIndex::new(38)),
+            Instr::New(PoolIndex::new(27)),
+            Instr::InvokeStatic(Offset::new(33), 0, PoolIndex::new(22)),
             Instr::RefToWeakRef,
-            Instr::Local(PoolIndex::new(37)),
-            Instr::Local(PoolIndex::new(37)),
+            Instr::Local(PoolIndex::new(38)),
+            Instr::Local(PoolIndex::new(38)),
             Instr::ParamEnd,
             Instr::Nop,
         ];
@@ -806,7 +961,7 @@ mod tests {
             Instr::Local(PoolIndex::new(34)),
             Instr::I32Const(0),
             Instr::JumpIfFalse(Offset::new(144)),
-            Instr::InvokeStatic(Offset::new(41), 0, PoolIndex::new(27)),
+            Instr::InvokeStatic(Offset::new(41), 0, PoolIndex::new(24)),
             Instr::Local(PoolIndex::new(34)),
             Instr::ArraySize(PoolIndex::new(31)),
             Instr::Local(PoolIndex::new(33)),
@@ -820,7 +975,7 @@ mod tests {
             Instr::ToString(PoolIndex::new(8)),
             Instr::Local(PoolIndex::new(30)),
             Instr::ParamEnd,
-            Instr::InvokeStatic(Offset::new(28), 0, PoolIndex::new(24)),
+            Instr::InvokeStatic(Offset::new(28), 0, PoolIndex::new(23)),
             Instr::Local(PoolIndex::new(34)),
             Instr::I32Const(1),
             Instr::ParamEnd,
@@ -887,7 +1042,7 @@ mod tests {
             Instr::Assign,
             Instr::Local(PoolIndex::new(24)),
             Instr::ToVariant(PoolIndex::new(25)),
-            Instr::New(PoolIndex::new(22)),
+            Instr::New(PoolIndex::new(23)),
             Instr::Assign,
             Instr::Local(PoolIndex::new(26)),
             Instr::FromVariant(PoolIndex::new(25)),
@@ -916,8 +1071,8 @@ mod tests {
             ";
         let expected = vec![
             Instr::Switch(PoolIndex::new(8), Offset::new(39)),
-            Instr::InvokeStatic(Offset::new(28), 0, PoolIndex::new(23)),
-            Instr::Param(PoolIndex::new(22)),
+            Instr::InvokeStatic(Offset::new(28), 0, PoolIndex::new(22)),
+            Instr::Param(PoolIndex::new(23)),
             Instr::I32Const(4),
             Instr::ParamEnd,
             Instr::SwitchLabel(Offset::new(10), Offset::new(30)),
@@ -948,9 +1103,9 @@ mod tests {
         let expected = vec![
             Instr::Return,
             Instr::Conditional(Offset::new(53), Offset::new(54)),
-            Instr::InvokeStatic(Offset::new(47), 0, PoolIndex::new(26)),
-            Instr::InvokeStatic(Offset::new(28), 0, PoolIndex::new(23)),
-            Instr::Param(PoolIndex::new(22)),
+            Instr::InvokeStatic(Offset::new(47), 0, PoolIndex::new(23)),
+            Instr::InvokeStatic(Offset::new(28), 0, PoolIndex::new(22)),
+            Instr::Param(PoolIndex::new(24)),
             Instr::I32Const(2),
             Instr::ParamEnd,
             Instr::I32Const(0),
@@ -1042,14 +1197,14 @@ mod tests {
         let expected = vec![
             Instr::Assign,
             Instr::Local(PoolIndex::new(25)),
-            Instr::New(PoolIndex::new(22)),
+            Instr::New(PoolIndex::new(23)),
             Instr::JumpIfFalse(Offset::new(13)),
             Instr::RefToBool,
             Instr::Local(PoolIndex::new(25)),
             Instr::Assign,
             Instr::Local(PoolIndex::new(27)),
             Instr::RefToWeakRef,
-            Instr::New(PoolIndex::new(22)),
+            Instr::New(PoolIndex::new(23)),
             Instr::JumpIfFalse(Offset::new(13)),
             Instr::WeakRefToBool,
             Instr::Local(PoolIndex::new(27)),
@@ -1058,18 +1213,55 @@ mod tests {
         check_function_bytecode(sources, expected)
     }
 
-    fn check_function_bytecode(code: &str, instrs: Vec<Instr<Offset>>) -> Result<(), Error> {
-        let entries = parser::parse(code).unwrap();
+    #[test]
+    fn compile_mutually_dependent_modules() -> Result<(), Error> {
+        let sources1 = parser::parse(
+            "
+            module MyModule.Module1
+            import MyModule.Module2.{B, Func2}
+
+            func Func1() -> Int32 = 2
+
+            class A {
+                func Thing() -> Int32 {
+                    Func2();
+                    return new B().Thing();
+                }
+            }",
+        )
+        .unwrap();
+
+        let sources2 = parser::parse(
+            "
+            module MyModule.Module2
+            import MyModule.Module1.*
+
+            func Func2() -> Int32 = 2
+
+            class B {
+                func Thing() -> Int32 = Func2()
+            }",
+        )
+        .unwrap();
+
         let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
         let mut compiler = Compiler::new(&mut scripts.pool)?;
-        compiler.compile_entries(entries)?;
+        compiler.compile_modules(vec![sources1, sources2])?;
+        Ok(())
+    }
+
+    fn check_function_bytecode(code: &str, instrs: Vec<Instr<Offset>>) -> Result<(), Error> {
+        let module = parser::parse(code).unwrap();
+        let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
+        let mut compiler = Compiler::new(&mut scripts.pool)?;
+        compiler.compile_modules(vec![module])?;
         let match_ = scripts
             .pool
             .definitions()
-            .find(|(_, def)| matches!(def.value, DefinitionValue::Function(_)))
+            .find(|(_, def)| matches!(def.value, AnyDefinition::Function(_)))
             .map(|(_, def)| &def.value);
 
-        if let Some(DefinitionValue::Function(fun)) = match_ {
+        if let Some(AnyDefinition::Function(fun)) = match_ {
             assert_eq!(fun.code, Code(instrs))
         } else {
             assert!(false, "No function found in the pool")

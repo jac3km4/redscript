@@ -23,7 +23,7 @@ impl Error {
         Error::CompileError(error, pos)
     }
 
-    pub fn class_not_found(class_name: &str, pos: Pos) -> Error {
+    pub fn class_not_found<N: Display>(class_name: N, pos: Pos) -> Error {
         let error = format!("Can't find class {}", class_name);
         Error::CompileError(error, pos)
     }

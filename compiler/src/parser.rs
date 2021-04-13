@@ -7,6 +7,15 @@ use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, Pos, Seq, SourceAst,
 use redscript::definition::Visibility;
 use strum::EnumString;
 
+use crate::{Import, ModulePath};
+
+#[derive(Debug)]
+pub struct SourceModule {
+    pub path: Option<ModulePath>,
+    pub imports: Vec<Import>,
+    pub entries: Vec<SourceEntry>,
+}
+
 #[derive(Debug)]
 pub enum SourceEntry {
     Class(ClassSource),
@@ -17,8 +26,8 @@ pub enum SourceEntry {
 #[derive(Debug)]
 pub struct ClassSource {
     pub qualifiers: Qualifiers,
-    pub name: String,
-    pub base: Option<String>,
+    pub name: Ident,
+    pub base: Option<Ident>,
     pub members: Vec<MemberSource>,
     pub pos: Pos,
 }
@@ -46,7 +55,7 @@ pub struct FunctionSource {
 #[derive(Debug)]
 pub struct ParameterSource {
     pub qualifiers: Qualifiers,
-    pub name: String,
+    pub name: Ident,
     pub type_: TypeName,
 }
 
@@ -87,14 +96,14 @@ impl Qualifiers {
 pub struct Declaration {
     pub annotations: Vec<Annotation>,
     pub qualifiers: Qualifiers,
-    pub name: String,
+    pub name: Ident,
     pub pos: Pos,
 }
 
 #[derive(Debug)]
 pub struct Annotation {
     pub name: AnnotationName,
-    pub values: Vec<String>,
+    pub values: Vec<Ident>,
     pub pos: Pos,
 }
 
@@ -107,8 +116,8 @@ pub enum AnnotationName {
     AddField,
 }
 
-pub fn parse(input: &str) -> Result<Vec<SourceEntry>, ParseError<LineCol>> {
-    lang::source(input)
+pub fn parse(input: &str) -> Result<SourceModule, ParseError<LineCol>> {
+    lang::module(input)
 }
 
 peg::parser! {
@@ -117,6 +126,7 @@ peg::parser! {
 
         rule _() = quiet!{ ([' ' | '\n' | '\r' | '\t'] / comment() / line_comment())* }
         rule commasep<T>(x: rule<T>) -> Vec<T> = v:(x() ** ("," _)) {v}
+        rule dotsep<T>(x: rule<T>) -> Vec<T> = v:(x() ** ("." _)) {v}
 
         rule comment_start() = "/*"
         rule comment_end() = "*/"
@@ -147,17 +157,17 @@ peg::parser! {
 
         rule annotation() -> Annotation
             = pos:position!() "@" ident:ident() _ "(" _ values:commasep(<ident()>) _ ")" {?
-                AnnotationName::from_str(&ident).map(|name| {
+                AnnotationName::from_str(ident.as_ref()).map(|name| {
                     Annotation { name, values, pos: Pos::new(pos) }
                 }).map_err(|_| "annotation")
             }
 
         rule qualifiers() -> Qualifiers = qs:qualifier() ** _ { Qualifiers(qs) }
 
-        rule ident() -> String
+        rule ident() -> Ident
             = quiet!{
                 x:$(['a'..='z' | 'A'..='Z' | '_']) xs:$(['0'..='9' | 'a'..='z' | 'A'..='Z' | '_']*)
-                { format!("{}{}", x, xs) }
+                { Ident::new(format!("{}{}", x, xs)) }
             } / expected!("identifier")
 
         rule keyword(id: &'static str) -> () =
@@ -181,7 +191,7 @@ peg::parser! {
             / "\\u{" u:$(['a'..='f' | 'A'..='F' | '0'..='9']*<1,6>) "}" {
                 String::from(char::from_u32(u32::from_str_radix(u, 16).unwrap()).unwrap())
             }
-        
+
         pub rule escaped_string() -> String
             = "\"" s:escaped_char()* "\"" { s.join("") }
 
@@ -195,7 +205,7 @@ peg::parser! {
         rule seq() -> Seq<SourceAst> = exprs:(stmt() ** _) { Seq::new(exprs) }
 
         rule type_() -> TypeName
-            = name:ident() args:type_args()? { TypeName { name: Ident::new(name), arguments: args.unwrap_or_default() } }
+            = name:ident() args:type_args()? { TypeName { name, arguments: args.unwrap_or_default() } }
         rule type_args() -> Vec<TypeName> = "<" _ args:commasep(<type_()>) _ ">" { args }
 
         rule let_type() -> TypeName = ":" _ type_:type_() { type_ }
@@ -205,7 +215,7 @@ peg::parser! {
 
         rule let() -> Expr<SourceAst>
             = pos:position!() keyword("let") _ name:ident() _ type_:let_type()? _ val:initializer()? _ ";"
-            { Expr::Declare(Ident::new(name), type_, val.map(Box::new), Pos::new(pos)) }
+            { Expr::Declare(name, type_, val.map(Box::new), Pos::new(pos)) }
 
         rule decl(inner: rule<()>) -> Declaration
             = pos:position!() annotations:(annotation() ** _) _ qualifiers:qualifiers() _ inner() _ name:ident()
@@ -226,7 +236,7 @@ peg::parser! {
             = qualifiers:qualifiers() _ name:ident() _ type_:let_type()
             { ParameterSource { qualifiers, name, type_ } }
 
-        rule extends() -> String = keyword("extends") _ name:ident() { name }
+        rule extends() -> Ident = keyword("extends") _ name:ident() { name }
 
         pub rule class() -> ClassSource
             = pos:position!() qualifiers:qualifiers() _ keyword("class") _ name:ident() _ base:extends()? _ "{" _ members:member()**_ _ "}"
@@ -241,7 +251,21 @@ peg::parser! {
             / class:class() { SourceEntry::Class(class) }
             / field:field() { SourceEntry::GlobalLet(field) }
 
-        pub rule source() -> Vec<SourceEntry> = _ decls:(source_entry() ** _) _ { decls }
+
+        rule import() -> Import
+            = pos:position!() keyword("import") _ parts: dotsep(<ident()>) _ "." _ "*"
+                { Import::All(ModulePath::new(parts), Pos::new(pos)) }
+            / pos:position!() keyword("import") _ parts: dotsep(<ident()>) _ "." _ "{" _ names:commasep(<ident()>) _ "}"
+                { Import::Selected(ModulePath::new(parts), names, Pos::new(pos)) }
+            / pos:position!() keyword("import") _ parts: dotsep(<ident()>)
+                { Import::Exact(ModulePath::new(parts), Pos::new(pos)) }
+
+        rule module_path() -> ModulePath  =
+            keyword("module") _ parts:dotsep(<ident()>) { ModulePath { parts } }
+
+        pub rule module() -> SourceModule =
+            _ path:module_path()? _ imports:(import() ** _) entries:(source_entry() ** _) _
+            { SourceModule { path, imports, entries } }
 
         rule switch() -> Expr<SourceAst>
             = keyword("switch") _ matcher:expr() _ "{" _ cases:(case() ** _) _ default:default()? _ "}" _ ";"?
@@ -260,7 +284,7 @@ peg::parser! {
 
         rule for_() -> Expr<SourceAst>
             = pos:position!() keyword("for") _ ident:ident() _ keyword("in") _ array:expr() _ "{" _ body:seq() _ "}" _ ";"?
-            { Expr::ForIn(Ident::new(ident), Box::new(array), body, Pos::new(pos)) }
+            { Expr::ForIn(ident, Box::new(array), body, Pos::new(pos)) }
 
         rule if_() -> Expr<SourceAst>
             = pos:position!() keyword("if") _ cond:expr() _ "{" _ if_:seq() _ "}" _ else_:else_()? _ ";"?
@@ -312,14 +336,14 @@ peg::parser! {
             pos:position!() "~" _ x:@ { Expr::UnOp(Box::new(x), UnOp::BitNot, Pos::new(pos)) }
             pos:position!() "-" _ x:@ { Expr::UnOp(Box::new(x), UnOp::Neg, Pos::new(pos)) }
             pos:position!() keyword("new") _ id:ident() _ "(" _ params:commasep(<expr()>) _ ")"
-                { Expr::New(TypeName::basic_owned(Rc::new(id)), params, Pos::new(pos)) }
+                { Expr::New(TypeName::basic_owned(id.to_owned()), params, Pos::new(pos)) }
             --
             expr:(@) _ pos:position!() "[" _ idx:expr() _ "]"
                 { Expr::ArrayElem(Box::new(expr), Box::new(idx), Pos::new(pos)) }
             expr:(@) _ pos:position!() "." _ ident:ident() _ "(" _ params:commasep(<expr()>) _ ")"
-                { Expr::MethodCall(Box::new(expr), Ident::new(ident), params, Pos::new(pos)) }
+                { Expr::MethodCall(Box::new(expr), ident, params, Pos::new(pos)) }
             expr:(@) _ pos:position!() "." _ ident:ident()
-                { Expr::Member(Box::new(expr), Ident::new(ident), Pos::new(pos)) }
+                { Expr::Member(Box::new(expr), ident, Pos::new(pos)) }
             expr:(@) _ pos:position!() keyword("as") _ type_:type_()
                 { Expr::Cast(type_, Box::new(expr), Pos::new(pos)) }
             pos:position!() "[" _ exprs:commasep(<expr()>)_ "]" { Expr::ArrayLit(exprs, None, Pos::new(pos)) }
@@ -329,9 +353,9 @@ peg::parser! {
             pos:position!() keyword("super") { Expr::Super(Pos::new(pos)) }
             pos:position!() cons:constant() { Expr::Constant(cons, Pos::new(pos)) }
             pos:position!() id:ident() _ "(" _ params:commasep(<expr()>) _ ")"
-                { Expr::Call(Ident::new(id), params, Pos::new(pos)) }
+                { Expr::Call(id, params, Pos::new(pos)) }
             pos:position!() id:ident()
-                { Expr::Ident(Ident::new(id), Pos::new(pos)) }
+                { Expr::Ident(id, Pos::new(pos)) }
         }
     }
 }
@@ -352,7 +376,7 @@ mod tests {
 
     #[test]
     fn parse_simple_class() {
-        let class = lang::source(
+        let module = lang::module(
             "public class A extends IScriptable {
                 private const let m_field: Int32;
 
@@ -363,22 +387,22 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            format!("{:?}", class),
-            r#"[Class(ClassSource { qualifiers: Qualifiers([Public]), name: "A", base: Some("IScriptable"), members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private, Const]), name: "m_field", pos: Pos(53) }, type_: TypeName { name: Owned("Int32"), arguments: [] } }), Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public]), name: "GetField", pos: Pos(104) }, type_: Some(TypeName { name: Owned("Int32"), arguments: [] }), parameters: [], body: Some(Seq { exprs: [Return(Some(Member(This(Pos(165)), Owned("m_field"), Pos(169))), Pos(158))] }) })], pos: Pos(0) })]"#
+            format!("{:?}", module.entries),
+            r#"[Class(ClassSource { qualifiers: Qualifiers([Public]), name: Owned("A"), base: Some(Owned("IScriptable")), members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private, Const]), name: Owned("m_field"), pos: Pos(53) }, type_: TypeName { name: Owned("Int32"), arguments: [] } }), Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public]), name: Owned("GetField"), pos: Pos(104) }, type_: Some(TypeName { name: Owned("Int32"), arguments: [] }), parameters: [], body: Some(Seq { exprs: [Return(Some(Member(This(Pos(165)), Owned("m_field"), Pos(169))), Pos(158))] }) })], pos: Pos(0) })]"#
         );
     }
 
     #[test]
     fn parse_simple_func() {
-        let class = lang::source(
+        let module = lang::module(
             "public static func GetField(optimum: Uint64) -> Uint64 {
                 return this.m_field > optimum ? this.m_field : optimum;
              }",
         )
         .unwrap();
         assert_eq!(
-            format!("{:?}", class),
-            r#"[Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public, Static]), name: "GetField", pos: Pos(0) }, type_: Some(TypeName { name: Owned("Uint64"), arguments: [] }), parameters: [ParameterSource { qualifiers: Qualifiers([]), name: "optimum", type_: TypeName { name: Owned("Uint64"), arguments: [] } }], body: Some(Seq { exprs: [Return(Some(Conditional(BinOp(Member(This(Pos(80)), Owned("m_field"), Pos(84)), Ident(Owned("optimum"), Pos(95)), Greater, Pos(93)), Member(This(Pos(105)), Owned("m_field"), Pos(109)), Ident(Owned("optimum"), Pos(120)), Pos(103))), Pos(73))] }) })]"#
+            format!("{:?}", module.entries),
+            r#"[Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public, Static]), name: Owned("GetField"), pos: Pos(0) }, type_: Some(TypeName { name: Owned("Uint64"), arguments: [] }), parameters: [ParameterSource { qualifiers: Qualifiers([]), name: Owned("optimum"), type_: TypeName { name: Owned("Uint64"), arguments: [] } }], body: Some(Seq { exprs: [Return(Some(Conditional(BinOp(Member(This(Pos(80)), Owned("m_field"), Pos(84)), Ident(Owned("optimum"), Pos(95)), Greater, Pos(93)), Member(This(Pos(105)), Owned("m_field"), Pos(109)), Ident(Owned("optimum"), Pos(120)), Pos(103))), Pos(73))] }) })]"#
         );
     }
 
@@ -435,7 +459,7 @@ mod tests {
 
     #[test]
     fn parse_with_comment() {
-        let stmt = lang::source(
+        let module = lang::module(
             r#"
             /* this is a multiline comment
                blah blah blah
@@ -447,14 +471,14 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            format!("{:?}", stmt),
-            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: "Test", base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: "m_field", pos: Pos(130) }, type_: TypeName { name: Owned("String"), arguments: [] } })], pos: Pos(101) })]"#
+            format!("{:?}", module.entries),
+            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: Owned("Test"), base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: Owned("m_field"), pos: Pos(130) }, type_: TypeName { name: Owned("String"), arguments: [] } })], pos: Pos(101) })]"#
         );
     }
 
     #[test]
     fn parse_with_line_comment() {
-        let stmt = lang::source(
+        let module = lang::module(
             r#"
             class Test { // line comment
                 // private let m_comment_field: String;
@@ -464,8 +488,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            format!("{:?}", stmt),
-            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: "Test", base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: "m_field", pos: Pos(114) }, type_: TypeName { name: Owned("String"), arguments: [] } })], pos: Pos(13) })]"#
+            format!("{:?}", module.entries),
+            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: Owned("Test"), base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: Owned("m_field"), pos: Pos(114) }, type_: TypeName { name: Owned("String"), arguments: [] } })], pos: Pos(13) })]"#
         );
     }
 

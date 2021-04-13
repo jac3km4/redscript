@@ -16,7 +16,7 @@ pub struct Definition {
     pub unk1: u8,
     pub unk2: u8,
     pub unk3: u8,
-    pub value: DefinitionValue,
+    pub value: AnyDefinition,
 }
 
 impl Definition {
@@ -26,23 +26,23 @@ impl Definition {
         unk1: 0,
         unk2: 0,
         unk3: 0,
-        value: DefinitionValue::Type(Type::Prim),
+        value: AnyDefinition::Type(Type::Prim),
     };
 
     pub fn decode<I: io::Read + io::Seek>(input: &mut I, header: &DefinitionHeader) -> io::Result<Definition> {
         input.seek(io::SeekFrom::Start(header.offset.into()))?;
 
         let value = match header.type_ {
-            DefinitionType::Type => DefinitionValue::Type(input.decode()?),
-            DefinitionType::Class => DefinitionValue::Class(input.decode()?),
-            DefinitionType::EnumValue => DefinitionValue::EnumValue(input.decode()?),
-            DefinitionType::Enum => DefinitionValue::Enum(input.decode()?),
+            DefinitionType::Type => AnyDefinition::Type(input.decode()?),
+            DefinitionType::Class => AnyDefinition::Class(input.decode()?),
+            DefinitionType::EnumValue => AnyDefinition::EnumValue(input.decode()?),
+            DefinitionType::Enum => AnyDefinition::Enum(input.decode()?),
             DefinitionType::BitField => panic!("Bit field not supported"),
-            DefinitionType::Function => DefinitionValue::Function(input.decode()?),
-            DefinitionType::Parameter => DefinitionValue::Parameter(input.decode()?),
-            DefinitionType::Local => DefinitionValue::Local(input.decode()?),
-            DefinitionType::Field => DefinitionValue::Field(input.decode()?),
-            DefinitionType::SourceFile => DefinitionValue::SourceFile(input.decode()?),
+            DefinitionType::Function => AnyDefinition::Function(input.decode()?),
+            DefinitionType::Parameter => AnyDefinition::Parameter(input.decode()?),
+            DefinitionType::Local => AnyDefinition::Local(input.decode()?),
+            DefinitionType::Field => AnyDefinition::Field(input.decode()?),
+            DefinitionType::SourceFile => AnyDefinition::SourceFile(input.decode()?),
         };
         let definition = Definition {
             name: header.name,
@@ -57,15 +57,15 @@ impl Definition {
 
     pub fn source(&self) -> Option<&SourceReference> {
         match self.value {
-            DefinitionValue::Function(ref fun) => fun.source.as_ref(),
+            AnyDefinition::Function(ref fun) => fun.source.as_ref(),
             _ => None,
         }
     }
 
     pub fn first_line(&self, pool: &ConstantPool) -> Option<u32> {
         match self.value {
-            DefinitionValue::Function(ref fun) => fun.source.as_ref().map(|source| source.line),
-            DefinitionValue::Class(ref class) => class
+            AnyDefinition::Function(ref fun) => fun.source.as_ref().map(|source| source.line),
+            AnyDefinition::Class(ref class) => class
                 .functions
                 .iter()
                 .filter_map(|idx| {
@@ -82,7 +82,7 @@ impl Definition {
     fn default(
         name: PoolIndex<String>,
         parent: PoolIndex<Definition>,
-        value: DefinitionValue,
+        value: AnyDefinition,
         unk2: u8,
         unk3: u8,
     ) -> Definition {
@@ -97,32 +97,32 @@ impl Definition {
     }
 
     pub fn local(name: PoolIndex<String>, parent: PoolIndex<Function>, local: Local) -> Definition {
-        Definition::default(name, parent.cast(), DefinitionValue::Local(local), 7, 60)
+        Definition::default(name, parent.cast(), AnyDefinition::Local(local), 7, 60)
     }
 
     pub fn param(name: PoolIndex<String>, parent: PoolIndex<Function>, param: Parameter) -> Definition {
-        Definition::default(name, parent.cast(), DefinitionValue::Parameter(param), 7, 60)
+        Definition::default(name, parent.cast(), AnyDefinition::Parameter(param), 7, 60)
     }
 
     pub fn class(name: PoolIndex<String>, class: Class) -> Definition {
-        Definition::default(name, PoolIndex::UNDEFINED, DefinitionValue::Class(class), 12, 60)
+        Definition::default(name, PoolIndex::UNDEFINED, AnyDefinition::Class(class), 12, 60)
     }
 
     pub fn type_(name: PoolIndex<String>, type_: Type) -> Definition {
-        Definition::default(name, PoolIndex::UNDEFINED, DefinitionValue::Type(type_), 12, 60)
+        Definition::default(name, PoolIndex::UNDEFINED, AnyDefinition::Type(type_), 12, 60)
     }
 
     pub fn function(name: PoolIndex<String>, parent: PoolIndex<Class>, fun: Function) -> Definition {
-        Definition::default(name, parent.cast(), DefinitionValue::Function(fun), 12, 60)
+        Definition::default(name, parent.cast(), AnyDefinition::Function(fun), 12, 60)
     }
 
     pub fn field(name: PoolIndex<String>, parent: PoolIndex<Class>, field: Field) -> Definition {
-        Definition::default(name, parent.cast(), DefinitionValue::Field(field), 12, 60)
+        Definition::default(name, parent.cast(), AnyDefinition::Field(field), 12, 60)
     }
 }
 
 #[derive(Debug)]
-pub enum DefinitionValue {
+pub enum AnyDefinition {
     Type(Type),
     Class(Class),
     EnumValue(i64),
@@ -134,34 +134,34 @@ pub enum DefinitionValue {
     SourceFile(SourceFile),
 }
 
-impl DefinitionValue {
+impl AnyDefinition {
     pub fn type_(&self) -> DefinitionType {
         match self {
-            DefinitionValue::Type(_) => DefinitionType::Type,
-            DefinitionValue::Class(_) => DefinitionType::Class,
-            DefinitionValue::EnumValue(_) => DefinitionType::EnumValue,
-            DefinitionValue::Enum(_) => DefinitionType::Enum,
-            DefinitionValue::Function(_) => DefinitionType::Function,
-            DefinitionValue::Parameter(_) => DefinitionType::Parameter,
-            DefinitionValue::Local(_) => DefinitionType::Local,
-            DefinitionValue::Field(_) => DefinitionType::Field,
-            DefinitionValue::SourceFile(_) => DefinitionType::SourceFile,
+            AnyDefinition::Type(_) => DefinitionType::Type,
+            AnyDefinition::Class(_) => DefinitionType::Class,
+            AnyDefinition::EnumValue(_) => DefinitionType::EnumValue,
+            AnyDefinition::Enum(_) => DefinitionType::Enum,
+            AnyDefinition::Function(_) => DefinitionType::Function,
+            AnyDefinition::Parameter(_) => DefinitionType::Parameter,
+            AnyDefinition::Local(_) => DefinitionType::Local,
+            AnyDefinition::Field(_) => DefinitionType::Field,
+            AnyDefinition::SourceFile(_) => DefinitionType::SourceFile,
         }
     }
 }
 
-impl Encode for DefinitionValue {
+impl Encode for AnyDefinition {
     fn encode<O: io::Write>(output: &mut O, def: &Self) -> io::Result<()> {
         match &def {
-            DefinitionValue::Type(type_) => output.encode(type_),
-            DefinitionValue::Class(class) => output.encode(class),
-            DefinitionValue::EnumValue(value) => output.encode(value),
-            DefinitionValue::Enum(enum_) => output.encode(enum_),
-            DefinitionValue::Function(fun) => output.encode(fun),
-            DefinitionValue::Parameter(param) => output.encode(param),
-            DefinitionValue::Local(local) => output.encode(local),
-            DefinitionValue::Field(field) => output.encode(field),
-            DefinitionValue::SourceFile(file) => output.encode(file),
+            AnyDefinition::Type(type_) => output.encode(type_),
+            AnyDefinition::Class(class) => output.encode(class),
+            AnyDefinition::EnumValue(value) => output.encode(value),
+            AnyDefinition::Enum(enum_) => output.encode(enum_),
+            AnyDefinition::Function(fun) => output.encode(fun),
+            AnyDefinition::Parameter(param) => output.encode(param),
+            AnyDefinition::Local(local) => output.encode(local),
+            AnyDefinition::Field(field) => output.encode(field),
+            AnyDefinition::SourceFile(file) => output.encode(file),
         }
     }
 }

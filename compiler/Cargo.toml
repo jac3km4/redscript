@@ -11,6 +11,7 @@ crate-type = ["cdylib", "rlib"]
 redscript = { path = "../core" }
 peg = "0.6"
 im = "15"
+panoradix = "0.6"
 strum = { version = "0.20", features = ["derive"] }
 walkdir = "2"
 log = "0.4"
