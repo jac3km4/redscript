@@ -305,12 +305,10 @@ impl SymbolMap {
     pub fn populate_import(&self, import: Import, scope: &mut Scope) -> Result<(), Error> {
         match import {
             Import::Exact(path, pos) => {
-                println!("{:?}", path);
                 let symbol = self.get_symbol(&path, pos)?;
                 scope.add_symbol(&path, symbol);
             }
             Import::All(path, _) => {
-                println!("{:?}", path);
                 for (sym_path, symbol) in self.get_direct_children(&path) {
                     scope.add_symbol(&sym_path, symbol.clone());
                 }
@@ -318,7 +316,6 @@ impl SymbolMap {
             Import::Selected(path, names, pos) => {
                 for name in names {
                     let path = path.with_child(name);
-                    println!("{:?}", path);
                     let symbol = self.get_symbol(&path, pos)?;
                     scope.add_symbol(&path, symbol)
                 }

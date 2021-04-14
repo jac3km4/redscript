@@ -78,7 +78,7 @@ impl<'a> Compiler<'a> {
     fn try_compile(&mut self, files: &Files) -> Result<Vec<Diagnostic>, Error> {
         let mut modules = vec![];
         for file in files.files() {
-            let parsed = parser::parse(file.source()).map_err(|err| {
+            let parsed = parser::parse_file(file).map_err(|err| {
                 let message = format!("Syntax error, expected {}", err.expected);
                 Error::SyntaxError(message, Pos::new(err.location.offset))
             })?;
@@ -732,8 +732,7 @@ mod tests {
 
     #[test]
     fn compile_simple_class() -> Result<(), Error> {
-        let sources = parser::parse(
-            "
+        let sources = "
             public class A {
                 private const let m_field: Int32;
 
@@ -744,20 +743,14 @@ mod tests {
                 public static func Ten() -> Int32 {
                     return 10;
                 }
-            }",
-        )
-        .unwrap();
+            }";
 
-        let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
-        let mut compiler = Compiler::new(&mut scripts.pool)?;
-        compiler.compile_modules(vec![sources])?;
-        Ok(())
+        check_compilation(sources)
     }
 
     #[test]
     fn compile_ext_class() -> Result<(), Error> {
-        let sources = parser::parse(
-            "
+        let sources = "
             public class X {
                 private const let m_base_field: Int32;
 
@@ -770,20 +763,14 @@ mod tests {
                 public func CallBase() -> Int32 {
                   return this.BaseMethod();
                 }
-            }",
-        )
-        .unwrap();
+            }";
 
-        let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
-        let mut compiler = Compiler::new(&mut scripts.pool)?;
-        compiler.compile_modules(vec![sources])?;
-        Ok(())
+        check_compilation(sources)
     }
 
     #[test]
     fn compile_class_with_forward_ref() -> Result<(), Error> {
-        let sources = parser::parse(
-            "
+        let sources = "
             public class MyTestClass456 {
                 public let myOtherTestClass: ref<MyTestClass123>;
 
@@ -794,31 +781,20 @@ mod tests {
             
             public class MyTestClass123 {
                 public let myTestVar: String;
-            }",
-        )
-        .unwrap();
+            }";
 
-        let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
-        let mut compiler = Compiler::new(&mut scripts.pool)?;
-        compiler.compile_modules(vec![sources])?;
-        Ok(())
+        check_compilation(sources)
     }
 
     #[test]
     fn compile_class_with_shorthand_funcs() -> Result<(), Error> {
-        let sources = parser::parse(
-            "
+        let sources = "
             public class ShorthandTest {
                 public func InstanceVal() -> String = ShorthandTest.StaticVal()
                 public static func StaticVal() -> String = \"static\"
-            }",
-        )
-        .unwrap();
+            }";
 
-        let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
-        let mut compiler = Compiler::new(&mut scripts.pool)?;
-        compiler.compile_modules(vec![sources])?;
-        Ok(())
+        check_compilation(sources)
     }
 
     #[test]
@@ -1215,7 +1191,7 @@ mod tests {
 
     #[test]
     fn compile_mutually_dependent_modules() -> Result<(), Error> {
-        let sources1 = parser::parse(
+        let sources1 = parser::parse_str(
             "
             module MyModule.Module1
             import MyModule.Module2.{B, Func2}
@@ -1231,7 +1207,7 @@ mod tests {
         )
         .unwrap();
 
-        let sources2 = parser::parse(
+        let sources2 = parser::parse_str(
             "
             module MyModule.Module2
             import MyModule.Module1.*
@@ -1250,8 +1226,16 @@ mod tests {
         Ok(())
     }
 
+    fn check_compilation(code: &str) -> Result<(), Error> {
+        let module = parser::parse_str(code).unwrap();
+        let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
+        let mut compiler = Compiler::new(&mut scripts.pool)?;
+        compiler.compile_modules(vec![module])?;
+        Ok(())
+    }
+
     fn check_function_bytecode(code: &str, instrs: Vec<Instr<Offset>>) -> Result<(), Error> {
-        let module = parser::parse(code).unwrap();
+        let module = parser::parse_str(code).unwrap();
         let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
         let mut compiler = Compiler::new(&mut scripts.pool)?;
         compiler.compile_modules(vec![module])?;

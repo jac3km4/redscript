@@ -2,7 +2,6 @@ use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::fmt;
-use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use redscript::ast::Pos;
@@ -43,7 +42,7 @@ impl Files {
     }
 
     pub fn add(&mut self, path: PathBuf, source: String) {
-        let low = self.files.last().map(|f| f.high + 1).unwrap_or(Pos(0));
+        let low = self.files.last().map(|f| f.high).unwrap_or(Pos(0));
         let high = low + source.len();
         let mut lines = vec![];
         for (offset, _) in source.match_indices('\n') {
@@ -107,8 +106,16 @@ impl File {
         Span { low, high: self.high }
     }
 
+    pub fn byte_offset(&self) -> Pos {
+        self.lines.0
+    }
+
     pub fn source(&self) -> &str {
         &self.source
+    }
+
+    pub fn with_source(self, source: String) -> Self {
+        File { source, ..self }
     }
 
     fn lookup(&self, pos: Pos) -> Option<FilePosition> {
@@ -139,8 +146,20 @@ impl File {
     }
 
     fn source_slice(&self, span: Span) -> &str {
-        let range: Range<usize> = span.into();
-        &self.source[range]
+        let start = span.low.0 - self.byte_offset().0;
+        let end = span.high.0 - self.byte_offset().0;
+        &self.source[start as usize..end as usize]
+    }
+}
+
+impl Default for File {
+    fn default() -> Self {
+        File {
+            path: PathBuf::new(),
+            lines: NonEmptyVec(Pos::ZERO, vec![]),
+            high: Pos::ZERO,
+            source: String::new(),
+        }
     }
 }
 
@@ -155,17 +174,8 @@ struct NonEmptyVec<A>(pub A, pub Vec<A>);
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Span {
-    low: Pos,
-    high: Pos,
-}
-
-impl From<Span> for Range<usize> {
-    fn from(span: Span) -> Self {
-        Range {
-            start: span.low.0 as usize,
-            end: span.high.0 as usize,
-        }
-    }
+    pub low: Pos,
+    pub high: Pos,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

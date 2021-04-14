@@ -270,8 +270,8 @@ impl Add<usize> for Pos {
     type Output = Pos;
 
     #[inline(always)]
-    fn add(self, other: usize) -> Pos {
-        Pos(self.0 + other as u32)
+    fn add(self, rhs: usize) -> Pos {
+        Pos(self.0 + rhs as u32)
     }
 }
 

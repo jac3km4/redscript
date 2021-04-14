@@ -7,6 +7,7 @@ use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, Pos, Seq, SourceAst,
 use redscript::definition::Visibility;
 use strum::EnumString;
 
+use crate::source_map::File;
 use crate::{Import, ModulePath};
 
 #[derive(Debug)]
@@ -116,14 +117,19 @@ pub enum AnnotationName {
     AddField,
 }
 
-pub fn parse(input: &str) -> Result<SourceModule, ParseError<LineCol>> {
-    lang::module(input)
+pub fn parse_file(file: &File) -> Result<SourceModule, ParseError<LineCol>> {
+    lang::module(file.source(), file.byte_offset())
+}
+
+pub fn parse_str(str: &str) -> Result<SourceModule, ParseError<LineCol>> {
+    lang::module(str, Pos::ZERO)
 }
 
 peg::parser! {
-    grammar lang() for str {
+    grammar lang(offset: Pos) for str {
         use peg::ParseLiteral;
 
+        rule pos() -> Pos = pos:position!() { offset + pos }
         rule _() = quiet!{ ([' ' | '\n' | '\r' | '\t'] / comment() / line_comment())* }
         rule commasep<T>(x: rule<T>) -> Vec<T> = v:(x() ** ("," _)) {v}
         rule dotsep<T>(x: rule<T>) -> Vec<T> = v:(x() ** ("." _)) {v}
@@ -156,9 +162,9 @@ peg::parser! {
             / "t" { Literal::TweakDbId }
 
         rule annotation() -> Annotation
-            = pos:position!() "@" ident:ident() _ "(" _ values:commasep(<ident()>) _ ")" {?
+            = pos:pos() "@" ident:ident() _ "(" _ values:commasep(<ident()>) _ ")" {?
                 AnnotationName::from_str(ident.as_ref()).map(|name| {
-                    Annotation { name, values, pos: Pos::new(pos) }
+                    Annotation { name, values, pos }
                 }).map_err(|_| "annotation")
             }
 
@@ -214,12 +220,12 @@ peg::parser! {
         rule initializer() -> Expr<SourceAst> = "=" _ val:expr() { val }
 
         rule let() -> Expr<SourceAst>
-            = pos:position!() keyword("let") _ name:ident() _ type_:let_type()? _ val:initializer()? _ ";"
-            { Expr::Declare(name, type_, val.map(Box::new), Pos::new(pos)) }
+            = pos:pos() keyword("let") _ name:ident() _ type_:let_type()? _ val:initializer()? _ ";"
+            { Expr::Declare(name, type_, val.map(Box::new), pos) }
 
         rule decl(inner: rule<()>) -> Declaration
-            = pos:position!() annotations:(annotation() ** _) _ qualifiers:qualifiers() _ inner() _ name:ident()
-            { Declaration { annotations, qualifiers, name, pos: Pos::new(pos) } }
+            = pos:pos() annotations:(annotation() ** _) _ qualifiers:qualifiers() _ inner() _ name:ident()
+            { Declaration { annotations, qualifiers, name, pos } }
 
         rule field() -> FieldSource
             = declaration:decl(<keyword("let")>) _ type_:let_type() _ ";"
@@ -230,7 +236,7 @@ peg::parser! {
             { FunctionSource { declaration, type_, parameters, body } }
         rule function_body() -> Seq<SourceAst>
             = "{" _ body:seq() _ "}" { body }
-            / pos:position!() "=" _ expr:expr() { Seq::new(vec![Expr::Return(Some(Box::new(expr)), Pos::new(pos))]) }
+            / pos:pos() "=" _ expr:expr() { Seq::new(vec![Expr::Return(Some(Box::new(expr)), pos)]) }
 
         rule param() -> ParameterSource
             = qualifiers:qualifiers() _ name:ident() _ type_:let_type()
@@ -239,8 +245,8 @@ peg::parser! {
         rule extends() -> Ident = keyword("extends") _ name:ident() { name }
 
         pub rule class() -> ClassSource
-            = pos:position!() qualifiers:qualifiers() _ keyword("class") _ name:ident() _ base:extends()? _ "{" _ members:member()**_ _ "}"
-            { ClassSource { qualifiers, name, base, members, pos: Pos::new(pos) } }
+            = pos:pos() qualifiers:qualifiers() _ keyword("class") _ name:ident() _ base:extends()? _ "{" _ members:member()**_ _ "}"
+            { ClassSource { qualifiers, name, base, members, pos } }
 
         rule member() -> MemberSource
             = fun:function() { MemberSource::Function(fun) }
@@ -253,12 +259,12 @@ peg::parser! {
 
 
         rule import() -> Import
-            = pos:position!() keyword("import") _ parts: dotsep(<ident()>) _ "." _ "*"
-                { Import::All(ModulePath::new(parts), Pos::new(pos)) }
-            / pos:position!() keyword("import") _ parts: dotsep(<ident()>) _ "." _ "{" _ names:commasep(<ident()>) _ "}"
-                { Import::Selected(ModulePath::new(parts), names, Pos::new(pos)) }
-            / pos:position!() keyword("import") _ parts: dotsep(<ident()>)
-                { Import::Exact(ModulePath::new(parts), Pos::new(pos)) }
+            = pos:pos() keyword("import") _ parts: dotsep(<ident()>) _ "." _ "*"
+                { Import::All(ModulePath::new(parts), pos) }
+            / pos:pos() keyword("import") _ parts: dotsep(<ident()>) _ "." _ "{" _ names:commasep(<ident()>) _ "}"
+                { Import::Selected(ModulePath::new(parts), names, pos) }
+            / pos:pos() keyword("import") _ parts: dotsep(<ident()>)
+                { Import::Exact(ModulePath::new(parts), pos) }
 
         rule module_path() -> ModulePath  =
             keyword("module") _ parts:dotsep(<ident()>) { ModulePath { parts } }
@@ -279,16 +285,16 @@ peg::parser! {
             = keyword("default") _ ":" _ body:seq() { body }
 
         rule while_() -> Expr<SourceAst>
-            = pos:position!() keyword("while") _ cond:expr() _ "{" _ body:seq() _ "}" _ ";"?
-            { Expr::While(Box::new(cond), body, Pos::new(pos)) }
+            = pos:pos() keyword("while") _ cond:expr() _ "{" _ body:seq() _ "}" _ ";"?
+            { Expr::While(Box::new(cond), body, pos) }
 
         rule for_() -> Expr<SourceAst>
-            = pos:position!() keyword("for") _ ident:ident() _ keyword("in") _ array:expr() _ "{" _ body:seq() _ "}" _ ";"?
-            { Expr::ForIn(ident, Box::new(array), body, Pos::new(pos)) }
+            = pos:pos() keyword("for") _ ident:ident() _ keyword("in") _ array:expr() _ "{" _ body:seq() _ "}" _ ";"?
+            { Expr::ForIn(ident, Box::new(array), body, pos) }
 
         rule if_() -> Expr<SourceAst>
-            = pos:position!() keyword("if") _ cond:expr() _ "{" _ if_:seq() _ "}" _ else_:else_()? _ ";"?
-            { Expr::If(Box::new(cond), if_, else_, Pos::new(pos)) }
+            = pos:pos() keyword("if") _ cond:expr() _ "{" _ if_:seq() _ "}" _ else_:else_()? _ ";"?
+            { Expr::If(Box::new(cond), if_, else_, pos) }
         rule else_() -> Seq<SourceAst>
             = keyword("else") _ "{" _ body:seq() _ "}" { body }
 
@@ -297,65 +303,65 @@ peg::parser! {
             / for_: for_() { for_ }
             / if_: if_() { if_ }
             / switch: switch() { switch }
-            / pos:position!() keyword("return") _ val:expr()? _ ";" { Expr::Return(val.map(Box::new), Pos::new(pos)) }
-            / pos:position!() keyword("break") _ ";" { Expr::Break(Pos::new(pos)) }
+            / pos:pos() keyword("return") _ val:expr()? _ ";" { Expr::Return(val.map(Box::new), pos) }
+            / pos:pos() keyword("break") _ ";" { Expr::Break(pos) }
             / let_:let() { let_ }
             / expr:expr() _ ";" { expr }
 
         pub rule expr() -> Expr<SourceAst> = precedence!{
-            x:@ _ pos:position!() "?" _ y:expr() _ ":" _ z:expr()
-                { Expr::Conditional(Box::new(x), Box::new(y), Box::new(z), Pos::new(pos)) }
-            x:@ _ pos:position!() "=" _ y:(@) { Expr::Assign(Box::new(x), Box::new(y), Pos::new(pos)) }
-            x:@ _ pos:position!() "+=" _ y:(@) { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignAdd, Pos::new(pos)) }
-            x:@ _ pos:position!() "-=" _ y:(@) { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignSubtract, Pos::new(pos)) }
-            x:@ _ pos:position!() "*=" _ y:(@) { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignMultiply, Pos::new(pos)) }
-            x:@ _ pos:position!() "/=" _ y:(@) { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignDivide, Pos::new(pos)) }
+            x:@ _ pos:pos() "?" _ y:expr() _ ":" _ z:expr()
+                { Expr::Conditional(Box::new(x), Box::new(y), Box::new(z), pos) }
+            x:@ _ pos:pos() "=" _ y:(@) { Expr::Assign(Box::new(x), Box::new(y), pos) }
+            x:@ _ pos:pos() "+=" _ y:(@) { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignAdd, pos) }
+            x:@ _ pos:pos() "-=" _ y:(@) { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignSubtract, pos) }
+            x:@ _ pos:pos() "*=" _ y:(@) { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignMultiply, pos) }
+            x:@ _ pos:pos() "/=" _ y:(@) { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignDivide, pos) }
             --
-            x:(@) _ pos:position!() "||" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::LogicOr, Pos::new(pos)) }
-            x:(@) _ pos:position!() "&&" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::LogicAnd, Pos::new(pos)) }
-            x:(@) _ pos:position!() "|" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Or, Pos::new(pos)) }
-            x:(@) _ pos:position!() "^" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Xor, Pos::new(pos)) }
-            x:(@) _ pos:position!() "&" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::And, Pos::new(pos)) }
+            x:(@) _ pos:pos() "||" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::LogicOr, pos) }
+            x:(@) _ pos:pos() "&&" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::LogicAnd, pos) }
+            x:(@) _ pos:pos() "|" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Or, pos) }
+            x:(@) _ pos:pos() "^" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Xor, pos) }
+            x:(@) _ pos:pos() "&" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::And, pos) }
             --
-            x:(@) _ pos:position!() "==" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Equal, Pos::new(pos)) }
-            x:(@) _ pos:position!() "!=" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::NotEqual, Pos::new(pos)) }
+            x:(@) _ pos:pos() "==" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Equal, pos) }
+            x:(@) _ pos:pos() "!=" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::NotEqual, pos) }
             --
-            x:(@) _ pos:position!() "<" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Less, Pos::new(pos)) }
-            x:(@) _ pos:position!() "<=" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::LessEqual, Pos::new(pos)) }
-            x:(@) _ pos:position!() ">" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Greater, Pos::new(pos)) }
-            x:(@) _ pos:position!() ">=" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::GreaterEqual, Pos::new(pos)) }
+            x:(@) _ pos:pos() "<" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Less, pos) }
+            x:(@) _ pos:pos() "<=" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::LessEqual, pos) }
+            x:(@) _ pos:pos() ">" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Greater, pos) }
+            x:(@) _ pos:pos() ">=" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::GreaterEqual, pos) }
             --
-            x:(@) _ pos:position!() "+" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Add, Pos::new(pos)) }
-            x:(@) _ pos:position!() "-" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Subtract, Pos::new(pos)) }
+            x:(@) _ pos:pos() "+" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Add, pos) }
+            x:(@) _ pos:pos() "-" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Subtract, pos) }
             --
-            x:(@) _ pos:position!() "*" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Multiply, Pos::new(pos)) }
-            x:(@) _ pos:position!() "/" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Divide, Pos::new(pos)) }
-            x:(@) _ pos:position!() "%" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Modulo, Pos::new(pos)) }
+            x:(@) _ pos:pos() "*" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Multiply, pos) }
+            x:(@) _ pos:pos() "/" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Divide, pos) }
+            x:(@) _ pos:pos() "%" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Modulo, pos) }
             --
-            pos:position!() "!" _ x:@ { Expr::UnOp(Box::new(x), UnOp::LogicNot, Pos::new(pos)) }
-            pos:position!() "~" _ x:@ { Expr::UnOp(Box::new(x), UnOp::BitNot, Pos::new(pos)) }
-            pos:position!() "-" _ x:@ { Expr::UnOp(Box::new(x), UnOp::Neg, Pos::new(pos)) }
-            pos:position!() keyword("new") _ id:ident() _ "(" _ params:commasep(<expr()>) _ ")"
-                { Expr::New(TypeName::basic_owned(id.to_owned()), params, Pos::new(pos)) }
+            pos:pos() "!" _ x:@ { Expr::UnOp(Box::new(x), UnOp::LogicNot, pos) }
+            pos:pos() "~" _ x:@ { Expr::UnOp(Box::new(x), UnOp::BitNot, pos) }
+            pos:pos() "-" _ x:@ { Expr::UnOp(Box::new(x), UnOp::Neg, pos) }
+            pos:pos() keyword("new") _ id:ident() _ "(" _ params:commasep(<expr()>) _ ")"
+                { Expr::New(TypeName::basic_owned(id.to_owned()), params, pos) }
             --
-            expr:(@) _ pos:position!() "[" _ idx:expr() _ "]"
-                { Expr::ArrayElem(Box::new(expr), Box::new(idx), Pos::new(pos)) }
-            expr:(@) _ pos:position!() "." _ ident:ident() _ "(" _ params:commasep(<expr()>) _ ")"
-                { Expr::MethodCall(Box::new(expr), ident, params, Pos::new(pos)) }
-            expr:(@) _ pos:position!() "." _ ident:ident()
-                { Expr::Member(Box::new(expr), ident, Pos::new(pos)) }
-            expr:(@) _ pos:position!() keyword("as") _ type_:type_()
-                { Expr::Cast(type_, Box::new(expr), Pos::new(pos)) }
-            pos:position!() "[" _ exprs:commasep(<expr()>)_ "]" { Expr::ArrayLit(exprs, None, Pos::new(pos)) }
+            expr:(@) _ pos:pos() "[" _ idx:expr() _ "]"
+                { Expr::ArrayElem(Box::new(expr), Box::new(idx), pos) }
+            expr:(@) _ pos:pos() "." _ ident:ident() _ "(" _ params:commasep(<expr()>) _ ")"
+                { Expr::MethodCall(Box::new(expr), ident, params, pos) }
+            expr:(@) _ pos:pos() "." _ ident:ident()
+                { Expr::Member(Box::new(expr), ident, pos) }
+            expr:(@) _ pos:pos() keyword("as") _ type_:type_()
+                { Expr::Cast(type_, Box::new(expr), pos) }
+            pos:pos() "[" _ exprs:commasep(<expr()>)_ "]" { Expr::ArrayLit(exprs, None, pos) }
             "(" _ v:expr() _ ")" { v }
             keyword("null") { Expr::Null }
-            pos:position!() keyword("this") { Expr::This(Pos::new(pos)) }
-            pos:position!() keyword("super") { Expr::Super(Pos::new(pos)) }
-            pos:position!() cons:constant() { Expr::Constant(cons, Pos::new(pos)) }
-            pos:position!() id:ident() _ "(" _ params:commasep(<expr()>) _ ")"
-                { Expr::Call(id, params, Pos::new(pos)) }
-            pos:position!() id:ident()
-                { Expr::Ident(id, Pos::new(pos)) }
+            pos:pos() keyword("this") { Expr::This(pos) }
+            pos:pos() keyword("super") { Expr::Super(pos) }
+            pos:pos() cons:constant() { Expr::Constant(cons, pos) }
+            pos:pos() id:ident() _ "(" _ params:commasep(<expr()>) _ ")"
+                { Expr::Call(id, params, pos) }
+            pos:pos() id:ident()
+                { Expr::Ident(id, pos) }
         }
     }
 }
@@ -366,7 +372,7 @@ mod tests {
 
     #[test]
     fn parse_ternary_op() {
-        let expr = lang::expr("3.0 ? 5.0 : 5 + 4").unwrap();
+        let expr = lang::expr("3.0 ? 5.0 : 5 + 4", Pos::ZERO).unwrap();
         assert_eq!(
             format!("{:?}", expr),
             "Conditional(Constant(Float(3.0), Pos(0)), Constant(Float(5.0), Pos(6)), BinOp(Constant(Int(5), Pos(12)), \
@@ -384,6 +390,7 @@ mod tests {
                     return this.m_field;
                 }
              }",
+            Pos::ZERO,
         )
         .unwrap();
         assert_eq!(
@@ -398,6 +405,7 @@ mod tests {
             "public static func GetField(optimum: Uint64) -> Uint64 {
                 return this.m_field > optimum ? this.m_field : optimum;
              }",
+            Pos::ZERO,
         )
         .unwrap();
         assert_eq!(
@@ -413,6 +421,7 @@ mod tests {
                 this.counter += Object.CONSTANT;
                 i += 1;
              }",
+            Pos::ZERO,
         )
         .unwrap();
         assert_eq!(
@@ -429,6 +438,7 @@ mod tests {
              } else {
                 this.Bugs();
              }",
+            Pos::ZERO,
         )
         .unwrap();
         assert_eq!(
@@ -449,6 +459,7 @@ mod tests {
                  default:
                     Log("default");
             }"#,
+            Pos::ZERO,
         )
         .unwrap();
         assert_eq!(
@@ -468,6 +479,7 @@ mod tests {
                 private let m_field /* cool stuff */: String;
             }
             "#,
+            Pos::ZERO,
         )
         .unwrap();
         assert_eq!(
@@ -485,6 +497,7 @@ mod tests {
                 private let m_field: String;
             }
             "#,
+            Pos::ZERO,
         )
         .unwrap();
         assert_eq!(
@@ -495,14 +508,25 @@ mod tests {
 
     #[test]
     fn parse_escaped_string() {
-        let escaped = lang::escaped_string(r#""This is a backslash \'\\\' \"escaped\" string \t\u{03BB}\r\n""#);
+        let escaped = lang::escaped_string(
+            r#""This is a backslash \'\\\' \"escaped\" string \t\u{03BB}\r\n""#,
+            Pos::ZERO,
+        );
 
-        assert_eq!(escaped, Ok(String::from(  "This is a backslash \'\\\' \"escaped\" string \t\u{03BB}\r\n")));
+        assert_eq!(
+            escaped,
+            Ok(String::from(
+                "This is a backslash \'\\\' \"escaped\" string \t\u{03BB}\r\n"
+            ))
+        );
     }
 
     #[test]
     fn fail_mangled_string() {
-        let mangled = lang::escaped_string(r#""These are invalid escape characters: \a \\" \u{1234567}""#);
+        let mangled = lang::escaped_string(
+            r#""These are invalid escape characters: \a \\" \u{1234567}""#,
+            Pos::ZERO,
+        );
 
         assert!(mangled.is_err());
     }
