@@ -6,17 +6,54 @@ use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::definition::{Definition, Local, LocalFlags};
 use redscript::error::Error;
 
-use crate::scope::{FunctionName, Scope};
+use crate::scope::Scope;
 use crate::transform::ExprTransformer;
 use crate::typechecker::{type_of, Callable, IntrinsicOp, TypedAst};
-use crate::{Reference, TypeId};
+use crate::{Reference, TypeId, Value};
 
 pub struct Desugar<'a> {
     pool: &'a mut ConstantPool,
     scope: &'a mut Scope,
     name_count: usize,
     prefix_exprs: Vec<Expr<TypedAst>>,
-    pub locals: Vec<PoolIndex<Local>>,
+    locals: Vec<PoolIndex<Local>>,
+}
+
+impl<'a> Desugar<'a> {
+    pub fn new(scope: &'a mut Scope, pool: &'a mut ConstantPool) -> Self {
+        Desugar {
+            pool,
+            scope,
+            prefix_exprs: vec![],
+            locals: vec![],
+            name_count: 0,
+        }
+    }
+
+    pub fn locals(self) -> Vec<PoolIndex<Local>> {
+        self.locals
+    }
+
+    fn add_prefix(&mut self, expr: Expr<TypedAst>) {
+        self.prefix_exprs.push(expr)
+    }
+
+    fn binop_callable(&self, binop: BinOp, pos: Pos) -> Result<Callable, Error> {
+        let fun_idx = self.scope.resolve_function(Ident::Static(binop.into()), pos)?.functions[0];
+        Ok(Callable::Function(fun_idx))
+    }
+
+    fn fresh_local(&mut self, type_: &TypeId) -> Result<Reference, Error> {
+        let fun_idx = self.scope.function.unwrap();
+        let name_idx = self.pool.names.add(Rc::new(format!("synthetic${}", self.name_count)));
+        let type_idx = self.scope.get_type_index(&type_, self.pool)?;
+        let local = Local::new(type_idx, LocalFlags::new());
+        let def = Definition::local(name_idx, fun_idx, local);
+        let idx = self.pool.add_definition(def).cast();
+        self.locals.push(idx);
+        self.name_count += 1;
+        Ok(Reference::Value(Value::Local(idx)))
+    }
 }
 
 impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
@@ -77,7 +114,7 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
             pos,
         );
         let assign_iter_value = Expr::Assign(
-            Box::new(Expr::Ident(Reference::Local(name), pos)),
+            Box::new(Expr::Ident(Reference::Value(Value::Local(name)), pos)),
             Box::new(Expr::ArrayElem(
                 Box::new(Expr::Ident(arr_local, pos)),
                 Box::new(Expr::Ident(counter_local.clone(), pos)),
@@ -108,39 +145,5 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
             processed.push(done);
         }
         Ok(Seq::new(processed))
-    }
-}
-
-impl<'a> Desugar<'a> {
-    pub fn new(scope: &'a mut Scope, pool: &'a mut ConstantPool) -> Self {
-        Desugar {
-            pool,
-            scope,
-            prefix_exprs: vec![],
-            locals: vec![],
-            name_count: 0,
-        }
-    }
-
-    fn add_prefix(&mut self, expr: Expr<TypedAst>) {
-        self.prefix_exprs.push(expr)
-    }
-
-    fn binop_callable(&self, binop: BinOp, pos: Pos) -> Result<Callable, Error> {
-        let fun_name = FunctionName::global(Ident::Static(binop.into()));
-        let fun_idx = self.scope.resolve_function(fun_name, self.pool, pos)?.functions[0];
-        Ok(Callable::Function(fun_idx))
-    }
-
-    fn fresh_local(&mut self, type_: &TypeId) -> Result<Reference, Error> {
-        let fun_idx = self.scope.function.unwrap();
-        let name_idx = self.pool.names.add(Rc::new(format!("synthetic${}", self.name_count)));
-        let type_idx = self.scope.get_type_index(&type_, self.pool)?;
-        let local = Local::new(type_idx, LocalFlags::new());
-        let def = Definition::local(name_idx, fun_idx, local);
-        let idx = self.pool.push_definition(def).cast();
-        self.locals.push(idx);
-        self.name_count += 1;
-        Ok(Reference::Local(idx))
     }
 }

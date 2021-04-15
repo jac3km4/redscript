@@ -94,7 +94,7 @@ pub enum Constant {
     Bool(bool),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialOrd, Ord)]
 pub enum Ident {
     Static(&'static str),
     Owned(Rc<String>),
@@ -118,8 +118,6 @@ impl PartialEq for Ident {
         self.as_ref() == other.as_ref()
     }
 }
-
-impl Eq for Ident {}
 
 impl Hash for Ident {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -272,8 +270,8 @@ impl Add<usize> for Pos {
     type Output = Pos;
 
     #[inline(always)]
-    fn add(self, other: usize) -> Pos {
-        Pos(self.0 + other as u32)
+    fn add(self, rhs: usize) -> Pos {
+        Pos(self.0 + rhs as u32)
     }
 }
 

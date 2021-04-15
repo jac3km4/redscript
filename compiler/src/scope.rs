@@ -1,93 +1,30 @@
+use panoradix::RadixMap;
 use redscript::ast::{Expr, Ident, Pos, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
-use redscript::definition::{Class, Definition, DefinitionValue, Enum, Field, Function, Local, Type};
+use redscript::definition::{
+    AnyDefinition, Class, Definition, Enum, Field, Function, Local, Parameter, Type, Visibility
+};
 use redscript::error::Error;
 
 use crate::typechecker::TypedAst;
-use crate::{FunctionId, Reference, TypeId};
-
-#[derive(Debug, Clone)]
-pub struct FunctionCandidates {
-    pub functions: Vec<PoolIndex<Function>>,
-}
-
-impl FunctionCandidates {
-    fn append(&mut self, other: &FunctionCandidates) {
-        self.functions.extend(other.functions.iter());
-    }
-
-    pub fn by_id(&self, fun_id: &FunctionId, pool: &ConstantPool) -> Option<PoolIndex<Function>> {
-        self.functions.iter().copied().find_map(|idx| {
-            pool.definition_name(idx)
-                .ok()
-                .filter(|name| name.as_ref() == fun_id.as_ref())
-                .map(|_| idx)
-        })
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct FunctionName {
-    namespace: Option<PoolIndex<Class>>,
-    name: Ident,
-}
-
-impl FunctionName {
-    pub fn global(name: Ident) -> FunctionName {
-        FunctionName { namespace: None, name }
-    }
-
-    pub fn instance(class: PoolIndex<Class>, name: Ident) -> FunctionName {
-        FunctionName {
-            namespace: Some(class),
-            name,
-        }
-    }
-
-    pub fn pretty(&self, pool: &ConstantPool) -> String {
-        self.namespace
-            .and_then(|c| pool.definition_name(c).ok())
-            .map(|n| format!("{}::{}", n, self.name))
-            .unwrap_or_else(|| self.name.to_string())
-    }
-}
-
-#[derive(Debug)]
-pub struct FunctionMatch {
-    pub index: PoolIndex<Function>,
-    pub args: Vec<Expr<TypedAst>>,
-}
+use crate::{FunctionId, Import, ModulePath, Reference, Symbol, TypeId, Value};
 
 #[derive(Debug, Clone)]
 pub struct Scope {
-    pub functions: im::HashMap<FunctionName, FunctionCandidates>,
-    pub references: im::HashMap<Ident, Reference>,
-    pub types: im::HashMap<Ident, PoolIndex<Type>>,
+    symbols: im::HashMap<Ident, Symbol>,
+    references: im::HashMap<Ident, Value>,
+    types: im::HashMap<Ident, PoolIndex<Type>>,
+
     pub this: Option<PoolIndex<Class>>,
     pub function: Option<PoolIndex<Function>>,
 }
 
 impl Scope {
     pub fn new(pool: &ConstantPool) -> Result<Self, Error> {
-        let names = pool
-            .roots()
-            .filter_map(|(idx, def)| {
-                let ident = Ident::Owned(pool.definition_name(idx).ok()?);
-                match def.value {
-                    DefinitionValue::Class(ref class) if class.flags.is_struct() => {
-                        Some((ident, Reference::Struct(idx.cast())))
-                    }
-                    DefinitionValue::Class(_) => Some((ident, Reference::Class(idx.cast()))),
-                    DefinitionValue::Enum(_) => Some((ident, Reference::Enum(idx.cast()))),
-                    _ => None,
-                }
-            })
-            .collect();
-
         let types = pool
             .roots()
             .filter_map(|(idx, def)| match def.value {
-                DefinitionValue::Type(_) => {
+                AnyDefinition::Type(_) => {
                     let ident = Ident::Owned(pool.definition_name(idx).ok()?);
                     Some((ident, idx.cast()))
                 }
@@ -95,26 +32,13 @@ impl Scope {
             })
             .collect();
 
-        let mut result = Scope {
-            functions: im::HashMap::new(),
-            references: names,
+        let result = Scope {
+            symbols: im::HashMap::new(),
+            references: im::HashMap::new(),
             types,
             this: None,
             function: None,
         };
-
-        for (idx, def) in pool.definitions() {
-            if let DefinitionValue::Function(_) = def.value {
-                let mangled_name = pool.definition_name(idx)?;
-                let ident = Ident::new(mangled_name.split(';').next().unwrap().to_owned());
-                let name = if def.parent != PoolIndex::UNDEFINED {
-                    FunctionName::instance(def.parent.cast(), ident)
-                } else {
-                    FunctionName::global(ident)
-                };
-                result.push_function(name, idx.cast())
-            }
-        }
 
         Ok(result)
     }
@@ -127,15 +51,52 @@ impl Scope {
         }
     }
 
-    pub fn push_local(&mut self, name: Ident, local: PoolIndex<Local>) {
-        self.references.insert(name, Reference::Local(local));
+    pub fn add_local(&mut self, name: Ident, local: PoolIndex<Local>) {
+        self.references.insert(name, Value::Local(local));
     }
 
-    pub fn push_function(&mut self, name: FunctionName, index: PoolIndex<Function>) {
-        self.functions
-            .entry(name)
-            .and_modify(|overloads: &mut FunctionCandidates| overloads.functions.push(index))
-            .or_insert_with(|| FunctionCandidates { functions: vec![index] });
+    pub fn add_parameter(&mut self, name: Ident, param: PoolIndex<Parameter>) {
+        self.references.insert(name, Value::Parameter(param));
+    }
+
+    pub fn add_type(&mut self, name: Ident, typ: PoolIndex<Type>) {
+        self.types.insert(name, typ);
+    }
+
+    pub fn add_symbol(&mut self, path: &ModulePath, symbol: Symbol, visibility: Visibility) {
+        let name = path.parts.last().unwrap();
+        match symbol {
+            Symbol::Functions(funs) => {
+                let funs: Vec<_> = funs.into_iter().filter(|(_, v)| *v <= visibility).collect();
+                match self.symbols.get_mut(name) {
+                    Some(Symbol::Functions(existing)) => existing.extend(funs),
+                    _ if !funs.is_empty() => {
+                        self.symbols.insert(name.clone(), Symbol::Functions(funs));
+                    }
+                    _ => {}
+                }
+            }
+            Symbol::Class(_, v) if v <= visibility => {
+                self.symbols.insert(name.clone(), symbol);
+            }
+            Symbol::Struct(_, v) if v <= visibility => {
+                self.symbols.insert(name.clone(), symbol);
+            }
+            Symbol::Enum(_) => {
+                self.symbols.insert(name.clone(), symbol);
+            }
+            _ => {}
+        }
+    }
+
+    pub fn resolve_function(&self, name: Ident, pos: Pos) -> Result<FunctionCandidates, Error> {
+        if let Some(Symbol::Functions(functions)) = self.symbols.get(&name) {
+            Ok(FunctionCandidates {
+                functions: functions.iter().map(|(idx, _)| idx).copied().collect(),
+            })
+        } else {
+            Err(Error::function_not_found(name, pos))
+        }
     }
 
     pub fn resolve_field(
@@ -177,47 +138,50 @@ impl Scope {
         Err(Error::CompileError(err, pos))
     }
 
-    pub fn resolve_function(
-        &self,
-        name: FunctionName,
-        pool: &ConstantPool,
-        pos: Pos,
-    ) -> Result<&FunctionCandidates, Error> {
-        self.functions
-            .get(&name)
-            .ok_or_else(|| Error::CompileError(format!("Function {} not found", name.pretty(pool)), pos))
-    }
-
     pub fn resolve_method(
         &self,
-        name: Ident,
+        ident: Ident,
         class_idx: PoolIndex<Class>,
         pool: &ConstantPool,
         pos: Pos,
     ) -> Result<FunctionCandidates, Error> {
         let mut current_idx = class_idx;
-        let mut candidates = FunctionCandidates { functions: vec![] };
+        let mut functions = vec![];
 
         while current_idx != PoolIndex::UNDEFINED {
-            let fun_name = FunctionName::instance(current_idx, name.clone());
-            if let Ok(match_) = self.resolve_function(fun_name, pool, pos) {
-                candidates.append(match_)
+            let class = pool.class(current_idx)?;
+            for fun in &class.functions {
+                if pool.definition_name(*fun)?.split(';').next().unwrap() == ident.as_ref() {
+                    functions.push(*fun);
+                }
             }
-            current_idx = pool.class(current_idx)?.base;
+            current_idx = class.base;
         }
-        if candidates.functions.is_empty() {
-            let fun_name = FunctionName::instance(class_idx, name);
-            Err(Error::function_not_found(fun_name.pretty(pool), pos))
+        if functions.is_empty() {
+            Err(Error::function_not_found(ident, pos))
         } else {
-            Ok(candidates)
+            Ok(FunctionCandidates { functions })
         }
     }
 
-    pub fn resolve_reference(&self, name: Ident, pos: Pos) -> Result<Reference, Error> {
+    pub fn resolve_value(&self, name: Ident, pos: Pos) -> Result<Value, Error> {
         self.references
             .get(&name)
             .cloned()
             .ok_or_else(|| Error::CompileError(format!("Unresolved reference {}", name), pos))
+    }
+
+    pub fn resolve_symbol(&self, name: Ident, pos: Pos) -> Result<Symbol, Error> {
+        self.symbols
+            .get(&name)
+            .cloned()
+            .ok_or_else(|| Error::CompileError(format!("Unresolved reference {}", name), pos))
+    }
+
+    pub fn resolve_reference(&self, name: Ident, pos: Pos) -> Result<Reference, Error> {
+        self.resolve_value(name.clone(), pos)
+            .map(Reference::Value)
+            .or_else(|_| self.resolve_symbol(name, pos).map(Reference::Symbol))
     }
 
     pub fn get_type_index(&mut self, type_: &TypeId, pool: &mut ConstantPool) -> Result<PoolIndex<Type>, Error> {
@@ -236,7 +200,7 @@ impl Scope {
                 TypeId::ScriptRef(inner) => Type::ScriptRef(self.get_type_index(inner, pool)?),
                 TypeId::Null | TypeId::Void => panic!(),
             };
-            let type_idx = pool.push_definition(Definition::type_(name_idx, value)).cast();
+            let type_idx = pool.add_definition(Definition::type_(name_idx, value)).cast();
             self.types.insert(name, type_idx);
             Ok(type_idx)
         }
@@ -251,10 +215,10 @@ impl Scope {
                 ("wref", [nested]) => TypeId::WeakRef(Box::new(self.resolve_type(nested, pool, pos)?)),
                 ("script_ref", [nested]) => TypeId::ScriptRef(Box::new(self.resolve_type(nested, pool, pos)?)),
                 ("array", [nested]) => TypeId::Array(Box::new(self.resolve_type(nested, pool, pos)?)),
-                _ => match self.references.get(&name.repr()) {
-                    Some(Reference::Class(idx)) => TypeId::Class(*idx),
-                    Some(Reference::Struct(idx)) => TypeId::Struct(*idx),
-                    Some(Reference::Enum(idx)) => TypeId::Enum(*idx),
+                _ => match self.symbols.get(&name.repr()) {
+                    Some(Symbol::Class(idx, _)) => TypeId::Class(*idx),
+                    Some(Symbol::Struct(idx, _)) => TypeId::Struct(*idx),
+                    Some(Symbol::Enum(idx)) => TypeId::Enum(*idx),
                     _ => return Err(Error::CompileError(format!("Unresolved type {}", name), pos)),
                 },
             }
@@ -271,12 +235,13 @@ impl Scope {
         let result = match pool.type_(index)? {
             Type::Prim => TypeId::Prim(index),
             Type::Class => {
-                let ident = Ident::Owned(pool.definition_name(index)?);
-                match self.references.get(&ident) {
-                    Some(Reference::Class(class_idx)) => TypeId::Class(*class_idx),
-                    Some(Reference::Struct(struct_idx)) => TypeId::Struct(*struct_idx),
-                    Some(Reference::Enum(enum_idx)) => TypeId::Enum(*enum_idx),
-                    _ => return Err(Error::CompileError(format!("Unresolved reference to {}", ident), pos)),
+                let name = pool.definition_name(index)?;
+                let ident = Ident::new(name.split('.').last().unwrap().to_owned());
+                match self.symbols.get(&ident) {
+                    Some(Symbol::Class(class_idx, _)) => TypeId::Class(*class_idx),
+                    Some(Symbol::Struct(struct_idx, _)) => TypeId::Struct(*struct_idx),
+                    Some(Symbol::Enum(enum_idx)) => TypeId::Enum(*enum_idx),
+                    _ => return Err(Error::CompileError(format!("Unresolved reference {}", ident), pos)),
                 }
             }
             Type::Ref(type_) => {
@@ -302,4 +267,110 @@ impl Scope {
         };
         Ok(result)
     }
+}
+
+pub struct SymbolMap {
+    symbols: RadixMap<ModulePath, Symbol>,
+}
+
+impl SymbolMap {
+    pub fn new(pool: &ConstantPool) -> Result<SymbolMap, Error> {
+        let mut symbols: RadixMap<ModulePath, Symbol> = RadixMap::new();
+
+        for (idx, def) in pool.roots() {
+            let name = pool.definition_name(idx)?;
+            let symbol = match def.value {
+                AnyDefinition::Class(ref class) if class.flags.is_struct() => {
+                    Symbol::Struct(idx.cast(), class.visibility)
+                }
+                AnyDefinition::Class(ref class) => Symbol::Class(idx.cast(), class.visibility),
+                AnyDefinition::Enum(_) => Symbol::Enum(idx.cast()),
+                AnyDefinition::Function(ref fun) => Symbol::Functions(vec![(idx.cast(), fun.visibility)]),
+                _ => continue,
+            };
+            let path = ModulePath::parse(&name);
+            match (symbols.get_mut(&path), symbol) {
+                (Some(Symbol::Functions(existing)), Symbol::Functions(new)) => {
+                    existing.extend(new);
+                }
+                (_, symbol) => {
+                    symbols.insert(&path, symbol);
+                }
+            }
+        }
+
+        Ok(SymbolMap { symbols })
+    }
+
+    pub fn add_class(&mut self, path: &ModulePath, class: PoolIndex<Class>, visibility: Visibility) {
+        self.symbols.insert(path, Symbol::Class(class, visibility));
+    }
+
+    pub fn add_function(&mut self, path: &ModulePath, index: PoolIndex<Function>, visibility: Visibility) {
+        match self.symbols.get_mut(path) {
+            Some(Symbol::Functions(existing)) => {
+                existing.push((index, visibility));
+            }
+            _ => {
+                self.symbols.insert(path, Symbol::Functions(vec![(index, visibility)]));
+            }
+        }
+    }
+
+    pub fn populate_import(&self, import: Import, scope: &mut Scope, visibility: Visibility) -> Result<(), Error> {
+        match import {
+            Import::Exact(path, pos) => {
+                let symbol = self.get_symbol(&path, pos)?;
+                scope.add_symbol(&path, symbol, visibility);
+            }
+            Import::All(path, _) => {
+                for (sym_path, symbol) in self.get_direct_children(&path) {
+                    scope.add_symbol(&sym_path, symbol.clone(), visibility);
+                }
+            }
+            Import::Selected(path, names, pos) => {
+                for name in names {
+                    let path = path.with_child(name);
+                    let symbol = self.get_symbol(&path, pos)?;
+                    scope.add_symbol(&path, symbol, visibility)
+                }
+            }
+        };
+        Ok(())
+    }
+
+    fn get_symbol(&self, path: &ModulePath, pos: Pos) -> Result<Symbol, Error> {
+        self.symbols
+            .get(&path)
+            .cloned()
+            .ok_or_else(|| Error::unresolved_import(path.render(), pos))
+    }
+
+    fn get_direct_children<'a>(&'a self, path: &'a ModulePath) -> impl Iterator<Item = (ModulePath, &Symbol)> {
+        self.symbols
+            .find(path)
+            .filter(move |(p, _)| p.parts.len() == path.parts.len() + 1)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FunctionCandidates {
+    pub functions: Vec<PoolIndex<Function>>,
+}
+
+impl FunctionCandidates {
+    pub fn by_id(&self, fun_id: &FunctionId, pool: &ConstantPool) -> Option<PoolIndex<Function>> {
+        self.functions.iter().copied().find_map(|idx| {
+            pool.definition_name(idx)
+                .ok()
+                .filter(|name| name.as_ref() == fun_id.as_ref())
+                .map(|_| idx)
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct FunctionMatch {
+    pub index: PoolIndex<Function>,
+    pub args: Vec<Expr<TypedAst>>,
 }

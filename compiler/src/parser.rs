@@ -7,6 +7,16 @@ use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, Pos, Seq, SourceAst,
 use redscript::definition::Visibility;
 use strum::EnumString;
 
+use crate::source_map::File;
+use crate::{Import, ModulePath};
+
+#[derive(Debug)]
+pub struct SourceModule {
+    pub path: Option<ModulePath>,
+    pub imports: Vec<Import>,
+    pub entries: Vec<SourceEntry>,
+}
+
 #[derive(Debug)]
 pub enum SourceEntry {
     Class(ClassSource),
@@ -17,8 +27,8 @@ pub enum SourceEntry {
 #[derive(Debug)]
 pub struct ClassSource {
     pub qualifiers: Qualifiers,
-    pub name: String,
-    pub base: Option<String>,
+    pub name: Ident,
+    pub base: Option<Ident>,
     pub members: Vec<MemberSource>,
     pub pos: Pos,
 }
@@ -46,7 +56,7 @@ pub struct FunctionSource {
 #[derive(Debug)]
 pub struct ParameterSource {
     pub qualifiers: Qualifiers,
-    pub name: String,
+    pub name: Ident,
     pub type_: TypeName,
 }
 
@@ -87,14 +97,14 @@ impl Qualifiers {
 pub struct Declaration {
     pub annotations: Vec<Annotation>,
     pub qualifiers: Qualifiers,
-    pub name: String,
+    pub name: Ident,
     pub pos: Pos,
 }
 
 #[derive(Debug)]
 pub struct Annotation {
     pub name: AnnotationName,
-    pub values: Vec<String>,
+    pub values: Vec<Ident>,
     pub pos: Pos,
 }
 
@@ -107,16 +117,22 @@ pub enum AnnotationName {
     AddField,
 }
 
-pub fn parse(input: &str) -> Result<Vec<SourceEntry>, ParseError<LineCol>> {
-    lang::source(input)
+pub fn parse_file(file: &File) -> Result<SourceModule, ParseError<LineCol>> {
+    lang::module(file.source(), file.byte_offset())
+}
+
+pub fn parse_str(str: &str) -> Result<SourceModule, ParseError<LineCol>> {
+    lang::module(str, Pos::ZERO)
 }
 
 peg::parser! {
-    grammar lang() for str {
+    grammar lang(offset: Pos) for str {
         use peg::ParseLiteral;
 
+        rule pos() -> Pos = pos:position!() { offset + pos }
         rule _() = quiet!{ ([' ' | '\n' | '\r' | '\t'] / comment() / line_comment())* }
         rule commasep<T>(x: rule<T>) -> Vec<T> = v:(x() ** ("," _)) {v}
+        rule dotsep<T>(x: rule<T>) -> Vec<T> = v:(x() ** ("." _)) {v}
 
         rule comment_start() = "/*"
         rule comment_end() = "*/"
@@ -146,18 +162,18 @@ peg::parser! {
             / "t" { Literal::TweakDbId }
 
         rule annotation() -> Annotation
-            = pos:position!() "@" ident:ident() _ "(" _ values:commasep(<ident()>) _ ")" {?
-                AnnotationName::from_str(&ident).map(|name| {
-                    Annotation { name, values, pos: Pos::new(pos) }
+            = pos:pos() "@" ident:ident() _ "(" _ values:commasep(<ident()>) _ ")" {?
+                AnnotationName::from_str(ident.as_ref()).map(|name| {
+                    Annotation { name, values, pos }
                 }).map_err(|_| "annotation")
             }
 
         rule qualifiers() -> Qualifiers = qs:qualifier() ** _ { Qualifiers(qs) }
 
-        rule ident() -> String
+        rule ident() -> Ident
             = quiet!{
                 x:$(['a'..='z' | 'A'..='Z' | '_']) xs:$(['0'..='9' | 'a'..='z' | 'A'..='Z' | '_']*)
-                { format!("{}{}", x, xs) }
+                { Ident::new(format!("{}{}", x, xs)) }
             } / expected!("identifier")
 
         rule keyword(id: &'static str) -> () =
@@ -181,7 +197,7 @@ peg::parser! {
             / "\\u{" u:$(['a'..='f' | 'A'..='F' | '0'..='9']*<1,6>) "}" {
                 String::from(char::from_u32(u32::from_str_radix(u, 16).unwrap()).unwrap())
             }
-        
+
         pub rule escaped_string() -> String
             = "\"" s:escaped_char()* "\"" { s.join("") }
 
@@ -195,7 +211,7 @@ peg::parser! {
         rule seq() -> Seq<SourceAst> = exprs:(stmt() ** _) { Seq::new(exprs) }
 
         rule type_() -> TypeName
-            = name:ident() args:type_args()? { TypeName { name: Ident::new(name), arguments: args.unwrap_or_default() } }
+            = name:ident() args:type_args()? { TypeName { name, arguments: args.unwrap_or_default() } }
         rule type_args() -> Vec<TypeName> = "<" _ args:commasep(<type_()>) _ ">" { args }
 
         rule let_type() -> TypeName = ":" _ type_:type_() { type_ }
@@ -204,12 +220,12 @@ peg::parser! {
         rule initializer() -> Expr<SourceAst> = "=" _ val:expr() { val }
 
         rule let() -> Expr<SourceAst>
-            = pos:position!() keyword("let") _ name:ident() _ type_:let_type()? _ val:initializer()? _ ";"
-            { Expr::Declare(Ident::new(name), type_, val.map(Box::new), Pos::new(pos)) }
+            = pos:pos() keyword("let") _ name:ident() _ type_:let_type()? _ val:initializer()? _ ";"
+            { Expr::Declare(name, type_, val.map(Box::new), pos) }
 
         rule decl(inner: rule<()>) -> Declaration
-            = pos:position!() annotations:(annotation() ** _) _ qualifiers:qualifiers() _ inner() _ name:ident()
-            { Declaration { annotations, qualifiers, name, pos: Pos::new(pos) } }
+            = pos:pos() annotations:(annotation() ** _) _ qualifiers:qualifiers() _ inner() _ name:ident()
+            { Declaration { annotations, qualifiers, name, pos } }
 
         rule field() -> FieldSource
             = declaration:decl(<keyword("let")>) _ type_:let_type() _ ";"
@@ -220,17 +236,17 @@ peg::parser! {
             { FunctionSource { declaration, type_, parameters, body } }
         rule function_body() -> Seq<SourceAst>
             = "{" _ body:seq() _ "}" { body }
-            / pos:position!() "=" _ expr:expr() { Seq::new(vec![Expr::Return(Some(Box::new(expr)), Pos::new(pos))]) }
+            / pos:pos() "=" _ expr:expr() { Seq::new(vec![Expr::Return(Some(Box::new(expr)), pos)]) }
 
         rule param() -> ParameterSource
             = qualifiers:qualifiers() _ name:ident() _ type_:let_type()
             { ParameterSource { qualifiers, name, type_ } }
 
-        rule extends() -> String = keyword("extends") _ name:ident() { name }
+        rule extends() -> Ident = keyword("extends") _ name:ident() { name }
 
         pub rule class() -> ClassSource
-            = pos:position!() qualifiers:qualifiers() _ keyword("class") _ name:ident() _ base:extends()? _ "{" _ members:member()**_ _ "}"
-            { ClassSource { qualifiers, name, base, members, pos: Pos::new(pos) } }
+            = pos:pos() qualifiers:qualifiers() _ keyword("class") _ name:ident() _ base:extends()? _ "{" _ members:member()**_ _ "}"
+            { ClassSource { qualifiers, name, base, members, pos } }
 
         rule member() -> MemberSource
             = fun:function() { MemberSource::Function(fun) }
@@ -241,7 +257,21 @@ peg::parser! {
             / class:class() { SourceEntry::Class(class) }
             / field:field() { SourceEntry::GlobalLet(field) }
 
-        pub rule source() -> Vec<SourceEntry> = _ decls:(source_entry() ** _) _ { decls }
+
+        rule import() -> Import
+            = pos:pos() keyword("import") _ parts: dotsep(<ident()>) _ "." _ "*"
+                { Import::All(ModulePath::new(parts), pos) }
+            / pos:pos() keyword("import") _ parts: dotsep(<ident()>) _ "." _ "{" _ names:commasep(<ident()>) _ "}"
+                { Import::Selected(ModulePath::new(parts), names, pos) }
+            / pos:pos() keyword("import") _ parts: dotsep(<ident()>)
+                { Import::Exact(ModulePath::new(parts), pos) }
+
+        rule module_path() -> ModulePath  =
+            keyword("module") _ parts:dotsep(<ident()>) { ModulePath { parts } }
+
+        pub rule module() -> SourceModule =
+            _ path:module_path()? _ imports:(import() ** _) entries:(source_entry() ** _) _
+            { SourceModule { path, imports, entries } }
 
         rule switch() -> Expr<SourceAst>
             = keyword("switch") _ matcher:expr() _ "{" _ cases:(case() ** _) _ default:default()? _ "}" _ ";"?
@@ -255,16 +285,16 @@ peg::parser! {
             = keyword("default") _ ":" _ body:seq() { body }
 
         rule while_() -> Expr<SourceAst>
-            = pos:position!() keyword("while") _ cond:expr() _ "{" _ body:seq() _ "}" _ ";"?
-            { Expr::While(Box::new(cond), body, Pos::new(pos)) }
+            = pos:pos() keyword("while") _ cond:expr() _ "{" _ body:seq() _ "}" _ ";"?
+            { Expr::While(Box::new(cond), body, pos) }
 
         rule for_() -> Expr<SourceAst>
-            = pos:position!() keyword("for") _ ident:ident() _ keyword("in") _ array:expr() _ "{" _ body:seq() _ "}" _ ";"?
-            { Expr::ForIn(Ident::new(ident), Box::new(array), body, Pos::new(pos)) }
+            = pos:pos() keyword("for") _ ident:ident() _ keyword("in") _ array:expr() _ "{" _ body:seq() _ "}" _ ";"?
+            { Expr::ForIn(ident, Box::new(array), body, pos) }
 
         rule if_() -> Expr<SourceAst>
-            = pos:position!() keyword("if") _ cond:expr() _ "{" _ if_:seq() _ "}" _ else_:else_()? _ ";"?
-            { Expr::If(Box::new(cond), if_, else_, Pos::new(pos)) }
+            = pos:pos() keyword("if") _ cond:expr() _ "{" _ if_:seq() _ "}" _ else_:else_()? _ ";"?
+            { Expr::If(Box::new(cond), if_, else_, pos) }
         rule else_() -> Seq<SourceAst>
             = keyword("else") _ "{" _ body:seq() _ "}" { body }
 
@@ -273,65 +303,65 @@ peg::parser! {
             / for_: for_() { for_ }
             / if_: if_() { if_ }
             / switch: switch() { switch }
-            / pos:position!() keyword("return") _ val:expr()? _ ";" { Expr::Return(val.map(Box::new), Pos::new(pos)) }
-            / pos:position!() keyword("break") _ ";" { Expr::Break(Pos::new(pos)) }
+            / pos:pos() keyword("return") _ val:expr()? _ ";" { Expr::Return(val.map(Box::new), pos) }
+            / pos:pos() keyword("break") _ ";" { Expr::Break(pos) }
             / let_:let() { let_ }
             / expr:expr() _ ";" { expr }
 
         pub rule expr() -> Expr<SourceAst> = precedence!{
-            x:@ _ pos:position!() "?" _ y:expr() _ ":" _ z:expr()
-                { Expr::Conditional(Box::new(x), Box::new(y), Box::new(z), Pos::new(pos)) }
-            x:@ _ pos:position!() "=" _ y:(@) { Expr::Assign(Box::new(x), Box::new(y), Pos::new(pos)) }
-            x:@ _ pos:position!() "+=" _ y:(@) { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignAdd, Pos::new(pos)) }
-            x:@ _ pos:position!() "-=" _ y:(@) { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignSubtract, Pos::new(pos)) }
-            x:@ _ pos:position!() "*=" _ y:(@) { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignMultiply, Pos::new(pos)) }
-            x:@ _ pos:position!() "/=" _ y:(@) { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignDivide, Pos::new(pos)) }
+            x:@ _ pos:pos() "?" _ y:expr() _ ":" _ z:expr()
+                { Expr::Conditional(Box::new(x), Box::new(y), Box::new(z), pos) }
+            x:@ _ pos:pos() "=" _ y:(@) { Expr::Assign(Box::new(x), Box::new(y), pos) }
+            x:@ _ pos:pos() "+=" _ y:(@) { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignAdd, pos) }
+            x:@ _ pos:pos() "-=" _ y:(@) { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignSubtract, pos) }
+            x:@ _ pos:pos() "*=" _ y:(@) { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignMultiply, pos) }
+            x:@ _ pos:pos() "/=" _ y:(@) { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignDivide, pos) }
             --
-            x:(@) _ pos:position!() "||" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::LogicOr, Pos::new(pos)) }
-            x:(@) _ pos:position!() "&&" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::LogicAnd, Pos::new(pos)) }
-            x:(@) _ pos:position!() "|" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Or, Pos::new(pos)) }
-            x:(@) _ pos:position!() "^" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Xor, Pos::new(pos)) }
-            x:(@) _ pos:position!() "&" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::And, Pos::new(pos)) }
+            x:(@) _ pos:pos() "||" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::LogicOr, pos) }
+            x:(@) _ pos:pos() "&&" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::LogicAnd, pos) }
+            x:(@) _ pos:pos() "|" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Or, pos) }
+            x:(@) _ pos:pos() "^" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Xor, pos) }
+            x:(@) _ pos:pos() "&" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::And, pos) }
             --
-            x:(@) _ pos:position!() "==" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Equal, Pos::new(pos)) }
-            x:(@) _ pos:position!() "!=" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::NotEqual, Pos::new(pos)) }
+            x:(@) _ pos:pos() "==" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Equal, pos) }
+            x:(@) _ pos:pos() "!=" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::NotEqual, pos) }
             --
-            x:(@) _ pos:position!() "<" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Less, Pos::new(pos)) }
-            x:(@) _ pos:position!() "<=" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::LessEqual, Pos::new(pos)) }
-            x:(@) _ pos:position!() ">" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Greater, Pos::new(pos)) }
-            x:(@) _ pos:position!() ">=" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::GreaterEqual, Pos::new(pos)) }
+            x:(@) _ pos:pos() "<" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Less, pos) }
+            x:(@) _ pos:pos() "<=" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::LessEqual, pos) }
+            x:(@) _ pos:pos() ">" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Greater, pos) }
+            x:(@) _ pos:pos() ">=" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::GreaterEqual, pos) }
             --
-            x:(@) _ pos:position!() "+" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Add, Pos::new(pos)) }
-            x:(@) _ pos:position!() "-" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Subtract, Pos::new(pos)) }
+            x:(@) _ pos:pos() "+" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Add, pos) }
+            x:(@) _ pos:pos() "-" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Subtract, pos) }
             --
-            x:(@) _ pos:position!() "*" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Multiply, Pos::new(pos)) }
-            x:(@) _ pos:position!() "/" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Divide, Pos::new(pos)) }
-            x:(@) _ pos:position!() "%" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Modulo, Pos::new(pos)) }
+            x:(@) _ pos:pos() "*" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Multiply, pos) }
+            x:(@) _ pos:pos() "/" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Divide, pos) }
+            x:(@) _ pos:pos() "%" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Modulo, pos) }
             --
-            pos:position!() "!" _ x:@ { Expr::UnOp(Box::new(x), UnOp::LogicNot, Pos::new(pos)) }
-            pos:position!() "~" _ x:@ { Expr::UnOp(Box::new(x), UnOp::BitNot, Pos::new(pos)) }
-            pos:position!() "-" _ x:@ { Expr::UnOp(Box::new(x), UnOp::Neg, Pos::new(pos)) }
-            pos:position!() keyword("new") _ id:ident() _ "(" _ params:commasep(<expr()>) _ ")"
-                { Expr::New(TypeName::basic_owned(Rc::new(id)), params, Pos::new(pos)) }
+            pos:pos() "!" _ x:@ { Expr::UnOp(Box::new(x), UnOp::LogicNot, pos) }
+            pos:pos() "~" _ x:@ { Expr::UnOp(Box::new(x), UnOp::BitNot, pos) }
+            pos:pos() "-" _ x:@ { Expr::UnOp(Box::new(x), UnOp::Neg, pos) }
+            pos:pos() keyword("new") _ id:ident() _ "(" _ params:commasep(<expr()>) _ ")"
+                { Expr::New(TypeName::basic_owned(id.to_owned()), params, pos) }
             --
-            expr:(@) _ pos:position!() "[" _ idx:expr() _ "]"
-                { Expr::ArrayElem(Box::new(expr), Box::new(idx), Pos::new(pos)) }
-            expr:(@) _ pos:position!() "." _ ident:ident() _ "(" _ params:commasep(<expr()>) _ ")"
-                { Expr::MethodCall(Box::new(expr), Ident::new(ident), params, Pos::new(pos)) }
-            expr:(@) _ pos:position!() "." _ ident:ident()
-                { Expr::Member(Box::new(expr), Ident::new(ident), Pos::new(pos)) }
-            expr:(@) _ pos:position!() keyword("as") _ type_:type_()
-                { Expr::Cast(type_, Box::new(expr), Pos::new(pos)) }
-            pos:position!() "[" _ exprs:commasep(<expr()>)_ "]" { Expr::ArrayLit(exprs, None, Pos::new(pos)) }
+            expr:(@) _ pos:pos() "[" _ idx:expr() _ "]"
+                { Expr::ArrayElem(Box::new(expr), Box::new(idx), pos) }
+            expr:(@) _ pos:pos() "." _ ident:ident() _ "(" _ params:commasep(<expr()>) _ ")"
+                { Expr::MethodCall(Box::new(expr), ident, params, pos) }
+            expr:(@) _ pos:pos() "." _ ident:ident()
+                { Expr::Member(Box::new(expr), ident, pos) }
+            expr:(@) _ pos:pos() keyword("as") _ type_:type_()
+                { Expr::Cast(type_, Box::new(expr), pos) }
+            pos:pos() "[" _ exprs:commasep(<expr()>)_ "]" { Expr::ArrayLit(exprs, None, pos) }
             "(" _ v:expr() _ ")" { v }
             keyword("null") { Expr::Null }
-            pos:position!() keyword("this") { Expr::This(Pos::new(pos)) }
-            pos:position!() keyword("super") { Expr::Super(Pos::new(pos)) }
-            pos:position!() cons:constant() { Expr::Constant(cons, Pos::new(pos)) }
-            pos:position!() id:ident() _ "(" _ params:commasep(<expr()>) _ ")"
-                { Expr::Call(Ident::new(id), params, Pos::new(pos)) }
-            pos:position!() id:ident()
-                { Expr::Ident(Ident::new(id), Pos::new(pos)) }
+            pos:pos() keyword("this") { Expr::This(pos) }
+            pos:pos() keyword("super") { Expr::Super(pos) }
+            pos:pos() cons:constant() { Expr::Constant(cons, pos) }
+            pos:pos() id:ident() _ "(" _ params:commasep(<expr()>) _ ")"
+                { Expr::Call(id, params, pos) }
+            pos:pos() id:ident()
+                { Expr::Ident(id, pos) }
         }
     }
 }
@@ -342,7 +372,7 @@ mod tests {
 
     #[test]
     fn parse_ternary_op() {
-        let expr = lang::expr("3.0 ? 5.0 : 5 + 4").unwrap();
+        let expr = lang::expr("3.0 ? 5.0 : 5 + 4", Pos::ZERO).unwrap();
         assert_eq!(
             format!("{:?}", expr),
             "Conditional(Constant(Float(3.0), Pos(0)), Constant(Float(5.0), Pos(6)), BinOp(Constant(Int(5), Pos(12)), \
@@ -352,7 +382,7 @@ mod tests {
 
     #[test]
     fn parse_simple_class() {
-        let class = lang::source(
+        let module = lang::module(
             "public class A extends IScriptable {
                 private const let m_field: Int32;
 
@@ -360,25 +390,27 @@ mod tests {
                     return this.m_field;
                 }
              }",
+            Pos::ZERO,
         )
         .unwrap();
         assert_eq!(
-            format!("{:?}", class),
-            r#"[Class(ClassSource { qualifiers: Qualifiers([Public]), name: "A", base: Some("IScriptable"), members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private, Const]), name: "m_field", pos: Pos(53) }, type_: TypeName { name: Owned("Int32"), arguments: [] } }), Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public]), name: "GetField", pos: Pos(104) }, type_: Some(TypeName { name: Owned("Int32"), arguments: [] }), parameters: [], body: Some(Seq { exprs: [Return(Some(Member(This(Pos(165)), Owned("m_field"), Pos(169))), Pos(158))] }) })], pos: Pos(0) })]"#
+            format!("{:?}", module.entries),
+            r#"[Class(ClassSource { qualifiers: Qualifiers([Public]), name: Owned("A"), base: Some(Owned("IScriptable")), members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private, Const]), name: Owned("m_field"), pos: Pos(53) }, type_: TypeName { name: Owned("Int32"), arguments: [] } }), Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public]), name: Owned("GetField"), pos: Pos(104) }, type_: Some(TypeName { name: Owned("Int32"), arguments: [] }), parameters: [], body: Some(Seq { exprs: [Return(Some(Member(This(Pos(165)), Owned("m_field"), Pos(169))), Pos(158))] }) })], pos: Pos(0) })]"#
         );
     }
 
     #[test]
     fn parse_simple_func() {
-        let class = lang::source(
+        let module = lang::module(
             "public static func GetField(optimum: Uint64) -> Uint64 {
                 return this.m_field > optimum ? this.m_field : optimum;
              }",
+            Pos::ZERO,
         )
         .unwrap();
         assert_eq!(
-            format!("{:?}", class),
-            r#"[Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public, Static]), name: "GetField", pos: Pos(0) }, type_: Some(TypeName { name: Owned("Uint64"), arguments: [] }), parameters: [ParameterSource { qualifiers: Qualifiers([]), name: "optimum", type_: TypeName { name: Owned("Uint64"), arguments: [] } }], body: Some(Seq { exprs: [Return(Some(Conditional(BinOp(Member(This(Pos(80)), Owned("m_field"), Pos(84)), Ident(Owned("optimum"), Pos(95)), Greater, Pos(93)), Member(This(Pos(105)), Owned("m_field"), Pos(109)), Ident(Owned("optimum"), Pos(120)), Pos(103))), Pos(73))] }) })]"#
+            format!("{:?}", module.entries),
+            r#"[Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public, Static]), name: Owned("GetField"), pos: Pos(0) }, type_: Some(TypeName { name: Owned("Uint64"), arguments: [] }), parameters: [ParameterSource { qualifiers: Qualifiers([]), name: Owned("optimum"), type_: TypeName { name: Owned("Uint64"), arguments: [] } }], body: Some(Seq { exprs: [Return(Some(Conditional(BinOp(Member(This(Pos(80)), Owned("m_field"), Pos(84)), Ident(Owned("optimum"), Pos(95)), Greater, Pos(93)), Member(This(Pos(105)), Owned("m_field"), Pos(109)), Ident(Owned("optimum"), Pos(120)), Pos(103))), Pos(73))] }) })]"#
         );
     }
 
@@ -389,6 +421,7 @@ mod tests {
                 this.counter += Object.CONSTANT;
                 i += 1;
              }",
+            Pos::ZERO,
         )
         .unwrap();
         assert_eq!(
@@ -405,6 +438,7 @@ mod tests {
              } else {
                 this.Bugs();
              }",
+            Pos::ZERO,
         )
         .unwrap();
         assert_eq!(
@@ -425,6 +459,7 @@ mod tests {
                  default:
                     Log("default");
             }"#,
+            Pos::ZERO,
         )
         .unwrap();
         assert_eq!(
@@ -435,7 +470,7 @@ mod tests {
 
     #[test]
     fn parse_with_comment() {
-        let stmt = lang::source(
+        let module = lang::module(
             r#"
             /* this is a multiline comment
                blah blah blah
@@ -444,41 +479,54 @@ mod tests {
                 private let m_field /* cool stuff */: String;
             }
             "#,
+            Pos::ZERO,
         )
         .unwrap();
         assert_eq!(
-            format!("{:?}", stmt),
-            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: "Test", base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: "m_field", pos: Pos(130) }, type_: TypeName { name: Owned("String"), arguments: [] } })], pos: Pos(101) })]"#
+            format!("{:?}", module.entries),
+            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: Owned("Test"), base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: Owned("m_field"), pos: Pos(130) }, type_: TypeName { name: Owned("String"), arguments: [] } })], pos: Pos(101) })]"#
         );
     }
 
     #[test]
     fn parse_with_line_comment() {
-        let stmt = lang::source(
+        let module = lang::module(
             r#"
             class Test { // line comment
                 // private let m_comment_field: String;
                 private let m_field: String;
             }
             "#,
+            Pos::ZERO,
         )
         .unwrap();
         assert_eq!(
-            format!("{:?}", stmt),
-            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: "Test", base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: "m_field", pos: Pos(114) }, type_: TypeName { name: Owned("String"), arguments: [] } })], pos: Pos(13) })]"#
+            format!("{:?}", module.entries),
+            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: Owned("Test"), base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: Owned("m_field"), pos: Pos(114) }, type_: TypeName { name: Owned("String"), arguments: [] } })], pos: Pos(13) })]"#
         );
     }
 
     #[test]
     fn parse_escaped_string() {
-        let escaped = lang::escaped_string(r#""This is a backslash \'\\\' \"escaped\" string \t\u{03BB}\r\n""#);
+        let escaped = lang::escaped_string(
+            r#""This is a backslash \'\\\' \"escaped\" string \t\u{03BB}\r\n""#,
+            Pos::ZERO,
+        );
 
-        assert_eq!(escaped, Ok(String::from(  "This is a backslash \'\\\' \"escaped\" string \t\u{03BB}\r\n")));
+        assert_eq!(
+            escaped,
+            Ok(String::from(
+                "This is a backslash \'\\\' \"escaped\" string \t\u{03BB}\r\n"
+            ))
+        );
     }
 
     #[test]
     fn fail_mangled_string() {
-        let mangled = lang::escaped_string(r#""These are invalid escape characters: \a \\" \u{1234567}""#);
+        let mangled = lang::escaped_string(
+            r#""These are invalid escape characters: \a \\" \u{1234567}""#,
+            Pos::ZERO,
+        );
 
         assert!(mangled.is_err());
     }

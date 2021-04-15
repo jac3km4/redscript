@@ -8,7 +8,7 @@ use redscript::error::Error;
 
 use crate::scope::Scope;
 use crate::typechecker::{type_of, Callable, IntrinsicOp, Member, TypedAst};
-use crate::{Reference, TypeId};
+use crate::{Reference, Symbol, TypeId, Value};
 
 pub struct Assembler {
     instructions: Vec<Instr<Label>>,
@@ -50,8 +50,8 @@ impl Assembler {
         match expr {
             Expr::Ident(reference, pos) => {
                 match reference {
-                    Reference::Local(idx) => self.emit(Instr::Local(idx)),
-                    Reference::Parameter(idx) => self.emit(Instr::Param(idx)),
+                    Reference::Value(Value::Local(idx)) => self.emit(Instr::Local(idx)),
+                    Reference::Value(Value::Parameter(idx)) => self.emit(Instr::Param(idx)),
                     _ => return Err(Error::CompileError("Expected a value".to_owned(), pos)),
                 };
             }
@@ -234,7 +234,7 @@ impl Assembler {
                 }
             },
             Expr::MethodCall(expr, fun_idx, args, _) => match *expr {
-                Expr::Ident(Reference::Class(_) | Reference::Struct(_), pos) => {
+                Expr::Ident(Reference::Symbol(Symbol::Class(_, _)) | Reference::Symbol(Symbol::Struct(_, _)), pos) => {
                     let fun = pool.function(fun_idx)?;
                     if fun.flags.is_static() {
                         self.assemble_call(fun_idx, args, scope, pool, true)?
