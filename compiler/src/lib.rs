@@ -501,10 +501,7 @@ impl<'a> Compiler<'a> {
                     } else {
                         None
                     };
-                    let name_idx = self
-                        .pool
-                        .names
-                        .add(module.with_child(Ident::new(id.into_owned())).render().to_owned());
+                    let name_idx = self.pool.names.add(Rc::new(id.into_owned()));
                     let fun_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
                     self.pool.class_mut(target_class_idx)?.functions.push(fun_idx);
 
@@ -520,13 +517,11 @@ impl<'a> Compiler<'a> {
                 AnnotationName::AddField => {}
             }
         }
-        let path = module.with_child(name);
-        let name_idx = self
-            .pool
-            .names
-            .add(module.with_child(Ident::new(id.into_owned())).render().to_owned());
 
+        let name_idx = self.pool.names.add(module.with_function(id).render().to_owned());
         let fun_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
+
+        let path = module.with_child(name);
         self.symbols.add_function(&path, fun_idx, visibility);
 
         // add to globals when no module
@@ -606,6 +601,11 @@ impl ModulePath {
         let mut copy = self.clone();
         copy.parts.push(child);
         copy
+    }
+
+    pub fn with_function(&self, function_id: FunctionId) -> ModulePath {
+        let ident = Ident::new(function_id.into_owned());
+        self.with_child(ident)
     }
 
     pub fn render(&self) -> Ident {
