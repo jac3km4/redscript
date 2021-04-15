@@ -271,7 +271,7 @@ impl<'a> Compiler<'a> {
             if let Symbol::Class(base_idx, _) = scope.resolve_symbol(base_name.clone(), source.pos)? {
                 base_idx
             } else {
-                return Err(Error::CompileError(format!("{} is not a class", base_name), source.pos));
+                return Err(Error::class_not_found(base_name, source.pos));
             }
         } else if let Ok(Symbol::Class(class, _)) = scope.resolve_symbol(Ident::Static("IScriptable"), source.pos) {
             class
@@ -423,10 +423,7 @@ impl<'a> Compiler<'a> {
                 _ => {}
             }
         }
-        Err(Error::CompileError(
-            "Global let binding not allowed".to_owned(),
-            decl.pos,
-        ))
+        Err(Error::unsupported("Let binding", decl.pos))
     }
 
     fn determine_function_location(&mut self, source: FunctionSource, module: &ModulePath) -> Result<Slot, Error> {
