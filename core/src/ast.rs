@@ -3,7 +3,7 @@ use std::hash::Hash;
 use std::ops::Add;
 use std::rc::Rc;
 
-use strum::IntoStaticStr;
+use strum::{Display, EnumString, IntoStaticStr};
 
 #[derive(Debug)]
 pub enum Expr<Name: NameKind>
@@ -143,7 +143,7 @@ impl AsRef<str> for Ident {
     }
 }
 
-#[derive(Debug, Clone, Copy, IntoStaticStr)]
+#[derive(Debug, Clone, Copy, Display, EnumString, IntoStaticStr)]
 pub enum BinOp {
     #[strum(serialize = "OperatorAssignAdd")]
     AssignAdd,
@@ -306,6 +306,7 @@ impl TypeName {
     pub const CNAME: Self = TypeName::basic("CName");
     pub const RESOURCE: Self = TypeName::basic("ResRef");
     pub const TWEAKDB_ID: Self = TypeName::basic("TweakDBID");
+    pub const VOID: Self = TypeName::basic("Void");
 
     fn unwrapped(&self) -> &Self {
         match self.name.as_ref() {

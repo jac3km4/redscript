@@ -7,7 +7,7 @@ use redscript::definition::{
 use redscript::error::Error;
 
 use crate::typechecker::TypedAst;
-use crate::{FunctionId, Import, ModulePath, Reference, Symbol, TypeId, Value};
+use crate::{FunctionSignature, Import, ModulePath, Reference, Symbol, TypeId, Value};
 
 #[derive(Debug, Clone)]
 pub struct Scope {
@@ -357,11 +357,11 @@ pub struct FunctionCandidates {
 }
 
 impl FunctionCandidates {
-    pub fn by_id(&self, fun_id: &FunctionId, pool: &ConstantPool) -> Option<PoolIndex<Function>> {
+    pub fn by_id(&self, fun_sig: &FunctionSignature, pool: &ConstantPool) -> Option<PoolIndex<Function>> {
         self.functions.iter().copied().find_map(|idx| {
             pool.definition_name(idx)
                 .ok()
-                .filter(|name| name.as_ref() == fun_id.as_ref())
+                .filter(|name| name.as_ref() == fun_sig.as_ref())
                 .map(|_| idx)
         })
     }
