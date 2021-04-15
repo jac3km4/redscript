@@ -55,6 +55,14 @@ impl Error {
         Error::CompileError("Void value cannot be used".to_owned(), pos)
     }
 
+    pub fn value_expected<N: Display>(found: N, pos: Pos) -> Error {
+        Error::CompileError(format!("Expected a value, found {}", found), pos)
+    }
+
+    pub fn unresolved_import<N: Display>(import: N, pos: Pos) -> Error {
+        Error::CompileError(format!("Unresolved import: {}", import), pos)
+    }
+
     pub fn return_type_mismatch<N: Display>(type_: N, pos: Pos) -> Error {
         let error = format!("Function should return {}", type_);
         Error::CompileError(error, pos)

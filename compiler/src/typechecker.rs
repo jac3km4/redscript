@@ -522,7 +522,7 @@ pub fn type_of(expr: &Expr<TypedAst>, scope: &Scope, pool: &ConstantPool) -> Res
             Reference::Symbol(Symbol::Class(idx, _)) => TypeId::Class(*idx),
             Reference::Symbol(Symbol::Struct(idx, _)) => TypeId::Struct(*idx),
             Reference::Symbol(Symbol::Enum(idx)) => TypeId::Enum(*idx),
-            _ => panic!(),
+            Reference::Symbol(Symbol::Functions(_)) => return Err(Error::value_expected("function", *pos)),
         },
         Expr::Constant(cons, pos) => match cons {
             Constant::String(Literal::String, _) => scope.resolve_type(&TypeName::STRING, pool, *pos)?,

@@ -343,7 +343,7 @@ impl SymbolMap {
         self.symbols
             .get(&path)
             .cloned()
-            .ok_or_else(|| Error::CompileError("Unresolved import".to_owned(), pos))
+            .ok_or_else(|| Error::unresolved_import(path.render(), pos))
     }
 
     fn get_direct_children<'a>(&'a self, path: &'a ModulePath) -> impl Iterator<Item = (ModulePath, &Symbol)> {
