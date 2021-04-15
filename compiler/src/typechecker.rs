@@ -398,7 +398,7 @@ impl<'a> TypeChecker<'a> {
                 checked_args.push(self.check(&args[0], None, scope)?);
                 *inner
             }
-            (IntrinsicOp::ToBool, TypeId::Ref(_) | TypeId::WeakRef(_)) => {
+            (IntrinsicOp::IsDefined, TypeId::Ref(_) | TypeId::WeakRef(_)) => {
                 checked_args.push(self.check(&args[0], None, scope)?);
                 scope.resolve_type(&TypeName::BOOL, self.pool, pos)?
             }
@@ -716,7 +716,7 @@ pub enum IntrinsicOp {
     Deref,
     RefToWeakRef,
     WeakRefToRef,
-    ToBool,
+    IsDefined,
 }
 
 impl IntrinsicOp {
@@ -747,7 +747,7 @@ impl IntrinsicOp {
             IntrinsicOp::Deref => 1,
             IntrinsicOp::RefToWeakRef => 1,
             IntrinsicOp::WeakRefToRef => 1,
-            IntrinsicOp::ToBool => 1,
+            IntrinsicOp::IsDefined => 1,
         }
     }
 }

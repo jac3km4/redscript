@@ -1216,13 +1216,13 @@ mod tests {
     }
 
     #[test]
-    fn compile_to_bool() -> Result<(), Error> {
+    fn compile_is_defined() -> Result<(), Error> {
         let sources = "
             func Testing() {
                 let x = new A();
-                if ToBool(x) {}
+                if IsDefined(x) {}
                 let y: wref<A> = new A();
-                if ToBool(y) {}
+                if IsDefined(y) {}
             }
 
             class A {}

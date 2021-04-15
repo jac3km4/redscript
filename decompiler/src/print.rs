@@ -155,7 +155,7 @@ pub fn write_definition<W: Write>(
                 write!(out, "inline ")?;
             }
             if field.flags.is_rep() {
-                write!(out, "rep ")?;
+                write!(out, "replicated ")?;
             }
             if field.flags.is_edit() {
                 write!(out, "edit ")?;
