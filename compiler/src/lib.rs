@@ -3,10 +3,11 @@
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::rc::Rc;
+use std::str::FromStr;
 
 use assembler::Assembler;
 use parser::{AnnotationName, FieldSource, SourceModule};
-use redscript::ast::{Ident, Pos, Seq, SourceAst};
+use redscript::ast::{BinOp, Ident, Pos, Seq, SourceAst, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::Code;
 use redscript::definition::{
@@ -250,8 +251,8 @@ impl<'a> Compiler<'a> {
         for member in source.members {
             match member {
                 MemberSource::Function(fun) => {
-                    let fun_id = FunctionId::from_source(&fun);
-                    let name_idx = self.pool.names.add(Rc::new(fun_id.into_owned()));
+                    let fun_sig = FunctionSignature::from_source(&fun);
+                    let name_idx = self.pool.names.add(Rc::new(fun_sig.into_owned()));
                     let fun_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
 
                     self.define_function(fun_idx, class_idx, None, visibility, fun, scope)?;
@@ -428,7 +429,7 @@ impl<'a> Compiler<'a> {
 
     fn determine_function_location(&mut self, source: FunctionSource, module: &ModulePath) -> Result<Slot, Error> {
         let name = source.declaration.name.clone();
-        let id = FunctionId::from_source(&source);
+        let sig = FunctionSignature::from_source(&source);
         let visibility = source
             .declaration
             .qualifiers
@@ -451,7 +452,7 @@ impl<'a> Compiler<'a> {
                         .scope
                         .resolve_method(name.clone(), target_class_idx, self.pool, ann.pos)?;
                     let fun_idx = candidates
-                        .by_id(&id, self.pool)
+                        .by_id(&sig, self.pool)
                         .ok_or_else(|| Error::function_not_found(name, ann.pos))?;
                     let fun = self.pool.function(fun_idx)?;
                     let slot = Slot::Function {
@@ -466,7 +467,7 @@ impl<'a> Compiler<'a> {
                 AnnotationName::ReplaceGlobal => {
                     let candidates = self.scope.resolve_function(name.clone(), ann.pos)?;
                     let fun_idx = candidates
-                        .by_id(&id, self.pool)
+                        .by_id(&sig, self.pool)
                         .ok_or_else(|| Error::function_not_found(name, ann.pos))?;
 
                     let slot = Slot::Function {
@@ -493,12 +494,12 @@ impl<'a> Compiler<'a> {
                         let base = self.pool.class(class.base)?;
                         base.functions
                             .iter()
-                            .find(|fun| self.pool.definition_name(**fun).unwrap().as_str() == id.as_ref())
+                            .find(|fun| self.pool.definition_name(**fun).unwrap().as_str() == sig.as_ref())
                             .cloned()
                     } else {
                         None
                     };
-                    let name_idx = self.pool.names.add(Rc::new(id.into_owned()));
+                    let name_idx = self.pool.names.add(Rc::new(sig.into_owned()));
                     let fun_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
                     self.pool.class_mut(target_class_idx)?.functions.push(fun_idx);
 
@@ -515,7 +516,7 @@ impl<'a> Compiler<'a> {
             }
         }
 
-        let name_idx = self.pool.names.add(module.with_function(id).render().to_owned());
+        let name_idx = self.pool.names.add(module.with_function(sig).render().to_owned());
         let fun_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
 
         let path = module.with_child(name);
@@ -600,8 +601,8 @@ impl ModulePath {
         copy
     }
 
-    pub fn with_function(&self, function_id: FunctionId) -> ModulePath {
-        let ident = Ident::new(function_id.into_owned());
+    pub fn with_function(&self, fun_sig: FunctionSignature) -> ModulePath {
+        let ident = Ident::new(fun_sig.into_owned());
         self.with_child(ident)
     }
 
@@ -743,21 +744,35 @@ impl TypeId {
     }
 }
 
-pub struct FunctionId<'a>(Cow<'a, str>);
+pub struct FunctionSignature<'a>(Cow<'a, str>);
 
-impl<'a> FunctionId<'a> {
+impl<'a> FunctionSignature<'a> {
     pub fn from_source(source: &'a FunctionSource) -> Self {
         let qs = &source.declaration.qualifiers;
-        if qs.contain(Qualifier::Callback) || qs.contain(Qualifier::Exec) || qs.contain(Qualifier::Native) {
-            FunctionId(Cow::Borrowed(source.declaration.name.as_ref()))
+        let name = source.declaration.name.as_ref();
+        let is_operator = BinOp::from_str(name).is_ok();
+
+        if !is_operator
+            && (qs.contain(Qualifier::Callback) || qs.contain(Qualifier::Exec) || qs.contain(Qualifier::Native))
+        {
+            FunctionSignature(Cow::Borrowed(name))
         } else {
-            let mut signature = String::new();
-            for arg in &source.parameters {
-                signature.push_str(arg.type_.mangled().as_ref());
+            let builder = source
+                .parameters
+                .iter()
+                .fold(FunctionSignatureBuilder::new(name.to_owned()), |acc, param| {
+                    acc.parameter(&param.type_, param.qualifiers.contain(Qualifier::Out) && is_operator)
+                });
+            if is_operator {
+                builder.return_type(source.type_.as_ref().unwrap_or(&TypeName::VOID))
+            } else {
+                builder.build()
             }
-            let mangled = format!("{};{}", source.declaration.name, signature);
-            FunctionId(Cow::Owned(mangled))
         }
+    }
+
+    pub fn name(&self) -> &str {
+        self.as_ref().split(';').next().unwrap()
     }
 
     pub fn into_owned(self) -> String {
@@ -765,9 +780,39 @@ impl<'a> FunctionId<'a> {
     }
 }
 
-impl<'a> AsRef<str> for FunctionId<'a> {
+impl<'a> AsRef<str> for FunctionSignature<'a> {
     fn as_ref(&self) -> &str {
         self.0.as_ref()
+    }
+}
+
+pub struct FunctionSignatureBuilder {
+    signature: String,
+}
+
+impl FunctionSignatureBuilder {
+    pub fn new(name: String) -> FunctionSignatureBuilder {
+        FunctionSignatureBuilder { signature: name + ";" }
+    }
+
+    pub fn parameter(self, typ: &TypeName, is_out: bool) -> FunctionSignatureBuilder {
+        let mut signature = self.signature;
+        if is_out {
+            signature.push_str("Out");
+        }
+        signature.push_str(typ.mangled().as_ref());
+        FunctionSignatureBuilder { signature }
+    }
+
+    pub fn return_type<'a>(self, typ: &TypeName) -> FunctionSignature<'a> {
+        let mut signature = self.signature;
+        signature.push(';');
+        signature.push_str(typ.mangled().as_ref());
+        FunctionSignature(Cow::Owned(signature))
+    }
+
+    pub fn build<'a>(self) -> FunctionSignature<'a> {
+        FunctionSignature(Cow::Owned(self.signature))
     }
 }
 
@@ -974,7 +1019,7 @@ mod tests {
             }
 
             func Log(str: String) {}
-            func OperatorAssignAdd(l: Int32, r: Int32) -> Int32 = 0
+            func OperatorAssignAdd(out l: Int32, r: Int32) -> Int32 = 0
             func OperatorLess(l: Int32, r: Int32) -> Bool = true
             ";
         let expected = vec![

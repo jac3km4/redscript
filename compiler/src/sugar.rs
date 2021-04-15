@@ -10,7 +10,7 @@ use redscript::error::Error;
 use crate::scope::Scope;
 use crate::transform::ExprTransformer;
 use crate::typechecker::{type_of, Callable, TypedAst};
-use crate::{Reference, TypeId, Value};
+use crate::{FunctionSignature, FunctionSignatureBuilder, Reference, TypeId, Value};
 
 pub struct Desugar<'a> {
     pool: &'a mut ConstantPool,
@@ -39,8 +39,13 @@ impl<'a> Desugar<'a> {
         self.prefix_exprs.push(expr)
     }
 
-    fn binop_callable(&self, binop: BinOp, pos: Pos) -> Result<Callable, Error> {
-        let fun_idx = self.scope.resolve_function(Ident::Static(binop.into()), pos)?.functions[0];
+    fn get_function(&self, signature: FunctionSignature, pos: Pos) -> Result<Callable, Error> {
+        let fun_idx = self
+            .scope
+            .resolve_function(Ident::new(signature.name().to_owned()), pos)?
+            .by_id(&signature, self.pool)
+            .ok_or_else(|| Error::function_not_found(signature.as_ref(), pos))?;
+
         Ok(Callable::Function(fun_idx))
     }
 
@@ -88,8 +93,8 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
         let arr_type = type_of(&array, self.scope, self.pool)?;
         let arr_local = self.fresh_local(&arr_type)?;
 
-        let it_type = self.scope.resolve_type(&TypeName::INT32, self.pool, pos)?;
-        let counter_local = self.fresh_local(&it_type)?;
+        let counter_type = self.scope.resolve_type(&TypeName::INT32, self.pool, pos)?;
+        let counter_local = self.fresh_local(&counter_type)?;
 
         self.add_prefix(Expr::Assign(
             Box::new(Expr::Ident(arr_local.clone(), pos)),
@@ -102,9 +107,18 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
             pos,
         ));
 
-        let array_size = Callable::Intrinsic(IntrinsicOp::ArraySize, it_type);
-        let assign_add = self.binop_callable(BinOp::AssignAdd, pos)?;
-        let less_than = self.binop_callable(BinOp::Less, pos)?;
+        let array_size = Callable::Intrinsic(IntrinsicOp::ArraySize, counter_type);
+        let assign_add = FunctionSignatureBuilder::new(BinOp::AssignAdd.to_string())
+            .parameter(&TypeName::INT32, true)
+            .parameter(&TypeName::INT32, false)
+            .return_type(&TypeName::INT32);
+        let assign_add = self.get_function(assign_add, pos)?;
+
+        let less_than = FunctionSignatureBuilder::new(BinOp::Less.to_string())
+            .parameter(&TypeName::INT32, false)
+            .parameter(&TypeName::INT32, false)
+            .return_type(&TypeName::BOOL);
+        let less_than = self.get_function(less_than, pos)?;
 
         let condition = Expr::Call(
             less_than,
