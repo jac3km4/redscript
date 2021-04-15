@@ -282,8 +282,7 @@ impl<'a> TypeChecker<'a> {
         pos: Pos,
     ) -> Result<Expr<TypedAst>, Error> {
         if args.len() != intrinsic.arg_count().into() {
-            let err = format!("Invalid number of arguments for {}", intrinsic);
-            return Err(Error::CompileError(err, pos));
+            return Err(Error::invalid_arg_count(intrinsic, intrinsic.arg_count() as usize, pos));
         }
         let first = self.check(&args[0], None, scope)?;
         let arg_type = type_of(&first, scope, self.pool)?;
@@ -577,19 +576,19 @@ pub fn type_of(expr: &Expr<TypedAst>, scope: &Scope, pool: &ConstantPool) -> Res
         Expr::ForIn(_, _, _, _) => TypeId::Void,
         Expr::This(pos) => match scope.this {
             Some(class_idx) => TypeId::Ref(Box::new(TypeId::Class(class_idx))),
-            None => return Err(Error::CompileError("No 'this' in static context".to_owned(), *pos)),
+            None => return Err(Error::no_this_in_static_context(*pos)),
         },
         Expr::Super(pos) => match scope.this {
             Some(class_idx) => {
                 let base_idx = pool.class(class_idx)?.base;
                 TypeId::Ref(Box::new(TypeId::Class(base_idx)))
             }
-            None => return Err(Error::CompileError("No 'super' in static context".to_owned(), *pos)),
+            None => return Err(Error::no_this_in_static_context(*pos)),
         },
         Expr::Break(_) => TypeId::Void,
         Expr::Null => TypeId::Null,
-        Expr::BinOp(_, _, _, pos) => return Err(Error::CompileError("BinOp not supported here".to_owned(), *pos)),
-        Expr::UnOp(_, _, pos) => return Err(Error::CompileError("UnOp not supported here".to_owned(), *pos)),
+        Expr::BinOp(_, _, _, pos) => return Err(Error::unsupported("BinOp", *pos)),
+        Expr::UnOp(_, _, pos) => return Err(Error::unsupported("UnOp", *pos)),
     };
     Ok(res)
 }

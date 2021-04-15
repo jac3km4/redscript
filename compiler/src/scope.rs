@@ -112,12 +112,11 @@ impl Scope {
                 return Ok(*field);
             }
         }
-        let err = format!("Field {} not found on {}", ident, pool.definition_name(class_idx)?);
         if class.base != PoolIndex::UNDEFINED {
-            self.resolve_field(ident, class.base, pool, pos)
-                .map_err(|_| Error::CompileError(err, pos))
+            self.resolve_field(ident.clone(), class.base, pool, pos)
+                .map_err(|_| Error::member_not_found(ident, pool.definition_name(class_idx).unwrap(), pos))
         } else {
-            Err(Error::CompileError(err, pos))
+            Err(Error::member_not_found(ident, pool.definition_name(class_idx)?, pos))
         }
     }
 
@@ -134,8 +133,7 @@ impl Scope {
                 return Ok(*field);
             }
         }
-        let err = format!("Member {} not found on {}", ident, pool.definition_name(enum_idx)?);
-        Err(Error::CompileError(err, pos))
+        Err(Error::member_not_found(ident, pool.definition_name(enum_idx)?, pos))
     }
 
     pub fn resolve_method(
@@ -158,7 +156,7 @@ impl Scope {
             current_idx = class.base;
         }
         if functions.is_empty() {
-            Err(Error::function_not_found(ident, pos))
+            Err(Error::member_not_found(ident, pool.definition_name(class_idx)?, pos))
         } else {
             Ok(FunctionCandidates { functions })
         }
@@ -168,14 +166,14 @@ impl Scope {
         self.references
             .get(&name)
             .cloned()
-            .ok_or_else(|| Error::CompileError(format!("Unresolved reference {}", name), pos))
+            .ok_or_else(|| Error::unresolved_reference(name, pos))
     }
 
     pub fn resolve_symbol(&self, name: Ident, pos: Pos) -> Result<Symbol, Error> {
         self.symbols
             .get(&name)
             .cloned()
-            .ok_or_else(|| Error::CompileError(format!("Unresolved reference {}", name), pos))
+            .ok_or_else(|| Error::unresolved_reference(name, pos))
     }
 
     pub fn resolve_reference(&self, name: Ident, pos: Pos) -> Result<Reference, Error> {
@@ -219,7 +217,7 @@ impl Scope {
                     Some(Symbol::Class(idx, _)) => TypeId::Class(*idx),
                     Some(Symbol::Struct(idx, _)) => TypeId::Struct(*idx),
                     Some(Symbol::Enum(idx)) => TypeId::Enum(*idx),
-                    _ => return Err(Error::CompileError(format!("Unresolved type {}", name), pos)),
+                    _ => return Err(Error::unresolved_type(name, pos)),
                 },
             }
         };
@@ -241,7 +239,7 @@ impl Scope {
                     Some(Symbol::Class(class_idx, _)) => TypeId::Class(*class_idx),
                     Some(Symbol::Struct(struct_idx, _)) => TypeId::Struct(*struct_idx),
                     Some(Symbol::Enum(enum_idx)) => TypeId::Enum(*enum_idx),
-                    _ => return Err(Error::CompileError(format!("Unresolved reference {}", ident), pos)),
+                    _ => return Err(Error::unresolved_reference(ident, pos)),
                 }
             }
             Type::Ref(type_) => {

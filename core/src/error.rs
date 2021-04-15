@@ -23,6 +23,25 @@ impl Error {
         Error::CompileError(error, pos)
     }
 
+    pub fn member_not_found<M: Display, C: Display>(member: M, context: C, pos: Pos) -> Error {
+        let error = format!("Member {} not found on {}", member, context);
+        Error::CompileError(error, pos)
+    }
+
+    pub fn unresolved_reference<N: Display>(name: N, pos: Pos) -> Error {
+        let error = format!("Unresolved reference {}", name);
+        Error::CompileError(error, pos)
+    }
+
+    pub fn unresolved_type<N: Display>(name: N, pos: Pos) -> Error {
+        let error = format!("Unresolved type {}", name);
+        Error::CompileError(error, pos)
+    }
+
+    pub fn unresolved_import<N: Display>(import: N, pos: Pos) -> Error {
+        Error::CompileError(format!("Unresolved import {}", import), pos)
+    }
+
     pub fn class_not_found<N: Display>(class_name: N, pos: Pos) -> Error {
         let error = format!("Can't find class {}", class_name);
         Error::CompileError(error, pos)
@@ -59,10 +78,6 @@ impl Error {
         Error::CompileError(format!("Expected a value, found {}", found), pos)
     }
 
-    pub fn unresolved_import<N: Display>(import: N, pos: Pos) -> Error {
-        Error::CompileError(format!("Unresolved import: {}", import), pos)
-    }
-
     pub fn return_type_mismatch<N: Display>(type_: N, pos: Pos) -> Error {
         let error = format!("Function should return {}", type_);
         Error::CompileError(error, pos)
@@ -84,6 +99,20 @@ impl Error {
 
     pub fn invalid_intrinsic<N: Display, T: Display>(name: N, type_: T, pos: Pos) -> Error {
         let err = format!("Invalid intrinsic {} call: unexpected {}", name, type_);
+        Error::CompileError(err, pos)
+    }
+
+    pub fn expected_static_method<N: Display>(name: N, pos: Pos) -> Error {
+        let err = format!("Method {} is not static", name);
+        Error::CompileError(err, pos)
+    }
+
+    pub fn no_this_in_static_context(pos: Pos) -> Error {
+        Error::CompileError("No 'this' in static context".to_owned(), pos)
+    }
+
+    pub fn unsupported<N: Display>(name: N, pos: Pos) -> Error {
+        let err = format!("{} is unsupported here", name);
         Error::CompileError(err, pos)
     }
 }

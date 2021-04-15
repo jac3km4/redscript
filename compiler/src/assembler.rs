@@ -52,7 +52,7 @@ impl Assembler {
                 match reference {
                     Reference::Value(Value::Local(idx)) => self.emit(Instr::Local(idx)),
                     Reference::Value(Value::Parameter(idx)) => self.emit(Instr::Param(idx)),
-                    _ => return Err(Error::CompileError("Expected a value".to_owned(), pos)),
+                    _ => return Err(Error::value_expected("a symbol", pos)),
                 };
             }
             Expr::Constant(cons, _) => match cons {
@@ -239,8 +239,7 @@ impl Assembler {
                     if fun.flags.is_static() {
                         self.assemble_call(fun_idx, args, scope, pool, true)?
                     } else {
-                        let name = pool.definition_name(fun_idx)?;
-                        return Err(Error::CompileError(format!("Method {} is not static", name), pos));
+                        return Err(Error::expected_static_method(pool.definition_name(fun_idx)?, pos));
                     }
                 }
                 expr => {
@@ -252,9 +251,7 @@ impl Assembler {
                     self.emit_label(exit_label);
                 }
             },
-            Expr::ArrayLit(_, _, pos) => {
-                return Err(Error::CompileError("ArrayLit not supported here".to_owned(), pos))
-            }
+
             Expr::Null => {
                 self.emit(Instr::Null);
             }
@@ -264,11 +261,12 @@ impl Assembler {
             Expr::Break(_) if exit.is_some() => {
                 self.emit(Instr::Jump(exit.unwrap()));
             }
-            Expr::ForIn(_, _, _, pos) => return Err(Error::CompileError("ForIn not supported here".to_owned(), pos)),
-            Expr::BinOp(_, _, _, pos) => return Err(Error::CompileError("BinOp not supported here".to_owned(), pos)),
-            Expr::UnOp(_, _, pos) => return Err(Error::CompileError("UnOp not supported here".to_owned(), pos)),
-            Expr::Break(pos) => return Err(Error::CompileError("Break can't be used here".to_owned(), pos)),
-            Expr::Goto(_, pos) => return Err(Error::CompileError("Goto is not supported".to_owned(), pos)),
+            Expr::ArrayLit(_, _, pos) => return Err(Error::unsupported("ArrayLit", pos)),
+            Expr::ForIn(_, _, _, pos) => return Err(Error::unsupported("For-in", pos)),
+            Expr::BinOp(_, _, _, pos) => return Err(Error::unsupported("BinOp", pos)),
+            Expr::UnOp(_, _, pos) => return Err(Error::unsupported("UnOp", pos)),
+            Expr::Break(pos) => return Err(Error::unsupported("Break", pos)),
+            Expr::Goto(_, pos) => return Err(Error::unsupported("Goto", pos)),
         };
         Ok(())
     }
