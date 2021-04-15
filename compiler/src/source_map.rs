@@ -2,7 +2,6 @@ use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::fmt;
-use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use redscript::ast::Pos;
@@ -12,7 +11,6 @@ use walkdir::WalkDir;
 #[derive(Debug)]
 pub struct Files {
     files: Vec<File>,
-    sources: String,
 }
 
 impl Files {
@@ -34,17 +32,17 @@ impl Files {
         let mut files = Files::new();
         for path in paths {
             let sources = std::fs::read_to_string(&path)?;
-            files.add(path, &sources);
+            files.add(path, sources);
         }
         Ok(files)
     }
 
-    pub fn sources(&self) -> &str {
-        &self.sources
+    pub fn files(&self) -> impl Iterator<Item = &File> {
+        self.files.iter()
     }
 
-    pub fn add(&mut self, path: PathBuf, source: &str) {
-        let low = self.files.last().map(|f| f.high + 1).unwrap_or(Pos(0));
+    pub fn add(&mut self, path: PathBuf, source: String) {
+        let low = self.files.last().map(|f| f.high).unwrap_or(Pos(0));
         let high = low + source.len();
         let mut lines = vec![];
         for (offset, _) in source.match_indices('\n') {
@@ -54,14 +52,9 @@ impl Files {
             path,
             lines: NonEmptyVec(low, lines),
             high,
+            source,
         };
-        self.sources.push_str(source);
-        self.sources.push('\n');
         self.files.push(file)
-    }
-
-    pub fn enclosing_line(&self, loc: &SourceLocation) -> &str {
-        loc.file.enclosing_line(loc.position.line, self.sources())
     }
 
     pub fn lookup(&self, pos: Pos) -> Option<SourceLocation> {
@@ -74,7 +67,7 @@ impl Files {
             })
             .ok()?;
         let file = self.files.get(index)?;
-        let position = file.lookup(pos, &self.sources)?;
+        let position = file.lookup(pos)?;
         let result = SourceLocation { file, position };
         Some(result)
     }
@@ -95,10 +88,7 @@ impl fmt::Display for Files {
 
 impl Default for Files {
     fn default() -> Self {
-        Files {
-            files: vec![],
-            sources: String::new(),
-        }
+        Files { files: vec![] }
     }
 }
 
@@ -107,15 +97,28 @@ pub struct File {
     path: PathBuf,
     lines: NonEmptyVec<Pos>,
     high: Pos,
+    source: String,
 }
 
 impl File {
-    fn span(&self) -> Span {
+    pub fn span(&self) -> Span {
         let low = self.lines.0;
         Span { low, high: self.high }
     }
 
-    fn lookup(&self, pos: Pos, source: &str) -> Option<FilePosition> {
+    pub fn byte_offset(&self) -> Pos {
+        self.lines.0
+    }
+
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
+    pub fn with_source(self, source: String) -> Self {
+        File { source, ..self }
+    }
+
+    fn lookup(&self, pos: Pos) -> Option<FilePosition> {
         let res = self.lines.1.binary_search(&pos).map(|p| p + 1);
         let index = res.err().or_else(|| res.ok()).unwrap();
         let (line, low) = if pos < self.lines.0 {
@@ -126,12 +129,12 @@ impl File {
             (index, *self.lines.1.get(index - 1)?)
         };
         let line_span = Span { low, high: pos };
-        let col = self.source_slice(line_span, source).chars().count();
+        let col = self.source_slice(line_span).chars().count();
         let loc = FilePosition { line, col };
         Some(loc)
     }
 
-    fn enclosing_line<'a>(&self, line: usize, source: &'a str) -> &'a str {
+    fn enclosing_line(&self, line: usize) -> &str {
         let low = if line == 0 {
             self.lines.0
         } else {
@@ -139,12 +142,24 @@ impl File {
         };
         let high = self.lines.1.get(line).cloned().unwrap_or(self.high);
         let span = Span { low, high };
-        self.source_slice(span, source)
+        self.source_slice(span)
     }
 
-    fn source_slice<'a>(&self, span: Span, source: &'a str) -> &'a str {
-        let range: Range<usize> = span.into();
-        &source[range]
+    fn source_slice(&self, span: Span) -> &str {
+        let start = span.low.0 - self.byte_offset().0;
+        let end = span.high.0 - self.byte_offset().0;
+        &self.source[start as usize..end as usize]
+    }
+}
+
+impl Default for File {
+    fn default() -> Self {
+        File {
+            path: PathBuf::new(),
+            lines: NonEmptyVec(Pos::ZERO, vec![]),
+            high: Pos::ZERO,
+            source: String::new(),
+        }
     }
 }
 
@@ -159,17 +174,8 @@ struct NonEmptyVec<A>(pub A, pub Vec<A>);
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Span {
-    low: Pos,
-    high: Pos,
-}
-
-impl From<Span> for Range<usize> {
-    fn from(span: Span) -> Self {
-        Range {
-            start: span.low.0 as usize,
-            end: span.high.0 as usize,
-        }
-    }
+    pub low: Pos,
+    pub high: Pos,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -188,6 +194,12 @@ impl fmt::Display for FilePosition {
 pub struct SourceLocation<'a> {
     pub file: &'a File,
     pub position: FilePosition,
+}
+
+impl<'a> SourceLocation<'a> {
+    pub fn enclosing_line(&self) -> &'a str {
+        self.file.enclosing_line(self.position.line)
+    }
 }
 
 impl<'a> fmt::Display for SourceLocation<'a> {
@@ -220,25 +232,5 @@ impl SourceFilter {
         };
 
         is_correct_extension && is_matching
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::parser;
-
-    #[test]
-    fn correctly_handle_files_not_ending_with_newline() {
-        let mut files = Files::new();
-        files.add(PathBuf::new().join("a.reds"), "// comment");
-        files.add(PathBuf::new().join("b.reds"), r#"func Testing() { Log("test"); }"#);
-
-        let ast = parser::parse(files.sources()).unwrap();
-
-        assert_eq!(
-            format!("{:?}", ast),
-            "[Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([]), name: \"Testing\", pos: Pos(11) }, type_: None, parameters: [], body: Some(Seq { exprs: [Call(Owned(\"Log\"), [Constant(String(String, \"test\"), Pos(32))], Pos(28))] }) })]"
-        );
     }
 }

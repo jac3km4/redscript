@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use gumdrop::Options;
 use log::LevelFilter;
 use redscript::bundle::ScriptBundle;
-use redscript::definition::DefinitionValue;
+use redscript::definition::AnyDefinition;
 use redscript::error::Error;
 use redscript_compiler::source_map::{Files, SourceFilter};
 use redscript_compiler::Compiler;
@@ -137,9 +137,9 @@ fn decompile(opts: DecompileOpts) -> Result<(), Error> {
         let mut output = BufWriter::new(File::create(&opts.output)?);
 
         for (_, def) in pool.roots().filter(|(_, def)| {
-            matches!(&def.value, DefinitionValue::Class(_))
-                || matches!(&def.value, DefinitionValue::Enum(_))
-                || matches!(&def.value, DefinitionValue::Function(_))
+            matches!(&def.value, AnyDefinition::Class(_))
+                || matches!(&def.value, AnyDefinition::Enum(_))
+                || matches!(&def.value, AnyDefinition::Function(_))
         }) {
             if let Err(err) = write_definition(&mut output, def, pool, 0, mode) {
                 log::error!("Failed to process definition at {:?}: {:?}", def, err);

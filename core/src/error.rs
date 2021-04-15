@@ -23,7 +23,7 @@ impl Error {
         Error::CompileError(error, pos)
     }
 
-    pub fn class_not_found(class_name: &str, pos: Pos) -> Error {
+    pub fn class_not_found<N: Display>(class_name: N, pos: Pos) -> Error {
         let error = format!("Can't find class {}", class_name);
         Error::CompileError(error, pos)
     }
@@ -53,6 +53,14 @@ impl Error {
 
     pub fn void_cannot_be_used(pos: Pos) -> Error {
         Error::CompileError("Void value cannot be used".to_owned(), pos)
+    }
+
+    pub fn value_expected<N: Display>(found: N, pos: Pos) -> Error {
+        Error::CompileError(format!("Expected a value, found {}", found), pos)
+    }
+
+    pub fn unresolved_import<N: Display>(import: N, pos: Pos) -> Error {
+        Error::CompileError(format!("Unresolved import: {}", import), pos)
     }
 
     pub fn return_type_mismatch<N: Display>(type_: N, pos: Pos) -> Error {

@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, Seq, SourceAst, SwitchCase, UnOp};
 use redscript::bundle::ConstantPool;
-use redscript::definition::{Definition, DefinitionValue, Function, Type};
+use redscript::definition::{AnyDefinition, Definition, Function, Type};
 use redscript::error::Error;
 
 use crate::Decompiler;
@@ -27,8 +27,8 @@ pub fn write_definition<W: Write>(
     let padding = INDENT.repeat(depth);
 
     match &definition.value {
-        DefinitionValue::Type(_) => write!(out, "{}", format_type(definition, pool)?)?,
-        DefinitionValue::Class(class) => {
+        AnyDefinition::Type(_) => write!(out, "{}", format_type(definition, pool)?)?,
+        AnyDefinition::Class(class) => {
             writeln!(out)?;
             write!(out, "{} ", class.visibility)?;
             if class.flags.is_abstract() {
@@ -64,7 +64,7 @@ pub fn write_definition<W: Write>(
             }
             writeln!(out, "}}")?
         }
-        DefinitionValue::EnumValue(val) => {
+        AnyDefinition::EnumValue(val) => {
             let name = if definition.name.is_undefined() {
                 Rc::new("Undefined".to_owned())
             } else {
@@ -72,7 +72,7 @@ pub fn write_definition<W: Write>(
             };
             writeln!(out, "{}{} = {},", padding, name, val)?
         }
-        DefinitionValue::Enum(enum_) => {
+        AnyDefinition::Enum(enum_) => {
             writeln!(out)?;
             writeln!(out, "enum {} {{", pool.names.get(definition.name)?)?;
 
@@ -82,7 +82,7 @@ pub fn write_definition<W: Write>(
 
             writeln!(out, "}}")?
         }
-        DefinitionValue::Function(fun) => {
+        AnyDefinition::Function(fun) => {
             let return_type = fun
                 .return_type
                 .map(|idx| format_type(pool.definition(idx).unwrap(), pool).unwrap())
@@ -125,8 +125,8 @@ pub fn write_definition<W: Write>(
             }
             writeln!(out)?;
         }
-        DefinitionValue::Parameter(_) => write!(out, "{}", format_param(definition, pool)?)?,
-        DefinitionValue::Local(local) => {
+        AnyDefinition::Parameter(_) => write!(out, "{}", format_param(definition, pool)?)?,
+        AnyDefinition::Local(local) => {
             let type_name = format_type(pool.definition(local.type_)?, pool)?;
             let name = pool.names.get(definition.name)?;
             write!(out, "{}", padding)?;
@@ -137,7 +137,7 @@ pub fn write_definition<W: Write>(
             }
             write!(out, "{}: {};", name, type_name)?
         }
-        DefinitionValue::Field(field) => {
+        AnyDefinition::Field(field) => {
             let type_name = format_type(pool.definition(field.type_)?, pool)?;
             let field_name = pool.names.get(definition.name)?;
 
@@ -171,7 +171,7 @@ pub fn write_definition<W: Write>(
             }
             writeln!(out, "let {}: {};", field_name, type_name)?
         }
-        DefinitionValue::SourceFile(_) => panic!(),
+        AnyDefinition::SourceFile(_) => panic!(),
     }
     Ok(())
 }
@@ -402,7 +402,7 @@ fn write_unop<W: Write>(out: &mut W, param: &Expr<SourceAst>, op: UnOp, verbose:
 }
 
 fn format_param(def: &Definition, pool: &ConstantPool) -> Result<String, Error> {
-    if let DefinitionValue::Parameter(ref param) = def.value {
+    if let AnyDefinition::Parameter(ref param) = def.value {
         let type_name = format_type(pool.definition(param.type_)?, pool)?;
         let name = pool.names.get(def.name)?;
         let out = if param.flags.is_out() { "out " } else { "" };
@@ -414,7 +414,7 @@ fn format_param(def: &Definition, pool: &ConstantPool) -> Result<String, Error> 
 }
 
 fn format_type(def: &Definition, pool: &ConstantPool) -> Result<String, Error> {
-    if let DefinitionValue::Type(ref type_) = def.value {
+    if let AnyDefinition::Type(ref type_) = def.value {
         let result = match type_ {
             Type::Prim => pool.names.get(def.name)?.to_string(),
             Type::Class => pool.names.get(def.name)?.to_string(),
