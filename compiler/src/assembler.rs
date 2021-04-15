@@ -2,12 +2,12 @@ use std::ops::Deref;
 
 use redscript::ast::{Constant, Expr, Literal, Seq};
 use redscript::bundle::{ConstantPool, PoolIndex};
-use redscript::bytecode::{Code, Instr, Label, Location, Offset};
+use redscript::bytecode::{Code, Instr, IntrinsicOp, Label, Location, Offset};
 use redscript::definition::{Function, ParameterFlags};
 use redscript::error::Error;
 
 use crate::scope::Scope;
-use crate::typechecker::{type_of, Callable, IntrinsicOp, Member, TypedAst};
+use crate::typechecker::{type_of, Callable, Member, TypedAst};
 use crate::{Reference, Symbol, TypeId, Value};
 
 pub struct Assembler {

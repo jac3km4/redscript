@@ -1,5 +1,7 @@
 use std::{io, usize};
 
+use strum::{Display, EnumString, IntoStaticStr};
+
 use crate::bundle::{PoolIndex, Resource, TweakDbId};
 use crate::decode::{Decode, DecodeExt};
 use crate::definition::{Class, Enum, Field, Function, Local, Parameter, Type};
@@ -944,6 +946,69 @@ impl Encode for Code<Offset> {
         }
         output.encode(&size)?;
         output.write_all(buffer.get_ref())
+    }
+}
+
+#[derive(Debug, Clone, Copy, EnumString, Display, IntoStaticStr)]
+pub enum IntrinsicOp {
+    Equals,
+    NotEquals,
+    ArrayClear,
+    ArraySize,
+    ArrayResize,
+    ArrayFindFirst,
+    ArrayFindLast,
+    ArrayContains,
+    ArrayCount,
+    ArrayPush,
+    ArrayPop,
+    ArrayInsert,
+    ArrayRemove,
+    ArrayGrow,
+    ArrayErase,
+    ArrayLast,
+    ToString,
+    EnumInt,
+    IntEnum,
+    ToVariant,
+    FromVariant,
+    AsRef,
+    Deref,
+    RefToWeakRef,
+    WeakRefToRef,
+    IsDefined,
+}
+
+impl IntrinsicOp {
+    pub fn arg_count(&self) -> u8 {
+        match self {
+            IntrinsicOp::Equals => 2,
+            IntrinsicOp::NotEquals => 2,
+            IntrinsicOp::ArrayClear => 1,
+            IntrinsicOp::ArraySize => 1,
+            IntrinsicOp::ArrayResize => 2,
+            IntrinsicOp::ArrayFindFirst => 2,
+            IntrinsicOp::ArrayFindLast => 2,
+            IntrinsicOp::ArrayContains => 2,
+            IntrinsicOp::ArrayCount => 2,
+            IntrinsicOp::ArrayPush => 2,
+            IntrinsicOp::ArrayPop => 1,
+            IntrinsicOp::ArrayInsert => 3,
+            IntrinsicOp::ArrayRemove => 2,
+            IntrinsicOp::ArrayGrow => 2,
+            IntrinsicOp::ArrayErase => 2,
+            IntrinsicOp::ArrayLast => 1,
+            IntrinsicOp::ToString => 1,
+            IntrinsicOp::EnumInt => 1,
+            IntrinsicOp::IntEnum => 1,
+            IntrinsicOp::ToVariant => 1,
+            IntrinsicOp::FromVariant => 1,
+            IntrinsicOp::AsRef => 1,
+            IntrinsicOp::Deref => 1,
+            IntrinsicOp::RefToWeakRef => 1,
+            IntrinsicOp::WeakRefToRef => 1,
+            IntrinsicOp::IsDefined => 1,
+        }
     }
 }
 

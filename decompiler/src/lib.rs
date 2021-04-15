@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use redscript::ast::{Constant, Expr, Ident, Literal, Pos, Seq, SourceAst, SwitchCase, Target, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
-use redscript::bytecode::{CodeCursor, Instr, Location, Offset};
+use redscript::bytecode::{CodeCursor, Instr, IntrinsicOp, Location, Offset};
 use redscript::error::Error;
 
 pub mod files;
@@ -51,6 +51,11 @@ impl<'a> Decompiler<'a> {
             }
         }
         Ok(Seq::new(body))
+    }
+
+    fn consume_intrisnic(&mut self, op: IntrinsicOp) -> Result<Expr<SourceAst>, Error> {
+        let params = self.consume_n(op.arg_count() as usize)?;
+        Ok(Expr::Call(Ident::Static(op.into()), params, Pos::ZERO))
     }
 
     fn consume_call(&mut self, name: &'static str, param_count: usize) -> Result<Expr<SourceAst>, Error> {
@@ -257,8 +262,8 @@ impl<'a> Decompiler<'a> {
                 let expr = self.consume()?;
                 self.consume_with(Some(expr))?
             }
-            Instr::Equals(_) => self.consume_call("Equals", 2)?,
-            Instr::NotEquals(_) => self.consume_call("NotEquals", 2)?,
+            Instr::Equals(_) => self.consume_intrisnic(IntrinsicOp::Equals)?,
+            Instr::NotEquals(_) => self.consume_intrisnic(IntrinsicOp::NotEquals)?,
             Instr::New(class) => Expr::New(
                 TypeName::basic_owned(self.pool.definition_name(class)?),
                 vec![],
@@ -267,50 +272,50 @@ impl<'a> Decompiler<'a> {
             Instr::Delete => self.consume_call("Delete", 1)?,
             Instr::This => Expr::This(Pos::ZERO),
             Instr::StartProfiling(_, _) => return Err(Error::DecompileError("Unexpected StartProfiling".to_owned())),
-            Instr::ArrayClear(_) => self.consume_call("ArrayClear", 1)?,
-            Instr::ArraySize(_) => self.consume_call("ArraySize", 1)?,
-            Instr::ArrayResize(_) => self.consume_call("ArrayResize", 2)?,
-            Instr::ArrayFindFirst(_) => self.consume_call("ArrayFindFirst", 2)?,
-            Instr::ArrayFindFirstFast(_) => self.consume_call("ArrayFindFirst", 2)?,
-            Instr::ArrayFindLast(_) => self.consume_call("ArrayFindLast", 2)?,
-            Instr::ArrayFindLastFast(_) => self.consume_call("ArrayFindLast", 2)?,
-            Instr::ArrayContains(_) => self.consume_call("ArrayContains", 2)?,
-            Instr::ArrayContainsFast(_) => self.consume_call("ArrayContains", 2)?,
-            Instr::ArrayCount(_) => self.consume_call("ArrayCount", 2)?,
-            Instr::ArrayCountFast(_) => self.consume_call("ArrayCount", 2)?,
-            Instr::ArrayPush(_) => self.consume_call("ArrayPush", 2)?,
-            Instr::ArrayPop(_) => self.consume_call("ArrayPop", 1)?,
-            Instr::ArrayInsert(_) => self.consume_call("ArrayInsert", 3)?,
-            Instr::ArrayRemove(_) => self.consume_call("ArrayRemove", 2)?,
-            Instr::ArrayRemoveFast(_) => self.consume_call("ArrayRemove", 2)?,
-            Instr::ArrayGrow(_) => self.consume_call("ArrayGrow", 2)?,
-            Instr::ArrayErase(_) => self.consume_call("ArrayErase", 2)?,
-            Instr::ArrayEraseFast(_) => self.consume_call("ArrayErase", 2)?,
-            Instr::ArrayLast(_) => self.consume_call("ArrayLast", 1)?,
+            Instr::ArrayClear(_) => self.consume_intrisnic(IntrinsicOp::ArrayClear)?,
+            Instr::ArraySize(_) => self.consume_intrisnic(IntrinsicOp::ArraySize)?,
+            Instr::ArrayResize(_) => self.consume_intrisnic(IntrinsicOp::ArrayResize)?,
+            Instr::ArrayFindFirst(_) => self.consume_intrisnic(IntrinsicOp::ArrayFindFirst)?,
+            Instr::ArrayFindFirstFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayFindFirst)?,
+            Instr::ArrayFindLast(_) => self.consume_intrisnic(IntrinsicOp::ArrayFindLast)?,
+            Instr::ArrayFindLastFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayFindLast)?,
+            Instr::ArrayContains(_) => self.consume_intrisnic(IntrinsicOp::ArrayContains)?,
+            Instr::ArrayContainsFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayContains)?,
+            Instr::ArrayCount(_) => self.consume_intrisnic(IntrinsicOp::ArrayCount)?,
+            Instr::ArrayCountFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayCount)?,
+            Instr::ArrayPush(_) => self.consume_intrisnic(IntrinsicOp::ArrayPush)?,
+            Instr::ArrayPop(_) => self.consume_intrisnic(IntrinsicOp::ArrayPop)?,
+            Instr::ArrayInsert(_) => self.consume_intrisnic(IntrinsicOp::ArrayInsert)?,
+            Instr::ArrayRemove(_) => self.consume_intrisnic(IntrinsicOp::ArrayRemove)?,
+            Instr::ArrayRemoveFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayRemove)?,
+            Instr::ArrayGrow(_) => self.consume_intrisnic(IntrinsicOp::ArrayGrow)?,
+            Instr::ArrayErase(_) => self.consume_intrisnic(IntrinsicOp::ArrayErase)?,
+            Instr::ArrayEraseFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayErase)?,
+            Instr::ArrayLast(_) => self.consume_intrisnic(IntrinsicOp::ArrayLast)?,
             Instr::ArrayElement(_) => {
                 let arr = self.consume()?;
                 let idx = self.consume()?;
                 Expr::ArrayElem(Box::new(arr), Box::new(idx), Pos::ZERO)
             }
-            Instr::StaticArraySize(_) => self.consume_call("StaticArraySize", 1)?,
-            Instr::StaticArrayFindFirst(_) => self.consume_call("StaticArrayFindFirst", 2)?,
-            Instr::StaticArrayFindFirstFast(_) => self.consume_call("StaticArrayFindFirstFast", 2)?,
-            Instr::StaticArrayFindLast(_) => self.consume_call("StaticArrayFindLast", 2)?,
-            Instr::StaticArrayFindLastFast(_) => self.consume_call("StaticArrayFindLastFast", 2)?,
-            Instr::StaticArrayContains(_) => self.consume_call("StaticArrayContains", 2)?,
-            Instr::StaticArrayContainsFast(_) => self.consume_call("StaticArrayContainsFast", 2)?,
-            Instr::StaticArrayCount(_) => self.consume_call("StaticArrayCount", 2)?,
-            Instr::StaticArrayCountFast(_) => self.consume_call("StaticArrayCountFast", 2)?,
-            Instr::StaticArrayLast(_) => self.consume_call("StaticArrayLast", 1)?,
+            Instr::StaticArraySize(_) => self.consume_intrisnic(IntrinsicOp::ArraySize)?,
+            Instr::StaticArrayFindFirst(_) => self.consume_intrisnic(IntrinsicOp::ArrayFindFirst)?,
+            Instr::StaticArrayFindFirstFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayFindFirst)?,
+            Instr::StaticArrayFindLast(_) => self.consume_intrisnic(IntrinsicOp::ArrayFindLast)?,
+            Instr::StaticArrayFindLastFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayFindLast)?,
+            Instr::StaticArrayContains(_) => self.consume_intrisnic(IntrinsicOp::ArrayContains)?,
+            Instr::StaticArrayContainsFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayContains)?,
+            Instr::StaticArrayCount(_) => self.consume_intrisnic(IntrinsicOp::ArrayCount)?,
+            Instr::StaticArrayCountFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayCount)?,
+            Instr::StaticArrayLast(_) => self.consume_intrisnic(IntrinsicOp::ArrayLast)?,
             Instr::StaticArrayElement(_) => {
                 let arr = self.consume()?;
                 let idx = self.consume()?;
                 Expr::ArrayElem(Box::new(arr), Box::new(idx), Pos::ZERO)
             }
-            Instr::RefToBool => self.consume_call("IsDefined", 1)?,
-            Instr::WeakRefToBool => self.consume_call("IsDefined", 1)?,
-            Instr::EnumToI32(_, _) => self.consume_call("EnumInt", 1)?,
-            Instr::I32ToEnum(_, _) => self.consume_call("IntEnum", 1)?,
+            Instr::RefToBool => self.consume_intrisnic(IntrinsicOp::IsDefined)?,
+            Instr::WeakRefToBool => self.consume_intrisnic(IntrinsicOp::IsDefined)?,
+            Instr::EnumToI32(_, _) => self.consume_intrisnic(IntrinsicOp::EnumInt)?,
+            Instr::I32ToEnum(_, _) => self.consume_intrisnic(IntrinsicOp::IntEnum)?,
             Instr::DynamicCast(type_, _) => {
                 let name = self.pool.definition_name(type_)?;
                 let type_name = TypeName {
@@ -320,19 +325,19 @@ impl<'a> Decompiler<'a> {
                 let expr = self.consume()?;
                 Expr::Cast(type_name, Box::new(expr), Pos::ZERO)
             }
-            Instr::ToString(_) => self.consume_call("ToString", 1)?,
-            Instr::ToVariant(_) => self.consume_call("ToVariant", 1)?,
-            Instr::FromVariant(_) => self.consume_call("FromVariant", 1)?,
-            Instr::VariantIsValid => self.consume_call("IsValid", 1)?,
-            Instr::VariantIsRef => self.consume_call("IsRef", 1)?,
-            Instr::VariantIsArray => self.consume_call("IsArray", 1)?,
-            Instr::VatiantToCName => self.consume_call("ToCName", 1)?,
-            Instr::VariantToString => self.consume_call("ToString", 1)?,
-            Instr::WeakRefToRef => self.consume_call("WeakRefToRef", 1)?,
-            Instr::RefToWeakRef => self.consume_call("RefToWeakRef", 1)?,
+            Instr::ToString(_) => self.consume_intrisnic(IntrinsicOp::ToString)?,
+            Instr::ToVariant(_) => self.consume_intrisnic(IntrinsicOp::ToVariant)?,
+            Instr::FromVariant(_) => self.consume_intrisnic(IntrinsicOp::FromVariant)?,
+            Instr::VariantIsValid => self.consume_call("VariantIsValid", 1)?,
+            Instr::VariantIsRef => self.consume_call("VariantIsRef", 1)?,
+            Instr::VariantIsArray => self.consume_call("VariantIsArray", 1)?,
+            Instr::VatiantToCName => self.consume_call("VatiantToCName", 1)?,
+            Instr::VariantToString => self.consume_intrisnic(IntrinsicOp::ToString)?,
+            Instr::WeakRefToRef => self.consume_intrisnic(IntrinsicOp::WeakRefToRef)?,
+            Instr::RefToWeakRef => self.consume_intrisnic(IntrinsicOp::RefToWeakRef)?,
             Instr::WeakRefNull => Expr::Null,
-            Instr::AsRef(_) => self.consume_call("AsRef", 1)?,
-            Instr::Deref(_) => self.consume_call("Deref", 1)?,
+            Instr::AsRef(_) => self.consume_intrisnic(IntrinsicOp::AsRef)?,
+            Instr::Deref(_) => self.consume_intrisnic(IntrinsicOp::Deref)?,
         };
         Ok(res)
     }

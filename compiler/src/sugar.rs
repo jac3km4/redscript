@@ -3,12 +3,13 @@ use std::vec;
 
 use redscript::ast::{BinOp, Constant, Expr, Ident, Pos, Seq, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
+use redscript::bytecode::IntrinsicOp;
 use redscript::definition::{Definition, Local, LocalFlags};
 use redscript::error::Error;
 
 use crate::scope::Scope;
 use crate::transform::ExprTransformer;
-use crate::typechecker::{type_of, Callable, IntrinsicOp, TypedAst};
+use crate::typechecker::{type_of, Callable, TypedAst};
 use crate::{Reference, TypeId, Value};
 
 pub struct Desugar<'a> {
