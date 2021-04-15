@@ -307,8 +307,8 @@ impl<'a> Decompiler<'a> {
                 let idx = self.consume()?;
                 Expr::ArrayElem(Box::new(arr), Box::new(idx), Pos::ZERO)
             }
-            Instr::RefToBool => self.consume_call("ToBool", 1)?,
-            Instr::WeakRefToBool => self.consume_call("ToBool", 1)?,
+            Instr::RefToBool => self.consume_call("IsDefined", 1)?,
+            Instr::WeakRefToBool => self.consume_call("IsDefined", 1)?,
             Instr::EnumToI32(_, _) => self.consume_call("EnumInt", 1)?,
             Instr::I32ToEnum(_, _) => self.consume_call("IntEnum", 1)?,
             Instr::DynamicCast(type_, _) => {
