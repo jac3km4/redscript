@@ -1,7 +1,9 @@
 use panoradix::RadixMap;
 use redscript::ast::{Expr, Ident, Pos, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
-use redscript::definition::{AnyDefinition, Class, Definition, Enum, Field, Function, Local, Parameter, Type};
+use redscript::definition::{
+    AnyDefinition, Class, Definition, Enum, Field, Function, Local, Parameter, Type, Visibility
+};
 use redscript::error::Error;
 
 use crate::typechecker::TypedAst;
@@ -61,25 +63,36 @@ impl Scope {
         self.types.insert(name, typ);
     }
 
-    pub fn add_symbol(&mut self, path: &ModulePath, symbol: Symbol) {
+    pub fn add_symbol(&mut self, path: &ModulePath, symbol: Symbol, visibility: Visibility) {
         let name = path.parts.last().unwrap();
         match symbol {
-            Symbol::Functions(funs) => match self.symbols.get_mut(name) {
-                Some(Symbol::Functions(existing)) => existing.extend(funs),
-                _ => {
-                    self.symbols.insert(name.clone(), Symbol::Functions(funs));
+            Symbol::Functions(funs) => {
+                let funs: Vec<_> = funs.into_iter().filter(|(_, v)| *v <= visibility).collect();
+                match self.symbols.get_mut(name) {
+                    Some(Symbol::Functions(existing)) => existing.extend(funs),
+                    _ if !funs.is_empty() => {
+                        self.symbols.insert(name.clone(), Symbol::Functions(funs));
+                    }
+                    _ => {}
                 }
-            },
-            symbol => {
+            }
+            Symbol::Class(_, v) if v <= visibility => {
                 self.symbols.insert(name.clone(), symbol);
             }
+            Symbol::Struct(_, v) if v <= visibility => {
+                self.symbols.insert(name.clone(), symbol);
+            }
+            Symbol::Enum(_) => {
+                self.symbols.insert(name.clone(), symbol);
+            }
+            _ => {}
         }
     }
 
     pub fn resolve_function(&self, name: Ident, pos: Pos) -> Result<FunctionCandidates, Error> {
         if let Some(Symbol::Functions(functions)) = self.symbols.get(&name) {
             Ok(FunctionCandidates {
-                functions: functions.clone(),
+                functions: functions.iter().map(|(idx, _)| idx).copied().collect(),
             })
         } else {
             Err(Error::function_not_found(name, pos))
@@ -203,8 +216,8 @@ impl Scope {
                 ("script_ref", [nested]) => TypeId::ScriptRef(Box::new(self.resolve_type(nested, pool, pos)?)),
                 ("array", [nested]) => TypeId::Array(Box::new(self.resolve_type(nested, pool, pos)?)),
                 _ => match self.symbols.get(&name.repr()) {
-                    Some(Symbol::Class(idx)) => TypeId::Class(*idx),
-                    Some(Symbol::Struct(idx)) => TypeId::Struct(*idx),
+                    Some(Symbol::Class(idx, _)) => TypeId::Class(*idx),
+                    Some(Symbol::Struct(idx, _)) => TypeId::Struct(*idx),
                     Some(Symbol::Enum(idx)) => TypeId::Enum(*idx),
                     _ => return Err(Error::CompileError(format!("Unresolved type {}", name), pos)),
                 },
@@ -225,8 +238,8 @@ impl Scope {
                 let name = pool.definition_name(index)?;
                 let ident = Ident::new(name.split('.').last().unwrap().to_owned());
                 match self.symbols.get(&ident) {
-                    Some(Symbol::Class(class_idx)) => TypeId::Class(*class_idx),
-                    Some(Symbol::Struct(struct_idx)) => TypeId::Struct(*struct_idx),
+                    Some(Symbol::Class(class_idx, _)) => TypeId::Class(*class_idx),
+                    Some(Symbol::Struct(struct_idx, _)) => TypeId::Struct(*struct_idx),
                     Some(Symbol::Enum(enum_idx)) => TypeId::Enum(*enum_idx),
                     _ => return Err(Error::CompileError(format!("Unresolved reference {}", ident), pos)),
                 }
@@ -267,10 +280,12 @@ impl SymbolMap {
         for (idx, def) in pool.roots() {
             let name = pool.definition_name(idx)?;
             let symbol = match def.value {
-                AnyDefinition::Class(ref class) if class.flags.is_struct() => Symbol::Struct(idx.cast()),
-                AnyDefinition::Class(_) => Symbol::Class(idx.cast()),
+                AnyDefinition::Class(ref class) if class.flags.is_struct() => {
+                    Symbol::Struct(idx.cast(), class.visibility)
+                }
+                AnyDefinition::Class(ref class) => Symbol::Class(idx.cast(), class.visibility),
                 AnyDefinition::Enum(_) => Symbol::Enum(idx.cast()),
-                AnyDefinition::Function(_) => Symbol::Functions(vec![idx.cast()]),
+                AnyDefinition::Function(ref fun) => Symbol::Functions(vec![(idx.cast(), fun.visibility)]),
                 _ => continue,
             };
             let path = ModulePath::parse(&name);
@@ -287,37 +302,37 @@ impl SymbolMap {
         Ok(SymbolMap { symbols })
     }
 
-    pub fn add_class(&mut self, path: &ModulePath, class: PoolIndex<Class>) {
-        self.symbols.insert(path, Symbol::Class(class));
+    pub fn add_class(&mut self, path: &ModulePath, class: PoolIndex<Class>, visibility: Visibility) {
+        self.symbols.insert(path, Symbol::Class(class, visibility));
     }
 
-    pub fn add_function(&mut self, path: &ModulePath, index: PoolIndex<Function>) {
+    pub fn add_function(&mut self, path: &ModulePath, index: PoolIndex<Function>, visibility: Visibility) {
         match self.symbols.get_mut(path) {
             Some(Symbol::Functions(existing)) => {
-                existing.push(index);
+                existing.push((index, visibility));
             }
             _ => {
-                self.symbols.insert(path, Symbol::Functions(vec![index]));
+                self.symbols.insert(path, Symbol::Functions(vec![(index, visibility)]));
             }
         }
     }
 
-    pub fn populate_import(&self, import: Import, scope: &mut Scope) -> Result<(), Error> {
+    pub fn populate_import(&self, import: Import, scope: &mut Scope, visibility: Visibility) -> Result<(), Error> {
         match import {
             Import::Exact(path, pos) => {
                 let symbol = self.get_symbol(&path, pos)?;
-                scope.add_symbol(&path, symbol);
+                scope.add_symbol(&path, symbol, visibility);
             }
             Import::All(path, _) => {
                 for (sym_path, symbol) in self.get_direct_children(&path) {
-                    scope.add_symbol(&sym_path, symbol.clone());
+                    scope.add_symbol(&sym_path, symbol.clone(), visibility);
                 }
             }
             Import::Selected(path, names, pos) => {
                 for name in names {
                     let path = path.with_child(name);
                     let symbol = self.get_symbol(&path, pos)?;
-                    scope.add_symbol(&path, symbol)
+                    scope.add_symbol(&path, symbol, visibility)
                 }
             }
         };

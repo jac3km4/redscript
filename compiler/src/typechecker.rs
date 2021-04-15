@@ -519,8 +519,8 @@ pub fn type_of(expr: &Expr<TypedAst>, scope: &Scope, pool: &ConstantPool) -> Res
             Reference::Value(Value::Parameter(idx)) => {
                 scope.resolve_type_from_pool(pool.parameter(*idx)?.type_, pool, *pos)?
             }
-            Reference::Symbol(Symbol::Class(idx)) => TypeId::Class(*idx),
-            Reference::Symbol(Symbol::Struct(idx)) => TypeId::Struct(*idx),
+            Reference::Symbol(Symbol::Class(idx, _)) => TypeId::Class(*idx),
+            Reference::Symbol(Symbol::Struct(idx, _)) => TypeId::Struct(*idx),
             Reference::Symbol(Symbol::Enum(idx)) => TypeId::Enum(*idx),
             _ => panic!(),
         },

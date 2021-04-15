@@ -704,7 +704,7 @@ impl Encode for FunctionFlags {
 
 #[derive(BitfieldSpecifier)]
 #[bits = 8]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Visibility {
     Public = 0,
     Protected = 1,

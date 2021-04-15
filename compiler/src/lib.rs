@@ -39,8 +39,15 @@ pub struct Compiler<'a> {
 impl<'a> Compiler<'a> {
     pub fn new(pool: &'a mut ConstantPool) -> Result<Compiler<'a>, Error> {
         let symbols = SymbolMap::new(pool)?;
-        let scope = Scope::new(pool)?;
         let backlog = Vec::new();
+        let mut scope = Scope::new(pool)?;
+
+        symbols.populate_import(
+            Import::All(ModulePath::EMPTY, Pos::ZERO),
+            &mut scope,
+            Visibility::Private,
+        )?;
+
         Ok(Compiler {
             pool,
             symbols,
@@ -127,11 +134,14 @@ impl<'a> Compiler<'a> {
         for (path, imports, slots) in queue {
             let mut module_scope = self.scope.clone();
 
-            self.symbols
-                .populate_import(Import::All(path.clone(), Pos::ZERO), &mut module_scope)?;
+            if !path.is_empty() {
+                self.symbols
+                    .populate_import(Import::All(path, Pos::ZERO), &mut module_scope, Visibility::Private)?;
+            };
 
             for import in imports {
-                self.symbols.populate_import(import, &mut module_scope)?;
+                self.symbols
+                    .populate_import(import, &mut module_scope, Visibility::Public)?;
             }
 
             for slot in slots {
@@ -141,20 +151,29 @@ impl<'a> Compiler<'a> {
                         parent,
                         base,
                         source,
+                        visibility,
                     } => {
                         let pos = source.declaration.pos;
-                        self.define_function(index, source, parent, base, &mut module_scope)?;
+                        self.define_function(index, parent, base, visibility, source, &mut module_scope)?;
                         if compiled_funs.contains(&index) {
                             diagnostics.push(Diagnostic::MethodConflict(index, pos));
                         } else {
                             compiled_funs.insert(index);
                         }
                     }
-                    Slot::Class { index, source } => {
-                        self.define_class(index, source, &mut module_scope)?;
+                    Slot::Class {
+                        index,
+                        source,
+                        visibility,
+                    } => {
+                        self.define_class(index, visibility, source, &mut module_scope)?;
                     }
-                    Slot::Field { index, source } => {
-                        self.define_global_let(index, source, &mut module_scope)?;
+                    Slot::Field {
+                        index,
+                        source,
+                        visibility,
+                    } => {
+                        self.define_global_let(index, visibility, source, &mut module_scope)?;
                     }
                 }
             }
@@ -168,19 +187,30 @@ impl<'a> Compiler<'a> {
 
     fn define_symbol(&mut self, entry: SourceEntry, module: &ModulePath) -> Result<Slot, Error> {
         match entry {
-            SourceEntry::Class(class) => {
-                let path = module.with_child(class.name.clone());
+            SourceEntry::Class(source) => {
+                let path = module.with_child(source.name.clone());
                 let name_index = self.pool.names.add(path.render().to_owned());
                 let type_index = self.pool.add_definition(Definition::type_(name_index, Type::Class));
                 let index = self
                     .pool
                     .add_definition(Definition::type_(name_index, Type::Prim))
                     .cast();
+                let visibility = source.qualifiers.visibility().unwrap_or(Visibility::Private);
 
                 self.scope.add_type(path.render(), type_index.cast());
-                self.symbols.add_class(&path, index);
+                self.symbols.add_class(&path, index, visibility);
 
-                let slot = Slot::Class { index, source: class };
+                // add to globals when no module
+                if module.is_empty() {
+                    self.scope
+                        .add_symbol(&path, Symbol::Class(index, visibility), Visibility::Private);
+                }
+
+                let slot = Slot::Class {
+                    index,
+                    source,
+                    visibility,
+                };
                 Ok(slot)
             }
             SourceEntry::Function(fun) => {
@@ -190,8 +220,17 @@ impl<'a> Compiler<'a> {
             SourceEntry::GlobalLet(source) => {
                 let name_idx = self.pool.names.add(source.declaration.name.to_owned());
                 let index = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
+                let visibility = source
+                    .declaration
+                    .qualifiers
+                    .visibility()
+                    .unwrap_or(Visibility::Private);
 
-                let slot = Slot::Field { index, source };
+                let slot = Slot::Field {
+                    index,
+                    source,
+                    visibility,
+                };
                 Ok(slot)
             }
         }
@@ -200,10 +239,10 @@ impl<'a> Compiler<'a> {
     fn define_class(
         &mut self,
         class_idx: PoolIndex<Class>,
+        visibility: Visibility,
         source: ClassSource,
         scope: &mut Scope,
     ) -> Result<(), Error> {
-        let visibility = source.qualifiers.visibility().unwrap_or(Visibility::Private);
         let flags = ClassFlags::new();
         let mut functions = vec![];
         let mut fields = vec![];
@@ -215,26 +254,26 @@ impl<'a> Compiler<'a> {
                     let name_idx = self.pool.names.add(Rc::new(fun_id.into_owned()));
                     let fun_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
 
-                    self.define_function(fun_idx, fun, class_idx, None, scope)?;
+                    self.define_function(fun_idx, class_idx, None, visibility, fun, scope)?;
                     functions.push(fun_idx);
                 }
                 MemberSource::Field(let_) => {
                     let name_idx = self.pool.names.add(let_.declaration.name.to_owned());
                     let field_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
 
-                    self.define_field(field_idx, let_, class_idx, scope)?;
+                    self.define_field(field_idx, class_idx, visibility, let_, scope)?;
                     fields.push(field_idx);
                 }
             }
         }
 
         let base_idx = if let Some(base_name) = source.base {
-            if let Symbol::Class(base_idx) = scope.resolve_symbol(base_name.clone(), source.pos)? {
+            if let Symbol::Class(base_idx, _) = scope.resolve_symbol(base_name.clone(), source.pos)? {
                 base_idx
             } else {
                 return Err(Error::CompileError(format!("{} is not a class", base_name), source.pos));
             }
-        } else if let Ok(Symbol::Class(class)) = scope.resolve_symbol(Ident::Static("IScriptable"), source.pos) {
+        } else if let Ok(Symbol::Class(class, _)) = scope.resolve_symbol(Ident::Static("IScriptable"), source.pos) {
             class
         } else {
             log::warn!("No IScriptable in scope, defaulting to no implicit base class");
@@ -259,9 +298,10 @@ impl<'a> Compiler<'a> {
     fn define_function(
         &mut self,
         fun_idx: PoolIndex<Function>,
-        source: FunctionSource,
         parent_idx: PoolIndex<Class>,
         base_method: Option<PoolIndex<Function>>,
+        visibility: Visibility,
+        source: FunctionSource,
         scope: &mut Scope,
     ) -> Result<(), Error> {
         let decl = &source.declaration;
@@ -271,15 +311,6 @@ impl<'a> Compiler<'a> {
             .with_is_const(decl.qualifiers.contain(Qualifier::Const))
             .with_is_exec(decl.qualifiers.contain(Qualifier::Exec))
             .with_is_callback(decl.qualifiers.contain(Qualifier::Callback));
-
-        let visibility = decl
-            .qualifiers
-            .visibility()
-            .unwrap_or(if parent_idx == PoolIndex::UNDEFINED {
-                Visibility::Public
-            } else {
-                Visibility::Private
-            });
 
         let return_type = match source.type_ {
             None => None,
@@ -342,12 +373,12 @@ impl<'a> Compiler<'a> {
     fn define_field(
         &mut self,
         index: PoolIndex<Field>,
-        source: FieldSource,
         parent: PoolIndex<Class>,
+        visibility: Visibility,
+        source: FieldSource,
         scope: &mut Scope,
     ) -> Result<(), Error> {
         let decl = source.declaration;
-        let visibility = decl.qualifiers.visibility().unwrap_or(Visibility::Private);
         let type_ = scope.resolve_type(&source.type_, self.pool, decl.pos)?;
         let type_idx = scope.get_type_index(&type_, self.pool)?;
         let flags = FieldFlags::new().with_is_mutable(true);
@@ -369,6 +400,7 @@ impl<'a> Compiler<'a> {
     fn define_global_let(
         &mut self,
         index: PoolIndex<Field>,
+        visibility: Visibility,
         source: FieldSource,
         scope: &mut Scope,
     ) -> Result<(), Error> {
@@ -380,8 +412,8 @@ impl<'a> Compiler<'a> {
                         .values
                         .first()
                         .ok_or_else(|| Error::invalid_annotation_args(ann.pos))?;
-                    if let Symbol::Class(target_class) = scope.resolve_symbol(ident.clone(), ann.pos)? {
-                        self.define_field(index, source, target_class, scope)?;
+                    if let Symbol::Class(target_class, _) = scope.resolve_symbol(ident.clone(), ann.pos)? {
+                        self.define_field(index, target_class, visibility, source, scope)?;
                         self.pool.class_mut(target_class)?.fields.push(index);
                         return Ok(());
                     } else {
@@ -400,6 +432,11 @@ impl<'a> Compiler<'a> {
     fn determine_function_location(&mut self, source: FunctionSource, module: &ModulePath) -> Result<Slot, Error> {
         let name = source.declaration.name.clone();
         let id = FunctionId::from_source(&source);
+        let visibility = source
+            .declaration
+            .qualifiers
+            .visibility()
+            .unwrap_or(Visibility::Private);
 
         for ann in &source.declaration.annotations {
             match ann.name {
@@ -409,8 +446,8 @@ impl<'a> Compiler<'a> {
                         .first()
                         .ok_or_else(|| Error::invalid_annotation_args(ann.pos))?;
                     let target_class_idx = match self.scope.resolve_symbol(class_name.clone(), ann.pos)? {
-                        Symbol::Class(idx) => idx,
-                        Symbol::Struct(idx) => idx,
+                        Symbol::Class(idx, _) => idx,
+                        Symbol::Struct(idx, _) => idx,
                         _ => return Err(Error::class_not_found(class_name, ann.pos)),
                     };
                     let candidates = self
@@ -425,6 +462,7 @@ impl<'a> Compiler<'a> {
                         parent: target_class_idx,
                         base: fun.base_method,
                         source,
+                        visibility,
                     };
                     return Ok(slot);
                 }
@@ -439,18 +477,19 @@ impl<'a> Compiler<'a> {
                         parent: PoolIndex::UNDEFINED,
                         base: None,
                         source,
+                        visibility,
                     };
                     return Ok(slot);
                 }
                 AnnotationName::AddMethod => {
-                    let value = ann
+                    let class_name = ann
                         .values
                         .first()
                         .ok_or_else(|| Error::invalid_annotation_args(ann.pos))?;
-                    let target_class_idx = match self.scope.resolve_symbol(name, ann.pos)? {
-                        Symbol::Class(idx) => idx,
-                        Symbol::Struct(idx) => idx,
-                        _ => return Err(Error::class_not_found(value, ann.pos)),
+                    let target_class_idx = match self.scope.resolve_symbol(class_name.clone(), ann.pos)? {
+                        Symbol::Class(idx, _) => idx,
+                        Symbol::Struct(idx, _) => idx,
+                        _ => return Err(Error::class_not_found(class_name, ann.pos)),
                     };
                     let class = self.pool.class(target_class_idx)?;
                     let base_method = if class.base != PoolIndex::UNDEFINED {
@@ -462,7 +501,11 @@ impl<'a> Compiler<'a> {
                     } else {
                         None
                     };
-                    let fun_idx = self.pool.reserve().cast();
+                    let name_idx = self
+                        .pool
+                        .names
+                        .add(module.with_child(Ident::new(id.into_owned())).render().to_owned());
+                    let fun_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
                     self.pool.class_mut(target_class_idx)?.functions.push(fun_idx);
 
                     let slot = Slot::Function {
@@ -470,6 +513,7 @@ impl<'a> Compiler<'a> {
                         parent: target_class_idx,
                         base: base_method,
                         source,
+                        visibility,
                     };
                     return Ok(slot);
                 }
@@ -482,14 +526,24 @@ impl<'a> Compiler<'a> {
             .names
             .add(module.with_child(Ident::new(id.into_owned())).render().to_owned());
 
-        let fun_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim));
-        self.symbols.add_function(&path, fun_idx.cast());
+        let fun_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
+        self.symbols.add_function(&path, fun_idx, visibility);
+
+        // add to globals when no module
+        if module.is_empty() {
+            self.scope.add_symbol(
+                &path,
+                Symbol::Functions(vec![(fun_idx, visibility)]),
+                Visibility::Private,
+            );
+        }
 
         let slot = Slot::Function {
             index: fun_idx.cast(),
             parent: PoolIndex::UNDEFINED,
             base: None,
             source,
+            visibility,
         };
         Ok(slot)
     }
@@ -595,10 +649,10 @@ pub enum Value {
 
 #[derive(Debug, Clone)]
 pub enum Symbol {
-    Class(PoolIndex<Class>),
-    Struct(PoolIndex<Class>),
+    Class(PoolIndex<Class>, Visibility),
+    Struct(PoolIndex<Class>, Visibility),
     Enum(PoolIndex<Enum>),
-    Functions(Vec<PoolIndex<Function>>),
+    Functions(Vec<(PoolIndex<Function>, Visibility)>),
 }
 
 #[derive(Debug, Clone)]
@@ -620,14 +674,17 @@ pub enum Slot {
         parent: PoolIndex<Class>,
         base: Option<PoolIndex<Function>>,
         source: FunctionSource,
+        visibility: Visibility,
     },
     Class {
         index: PoolIndex<Class>,
         source: ClassSource,
+        visibility: Visibility,
     },
     Field {
         index: PoolIndex<Field>,
         source: FieldSource,
+        visibility: Visibility,
     },
 }
 
@@ -1196,7 +1253,7 @@ mod tests {
             module MyModule.Module1
             import MyModule.Module2.{B, Func2}
 
-            func Func1() -> Int32 = 2
+            public func Func1() -> Int32 = 2
 
             class A {
                 func Thing() -> Int32 {
@@ -1212,10 +1269,10 @@ mod tests {
             module MyModule.Module2
             import MyModule.Module1.*
 
-            func Func2() -> Int32 = 2
+            public func Func2() -> Int32 = 2
 
-            class B {
-                func Thing() -> Int32 = Func2()
+            public class B {
+                func Thing() -> Int32 = Func1()
             }",
         )
         .unwrap();

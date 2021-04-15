@@ -234,7 +234,7 @@ impl Assembler {
                 }
             },
             Expr::MethodCall(expr, fun_idx, args, _) => match *expr {
-                Expr::Ident(Reference::Symbol(Symbol::Class(_)) | Reference::Symbol(Symbol::Struct(_)), pos) => {
+                Expr::Ident(Reference::Symbol(Symbol::Class(_, _)) | Reference::Symbol(Symbol::Struct(_, _)), pos) => {
                     let fun = pool.function(fun_idx)?;
                     if fun.flags.is_static() {
                         self.assemble_call(fun_idx, args, scope, pool, true)?
