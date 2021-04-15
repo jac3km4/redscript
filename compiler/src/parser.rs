@@ -257,7 +257,6 @@ peg::parser! {
             / class:class() { SourceEntry::Class(class) }
             / field:field() { SourceEntry::GlobalLet(field) }
 
-
         rule import() -> Import
             = pos:pos() keyword("import") _ parts: dotsep(<ident()>) _ "." _ "*"
                 { Import::All(ModulePath::new(parts), pos) }

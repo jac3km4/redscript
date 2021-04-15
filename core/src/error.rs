@@ -28,6 +28,11 @@ impl Error {
         Error::CompileError(error, pos)
     }
 
+    pub fn class_not_found<N: Display>(class_name: N, pos: Pos) -> Error {
+        let error = format!("Can't find class {}", class_name);
+        Error::CompileError(error, pos)
+    }
+
     pub fn unresolved_reference<N: Display>(name: N, pos: Pos) -> Error {
         let error = format!("Unresolved reference {}", name);
         Error::CompileError(error, pos)
@@ -40,11 +45,6 @@ impl Error {
 
     pub fn unresolved_import<N: Display>(import: N, pos: Pos) -> Error {
         Error::CompileError(format!("Unresolved import {}", import), pos)
-    }
-
-    pub fn class_not_found<N: Display>(class_name: N, pos: Pos) -> Error {
-        let error = format!("Can't find class {}", class_name);
-        Error::CompileError(error, pos)
     }
 
     pub fn invalid_annotation_args(pos: Pos) -> Error {
