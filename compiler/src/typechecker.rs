@@ -284,105 +284,105 @@ impl<'a> TypeChecker<'a> {
         if args.len() != intrinsic.arg_count().into() {
             return Err(Error::invalid_arg_count(intrinsic, intrinsic.arg_count() as usize, pos));
         }
-        let first = self.check(&args[0], None, scope)?;
-        let arg_type = type_of(&first, scope, self.pool)?;
+        let first_arg = self.check(&args[0], None, scope)?;
+        let first_arg_type = type_of(&first_arg, scope, self.pool)?;
         let mut checked_args = vec![];
-        let type_ = match (intrinsic, arg_type) {
-            (IntrinsicOp::Equals, _) => {
-                checked_args.push(self.check(&args[0], None, scope)?);
-                checked_args.push(self.check(&args[1], None, scope)?);
+        let type_ = match (intrinsic, first_arg_type) {
+            (IntrinsicOp::Equals, arg_type) => {
+                checked_args.push(first_arg);
+                checked_args.push(self.check(&args[1], Some(&arg_type), scope)?);
                 scope.resolve_type(&TypeName::BOOL, self.pool, pos)?
             }
-            (IntrinsicOp::NotEquals, _) => {
-                checked_args.push(self.check(&args[0], None, scope)?);
-                checked_args.push(self.check(&args[1], None, scope)?);
+            (IntrinsicOp::NotEquals, arg_type) => {
+                checked_args.push(first_arg);
+                checked_args.push(self.check(&args[1], Some(&arg_type), scope)?);
                 scope.resolve_type(&TypeName::BOOL, self.pool, pos)?
             }
             (IntrinsicOp::ArrayClear, TypeId::Array(_)) => {
-                checked_args.push(self.check(&args[0], None, scope)?);
+                checked_args.push(first_arg);
                 TypeId::Void
             }
             (IntrinsicOp::ArraySize, TypeId::Array(_)) => {
-                checked_args.push(self.check(&args[0], None, scope)?);
+                checked_args.push(first_arg);
                 scope.resolve_type(&TypeName::INT32, self.pool, pos)?
             }
             (IntrinsicOp::ArrayResize, TypeId::Array(_)) => {
                 let size_type = scope.resolve_type(&TypeName::INT32, self.pool, pos)?;
-                checked_args.push(self.check(&args[0], None, scope)?);
+                checked_args.push(first_arg);
                 checked_args.push(self.check_and_convert(&args[1], &size_type, scope, pos)?);
                 TypeId::Void
             }
             (IntrinsicOp::ArrayFindFirst, TypeId::Array(elem)) => {
-                checked_args.push(self.check(&args[0], None, scope)?);
+                checked_args.push(first_arg);
                 checked_args.push(self.check_and_convert(&args[1], &elem, scope, pos)?);
                 *elem
             }
             (IntrinsicOp::ArrayFindLast, TypeId::Array(elem)) => {
-                checked_args.push(self.check(&args[0], None, scope)?);
+                checked_args.push(first_arg);
                 checked_args.push(self.check_and_convert(&args[1], &elem, scope, pos)?);
                 *elem
             }
             (IntrinsicOp::ArrayContains, TypeId::Array(elem)) => {
-                checked_args.push(self.check(&args[0], None, scope)?);
+                checked_args.push(first_arg);
                 checked_args.push(self.check_and_convert(&args[1], &elem, scope, pos)?);
                 scope.resolve_type(&TypeName::BOOL, self.pool, pos)?
             }
             (IntrinsicOp::ArrayCount, TypeId::Array(elem)) => {
-                checked_args.push(self.check(&args[0], None, scope)?);
+                checked_args.push(first_arg);
                 checked_args.push(self.check_and_convert(&args[1], &elem, scope, pos)?);
                 scope.resolve_type(&TypeName::INT32, self.pool, pos)?
             }
             (IntrinsicOp::ArrayPush, TypeId::Array(elem)) => {
-                checked_args.push(self.check(&args[0], None, scope)?);
+                checked_args.push(first_arg);
                 checked_args.push(self.check_and_convert(&args[1], &elem, scope, pos)?);
                 TypeId::Void
             }
             (IntrinsicOp::ArrayPop, TypeId::Array(elem)) => {
-                checked_args.push(self.check(&args[0], None, scope)?);
+                checked_args.push(first_arg);
                 *elem
             }
             (IntrinsicOp::ArrayInsert, TypeId::Array(elem)) => {
                 let idx_type = scope.resolve_type(&TypeName::INT32, self.pool, pos)?;
-                checked_args.push(self.check(&args[0], None, scope)?);
+                checked_args.push(first_arg);
                 checked_args.push(self.check_and_convert(&args[1], &idx_type, scope, pos)?);
                 checked_args.push(self.check_and_convert(&args[2], &elem, scope, pos)?);
                 TypeId::Void
             }
             (IntrinsicOp::ArrayRemove, TypeId::Array(elem)) => {
-                checked_args.push(self.check(&args[0], None, scope)?);
+                checked_args.push(first_arg);
                 checked_args.push(self.check_and_convert(&args[1], &elem, scope, pos)?);
                 scope.resolve_type(&TypeName::BOOL, self.pool, pos)?
             }
             (IntrinsicOp::ArrayGrow, TypeId::Array(_)) => {
                 let size_type = scope.resolve_type(&TypeName::INT32, self.pool, pos)?;
-                checked_args.push(self.check(&args[0], None, scope)?);
+                checked_args.push(first_arg);
                 checked_args.push(self.check_and_convert(&args[1], &size_type, scope, pos)?);
                 TypeId::Void
             }
             (IntrinsicOp::ArrayErase, TypeId::Array(_)) => {
                 let idx_type = scope.resolve_type(&TypeName::INT32, self.pool, pos)?;
-                checked_args.push(self.check(&args[0], None, scope)?);
+                checked_args.push(first_arg);
                 checked_args.push(self.check_and_convert(&args[1], &idx_type, scope, pos)?);
                 scope.resolve_type(&TypeName::BOOL, self.pool, pos)?
             }
             (IntrinsicOp::ArrayLast, TypeId::Array(elem)) => {
-                checked_args.push(self.check(&args[0], None, scope)?);
+                checked_args.push(first_arg);
                 *elem
             }
             (IntrinsicOp::ToString, _) => {
-                checked_args.push(self.check(&args[0], None, scope)?);
+                checked_args.push(first_arg);
                 scope.resolve_type(&TypeName::STRING, self.pool, pos)?
             }
             (IntrinsicOp::EnumInt, _) => {
-                checked_args.push(self.check(&args[0], None, scope)?);
+                checked_args.push(first_arg);
                 scope.resolve_type(&TypeName::INT32, self.pool, pos)?
             }
             (IntrinsicOp::IntEnum, _) if expected.is_some() => {
-                checked_args.push(self.check(&args[0], None, scope)?);
+                checked_args.push(first_arg);
                 expected.unwrap().clone()
             }
             (IntrinsicOp::ToVariant, _) => {
-                checked_args.push(self.check(&args[0], None, scope)?);
+                checked_args.push(first_arg);
                 scope.resolve_type(&TypeName::VARIANT, self.pool, pos)?
             }
             (IntrinsicOp::FromVariant, _) if expected.is_some() => {
@@ -391,15 +391,15 @@ impl<'a> TypeChecker<'a> {
                 expected.unwrap().clone()
             }
             (IntrinsicOp::AsRef, type_) => {
-                checked_args.push(self.check(&args[0], None, scope)?);
+                checked_args.push(first_arg);
                 TypeId::ScriptRef(Box::new(type_))
             }
             (IntrinsicOp::Deref, TypeId::ScriptRef(inner)) => {
-                checked_args.push(self.check(&args[0], None, scope)?);
+                checked_args.push(first_arg);
                 *inner
             }
             (IntrinsicOp::IsDefined, TypeId::Ref(_) | TypeId::WeakRef(_)) => {
-                checked_args.push(self.check(&args[0], None, scope)?);
+                checked_args.push(first_arg);
                 scope.resolve_type(&TypeName::BOOL, self.pool, pos)?
             }
             (_, type_) => return Err(Error::invalid_intrinsic(intrinsic, type_.pretty(self.pool)?, pos)),
