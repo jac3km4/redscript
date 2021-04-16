@@ -307,6 +307,14 @@ impl ConstantPool {
         }
     }
 
+    pub fn enum_value(&self, index: PoolIndex<i64>) -> Result<i64, Error> {
+        if let AnyDefinition::EnumValue(value) = self.definition(index)?.value {
+            Ok(value)
+        } else {
+            Err(Error::PoolError(format!("{} is not an enum value", index.index)))
+        }
+    }
+
     pub fn definition_name<A>(&self, index: PoolIndex<A>) -> Result<Rc<String>, Error> {
         self.names.get(self.definition(index)?.name)
     }
