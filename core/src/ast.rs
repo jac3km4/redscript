@@ -187,7 +187,63 @@ pub enum BinOp {
     Modulo,
 }
 
-#[derive(Debug, Clone, Copy, IntoStaticStr)]
+impl BinOp {
+    pub fn precedence(self) -> usize {
+        match self {
+            BinOp::AssignAdd => 10,
+            BinOp::AssignSubtract => 10,
+            BinOp::AssignMultiply => 10,
+            BinOp::AssignDivide => 10,
+            BinOp::LogicOr => 9,
+            BinOp::LogicAnd => 8,
+            BinOp::Or => 7,
+            BinOp::Xor => 6,
+            BinOp::And => 5,
+            BinOp::Equal => 4,
+            BinOp::NotEqual => 4,
+            BinOp::Less => 3,
+            BinOp::LessEqual => 3,
+            BinOp::Greater => 3,
+            BinOp::GreaterEqual => 3,
+            BinOp::Add => 2,
+            BinOp::Subtract => 2,
+            BinOp::Multiply => 1,
+            BinOp::Divide => 1,
+            BinOp::Modulo => 1,
+        }
+    }
+
+    pub fn associative(self) -> bool {
+        match self {
+            BinOp::AssignAdd => false,
+            BinOp::AssignSubtract => false,
+            BinOp::AssignMultiply => false,
+            BinOp::AssignDivide => false,
+            BinOp::LogicOr => true,
+            BinOp::LogicAnd => true,
+            BinOp::Or => true,
+            BinOp::Xor => true,
+            BinOp::And => true,
+            BinOp::Equal => false,
+            BinOp::NotEqual => false,
+            BinOp::Less => false,
+            BinOp::LessEqual => false,
+            BinOp::Greater => false,
+            BinOp::GreaterEqual => false,
+            BinOp::Add => true,
+            BinOp::Subtract => true,
+            BinOp::Multiply => true,
+            BinOp::Divide => false,
+            BinOp::Modulo => false,
+        }
+    }
+
+    pub fn does_associate(self, parent: BinOp) -> bool {
+        parent.precedence() > self.precedence() || (parent.precedence() == self.precedence() && parent.associative())
+    }
+}
+
+#[derive(Debug, Clone, Copy, Display, EnumString, IntoStaticStr)]
 pub enum UnOp {
     #[strum(serialize = "OperatorBitNot")]
     BitNot,

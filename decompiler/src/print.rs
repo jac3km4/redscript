@@ -1,5 +1,6 @@
 use std::io::Write;
 use std::rc::Rc;
+use std::str::FromStr;
 
 use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, Seq, SourceAst, SwitchCase, UnOp};
 use redscript::bundle::ConstantPool;
@@ -221,6 +222,16 @@ fn write_seq<W: Write>(out: &mut W, code: &Seq<SourceAst>, verbose: bool, depth:
 }
 
 fn write_expr<W: Write>(out: &mut W, expr: &Expr<SourceAst>, verbose: bool, depth: usize) -> Result<(), Error> {
+    write_expr_nested(out, expr, None, verbose, depth)
+}
+
+fn write_expr_nested<W: Write>(
+    out: &mut W,
+    expr: &Expr<SourceAst>,
+    parent_op: Option<BinOp>,
+    verbose: bool,
+    depth: usize,
+) -> Result<(), Error> {
     let padding = INDENT.repeat(depth);
 
     match expr {
@@ -237,9 +248,15 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr<SourceAst>, verbose: bool, dept
             Constant::Bool(false) => write!(out, "false")?,
         },
         Expr::Cast(type_, expr, _) => {
-            write!(out, "(")?;
-            write_expr(out, expr, verbose, 0)?;
-            write!(out, " as {})", type_.repr())?;
+            if parent_op.is_some() {
+                write!(out, "(")?;
+                write_expr(out, expr, verbose, 0)?;
+                write!(out, " as {}", type_.repr())?;
+                write!(out, ")")?;
+            } else {
+                write_expr(out, expr, verbose, 0)?;
+                write!(out, " as {}", type_.repr())?;
+            }
         }
         Expr::Declare(name, type_, val, _) => {
             write!(out, "let {}", name)?;
@@ -256,11 +273,11 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr<SourceAst>, verbose: bool, dept
             write!(out, " = ")?;
             write_expr(out, rhs, verbose, 0)?
         }
-        Expr::Call(fun, params, _) => write_call(out, fun, params, verbose)?,
+        Expr::Call(fun, params, _) => write_call(out, fun, params, parent_op, verbose)?,
         Expr::MethodCall(obj, fun, params, _) => {
             write_expr(out, obj, verbose, 0)?;
             write!(out, ".")?;
-            write_call(out, fun, params, verbose)?
+            write_call(out, fun, params, None, verbose)?
         }
         Expr::ArrayElem(arr, idx, _) => {
             write_expr(out, arr, verbose, 0)?;
@@ -349,47 +366,40 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr<SourceAst>, verbose: bool, dept
     Ok(())
 }
 
-fn write_call<W: Write>(out: &mut W, name: &Ident, params: &[Expr<SourceAst>], verbose: bool) -> Result<(), Error> {
+fn write_call<W: Write>(
+    out: &mut W,
+    name: &Ident,
+    params: &[Expr<SourceAst>],
+    parent_op: Option<BinOp>,
+    verbose: bool,
+) -> Result<(), Error> {
     let extracted = name.as_ref().split(';').next().expect("Empty function name");
     let fun_name = if extracted.is_empty() { "undefined" } else { extracted };
-    match fun_name {
-        "OperatorLogicOr" => write_binop(out, &params[0], &params[1], BinOp::LogicOr, verbose),
-        "OperatorLogicAnd" => write_binop(out, &params[0], &params[1], BinOp::LogicAnd, verbose),
-        "OperatorOr" => write_binop(out, &params[0], &params[1], BinOp::Or, verbose),
-        "OperatorAnd" => write_binop(out, &params[0], &params[1], BinOp::And, verbose),
-        "OperatorXor" => write_binop(out, &params[0], &params[1], BinOp::Xor, verbose),
-        "OperatorEqual" => write_binop(out, &params[0], &params[1], BinOp::Equal, verbose),
-        "OperatorNotEqual" => write_binop(out, &params[0], &params[1], BinOp::NotEqual, verbose),
-        "OperatorGreater" => write_binop(out, &params[0], &params[1], BinOp::Greater, verbose),
-        "OperatorLess" => write_binop(out, &params[0], &params[1], BinOp::Less, verbose),
-        "OperatorAdd" => write_binop(out, &params[0], &params[1], BinOp::Add, verbose),
-        "OperatorSubtract" => write_binop(out, &params[0], &params[1], BinOp::Subtract, verbose),
-        "OperatorDivide" => write_binop(out, &params[0], &params[1], BinOp::Divide, verbose),
-        "OperatorMultiply" => write_binop(out, &params[0], &params[1], BinOp::Multiply, verbose),
-        "OperatorModulo" => write_binop(out, &params[0], &params[1], BinOp::Modulo, verbose),
-        "OperatorGreaterEqual" => write_binop(out, &params[0], &params[1], BinOp::GreaterEqual, verbose),
-        "OperatorLessEqual" => write_binop(out, &params[0], &params[1], BinOp::Less, verbose),
-        "OperatorAssignAdd" => write_binop(out, &params[0], &params[1], BinOp::AssignAdd, verbose),
-        "OperatorAssignSubtract" => write_binop(out, &params[0], &params[1], BinOp::AssignSubtract, verbose),
-        "OperatorAssignMultiply" => write_binop(out, &params[0], &params[1], BinOp::AssignMultiply, verbose),
-        "OperatorAssignDivide" => write_binop(out, &params[0], &params[1], BinOp::AssignDivide, verbose),
-        "OperatorLogicNot" => write_unop(out, &params[0], UnOp::LogicNot, verbose),
-        "OperatorBitNot" => write_unop(out, &params[0], UnOp::BitNot, verbose),
-        "OperatorNeg" => write_unop(out, &params[0], UnOp::Neg, verbose),
-        "WeakRefToRef" if !verbose => write_expr(out, &params[0], verbose, 0),
-        "RefToWeakRef" if !verbose => write_expr(out, &params[0], verbose, 0),
-        _ => {
-            write!(out, "{}(", fun_name)?;
-            if !params.is_empty() {
-                for param in params.iter().take(params.len() - 1) {
-                    write_expr(out, param, verbose, 0)?;
-                    write!(out, ", ")?;
-                }
-                write_expr(out, params.last().unwrap(), verbose, 0)?;
-            }
+
+    if let Ok(binop) = BinOp::from_str(fun_name) {
+        if parent_op.filter(|op| !binop.does_associate(*op)).is_some() {
+            write!(out, "(")?;
+            write_binop(out, &params[0], &params[1], binop, verbose)?;
             write!(out, ")")?;
             Ok(())
+        } else {
+            write_binop(out, &params[0], &params[1], binop, verbose)
         }
+    } else if let Ok(unop) = UnOp::from_str(fun_name) {
+        write_unop(out, &params[0], unop, verbose)
+    } else if (fun_name == "WeakRefToRef" || fun_name == "RefToWeakRef") && !verbose {
+        write_expr(out, &params[0], verbose, 0)
+    } else {
+        write!(out, "{}(", fun_name)?;
+        if !params.is_empty() {
+            for param in params.iter().take(params.len() - 1) {
+                write_expr(out, param, verbose, 0)?;
+                write!(out, ", ")?;
+            }
+            write_expr(out, params.last().unwrap(), verbose, 0)?;
+        }
+        write!(out, ")")?;
+        Ok(())
     }
 }
 
@@ -400,9 +410,9 @@ fn write_binop<W: Write>(
     op: BinOp,
     verbose: bool,
 ) -> Result<(), Error> {
-    write_expr(out, lhs, verbose, 0)?;
+    write_expr_nested(out, lhs, Some(op), verbose, 0)?;
     write!(out, " {} ", format_binop(op))?;
-    write_expr(out, rhs, verbose, 0)
+    write_expr_nested(out, rhs, Some(op), verbose, 0)
 }
 
 fn write_unop<W: Write>(out: &mut W, param: &Expr<SourceAst>, op: UnOp, verbose: bool) -> Result<(), Error> {
