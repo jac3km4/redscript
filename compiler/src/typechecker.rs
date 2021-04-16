@@ -373,13 +373,17 @@ impl<'a> TypeChecker<'a> {
                 checked_args.push(first_arg);
                 scope.resolve_type(&TypeName::STRING, self.pool, pos)?
             }
-            (IntrinsicOp::EnumInt, _) => {
+            (IntrinsicOp::EnumInt, TypeId::Enum(_)) => {
                 checked_args.push(first_arg);
                 scope.resolve_type(&TypeName::INT32, self.pool, pos)?
             }
             (IntrinsicOp::IntEnum, _) if expected.is_some() => {
                 checked_args.push(first_arg);
-                expected.unwrap().clone()
+                if let Some(TypeId::Enum(idx)) = expected {
+                    TypeId::Enum(*idx)
+                } else {
+                    return Err(Error::type_error("Enum", expected.unwrap().pretty(self.pool)?, pos));
+                }
             }
             (IntrinsicOp::ToVariant, _) => {
                 checked_args.push(first_arg);
