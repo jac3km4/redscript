@@ -119,6 +119,14 @@ impl Definition {
     pub fn field(name: PoolIndex<String>, parent: PoolIndex<Class>, field: Field) -> Definition {
         Definition::default(name, parent.cast(), AnyDefinition::Field(field), 12, 60)
     }
+
+    pub fn enum_(name: PoolIndex<String>, enum_: Enum) -> Definition {
+        Definition::default(name, PoolIndex::UNDEFINED, AnyDefinition::Enum(enum_), 82, 224)
+    }
+
+    pub fn enum_value(name: PoolIndex<String>, parent: PoolIndex<Enum>, value: i64) -> Definition {
+        Definition::default(name, parent.cast(), AnyDefinition::EnumValue(value), 82, 219)
+    }
 }
 
 #[derive(Debug)]
