@@ -88,7 +88,7 @@ impl<'a> Compiler<'a> {
         for file in files.files() {
             let parsed = parser::parse_file(file).map_err(|err| {
                 let message = format!("Syntax error, expected {}", err.expected);
-                Error::SyntaxError(message, Pos::new(err.location.offset))
+                Error::SyntaxError(message, file.byte_offset() + err.location.offset)
             })?;
             modules.push(parsed);
         }
