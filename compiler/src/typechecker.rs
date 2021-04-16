@@ -201,9 +201,10 @@ impl<'a> TypeChecker<'a> {
             Expr::Seq(seq) => Expr::Seq(self.check_seq(seq, scope)?),
             Expr::Switch(matched, cases, default) => {
                 let checked_matched = self.check(matched, None, scope)?;
+                let matched_type = type_of(&checked_matched, scope, self.pool).ok();
                 let mut checked_cases = Vec::with_capacity(cases.len());
                 for case in cases {
-                    let matcher = self.check(&case.matcher, None, scope)?;
+                    let matcher = self.check(&case.matcher, matched_type.as_ref(), scope)?;
                     let body = self.check_seq(&case.body, &mut scope.clone())?;
                     checked_cases.push(SwitchCase { matcher, body })
                 }
