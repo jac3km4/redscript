@@ -295,7 +295,7 @@ peg::parser! {
             keyword("module") _ parts:dotsep(<ident()>) { ModulePath { parts } }
 
         pub rule module() -> SourceModule =
-            _ path:module_path()? _ imports:(import() ** _) entries:(source_entry() ** _) _
+            _ path:module_path()? _ imports:(import() ** _) _ entries:(source_entry() ** _) _
             { SourceModule { path, imports, entries } }
 
         rule switch() -> Expr<SourceAst>
