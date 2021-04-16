@@ -12,26 +12,36 @@ pub mod files;
 pub mod print;
 
 pub struct Decompiler<'a> {
-    code: &'a mut CodeCursor<'a, Offset>,
+    code: CodeCursor<'a, Offset>,
     pool: &'a ConstantPool,
+    base_method: Option<PoolIndex<Function>>,
 }
 
 impl<'a> Decompiler<'a> {
-    pub fn new(code: &'a mut CodeCursor<'a, Offset>, pool: &'a ConstantPool) -> Decompiler<'a> {
-        Decompiler { code, pool }
+    pub fn new(
+        code: CodeCursor<'a, Offset>,
+        base_method: Option<PoolIndex<Function>>,
+        pool: &'a ConstantPool,
+    ) -> Decompiler<'a> {
+        Decompiler {
+            code,
+            pool,
+            base_method,
+        }
     }
 
-    pub fn decompile_function(&mut self, function: &Function) -> Result<Seq<SourceAst>, Error> {
+    pub fn decompiled(function: &Function, pool: &'a ConstantPool) -> Result<Seq<SourceAst>, Error> {
         let mut locals = HashMap::new();
         for local_index in &function.locals {
-            let local = self.pool.local(*local_index)?;
-            let name = Ident::Owned(self.pool.definition_name(*local_index)?);
-            let type_name = self.pool.definition_name(local.type_)?;
+            let local = pool.local(*local_index)?;
+            let name = Ident::Owned(pool.definition_name(*local_index)?);
+            let type_name = pool.definition_name(local.type_)?;
             let type_ = TypeName::from_repr(type_name.as_ref());
             locals.insert(name, type_);
         }
 
-        let body = self.decompile()?;
+        let mut decompiler = Decompiler::new(function.code.cursor(), function.base_method, pool);
+        let body = decompiler.decompile()?;
         merge_declarations(locals, body)
     }
 
@@ -258,7 +268,12 @@ impl<'a> Decompiler<'a> {
                         Expr::MethodCall(expr, name, params, Pos::ZERO)
                     }
                 } else {
-                    Expr::MethodCall(Box::new(Expr::This(Pos::ZERO)), name, params, Pos::ZERO)
+                    let ctx = if self.base_method == Some(idx) {
+                        Expr::Super(Pos::ZERO)
+                    } else {
+                        Expr::This(Pos::ZERO)
+                    };
+                    Expr::MethodCall(Box::new(ctx), name, params, Pos::ZERO)
                 }
                 // if let AnyDefinition::Function(ref fun) = def.value {
                 // assert_eq!(fun.parameters.len(), params.len(), "Invalid number of parameters {:?}", params);
