@@ -186,11 +186,11 @@ fn write_function_body<W: Write>(
     writeln!(out, " {{")?;
     match mode {
         OutputMode::Code { verbose } => {
-            let code = Decompiler::new(&mut fun.code.cursor(), pool).decompile_function(fun)?;
+            let code = Decompiler::decompiled(fun, pool)?;
             write_seq(out, &code, verbose, depth + 1)?;
         }
         OutputMode::SyntaxTree => {
-            let code = Decompiler::new(&mut fun.code.cursor(), pool).decompile_function(fun)?;
+            let code = Decompiler::decompiled(fun, pool)?;
             for expr in code.exprs {
                 writeln!(out, "{}{:?}", INDENT.repeat(depth + 1), expr)?;
             }
