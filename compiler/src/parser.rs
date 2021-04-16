@@ -273,7 +273,7 @@ peg::parser! {
             = name:ident() _ "=" _ value:number()
             {? match value {
                  Constant::Int(value) => Ok(EnumMember { name, value }),
-                 _ => Err("uint")
+                 _ => Err("int")
                }
             }
 
