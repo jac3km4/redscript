@@ -347,6 +347,21 @@ impl TypeName {
         }
     }
 
+    pub fn pretty(&self) -> Ident {
+        match self.arguments.first() {
+            None => self.name.clone(),
+            Some(head) => {
+                let args = self
+                    .arguments
+                    .iter()
+                    .skip(1)
+                    .map(|tp| tp.pretty())
+                    .fold(head.pretty(), |acc, el| Ident::new(format!("{},{}", acc, el)));
+                Ident::new(format!("{}<{}>", self.name.as_ref(), args))
+            }
+        }
+    }
+
     // Used for storing types in the constant pool
     pub fn repr(&self) -> Ident {
         if self.arguments.is_empty() {
@@ -355,6 +370,26 @@ impl TypeName {
             self.arguments.iter().fold(self.name.clone(), |acc, tp| {
                 Ident::new(format!("{}:{}", acc, tp.repr()))
             })
+        }
+    }
+
+    pub fn from_repr<'a>(str: &'a str) -> TypeName {
+        let mut parts = str.split(':');
+        Self::from_parts(parts.next().unwrap(), parts).unwrap()
+    }
+
+    fn from_parts<'a>(name: &'a str, mut parts: impl Iterator<Item = &'a str>) -> Option<TypeName> {
+        let name = Rc::new(name.to_owned());
+        match parts.next() {
+            Some(tail) => {
+                let arg = Self::from_parts(tail, parts)?;
+                let type_ = TypeName {
+                    name: Ident::Owned(name),
+                    arguments: vec![arg],
+                };
+                Some(type_)
+            }
+            None => Some(TypeName::basic_owned(name)),
         }
     }
 }

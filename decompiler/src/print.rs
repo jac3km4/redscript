@@ -184,22 +184,22 @@ fn write_function_body<W: Write>(
     mode: OutputMode,
 ) -> Result<(), Error> {
     writeln!(out, " {{")?;
-    for local in &fun.locals {
-        write_definition(out, pool.definition(*local)?, pool, depth + 1, mode)?;
-        writeln!(out)?;
-    }
     match mode {
         OutputMode::Code { verbose } => {
-            let code = Decompiler::new(&mut fun.code.cursor(), pool).decompile()?;
+            let code = Decompiler::new(&mut fun.code.cursor(), pool).decompile_function(fun)?;
             write_seq(out, &code, verbose, depth + 1)?;
         }
         OutputMode::SyntaxTree => {
-            let code = Decompiler::new(&mut fun.code.cursor(), pool).decompile()?;
+            let code = Decompiler::new(&mut fun.code.cursor(), pool).decompile_function(fun)?;
             for expr in code.exprs {
                 writeln!(out, "{}{:?}", INDENT.repeat(depth + 1), expr)?;
             }
         }
         OutputMode::Bytecode => {
+            for local in &fun.locals {
+                write_definition(out, pool.definition(*local)?, pool, depth + 1, mode)?;
+                writeln!(out)?;
+            }
             for (offset, instr) in fun.code.cursor() {
                 let op = format!("{:?}", instr).to_lowercase();
                 writeln!(out, "{}{}: {}", INDENT.repeat(depth + 1), offset.value, op)?;
@@ -241,7 +241,16 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr<SourceAst>, verbose: bool, dept
             write_expr(out, expr, verbose, 0)?;
             write!(out, " as {})", type_.repr())?;
         }
-        Expr::Declare(_, _, _, _) => {}
+        Expr::Declare(name, type_, val, _) => {
+            write!(out, "let {}", name)?;
+            if let Some(type_) = type_ {
+                write!(out, ": {}", type_.pretty())?;
+            }
+            if let Some(val) = val {
+                write!(out, " = ")?;
+                write_expr(out, val, verbose, 0)?;
+            }
+        }
         Expr::Assign(lhs, rhs, _) => {
             write_expr(out, lhs, verbose, 0)?;
             write!(out, " = ")?;
