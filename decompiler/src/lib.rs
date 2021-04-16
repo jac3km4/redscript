@@ -1,9 +1,11 @@
+use std::collections::HashMap;
 use std::io;
 use std::rc::Rc;
 
 use redscript::ast::{Constant, Expr, Ident, Literal, Pos, Seq, SourceAst, SwitchCase, Target, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{CodeCursor, Instr, IntrinsicOp, Location, Offset};
+use redscript::definition::Function;
 use redscript::error::Error;
 
 pub mod files;
@@ -17,6 +19,20 @@ pub struct Decompiler<'a> {
 impl<'a> Decompiler<'a> {
     pub fn new(code: &'a mut CodeCursor<'a, Offset>, pool: &'a ConstantPool) -> Decompiler<'a> {
         Decompiler { code, pool }
+    }
+
+    pub fn decompile_function(&mut self, function: &Function) -> Result<Seq<SourceAst>, Error> {
+        let mut locals = HashMap::new();
+        for local_index in &function.locals {
+            let local = self.pool.local(*local_index)?;
+            let name = Ident::Owned(self.pool.definition_name(*local_index)?);
+            let type_name = self.pool.definition_name(local.type_)?;
+            let type_ = TypeName::from_repr(type_name.as_ref());
+            locals.insert(name, type_);
+        }
+
+        let body = self.decompile()?;
+        merge_declarations(locals, body)
     }
 
     pub fn decompile(&mut self) -> Result<Seq<SourceAst>, Error> {
@@ -347,6 +363,36 @@ impl<'a> Decompiler<'a> {
         };
         Ok(res)
     }
+}
+
+fn merge_declarations(mut locals: HashMap<Ident, TypeName>, seq: Seq<SourceAst>) -> Result<Seq<SourceAst>, Error> {
+    let mut body = Vec::with_capacity(seq.exprs.len());
+    let mut it = seq.exprs.into_iter();
+
+    let stmt = loop {
+        match it.next() {
+            Some(Expr::Assign(ident, val, _)) => {
+                if let Expr::Ident(name, _) = ident.as_ref() {
+                    if let Some(ty) = locals.remove(name) {
+                        body.push(Expr::Declare(name.clone(), Some(ty), Some(val), Pos::ZERO));
+                    } else {
+                        body.push(Expr::Assign(ident, val, Pos::ZERO));
+                    }
+                } else {
+                    body.push(Expr::Assign(ident, val, Pos::ZERO));
+                }
+            }
+            other => break other,
+        }
+    };
+
+    for (name, ty) in locals {
+        body.push(Expr::Declare(name.clone(), Some(ty), None, Pos::ZERO));
+    }
+
+    body.extend(stmt);
+    body.extend(it);
+    Ok(Seq::new(body))
 }
 
 fn resolve_jump(seq: &mut Seq<SourceAst>, target: Option<Location>) -> Option<&mut Target> {
