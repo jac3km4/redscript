@@ -175,7 +175,13 @@ impl<'a> Decompiler<'a> {
                 let enum_ident = self.definition_ident(enum_)?;
                 let member_ident = self.definition_ident(member)?;
                 let expr = Box::new(Expr::Ident(enum_ident, Pos::ZERO));
-                Expr::Member(expr, member_ident, Pos::ZERO)
+                if member_ident.as_ref().is_empty() {
+                    let value = self.pool.enum_value(member)?;
+                    let constant = Expr::Constant(Constant::Int(value), Pos::ZERO);
+                    Expr::Call(Ident::Static(IntrinsicOp::IntEnum.into()), vec![constant], Pos::ZERO)
+                } else {
+                    Expr::Member(expr, member_ident, Pos::ZERO)
+                }
             }
             Instr::Breakpoint(_, _, _, _, _, _) => {
                 return Err(Error::DecompileError("Unexpected Breakpoint".to_owned()))
