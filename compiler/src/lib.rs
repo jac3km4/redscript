@@ -6,7 +6,7 @@ use std::rc::Rc;
 use std::str::FromStr;
 
 use assembler::Assembler;
-use parser::{AnnotationName, FieldSource, SourceModule};
+use parser::{AnnotationName, EnumSource, FieldSource, SourceModule};
 use redscript::ast::{BinOp, Ident, Pos, Seq, SourceAst, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::Code;
@@ -176,6 +176,9 @@ impl<'a> Compiler<'a> {
                     } => {
                         self.define_global_let(index, visibility, source, &mut module_scope)?;
                     }
+                    Slot::Enum { index, source } => {
+                        self.define_enum(index, source)?;
+                    }
                 }
             }
         }
@@ -219,8 +222,11 @@ impl<'a> Compiler<'a> {
                 Ok(slot)
             }
             SourceEntry::GlobalLet(source) => {
-                let name_idx = self.pool.names.add(source.declaration.name.to_owned());
-                let index = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
+                let name_index = self.pool.names.add(source.declaration.name.to_owned());
+                let index = self
+                    .pool
+                    .add_definition(Definition::type_(name_index, Type::Prim))
+                    .cast();
                 let visibility = source
                     .declaration
                     .qualifiers
@@ -232,6 +238,26 @@ impl<'a> Compiler<'a> {
                     source,
                     visibility,
                 };
+                Ok(slot)
+            }
+            SourceEntry::Enum(source) => {
+                let path = module.with_child(source.name.clone());
+                let name_index = self.pool.names.add(path.render().to_owned());
+                let type_index = self.pool.add_definition(Definition::type_(name_index, Type::Class));
+                let index = self
+                    .pool
+                    .add_definition(Definition::type_(name_index, Type::Prim))
+                    .cast();
+
+                self.scope.add_type(path.render(), type_index.cast());
+                self.symbols.add_enum(&path, index);
+
+                // add to globals when no module
+                if module.is_empty() {
+                    self.scope.add_symbol(&path, Symbol::Enum(index), Visibility::Private);
+                }
+
+                let slot = Slot::Enum { index, source };
                 Ok(slot)
             }
         }
@@ -391,10 +417,31 @@ impl<'a> Compiler<'a> {
             attributes: vec![],
             defaults: vec![],
         };
-        let name_idx = self.pool.definition(index)?.name;
-        let definition = Definition::field(name_idx, parent.cast(), field);
+        let name_index = self.pool.definition(index)?.name;
+        let definition = Definition::field(name_index, parent.cast(), field);
 
         self.pool.put_definition(index.cast(), definition);
+        Ok(())
+    }
+
+    fn define_enum(&mut self, index: PoolIndex<Enum>, source: EnumSource) -> Result<(), Error> {
+        let mut members = Vec::with_capacity(source.members.len());
+
+        for member in source.members {
+            let name_index = self.pool.names.add(member.name.to_owned());
+            let def = Definition::enum_value(name_index, index, member.value);
+            members.push(self.pool.add_definition(def).cast());
+        }
+
+        let enum_ = Enum {
+            flags: 0,
+            size: 4,
+            members,
+            unk1: false,
+        };
+        let name_index = self.pool.definition(index)?.name;
+        self.pool
+            .put_definition(index.cast(), Definition::enum_(name_index, enum_));
         Ok(())
     }
 
@@ -683,6 +730,10 @@ pub enum Slot {
         index: PoolIndex<Field>,
         source: FieldSource,
         visibility: Visibility,
+    },
+    Enum {
+        index: PoolIndex<Enum>,
+        source: EnumSource,
     },
 }
 
@@ -1323,6 +1374,42 @@ mod tests {
         let mut compiler = Compiler::new(&mut scripts.pool)?;
         compiler.compile_modules(vec![sources1, sources2])?;
         Ok(())
+    }
+
+    #[test]
+    fn compile_enum() -> Result<(), Error> {
+        let sources = r#"
+            func Testing(dir: Direction) -> Int32 {
+                switch dir {
+                    case Direction.Left:
+                        return EnumInt(dir);
+                    case Direction.Right:
+                        return EnumInt(dir);
+                }
+            }
+
+            enum Direction {
+                Left = 0,
+                Right = 1,
+            }
+            "#;
+
+        let expected = vec![
+            Instr::Switch(PoolIndex::new(22), Offset::new(20)),
+            Instr::Param(PoolIndex::new(24)),
+            Instr::SwitchLabel(Offset::new(42), Offset::new(22)),
+            Instr::EnumConst(PoolIndex::new(23), PoolIndex::new(25)),
+            Instr::Return,
+            Instr::EnumToI32(PoolIndex::new(22), 4),
+            Instr::Param(PoolIndex::new(24)),
+            Instr::SwitchLabel(Offset::new(42), Offset::new(22)),
+            Instr::EnumConst(PoolIndex::new(23), PoolIndex::new(26)),
+            Instr::Return,
+            Instr::EnumToI32(PoolIndex::new(22), 4),
+            Instr::Param(PoolIndex::new(24)),
+            Instr::Nop,
+        ];
+        check_function_bytecode(sources, expected)
     }
 
     fn check_compilation(code: &str) -> Result<(), Error> {

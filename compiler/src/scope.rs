@@ -304,6 +304,10 @@ impl SymbolMap {
         self.symbols.insert(path, Symbol::Class(class, visibility));
     }
 
+    pub fn add_enum(&mut self, path: &ModulePath, enum_: PoolIndex<Enum>) {
+        self.symbols.insert(path, Symbol::Enum(enum_));
+    }
+
     pub fn add_function(&mut self, path: &ModulePath, index: PoolIndex<Function>, visibility: Visibility) {
         match self.symbols.get_mut(path) {
             Some(Symbol::Functions(existing)) => {

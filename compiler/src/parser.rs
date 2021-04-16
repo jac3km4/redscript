@@ -22,6 +22,7 @@ pub enum SourceEntry {
     Class(ClassSource),
     Function(FunctionSource),
     GlobalLet(FieldSource),
+    Enum(EnumSource),
 }
 
 #[derive(Debug)]
@@ -58,6 +59,18 @@ pub struct ParameterSource {
     pub qualifiers: Qualifiers,
     pub name: Ident,
     pub type_: TypeName,
+}
+
+#[derive(Debug)]
+pub struct EnumSource {
+    pub name: Ident,
+    pub members: Vec<EnumMember>,
+}
+
+#[derive(Debug)]
+pub struct EnumMember {
+    pub name: Ident,
+    pub value: i64,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -181,9 +194,9 @@ peg::parser! {
 
         rule number() -> Constant
             = n:$(['0'..='9' | '.']+) postfix:$(['u'])?
-            { if n.contains('.') { Constant::Float(n.parse().unwrap()) }
-              else if postfix == Some("u") { Constant::Uint(n.parse().unwrap()) }
-              else { Constant::Int(n.parse().unwrap()) }
+            {? if n.contains('.') { n.parse::<f64>().or(Err("float")).map(Constant::Float) }
+               else if postfix == Some("u") { n.parse::<u64>().or(Err("uint")).map(Constant::Uint) }
+               else {  n.parse::<i64>().or(Err("int")).map(Constant::Int) }
             }
 
         rule escaped_char() -> String
@@ -252,10 +265,23 @@ peg::parser! {
             = fun:function() { MemberSource::Function(fun) }
             / field:field() { MemberSource::Field(field) }
 
+        pub rule enum_() -> EnumSource
+            = keyword("enum") _ name:ident() _ "{" _ members:commasep(<enum_member()>) _ ","? _ "}"
+            { EnumSource { name, members } }
+
+        rule enum_member() -> EnumMember
+            = name:ident() _ "=" _ value:number()
+            {? match value {
+                 Constant::Int(value) => Ok(EnumMember { name, value }),
+                 _ => Err("uint")
+               }
+            }
+
         pub rule source_entry() -> SourceEntry
             = fun:function() { SourceEntry::Function(fun) }
             / class:class() { SourceEntry::Class(class) }
             / field:field() { SourceEntry::GlobalLet(field) }
+            / enum_:enum_() { SourceEntry::Enum(enum_) }
 
         rule import() -> Import
             = pos:pos() keyword("import") _ parts: dotsep(<ident()>) _ "." _ "*"
