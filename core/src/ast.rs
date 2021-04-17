@@ -88,9 +88,12 @@ where
 #[derive(Debug, Clone)]
 pub enum Constant {
     String(Literal, Rc<String>),
-    Float(f64),
-    Int(i64),
-    Uint(u64),
+    F32(f32),
+    F64(f64),
+    I32(i32),
+    I64(i64),
+    U32(u32),
+    U64(u64),
     Bool(bool),
 }
 
@@ -355,8 +358,11 @@ pub struct TypeName {
 impl TypeName {
     pub const BOOL: Self = TypeName::basic("Bool");
     pub const INT32: Self = TypeName::basic("Int32");
+    pub const INT64: Self = TypeName::basic("Int64");
     pub const UINT32: Self = TypeName::basic("Uint32");
+    pub const UINT64: Self = TypeName::basic("Uint64");
     pub const FLOAT: Self = TypeName::basic("Float");
+    pub const DOUBLE: Self = TypeName::basic("Double");
     pub const STRING: Self = TypeName::basic("String");
     pub const VARIANT: Self = TypeName::basic("Variant");
     pub const CNAME: Self = TypeName::basic("CName");

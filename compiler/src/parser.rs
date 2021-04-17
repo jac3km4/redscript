@@ -193,10 +193,12 @@ peg::parser! {
             ##parse_string_literal(id) !['0'..='9' | 'a'..='z' | 'A'..='Z' | '_']
 
         rule number() -> Constant
-            = n:$(['0'..='9' | '.']+) postfix:$(['u'])?
-            {? if n.contains('.') { n.parse::<f64>().or(Err("float")).map(Constant::Float) }
-               else if postfix == Some("u") { n.parse::<u64>().or(Err("uint")).map(Constant::Uint) }
-               else {  n.parse::<i64>().or(Err("int")).map(Constant::Int) }
+            = n:$(['0'..='9' | '.']+) postfix:$(['u' | 'l' | 'd'])?
+            {? if postfix == Some("d") { n.parse::<f64>().or(Err("valid double")).map(Constant::F64) }
+               else if n.contains('.') { n.parse::<f32>().or(Err("valid float")).map(Constant::F32) }
+               else if postfix == Some("l") { n.parse::<i64>().or(Err("valid 64-bit int")).map(Constant::I64) }
+               else if postfix == Some("u") { n.parse::<u32>().or(Err("valid 32-bit uint")).map(Constant::U32) }
+               else { n.parse::<i32>().or(Err("valid 32-bit int")).map(Constant::I32) }
             }
 
         rule escaped_char() -> String
@@ -272,7 +274,8 @@ peg::parser! {
         rule enum_member() -> EnumMember
             = name:ident() _ "=" _ value:number()
             {? match value {
-                 Constant::Int(value) => Ok(EnumMember { name, value }),
+                 Constant::I32(value) => Ok(EnumMember { name, value: value.into() }),
+                 Constant::I64(value) => Ok(EnumMember { name, value: value }),
                  _ => Err("int")
                }
             }
@@ -400,8 +403,8 @@ mod tests {
         let expr = lang::expr("3.0 ? 5.0 : 5 + 4", Pos::ZERO).unwrap();
         assert_eq!(
             format!("{:?}", expr),
-            "Conditional(Constant(Float(3.0), Pos(0)), Constant(Float(5.0), Pos(6)), BinOp(Constant(Int(5), Pos(12)), \
-             Constant(Int(4), Pos(16)), Add, Pos(14)), Pos(4))"
+            "Conditional(Constant(F32(3.0), Pos(0)), Constant(F32(5.0), Pos(6)), BinOp(Constant(I32(5), Pos(12)), \
+             Constant(I32(4), Pos(16)), Add, Pos(14)), Pos(4))"
         );
     }
 
@@ -451,7 +454,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", stmt),
-            r#"While(BinOp(Ident(Owned("i"), Pos(6)), Constant(Int(1000), Pos(10)), Less, Pos(8)), Seq { exprs: [BinOp(Member(This(Pos(33)), Owned("counter"), Pos(37)), Member(Ident(Owned("Object"), Pos(49)), Owned("CONSTANT"), Pos(55)), AssignAdd, Pos(46)), BinOp(Ident(Owned("i"), Pos(82)), Constant(Int(1), Pos(87)), AssignAdd, Pos(84))] }, Pos(0))"#
+            r#"While(BinOp(Ident(Owned("i"), Pos(6)), Constant(I32(1000), Pos(10)), Less, Pos(8)), Seq { exprs: [BinOp(Member(This(Pos(33)), Owned("counter"), Pos(37)), Member(Ident(Owned("Object"), Pos(49)), Owned("CONSTANT"), Pos(55)), AssignAdd, Pos(46)), BinOp(Ident(Owned("i"), Pos(82)), Constant(I32(1), Pos(87)), AssignAdd, Pos(84))] }, Pos(0))"#
         );
     }
 

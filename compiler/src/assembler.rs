@@ -71,14 +71,23 @@ impl Assembler {
                     let idx = pool.tweakdb_ids.add(lit);
                     self.emit(Instr::TweakDbIdConst(idx));
                 }
-                Constant::Float(val) => {
-                    self.emit(Instr::F32Const(val as f32));
+                Constant::F32(val) => {
+                    self.emit(Instr::F32Const(val));
                 }
-                Constant::Int(val) => {
-                    self.emit(Instr::I32Const(val as i32));
+                Constant::F64(val) => {
+                    self.emit(Instr::F64Const(val));
                 }
-                Constant::Uint(val) => {
-                    self.emit(Instr::U32Const(val as u32));
+                Constant::I32(val) => {
+                    self.emit(Instr::I32Const(val));
+                }
+                Constant::I64(val) => {
+                    self.emit(Instr::I64Const(val));
+                }
+                Constant::U32(val) => {
+                    self.emit(Instr::U32Const(val));
+                }
+                Constant::U64(val) => {
+                    self.emit(Instr::U64Const(val));
                 }
                 Constant::Bool(true) => {
                     self.emit(Instr::TrueConst);
