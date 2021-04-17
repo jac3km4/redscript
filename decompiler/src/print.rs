@@ -228,7 +228,7 @@ fn write_expr<W: Write>(out: &mut W, expr: &Expr<SourceAst>, verbose: bool, dept
 fn write_expr_nested<W: Write>(
     out: &mut W,
     expr: &Expr<SourceAst>,
-    parent_op: Option<BinOp>,
+    parent_op: Option<ParentOp>,
     verbose: bool,
     depth: usize,
 ) -> Result<(), Error> {
@@ -278,7 +278,7 @@ fn write_expr_nested<W: Write>(
         }
         Expr::Call(fun, params, _) => write_call(out, fun, params, parent_op, verbose)?,
         Expr::MethodCall(obj, fun, params, _) => {
-            write_expr(out, obj, verbose, 0)?;
+            write_expr_nested(out, obj, Some(ParentOp::Dot), verbose, 0)?;
             write!(out, ".")?;
             write_call(out, fun, params, None, verbose)?
         }
@@ -373,14 +373,21 @@ fn write_call<W: Write>(
     out: &mut W,
     name: &Ident,
     params: &[Expr<SourceAst>],
-    parent_op: Option<BinOp>,
+    parent_op: Option<ParentOp>,
     verbose: bool,
 ) -> Result<(), Error> {
     let extracted = name.as_ref().split(';').next().expect("Empty function name");
     let fun_name = if extracted.is_empty() { "undefined" } else { extracted };
 
     if let Ok(binop) = BinOp::from_str(fun_name) {
-        if parent_op.filter(|op| !binop.does_associate(*op)).is_some() {
+        if parent_op
+            .filter(|op| match op {
+                ParentOp::UnOp(_) => true,
+                ParentOp::BinOp(op) => !binop.does_associate(*op),
+                ParentOp::Dot => true,
+            })
+            .is_some()
+        {
             write!(out, "(")?;
             write_binop(out, &params[0], &params[1], binop, verbose)?;
             write!(out, ")")?;
@@ -413,14 +420,14 @@ fn write_binop<W: Write>(
     op: BinOp,
     verbose: bool,
 ) -> Result<(), Error> {
-    write_expr_nested(out, lhs, Some(op), verbose, 0)?;
+    write_expr_nested(out, lhs, Some(ParentOp::BinOp(op)), verbose, 0)?;
     write!(out, " {} ", format_binop(op))?;
-    write_expr_nested(out, rhs, Some(op), verbose, 0)
+    write_expr_nested(out, rhs, Some(ParentOp::BinOp(op)), verbose, 0)
 }
 
 fn write_unop<W: Write>(out: &mut W, param: &Expr<SourceAst>, op: UnOp, verbose: bool) -> Result<(), Error> {
     write!(out, "{}", format_unop(op))?;
-    write_expr(out, param, verbose, 0)
+    write_expr_nested(out, param, Some(ParentOp::UnOp(op)), verbose, 0)
 }
 
 fn format_param(def: &Definition, pool: &ConstantPool) -> Result<String, Error> {
@@ -485,4 +492,10 @@ fn format_unop(op: UnOp) -> &'static str {
         UnOp::LogicNot => "!",
         UnOp::Neg => "-",
     }
+}
+
+enum ParentOp {
+    UnOp(UnOp),
+    BinOp(BinOp),
+    Dot,
 }
