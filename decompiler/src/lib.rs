@@ -381,7 +381,8 @@ impl<'a> Decompiler<'a> {
 }
 
 fn merge_declarations(mut locals: HashMap<Ident, TypeName>, seq: Seq<SourceAst>) -> Result<Seq<SourceAst>, Error> {
-    let mut body = Vec::with_capacity(seq.exprs.len());
+    let mut body = Vec::with_capacity(seq.exprs.len() + locals.len());
+    let mut init = Vec::new();
     let mut it = seq.exprs.into_iter();
 
     let stmt = loop {
@@ -389,12 +390,12 @@ fn merge_declarations(mut locals: HashMap<Ident, TypeName>, seq: Seq<SourceAst>)
             Some(Expr::Assign(ident, val, _)) => {
                 if let Expr::Ident(name, _) = ident.as_ref() {
                     if let Some(ty) = locals.remove(name) {
-                        body.push(Expr::Declare(name.clone(), Some(ty), Some(val), Pos::ZERO));
+                        init.push(Expr::Declare(name.clone(), Some(ty), Some(val), Pos::ZERO));
                     } else {
-                        body.push(Expr::Assign(ident, val, Pos::ZERO));
+                        init.push(Expr::Assign(ident, val, Pos::ZERO));
                     }
                 } else {
-                    body.push(Expr::Assign(ident, val, Pos::ZERO));
+                    init.push(Expr::Assign(ident, val, Pos::ZERO));
                 }
             }
             other => break other,
@@ -405,6 +406,7 @@ fn merge_declarations(mut locals: HashMap<Ident, TypeName>, seq: Seq<SourceAst>)
         body.push(Expr::Declare(name.clone(), Some(ty), None, Pos::ZERO));
     }
 
+    body.extend(init);
     body.extend(stmt);
     body.extend(it);
     Ok(Seq::new(body))
