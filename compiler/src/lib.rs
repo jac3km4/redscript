@@ -1309,6 +1309,58 @@ mod tests {
     }
 
     #[test]
+    fn compile_number_literals() -> Result<(), Error> {
+        let sources = "
+            func Testing() {
+                let a: Float = 1;
+                let b: Float = 2.0;
+                let c: Double = 3;
+                let d: Double = 4.0;
+                let e: Double = 5.0d;
+                let f: Int32 = 6;
+                let g: Int64 = 7;
+                let h: Int64 = 8l;
+                let i: Uint32 = 9u;
+                let j: Uint64 = 10u;
+            }
+            ";
+        let expected = vec![
+            Instr::Assign,
+            Instr::Local(PoolIndex::new(22)),
+            Instr::F32Const(1.0),
+            Instr::Assign,
+            Instr::Local(PoolIndex::new(23)),
+            Instr::F32Const(2.0),
+            Instr::Assign,
+            Instr::Local(PoolIndex::new(24)),
+            Instr::F64Const(3.0),
+            Instr::Assign,
+            Instr::Local(PoolIndex::new(25)),
+            Instr::F64Const(4.0),
+            Instr::Assign,
+            Instr::Local(PoolIndex::new(26)),
+            Instr::F64Const(5.0),
+            Instr::Assign,
+            Instr::Local(PoolIndex::new(27)),
+            Instr::I32Const(6),
+            Instr::Assign,
+            Instr::Local(PoolIndex::new(28)),
+            Instr::I64Const(7),
+            Instr::Assign,
+            Instr::Local(PoolIndex::new(29)),
+            Instr::I64Const(8),
+            Instr::Assign,
+            Instr::Local(PoolIndex::new(30)),
+            Instr::U32Const(9),
+            Instr::Assign,
+            Instr::Local(PoolIndex::new(31)),
+            Instr::U64Const(10),
+            Instr::Nop,
+        ];
+        check_function_bytecode(sources, expected)
+    }
+
+    #[test]
     fn compile_is_defined() -> Result<(), Error> {
         let sources = "
             func Testing() {

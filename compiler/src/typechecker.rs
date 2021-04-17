@@ -31,7 +31,23 @@ impl<'a> TypeChecker<'a> {
                 let reference = scope.resolve_reference(name.clone(), *pos)?;
                 Expr::Ident(reference, *pos)
             }
-            Expr::Constant(cons, pos) => Expr::Constant(cons.clone(), *pos),
+            Expr::Constant(cons, pos) => {
+                let cons = match expected {
+                    Some(type_) => {
+                        let type_name = type_.pretty(self.pool)?;
+                        match cons {
+                            Constant::I32(i) if type_name == TypeName::FLOAT.pretty() => Constant::F32(*i as f32),
+                            Constant::I32(i) if type_name == TypeName::DOUBLE.pretty() => Constant::F64(*i as f64),
+                            Constant::I32(i) if type_name == TypeName::INT64.pretty() => Constant::I64((*i).into()),
+                            Constant::U32(i) if type_name == TypeName::UINT64.pretty() => Constant::U64((*i).into()),
+                            Constant::F32(i) if type_name == TypeName::DOUBLE.pretty() => Constant::F64((*i).into()),
+                            other => other.clone(),
+                        }
+                    }
+                    None => cons.clone(),
+                };
+                Expr::Constant(cons, *pos)
+            }
             Expr::ArrayLit(exprs, _, pos) => match exprs.split_first() {
                 Some((head, tail)) => {
                     let head = self.check(head, None, scope)?;
@@ -533,9 +549,12 @@ pub fn type_of(expr: &Expr<TypedAst>, scope: &Scope, pool: &ConstantPool) -> Res
             Constant::String(Literal::Name, _) => scope.resolve_type(&TypeName::CNAME, pool, *pos)?,
             Constant::String(Literal::Resource, _) => scope.resolve_type(&TypeName::RESOURCE, pool, *pos)?,
             Constant::String(Literal::TweakDbId, _) => scope.resolve_type(&TypeName::TWEAKDB_ID, pool, *pos)?,
-            Constant::Float(_) => scope.resolve_type(&TypeName::FLOAT, pool, *pos)?,
-            Constant::Int(_) => scope.resolve_type(&TypeName::INT32, pool, *pos)?,
-            Constant::Uint(_) => scope.resolve_type(&TypeName::UINT32, pool, *pos)?,
+            Constant::F32(_) => scope.resolve_type(&TypeName::FLOAT, pool, *pos)?,
+            Constant::F64(_) => scope.resolve_type(&TypeName::DOUBLE, pool, *pos)?,
+            Constant::I32(_) => scope.resolve_type(&TypeName::INT32, pool, *pos)?,
+            Constant::I64(_) => scope.resolve_type(&TypeName::INT64, pool, *pos)?,
+            Constant::U32(_) => scope.resolve_type(&TypeName::UINT32, pool, *pos)?,
+            Constant::U64(_) => scope.resolve_type(&TypeName::UINT64, pool, *pos)?,
             Constant::Bool(_) => scope.resolve_type(&TypeName::BOOL, pool, *pos)?,
         },
         Expr::ArrayLit(_, type_, _) => TypeId::Array(Box::new(type_.clone().unwrap())),

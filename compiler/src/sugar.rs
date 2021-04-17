@@ -103,7 +103,7 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
         ));
         self.add_prefix(Expr::Assign(
             Box::new(Expr::Ident(counter_local.clone(), pos)),
-            Box::new(Expr::Constant(Constant::Int(0), pos)),
+            Box::new(Expr::Constant(Constant::I32(0), pos)),
             pos,
         ));
 
@@ -139,7 +139,7 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
         );
         let increment_counter = Expr::Call(
             assign_add,
-            vec![Expr::Ident(counter_local, pos), Expr::Constant(Constant::Int(1), pos)],
+            vec![Expr::Ident(counter_local, pos), Expr::Constant(Constant::I32(1), pos)],
             pos,
         );
 

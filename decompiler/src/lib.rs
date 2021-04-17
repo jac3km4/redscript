@@ -170,18 +170,18 @@ impl<'a> Decompiler<'a> {
         let res = match self.code.pop()? {
             Instr::Nop => Expr::EMPTY,
             Instr::Null => Expr::Null,
-            Instr::I32One => Expr::Constant(Constant::Int(1), Pos::ZERO),
-            Instr::I32Zero => Expr::Constant(Constant::Int(0), Pos::ZERO),
-            Instr::I8Const(val) => Expr::Constant(Constant::Int(val.into()), Pos::ZERO),
-            Instr::I16Const(val) => Expr::Constant(Constant::Int(val.into()), Pos::ZERO),
-            Instr::I32Const(val) => Expr::Constant(Constant::Int(val.into()), Pos::ZERO),
-            Instr::I64Const(val) => Expr::Constant(Constant::Int(val), Pos::ZERO),
-            Instr::U8Const(val) => Expr::Constant(Constant::Uint(val.into()), Pos::ZERO),
-            Instr::U16Const(val) => Expr::Constant(Constant::Uint(val.into()), Pos::ZERO),
-            Instr::U32Const(val) => Expr::Constant(Constant::Uint(val.into()), Pos::ZERO),
-            Instr::U64Const(val) => Expr::Constant(Constant::Uint(val), Pos::ZERO),
-            Instr::F32Const(val) => Expr::Constant(Constant::Float(val.into()), Pos::ZERO),
-            Instr::F64Const(val) => Expr::Constant(Constant::Float(val), Pos::ZERO),
+            Instr::I32One => Expr::Constant(Constant::I32(1), Pos::ZERO),
+            Instr::I32Zero => Expr::Constant(Constant::I32(0), Pos::ZERO),
+            Instr::I8Const(val) => Expr::Constant(Constant::I32(val.into()), Pos::ZERO),
+            Instr::I16Const(val) => Expr::Constant(Constant::I32(val.into()), Pos::ZERO),
+            Instr::I32Const(val) => Expr::Constant(Constant::I32(val.into()), Pos::ZERO),
+            Instr::I64Const(val) => Expr::Constant(Constant::I64(val), Pos::ZERO),
+            Instr::U8Const(val) => Expr::Constant(Constant::U32(val.into()), Pos::ZERO),
+            Instr::U16Const(val) => Expr::Constant(Constant::U32(val.into()), Pos::ZERO),
+            Instr::U32Const(val) => Expr::Constant(Constant::U32(val.into()), Pos::ZERO),
+            Instr::U64Const(val) => Expr::Constant(Constant::U64(val), Pos::ZERO),
+            Instr::F32Const(val) => Expr::Constant(Constant::F32(val.into()), Pos::ZERO),
+            Instr::F64Const(val) => Expr::Constant(Constant::F64(val), Pos::ZERO),
             Instr::StringConst(str) => Expr::Constant(Constant::String(Literal::String, Rc::new(str)), Pos::ZERO),
             Instr::NameConst(idx) => {
                 let str = self.pool.names.get(idx)?.to_string();
@@ -203,7 +203,7 @@ impl<'a> Decompiler<'a> {
                 let expr = Box::new(Expr::Ident(enum_ident, Pos::ZERO));
                 if member_ident.as_ref().is_empty() {
                     let value = self.pool.enum_value(member)?;
-                    let constant = Expr::Constant(Constant::Int(value), Pos::ZERO);
+                    let constant = Expr::Constant(Constant::I64(value), Pos::ZERO);
                     Expr::Call(Ident::Static(IntrinsicOp::IntEnum.into()), vec![constant], Pos::ZERO)
                 } else {
                     Expr::Member(expr, member_ident, Pos::ZERO)
