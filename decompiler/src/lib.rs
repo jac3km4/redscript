@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::io;
 use std::rc::Rc;
 
@@ -31,7 +31,7 @@ impl<'a> Decompiler<'a> {
     }
 
     pub fn decompiled(function: &Function, pool: &'a ConstantPool) -> Result<Seq<SourceAst>, Error> {
-        let mut locals = HashMap::new();
+        let mut locals = BTreeMap::new();
         for local_index in &function.locals {
             let local = pool.local(*local_index)?;
             let name = Ident::Owned(pool.definition_name(*local_index)?);
@@ -380,7 +380,7 @@ impl<'a> Decompiler<'a> {
     }
 }
 
-fn merge_declarations(mut locals: HashMap<Ident, TypeName>, seq: Seq<SourceAst>) -> Result<Seq<SourceAst>, Error> {
+fn merge_declarations(mut locals: BTreeMap<Ident, TypeName>, seq: Seq<SourceAst>) -> Result<Seq<SourceAst>, Error> {
     let mut body = Vec::with_capacity(seq.exprs.len() + locals.len());
     let mut init = Vec::new();
     let mut it = seq.exprs.into_iter();
