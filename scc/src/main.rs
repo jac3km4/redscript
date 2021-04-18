@@ -33,7 +33,7 @@ fn main() -> Result<(), Error> {
 fn start_logger(cache_dir: &Path) -> Result<(), Error> {
     let log_path = cache_dir.join("redscript.log");
     CombinedLogger::init(vec![
-        SimpleLogger::new(LevelFilter::Warn, LoggerConfig::default()),
+        SimpleLogger::new(LevelFilter::Info, LoggerConfig::default()),
         WriteLogger::new(LevelFilter::Info, LoggerConfig::default(), File::create(log_path)?),
     ])
     .expect("Failed to initialize the logger");
