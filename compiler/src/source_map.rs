@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::ffi::OsStr;
-use std::fmt;
 use std::path::{Path, PathBuf};
+use std::{fmt, iter};
 
 use redscript::ast::Pos;
 use redscript::error::Error;
@@ -18,14 +18,18 @@ impl Files {
         Files::default()
     }
 
-    pub fn from_dir(dir: &Path, filter: SourceFilter) -> Result<Self, Error> {
-        let iter = WalkDir::new(dir)
-            .into_iter()
-            .filter_map(Result::ok)
-            .map(|entry| entry.into_path())
-            .filter(|path| filter.apply(path.strip_prefix(dir).unwrap()));
+    pub fn from_dir(path: &Path, filter: SourceFilter) -> Result<Self, Error> {
+        if path.is_file() {
+            Files::from_files(iter::once(path.to_path_buf()))
+        } else {
+            let iter = WalkDir::new(path)
+                .into_iter()
+                .filter_map(Result::ok)
+                .map(|entry| entry.into_path())
+                .filter(|path| filter.apply(path.strip_prefix(path).unwrap()));
 
-        Files::from_files(iter)
+            Files::from_files(iter)
+        }
     }
 
     pub fn from_files(paths: impl Iterator<Item = PathBuf>) -> Result<Self, Error> {
