@@ -55,11 +55,14 @@ struct LintOpts {
     bundle: Option<PathBuf>,
 }
 
-fn main() {
+fn main() -> Result<(), Error> {
     let log_config = simplelog::ConfigBuilder::new().set_time_format_str("").build();
     TermLogger::init(LevelFilter::Info, log_config, TerminalMode::Mixed).unwrap();
 
-    run().unwrap_or_else(|err| log::error!("{:?}", err));
+    run().map_err(|err| {
+        log::error!("{:?}", err);
+        err
+    })
 }
 
 fn run() -> Result<(), Error> {
