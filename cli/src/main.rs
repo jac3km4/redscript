@@ -57,7 +57,7 @@ struct LintOpts {
 
 fn main() -> Result<(), Error> {
     let log_config = simplelog::ConfigBuilder::new().set_time_format_str("").build();
-    TermLogger::init(LevelFilter::Info, log_config, TerminalMode::Mixed).unwrap();
+    TermLogger::init(LevelFilter::Info, log_config, TerminalMode::Stdout).unwrap();
 
     run().map_err(|err| {
         log::error!("{:?}", err);
