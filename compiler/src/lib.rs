@@ -99,7 +99,7 @@ impl<'a> Compiler<'a> {
         match diagnostic {
             Diagnostic::MethodConflict(_, pos) => {
                 let loc = files.lookup(pos).unwrap();
-                log::warn!("Conflicting method replacement at {}", loc)
+                log::warn!("At {}:\n Conflicting method replacement", loc)
             }
         }
     }
@@ -107,7 +107,7 @@ impl<'a> Compiler<'a> {
     fn print_error(error: &str, loc: SourceLocation) {
         let line = loc.enclosing_line().trim_end();
         log::error!(
-            "Failed at {}:\n \
+            "At {}:\n \
              {}\n \
              {}^^^\n \
              {}",
