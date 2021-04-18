@@ -26,7 +26,7 @@ impl Files {
                 .into_iter()
                 .filter_map(Result::ok)
                 .map(|entry| entry.into_path())
-                .filter(|path| filter.apply(path.strip_prefix(path).unwrap()));
+                .filter(|p| filter.apply(p.strip_prefix(path).unwrap()));
 
             Files::from_files(iter)
         }
