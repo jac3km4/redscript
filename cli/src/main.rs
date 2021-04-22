@@ -11,7 +11,7 @@ use redscript_compiler::source_map::{Files, SourceFilter};
 use redscript_compiler::Compiler;
 use redscript_decompiler::files::FileIndex;
 use redscript_decompiler::print::{write_definition, OutputMode};
-use simplelog::{TermLogger, TerminalMode};
+use simplelog::{ColorChoice, TermLogger, TerminalMode};
 
 #[derive(Debug, Options)]
 enum Command {
@@ -57,7 +57,7 @@ struct LintOpts {
 
 fn main() -> Result<(), Error> {
     let log_config = simplelog::ConfigBuilder::new().set_time_format_str("").build();
-    TermLogger::init(LevelFilter::Info, log_config, TerminalMode::Stdout).unwrap();
+    TermLogger::init(LevelFilter::Info, log_config, TerminalMode::Stdout, ColorChoice::Auto).unwrap();
 
     run().map_err(|err| {
         log::error!("{:?}", err);

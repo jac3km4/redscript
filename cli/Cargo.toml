@@ -10,4 +10,4 @@ redscript-decompiler = { path = "../decompiler" }
 redscript-compiler = { path = "../compiler" }
 gumdrop = "0.8"
 log = "0.4"
-simplelog = "0.9"
+simplelog = "0.10"
