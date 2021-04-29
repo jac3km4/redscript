@@ -107,6 +107,11 @@ impl Error {
         Error::CompileError(err, pos)
     }
 
+    pub fn expected_non_static_method<N: Display>(name: N, pos: Pos) -> Error {
+        let err = format!("Method {} is static", name);
+        Error::CompileError(err, pos)
+    }
+
     pub fn no_this_in_static_context(pos: Pos) -> Error {
         Error::CompileError("No 'this' in static context".to_owned(), pos)
     }
