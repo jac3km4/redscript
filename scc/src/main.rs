@@ -1,10 +1,12 @@
 use std::collections::HashSet;
-use std::fs::{self, File};
-use std::io::{self, BufReader, BufWriter};
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, BufReader, BufWriter, SeekFrom};
+use std::ops::DerefMut;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use fd_lock::FdLock;
 use log::LevelFilter;
 use redscript::bundle::ScriptBundle;
 use redscript::error::Error;
@@ -46,8 +48,17 @@ fn load_scripts(script_dir: &Path, cache_dir: &Path) -> Result<(), Error> {
     let timestamp_path = cache_dir.join("redscript.ts");
 
     let manifest = ScriptManifest::load_with_fallback(script_dir);
+
+    let mut ts_lock = FdLock::new(
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(&timestamp_path)?,
+    );
+    let mut ts_file = ts_lock.lock()?;
     let write_timestamp = CompileTimestamp::of_cache_file(&File::open(&bundle_path)?)?;
-    let saved_timestamp = CompileTimestamp::read(&timestamp_path).ok();
+    let saved_timestamp = CompileTimestamp::read(ts_file.deref_mut()).ok();
 
     match saved_timestamp {
         None if backup_path.exists() => {
@@ -72,7 +83,7 @@ fn load_scripts(script_dir: &Path, cache_dir: &Path) -> Result<(), Error> {
     bundle.save(&mut BufWriter::new(&mut file))?;
     file.sync_all()?;
 
-    CompileTimestamp::of_cache_file(&file)?.write(&timestamp_path)?;
+    CompileTimestamp::of_cache_file(&file)?.write(ts_file.deref_mut())?;
 
     log::info!("Output successfully saved to {}", bundle_path.display());
     Ok(())
@@ -84,13 +95,15 @@ struct CompileTimestamp {
 }
 
 impl CompileTimestamp {
-    fn read(path: &Path) -> Result<Self, Error> {
-        let nanos = File::open(path)?.read_u128::<LittleEndian>()?;
+    fn read<R: io::Read + io::Seek>(input: &mut R) -> Result<Self, Error> {
+        input.seek(SeekFrom::Start(0))?;
+        let nanos = input.read_u128::<LittleEndian>()?;
         Ok(CompileTimestamp { nanos })
     }
 
-    fn write(&self, path: &Path) -> Result<(), Error> {
-        File::create(path)?.write_u128::<LittleEndian>(self.nanos)?;
+    fn write<W: io::Write + io::Seek>(&self, output: &mut W) -> Result<(), Error> {
+        output.seek(SeekFrom::Start(0))?;
+        output.write_u128::<LittleEndian>(self.nanos)?;
         Ok(())
     }
 
