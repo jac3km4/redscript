@@ -242,24 +242,32 @@ impl Assembler {
                     self.assemble_intrinsic(op, args, &type_, scope, pool)?;
                 }
             },
-            Expr::MethodCall(expr, fun_idx, args, _) => match *expr {
-                Expr::Ident(Reference::Symbol(Symbol::Class(_, _)) | Reference::Symbol(Symbol::Struct(_, _)), pos) => {
-                    let fun = pool.function(fun_idx)?;
-                    if fun.flags.is_static() {
-                        self.assemble_call(fun_idx, args, scope, pool, true)?
-                    } else {
-                        return Err(Error::expected_static_method(pool.definition_name(fun_idx)?, pos));
+            Expr::MethodCall(expr, fun_idx, args, pos) => {
+                let fun = pool.function(fun_idx)?;
+                match *expr {
+                    Expr::Ident(
+                        Reference::Symbol(Symbol::Class(_, _)) | Reference::Symbol(Symbol::Struct(_, _)),
+                        pos,
+                    ) => {
+                        if fun.flags.is_static() {
+                            self.assemble_call(fun_idx, args, scope, pool, true)?
+                        } else {
+                            return Err(Error::expected_static_method(pool.definition_name(fun_idx)?, pos));
+                        }
+                    }
+                    _ if fun.flags.is_static() => {
+                        return Err(Error::expected_non_static_method(pool.definition_name(fun_idx)?, pos));
+                    }
+                    expr => {
+                        let force_static_call = matches!(&expr, Expr::Super(_));
+                        let exit_label = self.new_label();
+                        self.emit(Instr::Context(exit_label));
+                        self.assemble(expr, scope, pool, None)?;
+                        self.assemble_call(fun_idx, args, scope, pool, force_static_call)?;
+                        self.emit_label(exit_label);
                     }
                 }
-                expr => {
-                    let force_static_call = matches!(&expr, Expr::Super(_));
-                    let exit_label = self.new_label();
-                    self.emit(Instr::Context(exit_label));
-                    self.assemble(expr, scope, pool, None)?;
-                    self.assemble_call(fun_idx, args, scope, pool, force_static_call)?;
-                    self.emit_label(exit_label);
-                }
-            },
+            }
 
             Expr::Null => {
                 self.emit(Instr::Null);
