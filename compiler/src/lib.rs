@@ -271,8 +271,8 @@ impl<'a> Compiler<'a> {
         scope: &mut Scope,
     ) -> Result<(), Error> {
         let flags = ClassFlags::new()
-            .with_is_abstract(decl.qualifiers.contain(Qualifier::Abstract));
-            .with_is_final(decl.qualifiers.contain(Qualifier::Final));
+            .with_is_abstract(source.qualifiers.contain(Qualifier::Abstract))
+            .with_is_final(source.qualifiers.contain(Qualifier::Final));
         let mut functions = vec![];
         let mut fields = vec![];
 
