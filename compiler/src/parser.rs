@@ -78,6 +78,7 @@ pub enum Qualifier {
     Public,
     Protected,
     Private,
+    Abstract,
     Static,
     Final,
     Const,
@@ -160,6 +161,7 @@ peg::parser! {
             = keyword("public") { Qualifier::Public }
             / keyword("protected") { Qualifier::Protected }
             / keyword("private") { Qualifier::Private }
+            / keyword("abstract") { Qualifier::Abstract }
             / keyword("static") { Qualifier::Static }
             / keyword("final") { Qualifier::Final }
             / keyword("const") { Qualifier::Const }
