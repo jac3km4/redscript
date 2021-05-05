@@ -33,6 +33,11 @@ impl Error {
         Error::CompileError(error, pos)
     }
 
+    pub fn class_is_abstract<N: Display>(class_name: N, pos: Pos) -> Error {
+        let error = format!("Cannot instantiate abstract class {}", class_name);
+        Error::CompileError(error, pos)
+    }
+
     pub fn unresolved_reference<N: Display>(name: N, pos: Pos) -> Error {
         let error = format!("Unresolved reference {}", name);
         Error::CompileError(error, pos)
