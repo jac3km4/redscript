@@ -386,6 +386,13 @@ impl<K> Names<K> {
             .cloned()
     }
 
+    pub fn get_index(&self, name: &String) -> Result<PoolIndex<K>, Error> {
+        self.mappings
+            .get(name)
+            .ok_or_else(|| Error::PoolError(format!("Name {} not found", name)))
+            .cloned()
+    }
+
     pub fn add(&mut self, str: Rc<String>) -> PoolIndex<K> {
         let idx = PoolIndex::new(self.strings.len());
         match self.mappings.entry(str.clone()) {
