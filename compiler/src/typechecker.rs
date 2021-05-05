@@ -168,12 +168,14 @@ impl<'a> TypeChecker<'a> {
             Expr::New(type_name, args, pos) => {
                 let type_ = scope.resolve_type(type_name, self.pool, *pos)?;
                 match type_ {
-                    TypeId::Class(_) => {
-                        if args.is_empty() {
-                            Expr::New(type_, vec![], *pos)
-                        } else {
+                    TypeId::Class(class_idx) => {
+                        if self.pool.class(class_idx)?.flags.is_abstract() {
+                            return Err(Error::class_is_abstract(type_name.mangled(), *pos));
+                        }
+                        if !args.is_empty() {
                             return Err(Error::invalid_arg_count(type_name.mangled(), 0, *pos));
                         }
+                        Expr::New(type_, vec![], *pos)
                     }
                     TypeId::Struct(class_idx) => {
                         let fields = self.pool.class(class_idx)?.fields.clone();
