@@ -873,9 +873,9 @@ impl FunctionSignatureBuilder {
 mod tests {
     use std::io::Cursor;
 
-    use redscript::bundle::{PoolIndex, ScriptBundle};
+    use redscript::bundle::{ConstantPool, PoolIndex, ScriptBundle};
     use redscript::bytecode::{Code, Instr, Offset};
-    use redscript::definition::AnyDefinition;
+    use redscript::definition::{AnyDefinition, ClassFlags};
     use redscript::error::Error;
 
     use crate::{parser, Compiler};
@@ -1004,6 +1004,23 @@ mod tests {
             Instr::Nop,
         ];
         check_function_bytecode(sources, expected)
+    }
+
+    #[test]
+    fn compile_class_attributes() -> Result<(), Error> {
+        let source = r#"
+            public abstract class Base {}
+
+            public final class Derived extends Base {}
+        "#;
+
+        let expected_base_flags = ClassFlags::new().with_is_abstract(true);
+        let expected_derived_flags = ClassFlags::new().with_is_final(true);
+
+        let pool = check_compilation_pool(source)?;
+        check_class_flags(&pool, "Base", expected_base_flags)?;
+        check_class_flags(&pool, "Derived", expected_derived_flags)?;
+        Ok(())
     }
 
     #[test]
@@ -1466,21 +1483,23 @@ mod tests {
         check_function_bytecode(sources, expected)
     }
 
-    fn check_compilation(code: &str) -> Result<(), Error> {
+    fn check_compilation_pool(code: &str) -> Result<ConstantPool, Error> {
         let module = parser::parse_str(code).unwrap();
         let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
         let mut compiler = Compiler::new(&mut scripts.pool)?;
         compiler.compile_modules(vec![module])?;
+
+        Ok(scripts.pool)
+    }
+
+    fn check_compilation(code: &str) -> Result<(), Error> {
+        check_compilation_pool(code)?;
         Ok(())
     }
 
     fn check_function_bytecode(code: &str, instrs: Vec<Instr<Offset>>) -> Result<(), Error> {
-        let module = parser::parse_str(code).unwrap();
-        let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
-        let mut compiler = Compiler::new(&mut scripts.pool)?;
-        compiler.compile_modules(vec![module])?;
-        let match_ = scripts
-            .pool
+        let pool = check_compilation_pool(code)?;
+        let match_ = pool
             .definitions()
             .find(|(_, def)| matches!(def.value, AnyDefinition::Function(_)))
             .map(|(_, def)| &def.value);
@@ -1489,6 +1508,23 @@ mod tests {
             assert_eq!(fun.code, Code(instrs))
         } else {
             assert!(false, "No function found in the pool")
+        }
+        Ok(())
+    }
+
+    fn check_class_flags(pool: &ConstantPool, name: &str, flags: ClassFlags) -> Result<(), Error> {
+        let name_index = pool.names.get_index(&String::from(name))?;
+        let match_ = pool
+            .definitions()
+            .filter(|(_, def)| matches!(def.value, AnyDefinition::Class(_)))
+            .find(|(_, def)| def.name == name_index)
+            .map(|(_, def)| &def.value);
+
+        if let Some(AnyDefinition::Class(ref class)) = match_ {
+            assert_eq!(class.flags, flags)
+        }
+        else {
+            assert!(false, "Class definition {} not found in the pool", name)
         }
         Ok(())
     }
