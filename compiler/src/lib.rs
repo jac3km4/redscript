@@ -1,4 +1,4 @@
-#![feature(option_result_contains, stmt_expr_attributes)]
+#![feature(stmt_expr_attributes)]
 
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -1522,8 +1522,7 @@ mod tests {
 
         if let Some(AnyDefinition::Class(ref class)) = match_ {
             assert_eq!(class.flags, flags)
-        }
-        else {
+        } else {
             assert!(false, "Class definition {} not found in the pool", name)
         }
         Ok(())

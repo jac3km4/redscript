@@ -382,15 +382,15 @@ impl<K> Names<K> {
     pub fn get(&self, index: PoolIndex<K>) -> Result<Rc<String>, Error> {
         self.strings
             .get(index.index)
-            .ok_or_else(|| Error::PoolError(format!("String {} not found", index.index)))
             .cloned()
+            .ok_or_else(|| Error::PoolError(format!("String {} not found", index.index)))
     }
 
     pub fn get_index(&self, name: &String) -> Result<PoolIndex<K>, Error> {
         self.mappings
             .get(name)
-            .ok_or_else(|| Error::PoolError(format!("Name {} not found", name)))
             .cloned()
+            .ok_or_else(|| Error::PoolError(format!("Name {} not found", name)))
     }
 
     pub fn add(&mut self, str: Rc<String>) -> PoolIndex<K> {
