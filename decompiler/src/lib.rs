@@ -209,9 +209,7 @@ impl<'a> Decompiler<'a> {
                     Expr::Member(expr, member_ident, Pos::ZERO)
                 }
             }
-            Instr::Breakpoint(_, _, _, _, _, _) => {
-                return Err(Error::DecompileError("Unexpected Breakpoint".to_owned()))
-            }
+            Instr::Breakpoint(_, _, _, _, _, _) => Expr::EMPTY,
             Instr::Assign => {
                 let lhs = self.consume()?;
                 let rhs = self.consume()?;
@@ -308,7 +306,7 @@ impl<'a> Decompiler<'a> {
             ),
             Instr::Delete => self.consume_call("Delete", 1)?,
             Instr::This => Expr::This(Pos::ZERO),
-            Instr::StartProfiling(_, _) => return Err(Error::DecompileError("Unexpected StartProfiling".to_owned())),
+            Instr::StartProfiling(_, _) => Expr::EMPTY,
             Instr::ArrayClear(_) => self.consume_intrisnic(IntrinsicOp::ArrayClear)?,
             Instr::ArraySize(_) => self.consume_intrisnic(IntrinsicOp::ArraySize)?,
             Instr::ArrayResize(_) => self.consume_intrisnic(IntrinsicOp::ArrayResize)?,
