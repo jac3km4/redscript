@@ -806,7 +806,10 @@ impl<'a> FunctionSignature<'a> {
         let is_operator = BinOp::from_str(name).is_ok();
 
         if !is_operator
-            && (qs.contain(Qualifier::Callback) || qs.contain(Qualifier::Exec) || qs.contain(Qualifier::Native))
+            && (!qs.contain(Qualifier::Final)
+                || qs.contain(Qualifier::Callback)
+                || qs.contain(Qualifier::Exec)
+                || qs.contain(Qualifier::Native))
         {
             FunctionSignature(Cow::Borrowed(name))
         } else {
