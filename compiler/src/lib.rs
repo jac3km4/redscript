@@ -154,10 +154,10 @@ impl<'a> Compiler<'a> {
                         base,
                         source,
                         visibility,
-                        overriden,
+                        wrapped,
                     } => {
                         let pos = source.declaration.pos;
-                        self.define_function(index, parent, base, overriden, visibility, source, &mut module_scope)?;
+                        self.define_function(index, parent, base, wrapped, visibility, source, &mut module_scope)?;
                         if compiled_funs.contains(&index) {
                             diagnostics.push(Diagnostic::MethodConflict(index, pos));
                         } else {
@@ -331,7 +331,7 @@ impl<'a> Compiler<'a> {
         fun_idx: PoolIndex<Function>,
         parent_idx: PoolIndex<Class>,
         base_method: Option<PoolIndex<Function>>,
-        overriden: Option<PoolIndex<Function>>,
+        wrapped: Option<PoolIndex<Function>>,
         visibility: Visibility,
         source: FunctionSource,
         scope: &mut Scope,
@@ -392,7 +392,7 @@ impl<'a> Compiler<'a> {
             let item = BacklogItem {
                 class: parent_idx,
                 function: fun_idx,
-                overriden,
+                wrapped,
                 code,
                 scope: scope.clone(),
             };
@@ -491,7 +491,7 @@ impl<'a> Compiler<'a> {
 
         for ann in &source.declaration.annotations {
             match ann.name {
-                AnnotationName::HookMethod => {
+                AnnotationName::WrapMethod => {
                     let class_name = ann
                         .values
                         .first()
@@ -506,17 +506,17 @@ impl<'a> Compiler<'a> {
                         .resolve_method(name.clone(), target_class_idx, self.pool, ann.pos)?
                         .by_id(&sig, self.pool)
                         .ok_or_else(|| Error::function_not_found(name, ann.pos))?;
-                    let move_index = self.pool.reserve().cast();
-                    self.pool.swap_definition(index, move_index);
+                    let wrapped_index = self.pool.reserve().cast();
+                    self.pool.swap_definition(index, wrapped_index);
 
                     let base = self.pool.function(index)?.base_method;
                     let slot = Slot::Function {
                         index,
                         parent: target_class_idx,
                         base,
+                        wrapped: Some(wrapped_index),
                         source,
                         visibility,
-                        overriden: Some(move_index),
                     };
                     return Ok(slot);
                 }
@@ -535,14 +535,14 @@ impl<'a> Compiler<'a> {
                         .resolve_method(name.clone(), target_class_idx, self.pool, ann.pos)?
                         .by_id(&sig, self.pool)
                         .ok_or_else(|| Error::function_not_found(name, ann.pos))?;
-                    let fun = self.pool.function(index)?;
+                    let base = self.pool.function(index)?.base_method;
                     let slot = Slot::Function {
                         index,
                         parent: target_class_idx,
-                        base: fun.base_method,
+                        base,
+                        wrapped: None,
                         source,
                         visibility,
-                        overriden: None,
                     };
                     return Ok(slot);
                 }
@@ -557,9 +557,9 @@ impl<'a> Compiler<'a> {
                         index,
                         parent: PoolIndex::UNDEFINED,
                         base: None,
+                        wrapped: None,
                         source,
                         visibility,
-                        overriden: None,
                     };
                     return Ok(slot);
                 }
@@ -590,9 +590,9 @@ impl<'a> Compiler<'a> {
                         index,
                         parent: target_class_idx,
                         base: base_method,
+                        wrapped: None,
                         source,
                         visibility,
-                        overriden: None,
                     };
                     return Ok(slot);
                 }
@@ -616,9 +616,9 @@ impl<'a> Compiler<'a> {
             index: fun_idx.cast(),
             parent: PoolIndex::UNDEFINED,
             base: None,
+            wrapped: None,
             source,
             visibility,
-            overriden: None,
         };
         Ok(slot)
     }
@@ -637,9 +637,9 @@ impl<'a> Compiler<'a> {
             local_scope.add_parameter(ident, *param);
         }
 
-        if let Some(overriden) = item.overriden {
-            let wrapped_ident = Ident::Static("overriden");
-            local_scope.add_symbol(wrapped_ident, Symbol::Functions(vec![(overriden, Visibility::Public)]));
+        if let Some(wrapped) = item.wrapped {
+            let wrapped_ident = Ident::Static("wrappedMethod");
+            local_scope.add_symbol(wrapped_ident, Symbol::Functions(vec![(wrapped, Visibility::Public)]));
         }
 
         let mut checker = TypeChecker::new(pool);
@@ -719,7 +719,7 @@ impl<'a> IntoIterator for &'a ModulePath {
 pub struct BacklogItem {
     class: PoolIndex<Class>,
     function: PoolIndex<Function>,
-    overriden: Option<PoolIndex<Function>>,
+    wrapped: Option<PoolIndex<Function>>,
     code: Seq<SourceAst>,
     scope: Scope,
 }
@@ -780,9 +780,9 @@ pub enum Slot {
         index: PoolIndex<Function>,
         parent: PoolIndex<Class>,
         base: Option<PoolIndex<Function>>,
+        wrapped: Option<PoolIndex<Function>>,
         source: FunctionSource,
         visibility: Visibility,
-        overriden: Option<PoolIndex<Function>>,
     },
     Class {
         index: PoolIndex<Class>,
