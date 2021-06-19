@@ -345,6 +345,10 @@ impl ConstantPool {
         PoolIndex::new(position)
     }
 
+    pub fn rename<A>(&mut self, index: PoolIndex<A>, name: PoolIndex<String>) {
+        self.definitions[index.index].name = name;
+    }
+
     pub fn roots(&self) -> impl Iterator<Item = (PoolIndex<Definition>, &Definition)> {
         self.definitions().filter(|(_, def)| def.parent.is_undefined())
     }
