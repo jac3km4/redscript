@@ -506,15 +506,20 @@ impl<'a> Compiler<'a> {
                         .resolve_method(name.clone(), target_class_idx, self.pool, ann.pos)?
                         .by_id(&sig, self.pool)
                         .ok_or_else(|| Error::function_not_found(name, ann.pos))?;
-                    let wrapped_index = self.pool.reserve().cast();
-                    self.pool.swap_definition(index, wrapped_index);
 
+                    let name_idx = self.pool.names.add(Rc::new(sig.into_owned()));
+                    let swap_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
                     let base = self.pool.function(index)?.base_method;
+
+                    self.pool.swap_definition(index, swap_idx);
+                    self.pool.rename(swap_idx, PoolIndex::UNDEFINED);
+                    self.pool.class_mut(target_class_idx)?.functions.push(swap_idx);
+
                     let slot = Slot::Function {
                         index,
                         parent: target_class_idx,
                         base,
-                        wrapped: Some(wrapped_index),
+                        wrapped: Some(swap_idx),
                         source,
                         visibility,
                     };
@@ -583,7 +588,8 @@ impl<'a> Compiler<'a> {
                     } else {
                         None
                     };
-                    let index = self.pool.reserve().cast();
+                    let name_idx = self.pool.names.add(Rc::new(sig.into_owned()));
+                    let index = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
                     self.pool.class_mut(target_class_idx)?.functions.push(index);
 
                     let slot = Slot::Function {
