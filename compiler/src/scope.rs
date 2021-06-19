@@ -63,28 +63,17 @@ impl Scope {
         self.types.insert(name, typ);
     }
 
-    pub fn add_symbol(&mut self, name: Ident, symbol: Symbol, visibility: Visibility) {
+    pub fn add_symbol(&mut self, name: Ident, symbol: Symbol) {
         match symbol {
-            Symbol::Functions(funs) => {
-                let funs: Vec<_> = funs.into_iter().filter(|(_, v)| *v <= visibility).collect();
-                match self.symbols.get_mut(&name) {
-                    Some(Symbol::Functions(existing)) => existing.extend(funs),
-                    _ if !funs.is_empty() => {
-                        self.symbols.insert(name.clone(), Symbol::Functions(funs));
-                    }
-                    _ => {}
+            Symbol::Functions(funs) => match self.symbols.get_mut(&name) {
+                Some(Symbol::Functions(existing)) => existing.extend(funs),
+                _ => {
+                    self.symbols.insert(name.clone(), Symbol::Functions(funs));
                 }
+            },
+            _ => {
+                self.symbols.insert(name.clone(), symbol);
             }
-            Symbol::Class(_, v) if v <= visibility => {
-                self.symbols.insert(name, symbol);
-            }
-            Symbol::Struct(_, v) if v <= visibility => {
-                self.symbols.insert(name, symbol);
-            }
-            Symbol::Enum(_) => {
-                self.symbols.insert(name, symbol);
-            }
-            _ => {}
         }
     }
 
@@ -321,19 +310,23 @@ impl SymbolMap {
     pub fn populate_import(&self, import: Import, scope: &mut Scope, visibility: Visibility) -> Result<(), Error> {
         match import {
             Import::Exact(path, pos) => {
-                let symbol = self.get_symbol(&path, pos)?;
-                scope.add_symbol(path.last().unwrap(), symbol, visibility);
+                if let Some(symbol) = self.get_symbol(&path, pos)?.visible(visibility) {
+                    scope.add_symbol(path.last().unwrap(), symbol);
+                }
             }
             Import::All(path, pos) => {
                 for (ident, symbol) in self.get_direct_children(&path, pos)? {
-                    scope.add_symbol(ident, symbol.clone(), visibility);
+                    if let Some(symbol) = symbol.clone().visible(visibility) {
+                        scope.add_symbol(ident, symbol.clone());
+                    }
                 }
             }
             Import::Selected(path, names, pos) => {
                 for name in names {
                     let path = path.with_child(name);
-                    let symbol = self.get_symbol(&path, pos)?;
-                    scope.add_symbol(path.last().unwrap(), symbol, visibility)
+                    if let Some(symbol) = self.get_symbol(&path, pos)?.visible(visibility) {
+                        scope.add_symbol(path.last().unwrap(), symbol);
+                    }
                 }
             }
         };

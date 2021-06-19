@@ -154,9 +154,10 @@ impl<'a> Compiler<'a> {
                         base,
                         source,
                         visibility,
+                        overriden,
                     } => {
                         let pos = source.declaration.pos;
-                        self.define_function(index, parent, base, visibility, source, &mut module_scope)?;
+                        self.define_function(index, parent, base, overriden, visibility, source, &mut module_scope)?;
                         if compiled_funs.contains(&index) {
                             diagnostics.push(Diagnostic::MethodConflict(index, pos));
                         } else {
@@ -207,11 +208,8 @@ impl<'a> Compiler<'a> {
 
                 // add to globals when no module
                 if module.is_empty() {
-                    self.scope.add_symbol(
-                        source.name.clone(),
-                        Symbol::Class(index, visibility),
-                        Visibility::Private,
-                    );
+                    self.scope
+                        .add_symbol(source.name.clone(), Symbol::Class(index, visibility));
                 }
 
                 let slot = Slot::Class {
@@ -258,8 +256,7 @@ impl<'a> Compiler<'a> {
 
                 // add to globals when no module
                 if module.is_empty() {
-                    self.scope
-                        .add_symbol(source.name.clone(), Symbol::Enum(index), Visibility::Private);
+                    self.scope.add_symbol(source.name.clone(), Symbol::Enum(index));
                 }
 
                 let slot = Slot::Enum { index, source };
@@ -288,7 +285,7 @@ impl<'a> Compiler<'a> {
                     let name_idx = self.pool.names.add(Rc::new(fun_sig.into_owned()));
                     let fun_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
 
-                    self.define_function(fun_idx, class_idx, None, visibility, fun, scope)?;
+                    self.define_function(fun_idx, class_idx, None, None, visibility, fun, scope)?;
                     functions.push(fun_idx);
                 }
                 MemberSource::Field(let_) => {
@@ -334,6 +331,7 @@ impl<'a> Compiler<'a> {
         fun_idx: PoolIndex<Function>,
         parent_idx: PoolIndex<Class>,
         base_method: Option<PoolIndex<Function>>,
+        overriden: Option<PoolIndex<Function>>,
         visibility: Visibility,
         source: FunctionSource,
         scope: &mut Scope,
@@ -394,6 +392,7 @@ impl<'a> Compiler<'a> {
             let item = BacklogItem {
                 class: parent_idx,
                 function: fun_idx,
+                overriden,
                 code,
                 scope: scope.clone(),
             };
@@ -492,6 +491,35 @@ impl<'a> Compiler<'a> {
 
         for ann in &source.declaration.annotations {
             match ann.name {
+                AnnotationName::HookMethod => {
+                    let class_name = ann
+                        .values
+                        .first()
+                        .ok_or_else(|| Error::invalid_annotation_args(ann.pos))?;
+                    let target_class_idx = match self.scope.resolve_symbol(class_name.clone(), ann.pos)? {
+                        Symbol::Class(idx, _) => idx,
+                        Symbol::Struct(idx, _) => idx,
+                        _ => return Err(Error::class_not_found(class_name, ann.pos)),
+                    };
+                    let index = self
+                        .scope
+                        .resolve_method(name.clone(), target_class_idx, self.pool, ann.pos)?
+                        .by_id(&sig, self.pool)
+                        .ok_or_else(|| Error::function_not_found(name, ann.pos))?;
+                    let move_index = self.pool.reserve().cast();
+                    self.pool.swap_definition(index, move_index);
+
+                    let base = self.pool.function(index)?.base_method;
+                    let slot = Slot::Function {
+                        index,
+                        parent: target_class_idx,
+                        base,
+                        source,
+                        visibility,
+                        overriden: Some(move_index),
+                    };
+                    return Ok(slot);
+                }
                 AnnotationName::ReplaceMethod => {
                     let class_name = ann
                         .values
@@ -502,34 +530,36 @@ impl<'a> Compiler<'a> {
                         Symbol::Struct(idx, _) => idx,
                         _ => return Err(Error::class_not_found(class_name, ann.pos)),
                     };
-                    let candidates = self
+                    let index = self
                         .scope
-                        .resolve_method(name.clone(), target_class_idx, self.pool, ann.pos)?;
-                    let fun_idx = candidates
+                        .resolve_method(name.clone(), target_class_idx, self.pool, ann.pos)?
                         .by_id(&sig, self.pool)
                         .ok_or_else(|| Error::function_not_found(name, ann.pos))?;
-                    let fun = self.pool.function(fun_idx)?;
+                    let fun = self.pool.function(index)?;
                     let slot = Slot::Function {
-                        index: fun_idx,
+                        index,
                         parent: target_class_idx,
                         base: fun.base_method,
                         source,
                         visibility,
+                        overriden: None,
                     };
                     return Ok(slot);
                 }
                 AnnotationName::ReplaceGlobal => {
-                    let candidates = self.scope.resolve_function(name.clone(), ann.pos)?;
-                    let fun_idx = candidates
+                    let index = self
+                        .scope
+                        .resolve_function(name.clone(), ann.pos)?
                         .by_id(&sig, self.pool)
                         .ok_or_else(|| Error::function_not_found(name, ann.pos))?;
 
                     let slot = Slot::Function {
-                        index: fun_idx,
+                        index,
                         parent: PoolIndex::UNDEFINED,
                         base: None,
                         source,
                         visibility,
+                        overriden: None,
                     };
                     return Ok(slot);
                 }
@@ -553,16 +583,16 @@ impl<'a> Compiler<'a> {
                     } else {
                         None
                     };
-                    let name_idx = self.pool.names.add(Rc::new(sig.into_owned()));
-                    let fun_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
-                    self.pool.class_mut(target_class_idx)?.functions.push(fun_idx);
+                    let index = self.pool.reserve().cast();
+                    self.pool.class_mut(target_class_idx)?.functions.push(index);
 
                     let slot = Slot::Function {
-                        index: fun_idx,
+                        index,
                         parent: target_class_idx,
                         base: base_method,
                         source,
                         visibility,
+                        overriden: None,
                     };
                     return Ok(slot);
                 }
@@ -578,11 +608,8 @@ impl<'a> Compiler<'a> {
 
         // add to globals when no module
         if module.is_empty() {
-            self.scope.add_symbol(
-                name,
-                Symbol::Functions(vec![(fun_idx, visibility)]),
-                Visibility::Private,
-            );
+            self.scope
+                .add_symbol(name, Symbol::Functions(vec![(fun_idx, visibility)]));
         }
 
         let slot = Slot::Function {
@@ -591,6 +618,7 @@ impl<'a> Compiler<'a> {
             base: None,
             source,
             visibility,
+            overriden: None,
         };
         Ok(slot)
     }
@@ -607,6 +635,11 @@ impl<'a> Compiler<'a> {
         for param in &fun.parameters {
             let ident = Ident::Owned(pool.definition_name(*param)?);
             local_scope.add_parameter(ident, *param);
+        }
+
+        if let Some(overriden) = item.overriden {
+            let wrapped_ident = Ident::Static("overriden");
+            local_scope.add_symbol(wrapped_ident, Symbol::Functions(vec![(overriden, Visibility::Public)]));
         }
 
         let mut checker = TypeChecker::new(pool);
@@ -673,7 +706,7 @@ impl ModulePath {
     }
 }
 
-impl <'a> IntoIterator for &'a ModulePath {
+impl<'a> IntoIterator for &'a ModulePath {
     type Item = &'a Ident;
 
     type IntoIter = std::slice::Iter<'a, Ident>;
@@ -686,6 +719,7 @@ impl <'a> IntoIterator for &'a ModulePath {
 pub struct BacklogItem {
     class: PoolIndex<Class>,
     function: PoolIndex<Function>,
+    overriden: Option<PoolIndex<Function>>,
     code: Seq<SourceAst>,
     scope: Scope,
 }
@@ -709,6 +743,25 @@ pub enum Symbol {
     Functions(Vec<(PoolIndex<Function>, Visibility)>),
 }
 
+impl Symbol {
+    pub fn visible(self, visibility: Visibility) -> Option<Symbol> {
+        match self {
+            Symbol::Class(_, v) if v <= visibility => Some(self),
+            Symbol::Struct(_, v) if v <= visibility => Some(self),
+            Symbol::Enum(_) => Some(self),
+            Symbol::Functions(funs) => {
+                let visible_funs: Vec<_> = funs.into_iter().filter(|(_, v)| *v <= visibility).collect();
+                if visible_funs.is_empty() {
+                    None
+                } else {
+                    Some(Symbol::Functions(visible_funs))
+                }
+            }
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Import {
     Exact(ModulePath, Pos),
@@ -729,6 +782,7 @@ pub enum Slot {
         base: Option<PoolIndex<Function>>,
         source: FunctionSource,
         visibility: Visibility,
+        overriden: Option<PoolIndex<Function>>,
     },
     Class {
         index: PoolIndex<Class>,

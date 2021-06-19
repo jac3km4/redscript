@@ -335,6 +335,10 @@ impl ConstantPool {
         self.definitions[index.index] = definition;
     }
 
+    pub fn swap_definition<A>(&mut self, lhs: PoolIndex<A>, rhs: PoolIndex<A>) {
+        self.definitions.swap(lhs.index, rhs.index)
+    }
+
     pub fn add_definition(&mut self, definition: Definition) -> PoolIndex<Definition> {
         let position = self.definitions.len();
         self.definitions.push(definition);
