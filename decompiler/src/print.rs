@@ -215,7 +215,7 @@ fn write_function_body<W: Write>(
 fn write_seq<W: Write>(out: &mut W, code: &Seq<SourceAst>, verbose: bool, depth: usize) -> Result<(), Error> {
     for expr in code.exprs.iter().filter(|expr| !expr.is_empty()) {
         write!(out, "{}", INDENT.repeat(depth))?;
-        write_expr(out, &expr, verbose, depth)?;
+        write_expr(out, expr, verbose, depth)?;
         writeln!(out, ";")?;
     }
     Ok(())
