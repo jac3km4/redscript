@@ -72,9 +72,9 @@ impl<'a> TypeChecker<'a> {
                         let type_ = type_of(&checked, scope, self.pool)?;
                         (Some(checked), type_)
                     }
-                    (Some(type_name), None) => (None, scope.resolve_type(&type_name, self.pool, *pos)?),
+                    (Some(type_name), None) => (None, scope.resolve_type(type_name, self.pool, *pos)?),
                     (Some(type_name), Some(expr)) => {
-                        let type_ = scope.resolve_type(&type_name, self.pool, *pos)?;
+                        let type_ = scope.resolve_type(type_name, self.pool, *pos)?;
                         let checked = self.check_and_convert(expr, &type_, scope, *pos)?;
                         (Some(checked), type_)
                     }
@@ -83,7 +83,7 @@ impl<'a> TypeChecker<'a> {
                 Expr::Declare(local, Some(type_), initializer.map(Box::new), *pos)
             }
             Expr::Cast(type_name, expr, pos) => {
-                let type_ = scope.resolve_type(&type_name, self.pool, *pos)?;
+                let type_ = scope.resolve_type(type_name, self.pool, *pos)?;
                 let checked = self.check(expr, None, scope)?;
                 if let TypeId::WeakRef(inner) = type_of(&checked, scope, self.pool)? {
                     let converted = insert_conversion(checked, &TypeId::Ref(inner), Conversion::WeakRefToRef, *pos);
@@ -108,7 +108,7 @@ impl<'a> TypeChecker<'a> {
                 }
             }
             Expr::MethodCall(context, name, args, pos) => {
-                let checked_context = self.check(&context, None, scope)?;
+                let checked_context = self.check(context, None, scope)?;
                 let type_ = type_of(&checked_context, scope, self.pool)?;
                 let class = match type_.unwrapped() {
                     TypeId::Class(class) => *class,
@@ -141,7 +141,7 @@ impl<'a> TypeChecker<'a> {
                 Expr::Call(Callable::Function(match_.index), match_.args, *pos)
             }
             Expr::Member(context, name, pos) => {
-                let checked_context = self.check(&context, None, scope)?;
+                let checked_context = self.check(context, None, scope)?;
                 let member = match type_of(&checked_context, scope, self.pool)?.unwrapped() {
                     TypeId::Class(class) => {
                         let field = scope.resolve_field(name.clone(), *class, self.pool, *pos)?;
@@ -287,7 +287,7 @@ impl<'a> TypeChecker<'a> {
     pub fn check_seq(&mut self, seq: &Seq<SourceAst>, scope: &mut Scope) -> Result<Seq<TypedAst>, Error> {
         let mut exprs = Vec::with_capacity(seq.exprs.len());
         for expr in &seq.exprs {
-            exprs.push(self.check(&expr, None, scope)?);
+            exprs.push(self.check(expr, None, scope)?);
         }
         Ok(Seq { exprs })
     }
@@ -440,7 +440,7 @@ impl<'a> TypeChecker<'a> {
     ) -> Result<Expr<TypedAst>, Error> {
         let checked = self.check(expr, Some(to), scope)?;
         let from = type_of(&checked, scope, self.pool)?;
-        let conversion = find_conversion(&from, &to, self.pool)?
+        let conversion = find_conversion(&from, to, self.pool)?
             .ok_or_else(|| Error::type_error(from.pretty(self.pool).unwrap(), to.pretty(self.pool).unwrap(), pos))?;
         Ok(insert_conversion(checked, to, conversion, pos))
     }
@@ -521,7 +521,7 @@ impl<'a> TypeChecker<'a> {
 
     fn add_local(&mut self, name: Ident, type_: &TypeId, scope: &mut Scope) -> Result<PoolIndex<Local>, Error> {
         let name_idx = self.pool.names.add(name.to_owned());
-        let local = Local::new(scope.get_type_index(&type_, self.pool)?, LocalFlags::new());
+        let local = Local::new(scope.get_type_index(type_, self.pool)?, LocalFlags::new());
         let local_def = Definition::local(name_idx, scope.function.unwrap().cast(), local);
         let local_idx = self.pool.add_definition(local_def).cast();
         scope.add_local(name, local_idx);

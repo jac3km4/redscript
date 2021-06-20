@@ -52,7 +52,7 @@ impl<'a> Desugar<'a> {
     fn fresh_local(&mut self, type_: &TypeId) -> Result<Reference, Error> {
         let fun_idx = self.scope.function.unwrap();
         let name_idx = self.pool.names.add(Rc::new(format!("synthetic${}", self.name_count)));
-        let type_idx = self.scope.get_type_index(&type_, self.pool)?;
+        let type_idx = self.scope.get_type_index(type_, self.pool)?;
         let local = Local::new(type_idx, LocalFlags::new());
         let def = Definition::local(name_idx, fun_idx, local);
         let idx = self.pool.add_definition(def).cast();

@@ -277,7 +277,7 @@ peg::parser! {
             = name:ident() _ "=" _ value:number()
             {? match value {
                  Constant::I32(value) => Ok(EnumMember { name, value: value.into() }),
-                 Constant::I64(value) => Ok(EnumMember { name, value: value }),
+                 Constant::I64(value) => Ok(EnumMember { name, value }),
                  _ => Err("int")
                }
             }

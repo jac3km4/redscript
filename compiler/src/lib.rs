@@ -23,6 +23,7 @@ use typechecker::TypeChecker;
 use crate::parser::{ClassSource, FunctionSource, MemberSource, Qualifier, SourceEntry};
 
 pub mod assembler;
+#[allow(clippy::redundant_closure_call)]
 pub mod parser;
 pub mod scope;
 pub mod source_map;
@@ -63,7 +64,7 @@ impl<'a> Compiler<'a> {
         match self.try_compile(files) {
             Ok(diagnostics) => {
                 for diagnostic in diagnostics {
-                    Self::print_diagnostic(&files, diagnostic);
+                    Self::print_diagnostic(files, diagnostic);
                 }
                 log::info!("Compilation complete");
                 Ok(())

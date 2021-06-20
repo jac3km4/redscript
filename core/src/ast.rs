@@ -132,7 +132,7 @@ impl Display for Ident {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Ident::Static(str) => f.write_str(str),
-            Ident::Owned(str) => f.write_str(&str),
+            Ident::Owned(str) => f.write_str(str),
         }
     }
 }
@@ -372,8 +372,8 @@ impl TypeName {
 
     fn unwrapped(&self) -> &Self {
         match self.name.as_ref() {
-            "ref" => &self.arguments[0].unwrapped(),
-            "wref" => &self.arguments[0].unwrapped(),
+            "ref" => self.arguments[0].unwrapped(),
+            "wref" => self.arguments[0].unwrapped(),
             _ => self,
         }
     }
@@ -435,7 +435,7 @@ impl TypeName {
         }
     }
 
-    pub fn from_repr<'a>(str: &'a str) -> TypeName {
+    pub fn from_repr(str: &str) -> TypeName {
         let mut parts = str.split(':');
         Self::from_parts(parts.next().unwrap(), parts).unwrap()
     }

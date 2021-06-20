@@ -162,7 +162,7 @@ impl Assembler {
                 while case_iter.peek().is_some() {
                     let body_label = self.new_label();
 
-                    while let Some(case) = case_iter.next() {
+                    for case in &mut case_iter {
                         self.emit_label(next_case_label);
                         next_case_label = self.new_label();
                         self.emit(Instr::SwitchLabel(next_case_label, body_label));
