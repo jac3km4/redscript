@@ -206,8 +206,11 @@ impl<'a> Compiler<'a> {
 
                 // add to globals when no module
                 if module.is_empty() {
-                    self.scope
-                        .add_symbol(&path, Symbol::Class(index, visibility), Visibility::Private);
+                    self.scope.add_symbol(
+                        source.name.clone(),
+                        Symbol::Class(index, visibility),
+                        Visibility::Private,
+                    );
                 }
 
                 let slot = Slot::Class {
@@ -254,7 +257,8 @@ impl<'a> Compiler<'a> {
 
                 // add to globals when no module
                 if module.is_empty() {
-                    self.scope.add_symbol(&path, Symbol::Enum(index), Visibility::Private);
+                    self.scope
+                        .add_symbol(source.name.clone(), Symbol::Enum(index), Visibility::Private);
                 }
 
                 let slot = Slot::Enum { index, source };
@@ -568,13 +572,13 @@ impl<'a> Compiler<'a> {
         let name_idx = self.pool.names.add(module.with_function(sig).render().to_owned());
         let fun_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
 
-        let path = module.with_child(name);
+        let path = module.with_child(name.clone());
         self.symbols.add_function(&path, fun_idx, visibility);
 
         // add to globals when no module
         if module.is_empty() {
             self.scope.add_symbol(
-                &path,
+                name,
                 Symbol::Functions(vec![(fun_idx, visibility)]),
                 Visibility::Private,
             );
@@ -655,6 +659,10 @@ impl ModulePath {
         self.with_child(ident)
     }
 
+    pub fn last(&self) -> Option<Ident> {
+        self.parts.last().cloned()
+    }
+
     pub fn render(&self) -> Ident {
         self.parts
             .iter()
@@ -664,15 +672,13 @@ impl ModulePath {
     }
 }
 
-impl panoradix::RadixKey for ModulePath {
-    type Component = Ident;
+impl <'a> IntoIterator for &'a ModulePath {
+    type Item = &'a Ident;
 
-    fn as_slice(&self) -> &[Self::Component] {
-        &self.parts
-    }
+    type IntoIter = std::slice::Iter<'a, Ident>;
 
-    fn from_vec(parts: Vec<Self::Component>) -> Self::Owned {
-        ModulePath { parts }
+    fn into_iter(self) -> Self::IntoIter {
+        self.parts.iter()
     }
 }
 

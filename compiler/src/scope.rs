@@ -1,10 +1,10 @@
-use panoradix::RadixMap;
 use redscript::ast::{Expr, Ident, Pos, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::definition::{
     AnyDefinition, Class, Definition, Enum, Field, Function, Local, Parameter, Type, Visibility
 };
 use redscript::error::Error;
+use sequence_trie::SequenceTrie;
 
 use crate::typechecker::TypedAst;
 use crate::{FunctionSignature, Import, ModulePath, Reference, Symbol, TypeId, Value};
@@ -63,12 +63,11 @@ impl Scope {
         self.types.insert(name, typ);
     }
 
-    pub fn add_symbol(&mut self, path: &ModulePath, symbol: Symbol, visibility: Visibility) {
-        let name = path.parts.last().unwrap();
+    pub fn add_symbol(&mut self, name: Ident, symbol: Symbol, visibility: Visibility) {
         match symbol {
             Symbol::Functions(funs) => {
                 let funs: Vec<_> = funs.into_iter().filter(|(_, v)| *v <= visibility).collect();
-                match self.symbols.get_mut(name) {
+                match self.symbols.get_mut(&name) {
                     Some(Symbol::Functions(existing)) => existing.extend(funs),
                     _ if !funs.is_empty() => {
                         self.symbols.insert(name.clone(), Symbol::Functions(funs));
@@ -77,13 +76,13 @@ impl Scope {
                 }
             }
             Symbol::Class(_, v) if v <= visibility => {
-                self.symbols.insert(name.clone(), symbol);
+                self.symbols.insert(name, symbol);
             }
             Symbol::Struct(_, v) if v <= visibility => {
-                self.symbols.insert(name.clone(), symbol);
+                self.symbols.insert(name, symbol);
             }
             Symbol::Enum(_) => {
-                self.symbols.insert(name.clone(), symbol);
+                self.symbols.insert(name, symbol);
             }
             _ => {}
         }
@@ -268,12 +267,12 @@ impl Scope {
 }
 
 pub struct SymbolMap {
-    symbols: RadixMap<ModulePath, Symbol>,
+    symbols: SequenceTrie<Ident, Symbol>,
 }
 
 impl SymbolMap {
     pub fn new(pool: &ConstantPool) -> Result<SymbolMap, Error> {
-        let mut symbols: RadixMap<ModulePath, Symbol> = RadixMap::new();
+        let mut symbols: SequenceTrie<Ident, Symbol> = SequenceTrie::new();
 
         for (idx, def) in pool.roots() {
             let name = pool.definition_name(idx)?;
@@ -323,18 +322,18 @@ impl SymbolMap {
         match import {
             Import::Exact(path, pos) => {
                 let symbol = self.get_symbol(&path, pos)?;
-                scope.add_symbol(&path, symbol, visibility);
+                scope.add_symbol(path.last().unwrap(), symbol, visibility);
             }
-            Import::All(path, _) => {
-                for (sym_path, symbol) in self.get_direct_children(&path) {
-                    scope.add_symbol(&sym_path, symbol.clone(), visibility);
+            Import::All(path, pos) => {
+                for (ident, symbol) in self.get_direct_children(&path, pos)? {
+                    scope.add_symbol(ident, symbol.clone(), visibility);
                 }
             }
             Import::Selected(path, names, pos) => {
                 for name in names {
                     let path = path.with_child(name);
                     let symbol = self.get_symbol(&path, pos)?;
-                    scope.add_symbol(&path, symbol, visibility)
+                    scope.add_symbol(path.last().unwrap(), symbol, visibility)
                 }
             }
         };
@@ -343,15 +342,25 @@ impl SymbolMap {
 
     fn get_symbol(&self, path: &ModulePath, pos: Pos) -> Result<Symbol, Error> {
         self.symbols
-            .get(&path)
+            .get(path)
             .cloned()
             .ok_or_else(|| Error::unresolved_import(path.render(), pos))
     }
 
-    fn get_direct_children<'a>(&'a self, path: &'a ModulePath) -> impl Iterator<Item = (ModulePath, &Symbol)> {
-        self.symbols
-            .find(path)
-            .filter(move |(p, _)| p.parts.len() == path.parts.len() + 1)
+    fn get_direct_children(
+        &self,
+        path: &ModulePath,
+        pos: Pos,
+    ) -> Result<impl Iterator<Item = (Ident, &Symbol)>, Error> {
+        let node = self
+            .symbols
+            .get_node(path)
+            .ok_or_else(|| Error::unresolved_import(path.render(), pos))?;
+        let res = node
+            .iter()
+            .filter(|(parts, _)| parts.len() == 1)
+            .map(|(mut parts, sym)| (parts.pop().unwrap().clone(), sym));
+        Ok(res)
     }
 }
 
