@@ -15,22 +15,29 @@ use crate::error::Error;
 
 #[derive(Debug)]
 pub struct ScriptBundle {
+    header: Header,
     pub pool: ConstantPool,
 }
 
 impl ScriptBundle {
     pub fn load<I: io::Read + io::Seek>(input: &mut I) -> Result<Self, Error> {
-        let pool = ConstantPool::decode(input)?;
-        let cache = ScriptBundle { pool };
+        let header: Header = input.decode()?;
+        let pool = ConstantPool::decode(input, &header)?;
+        let cache = ScriptBundle { header, pool };
         Ok(cache)
     }
 
     pub fn save<O: io::Write + io::Seek>(&self, output: &mut O) -> Result<(), Error> {
-        self.pool.encode(output)
+        output.seek(io::SeekFrom::Start(Header::SIZE as u64))?;
+        let header = self.pool.encode(output, &self.header)?;
+
+        output.seek(io::SeekFrom::Start(0))?;
+        output.encode(&header)?;
+        Ok(())
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Header {
     version: u32,
     unk1: u32,
@@ -107,9 +114,8 @@ impl Encode for Header {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub struct ConstantPool {
-    header: Header,
     pub names: Names<String>,
     pub tweakdb_ids: Names<TweakDbId>,
     pub resources: Names<Resource>,
@@ -117,8 +123,7 @@ pub struct ConstantPool {
 }
 
 impl ConstantPool {
-    pub fn decode<I: io::Read + io::Seek>(input: &mut I) -> Result<Self, Error> {
-        let header: Header = input.decode()?;
+    pub fn decode<I: io::Read + io::Seek>(input: &mut I, header: &Header) -> Result<Self, Error> {
         let buffer = input.decode_bytes(header.strings.count)?;
 
         let mut cursor = io::Cursor::new(buffer);
@@ -139,7 +144,6 @@ impl ConstantPool {
         }
 
         let result = ConstantPool {
-            header,
             names,
             tweakdb_ids,
             resources,
@@ -148,8 +152,8 @@ impl ConstantPool {
         Ok(result)
     }
 
-    pub fn encode<O: io::Write + io::Seek>(&self, output: &mut O) -> Result<(), Error> {
-        let mut buffer = io::Cursor::new(Vec::with_capacity(self.header.strings.count as usize));
+    pub fn encode<O: io::Write + io::Seek>(&self, output: &mut O, header: &Header) -> Result<Header, Error> {
+        let mut buffer = io::Cursor::new(Vec::with_capacity(header.strings.count as usize));
         let mut dedup_map = HashMap::new();
         for str in self
             .names
@@ -166,8 +170,6 @@ impl ConstantPool {
                 hash_map::Entry::Occupied(_) => {}
             }
         }
-
-        output.seek(io::SeekFrom::Start(Header::SIZE as u64))?;
 
         let position = output.stream_position()? as u32;
         let strings = TableHeader::new(buffer.get_ref(), buffer.position() as u32, position);
@@ -212,7 +214,7 @@ impl ConstantPool {
             resources,
             definitions,
             hash: 0xDEADBEEF,
-            ..self.header
+            ..header.clone()
         };
 
         let mut buffer = io::Cursor::new(Vec::with_capacity(Header::SIZE));
@@ -222,14 +224,12 @@ impl ConstantPool {
             hash: crc(buffer.get_ref()),
             ..header_for_hash
         };
-        output.seek(io::SeekFrom::Start(0))?;
-        output.encode(&header)?;
-        Ok(())
+        Ok(header)
     }
 
     pub fn definition<A>(&self, index: PoolIndex<A>) -> Result<&Definition, Error> {
         self.definitions
-            .get(index.index)
+            .get(index.index as usize)
             .ok_or_else(|| Error::PoolError(format!("Definition {} not found", index.index)))
     }
 
@@ -242,7 +242,7 @@ impl ConstantPool {
     }
 
     pub fn function_mut(&mut self, index: PoolIndex<Function>) -> Result<&mut Function, Error> {
-        let result = self.definitions.get_mut(index.index).map(|def| &mut def.value);
+        let result = self.definitions.get_mut(index.index as usize).map(|def| &mut def.value);
         if let Some(AnyDefinition::Function(fun)) = result {
             Ok(fun)
         } else {
@@ -291,7 +291,7 @@ impl ConstantPool {
     }
 
     pub fn class_mut(&mut self, index: PoolIndex<Class>) -> Result<&mut Class, Error> {
-        let result = self.definitions.get_mut(index.index).map(|def| &mut def.value);
+        let result = self.definitions.get_mut(index.index as usize).map(|def| &mut def.value);
         if let Some(AnyDefinition::Class(fun)) = result {
             Ok(fun)
         } else {
@@ -324,7 +324,7 @@ impl ConstantPool {
             .iter()
             .enumerate()
             .skip(1)
-            .map(|(index, def)| (PoolIndex::new(index), def))
+            .map(|(index, def)| (PoolIndex::new(index as u32), def))
     }
 
     pub fn reserve(&mut self) -> PoolIndex<Definition> {
@@ -332,13 +332,13 @@ impl ConstantPool {
     }
 
     pub fn put_definition(&mut self, index: PoolIndex<Definition>, definition: Definition) {
-        self.definitions[index.index] = definition;
+        self.definitions[index.index as usize] = definition;
     }
 
     pub fn add_definition(&mut self, definition: Definition) -> PoolIndex<Definition> {
         let position = self.definitions.len();
         self.definitions.push(definition);
-        PoolIndex::new(position)
+        PoolIndex::new(position as u32)
     }
 
     pub fn roots(&self) -> impl Iterator<Item = (PoolIndex<Definition>, &Definition)> {
@@ -346,7 +346,7 @@ impl ConstantPool {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Names<K> {
     pub strings: Vec<Rc<String>>,
     mappings: HashMap<Rc<String>, PoolIndex<K>>,
@@ -361,7 +361,7 @@ impl<K> Names<K> {
             input.seek(io::SeekFrom::Start((*offset).into()))?;
             let str: Rc<String> = Rc::new(input.decode()?);
             strings.push(str.clone());
-            mappings.insert(str, PoolIndex::new(idx));
+            mappings.insert(str, PoolIndex::new(idx as u32));
         }
         let result = Names {
             strings,
@@ -381,7 +381,7 @@ impl<K> Names<K> {
 
     pub fn get(&self, index: PoolIndex<K>) -> Result<Rc<String>, Error> {
         self.strings
-            .get(index.index)
+            .get(index.index as usize)
             .cloned()
             .ok_or_else(|| Error::PoolError(format!("String {} not found", index.index)))
     }
@@ -394,7 +394,7 @@ impl<K> Names<K> {
     }
 
     pub fn add(&mut self, str: Rc<String>) -> PoolIndex<K> {
-        let idx = PoolIndex::new(self.strings.len());
+        let idx = PoolIndex::new(self.strings.len() as u32);
         match self.mappings.entry(str.clone()) {
             Entry::Occupied(entry) => *entry.get(),
             Entry::Vacant(slot) => {
@@ -405,7 +405,17 @@ impl<K> Names<K> {
     }
 }
 
-#[derive(Debug)]
+impl<K> Default for Names<K> {
+    fn default() -> Self {
+        Self {
+            strings: vec![],
+            mappings: HashMap::new(),
+            phantom: PhantomData,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 struct TableHeader {
     offset: u32,
     count: u32,
@@ -553,12 +563,12 @@ impl Encode for DefinitionType {
 }
 
 pub struct PoolIndex<A> {
-    pub index: usize,
+    pub index: u32,
     phantom: PhantomData<A>,
 }
 
 impl<A> PoolIndex<A> {
-    pub const fn new(index: usize) -> PoolIndex<A> {
+    pub const fn new(index: u32) -> PoolIndex<A> {
         PoolIndex {
             index,
             phantom: PhantomData,
@@ -582,7 +592,7 @@ impl<A> PoolIndex<A> {
 
 impl<A> Decode for PoolIndex<A> {
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
-        let index = input.decode::<u32>()? as usize;
+        let index = input.decode::<u32>()?;
         Ok(PoolIndex {
             index,
             phantom: PhantomData,
@@ -624,10 +634,10 @@ impl<A> Hash for PoolIndex<A> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Resource(String);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TweakDbId(String);
 
 fn crc(bytes: &[u8]) -> u32 {
