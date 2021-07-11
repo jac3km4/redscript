@@ -467,6 +467,8 @@ fn format_binop(op: BinOp) -> &'static str {
         BinOp::AssignSubtract => "-=",
         BinOp::AssignMultiply => "*=",
         BinOp::AssignDivide => "/=",
+        BinOp::AssignOr => "|=",
+        BinOp::AssignAnd => "&=",
         BinOp::LogicOr => "||",
         BinOp::LogicAnd => "&&",
         BinOp::Or => "|",

@@ -156,6 +156,10 @@ pub enum BinOp {
     AssignMultiply,
     #[strum(serialize = "OperatorAssignDivide")]
     AssignDivide,
+    #[strum(serialize = "OperatorAssignOr")]
+    AssignOr,
+    #[strum(serialize = "OperatorAssignAnd")]
+    AssignAnd,
     #[strum(serialize = "OperatorLogicOr")]
     LogicOr,
     #[strum(serialize = "OperatorLogicAnd")]
@@ -197,6 +201,8 @@ impl BinOp {
             BinOp::AssignSubtract => 10,
             BinOp::AssignMultiply => 10,
             BinOp::AssignDivide => 10,
+            BinOp::AssignOr => 10,
+            BinOp::AssignAnd => 10,
             BinOp::LogicOr => 9,
             BinOp::LogicAnd => 8,
             BinOp::Or => 7,
@@ -222,6 +228,8 @@ impl BinOp {
             BinOp::AssignSubtract => false,
             BinOp::AssignMultiply => false,
             BinOp::AssignDivide => false,
+            BinOp::AssignOr => false,
+            BinOp::AssignAnd => false,
             BinOp::LogicOr => true,
             BinOp::LogicAnd => true,
             BinOp::Or => true,

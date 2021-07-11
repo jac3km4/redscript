@@ -673,7 +673,7 @@ impl ModulePath {
     }
 }
 
-impl <'a> IntoIterator for &'a ModulePath {
+impl<'a> IntoIterator for &'a ModulePath {
     type Item = &'a Ident;
 
     type IntoIter = std::slice::Iter<'a, Ident>;

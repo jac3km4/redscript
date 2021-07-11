@@ -346,6 +346,8 @@ peg::parser! {
             x:@ _ pos:pos() "-=" _ y:(@) { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignSubtract, pos) }
             x:@ _ pos:pos() "*=" _ y:(@) { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignMultiply, pos) }
             x:@ _ pos:pos() "/=" _ y:(@) { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignDivide, pos) }
+            x:@ _ pos:pos() "|=" _ y:(@) { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignOr, pos) }
+            x:@ _ pos:pos() "&=" _ y:(@) { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignAnd, pos) }
             --
             x:(@) _ pos:pos() "||" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::LogicOr, pos) }
             x:(@) _ pos:pos() "&&" _ y:@ { Expr::BinOp(Box::new(x), Box::new(y), BinOp::LogicAnd, pos) }
