@@ -415,7 +415,9 @@ impl<'a> Compiler<'a> {
         let decl = source.declaration;
         let type_ = scope.resolve_type(&source.type_, self.pool, decl.pos)?;
         let type_idx = scope.get_type_index(&type_, self.pool)?;
-        let flags = FieldFlags::new().with_is_mutable(true);
+        let flags = FieldFlags::new()
+            .with_is_mutable(true)
+            .with_is_native(decl.qualifiers.contain(Qualifier::Native));
         let field = Field {
             visibility,
             type_: type_idx,
