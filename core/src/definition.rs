@@ -653,7 +653,7 @@ pub struct ClassFlags {
     pub has_functions: bool,
     pub has_fields: bool,
     pub is_native_only: bool,
-    pub bit7: bool,
+    pub is_test_only: bool,
     pub has_overrides: bool,
     #[skip]
     pub remainder: B7,
@@ -692,8 +692,8 @@ pub struct FunctionFlags {
     pub padding: B4,
     pub is_const: bool,
     pub is_virtual: bool,
-    pub bit20: bool,
-    pub bit21: bool,
+    pub is_quest: bool,
+    pub is_test_only: bool,
     #[skip]
     pub remainder: B10,
 }
