@@ -238,7 +238,7 @@ impl Scope {
                     Some(Symbol::Class(class_idx, _)) => TypeId::Class(*class_idx),
                     Some(Symbol::Struct(struct_idx, _)) => TypeId::Struct(*struct_idx),
                     Some(Symbol::Enum(enum_idx)) => TypeId::Enum(*enum_idx),
-                    _ => return Err(Error::unresolved_reference(ident, pos)),
+                    _ => return Err(Error::unresolved_type(ident, pos)),
                 }
             }
             Type::Ref(type_) => {
