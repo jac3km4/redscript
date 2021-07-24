@@ -521,18 +521,18 @@ impl<'a> Compiler<'a> {
                         Symbol::Struct(idx, _) => idx,
                         _ => return Err(Error::class_not_found(class_name, ann.pos)),
                     };
-                    let index = self
+                    let fun_idx = self
                         .scope
                         .resolve_method(name.clone(), target_class_idx, self.pool, ann.pos)?
                         .by_id(&sig, self.pool)
                         .ok_or_else(|| Error::function_not_found(name, ann.pos))?;
 
-                    let wrapped_idx = self.wrappers.get(&index).cloned().unwrap_or(index);
+                    let wrapped_idx = self.wrappers.get(&fun_idx).cloned().unwrap_or(fun_idx);
                     let name_idx = self.pool.names.add(Rc::new(format!("wrapper${}", wrapped_idx)));
                     let wrapper_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
-                    let base = self.pool.function(index)?.base_method;
+                    let base = self.pool.function(fun_idx)?.base_method;
 
-                    self.wrappers.insert(index, wrapper_idx);
+                    self.wrappers.insert(fun_idx, wrapper_idx);
                     self.pool.class_mut(target_class_idx)?.functions.push(wrapper_idx);
 
                     let slot = Slot::Function {
@@ -555,14 +555,14 @@ impl<'a> Compiler<'a> {
                         Symbol::Struct(idx, _) => idx,
                         _ => return Err(Error::class_not_found(class_name, ann.pos)),
                     };
-                    let index = self
+                    let fun_idx = self
                         .scope
                         .resolve_method(name.clone(), target_class_idx, self.pool, ann.pos)?
                         .by_id(&sig, self.pool)
                         .ok_or_else(|| Error::function_not_found(name, ann.pos))?;
-                    let base = self.pool.function(index)?.base_method;
+                    let base = self.pool.function(fun_idx)?.base_method;
                     let slot = Slot::Function {
-                        index,
+                        index: fun_idx,
                         parent: target_class_idx,
                         base,
                         wrapped: None,
@@ -572,14 +572,14 @@ impl<'a> Compiler<'a> {
                     return Ok(slot);
                 }
                 AnnotationName::ReplaceGlobal => {
-                    let index = self
+                    let fun_idx = self
                         .scope
                         .resolve_function(name.clone(), ann.pos)?
                         .by_id(&sig, self.pool)
                         .ok_or_else(|| Error::function_not_found(name, ann.pos))?;
 
                     let slot = Slot::Function {
-                        index,
+                        index: fun_idx,
                         parent: PoolIndex::UNDEFINED,
                         base: None,
                         wrapped: None,
@@ -609,11 +609,11 @@ impl<'a> Compiler<'a> {
                         None
                     };
                     let name_idx = self.pool.names.add(Rc::new(sig.into_owned()));
-                    let index = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
-                    self.pool.class_mut(target_class_idx)?.functions.push(index);
+                    let fun_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
+                    self.pool.class_mut(target_class_idx)?.functions.push(fun_idx);
 
                     let slot = Slot::Function {
-                        index,
+                        index: fun_idx,
                         parent: target_class_idx,
                         base: base_method,
                         wrapped: None,
