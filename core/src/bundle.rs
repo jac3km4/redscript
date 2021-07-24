@@ -632,6 +632,12 @@ impl<A> Hash for PoolIndex<A> {
     }
 }
 
+impl<A> fmt::Display for PoolIndex<A> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!("{}", self.index))
+    }
+}
+
 #[derive(Debug)]
 pub struct Resource(String);
 

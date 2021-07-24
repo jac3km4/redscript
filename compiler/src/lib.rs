@@ -1,7 +1,7 @@
 #![feature(stmt_expr_attributes)]
 
 use std::borrow::Cow;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::str::FromStr;
 
@@ -35,6 +35,7 @@ pub struct Compiler<'a> {
     pool: &'a mut ConstantPool,
     symbols: SymbolMap,
     scope: Scope,
+    wrappers: HashMap<PoolIndex<Function>, PoolIndex<Function>>,
     backlog: Vec<BacklogItem>,
 }
 
@@ -54,6 +55,7 @@ impl<'a> Compiler<'a> {
             pool,
             symbols,
             scope,
+            wrappers: HashMap::new(),
             backlog,
         })
     }
@@ -185,9 +187,25 @@ impl<'a> Compiler<'a> {
             }
         }
 
+        // rename the wrappers first so that the compiler can correctly resolve virtual calls
+        for (wrapped, wrapper) in &self.wrappers {
+            let wrapped_name = self.pool.definition(*wrapped)?.name;
+            let wrapper_name = self.pool.definition(*wrapper)?.name;
+
+            self.pool.rename(*wrapped, wrapper_name);
+            self.pool.rename(*wrapper, wrapped_name);
+        }
+
+        // compile function bodies
         for item in self.backlog.drain(..) {
             Self::compile_function(item, self.pool)?;
         }
+
+        // swap outermost wrappers with the functions they wrap
+        for (wrapped, wrapper) in self.wrappers.drain() {
+            self.pool.swap_definition(wrapped, wrapper);
+        }
+
         Ok(diagnostics)
     }
 
@@ -509,19 +527,19 @@ impl<'a> Compiler<'a> {
                         .by_id(&sig, self.pool)
                         .ok_or_else(|| Error::function_not_found(name, ann.pos))?;
 
-                    let name_idx = self.pool.names.add(Rc::new(sig.into_owned()));
-                    let swap_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
+                    let wrapped_idx = self.wrappers.get(&index).cloned().unwrap_or(index);
+                    let name_idx = self.pool.names.add(Rc::new(format!("wrapper${}", wrapped_idx)));
+                    let wrapper_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
                     let base = self.pool.function(index)?.base_method;
 
-                    self.pool.swap_definition(index, swap_idx);
-                    self.pool.rename(swap_idx, PoolIndex::UNDEFINED);
-                    self.pool.class_mut(target_class_idx)?.functions.push(swap_idx);
+                    self.wrappers.insert(index, wrapper_idx);
+                    self.pool.class_mut(target_class_idx)?.functions.push(wrapper_idx);
 
                     let slot = Slot::Function {
-                        index,
+                        index: wrapper_idx,
                         parent: target_class_idx,
                         base,
-                        wrapped: Some(swap_idx),
+                        wrapped: Some(wrapped_idx),
                         source,
                         visibility,
                     };
