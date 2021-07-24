@@ -55,7 +55,7 @@ impl<'a> Desugar<'a> {
         let type_idx = self.scope.get_type_index(type_, self.pool)?;
         let local = Local::new(type_idx, LocalFlags::new());
         let def = Definition::local(name_idx, fun_idx, local);
-        let idx = self.pool.add_definition(def).cast();
+        let idx = self.pool.add_definition(def);
         self.locals.push(idx);
         self.name_count += 1;
         Ok(Reference::Value(Value::Local(idx)))

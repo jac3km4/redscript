@@ -523,7 +523,7 @@ impl<'a> TypeChecker<'a> {
         let name_idx = self.pool.names.add(name.to_owned());
         let local = Local::new(scope.get_type_index(type_, self.pool)?, LocalFlags::new());
         let local_def = Definition::local(name_idx, scope.function.unwrap().cast(), local);
-        let local_idx = self.pool.add_definition(local_def).cast();
+        let local_idx = self.pool.add_definition(local_def);
         scope.add_local(name, local_idx);
         self.locals.push(local_idx);
         Ok(local_idx)

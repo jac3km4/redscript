@@ -215,13 +215,10 @@ impl<'a> Compiler<'a> {
                 let path = module.with_child(source.name.clone());
                 let name_index = self.pool.names.add(path.render().to_owned());
                 let type_index = self.pool.add_definition(Definition::type_(name_index, Type::Class));
-                let index = self
-                    .pool
-                    .add_definition(Definition::type_(name_index, Type::Prim))
-                    .cast();
+                let index = self.pool.stub_definition(name_index);
                 let visibility = source.qualifiers.visibility().unwrap_or(Visibility::Private);
 
-                self.scope.add_type(path.render(), type_index.cast());
+                self.scope.add_type(path.render(), type_index);
                 self.symbols.add_class(&path, index, visibility);
 
                 // add to globals when no module
@@ -243,10 +240,7 @@ impl<'a> Compiler<'a> {
             }
             SourceEntry::GlobalLet(source) => {
                 let name_index = self.pool.names.add(source.declaration.name.to_owned());
-                let index = self
-                    .pool
-                    .add_definition(Definition::type_(name_index, Type::Prim))
-                    .cast();
+                let index = self.pool.stub_definition(name_index);
                 let visibility = source
                     .declaration
                     .qualifiers
@@ -264,12 +258,9 @@ impl<'a> Compiler<'a> {
                 let path = module.with_child(source.name.clone());
                 let name_index = self.pool.names.add(path.render().to_owned());
                 let type_index = self.pool.add_definition(Definition::type_(name_index, Type::Class));
-                let index = self
-                    .pool
-                    .add_definition(Definition::type_(name_index, Type::Prim))
-                    .cast();
+                let index = self.pool.stub_definition(name_index);
 
-                self.scope.add_type(path.render(), type_index.cast());
+                self.scope.add_type(path.render(), type_index);
                 self.symbols.add_enum(&path, index);
 
                 // add to globals when no module
@@ -301,14 +292,14 @@ impl<'a> Compiler<'a> {
                 MemberSource::Function(fun) => {
                     let fun_sig = FunctionSignature::from_source(&fun);
                     let name_idx = self.pool.names.add(Rc::new(fun_sig.into_owned()));
-                    let fun_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
+                    let fun_idx = self.pool.stub_definition(name_idx);
 
                     self.define_function(fun_idx, class_idx, None, None, visibility, fun, scope)?;
                     functions.push(fun_idx);
                 }
                 MemberSource::Field(let_) => {
                     let name_idx = self.pool.names.add(let_.declaration.name.to_owned());
-                    let field_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
+                    let field_idx = self.pool.stub_definition(name_idx);
 
                     self.define_field(field_idx, class_idx, visibility, let_, scope)?;
                     fields.push(field_idx);
@@ -382,7 +373,7 @@ impl<'a> Compiler<'a> {
             let name = self.pool.names.add(param.name.to_owned());
             let param = Parameter { type_: type_idx, flags };
             let idx = self.pool.add_definition(Definition::param(name, fun_idx.cast(), param));
-            parameters.push(idx.cast());
+            parameters.push(idx);
         }
 
         let source_ref = SourceReference {
@@ -456,7 +447,7 @@ impl<'a> Compiler<'a> {
         for member in source.members {
             let name_index = self.pool.names.add(member.name.to_owned());
             let def = Definition::enum_value(name_index, index, member.value);
-            members.push(self.pool.add_definition(def).cast());
+            members.push(self.pool.add_definition(def));
         }
 
         let enum_ = Enum {
@@ -529,7 +520,7 @@ impl<'a> Compiler<'a> {
 
                     let wrapped_idx = self.wrappers.get(&fun_idx).cloned().unwrap_or(fun_idx);
                     let name_idx = self.pool.names.add(Rc::new(format!("wrapper${}", wrapped_idx)));
-                    let wrapper_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
+                    let wrapper_idx = self.pool.stub_definition(name_idx);
                     let base = self.pool.function(fun_idx)?.base_method;
 
                     self.wrappers.insert(fun_idx, wrapper_idx);
@@ -609,7 +600,7 @@ impl<'a> Compiler<'a> {
                         None
                     };
                     let name_idx = self.pool.names.add(Rc::new(sig.into_owned()));
-                    let fun_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
+                    let fun_idx = self.pool.stub_definition(name_idx);
                     self.pool.class_mut(target_class_idx)?.functions.push(fun_idx);
 
                     let slot = Slot::Function {
@@ -627,7 +618,7 @@ impl<'a> Compiler<'a> {
         }
 
         let name_idx = self.pool.names.add(module.with_function(sig).render().to_owned());
-        let fun_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
+        let fun_idx = self.pool.stub_definition(name_idx);
 
         let path = module.with_child(name.clone());
         self.symbols.add_function(&path, fun_idx, visibility);
