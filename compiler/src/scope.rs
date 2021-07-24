@@ -186,7 +186,7 @@ impl Scope {
                 TypeId::ScriptRef(inner) => Type::ScriptRef(self.get_type_index(inner, pool)?),
                 TypeId::Null | TypeId::Void => panic!(),
             };
-            let type_idx = pool.add_definition(Definition::type_(name_idx, value)).cast();
+            let type_idx = pool.add_definition(Definition::type_(name_idx, value));
             self.types.insert(name, type_idx);
             Ok(type_idx)
         }

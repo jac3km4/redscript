@@ -327,7 +327,7 @@ impl ConstantPool {
             .map(|(index, def)| (PoolIndex::new(index), def))
     }
 
-    pub fn reserve(&mut self) -> PoolIndex<Definition> {
+    pub fn reserve<A>(&mut self) -> PoolIndex<A> {
         self.add_definition(Definition::DEFAULT)
     }
 
@@ -339,10 +339,14 @@ impl ConstantPool {
         self.definitions.swap(lhs.index, rhs.index)
     }
 
-    pub fn add_definition(&mut self, definition: Definition) -> PoolIndex<Definition> {
+    pub fn add_definition<A>(&mut self, definition: Definition) -> PoolIndex<A> {
         let position = self.definitions.len();
         self.definitions.push(definition);
         PoolIndex::new(position)
+    }
+
+    pub fn stub_definition<A>(&mut self, name_idx: PoolIndex<String>) -> PoolIndex<A> {
+        self.add_definition(Definition::type_(name_idx, Type::Prim))
     }
 
     pub fn rename<A>(&mut self, index: PoolIndex<A>, name: PoolIndex<String>) {
