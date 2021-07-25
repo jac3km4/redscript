@@ -9,7 +9,7 @@ use crate::bytecode::{Code, Offset};
 use crate::decode::{Decode, DecodeExt};
 use crate::encode::{Encode, EncodeExt};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Definition {
     pub name: PoolIndex<String>,
     pub parent: PoolIndex<Definition>,
@@ -129,7 +129,7 @@ impl Definition {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AnyDefinition {
     Type(Type),
     Class(Class),
@@ -174,7 +174,7 @@ impl Encode for AnyDefinition {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Class {
     pub visibility: Visibility,
     pub flags: ClassFlags,
@@ -242,7 +242,7 @@ impl Encode for Class {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Enum {
     pub flags: u8,
     pub size: u8,
@@ -276,7 +276,7 @@ impl Encode for Enum {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Function {
     pub visibility: Visibility,
     pub flags: FunctionFlags,
@@ -389,7 +389,7 @@ impl Encode for Function {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Field {
     pub visibility: Visibility,
     pub type_: PoolIndex<Type>,
@@ -523,7 +523,7 @@ impl Encode for Local {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Parameter {
     pub type_: PoolIndex<Type>,
     pub flags: ParameterFlags,
@@ -544,7 +544,7 @@ impl Encode for Parameter {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SourceFile {
     pub id: u32,
     pub path_hash: u64,
@@ -742,7 +742,7 @@ impl Encode for Visibility {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SourceReference {
     pub file: PoolIndex<Definition>,
     pub line: u32,
@@ -764,7 +764,7 @@ impl Encode for SourceReference {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Property {
     pub name: String,
     pub value: String,
