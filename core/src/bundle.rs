@@ -331,7 +331,7 @@ impl ConstantPool {
         self.add_definition(Definition::DEFAULT)
     }
 
-    pub fn put_definition(&mut self, index: PoolIndex<Definition>, definition: Definition) {
+    pub fn put_definition<A>(&mut self, index: PoolIndex<A>, definition: Definition) {
         self.definitions[index.index] = definition;
     }
 

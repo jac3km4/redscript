@@ -7,18 +7,18 @@ use std::str::FromStr;
 
 use assembler::Assembler;
 use parser::{AnnotationName, EnumSource, FieldSource, SourceModule};
-use redscript::ast::{BinOp, Ident, Pos, Seq, SourceAst, TypeName};
+use redscript::ast::{BinOp, Expr, Ident, Pos, Seq, SourceAst, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
-use redscript::bytecode::Code;
+use redscript::bytecode::{Code, Instr};
 use redscript::definition::{
-    Class, ClassFlags, Definition, Enum, Field, FieldFlags, Function, FunctionFlags, Local, Parameter, ParameterFlags, SourceReference, Type, Visibility
+    AnyDefinition, Class, ClassFlags, Definition, Enum, Field, FieldFlags, Function, FunctionFlags, Local, Parameter, ParameterFlags, SourceReference, Type, Visibility
 };
 use redscript::error::Error;
 use scope::{Scope, SymbolMap};
 use source_map::{Files, SourceLocation};
 use sugar::Desugar;
 use transform::ExprTransformer;
-use typechecker::TypeChecker;
+use typechecker::{Callable, TypeChecker};
 
 use crate::parser::{ClassSource, FunctionSource, MemberSource, Qualifier, SourceEntry};
 
@@ -36,6 +36,7 @@ pub struct Compiler<'a> {
     symbols: SymbolMap,
     scope: Scope,
     wrappers: HashMap<PoolIndex<Function>, PoolIndex<Function>>,
+    proxies: HashMap<PoolIndex<Function>, PoolIndex<Function>>,
     backlog: Vec<BacklogItem>,
 }
 
@@ -56,6 +57,7 @@ impl<'a> Compiler<'a> {
             symbols,
             scope,
             wrappers: HashMap::new(),
+            proxies: HashMap::new(),
             backlog,
         })
     }
@@ -187,13 +189,10 @@ impl<'a> Compiler<'a> {
             }
         }
 
-        // rename the wrappers first so that the compiler can correctly resolve virtual calls
-        for (wrapped, wrapper) in &self.wrappers {
-            let wrapped_name = self.pool.definition(*wrapped)?.name;
-            let wrapper_name = self.pool.definition(*wrapper)?.name;
-
-            self.pool.rename(*wrapped, wrapper_name);
-            self.pool.rename(*wrapper, wrapped_name);
+        // create function proxies
+        for (wrapped, wrapper) in self.wrappers.drain() {
+            let proxy = self.proxies.get(&wrapped).unwrap();
+            Self::construct_proxy(*proxy, wrapped, wrapper, &mut self.scope, self.pool)?;
         }
 
         // compile function bodies
@@ -201,9 +200,14 @@ impl<'a> Compiler<'a> {
             Self::compile_function(item, self.pool)?;
         }
 
-        // swap outermost wrappers with the functions they wrap
-        for (wrapped, wrapper) in self.wrappers.drain() {
-            self.pool.swap_definition(wrapped, wrapper);
+        // swap proxies with the functions they wrap
+        for (wrapped, proxy) in self.proxies.drain() {
+            let wrapped_name = self.pool.definition(wrapped)?.name;
+            let proxy_name = self.pool.definition(proxy)?.name;
+
+            self.pool.rename(wrapped, proxy_name);
+            self.pool.rename(proxy, wrapped_name);
+            self.pool.swap_definition(wrapped, proxy);
         }
 
         Ok(diagnostics)
@@ -330,8 +334,7 @@ impl<'a> Compiler<'a> {
         };
         let name_idx = self.pool.definition(class_idx)?.name;
 
-        self.pool
-            .put_definition(class_idx.cast(), Definition::class(name_idx, class));
+        self.pool.put_definition(class_idx, Definition::class(name_idx, class));
         Ok(())
     }
 
@@ -408,7 +411,7 @@ impl<'a> Compiler<'a> {
             self.backlog.push(item)
         }
 
-        self.pool.put_definition(fun_idx.cast(), definition);
+        self.pool.put_definition(fun_idx, definition);
         Ok(())
     }
 
@@ -437,7 +440,7 @@ impl<'a> Compiler<'a> {
         let name_index = self.pool.definition(index)?.name;
         let definition = Definition::field(name_index, parent.cast(), field);
 
-        self.pool.put_definition(index.cast(), definition);
+        self.pool.put_definition(index, definition);
         Ok(())
     }
 
@@ -457,8 +460,7 @@ impl<'a> Compiler<'a> {
             unk1: false,
         };
         let name_index = self.pool.definition(index)?.name;
-        self.pool
-            .put_definition(index.cast(), Definition::enum_(name_index, enum_));
+        self.pool.put_definition(index, Definition::enum_(name_index, enum_));
         Ok(())
     }
 
@@ -518,7 +520,15 @@ impl<'a> Compiler<'a> {
                         .by_id(&sig, self.pool)
                         .ok_or_else(|| Error::function_not_found(name, ann.pos))?;
 
-                    let wrapped_idx = self.wrappers.get(&fun_idx).cloned().unwrap_or(fun_idx);
+                    let wrapped_idx = match self.wrappers.get(&fun_idx) {
+                        Some(wrapped) => *wrapped,
+                        None => {
+                            let proxy = self.pool.reserve();
+                            self.proxies.insert(fun_idx, proxy);
+                            proxy
+                        }
+                    };
+
                     let name_idx = self.pool.names.add(Rc::new(format!("wrapper${}", wrapped_idx)));
                     let wrapper_idx = self.pool.stub_definition(name_idx);
                     let base = self.pool.function(fun_idx)?.base_method;
@@ -671,6 +681,77 @@ impl<'a> Compiler<'a> {
         let function = pool.function_mut(item.function)?;
         function.code = code;
         function.locals = locals;
+        Ok(())
+    }
+
+    fn construct_proxy(
+        slot: PoolIndex<Function>,
+        wrapped: PoolIndex<Function>,
+        wrapper: PoolIndex<Function>,
+        scope: &mut Scope,
+        pool: &mut ConstantPool,
+    ) -> Result<(), Error> {
+        Self::remap_locals(slot, wrapped, pool)?;
+
+        let def = pool.definition(wrapped)?.clone();
+        if let AnyDefinition::Function(fun) = def.value {
+            let mut parameters = vec![];
+            let mut args = vec![];
+
+            for param_idx in &fun.parameters {
+                let param = pool.definition(*param_idx)?.clone();
+                let proxy_idx = pool.add_definition(param);
+                parameters.push(proxy_idx);
+                args.push(Expr::Ident(Reference::Value(Value::Parameter(proxy_idx)), Pos::ZERO));
+            }
+
+            let call = Expr::Call(Callable::Function(wrapper), args, Pos::ZERO);
+            let expr = if fun.return_type.is_some() {
+                Expr::Return(Some(Box::new(call)), Pos::ZERO)
+            } else {
+                call
+            };
+            let code = Assembler::from_body(Seq::new(vec![expr]), scope, pool)?;
+
+            let compiled = Function {
+                code,
+                locals: vec![],
+                parameters,
+                ..fun
+            };
+            let name = pool.names.add(Rc::new(format!("proxy${}", wrapper)));
+            pool.put_definition(slot, Definition::function(name, def.parent.cast(), compiled));
+            if !def.parent.is_undefined() {
+                pool.class_mut(def.parent.cast())?.functions.push(slot);
+            }
+            Ok(())
+        } else {
+            panic!("Invalid proxy")
+        }
+    }
+
+    fn remap_locals(
+        proxy: PoolIndex<Function>,
+        target: PoolIndex<Function>,
+        pool: &mut ConstantPool,
+    ) -> Result<(), Error> {
+        let locals = pool.function(target)?.locals.clone();
+        let mut mapped_locals = HashMap::new();
+
+        for local_idx in locals {
+            let mut local = pool.definition(local_idx)?.clone();
+            local.parent = proxy.cast();
+            mapped_locals.insert(local_idx, pool.add_definition(local));
+        }
+
+        let fun = pool.function_mut(target)?;
+        fun.locals = mapped_locals.values().copied().collect();
+
+        for instr in fun.code.0.iter_mut() {
+            if let Instr::Local(local) = instr {
+                *instr = Instr::Local(*mapped_locals.get(local).unwrap())
+            }
+        }
         Ok(())
     }
 }
