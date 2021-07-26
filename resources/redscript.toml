@@ -1,0 +1,4 @@
+exclusions = [
+  "BreachProtocol_Minigame",
+  "youCANSaveRightNow"
+]
