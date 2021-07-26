@@ -52,6 +52,10 @@ impl Error {
         Error::CompileError(format!("Unresolved import {}", import), pos)
     }
 
+    pub fn unresolved_module<N: Display>(import: N, pos: Pos) -> Error {
+        Error::CompileError(format!("Module {} has no members or does not exist", import), pos)
+    }
+
     pub fn invalid_annotation_args(pos: Pos) -> Error {
         Error::CompileError("Invalid arguments for annotation".to_owned(), pos)
     }

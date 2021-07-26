@@ -348,7 +348,7 @@ impl SymbolMap {
         let node = self
             .symbols
             .get_node(path)
-            .ok_or_else(|| Error::unresolved_import(path.render(), pos))?;
+            .ok_or_else(|| Error::unresolved_module(path.render(), pos))?;
         let res = node
             .iter()
             .filter(|(parts, _)| parts.len() == 1)

@@ -142,7 +142,8 @@ impl<'a> Compiler<'a> {
 
             if !path.is_empty() {
                 self.symbols
-                    .populate_import(Import::All(path, Pos::ZERO), &mut module_scope, Visibility::Private)?;
+                    .populate_import(Import::All(path, Pos::ZERO), &mut module_scope, Visibility::Private)
+                    .ok();
             };
 
             for import in imports {
