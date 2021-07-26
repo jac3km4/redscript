@@ -1,8 +1,9 @@
 [package]
 name = "redscript-decompiler"
-version = "0.1.0"
+version = "0.2.4-dev"
 authors = ["jac3km4 <jac3km4@pm.me>"]
 edition = "2018"
+publish = false
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -10,3 +11,6 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 redscript = { path = "../core" }
 log = "0.4"
+
+[package.metadata.release]
+disable-tag = true

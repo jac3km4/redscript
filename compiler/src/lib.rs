@@ -1,24 +1,24 @@
 #![feature(stmt_expr_attributes)]
 
 use std::borrow::Cow;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::str::FromStr;
 
 use assembler::Assembler;
 use parser::{AnnotationName, EnumSource, FieldSource, SourceModule};
-use redscript::ast::{BinOp, Ident, Pos, Seq, SourceAst, TypeName};
+use redscript::ast::{BinOp, Expr, Ident, Pos, Seq, SourceAst, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
-use redscript::bytecode::Code;
+use redscript::bytecode::{Code, Instr};
 use redscript::definition::{
-    Class, ClassFlags, Definition, Enum, Field, FieldFlags, Function, FunctionFlags, Local, Parameter, ParameterFlags, SourceReference, Type, Visibility
+    AnyDefinition, Class, ClassFlags, Definition, Enum, Field, FieldFlags, Function, FunctionFlags, Local, Parameter, ParameterFlags, SourceReference, Type, Visibility
 };
 use redscript::error::Error;
 use scope::{Scope, SymbolMap};
 use source_map::{Files, SourceLocation};
 use sugar::Desugar;
 use transform::ExprTransformer;
-use typechecker::TypeChecker;
+use typechecker::{Callable, TypeChecker};
 
 use crate::parser::{ClassSource, FunctionSource, MemberSource, Qualifier, SourceEntry};
 
@@ -35,6 +35,8 @@ pub struct Compiler<'a> {
     pool: &'a mut ConstantPool,
     symbols: SymbolMap,
     scope: Scope,
+    wrappers: HashMap<PoolIndex<Function>, PoolIndex<Function>>,
+    proxies: HashMap<PoolIndex<Function>, PoolIndex<Function>>,
     backlog: Vec<BacklogItem>,
 }
 
@@ -54,6 +56,8 @@ impl<'a> Compiler<'a> {
             pool,
             symbols,
             scope,
+            wrappers: HashMap::new(),
+            proxies: HashMap::new(),
             backlog,
         })
     }
@@ -154,9 +158,10 @@ impl<'a> Compiler<'a> {
                         base,
                         source,
                         visibility,
+                        wrapped,
                     } => {
                         let pos = source.declaration.pos;
-                        self.define_function(index, parent, base, visibility, source, &mut module_scope)?;
+                        self.define_function(index, parent, base, wrapped, visibility, source, &mut module_scope)?;
                         if compiled_funs.contains(&index) {
                             diagnostics.push(Diagnostic::MethodConflict(index, pos));
                         } else {
@@ -184,9 +189,27 @@ impl<'a> Compiler<'a> {
             }
         }
 
+        // create function proxies
+        for (wrapped, wrapper) in self.wrappers.drain() {
+            let proxy = self.proxies.get(&wrapped).unwrap();
+            Self::construct_proxy(*proxy, wrapped, wrapper, &mut self.scope, self.pool)?;
+        }
+
+        // compile function bodies
         for item in self.backlog.drain(..) {
             Self::compile_function(item, self.pool)?;
         }
+
+        // swap proxies with the functions they wrap
+        for (wrapped, proxy) in self.proxies.drain() {
+            let wrapped_name = self.pool.definition(wrapped)?.name;
+            let proxy_name = self.pool.definition(proxy)?.name;
+
+            self.pool.rename(wrapped, proxy_name);
+            self.pool.rename(proxy, wrapped_name);
+            self.pool.swap_definition(wrapped, proxy);
+        }
+
         Ok(diagnostics)
     }
 
@@ -196,22 +219,16 @@ impl<'a> Compiler<'a> {
                 let path = module.with_child(source.name.clone());
                 let name_index = self.pool.names.add(path.render().to_owned());
                 let type_index = self.pool.add_definition(Definition::type_(name_index, Type::Class));
-                let index = self
-                    .pool
-                    .add_definition(Definition::type_(name_index, Type::Prim))
-                    .cast();
+                let index = self.pool.stub_definition(name_index);
                 let visibility = source.qualifiers.visibility().unwrap_or(Visibility::Private);
 
-                self.scope.add_type(path.render(), type_index.cast());
+                self.scope.add_type(path.render(), type_index);
                 self.symbols.add_class(&path, index, visibility);
 
                 // add to globals when no module
                 if module.is_empty() {
-                    self.scope.add_symbol(
-                        source.name.clone(),
-                        Symbol::Class(index, visibility),
-                        Visibility::Private,
-                    );
+                    self.scope
+                        .add_symbol(source.name.clone(), Symbol::Class(index, visibility));
                 }
 
                 let slot = Slot::Class {
@@ -227,10 +244,7 @@ impl<'a> Compiler<'a> {
             }
             SourceEntry::GlobalLet(source) => {
                 let name_index = self.pool.names.add(source.declaration.name.to_owned());
-                let index = self
-                    .pool
-                    .add_definition(Definition::type_(name_index, Type::Prim))
-                    .cast();
+                let index = self.pool.stub_definition(name_index);
                 let visibility = source
                     .declaration
                     .qualifiers
@@ -248,18 +262,14 @@ impl<'a> Compiler<'a> {
                 let path = module.with_child(source.name.clone());
                 let name_index = self.pool.names.add(path.render().to_owned());
                 let type_index = self.pool.add_definition(Definition::type_(name_index, Type::Class));
-                let index = self
-                    .pool
-                    .add_definition(Definition::type_(name_index, Type::Prim))
-                    .cast();
+                let index = self.pool.stub_definition(name_index);
 
-                self.scope.add_type(path.render(), type_index.cast());
+                self.scope.add_type(path.render(), type_index);
                 self.symbols.add_enum(&path, index);
 
                 // add to globals when no module
                 if module.is_empty() {
-                    self.scope
-                        .add_symbol(source.name.clone(), Symbol::Enum(index), Visibility::Private);
+                    self.scope.add_symbol(source.name.clone(), Symbol::Enum(index));
                 }
 
                 let slot = Slot::Enum { index, source };
@@ -286,14 +296,14 @@ impl<'a> Compiler<'a> {
                 MemberSource::Function(fun) => {
                     let fun_sig = FunctionSignature::from_source(&fun);
                     let name_idx = self.pool.names.add(Rc::new(fun_sig.into_owned()));
-                    let fun_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
+                    let fun_idx = self.pool.stub_definition(name_idx);
 
-                    self.define_function(fun_idx, class_idx, None, visibility, fun, scope)?;
+                    self.define_function(fun_idx, class_idx, None, None, visibility, fun, scope)?;
                     functions.push(fun_idx);
                 }
                 MemberSource::Field(let_) => {
                     let name_idx = self.pool.names.add(let_.declaration.name.to_owned());
-                    let field_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
+                    let field_idx = self.pool.stub_definition(name_idx);
 
                     self.define_field(field_idx, class_idx, visibility, let_, scope)?;
                     fields.push(field_idx);
@@ -324,8 +334,7 @@ impl<'a> Compiler<'a> {
         };
         let name_idx = self.pool.definition(class_idx)?.name;
 
-        self.pool
-            .put_definition(class_idx.cast(), Definition::class(name_idx, class));
+        self.pool.put_definition(class_idx, Definition::class(name_idx, class));
         Ok(())
     }
 
@@ -334,6 +343,7 @@ impl<'a> Compiler<'a> {
         fun_idx: PoolIndex<Function>,
         parent_idx: PoolIndex<Class>,
         base_method: Option<PoolIndex<Function>>,
+        wrapped: Option<PoolIndex<Function>>,
         visibility: Visibility,
         source: FunctionSource,
         scope: &mut Scope,
@@ -366,7 +376,7 @@ impl<'a> Compiler<'a> {
             let name = self.pool.names.add(param.name.to_owned());
             let param = Parameter { type_: type_idx, flags };
             let idx = self.pool.add_definition(Definition::param(name, fun_idx.cast(), param));
-            parameters.push(idx.cast());
+            parameters.push(idx);
         }
 
         let source_ref = SourceReference {
@@ -394,13 +404,14 @@ impl<'a> Compiler<'a> {
             let item = BacklogItem {
                 class: parent_idx,
                 function: fun_idx,
+                wrapped,
                 code,
                 scope: scope.clone(),
             };
             self.backlog.push(item)
         }
 
-        self.pool.put_definition(fun_idx.cast(), definition);
+        self.pool.put_definition(fun_idx, definition);
         Ok(())
     }
 
@@ -429,7 +440,7 @@ impl<'a> Compiler<'a> {
         let name_index = self.pool.definition(index)?.name;
         let definition = Definition::field(name_index, parent.cast(), field);
 
-        self.pool.put_definition(index.cast(), definition);
+        self.pool.put_definition(index, definition);
         Ok(())
     }
 
@@ -439,7 +450,7 @@ impl<'a> Compiler<'a> {
         for member in source.members {
             let name_index = self.pool.names.add(member.name.to_owned());
             let def = Definition::enum_value(name_index, index, member.value);
-            members.push(self.pool.add_definition(def).cast());
+            members.push(self.pool.add_definition(def));
         }
 
         let enum_ = Enum {
@@ -449,8 +460,7 @@ impl<'a> Compiler<'a> {
             unk1: false,
         };
         let name_index = self.pool.definition(index)?.name;
-        self.pool
-            .put_definition(index.cast(), Definition::enum_(name_index, enum_));
+        self.pool.put_definition(index, Definition::enum_(name_index, enum_));
         Ok(())
     }
 
@@ -494,6 +504,48 @@ impl<'a> Compiler<'a> {
 
         for ann in &source.declaration.annotations {
             match ann.name {
+                AnnotationName::WrapMethod => {
+                    let class_name = ann
+                        .values
+                        .first()
+                        .ok_or_else(|| Error::invalid_annotation_args(ann.pos))?;
+                    let target_class_idx = match self.scope.resolve_symbol(class_name.clone(), ann.pos)? {
+                        Symbol::Class(idx, _) => idx,
+                        Symbol::Struct(idx, _) => idx,
+                        _ => return Err(Error::class_not_found(class_name, ann.pos)),
+                    };
+                    let fun_idx = self
+                        .scope
+                        .resolve_method(name.clone(), target_class_idx, self.pool, ann.pos)?
+                        .by_id(&sig, self.pool)
+                        .ok_or_else(|| Error::function_not_found(name, ann.pos))?;
+
+                    let wrapped_idx = match self.wrappers.get(&fun_idx) {
+                        Some(wrapped) => *wrapped,
+                        None => {
+                            let proxy = self.pool.reserve();
+                            self.proxies.insert(fun_idx, proxy);
+                            proxy
+                        }
+                    };
+
+                    let name_idx = self.pool.names.add(Rc::new(format!("wrapper${}", wrapped_idx)));
+                    let wrapper_idx = self.pool.stub_definition(name_idx);
+                    let base = self.pool.function(fun_idx)?.base_method;
+
+                    self.wrappers.insert(fun_idx, wrapper_idx);
+                    self.pool.class_mut(target_class_idx)?.functions.push(wrapper_idx);
+
+                    let slot = Slot::Function {
+                        index: wrapper_idx,
+                        parent: target_class_idx,
+                        base,
+                        wrapped: Some(wrapped_idx),
+                        source,
+                        visibility,
+                    };
+                    return Ok(slot);
+                }
                 AnnotationName::ReplaceMethod => {
                     let class_name = ann
                         .values
@@ -504,25 +556,26 @@ impl<'a> Compiler<'a> {
                         Symbol::Struct(idx, _) => idx,
                         _ => return Err(Error::class_not_found(class_name, ann.pos)),
                     };
-                    let candidates = self
+                    let fun_idx = self
                         .scope
-                        .resolve_method(name.clone(), target_class_idx, self.pool, ann.pos)?;
-                    let fun_idx = candidates
+                        .resolve_method(name.clone(), target_class_idx, self.pool, ann.pos)?
                         .by_id(&sig, self.pool)
                         .ok_or_else(|| Error::function_not_found(name, ann.pos))?;
-                    let fun = self.pool.function(fun_idx)?;
+                    let base = self.pool.function(fun_idx)?.base_method;
                     let slot = Slot::Function {
                         index: fun_idx,
                         parent: target_class_idx,
-                        base: fun.base_method,
+                        base,
+                        wrapped: None,
                         source,
                         visibility,
                     };
                     return Ok(slot);
                 }
                 AnnotationName::ReplaceGlobal => {
-                    let candidates = self.scope.resolve_function(name.clone(), ann.pos)?;
-                    let fun_idx = candidates
+                    let fun_idx = self
+                        .scope
+                        .resolve_function(name.clone(), ann.pos)?
                         .by_id(&sig, self.pool)
                         .ok_or_else(|| Error::function_not_found(name, ann.pos))?;
 
@@ -530,6 +583,7 @@ impl<'a> Compiler<'a> {
                         index: fun_idx,
                         parent: PoolIndex::UNDEFINED,
                         base: None,
+                        wrapped: None,
                         source,
                         visibility,
                     };
@@ -556,13 +610,14 @@ impl<'a> Compiler<'a> {
                         None
                     };
                     let name_idx = self.pool.names.add(Rc::new(sig.into_owned()));
-                    let fun_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
+                    let fun_idx = self.pool.stub_definition(name_idx);
                     self.pool.class_mut(target_class_idx)?.functions.push(fun_idx);
 
                     let slot = Slot::Function {
                         index: fun_idx,
                         parent: target_class_idx,
                         base: base_method,
+                        wrapped: None,
                         source,
                         visibility,
                     };
@@ -573,24 +628,22 @@ impl<'a> Compiler<'a> {
         }
 
         let name_idx = self.pool.names.add(module.with_function(sig).render().to_owned());
-        let fun_idx = self.pool.add_definition(Definition::type_(name_idx, Type::Prim)).cast();
+        let fun_idx = self.pool.stub_definition(name_idx);
 
         let path = module.with_child(name.clone());
         self.symbols.add_function(&path, fun_idx, visibility);
 
         // add to globals when no module
         if module.is_empty() {
-            self.scope.add_symbol(
-                name,
-                Symbol::Functions(vec![(fun_idx, visibility)]),
-                Visibility::Private,
-            );
+            self.scope
+                .add_symbol(name, Symbol::Functions(vec![(fun_idx, visibility)]));
         }
 
         let slot = Slot::Function {
             index: fun_idx.cast(),
             parent: PoolIndex::UNDEFINED,
             base: None,
+            wrapped: None,
             source,
             visibility,
         };
@@ -611,6 +664,11 @@ impl<'a> Compiler<'a> {
             local_scope.add_parameter(ident, *param);
         }
 
+        if let Some(wrapped) = item.wrapped {
+            let wrapped_ident = Ident::Static("wrappedMethod");
+            local_scope.add_symbol(wrapped_ident, Symbol::Functions(vec![(wrapped, Visibility::Public)]));
+        }
+
         let mut checker = TypeChecker::new(pool);
         let checked = checker.check_seq(&item.code, &mut local_scope)?;
         let mut locals = checker.locals();
@@ -623,6 +681,80 @@ impl<'a> Compiler<'a> {
         let function = pool.function_mut(item.function)?;
         function.code = code;
         function.locals = locals;
+        Ok(())
+    }
+
+    fn construct_proxy(
+        slot: PoolIndex<Function>,
+        wrapped: PoolIndex<Function>,
+        wrapper: PoolIndex<Function>,
+        scope: &mut Scope,
+        pool: &mut ConstantPool,
+    ) -> Result<(), Error> {
+        Self::remap_locals(slot, wrapped, pool)?;
+
+        let def = pool.definition(wrapped)?.clone();
+        if let AnyDefinition::Function(fun) = def.value {
+            let mut parameters = vec![];
+            let mut args = vec![];
+
+            for param_idx in &fun.parameters {
+                let param = pool.definition(*param_idx)?.clone();
+                let proxy_idx = pool.add_definition(param);
+                parameters.push(proxy_idx);
+                args.push(Expr::Ident(Reference::Value(Value::Parameter(proxy_idx)), Pos::ZERO));
+            }
+
+            let call = Expr::Call(Callable::Function(wrapper), args, Pos::ZERO);
+            let expr = if fun.return_type.is_some() {
+                Expr::Return(Some(Box::new(call)), Pos::ZERO)
+            } else {
+                call
+            };
+            let code = Assembler::from_body(Seq::new(vec![expr]), scope, pool)?;
+
+            let compiled = Function {
+                code,
+                locals: vec![],
+                parameters,
+                ..fun
+            };
+            let name = pool.names.add(Rc::new(format!("proxy${}", wrapper)));
+            pool.put_definition(slot, Definition::function(name, def.parent.cast(), compiled));
+            if !def.parent.is_undefined() {
+                pool.class_mut(def.parent.cast())?.functions.push(slot);
+            }
+            Ok(())
+        } else {
+            panic!("Invalid proxy")
+        }
+    }
+
+    fn remap_locals(
+        proxy: PoolIndex<Function>,
+        target: PoolIndex<Function>,
+        pool: &mut ConstantPool,
+    ) -> Result<(), Error> {
+        // this is a horrible hack, but the game crashes when it runs into bytecode that
+        // references locals that are not defined adjacent to the function in the constant pool
+        // so this is sadly necessary
+        let locals = pool.function(target)?.locals.clone();
+        let mut mapped_locals = HashMap::new();
+
+        for local_idx in locals {
+            let mut local = pool.definition(local_idx)?.clone();
+            local.parent = proxy.cast();
+            mapped_locals.insert(local_idx, pool.add_definition(local));
+        }
+
+        let fun = pool.function_mut(target)?;
+        fun.locals = mapped_locals.values().copied().collect();
+
+        for instr in fun.code.0.iter_mut() {
+            if let Instr::Local(local) = instr {
+                *instr = Instr::Local(*mapped_locals.get(local).unwrap())
+            }
+        }
         Ok(())
     }
 }
@@ -688,6 +820,7 @@ impl<'a> IntoIterator for &'a ModulePath {
 pub struct BacklogItem {
     class: PoolIndex<Class>,
     function: PoolIndex<Function>,
+    wrapped: Option<PoolIndex<Function>>,
     code: Seq<SourceAst>,
     scope: Scope,
 }
@@ -711,6 +844,25 @@ pub enum Symbol {
     Functions(Vec<(PoolIndex<Function>, Visibility)>),
 }
 
+impl Symbol {
+    pub fn visible(self, visibility: Visibility) -> Option<Symbol> {
+        match self {
+            Symbol::Class(_, v) if v <= visibility => Some(self),
+            Symbol::Struct(_, v) if v <= visibility => Some(self),
+            Symbol::Enum(_) => Some(self),
+            Symbol::Functions(funs) => {
+                let visible_funs: Vec<_> = funs.into_iter().filter(|(_, v)| *v <= visibility).collect();
+                if visible_funs.is_empty() {
+                    None
+                } else {
+                    Some(Symbol::Functions(visible_funs))
+                }
+            }
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Import {
     Exact(ModulePath, Pos),
@@ -729,6 +881,7 @@ pub enum Slot {
         index: PoolIndex<Function>,
         parent: PoolIndex<Class>,
         base: Option<PoolIndex<Function>>,
+        wrapped: Option<PoolIndex<Function>>,
         source: FunctionSource,
         visibility: Visibility,
     },

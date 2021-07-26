@@ -1,0 +1,4 @@
+consolidate-pushes = true
+consolidate-commits = true
+tag-prefix = ""
+dev-version-ext = "dev"

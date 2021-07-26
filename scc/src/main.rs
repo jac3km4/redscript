@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use fd_lock::FdLock;
+use fd_lock::RwLock;
 use log::LevelFilter;
 use redscript::bundle::ScriptBundle;
 use redscript::error::Error;
@@ -49,14 +49,14 @@ fn load_scripts(script_dir: &Path, cache_dir: &Path) -> Result<(), Error> {
 
     let manifest = ScriptManifest::load_with_fallback(script_dir);
 
-    let mut ts_lock = FdLock::new(
+    let mut ts_lock = RwLock::new(
         OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .open(&timestamp_path)?,
     );
-    let mut ts_file = ts_lock.lock()?;
+    let mut ts_file = ts_lock.write()?;
     let write_timestamp = CompileTimestamp::of_cache_file(&File::open(&bundle_path)?)?;
     let saved_timestamp = CompileTimestamp::read(ts_file.deref_mut()).ok();
 

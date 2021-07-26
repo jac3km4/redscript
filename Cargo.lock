@@ -53,10 +53,11 @@ dependencies = [
 
 [[package]]
 name = "fd-lock"
-version = "2.0.0"
+version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0010f02effd88c702318c5dde0463206be67495d0b4d906ba7c0a8f166cc7f06"
+checksum = "b8806dd91a06a7a403a8e596f9bfbfb34e469efbc363fc9c9713e79e26472e36"
 dependencies = [
+ "cfg-if",
  "libc",
  "winapi",
 ]
@@ -221,7 +222,7 @@ dependencies = [
 
 [[package]]
 name = "redscript"
-version = "0.1.0"
+version = "0.2.4-dev"
 dependencies = [
  "byteorder",
  "crc32fast",
@@ -231,7 +232,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-cli"
-version = "0.1.0"
+version = "0.2.4-dev"
 dependencies = [
  "gumdrop",
  "log",
@@ -243,7 +244,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-compiler"
-version = "0.1.0"
+version = "0.2.4-dev"
 dependencies = [
  "im",
  "log",
@@ -256,7 +257,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-decompiler"
-version = "0.1.0"
+version = "0.2.4-dev"
 dependencies = [
  "log",
  "redscript",
@@ -273,7 +274,7 @@ dependencies = [
 
 [[package]]
 name = "scc"
-version = "0.1.0"
+version = "0.2.4-dev"
 dependencies = [
  "byteorder",
  "fd-lock",

@@ -907,7 +907,7 @@ pub struct Label {
     pub index: usize,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Code<Loc>(pub Vec<Instr<Loc>>);
 
 impl<Loc: Clone> Code<Loc> {

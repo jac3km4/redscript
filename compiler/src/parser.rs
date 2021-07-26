@@ -126,6 +126,7 @@ pub struct Annotation {
 #[strum(serialize_all = "camelCase")]
 pub enum AnnotationName {
     ReplaceMethod,
+    WrapMethod,
     ReplaceGlobal,
     AddMethod,
     AddField,

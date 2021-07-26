@@ -327,18 +327,30 @@ impl ConstantPool {
             .map(|(index, def)| (PoolIndex::new(index), def))
     }
 
-    pub fn reserve(&mut self) -> PoolIndex<Definition> {
+    pub fn reserve<A>(&mut self) -> PoolIndex<A> {
         self.add_definition(Definition::DEFAULT)
     }
 
-    pub fn put_definition(&mut self, index: PoolIndex<Definition>, definition: Definition) {
+    pub fn put_definition<A>(&mut self, index: PoolIndex<A>, definition: Definition) {
         self.definitions[index.index] = definition;
     }
 
-    pub fn add_definition(&mut self, definition: Definition) -> PoolIndex<Definition> {
+    pub fn swap_definition<A>(&mut self, lhs: PoolIndex<A>, rhs: PoolIndex<A>) {
+        self.definitions.swap(lhs.index, rhs.index)
+    }
+
+    pub fn add_definition<A>(&mut self, definition: Definition) -> PoolIndex<A> {
         let position = self.definitions.len();
         self.definitions.push(definition);
         PoolIndex::new(position)
+    }
+
+    pub fn stub_definition<A>(&mut self, name_idx: PoolIndex<String>) -> PoolIndex<A> {
+        self.add_definition(Definition::type_(name_idx, Type::Prim))
+    }
+
+    pub fn rename<A>(&mut self, index: PoolIndex<A>, name: PoolIndex<String>) {
+        self.definitions[index.index].name = name;
     }
 
     pub fn roots(&self) -> impl Iterator<Item = (PoolIndex<Definition>, &Definition)> {
@@ -621,6 +633,12 @@ impl<A> Eq for PoolIndex<A> {}
 impl<A> Hash for PoolIndex<A> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         Hash::hash(&self.index, state)
+    }
+}
+
+impl<A> fmt::Display for PoolIndex<A> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!("{}", self.index))
     }
 }
 
