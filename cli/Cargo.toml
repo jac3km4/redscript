@@ -1,8 +1,9 @@
 [package]
 name = "redscript-cli"
-version = "0.1.0"
+version = "0.2.3-dev"
 authors = ["jac3km4 <jac3km4@pm.me>"]
 edition = "2018"
+publish = false
 
 [dependencies]
 redscript = { path = "../core" }
