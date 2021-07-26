@@ -735,6 +735,9 @@ impl<'a> Compiler<'a> {
         target: PoolIndex<Function>,
         pool: &mut ConstantPool,
     ) -> Result<(), Error> {
+        // this is a horrible hack, but the game crashes when it runs into bytecode that
+        // references locals that are not defined adjacent to the function in the constant pool
+        // so this is sadly necessary
         let locals = pool.function(target)?.locals.clone();
         let mut mapped_locals = HashMap::new();
 
