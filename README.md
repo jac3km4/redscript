@@ -7,6 +7,7 @@ Currently includes a compiler, a decompiler and a disassembler.
 Usage:
   decompile [opts]
   compile [opts]
+  lint [opts]
 Compiler options:
   -s, --src SRC        source file or directory
   -b, --bundle BUNDLE  redscript bundle file to read
@@ -24,7 +25,7 @@ Lint options:
 
 You can build the project and decompile all scripts in one command:
 ```bash
-cargo run --bin redscript-cli --release -- decompile -i '/mnt/d/games/Cyberpunk 2077/r6/cache/final.redscript' -o classes.redscript
+cargo run --bin redscript-cli --release -- decompile -i '/mnt/d/games/Cyberpunk 2077/r6/cache/final.redscript' -o dump.reds
 ```
 *__note__: current version requires nightly version of rust (`rustup default nightly`)*
 
@@ -35,27 +36,13 @@ You can find a brief overview of it's features in the [wiki](https://github.com/
 
 You can also try it out [in your browser](https://try-redscript.surge.sh).
 
+Some simple reference script examples can be found [here](https://github.com/jac3km4/redscript/blob/master/resources/patches.reds).
+
 ## integrating with the game
-You can integrate this compiler with the game and make it compile your scripts on startup. To set that up, you need to follow these steps:
+You can integrate this compiler with the game and make it compile your scripts on startup.
 
-- Create `Cyberpunk 2077\engine\config\base\scripts.ini` file with the contents below <br/>
-```ini
-[Scripts]
-EnableCompilation = "true"
-```
-- Place the `scc.exe` tool in the following location: <br/>
-``Cyberpunk 2077\engine\tools\scc.exe``<br/>
-*(The scc executable can be found in Releases)*
+To set it up, you can download the `redscript-mod-{version}.zip` archive from the [latest release](https://github.com/jac3km4/redscript/releases) and extract it in the main game directory. You should end up with the following files:
+- `Cyberpunk 2077/engine/tools/scc.exe`
+- `Cyberpunk 2077/engine/config/base/scripts.ini`
 
-- Now you need to add some scripts. The compiler will look for scripts in `Cyberpunk 2077\r6\scripts\`<br />
-You can copy the script below to `Cyberpunk 2077\r6\scripts\lights.reds` as an example:
-
-```swift
-@replaceMethod(CrossingLight)
-protected final func PlayTrafficNotificationSound(status: worldTrafficLightColor) {
-  return;
-}
-```
-*this mod will disable the walk don't walk crosswalk audio*
-
-You can find more script examples in `resources/patches.reds` in this repository.
+If the compiler is set up correctly it will save logs to `Cyberpunk 2077/r6/cache/redscript.log` whenever you start the game.
