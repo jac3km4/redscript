@@ -12,3 +12,6 @@ redscript-compiler = { path = "../compiler" }
 gumdrop = "0.8"
 log = "0.4"
 simplelog = "0.10"
+
+[package.metadata.release]
+disable-tag = true
