@@ -1,3 +1,4 @@
+use hamt_sync::Map;
 use redscript::ast::{Expr, Ident, Pos, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::definition::{
@@ -11,9 +12,9 @@ use crate::{FunctionSignature, Import, ModulePath, Reference, Symbol, TypeId, Va
 
 #[derive(Debug, Clone)]
 pub struct Scope {
-    symbols: im::HashMap<Ident, Symbol>,
-    references: im::HashMap<Ident, Value>,
-    types: im::HashMap<Ident, PoolIndex<Type>>,
+    symbols: Map<Ident, Symbol>,
+    references: Map<Ident, Value>,
+    types: Map<Ident, PoolIndex<Type>>,
 
     pub this: Option<PoolIndex<Class>>,
     pub function: Option<PoolIndex<Function>>,
@@ -21,20 +22,17 @@ pub struct Scope {
 
 impl Scope {
     pub fn new(pool: &ConstantPool) -> Result<Self, Error> {
-        let types = pool
-            .roots()
-            .filter_map(|(idx, def)| match def.value {
-                AnyDefinition::Type(_) => {
-                    let ident = Ident::Owned(pool.definition_name(idx).ok()?);
-                    Some((ident, idx.cast()))
-                }
-                _ => None,
-            })
-            .collect();
+        let mut types = Map::new();
+        for (idx, def) in pool.roots() {
+            if let AnyDefinition::Type(_) = def.value {
+                let ident = Ident::Owned(pool.definition_name(idx)?);
+                types = types.insert(ident, idx.cast());
+            }
+        }
 
         let result = Scope {
-            symbols: im::HashMap::new(),
-            references: im::HashMap::new(),
+            symbols: Map::new(),
+            references: Map::new(),
             types,
             this: None,
             function: None,
@@ -52,33 +50,37 @@ impl Scope {
     }
 
     pub fn add_local(&mut self, name: Ident, local: PoolIndex<Local>) {
-        self.references.insert(name, Value::Local(local));
+        self.references = self.references.insert(name, Value::Local(local));
     }
 
     pub fn add_parameter(&mut self, name: Ident, param: PoolIndex<Parameter>) {
-        self.references.insert(name, Value::Parameter(param));
+        self.references = self.references.insert(name, Value::Parameter(param));
     }
 
     pub fn add_type(&mut self, name: Ident, typ: PoolIndex<Type>) {
-        self.types.insert(name, typ);
+        self.types = self.types.insert(name, typ);
     }
 
     pub fn add_symbol(&mut self, name: Ident, symbol: Symbol) {
         match symbol {
-            Symbol::Functions(funs) => match self.symbols.get_mut(&name) {
-                Some(Symbol::Functions(existing)) => existing.extend(funs),
+            Symbol::Functions(funs) => match self.symbols.find(&name) {
+                Some(Symbol::Functions(existing)) => {
+                    let mut combined = existing.clone();
+                    combined.extend(funs);
+                    self.symbols = self.symbols.insert(name.clone(), Symbol::Functions(combined));
+                }
                 _ => {
-                    self.symbols.insert(name.clone(), Symbol::Functions(funs));
+                    self.symbols = self.symbols.insert(name.clone(), Symbol::Functions(funs));
                 }
             },
             _ => {
-                self.symbols.insert(name.clone(), symbol);
+                self.symbols = self.symbols.insert(name.clone(), symbol);
             }
         }
     }
 
     pub fn resolve_function(&self, name: Ident, pos: Pos) -> Result<FunctionCandidates, Error> {
-        if let Some(Symbol::Functions(functions)) = self.symbols.get(&name) {
+        if let Some(Symbol::Functions(functions)) = self.symbols.find(&name) {
             Ok(FunctionCandidates {
                 functions: functions.iter().map(|(idx, _)| idx).copied().collect(),
             })
@@ -152,14 +154,14 @@ impl Scope {
 
     pub fn resolve_value(&self, name: Ident, pos: Pos) -> Result<Value, Error> {
         self.references
-            .get(&name)
+            .find(&name)
             .cloned()
             .ok_or_else(|| Error::unresolved_reference(name, pos))
     }
 
     pub fn resolve_symbol(&self, name: Ident, pos: Pos) -> Result<Symbol, Error> {
         self.symbols
-            .get(&name)
+            .find(&name)
             .cloned()
             .ok_or_else(|| Error::unresolved_reference(name, pos))
     }
@@ -172,7 +174,7 @@ impl Scope {
 
     pub fn get_type_index(&mut self, type_: &TypeId, pool: &mut ConstantPool) -> Result<PoolIndex<Type>, Error> {
         let name = type_.repr(pool)?;
-        if let Some(type_idx) = self.types.get(&name) {
+        if let Some(type_idx) = self.types.find(&name) {
             Ok(*type_idx)
         } else {
             let name_idx = pool.names.add(name.to_owned());
@@ -187,13 +189,13 @@ impl Scope {
                 TypeId::Null | TypeId::Void => panic!(),
             };
             let type_idx = pool.add_definition(Definition::type_(name_idx, value));
-            self.types.insert(name, type_idx);
+            self.add_type(name, type_idx);
             Ok(type_idx)
         }
     }
 
     pub fn resolve_type(&self, name: &TypeName, pool: &ConstantPool, pos: Pos) -> Result<TypeId, Error> {
-        let result = if let Some(res) = self.types.get(&name.repr()) {
+        let result = if let Some(res) = self.types.find(&name.repr()) {
             self.resolve_type_from_pool(*res, pool, pos)?
         } else {
             match (name.name.as_ref(), name.arguments.as_slice()) {
@@ -201,7 +203,7 @@ impl Scope {
                 ("wref", [nested]) => TypeId::WeakRef(Box::new(self.resolve_type(nested, pool, pos)?)),
                 ("script_ref", [nested]) => TypeId::ScriptRef(Box::new(self.resolve_type(nested, pool, pos)?)),
                 ("array", [nested]) => TypeId::Array(Box::new(self.resolve_type(nested, pool, pos)?)),
-                _ => match self.symbols.get(&name.repr()) {
+                _ => match self.symbols.find(&name.repr()) {
                     Some(Symbol::Class(idx, _)) => TypeId::Class(*idx),
                     Some(Symbol::Struct(idx, _)) => TypeId::Struct(*idx),
                     Some(Symbol::Enum(idx)) => TypeId::Enum(*idx),
@@ -223,7 +225,7 @@ impl Scope {
             Type::Class => {
                 let name = pool.definition_name(index)?;
                 let ident = Ident::new(name.split('.').last().unwrap().to_owned());
-                match self.symbols.get(&ident) {
+                match self.symbols.find(&ident) {
                     Some(Symbol::Class(class_idx, _)) => TypeId::Class(*class_idx),
                     Some(Symbol::Struct(struct_idx, _)) => TypeId::Struct(*struct_idx),
                     Some(Symbol::Enum(enum_idx)) => TypeId::Enum(*enum_idx),
