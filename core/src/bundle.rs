@@ -575,7 +575,7 @@ impl Encode for DefinitionType {
 }
 
 pub struct PoolIndex<A> {
-    pub value: u32,
+    value: u32,
     phantom: PhantomData<A>,
 }
 
@@ -649,6 +649,12 @@ impl<A> Hash for PoolIndex<A> {
 impl<A> fmt::Display for PoolIndex<A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!("{}", self.value))
+    }
+}
+
+impl<A> From<PoolIndex<A>> for u32 {
+    fn from(index: PoolIndex<A>) -> Self {
+        index.value
     }
 }
 
