@@ -11,7 +11,7 @@ use log::LevelFilter;
 use redscript::bundle::ScriptBundle;
 use redscript::error::Error;
 use redscript_compiler::source_map::{Files, SourceFilter};
-use redscript_compiler::Compiler;
+use redscript_compiler::unit::CompilationUnit;
 use serde_derive::Deserialize;
 use simplelog::{CombinedLogger, Config as LoggerConfig, SimpleLogger, WriteLogger};
 
@@ -75,10 +75,10 @@ fn load_scripts(script_dir: &Path, cache_dir: &Path) -> Result<(), Error> {
     }
 
     let mut bundle: ScriptBundle = ScriptBundle::load(&mut BufReader::new(File::open(&backup_path)?))?;
-    let mut compiler = Compiler::new(&mut bundle.pool)?;
-
     let files = Files::from_dir(script_dir, manifest.source_filter())?;
-    compiler.compile(&files)?;
+
+    CompilationUnit::new(&mut bundle.pool)?.compile(&files)?;
+
     let mut file = File::create(&bundle_path)?;
     bundle.save(&mut BufWriter::new(&mut file))?;
     file.sync_all()?;

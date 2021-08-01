@@ -7,8 +7,8 @@ use redscript::bytecode::IntrinsicOp;
 use redscript::definition::{Definition, Enum, Field, Function, Local, LocalFlags};
 use redscript::error::{Error, FunctionResolutionError};
 
-use crate::scope::{FunctionCandidates, FunctionMatch, Scope};
-use crate::{Reference, Symbol, TypeId, Value};
+use crate::scope::{FunctionCandidates, FunctionMatch, Reference, Scope, TypeId, Value};
+use crate::symbol::Symbol;
 
 pub struct TypeChecker<'a> {
     pool: &'a mut ConstantPool,

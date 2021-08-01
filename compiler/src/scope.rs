@@ -1,14 +1,11 @@
 use hamt_sync::Map;
 use redscript::ast::{Expr, Ident, Pos, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
-use redscript::definition::{
-    AnyDefinition, Class, Definition, Enum, Field, Function, Local, Parameter, Type, Visibility
-};
+use redscript::definition::{AnyDefinition, Class, Definition, Enum, Field, Function, Local, Parameter, Type};
 use redscript::error::Error;
-use sequence_trie::SequenceTrie;
 
+use crate::symbol::{FunctionSignature, Symbol};
 use crate::typechecker::TypedAst;
-use crate::{FunctionSignature, Import, ModulePath, Reference, Symbol, TypeId, Value};
 
 #[derive(Debug, Clone)]
 pub struct Scope {
@@ -67,14 +64,14 @@ impl Scope {
                 Some(Symbol::Functions(existing)) => {
                     let mut combined = existing.clone();
                     combined.extend(funs);
-                    self.symbols = self.symbols.insert(name.clone(), Symbol::Functions(combined));
+                    self.symbols = self.symbols.insert(name, Symbol::Functions(combined));
                 }
                 _ => {
-                    self.symbols = self.symbols.insert(name.clone(), Symbol::Functions(funs));
+                    self.symbols = self.symbols.insert(name, Symbol::Functions(funs));
                 }
             },
             _ => {
-                self.symbols = self.symbols.insert(name.clone(), symbol);
+                self.symbols = self.symbols.insert(name, symbol);
             }
         }
     }
@@ -257,105 +254,73 @@ impl Scope {
     }
 }
 
-pub struct SymbolMap {
-    symbols: SequenceTrie<Ident, Symbol>,
+#[derive(Debug, Clone)]
+pub enum Value {
+    Local(PoolIndex<Local>),
+    Parameter(PoolIndex<Parameter>),
 }
 
-impl SymbolMap {
-    pub fn new(pool: &ConstantPool) -> Result<SymbolMap, Error> {
-        let mut symbols: SequenceTrie<Ident, Symbol> = SequenceTrie::new();
+#[derive(Debug, Clone)]
+pub enum Reference {
+    Value(Value),
+    Symbol(Symbol),
+}
 
-        for (idx, def) in pool.roots() {
-            let name = pool.definition_name(idx)?;
-            let symbol = match def.value {
-                AnyDefinition::Class(ref class) if class.flags.is_struct() => {
-                    Symbol::Struct(idx.cast(), class.visibility)
-                }
-                AnyDefinition::Class(ref class) => Symbol::Class(idx.cast(), class.visibility),
-                AnyDefinition::Enum(_) => Symbol::Enum(idx.cast()),
-                AnyDefinition::Function(ref fun) => Symbol::Functions(vec![(idx.cast(), fun.visibility)]),
-                _ => continue,
-            };
-            let path = ModulePath::parse(&name);
-            match (symbols.get_mut(&path), symbol) {
-                (Some(Symbol::Functions(existing)), Symbol::Functions(new)) => {
-                    existing.extend(new);
-                }
-                (_, symbol) => {
-                    symbols.insert(&path, symbol);
-                }
-            }
-        }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TypeId {
+    Prim(PoolIndex<Type>),
+    Class(PoolIndex<Class>),
+    Struct(PoolIndex<Class>),
+    Enum(PoolIndex<Enum>),
+    Ref(Box<TypeId>),
+    WeakRef(Box<TypeId>),
+    Array(Box<TypeId>),
+    StaticArray(Box<TypeId>, u32),
+    ScriptRef(Box<TypeId>),
+    Null,
+    Void,
+}
 
-        Ok(SymbolMap { symbols })
-    }
-
-    pub fn add_class(&mut self, path: &ModulePath, class: PoolIndex<Class>, visibility: Visibility) {
-        self.symbols.insert(path, Symbol::Class(class, visibility));
-    }
-
-    pub fn add_enum(&mut self, path: &ModulePath, enum_: PoolIndex<Enum>) {
-        self.symbols.insert(path, Symbol::Enum(enum_));
-    }
-
-    pub fn add_function(&mut self, path: &ModulePath, index: PoolIndex<Function>, visibility: Visibility) {
-        match self.symbols.get_mut(path) {
-            Some(Symbol::Functions(existing)) => {
-                existing.push((index, visibility));
-            }
-            _ => {
-                self.symbols.insert(path, Symbol::Functions(vec![(index, visibility)]));
-            }
+impl TypeId {
+    pub fn unwrapped(&self) -> &TypeId {
+        match self {
+            TypeId::Ref(inner) => inner.unwrapped(),
+            TypeId::WeakRef(inner) => inner.unwrapped(),
+            TypeId::ScriptRef(inner) => inner.unwrapped(),
+            other => other,
         }
     }
 
-    pub fn populate_import(&self, import: Import, scope: &mut Scope, visibility: Visibility) -> Result<(), Error> {
-        match import {
-            Import::Exact(path, pos) => {
-                if let Some(symbol) = self.get_symbol(&path, pos)?.visible(visibility) {
-                    scope.add_symbol(path.last().unwrap(), symbol);
-                }
-            }
-            Import::All(path, pos) => {
-                for (ident, symbol) in self.get_direct_children(&path, pos)? {
-                    if let Some(symbol) = symbol.clone().visible(visibility) {
-                        scope.add_symbol(ident, symbol.clone());
-                    }
-                }
-            }
-            Import::Selected(path, names, pos) => {
-                for name in names {
-                    let path = path.with_child(name);
-                    if let Some(symbol) = self.get_symbol(&path, pos)?.visible(visibility) {
-                        scope.add_symbol(path.last().unwrap(), symbol);
-                    }
-                }
-            }
-        };
-        Ok(())
+    fn repr(&self, pool: &ConstantPool) -> Result<Ident, Error> {
+        match self {
+            TypeId::Prim(idx) => Ok(Ident::Owned(pool.definition_name(*idx)?)),
+            TypeId::Class(idx) => Ok(Ident::Owned(pool.definition_name(*idx)?)),
+            TypeId::Struct(idx) => Ok(Ident::Owned(pool.definition_name(*idx)?)),
+            TypeId::Enum(idx) => Ok(Ident::Owned(pool.definition_name(*idx)?)),
+            TypeId::Ref(idx) => Ok(Ident::new(format!("ref:{}", idx.repr(pool)?))),
+            TypeId::WeakRef(idx) => Ok(Ident::new(format!("wref:{}", idx.repr(pool)?))),
+            TypeId::Array(idx) => Ok(Ident::new(format!("array:{}", idx.repr(pool)?))),
+            TypeId::StaticArray(idx, size) => Ok(Ident::new(format!("{}[{}]", idx.repr(pool)?, size))),
+            TypeId::ScriptRef(idx) => Ok(Ident::new(format!("script_ref:{}", idx.repr(pool)?))),
+            TypeId::Null => Err(Error::PoolError("Null type".to_owned())),
+            TypeId::Void => Err(Error::PoolError("Void type".to_owned())),
+        }
     }
 
-    fn get_symbol(&self, path: &ModulePath, pos: Pos) -> Result<Symbol, Error> {
-        self.symbols
-            .get(path)
-            .cloned()
-            .ok_or_else(|| Error::unresolved_import(path.render(), pos))
-    }
-
-    fn get_direct_children(
-        &self,
-        path: &ModulePath,
-        pos: Pos,
-    ) -> Result<impl Iterator<Item = (Ident, &Symbol)>, Error> {
-        let node = self
-            .symbols
-            .get_node(path)
-            .ok_or_else(|| Error::unresolved_module(path.render(), pos))?;
-        let res = node
-            .iter()
-            .filter(|(parts, _)| parts.len() == 1)
-            .map(|(mut parts, sym)| (parts.pop().unwrap().clone(), sym));
-        Ok(res)
+    pub fn pretty(&self, pool: &ConstantPool) -> Result<Ident, Error> {
+        match self {
+            TypeId::Prim(idx) => Ok(Ident::Owned(pool.definition_name(*idx)?)),
+            TypeId::Class(idx) => Ok(Ident::Owned(pool.definition_name(*idx)?)),
+            TypeId::Struct(idx) => Ok(Ident::Owned(pool.definition_name(*idx)?)),
+            TypeId::Enum(idx) => Ok(Ident::Owned(pool.definition_name(*idx)?)),
+            TypeId::Ref(idx) => Ok(Ident::new(format!("ref<{}>", idx.pretty(pool)?))),
+            TypeId::WeakRef(idx) => Ok(Ident::new(format!("wref<{}>", idx.pretty(pool)?))),
+            TypeId::Array(idx) => Ok(Ident::new(format!("array<{}>", idx.pretty(pool)?))),
+            TypeId::StaticArray(idx, size) => Ok(Ident::new(format!("array<{}, {}>", idx.pretty(pool)?, size))),
+            TypeId::ScriptRef(idx) => Ok(Ident::new(format!("script_ref<{}>", idx.pretty(pool)?))),
+            TypeId::Null => Ok(Ident::Static("Null")),
+            TypeId::Void => Ok(Ident::Static("Void")),
+        }
     }
 }
 
