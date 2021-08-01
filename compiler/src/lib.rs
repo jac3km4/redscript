@@ -356,7 +356,7 @@ impl<'a> Compiler<'a> {
             .with_is_const(decl.qualifiers.contain(Qualifier::Const))
             .with_is_exec(decl.qualifiers.contain(Qualifier::Exec))
             .with_is_callback(decl.qualifiers.contain(Qualifier::Callback))
-            .with_is_native(decl.qualifiers.contain(Qualifier::Native));
+            .with_is_native(decl.qualifiers.contain(Qualifier::Native) && source.body.is_none());
 
         let return_type = match source.type_ {
             None => None,
