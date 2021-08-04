@@ -190,6 +190,7 @@ impl<'a> CompilationUnit<'a> {
             let wrapped_name = self.pool.definition(wrapped)?.name;
             let proxy_name = self.pool.definition(proxy)?.name;
 
+            Self::remap_locals(proxy, wrapped, self.pool)?;
             self.pool.rename(wrapped, proxy_name);
             self.pool.rename(proxy, wrapped_name);
             self.pool.swap_definition(wrapped, proxy);
@@ -677,8 +678,6 @@ impl<'a> CompilationUnit<'a> {
         scope: &mut Scope,
         pool: &mut ConstantPool,
     ) -> Result<(), Error> {
-        Self::remap_locals(slot, wrapped, pool)?;
-
         let def = pool.definition(wrapped)?.clone();
         if let AnyDefinition::Function(fun) = def.value {
             let mut parameters = vec![];
