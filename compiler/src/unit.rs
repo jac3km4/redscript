@@ -793,10 +793,12 @@ impl<'a> CompilationUnit<'a> {
             pool.put_definition(*target, def);
         }
 
-        let mappings = need_sorting.into_iter().zip(sorted).collect();
-        PoolMapper::default()
-            .with_class_mapper(MultiMapper::new(mappings))
-            .map(pool);
+        if !need_sorting.is_empty() {
+            let mappings = need_sorting.into_iter().zip(sorted).collect();
+            PoolMapper::default()
+                .with_class_mapper(MultiMapper::new(mappings))
+                .map(pool);
+        }
     }
 }
 
