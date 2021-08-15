@@ -6,6 +6,7 @@ use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Instr};
 use redscript::definition::*;
 use redscript::error::Error;
+use redscript::mapper::{MultiMapper, PoolMapper};
 
 use crate::assembler::Assembler;
 use crate::parser::*;
@@ -204,6 +205,7 @@ impl<'a> CompilationUnit<'a> {
             self.pool.swap_definition(wrapped, proxy);
         }
 
+        Self::cleanup_pool(self.pool);
         Ok(diagnostics)
     }
 
@@ -755,6 +757,45 @@ impl<'a> CompilationUnit<'a> {
             }
         }
         Ok(())
+    }
+    fn class_cardinality(idx: PoolIndex<Class>, pool: &ConstantPool) -> usize {
+        let class = pool.class(idx).unwrap();
+        if class.base.is_undefined() {
+            0
+        } else {
+            Self::class_cardinality(class.base, pool) + 1
+        }
+    }
+
+    fn cleanup_pool(pool: &mut ConstantPool) {
+        let mut need_sorting = Vec::new();
+
+        for (def_idx, def) in pool.definitions() {
+            if let AnyDefinition::Class(class) = &def.value {
+                let pos: u32 = def_idx.into();
+                if pos < class.base.into() {
+                    need_sorting.push(def_idx.cast());
+                    need_sorting.push(class.base);
+                }
+            }
+        }
+        let mut sorted = need_sorting.clone();
+        sorted.sort_by_key(|k| Self::class_cardinality(*k, pool));
+
+        let definitions: Vec<Definition> = need_sorting
+            .iter()
+            .map(|k| pool.definition(*k).unwrap())
+            .cloned()
+            .collect();
+
+        for (def, target) in definitions.into_iter().zip(&sorted) {
+            pool.put_definition(*target, def);
+        }
+
+        let mappings = need_sorting.into_iter().zip(sorted).collect();
+        PoolMapper::default()
+            .with_class_mapper(MultiMapper::new(mappings))
+            .map(pool);
     }
 }
 
