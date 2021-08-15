@@ -145,6 +145,7 @@ impl Assembler {
             }
             Expr::Return(None, _) => {
                 self.emit(Instr::Return);
+                self.emit(Instr::Nop);
             }
             Expr::Seq(seq) => {
                 self.assemble_seq(seq, scope, pool, exit)?;

@@ -609,6 +609,31 @@ fn compile_enum() -> Result<(), Error> {
     check_function_bytecode(sources, expected)
 }
 
+#[test]
+fn compile_empty_return() -> Result<(), Error> {
+    let sources = r#"
+        func Testing(bool: Bool) -> Void {
+            if bool {
+                return;
+            }
+            Log("hello");
+        }
+
+        func Log(str: String) -> Void {}
+        "#;
+    let expected = vec![
+        Instr::JumpIfFalse(Offset::new(14)),
+        Instr::Param(PoolIndex::new(23)),
+        Instr::Return,
+        Instr::Nop,
+        Instr::InvokeStatic(Offset::new(24), 0, PoolIndex::new(22)),
+        Instr::StringConst("hello".to_owned()),
+        Instr::ParamEnd,
+        Instr::Nop,
+    ];
+    check_function_bytecode(sources, expected)
+}
+
 fn check_compilation_pool(code: &str) -> Result<ConstantPool, Error> {
     let module = parser::parse_str(code).unwrap();
     let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
