@@ -653,6 +653,18 @@ impl<A> PartialEq for PoolIndex<A> {
 
 impl<A> Eq for PoolIndex<A> {}
 
+impl<A> PartialOrd for PoolIndex<A> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.value.partial_cmp(&other.value)
+    }
+}
+
+impl<A> Ord for PoolIndex<A> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.value.cmp(&other.value)
+    }
+}
+
 impl<A> Hash for PoolIndex<A> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         Hash::hash(&self.value, state)

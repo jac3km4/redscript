@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
 
 use redscript::ast::{Expr, Ident, Pos, Seq, SourceAst};
@@ -769,18 +769,19 @@ impl<'a> CompilationUnit<'a> {
     fn cleanup_pool(pool: &mut ConstantPool) {
         // this is a workaround for a game crash which happens when the game loads
         // a class which has a base class that is placed after the subclass in the pool
-        let mut need_sorting = Vec::new();
+        let mut need_sorting = BTreeSet::new();
 
         for (def_idx, def) in pool.definitions() {
             if let AnyDefinition::Class(class) = &def.value {
                 let pos: u32 = def_idx.into();
                 if pos < class.base.into() {
-                    need_sorting.push(def_idx.cast());
-                    need_sorting.push(class.base);
+                    need_sorting.insert(def_idx.cast());
+                    need_sorting.insert(class.base);
                 }
             }
         }
-        let mut sorted = need_sorting.clone();
+
+        let mut sorted: Vec<PoolIndex<Class>> = need_sorting.iter().copied().collect();
         sorted.sort_by_key(|k| Self::class_cardinality(*k, pool));
 
         let definitions: Vec<Definition> = need_sorting
