@@ -492,6 +492,9 @@ impl<'a> CompilationUnit<'a> {
         for ann in &source.declaration.annotations {
             match ann.name {
                 AnnotationName::WrapMethod => {
+                    if source.declaration.qualifiers.contain(Qualifier::Native) {
+                        return Err(Error::unsupported("Wrapping natives", ann.pos));
+                    }
                     let class_name = ann
                         .values
                         .first()

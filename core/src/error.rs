@@ -126,7 +126,7 @@ impl Error {
     }
 
     pub fn unsupported<N: Display>(name: N, pos: Pos) -> Error {
-        let err = format!("{} is unsupported here", name);
+        let err = format!("{} is unsupported", name);
         Error::CompileError(err, pos)
     }
 }
