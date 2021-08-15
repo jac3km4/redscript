@@ -736,9 +736,8 @@ impl<'a> CompilationUnit<'a> {
         target: PoolIndex<Function>,
         pool: &mut ConstantPool,
     ) -> Result<(), Error> {
-        // this is a horrible hack, but the game crashes when it runs into bytecode that
-        // references locals that are not defined adjacent to the function in the constant pool
-        // so this is sadly necessary
+        // this is a workaround for a game crash which happens when the game loads
+        // locals that are not placed adjacent to the parent function in the pool
         let locals = pool.function(target)?.locals.clone();
         let mut mapped_locals = HashMap::new();
 
@@ -768,6 +767,8 @@ impl<'a> CompilationUnit<'a> {
     }
 
     fn cleanup_pool(pool: &mut ConstantPool) {
+        // this is a workaround for a game crash which happens when the game loads
+        // a class which has a base class that is placed after the subclass in the pool
         let mut need_sorting = Vec::new();
 
         for (def_idx, def) in pool.definitions() {
