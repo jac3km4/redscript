@@ -769,33 +769,29 @@ impl<'a> CompilationUnit<'a> {
     fn cleanup_pool(pool: &mut ConstantPool) {
         // this is a workaround for a game crash which happens when the game loads
         // a class which has a base class that is placed after the subclass in the pool
-        let mut need_sorting = BTreeSet::new();
+        let mut unsorted = BTreeSet::new();
 
         for (def_idx, def) in pool.definitions() {
             if let AnyDefinition::Class(class) = &def.value {
                 let pos: u32 = def_idx.into();
                 if pos < class.base.into() {
-                    need_sorting.insert(def_idx.cast());
-                    need_sorting.insert(class.base);
+                    unsorted.insert(def_idx.cast());
+                    unsorted.insert(class.base);
                 }
             }
         }
 
-        let mut sorted: Vec<PoolIndex<Class>> = need_sorting.iter().copied().collect();
+        let mut sorted: Vec<PoolIndex<Class>> = unsorted.iter().copied().collect();
         sorted.sort_by_key(|k| Self::class_cardinality(*k, pool));
 
-        let definitions: Vec<Definition> = need_sorting
-            .iter()
-            .map(|k| pool.definition(*k).unwrap())
-            .cloned()
-            .collect();
+        let definitions: Vec<Definition> = sorted.iter().map(|k| pool.definition(*k).unwrap()).cloned().collect();
 
-        for (def, target) in definitions.into_iter().zip(&sorted) {
+        for (def, target) in definitions.into_iter().zip(&unsorted) {
             pool.put_definition(*target, def);
         }
 
-        if !need_sorting.is_empty() {
-            let mappings = need_sorting.into_iter().zip(sorted).collect();
+        if !unsorted.is_empty() {
+            let mappings = sorted.into_iter().zip(unsorted).collect();
             PoolMapper::default()
                 .with_class_mapper(MultiMapper::new(mappings))
                 .map(pool);
