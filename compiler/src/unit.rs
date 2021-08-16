@@ -350,7 +350,8 @@ impl<'a> CompilationUnit<'a> {
         let flags = ClassFlags::new()
             .with_is_abstract(source.qualifiers.contain(Qualifier::Abstract))
             .with_is_final(source.qualifiers.contain(Qualifier::Final))
-            .with_is_native(source.qualifiers.contain(Qualifier::Native));
+            .with_is_native(source.qualifiers.contain(Qualifier::Native))
+            .with_is_import_only(source.qualifiers.contain(Qualifier::ImportOnly));
         let mut functions = vec![];
         let mut fields = vec![];
 

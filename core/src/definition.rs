@@ -648,7 +648,7 @@ pub struct ClassFlags {
     pub is_struct: bool,
     pub has_functions: bool,
     pub has_fields: bool,
-    pub is_native_only: bool,
+    pub is_import_only: bool,
     pub is_test_only: bool,
     pub has_overrides: bool,
     #[skip]
