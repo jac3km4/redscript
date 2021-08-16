@@ -61,6 +61,14 @@ impl<'a> CompilationUnit<'a> {
                 Self::print_error(&err, files.lookup(pos).expect("Unknown file"));
                 Err(Error::CompileError(err, pos))
             }
+            Err(Error::TypeError(err, pos)) => {
+                Self::print_error(&err, files.lookup(pos).expect("Unknown file"));
+                Err(Error::CompileError(err, pos))
+            }
+            Err(Error::ResolutionError(err, pos)) => {
+                Self::print_error(&err, files.lookup(pos).expect("Unknown file"));
+                Err(Error::CompileError(err, pos))
+            }
             Err(Error::SyntaxError(err, pos)) => {
                 Self::print_error(&err, files.lookup(pos).expect("Unknown file"));
                 Err(Error::SyntaxError(err, pos))

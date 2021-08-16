@@ -9,6 +9,8 @@ pub enum Error {
     DecompileError(String),
     SyntaxError(String, Pos),
     CompileError(String, Pos),
+    TypeError(String, Pos),
+    ResolutionError(String, Pos),
     PoolError(String),
     FormatError(fmt::Error),
 }
@@ -94,7 +96,7 @@ impl Error {
 
     pub fn type_error<F: Display, T: Display>(from: F, to: T, pos: Pos) -> Error {
         let error = format!("Can't coerce {} to {}", from, to);
-        Error::CompileError(error, pos)
+        Error::TypeError(error, pos)
     }
 
     pub fn no_matching_overload<N: Display>(name: N, errors: &[FunctionResolutionError], pos: Pos) -> Error {
@@ -103,7 +105,7 @@ impl Error {
             name,
             errors.iter().fold(String::new(), |acc, str| acc + "\n " + &str.0)
         );
-        Error::CompileError(error, pos)
+        Error::ResolutionError(error, pos)
     }
 
     pub fn invalid_intrinsic<N: Display, T: Display>(name: N, type_: T, pos: Pos) -> Error {
@@ -157,8 +159,8 @@ impl FunctionResolutionError {
         FunctionResolutionError(message)
     }
 
-    pub fn too_many_args(expected: usize) -> FunctionResolutionError {
-        let error = format!("Too many arguments, expected {}", expected);
+    pub fn too_many_args(expected: usize, got: usize) -> FunctionResolutionError {
+        let error = format!("Too many arguments, expected {} but got {}", expected, got);
         FunctionResolutionError(error)
     }
 

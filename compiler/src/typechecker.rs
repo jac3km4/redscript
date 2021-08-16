@@ -128,7 +128,7 @@ impl<'a> TypeChecker<'a> {
             }
             Expr::BinOp(lhs, rhs, op, pos) => {
                 let name = Ident::Static(op.into());
-                let args = iter::once(lhs.as_ref()).chain(iter::once(rhs.as_ref()));
+                let args = IntoIterator::into_iter([lhs.as_ref(), rhs.as_ref()]);
                 let candidates = scope.resolve_function(name.clone(), *pos)?;
                 let match_ = self.resolve_overload(name, candidates, args, expected, scope, *pos)?;
                 Expr::Call(Callable::Function(match_.index), match_.args, *pos)
@@ -449,58 +449,65 @@ impl<'a> TypeChecker<'a> {
         &mut self,
         name: Ident,
         overloads: FunctionCandidates,
-        args: impl Iterator<Item = &'b Expr<SourceAst>> + Clone,
+        args: impl ExactSizeIterator<Item = &'b Expr<SourceAst>> + Clone,
         expected: Option<&TypeId>,
         scope: &mut Scope,
         pos: Pos,
     ) -> Result<FunctionMatch, Error> {
         let mut overload_errors = Vec::new();
+        let mut inner_error = None;
 
         for fun_idx in overloads.functions {
             match self.try_overload(fun_idx, args.clone(), expected, scope, pos) {
                 Ok(Ok(res)) => return Ok(res),
                 Ok(Err(err)) => overload_errors.push(err),
+                Err(err @ Error::ResolutionError(_, _)) => inner_error = Some(err),
                 Err(other) => return Err(other),
             }
         }
-        Err(Error::no_matching_overload(name, &overload_errors, pos))
+        if let Some(inner) = inner_error {
+            Err(inner)
+        } else {
+            Err(Error::no_matching_overload(name, &overload_errors, pos))
+        }
     }
 
     fn try_overload<'b>(
         &mut self,
         fun_idx: PoolIndex<Function>,
-        arg_iter: impl Iterator<Item = &'b Expr<SourceAst>>,
+        args: impl ExactSizeIterator<Item = &'b Expr<SourceAst>>,
         expected: Option<&TypeId>,
         scope: &mut Scope,
         pos: Pos,
     ) -> Result<Result<FunctionMatch, FunctionResolutionError>, Error> {
         let fun = self.pool.function(fun_idx)?;
         let params = fun.parameters.clone();
+        let ret_type = fun.return_type;
+
+        if args.len() > params.len() {
+            return Ok(Err(FunctionResolutionError::too_many_args(params.len(), args.len())));
+        }
+
+        let mut compiled_args = Vec::new();
+        for (idx, arg) in args.enumerate() {
+            let param = self.pool.parameter(params[idx])?;
+            let param_type = scope.resolve_type_from_pool(param.type_, self.pool, pos)?;
+            match self.check_and_convert(arg, &param_type, scope, pos) {
+                Ok(converted) => compiled_args.push(converted),
+                Err(Error::TypeError(err, _)) => {
+                    return Ok(Err(FunctionResolutionError::parameter_mismatch(&err, idx)))
+                }
+                Err(err) => return Err(err),
+            }
+        }
 
         if let Some(expected) = expected {
-            let ret_type_idx = fun.return_type.ok_or_else(|| Error::void_cannot_be_used(pos))?;
+            let ret_type_idx = ret_type.ok_or_else(|| Error::void_cannot_be_used(pos))?;
             let ret_type = scope.resolve_type_from_pool(ret_type_idx, self.pool, pos)?;
             if find_conversion(&ret_type, expected, self.pool)?.is_none() {
                 let err =
                     FunctionResolutionError::return_mismatch(expected.pretty(self.pool)?, ret_type.pretty(self.pool)?);
                 return Ok(Err(err));
-            }
-        }
-
-        let mut args = Vec::new();
-        for (idx, arg) in arg_iter.enumerate() {
-            let param_idx = match params.get(idx) {
-                Some(val) => *val,
-                None => return Ok(Err(FunctionResolutionError::too_many_args(params.len()))),
-            };
-            let param = self.pool.parameter(param_idx)?;
-            let param_type = scope.resolve_type_from_pool(param.type_, self.pool, pos)?;
-            match self.check_and_convert(arg, &param_type, scope, pos) {
-                Ok(converted) => args.push(converted),
-                Err(Error::CompileError(err, _)) => {
-                    return Ok(Err(FunctionResolutionError::parameter_mismatch(&err, idx)))
-                }
-                Err(err) => return Err(err),
             }
         }
 
@@ -511,10 +518,13 @@ impl<'a> TypeChecker<'a> {
             .count();
 
         let min_params = params.len() - opt_param_count;
-        if args.len() >= min_params {
-            Ok(Ok(FunctionMatch { index: fun_idx, args }))
+        if compiled_args.len() >= min_params {
+            Ok(Ok(FunctionMatch {
+                index: fun_idx,
+                args: compiled_args,
+            }))
         } else {
-            let err = FunctionResolutionError::invalid_arg_count(args.len(), min_params, params.len());
+            let err = FunctionResolutionError::invalid_arg_count(compiled_args.len(), min_params, params.len());
             Ok(Err(err))
         }
     }
