@@ -323,9 +323,9 @@ impl Assembler {
 
         if !force_static && !flags.is_final() && !flags.is_static() && !flags.is_native() {
             let name_idx = pool.definition(function_idx)?.name;
-            self.emit(Instr::InvokeVirtual(exit_label, 0, name_idx));
+            self.emit(Instr::InvokeVirtual(exit_label, 0, name_idx, 0));
         } else {
-            self.emit(Instr::InvokeStatic(exit_label, 0, function_idx));
+            self.emit(Instr::InvokeStatic(exit_label, 0, function_idx, 0));
         }
         for (arg, flags) in args.into_iter().zip(param_flags.iter()) {
             if flags.is_short_circuit() {
