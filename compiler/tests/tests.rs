@@ -627,7 +627,7 @@ fn compile_empty_return() -> Result<(), Error> {
         Instr::Return,
         Instr::Nop,
         Instr::InvokeStatic(Offset::new(24), 0, PoolIndex::new(22), 0),
-        Instr::StringConst("hello".to_owned()),
+        Instr::StringConst(PoolIndex::new(1)),
         Instr::ParamEnd,
         Instr::Nop,
     ];

@@ -182,8 +182,7 @@ impl<'a> Decompiler<'a> {
             Instr::U64Const(val) => Expr::Constant(Constant::U64(val), Pos::ZERO),
             Instr::F32Const(val) => Expr::Constant(Constant::F32(val), Pos::ZERO),
             Instr::F64Const(val) => Expr::Constant(Constant::F64(val), Pos::ZERO),
-            Instr::StringConst(str) => Expr::Constant(Constant::String(Literal::String, Rc::new(str)), Pos::ZERO),
-            Instr::StringConst2(idx) => {
+            Instr::StringConst(idx) => {
                 let str = self.pool.strings.get(idx)?.to_string();
                 Expr::Constant(Constant::String(Literal::String, Rc::new(str)), Pos::ZERO)
             }

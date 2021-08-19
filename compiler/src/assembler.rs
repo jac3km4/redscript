@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use redscript::ast::{Constant, Expr, Literal, Seq};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Instr, IntrinsicOp, Label, Location, Offset};
@@ -57,7 +55,8 @@ impl Assembler {
             }
             Expr::Constant(cons, _) => match cons {
                 Constant::String(Literal::String, lit) => {
-                    self.emit(Instr::StringConst(lit.deref().to_owned()));
+                    let idx = pool.strings.add(lit);
+                    self.emit(Instr::StringConst(idx));
                 }
                 Constant::String(Literal::Name, lit) => {
                     let idx = pool.names.add(lit);

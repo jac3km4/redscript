@@ -27,8 +27,7 @@ pub enum Instr<Loc> {
     F64Const(f64),
     NameConst(PoolIndex<String>),
     EnumConst(PoolIndex<Enum>, PoolIndex<i64>),
-    StringConst(String),
-    StringConst2(PoolIndex<String>),
+    StringConst(PoolIndex<String>),
     TweakDbIdConst(PoolIndex<TweakDbId>),
     ResourceConst(PoolIndex<Resource>),
     TrueConst,
@@ -128,8 +127,7 @@ impl<L> Instr<L> {
             Instr::F64Const(_) => 8,
             Instr::NameConst(_) => 8,
             Instr::EnumConst(_, _) => 16,
-            Instr::StringConst(bytes) => 4 + bytes.len() as u16,
-            Instr::StringConst2(_) => 4,
+            Instr::StringConst(_) => 4,
             Instr::TweakDbIdConst(_) => 8,
             Instr::ResourceConst(_) => 8,
             Instr::Breakpoint(_, _, _, _, _, _) => 19,
@@ -234,8 +232,7 @@ impl Instr<Label> {
             Instr::F64Const(val) => Instr::F64Const(val),
             Instr::NameConst(idx) => Instr::NameConst(idx),
             Instr::EnumConst(enum_, member) => Instr::EnumConst(enum_, member),
-            Instr::StringConst(val) => Instr::StringConst(val),
-            Instr::StringConst2(idx) => Instr::StringConst2(idx),
+            Instr::StringConst(idx) => Instr::StringConst(idx),
             Instr::TweakDbIdConst(idx) => Instr::TweakDbIdConst(idx),
             Instr::ResourceConst(idx) => Instr::ResourceConst(idx),
             Instr::TrueConst => Instr::TrueConst,
@@ -351,7 +348,7 @@ impl Decode for Instr<Offset> {
             13 => Ok(Instr::F64Const(input.decode()?)),
             14 => Ok(Instr::NameConst(input.decode()?)),
             15 => Ok(Instr::EnumConst(input.decode()?, input.decode()?)),
-            16 => Ok(Instr::StringConst2(input.decode()?)),
+            16 => Ok(Instr::StringConst(input.decode()?)),
             17 => Ok(Instr::TweakDbIdConst(input.decode()?)),
             18 => Ok(Instr::ResourceConst(input.decode()?)),
             19 => Ok(Instr::TrueConst),
@@ -535,11 +532,7 @@ impl Encode for Instr<Offset> {
                 output.encode(enum_)?;
                 output.encode(member)?;
             }
-            Instr::StringConst(str) => {
-                output.encode(&16u8)?;
-                output.encode_str_prefixed::<u32>(str)?;
-            }
-            Instr::StringConst2(idx) => {
+            Instr::StringConst(idx) => {
                 output.encode(&16u8)?;
                 output.encode(idx)?;
             }
