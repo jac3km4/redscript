@@ -182,7 +182,10 @@ impl<'a> Decompiler<'a> {
             Instr::U64Const(val) => Expr::Constant(Constant::U64(val), Pos::ZERO),
             Instr::F32Const(val) => Expr::Constant(Constant::F32(val), Pos::ZERO),
             Instr::F64Const(val) => Expr::Constant(Constant::F64(val), Pos::ZERO),
-            Instr::StringConst(str) => Expr::Constant(Constant::String(Literal::String, Rc::new(str)), Pos::ZERO),
+            Instr::StringConst(idx) => {
+                let str = self.pool.strings.get(idx)?.to_string();
+                Expr::Constant(Constant::String(Literal::String, Rc::new(str)), Pos::ZERO)
+            }
             Instr::NameConst(idx) => {
                 let str = self.pool.names.get(idx)?.to_string();
                 Expr::Constant(Constant::String(Literal::Name, Rc::new(str)), Pos::ZERO)
@@ -251,7 +254,7 @@ impl<'a> Decompiler<'a> {
                     Pos::ZERO,
                 )
             }
-            Instr::InvokeStatic(_, _, idx) => {
+            Instr::InvokeStatic(_, _, idx, _) => {
                 let def = self.pool.definition(idx)?;
                 let name = Ident::Owned(self.pool.names.get(def.name)?);
                 let params = self.consume_params()?;
@@ -277,7 +280,7 @@ impl<'a> Decompiler<'a> {
                 // assert_eq!(fun.parameters.len(), params.len(), "Invalid number of parameters {:?}", params);
                 // }
             }
-            Instr::InvokeVirtual(_, _, idx) => {
+            Instr::InvokeVirtual(_, _, idx, _) => {
                 let name = Ident::Owned(self.pool.names.get(idx)?);
                 let params = self.consume_params()?;
                 if let Some(ctx) = context {

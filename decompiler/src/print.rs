@@ -126,8 +126,7 @@ pub fn write_definition<W: Write>(
 
             if fun.flags.has_body() {
                 write_function_body(out, fun, pool, depth, mode)?;
-            }
-            else {
+            } else {
                 write!(out, ";")?;
             }
             writeln!(out)?;
@@ -403,7 +402,7 @@ fn write_call<W: Write>(
         }
     } else if let Ok(unop) = UnOp::from_str(fun_name) {
         write_unop(out, &params[0], unop, verbose)
-    } else if (fun_name == "WeakRefToRef" || fun_name == "RefToWeakRef") && !verbose {
+    } else if (fun_name == "WeakRefToRef" || fun_name == "RefToWeakRef" || fun_name == "AsRef") && !verbose {
         write_expr(out, &params[0], verbose, 0)
     } else {
         write!(out, "{}(", fun_name)?;

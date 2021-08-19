@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::{io, usize};
 
 use strum::{Display, EnumString, IntoStaticStr};
@@ -26,7 +27,7 @@ pub enum Instr<Loc> {
     F64Const(f64),
     NameConst(PoolIndex<String>),
     EnumConst(PoolIndex<Enum>, PoolIndex<i64>),
-    StringConst(String),
+    StringConst(PoolIndex<String>),
     TweakDbIdConst(PoolIndex<TweakDbId>),
     ResourceConst(PoolIndex<Resource>),
     TrueConst,
@@ -46,8 +47,8 @@ pub enum Instr<Loc> {
     Skip(Loc),
     Conditional(Loc, Loc),
     Construct(u8, PoolIndex<Class>),
-    InvokeStatic(Loc, u16, PoolIndex<Function>),
-    InvokeVirtual(Loc, u16, PoolIndex<String>),
+    InvokeStatic(Loc, u16, PoolIndex<Function>, u16),
+    InvokeVirtual(Loc, u16, PoolIndex<String>, u16),
     ParamEnd,
     Return,
     StructField(PoolIndex<Field>),
@@ -126,7 +127,7 @@ impl<L> Instr<L> {
             Instr::F64Const(_) => 8,
             Instr::NameConst(_) => 8,
             Instr::EnumConst(_, _) => 16,
-            Instr::StringConst(bytes) => 4 + bytes.len() as u16,
+            Instr::StringConst(_) => 4,
             Instr::TweakDbIdConst(_) => 8,
             Instr::ResourceConst(_) => 8,
             Instr::Breakpoint(_, _, _, _, _, _) => 19,
@@ -144,7 +145,8 @@ impl<L> Instr<L> {
             Instr::Skip(_) => 2,
             Instr::Conditional(_, _) => 4,
             Instr::Construct(_, _) => 9,
-            Instr::InvokeStatic(_, _, _) | Instr::InvokeVirtual(_, _, _) => 12,
+            Instr::InvokeStatic(_, _, _, _) => 14,
+            Instr::InvokeVirtual(_, _, _, _) => 14,
             Instr::ParamEnd => 0,
             Instr::Return => 0,
             Instr::StructField(_) => 8,
@@ -230,7 +232,7 @@ impl Instr<Label> {
             Instr::F64Const(val) => Instr::F64Const(val),
             Instr::NameConst(idx) => Instr::NameConst(idx),
             Instr::EnumConst(enum_, member) => Instr::EnumConst(enum_, member),
-            Instr::StringConst(val) => Instr::StringConst(val),
+            Instr::StringConst(idx) => Instr::StringConst(idx),
             Instr::TweakDbIdConst(idx) => Instr::TweakDbIdConst(idx),
             Instr::ResourceConst(idx) => Instr::ResourceConst(idx),
             Instr::TrueConst => Instr::TrueConst,
@@ -256,11 +258,11 @@ impl Instr<Label> {
                 targets[exit.index].relative(location),
             ),
             Instr::Construct(args, idx) => Instr::Construct(args, idx),
-            Instr::InvokeStatic(label, line, idx) => {
-                Instr::InvokeStatic(targets[label.index].relative(location), line, idx)
+            Instr::InvokeStatic(label, line, idx, u) => {
+                Instr::InvokeStatic(targets[label.index].relative(location), line, idx, u)
             }
-            Instr::InvokeVirtual(label, line, idx) => {
-                Instr::InvokeVirtual(targets[label.index].relative(location), line, idx)
+            Instr::InvokeVirtual(label, line, idx, u) => {
+                Instr::InvokeVirtual(targets[label.index].relative(location), line, idx, u)
             }
             Instr::ParamEnd => Instr::ParamEnd,
             Instr::Return => Instr::Return,
@@ -346,7 +348,7 @@ impl Decode for Instr<Offset> {
             13 => Ok(Instr::F64Const(input.decode()?)),
             14 => Ok(Instr::NameConst(input.decode()?)),
             15 => Ok(Instr::EnumConst(input.decode()?, input.decode()?)),
-            16 => Ok(Instr::StringConst(input.decode_str_prefixed::<u32>()?)),
+            16 => Ok(Instr::StringConst(input.decode()?)),
             17 => Ok(Instr::TweakDbIdConst(input.decode()?)),
             18 => Ok(Instr::ResourceConst(input.decode()?)),
             19 => Ok(Instr::TrueConst),
@@ -383,9 +385,11 @@ impl Decode for Instr<Offset> {
                 Offset::new(input.decode::<i16>()? + 3),
                 input.decode()?,
                 input.decode()?,
+                input.decode()?,
             )),
             37 => Ok(Instr::InvokeVirtual(
                 Offset::new(input.decode::<i16>()? + 3),
+                input.decode()?,
                 input.decode()?,
                 input.decode()?,
             )),
@@ -394,64 +398,68 @@ impl Decode for Instr<Offset> {
             40 => Ok(Instr::StructField(input.decode()?)),
             41 => Ok(Instr::Context(Offset::new(input.decode::<i16>()? + 3))),
             42 => Ok(Instr::Equals(input.decode()?)),
-            43 => Ok(Instr::NotEquals(input.decode()?)),
-            44 => Ok(Instr::New(input.decode()?)),
-            45 => Ok(Instr::Delete),
-            46 => Ok(Instr::This),
-            47 => Ok(Instr::StartProfiling(
+
+            45 => Ok(Instr::NotEquals(input.decode()?)),
+
+            48 => Ok(Instr::New(input.decode()?)),
+            49 => Ok(Instr::Delete),
+            50 => Ok(Instr::This),
+            51 => Ok(Instr::StartProfiling(
                 input.decode_vec_prefixed::<u32, u8>()?,
                 input.decode()?,
             )),
-            48 => Ok(Instr::ArrayClear(input.decode()?)),
-            49 => Ok(Instr::ArraySize(input.decode()?)),
-            50 => Ok(Instr::ArrayResize(input.decode()?)),
-            51 => Ok(Instr::ArrayFindFirst(input.decode()?)),
-            52 => Ok(Instr::ArrayFindFirstFast(input.decode()?)),
-            53 => Ok(Instr::ArrayFindLast(input.decode()?)),
-            54 => Ok(Instr::ArrayFindLastFast(input.decode()?)),
-            55 => Ok(Instr::ArrayContains(input.decode()?)),
-            56 => Ok(Instr::ArrayContainsFast(input.decode()?)),
-            57 => Ok(Instr::ArrayCount(input.decode()?)),
-            58 => Ok(Instr::ArrayCountFast(input.decode()?)),
-            59 => Ok(Instr::ArrayPush(input.decode()?)),
-            60 => Ok(Instr::ArrayPop(input.decode()?)),
-            61 => Ok(Instr::ArrayInsert(input.decode()?)),
-            62 => Ok(Instr::ArrayRemove(input.decode()?)),
-            63 => Ok(Instr::ArrayRemoveFast(input.decode()?)),
-            64 => Ok(Instr::ArrayGrow(input.decode()?)),
-            65 => Ok(Instr::ArrayErase(input.decode()?)),
-            66 => Ok(Instr::ArrayEraseFast(input.decode()?)),
-            67 => Ok(Instr::ArrayLast(input.decode()?)),
-            68 => Ok(Instr::ArrayElement(input.decode()?)),
-            69 => Ok(Instr::StaticArraySize(input.decode()?)),
-            70 => Ok(Instr::StaticArrayFindFirst(input.decode()?)),
-            71 => Ok(Instr::StaticArrayFindFirstFast(input.decode()?)),
-            72 => Ok(Instr::StaticArrayFindLast(input.decode()?)),
-            73 => Ok(Instr::StaticArrayFindLastFast(input.decode()?)),
-            74 => Ok(Instr::StaticArrayContains(input.decode()?)),
-            75 => Ok(Instr::StaticArrayContainsFast(input.decode()?)),
-            76 => Ok(Instr::StaticArrayCount(input.decode()?)),
-            77 => Ok(Instr::StaticArrayCountFast(input.decode()?)),
-            78 => Ok(Instr::StaticArrayLast(input.decode()?)),
-            79 => Ok(Instr::StaticArrayElement(input.decode()?)),
-            80 => Ok(Instr::RefToBool),
-            81 => Ok(Instr::WeakRefToBool),
-            82 => Ok(Instr::EnumToI32(input.decode()?, input.decode()?)),
-            83 => Ok(Instr::I32ToEnum(input.decode()?, input.decode()?)),
-            84 => Ok(Instr::DynamicCast(input.decode()?, input.decode()?)),
-            85 => Ok(Instr::ToString(input.decode()?)),
-            86 => Ok(Instr::ToVariant(input.decode()?)),
-            87 => Ok(Instr::FromVariant(input.decode()?)),
-            88 => Ok(Instr::VariantIsValid),
-            89 => Ok(Instr::VariantIsRef),
-            90 => Ok(Instr::VariantIsArray),
-            91 => Ok(Instr::VatiantToCName),
-            92 => Ok(Instr::VariantToString),
-            93 => Ok(Instr::WeakRefToRef),
-            94 => Ok(Instr::RefToWeakRef),
-            95 => Ok(Instr::WeakRefNull),
-            96 => Ok(Instr::AsRef(input.decode()?)),
-            97 => Ok(Instr::Deref(input.decode()?)),
+            52 => Ok(Instr::ArrayClear(input.decode()?)),
+            53 => Ok(Instr::ArraySize(input.decode()?)),
+            54 => Ok(Instr::ArrayResize(input.decode()?)),
+            55 => Ok(Instr::ArrayFindFirst(input.decode()?)),
+            56 => Ok(Instr::ArrayFindFirstFast(input.decode()?)),
+            57 => Ok(Instr::ArrayFindLast(input.decode()?)),
+            58 => Ok(Instr::ArrayFindLastFast(input.decode()?)),
+            59 => Ok(Instr::ArrayContains(input.decode()?)),
+            60 => Ok(Instr::ArrayContainsFast(input.decode()?)),
+            61 => Ok(Instr::ArrayCount(input.decode()?)),
+            62 => Ok(Instr::ArrayCountFast(input.decode()?)),
+            63 => Ok(Instr::ArrayPush(input.decode()?)),
+            64 => Ok(Instr::ArrayPop(input.decode()?)),
+            65 => Ok(Instr::ArrayInsert(input.decode()?)),
+            66 => Ok(Instr::ArrayRemove(input.decode()?)),
+            67 => Ok(Instr::ArrayRemoveFast(input.decode()?)),
+            68 => Ok(Instr::ArrayGrow(input.decode()?)),
+            69 => Ok(Instr::ArrayErase(input.decode()?)),
+            70 => Ok(Instr::ArrayEraseFast(input.decode()?)),
+            71 => Ok(Instr::ArrayLast(input.decode()?)),
+            72 => Ok(Instr::ArrayElement(input.decode()?)),
+
+            73 => Ok(Instr::StaticArraySize(input.decode()?)),
+            74 => Ok(Instr::StaticArrayFindFirst(input.decode()?)),
+            75 => Ok(Instr::StaticArrayFindFirstFast(input.decode()?)),
+            76 => Ok(Instr::StaticArrayFindLast(input.decode()?)),
+            77 => Ok(Instr::StaticArrayFindLastFast(input.decode()?)),
+            78 => Ok(Instr::StaticArrayContains(input.decode()?)),
+            79 => Ok(Instr::StaticArrayContainsFast(input.decode()?)),
+            80 => Ok(Instr::StaticArrayCount(input.decode()?)),
+            81 => Ok(Instr::StaticArrayCountFast(input.decode()?)),
+            82 => Ok(Instr::StaticArrayLast(input.decode()?)),
+            83 => Ok(Instr::StaticArrayElement(input.decode()?)),
+
+            84 => Ok(Instr::RefToBool),
+            85 => Ok(Instr::WeakRefToBool),
+            86 => Ok(Instr::EnumToI32(input.decode()?, input.decode()?)),
+            87 => Ok(Instr::I32ToEnum(input.decode()?, input.decode()?)),
+            88 => Ok(Instr::DynamicCast(input.decode()?, input.decode()?)),
+            89 => Ok(Instr::ToString(input.decode()?)),
+            90 => Ok(Instr::ToVariant(input.decode()?)),
+            91 => Ok(Instr::FromVariant(input.decode()?)),
+            92 => Ok(Instr::VariantIsValid),
+            93 => Ok(Instr::VariantIsRef),
+            94 => Ok(Instr::VariantIsArray),
+            95 => Ok(Instr::VatiantToCName),
+            96 => Ok(Instr::VariantToString),
+            97 => Ok(Instr::WeakRefToRef),
+            98 => Ok(Instr::RefToWeakRef),
+            99 => Ok(Instr::WeakRefNull),
+            100 => Ok(Instr::AsRef(input.decode()?)),
+            101 => Ok(Instr::Deref(input.decode()?)),
             other => {
                 let msg = format!("Invalid instruction code: {}", other);
                 Err(io::Error::new(io::ErrorKind::InvalidData, msg))
@@ -524,9 +532,9 @@ impl Encode for Instr<Offset> {
                 output.encode(enum_)?;
                 output.encode(member)?;
             }
-            Instr::StringConst(str) => {
+            Instr::StringConst(idx) => {
                 output.encode(&16u8)?;
-                output.encode_str_prefixed::<u32>(str)?;
+                output.encode(idx)?;
             }
             Instr::TweakDbIdConst(idx) => {
                 output.encode(&17u8)?;
@@ -607,17 +615,19 @@ impl Encode for Instr<Offset> {
                 output.encode(n_params)?;
                 output.encode(idx)?;
             }
-            Instr::InvokeStatic(offset, line, idx) => {
+            Instr::InvokeStatic(offset, line, idx, u) => {
                 output.encode(&36u8)?;
                 output.encode(&Offset::new(offset.value - 3))?;
                 output.encode(line)?;
                 output.encode(idx)?;
+                output.encode(u)?;
             }
-            Instr::InvokeVirtual(offset, line, idx) => {
+            Instr::InvokeVirtual(offset, line, idx, u) => {
                 output.encode(&37u8)?;
                 output.encode(&Offset::new(offset.value - 3))?;
                 output.encode(line)?;
                 output.encode(idx)?;
+                output.encode(u)?;
             }
             Instr::ParamEnd => {
                 output.encode(&38u8)?;
@@ -638,215 +648,215 @@ impl Encode for Instr<Offset> {
                 output.encode(idx)?;
             }
             Instr::NotEquals(idx) => {
-                output.encode(&43u8)?;
+                output.encode(&45u8)?;
                 output.encode(idx)?;
             }
             Instr::New(idx) => {
-                output.encode(&44u8)?;
+                output.encode(&48u8)?;
                 output.encode(idx)?;
             }
             Instr::Delete => {
-                output.encode(&45u8)?;
+                output.encode(&49u8)?;
             }
             Instr::This => {
-                output.encode(&46u8)?;
+                output.encode(&50u8)?;
             }
             Instr::StartProfiling(vec, byte) => {
-                output.encode(&47u8)?;
+                output.encode(&51u8)?;
                 output.encode_slice_prefixed::<u32, u8>(vec)?;
                 output.encode(byte)?;
             }
             Instr::ArrayClear(idx) => {
-                output.encode(&48u8)?;
-                output.encode(idx)?;
-            }
-            Instr::ArraySize(idx) => {
-                output.encode(&49u8)?;
-                output.encode(idx)?;
-            }
-            Instr::ArrayResize(idx) => {
-                output.encode(&50u8)?;
-                output.encode(idx)?;
-            }
-            Instr::ArrayFindFirst(idx) => {
-                output.encode(&51u8)?;
-                output.encode(idx)?;
-            }
-            Instr::ArrayFindFirstFast(idx) => {
                 output.encode(&52u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayFindLast(idx) => {
+            Instr::ArraySize(idx) => {
                 output.encode(&53u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayFindLastFast(idx) => {
+            Instr::ArrayResize(idx) => {
                 output.encode(&54u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayContains(idx) => {
+            Instr::ArrayFindFirst(idx) => {
                 output.encode(&55u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayContainsFast(idx) => {
+            Instr::ArrayFindFirstFast(idx) => {
                 output.encode(&56u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayCount(idx) => {
+            Instr::ArrayFindLast(idx) => {
                 output.encode(&57u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayCountFast(idx) => {
+            Instr::ArrayFindLastFast(idx) => {
                 output.encode(&58u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayPush(idx) => {
+            Instr::ArrayContains(idx) => {
                 output.encode(&59u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayPop(idx) => {
+            Instr::ArrayContainsFast(idx) => {
                 output.encode(&60u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayInsert(idx) => {
+            Instr::ArrayCount(idx) => {
                 output.encode(&61u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayRemove(idx) => {
+            Instr::ArrayCountFast(idx) => {
                 output.encode(&62u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayRemoveFast(idx) => {
+            Instr::ArrayPush(idx) => {
                 output.encode(&63u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayGrow(idx) => {
+            Instr::ArrayPop(idx) => {
                 output.encode(&64u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayErase(idx) => {
+            Instr::ArrayInsert(idx) => {
                 output.encode(&65u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayEraseFast(idx) => {
+            Instr::ArrayRemove(idx) => {
                 output.encode(&66u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayLast(idx) => {
+            Instr::ArrayRemoveFast(idx) => {
                 output.encode(&67u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayElement(idx) => {
+            Instr::ArrayGrow(idx) => {
                 output.encode(&68u8)?;
                 output.encode(idx)?;
             }
-            Instr::StaticArraySize(idx) => {
+            Instr::ArrayErase(idx) => {
                 output.encode(&69u8)?;
                 output.encode(idx)?;
             }
-            Instr::StaticArrayFindFirst(idx) => {
+            Instr::ArrayEraseFast(idx) => {
                 output.encode(&70u8)?;
                 output.encode(idx)?;
             }
-            Instr::StaticArrayFindFirstFast(idx) => {
+            Instr::ArrayLast(idx) => {
                 output.encode(&71u8)?;
                 output.encode(idx)?;
             }
-            Instr::StaticArrayFindLast(idx) => {
+            Instr::ArrayElement(idx) => {
                 output.encode(&72u8)?;
                 output.encode(idx)?;
             }
-            Instr::StaticArrayFindLastFast(idx) => {
+            Instr::StaticArraySize(idx) => {
                 output.encode(&73u8)?;
                 output.encode(idx)?;
             }
-            Instr::StaticArrayContains(idx) => {
+            Instr::StaticArrayFindFirst(idx) => {
                 output.encode(&74u8)?;
                 output.encode(idx)?;
             }
-            Instr::StaticArrayContainsFast(idx) => {
+            Instr::StaticArrayFindFirstFast(idx) => {
                 output.encode(&75u8)?;
                 output.encode(idx)?;
             }
-            Instr::StaticArrayCount(idx) => {
+            Instr::StaticArrayFindLast(idx) => {
                 output.encode(&76u8)?;
                 output.encode(idx)?;
             }
-            Instr::StaticArrayCountFast(idx) => {
+            Instr::StaticArrayFindLastFast(idx) => {
                 output.encode(&77u8)?;
                 output.encode(idx)?;
             }
-            Instr::StaticArrayLast(idx) => {
+            Instr::StaticArrayContains(idx) => {
                 output.encode(&78u8)?;
                 output.encode(idx)?;
             }
-            Instr::StaticArrayElement(idx) => {
+            Instr::StaticArrayContainsFast(idx) => {
                 output.encode(&79u8)?;
                 output.encode(idx)?;
             }
-            Instr::RefToBool => {
+            Instr::StaticArrayCount(idx) => {
                 output.encode(&80u8)?;
+                output.encode(idx)?;
+            }
+            Instr::StaticArrayCountFast(idx) => {
+                output.encode(&81u8)?;
+                output.encode(idx)?;
+            }
+            Instr::StaticArrayLast(idx) => {
+                output.encode(&82u8)?;
+                output.encode(idx)?;
+            }
+            Instr::StaticArrayElement(idx) => {
+                output.encode(&83u8)?;
+                output.encode(idx)?;
+            }
+            Instr::RefToBool => {
+                output.encode(&84u8)?;
             }
             Instr::WeakRefToBool => {
-                output.encode(&81u8)?;
+                output.encode(&85u8)?;
             }
             Instr::EnumToI32(idx, byte) => {
-                output.encode(&82u8)?;
+                output.encode(&86u8)?;
                 output.encode(idx)?;
                 output.encode(byte)?;
             }
             Instr::I32ToEnum(idx, byte) => {
-                output.encode(&83u8)?;
+                output.encode(&87u8)?;
                 output.encode(idx)?;
                 output.encode(byte)?;
             }
             Instr::DynamicCast(idx, byte) => {
-                output.encode(&84u8)?;
+                output.encode(&88u8)?;
                 output.encode(idx)?;
                 output.encode(byte)?;
             }
             Instr::ToString(idx) => {
-                output.encode(&85u8)?;
+                output.encode(&89u8)?;
                 output.encode(idx)?;
             }
             Instr::ToVariant(idx) => {
-                output.encode(&86u8)?;
+                output.encode(&90u8)?;
                 output.encode(idx)?;
             }
             Instr::FromVariant(idx) => {
-                output.encode(&87u8)?;
+                output.encode(&91u8)?;
                 output.encode(idx)?;
             }
             Instr::VariantIsValid => {
-                output.encode(&88u8)?;
-            }
-            Instr::VariantIsRef => {
-                output.encode(&89u8)?;
-            }
-            Instr::VariantIsArray => {
-                output.encode(&90u8)?;
-            }
-            Instr::VatiantToCName => {
-                output.encode(&91u8)?;
-            }
-            Instr::VariantToString => {
                 output.encode(&92u8)?;
             }
-            Instr::WeakRefToRef => {
+            Instr::VariantIsRef => {
                 output.encode(&93u8)?;
             }
-            Instr::RefToWeakRef => {
+            Instr::VariantIsArray => {
                 output.encode(&94u8)?;
             }
-            Instr::WeakRefNull => {
+            Instr::VatiantToCName => {
                 output.encode(&95u8)?;
             }
-            Instr::AsRef(idx) => {
+            Instr::VariantToString => {
                 output.encode(&96u8)?;
+            }
+            Instr::WeakRefToRef => {
+                output.encode(&97u8)?;
+            }
+            Instr::RefToWeakRef => {
+                output.encode(&98u8)?;
+            }
+            Instr::WeakRefNull => {
+                output.encode(&99u8)?;
+            }
+            Instr::AsRef(idx) => {
+                output.encode(&100u8)?;
                 output.encode(idx)?;
             }
             Instr::Deref(idx) => {
-                output.encode(&97u8)?;
+                output.encode(&101u8)?;
                 output.encode(idx)?;
             }
         }

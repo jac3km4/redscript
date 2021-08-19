@@ -122,9 +122,9 @@ fn compile_base_class_overload() -> Result<(), Error> {
         Instr::Assign,
         Instr::Local(PoolIndex::new(32)),
         Instr::New(PoolIndex::new(25)),
-        Instr::Context(Offset::new(36)),
+        Instr::Context(Offset::new(38)),
         Instr::Local(PoolIndex::new(32)),
-        Instr::InvokeStatic(Offset::new(24), 0, PoolIndex::new(28)),
+        Instr::InvokeStatic(Offset::new(26), 0, PoolIndex::new(28), 0),
         Instr::I32Const(1),
         Instr::I32Const(2),
         Instr::ParamEnd,
@@ -164,12 +164,12 @@ fn compile_basic_casts() -> Result<(), Error> {
     let expected = vec![
         Instr::Assign,
         Instr::Local(PoolIndex::new(26)),
-        Instr::InvokeStatic(Offset::new(19), 0, PoolIndex::new(22)),
+        Instr::InvokeStatic(Offset::new(21), 0, PoolIndex::new(22), 0),
         Instr::I32Const(1),
         Instr::ParamEnd,
         Instr::Assign,
         Instr::Local(PoolIndex::new(27)),
-        Instr::InvokeStatic(Offset::new(19), 0, PoolIndex::new(23)),
+        Instr::InvokeStatic(Offset::new(21), 0, PoolIndex::new(23), 0),
         Instr::I32Const(2),
         Instr::ParamEnd,
         Instr::Nop,
@@ -196,7 +196,7 @@ fn compile_overloaded_call() -> Result<(), Error> {
         Instr::Assign,
         Instr::Local(PoolIndex::new(38)),
         Instr::New(PoolIndex::new(27)),
-        Instr::InvokeStatic(Offset::new(33), 0, PoolIndex::new(22)),
+        Instr::InvokeStatic(Offset::new(35), 0, PoolIndex::new(22), 0),
         Instr::RefToWeakRef,
         Instr::Local(PoolIndex::new(38)),
         Instr::Local(PoolIndex::new(38)),
@@ -232,8 +232,8 @@ fn compile_for_loop() -> Result<(), Error> {
         Instr::Assign,
         Instr::Local(PoolIndex::new(34)),
         Instr::I32Const(0),
-        Instr::JumpIfFalse(Offset::new(144)),
-        Instr::InvokeStatic(Offset::new(41), 0, PoolIndex::new(24)),
+        Instr::JumpIfFalse(Offset::new(150)),
+        Instr::InvokeStatic(Offset::new(43), 0, PoolIndex::new(24), 0),
         Instr::Local(PoolIndex::new(34)),
         Instr::ArraySize(PoolIndex::new(31)),
         Instr::Local(PoolIndex::new(33)),
@@ -243,15 +243,15 @@ fn compile_for_loop() -> Result<(), Error> {
         Instr::ArrayElement(PoolIndex::new(31)),
         Instr::Local(PoolIndex::new(33)),
         Instr::Local(PoolIndex::new(34)),
-        Instr::InvokeStatic(Offset::new(32), 0, PoolIndex::new(22)),
+        Instr::InvokeStatic(Offset::new(34), 0, PoolIndex::new(22), 0),
         Instr::ToString(PoolIndex::new(8)),
         Instr::Local(PoolIndex::new(30)),
         Instr::ParamEnd,
-        Instr::InvokeStatic(Offset::new(28), 0, PoolIndex::new(23)),
+        Instr::InvokeStatic(Offset::new(30), 0, PoolIndex::new(23), 0),
         Instr::Local(PoolIndex::new(34)),
         Instr::I32Const(1),
         Instr::ParamEnd,
-        Instr::Jump(Offset::new(-141)),
+        Instr::Jump(Offset::new(-147)),
         Instr::Nop,
     ];
     check_function_bytecode(sources, expected)
@@ -325,6 +325,38 @@ fn compile_variant_conversions() -> Result<(), Error> {
 }
 
 #[test]
+fn compile_implicit_conversions() -> Result<(), Error> {
+    let sources = r#"
+        func Testing() {
+            Test1("test");
+            let a: wref<A> = new A();
+            Test2(a);
+        }
+
+        native func Test1(str: script_ref<String>)
+        native func Test2(instance: ref<A>)
+
+        class A {}
+        "#;
+    let expected = vec![
+        Instr::InvokeStatic(Offset::new(30), 0, PoolIndex::new(22), 0),
+        Instr::AsRef(PoolIndex::new(7)),
+        Instr::StringConst(PoolIndex::new(0)),
+        Instr::ParamEnd,
+        Instr::Assign,
+        Instr::Local(PoolIndex::new(31)),
+        Instr::RefToWeakRef,
+        Instr::New(PoolIndex::new(25)),
+        Instr::InvokeStatic(Offset::new(26), 0, PoolIndex::new(23), 0),
+        Instr::WeakRefToRef,
+        Instr::Local(PoolIndex::new(31)),
+        Instr::ParamEnd,
+        Instr::Nop,
+    ];
+    check_function_bytecode(sources, expected)
+}
+
+#[test]
 fn compile_switch_case() -> Result<(), Error> {
     let sources = "
         func Testing(val: Int32) -> Bool {
@@ -342,8 +374,8 @@ fn compile_switch_case() -> Result<(), Error> {
         func OperatorModulo(l: Int32, r: Int32) -> Int32 = 0
         ";
     let expected = vec![
-        Instr::Switch(PoolIndex::new(8), Offset::new(39)),
-        Instr::InvokeStatic(Offset::new(28), 0, PoolIndex::new(22)),
+        Instr::Switch(PoolIndex::new(8), Offset::new(41)),
+        Instr::InvokeStatic(Offset::new(30), 0, PoolIndex::new(22), 0),
         Instr::Param(PoolIndex::new(23)),
         Instr::I32Const(4),
         Instr::ParamEnd,
@@ -374,9 +406,9 @@ fn compile_ternary_op() -> Result<(), Error> {
         ";
     let expected = vec![
         Instr::Return,
-        Instr::Conditional(Offset::new(53), Offset::new(54)),
-        Instr::InvokeStatic(Offset::new(47), 0, PoolIndex::new(23)),
-        Instr::InvokeStatic(Offset::new(28), 0, PoolIndex::new(22)),
+        Instr::Conditional(Offset::new(57), Offset::new(58)),
+        Instr::InvokeStatic(Offset::new(51), 0, PoolIndex::new(23), 0),
+        Instr::InvokeStatic(Offset::new(30), 0, PoolIndex::new(22), 0),
         Instr::Param(PoolIndex::new(24)),
         Instr::I32Const(2),
         Instr::ParamEnd,
@@ -426,9 +458,9 @@ fn compile_method_overload_call() -> Result<(), Error> {
         ";
     let expected = vec![
         Instr::Return,
-        Instr::Context(Offset::new(18)),
+        Instr::Context(Offset::new(20)),
         Instr::This,
-        Instr::InvokeStatic(Offset::new(14), 0, PoolIndex::new(26)),
+        Instr::InvokeStatic(Offset::new(16), 0, PoolIndex::new(26), 0),
         Instr::ParamEnd,
         Instr::Nop,
     ];
@@ -626,8 +658,8 @@ fn compile_empty_return() -> Result<(), Error> {
         Instr::Param(PoolIndex::new(23)),
         Instr::Return,
         Instr::Nop,
-        Instr::InvokeStatic(Offset::new(24), 0, PoolIndex::new(22)),
-        Instr::StringConst("hello".to_owned()),
+        Instr::InvokeStatic(Offset::new(21), 0, PoolIndex::new(22), 0),
+        Instr::StringConst(PoolIndex::new(0)),
         Instr::ParamEnd,
         Instr::Nop,
     ];

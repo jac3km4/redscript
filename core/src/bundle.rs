@@ -40,22 +40,23 @@ impl ScriptBundle {
 #[derive(Debug, Clone)]
 pub struct Header {
     version: u32,
+    flags: u32,
     unk1: u32,
     unk2: u32,
     unk3: u32,
-    unk4: u32,
     hash: u32,
-    unk5: u32,
-    strings: TableHeader,
+    chunks: u32,
+    data: TableHeader,
     names: TableHeader,
     tweakdb_indexes: TableHeader,
     resources: TableHeader,
+    strings: TableHeader,
     definitions: TableHeader,
 }
 
 impl Header {
     const MAGIC: u32 = 0x53444552;
-    const SIZE: usize = 92;
+    const SIZE: usize = 104;
 }
 
 impl Decode for Header {
@@ -66,30 +67,32 @@ impl Decode for Header {
         }
 
         let version: u32 = input.decode()?;
+        let flags: u32 = input.decode()?;
         let unk1: u32 = input.decode()?;
         let unk2: u32 = input.decode()?;
         let unk3: u32 = input.decode()?;
-        let unk4: u32 = input.decode()?;
         let hash: u32 = input.decode()?;
-        let unk5: u32 = input.decode()?;
-        let strings: TableHeader = input.decode()?;
+        let chunks: u32 = input.decode()?;
+        let data: TableHeader = input.decode()?;
         let names: TableHeader = input.decode()?;
         let tweakdb_indexes: TableHeader = input.decode()?;
         let resources: TableHeader = input.decode()?;
         let definitions: TableHeader = input.decode()?;
+        let strings: TableHeader = input.decode()?;
 
         let result = Header {
             version,
+            flags,
             unk1,
             unk2,
             unk3,
-            unk4,
             hash,
-            unk5,
-            strings,
+            chunks,
+            data,
             names,
             tweakdb_indexes,
             resources,
+            strings,
             definitions,
         };
         Ok(result)
@@ -100,17 +103,18 @@ impl Encode for Header {
     fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
         output.encode(&Header::MAGIC)?;
         output.encode(&value.version)?;
+        output.encode(&value.flags)?;
         output.encode(&value.unk1)?;
         output.encode(&value.unk2)?;
         output.encode(&value.unk3)?;
-        output.encode(&value.unk4)?;
         output.encode(&value.hash)?;
-        output.encode(&value.unk5)?;
-        output.encode(&value.strings)?;
+        output.encode(&value.chunks)?;
+        output.encode(&value.data)?;
         output.encode(&value.names)?;
         output.encode(&value.tweakdb_indexes)?;
         output.encode(&value.resources)?;
-        output.encode(&value.definitions)
+        output.encode(&value.definitions)?;
+        output.encode(&value.strings)
     }
 }
 
@@ -119,21 +123,21 @@ pub struct ConstantPool {
     pub names: Names<String>,
     pub tweakdb_ids: Names<TweakDbId>,
     pub resources: Names<Resource>,
+    pub strings: Names<String>,
     definitions: Vec<Definition>,
 }
 
 impl ConstantPool {
     pub fn decode<I: io::Read + io::Seek>(input: &mut I, header: &Header) -> Result<Self, Error> {
-        let buffer = input.decode_bytes(header.strings.count)?;
+        let buffer = input.decode_bytes(header.data.count)?;
 
         let mut cursor = io::Cursor::new(buffer);
 
         let names = Names::decode_from(&mut cursor, &input.decode_vec(header.names.count)?)?;
         let tweakdb_ids = Names::decode_from(&mut cursor, &input.decode_vec(header.tweakdb_indexes.count)?)?;
         let resources = Names::decode_from(&mut cursor, &input.decode_vec(header.resources.count)?)?;
-
-        input.seek(io::SeekFrom::Start(header.definitions.offset.into()))?;
         let headers: Vec<DefinitionHeader> = input.decode_vec(header.definitions.count)?;
+        let strings = Names::decode_from(&mut cursor, &input.decode_vec(header.strings.count)?)?;
 
         let mut definitions = Vec::with_capacity(headers.len());
         definitions.push(Definition::DEFAULT);
@@ -147,20 +151,22 @@ impl ConstantPool {
             names,
             tweakdb_ids,
             resources,
+            strings,
             definitions,
         };
         Ok(result)
     }
 
     pub fn encode<O: io::Write + io::Seek>(&self, output: &mut O, header: &Header) -> Result<Header, Error> {
-        let mut buffer = io::Cursor::new(Vec::with_capacity(header.strings.count as usize));
+        let mut buffer = io::Cursor::new(Vec::with_capacity(header.data.count as usize));
         let mut dedup_map = HashMap::new();
         for str in self
             .names
             .strings
             .iter()
-            .chain(self.tweakdb_ids.strings.iter())
-            .chain(self.resources.strings.iter())
+            .chain(&self.tweakdb_ids.strings)
+            .chain(&self.resources.strings)
+            .chain(&self.strings.strings)
         {
             match dedup_map.entry(str.clone()) {
                 hash_map::Entry::Vacant(entry) => {
@@ -172,7 +178,7 @@ impl ConstantPool {
         }
 
         let position = output.stream_position()? as u32;
-        let strings = TableHeader::new(buffer.get_ref(), buffer.position() as u32, position);
+        let data = TableHeader::new(buffer.get_ref(), buffer.position() as u32, position);
         output.write_all(buffer.get_ref())?;
 
         let name_offsets = self.names.encoded_offsets(&dedup_map)?;
@@ -194,6 +200,11 @@ impl ConstantPool {
         let def_header_size = DefinitionHeader::SIZE as u64 * self.definitions.len() as u64;
         output.seek(io::SeekFrom::Current(def_header_size as i64))?;
 
+        let string_offsets = self.strings.encoded_offsets(&dedup_map)?;
+        let position = output.stream_position()? as u32;
+        let strings = TableHeader::new(&string_offsets, self.strings.strings.len() as u32, position);
+        output.write_all(&string_offsets)?;
+
         let mut buffer = io::Cursor::new(Vec::with_capacity(def_header_size as usize));
         for (idx, definition) in self.definitions.iter().enumerate() {
             if idx == 0 {
@@ -208,10 +219,11 @@ impl ConstantPool {
 
         let definitions = TableHeader::new(buffer.get_ref(), self.definitions.len() as u32, def_header_pos as u32);
         let header_for_hash = Header {
-            strings,
+            data,
             names,
             tweakdb_indexes,
             resources,
+            strings,
             definitions,
             hash: 0xDEADBEEF,
             ..header.clone()
