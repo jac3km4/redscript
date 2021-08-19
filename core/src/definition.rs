@@ -582,7 +582,7 @@ pub struct FieldFlags {
     pub is_inst_edit: bool,
     pub has_default: bool,
     pub is_persistent: bool,
-    pub bit9: bool,
+    pub is_test_only: bool,
     pub is_mutable: bool,
     #[skip]
     pub remainder: B5,
@@ -687,11 +687,11 @@ pub struct FunctionFlags {
     pub has_locals: bool,
     pub has_body: bool,
     pub is_cast: bool,
-    pub is_safe: bool,
+    pub is_safe_cast: bool,
     #[skip]
     pub padding: B4,
     pub is_const: bool,
-    pub is_virtual: bool,
+    pub is_thread_safe: bool,
     pub is_quest: bool,
     pub is_test_only: bool,
     #[skip]
