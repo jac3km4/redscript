@@ -626,7 +626,7 @@ pub struct ParameterFlags {
     pub is_optional: bool,
     pub is_out: bool,
     pub is_short_circuit: bool,
-    pub bit3: bool,
+    pub is_const: bool,
     #[skip]
     pub remainder: B4,
 }
