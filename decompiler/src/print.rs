@@ -116,6 +116,9 @@ pub fn write_definition<W: Write>(
             if fun.flags.is_const() {
                 write!(out, "const ")?;
             }
+            if fun.flags.is_quest() {
+                write!(out, "quest ")?;
+            }
             if fun.flags.is_callback() {
                 write!(out, "cb ")?;
             }
@@ -123,6 +126,9 @@ pub fn write_definition<W: Write>(
 
             if fun.flags.has_body() {
                 write_function_body(out, fun, pool, depth, mode)?;
+            }
+            else {
+                write!(out, ";")?;
             }
             writeln!(out)?;
         }
@@ -436,7 +442,8 @@ fn format_param(def: &Definition, pool: &ConstantPool) -> Result<String, Error> 
         let name = pool.names.get(def.name)?;
         let out = if param.flags.is_out() { "out " } else { "" };
         let optional = if param.flags.is_optional() { "opt " } else { "" };
-        Ok(format!("{}{}{}: {}", out, optional, name, type_name))
+        let const_ = if param.flags.is_const() { "const " } else { "" };
+        Ok(format!("{}{}{}{}: {}", const_, out, optional, name, type_name))
     } else {
         Err(Error::DecompileError("Invalid type definition received".to_owned()))
     }

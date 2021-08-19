@@ -582,7 +582,7 @@ pub struct FieldFlags {
     pub is_inst_edit: bool,
     pub has_default: bool,
     pub is_persistent: bool,
-    pub bit9: bool,
+    pub is_test_only: bool,
     pub is_mutable: bool,
     #[skip]
     pub remainder: B5,
@@ -626,7 +626,7 @@ pub struct ParameterFlags {
     pub is_optional: bool,
     pub is_out: bool,
     pub is_short_circuit: bool,
-    pub bit3: bool,
+    pub is_const: bool,
     #[skip]
     pub remainder: B4,
 }
@@ -652,8 +652,8 @@ pub struct ClassFlags {
     pub is_struct: bool,
     pub has_functions: bool,
     pub has_fields: bool,
-    pub bit6: bool,
-    pub bit7: bool,
+    pub is_native_only: bool,
+    pub is_test_only: bool,
     pub has_overrides: bool,
     #[skip]
     pub remainder: B7,
@@ -687,13 +687,13 @@ pub struct FunctionFlags {
     pub has_locals: bool,
     pub has_body: bool,
     pub is_cast: bool,
-    pub is_safe: bool,
+    pub is_safe_cast: bool,
     #[skip]
     pub padding: B4,
     pub is_const: bool,
-    pub bit19: bool,
-    pub bit20: bool,
-    pub bit21: bool,
+    pub is_thread_safe: bool,
+    pub is_quest: bool,
+    pub is_test_only: bool,
     #[skip]
     pub remainder: B10,
 }
