@@ -325,6 +325,38 @@ fn compile_variant_conversions() -> Result<(), Error> {
 }
 
 #[test]
+fn compile_implicit_conversions() -> Result<(), Error> {
+    let sources = r#"
+        func Testing() {
+            Test1("test");
+            let a: wref<A> = new A();
+            Test2(a);
+        }
+
+        native func Test1(str: script_ref<String>)
+        native func Test2(instance: ref<A>)
+
+        class A {}
+        "#;
+    let expected = vec![
+        Instr::InvokeStatic(Offset::new(30), 0, PoolIndex::new(22), 0),
+        Instr::AsRef(PoolIndex::new(7)),
+        Instr::StringConst(PoolIndex::new(0)),
+        Instr::ParamEnd,
+        Instr::Assign,
+        Instr::Local(PoolIndex::new(31)),
+        Instr::RefToWeakRef,
+        Instr::New(PoolIndex::new(25)),
+        Instr::InvokeStatic(Offset::new(26), 0, PoolIndex::new(23), 0),
+        Instr::WeakRefToRef,
+        Instr::Local(PoolIndex::new(31)),
+        Instr::ParamEnd,
+        Instr::Nop,
+    ];
+    check_function_bytecode(sources, expected)
+}
+
+#[test]
 fn compile_switch_case() -> Result<(), Error> {
     let sources = "
         func Testing(val: Int32) -> Bool {

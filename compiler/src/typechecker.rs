@@ -671,6 +671,9 @@ fn find_conversion(from: &TypeId, to: &TypeId, pool: &ConstantPool) -> Result<Op
             {
                 Some(Conversion::RefToWeakRef)
             }
+            (from, TypeId::ScriptRef(to)) if find_conversion(from, to, pool)? == Some(Conversion::Identity) => {
+                Some(Conversion::ToScriptRef)
+            }
             _ => None,
         }
     };
@@ -690,6 +693,7 @@ fn insert_conversion(expr: Expr<TypedAst>, type_: &TypeId, conversion: Conversio
             vec![expr],
             pos,
         ),
+        Conversion::ToScriptRef => Expr::Call(Callable::Intrinsic(IntrinsicOp::AsRef, type_.clone()), vec![expr], pos),
     }
 }
 
@@ -723,4 +727,5 @@ pub enum Conversion {
     Identity,
     RefToWeakRef,
     WeakRefToRef,
+    ToScriptRef,
 }
