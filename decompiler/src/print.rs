@@ -403,7 +403,7 @@ fn write_call<W: Write>(
         }
     } else if let Ok(unop) = UnOp::from_str(fun_name) {
         write_unop(out, &params[0], unop, verbose)
-    } else if (fun_name == "WeakRefToRef" || fun_name == "RefToWeakRef") && !verbose {
+    } else if (fun_name == "WeakRefToRef" || fun_name == "RefToWeakRef" || fun_name == "AsRef") && !verbose {
         write_expr(out, &params[0], verbose, 0)
     } else {
         write!(out, "{}(", fun_name)?;
