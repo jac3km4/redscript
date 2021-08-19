@@ -126,8 +126,7 @@ pub fn write_definition<W: Write>(
 
             if fun.flags.has_body() {
                 write_function_body(out, fun, pool, depth, mode)?;
-            }
-            else {
+            } else {
                 write!(out, ";")?;
             }
             writeln!(out)?;

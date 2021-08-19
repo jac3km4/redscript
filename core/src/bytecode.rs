@@ -407,6 +407,10 @@ impl Decode for Instr<Offset> {
             48 => Ok(Instr::New(input.decode()?)),
             49 => Ok(Instr::Delete),
             50 => Ok(Instr::This),
+            51 => Ok(Instr::StartProfiling(
+                input.decode_vec_prefixed::<u32, u8>()?,
+                input.decode()?,
+            )),
             52 => Ok(Instr::ArrayClear(input.decode()?)),
             53 => Ok(Instr::ArraySize(input.decode()?)),
             54 => Ok(Instr::ArrayResize(input.decode()?)),
@@ -445,7 +449,6 @@ impl Decode for Instr<Offset> {
             85 => Ok(Instr::WeakRefToBool),
             86 => Ok(Instr::EnumToI32(input.decode()?, input.decode()?)),
             87 => Ok(Instr::I32ToEnum(input.decode()?, input.decode()?)),
-
             88 => Ok(Instr::DynamicCast(input.decode()?, input.decode()?)),
             89 => Ok(Instr::ToString(input.decode()?)),
             90 => Ok(Instr::ToVariant(input.decode()?)),
@@ -652,215 +655,215 @@ impl Encode for Instr<Offset> {
                 output.encode(idx)?;
             }
             Instr::NotEquals(idx) => {
-                output.encode(&43u8)?;
+                output.encode(&45u8)?;
                 output.encode(idx)?;
             }
             Instr::New(idx) => {
-                output.encode(&44u8)?;
+                output.encode(&48u8)?;
                 output.encode(idx)?;
             }
             Instr::Delete => {
-                output.encode(&45u8)?;
+                output.encode(&49u8)?;
             }
             Instr::This => {
-                output.encode(&46u8)?;
+                output.encode(&50u8)?;
             }
             Instr::StartProfiling(vec, byte) => {
-                output.encode(&47u8)?;
+                output.encode(&51u8)?;
                 output.encode_slice_prefixed::<u32, u8>(vec)?;
                 output.encode(byte)?;
             }
             Instr::ArrayClear(idx) => {
-                output.encode(&48u8)?;
-                output.encode(idx)?;
-            }
-            Instr::ArraySize(idx) => {
-                output.encode(&49u8)?;
-                output.encode(idx)?;
-            }
-            Instr::ArrayResize(idx) => {
-                output.encode(&50u8)?;
-                output.encode(idx)?;
-            }
-            Instr::ArrayFindFirst(idx) => {
-                output.encode(&51u8)?;
-                output.encode(idx)?;
-            }
-            Instr::ArrayFindFirstFast(idx) => {
                 output.encode(&52u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayFindLast(idx) => {
+            Instr::ArraySize(idx) => {
                 output.encode(&53u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayFindLastFast(idx) => {
+            Instr::ArrayResize(idx) => {
                 output.encode(&54u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayContains(idx) => {
+            Instr::ArrayFindFirst(idx) => {
                 output.encode(&55u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayContainsFast(idx) => {
+            Instr::ArrayFindFirstFast(idx) => {
                 output.encode(&56u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayCount(idx) => {
+            Instr::ArrayFindLast(idx) => {
                 output.encode(&57u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayCountFast(idx) => {
+            Instr::ArrayFindLastFast(idx) => {
                 output.encode(&58u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayPush(idx) => {
+            Instr::ArrayContains(idx) => {
                 output.encode(&59u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayPop(idx) => {
+            Instr::ArrayContainsFast(idx) => {
                 output.encode(&60u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayInsert(idx) => {
+            Instr::ArrayCount(idx) => {
                 output.encode(&61u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayRemove(idx) => {
+            Instr::ArrayCountFast(idx) => {
                 output.encode(&62u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayRemoveFast(idx) => {
+            Instr::ArrayPush(idx) => {
                 output.encode(&63u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayGrow(idx) => {
+            Instr::ArrayPop(idx) => {
                 output.encode(&64u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayErase(idx) => {
+            Instr::ArrayInsert(idx) => {
                 output.encode(&65u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayEraseFast(idx) => {
+            Instr::ArrayRemove(idx) => {
                 output.encode(&66u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayLast(idx) => {
+            Instr::ArrayRemoveFast(idx) => {
                 output.encode(&67u8)?;
                 output.encode(idx)?;
             }
-            Instr::ArrayElement(idx) => {
+            Instr::ArrayGrow(idx) => {
                 output.encode(&68u8)?;
                 output.encode(idx)?;
             }
-            Instr::StaticArraySize(idx) => {
+            Instr::ArrayErase(idx) => {
                 output.encode(&69u8)?;
                 output.encode(idx)?;
             }
-            Instr::StaticArrayFindFirst(idx) => {
+            Instr::ArrayEraseFast(idx) => {
                 output.encode(&70u8)?;
                 output.encode(idx)?;
             }
-            Instr::StaticArrayFindFirstFast(idx) => {
+            Instr::ArrayLast(idx) => {
                 output.encode(&71u8)?;
                 output.encode(idx)?;
             }
-            Instr::StaticArrayFindLast(idx) => {
+            Instr::ArrayElement(idx) => {
                 output.encode(&72u8)?;
                 output.encode(idx)?;
             }
-            Instr::StaticArrayFindLastFast(idx) => {
+            Instr::StaticArraySize(idx) => {
                 output.encode(&73u8)?;
                 output.encode(idx)?;
             }
-            Instr::StaticArrayContains(idx) => {
+            Instr::StaticArrayFindFirst(idx) => {
                 output.encode(&74u8)?;
                 output.encode(idx)?;
             }
-            Instr::StaticArrayContainsFast(idx) => {
+            Instr::StaticArrayFindFirstFast(idx) => {
                 output.encode(&75u8)?;
                 output.encode(idx)?;
             }
-            Instr::StaticArrayCount(idx) => {
+            Instr::StaticArrayFindLast(idx) => {
                 output.encode(&76u8)?;
                 output.encode(idx)?;
             }
-            Instr::StaticArrayCountFast(idx) => {
+            Instr::StaticArrayFindLastFast(idx) => {
                 output.encode(&77u8)?;
                 output.encode(idx)?;
             }
-            Instr::StaticArrayLast(idx) => {
+            Instr::StaticArrayContains(idx) => {
                 output.encode(&78u8)?;
                 output.encode(idx)?;
             }
-            Instr::StaticArrayElement(idx) => {
+            Instr::StaticArrayContainsFast(idx) => {
                 output.encode(&79u8)?;
                 output.encode(idx)?;
             }
-            Instr::RefToBool => {
+            Instr::StaticArrayCount(idx) => {
                 output.encode(&80u8)?;
+                output.encode(idx)?;
+            }
+            Instr::StaticArrayCountFast(idx) => {
+                output.encode(&81u8)?;
+                output.encode(idx)?;
+            }
+            Instr::StaticArrayLast(idx) => {
+                output.encode(&82u8)?;
+                output.encode(idx)?;
+            }
+            Instr::StaticArrayElement(idx) => {
+                output.encode(&83u8)?;
+                output.encode(idx)?;
+            }
+            Instr::RefToBool => {
+                output.encode(&84u8)?;
             }
             Instr::WeakRefToBool => {
-                output.encode(&81u8)?;
+                output.encode(&85u8)?;
             }
             Instr::EnumToI32(idx, byte) => {
-                output.encode(&82u8)?;
+                output.encode(&86u8)?;
                 output.encode(idx)?;
                 output.encode(byte)?;
             }
             Instr::I32ToEnum(idx, byte) => {
-                output.encode(&83u8)?;
+                output.encode(&87u8)?;
                 output.encode(idx)?;
                 output.encode(byte)?;
             }
             Instr::DynamicCast(idx, byte) => {
-                output.encode(&84u8)?;
+                output.encode(&88u8)?;
                 output.encode(idx)?;
                 output.encode(byte)?;
             }
             Instr::ToString(idx) => {
-                output.encode(&85u8)?;
+                output.encode(&89u8)?;
                 output.encode(idx)?;
             }
             Instr::ToVariant(idx) => {
-                output.encode(&86u8)?;
+                output.encode(&90u8)?;
                 output.encode(idx)?;
             }
             Instr::FromVariant(idx) => {
-                output.encode(&87u8)?;
+                output.encode(&91u8)?;
                 output.encode(idx)?;
             }
             Instr::VariantIsValid => {
-                output.encode(&88u8)?;
-            }
-            Instr::VariantIsRef => {
-                output.encode(&89u8)?;
-            }
-            Instr::VariantIsArray => {
-                output.encode(&90u8)?;
-            }
-            Instr::VatiantToCName => {
-                output.encode(&91u8)?;
-            }
-            Instr::VariantToString => {
                 output.encode(&92u8)?;
             }
-            Instr::WeakRefToRef => {
+            Instr::VariantIsRef => {
                 output.encode(&93u8)?;
             }
-            Instr::RefToWeakRef => {
+            Instr::VariantIsArray => {
                 output.encode(&94u8)?;
             }
-            Instr::WeakRefNull => {
+            Instr::VatiantToCName => {
                 output.encode(&95u8)?;
             }
-            Instr::AsRef(idx) => {
+            Instr::VariantToString => {
                 output.encode(&96u8)?;
+            }
+            Instr::WeakRefToRef => {
+                output.encode(&97u8)?;
+            }
+            Instr::RefToWeakRef => {
+                output.encode(&98u8)?;
+            }
+            Instr::WeakRefNull => {
+                output.encode(&90u8)?;
+            }
+            Instr::AsRef(idx) => {
+                output.encode(&100u8)?;
                 output.encode(idx)?;
             }
             Instr::Deref(idx) => {
-                output.encode(&97u8)?;
+                output.encode(&101u8)?;
                 output.encode(idx)?;
             }
         }
