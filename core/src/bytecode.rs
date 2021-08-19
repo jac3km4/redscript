@@ -849,7 +849,7 @@ impl Encode for Instr<Offset> {
                 output.encode(&98u8)?;
             }
             Instr::WeakRefNull => {
-                output.encode(&90u8)?;
+                output.encode(&99u8)?;
             }
             Instr::AsRef(idx) => {
                 output.encode(&100u8)?;
