@@ -345,11 +345,12 @@ impl<'a> CompilationUnit<'a> {
         let decl = &source.declaration;
         let flags = FunctionFlags::new()
             .with_is_static(decl.qualifiers.contain(Qualifier::Static) || parent_idx == PoolIndex::UNDEFINED)
-            .with_is_final(decl.qualifiers.contain(Qualifier::Final))
-            .with_is_const(decl.qualifiers.contain(Qualifier::Const))
             .with_is_exec(decl.qualifiers.contain(Qualifier::Exec))
+            .with_is_final(decl.qualifiers.contain(Qualifier::Final))
+            .with_is_native(decl.qualifiers.contain(Qualifier::Native) && source.body.is_none())
             .with_is_callback(decl.qualifiers.contain(Qualifier::Callback))
-            .with_is_native(decl.qualifiers.contain(Qualifier::Native) && source.body.is_none());
+            .with_is_const(decl.qualifiers.contain(Qualifier::Const))
+            .with_is_quest(decl.qualifiers.contain(Qualifier::Quest));
 
         let return_type = match source.type_ {
             None => None,
@@ -366,8 +367,9 @@ impl<'a> CompilationUnit<'a> {
             let type_ = scope.resolve_type(&param.type_, self.pool, decl.pos)?;
             let type_idx = scope.get_type_index(&type_, self.pool)?;
             let flags = ParameterFlags::new()
+                .with_is_optional(param.qualifiers.contain(Qualifier::Optional))
                 .with_is_out(param.qualifiers.contain(Qualifier::Out))
-                .with_is_optional(param.qualifiers.contain(Qualifier::Optional));
+                .with_is_const(param.qualifiers.contain(Qualifier::Const));
             let name = self.pool.names.add(param.name.to_owned());
             let param = Parameter { type_: type_idx, flags };
             let idx = self.pool.add_definition(Definition::param(name, fun_idx.cast(), param));
