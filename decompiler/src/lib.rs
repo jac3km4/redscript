@@ -287,7 +287,14 @@ impl<'a> Decompiler<'a> {
                 }
             }
             Instr::ParamEnd => return Err(Error::DecompileError("Unexpected ParamEnd".to_owned())),
-            Instr::Return => Expr::Return(self.consume().ok().map(Box::new), Pos::ZERO),
+            Instr::Return => {
+                if let Some(Instr::Nop) = self.code.peek() {
+                    self.code.pop()?;
+                    Expr::Return(None, Pos::ZERO)
+                } else {
+                    Expr::Return(Some(Box::new(self.consume()?)), Pos::ZERO)
+                }
+            }
             Instr::StructField(idx) => {
                 let target = self.consume()?;
                 let field = self.definition_ident(idx)?;

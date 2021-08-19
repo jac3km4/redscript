@@ -17,27 +17,43 @@ jobs:
         with:
           toolchain: nightly
           override: true
-      - name: copy cargo config
+      - name: Copy cargo config
         run: xcopy /H /E /Y .\\.cargo C:\\Rust\\.cargo
+      - name: Test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
       - name: Build
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --release --all-features
-      - name: Test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-      - name: Create zip of result
+      - run: mkdir staging
+      - name: Create the mod archive
+        working-directory: staging
         run: |
-          7z a -mx=9 release.zip ./target/release/scc.exe ./target/release/redscript-cli.exe
-      - name: Upload Release Asset
-        id: upload-release-asset
+          mkdir -p ./engine/config/base
+          mkdir -p ./engine/tools
+          mkdir -p ./r6/scripts
+          cp ../resources/scripts.ini ./engine/config/base/
+          cp ../target/release/scc.exe ./engine/tools/
+          cp ../resources/redscript.toml ./r6/scripts/
+          7z a -mx=9 -r ./redscript.zip *
+      - name: Upload the mod archive
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./release.zip
-          asset_name: release-${{ github.event.release.tag_name }}.zip
+          asset_path: ./staging/redscript.zip
+          asset_name: redscript-mod-${{ github.event.release.tag_name }}.zip
           asset_content_type: application/zip
+      - name: Upload the CLI binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./target/release/redscript-cli.exe
+          asset_name: redscript-cli.exe
+          asset_content_type: application/vnd.microsoft.portable-executable

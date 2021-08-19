@@ -8,7 +8,7 @@ use redscript::definition::Visibility;
 use strum::EnumString;
 
 use crate::source_map::File;
-use crate::{Import, ModulePath};
+use crate::symbol::{Import, ModulePath};
 
 #[derive(Debug)]
 pub struct SourceModule {

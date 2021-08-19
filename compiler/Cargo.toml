@@ -1,6 +1,6 @@
 [package]
 name = "redscript-compiler"
-version = "0.2.4-dev"
+version = "0.2.5-dev"
 authors = ["jac3km4 <jac3km4@pm.me>"]
 edition = "2018"
 publish = false
@@ -11,7 +11,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 redscript = { path = "../core" }
 peg = "0.7"
-im = "15"
+hamt-sync = "0.2"
 sequence_trie = "0.3"
 strum = { version = "0.21", features = ["derive"] }
 walkdir = "2"

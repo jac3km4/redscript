@@ -7,10 +7,10 @@ use redscript::bytecode::IntrinsicOp;
 use redscript::definition::{Definition, Local, LocalFlags};
 use redscript::error::Error;
 
-use crate::scope::Scope;
+use crate::scope::{Reference, Scope, TypeId, Value};
+use crate::symbol::{FunctionSignature, FunctionSignatureBuilder};
 use crate::transform::ExprTransformer;
 use crate::typechecker::{type_of, Callable, TypedAst};
-use crate::{FunctionSignature, FunctionSignatureBuilder, Reference, TypeId, Value};
 
 pub struct Desugar<'a> {
     pool: &'a mut ConstantPool,

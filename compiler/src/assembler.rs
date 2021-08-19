@@ -6,9 +6,9 @@ use redscript::bytecode::{Code, Instr, IntrinsicOp, Label, Location, Offset};
 use redscript::definition::{Function, ParameterFlags};
 use redscript::error::Error;
 
-use crate::scope::Scope;
+use crate::scope::{Reference, Scope, TypeId, Value};
+use crate::symbol::Symbol;
 use crate::typechecker::{type_of, Callable, Member, TypedAst};
-use crate::{Reference, Symbol, TypeId, Value};
 
 pub struct Assembler {
     instructions: Vec<Instr<Label>>,
@@ -145,6 +145,7 @@ impl Assembler {
             }
             Expr::Return(None, _) => {
                 self.emit(Instr::Return);
+                self.emit(Instr::Nop);
             }
             Expr::Seq(seq) => {
                 self.assemble_seq(seq, scope, pool, exit)?;
