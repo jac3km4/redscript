@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
 
 use redscript::ast::{Expr, Ident, Pos, Seq, SourceAst};
@@ -6,6 +6,7 @@ use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Instr};
 use redscript::definition::*;
 use redscript::error::Error;
+use redscript::mapper::{MultiMapper, PoolMapper};
 
 use crate::assembler::Assembler;
 use crate::parser::*;
@@ -204,6 +205,7 @@ impl<'a> CompilationUnit<'a> {
             self.pool.swap_definition(wrapped, proxy);
         }
 
+        Self::cleanup_pool(self.pool);
         Ok(diagnostics)
     }
 
@@ -734,9 +736,8 @@ impl<'a> CompilationUnit<'a> {
         target: PoolIndex<Function>,
         pool: &mut ConstantPool,
     ) -> Result<(), Error> {
-        // this is a horrible hack, but the game crashes when it runs into bytecode that
-        // references locals that are not defined adjacent to the function in the constant pool
-        // so this is sadly necessary
+        // this is a workaround for a game crash which happens when the game loads
+        // locals that are not placed adjacent to the parent function in the pool
         let locals = pool.function(target)?.locals.clone();
         let mut mapped_locals = HashMap::new();
 
@@ -755,6 +756,46 @@ impl<'a> CompilationUnit<'a> {
             }
         }
         Ok(())
+    }
+    fn class_cardinality(idx: PoolIndex<Class>, pool: &ConstantPool) -> usize {
+        let class = pool.class(idx).unwrap();
+        if class.base.is_undefined() {
+            0
+        } else {
+            Self::class_cardinality(class.base, pool) + 1
+        }
+    }
+
+    fn cleanup_pool(pool: &mut ConstantPool) {
+        // this is a workaround for a game crash which happens when the game loads
+        // a class which has a base class that is placed after the subclass in the pool
+        let mut unsorted = BTreeSet::new();
+
+        for (def_idx, def) in pool.definitions() {
+            if let AnyDefinition::Class(class) = &def.value {
+                let pos: u32 = def_idx.into();
+                if pos < class.base.into() {
+                    unsorted.insert(def_idx.cast());
+                    unsorted.insert(class.base);
+                }
+            }
+        }
+
+        let mut sorted: Vec<PoolIndex<Class>> = unsorted.iter().copied().collect();
+        sorted.sort_by_key(|k| Self::class_cardinality(*k, pool));
+
+        let definitions: Vec<Definition> = sorted.iter().map(|k| pool.definition(*k).unwrap()).cloned().collect();
+
+        for (def, target) in definitions.into_iter().zip(&unsorted) {
+            pool.put_definition(*target, def);
+        }
+
+        if !unsorted.is_empty() {
+            let mappings = sorted.into_iter().zip(unsorted).collect();
+            PoolMapper::default()
+                .with_class_mapper(MultiMapper::new(mappings))
+                .map(pool);
+        }
     }
 }
 
