@@ -350,7 +350,8 @@ impl<'a> CompilationUnit<'a> {
             .with_is_native(decl.qualifiers.contain(Qualifier::Native) && source.body.is_none())
             .with_is_callback(decl.qualifiers.contain(Qualifier::Callback))
             .with_is_const(decl.qualifiers.contain(Qualifier::Const))
-            .with_is_quest(decl.qualifiers.contain(Qualifier::Quest));
+            .with_is_quest(decl.qualifiers.contain(Qualifier::Quest))
+            .with_is_cast(decl.name.as_ref() == "Cast");
 
         let return_type = match source.type_ {
             None => None,
