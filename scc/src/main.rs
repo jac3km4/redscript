@@ -12,7 +12,7 @@ use redscript::bundle::ScriptBundle;
 use redscript::error::Error;
 use redscript_compiler::source_map::{Files, SourceFilter};
 use redscript_compiler::unit::CompilationUnit;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use simplelog::{CombinedLogger, Config as LoggerConfig, SimpleLogger, WriteLogger};
 
 fn main() -> Result<(), Error> {
