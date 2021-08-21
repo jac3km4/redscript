@@ -488,6 +488,20 @@ impl<'a> TypeChecker<'a> {
             return Ok(Err(FunctionResolutionError::too_many_args(params.len(), args.len())));
         }
 
+        if fun.flags.is_cast() || fun.flags.is_operator_overload() {
+            if let Some(expected) = expected {
+                let ret_type_idx = ret_type.ok_or_else(|| Error::void_cannot_be_used(pos))?;
+                let ret_type = scope.resolve_type_from_pool(ret_type_idx, self.pool, pos)?;
+                if find_conversion(&ret_type, expected, self.pool)?.is_none() {
+                    let err = FunctionResolutionError::return_mismatch(
+                        expected.pretty(self.pool)?,
+                        ret_type.pretty(self.pool)?,
+                    );
+                    return Ok(Err(err));
+                }
+            }
+        }
+
         let mut compiled_args = Vec::new();
         for (idx, arg) in args.enumerate() {
             let param = self.pool.parameter(params[idx])?;
@@ -498,16 +512,6 @@ impl<'a> TypeChecker<'a> {
                     return Ok(Err(FunctionResolutionError::parameter_mismatch(&err, idx)))
                 }
                 Err(err) => return Err(err),
-            }
-        }
-
-        if let Some(expected) = expected {
-            let ret_type_idx = ret_type.ok_or_else(|| Error::void_cannot_be_used(pos))?;
-            let ret_type = scope.resolve_type_from_pool(ret_type_idx, self.pool, pos)?;
-            if find_conversion(&ret_type, expected, self.pool)?.is_none() {
-                let err =
-                    FunctionResolutionError::return_mismatch(expected.pretty(self.pool)?, ret_type.pretty(self.pool)?);
-                return Ok(Err(err));
             }
         }
 
