@@ -79,53 +79,47 @@ impl Definition {
         }
     }
 
-    fn default(
-        name: PoolIndex<String>,
-        parent: PoolIndex<Definition>,
-        value: AnyDefinition,
-        unk2: u8,
-        unk3: u8,
-    ) -> Definition {
+    fn default(name: PoolIndex<String>, parent: PoolIndex<Definition>, value: AnyDefinition) -> Definition {
         Definition {
             name,
             parent,
             unk1: 0,
-            unk2,
-            unk3,
+            unk2: 0,
+            unk3: 0,
             value,
         }
     }
 
     pub fn local(name: PoolIndex<String>, parent: PoolIndex<Function>, local: Local) -> Definition {
-        Definition::default(name, parent.cast(), AnyDefinition::Local(local), 7, 60)
+        Definition::default(name, parent.cast(), AnyDefinition::Local(local))
     }
 
     pub fn param(name: PoolIndex<String>, parent: PoolIndex<Function>, param: Parameter) -> Definition {
-        Definition::default(name, parent.cast(), AnyDefinition::Parameter(param), 7, 60)
+        Definition::default(name, parent.cast(), AnyDefinition::Parameter(param))
     }
 
     pub fn class(name: PoolIndex<String>, class: Class) -> Definition {
-        Definition::default(name, PoolIndex::UNDEFINED, AnyDefinition::Class(class), 12, 60)
+        Definition::default(name, PoolIndex::UNDEFINED, AnyDefinition::Class(class))
     }
 
     pub fn type_(name: PoolIndex<String>, type_: Type) -> Definition {
-        Definition::default(name, PoolIndex::UNDEFINED, AnyDefinition::Type(type_), 12, 60)
+        Definition::default(name, PoolIndex::UNDEFINED, AnyDefinition::Type(type_))
     }
 
     pub fn function(name: PoolIndex<String>, parent: PoolIndex<Class>, fun: Function) -> Definition {
-        Definition::default(name, parent.cast(), AnyDefinition::Function(fun), 12, 60)
+        Definition::default(name, parent.cast(), AnyDefinition::Function(fun))
     }
 
     pub fn field(name: PoolIndex<String>, parent: PoolIndex<Class>, field: Field) -> Definition {
-        Definition::default(name, parent.cast(), AnyDefinition::Field(field), 12, 60)
+        Definition::default(name, parent.cast(), AnyDefinition::Field(field))
     }
 
     pub fn enum_(name: PoolIndex<String>, enum_: Enum) -> Definition {
-        Definition::default(name, PoolIndex::UNDEFINED, AnyDefinition::Enum(enum_), 82, 224)
+        Definition::default(name, PoolIndex::UNDEFINED, AnyDefinition::Enum(enum_))
     }
 
     pub fn enum_value(name: PoolIndex<String>, parent: PoolIndex<Enum>, value: i64) -> Definition {
-        Definition::default(name, parent.cast(), AnyDefinition::EnumValue(value), 82, 219)
+        Definition::default(name, parent.cast(), AnyDefinition::EnumValue(value))
     }
 }
 
