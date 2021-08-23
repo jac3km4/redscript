@@ -310,7 +310,7 @@ impl Assembler {
         force_static: bool,
     ) -> Result<(), Error> {
         let fun = pool.function(function_idx)?;
-        let flags = fun.flags;
+        let fun_flags = fun.flags;
         let get_param_flags: Result<Vec<ParameterFlags>, Error> = fun
             .parameters
             .iter()
@@ -319,12 +319,19 @@ impl Assembler {
         let param_flags = get_param_flags?;
         let args_len = args.len();
         let exit_label = self.new_label();
+        let mut invoke_flags = 0u16;
+        for (n, arg) in args.iter().enumerate() {
+            let is_rvalue_ref = Self::is_rvalue_ref(arg, scope, pool).unwrap_or(false);
+            if is_rvalue_ref {
+                invoke_flags |= 1 << n;
+            }
+        }
 
-        if !force_static && !flags.is_final() && !flags.is_static() && !flags.is_native() {
+        if !force_static && !fun_flags.is_final() && !fun_flags.is_static() && !fun_flags.is_native() {
             let name_idx = pool.definition(function_idx)?.name;
-            self.emit(Instr::InvokeVirtual(exit_label, 0, name_idx, 3));
+            self.emit(Instr::InvokeVirtual(exit_label, 0, name_idx, invoke_flags));
         } else {
-            self.emit(Instr::InvokeStatic(exit_label, 0, function_idx, 3));
+            self.emit(Instr::InvokeStatic(exit_label, 0, function_idx, invoke_flags));
         }
         for (arg, flags) in args.into_iter().zip(param_flags.iter()) {
             if flags.is_short_circuit() {
@@ -342,6 +349,21 @@ impl Assembler {
         self.emit(Instr::ParamEnd);
         self.emit_label(exit_label);
         Ok(())
+    }
+
+    fn is_rvalue_ref(expr: &Expr<TypedAst>, scope: &mut Scope, pool: &mut ConstantPool) -> Option<bool> {
+        let typ = type_of(expr, scope, pool).ok()?;
+        match typ {
+            TypeId::ScriptRef(_) => match expr {
+                Expr::Call(Callable::Intrinsic(IntrinsicOp::AsRef, _), args, _) => match args.get(0) {
+                    Some(Expr::Constant(_, _)) => Some(false),
+                    Some(Expr::Ident(_, _)) => Some(false),
+                    _ => Some(true),
+                },
+                _ => Some(true),
+            },
+            _ => None,
+        }
     }
 
     fn assemble_intrinsic(
