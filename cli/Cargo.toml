@@ -1,6 +1,6 @@
 [package]
 name = "redscript-cli"
-version = "0.3.1-dev"
+version = "0.3.1"
 authors = ["jac3km4 <jac3km4@pm.me>"]
 edition = "2018"
 publish = false
