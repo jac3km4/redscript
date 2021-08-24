@@ -154,6 +154,10 @@ impl File {
         let end = span.high.0 - self.byte_offset().0;
         &self.source[start as usize..end as usize]
     }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
 }
 
 impl Default for File {

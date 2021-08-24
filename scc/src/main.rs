@@ -8,6 +8,7 @@ use std::time::SystemTime;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use fd_lock::RwLock;
 use log::LevelFilter;
+use redscript::ast::Pos;
 use redscript::bundle::ScriptBundle;
 use redscript::error::Error;
 use redscript_compiler::source_map::{Files, SourceFilter};
@@ -23,13 +24,24 @@ fn main() -> Result<(), Error> {
             let script_dir = PathBuf::from(path_str.split('"').next().unwrap());
             let cache_dir = script_dir.parent().unwrap().join("cache");
             start_logger(&cache_dir)?;
-            load_scripts(&script_dir, &cache_dir)
+            let manifest = ScriptManifest::load_with_fallback(&script_dir);
+            let files = Files::from_dir(&script_dir, manifest.source_filter())?;
+
+            match load_scripts(&cache_dir, &files) {
+                Ok(_) => {
+                    log::info!("Output successfully saved in {}", cache_dir.display());
+                }
+                Err(err) => {
+                    let content = error_message(err, &files, &script_dir);
+                    msgbox::create("Compilation error", &content, msgbox::IconType::Error).unwrap();
+                }
+            }
         }
         _ => {
             log::error!("Invalid arguments");
-            Ok(())
         }
     }
+    Ok(())
 }
 
 fn start_logger(cache_dir: &Path) -> Result<(), Error> {
@@ -42,12 +54,10 @@ fn start_logger(cache_dir: &Path) -> Result<(), Error> {
     Ok(())
 }
 
-fn load_scripts(script_dir: &Path, cache_dir: &Path) -> Result<(), Error> {
+fn load_scripts(cache_dir: &Path, files: &Files) -> Result<(), Error> {
     let bundle_path = cache_dir.join("final.redscripts");
     let backup_path = cache_dir.join("final.redscripts.bk");
     let timestamp_path = cache_dir.join("redscript.ts");
-
-    let manifest = ScriptManifest::load_with_fallback(script_dir);
 
     let mut ts_lock = RwLock::new(
         OpenOptions::new()
@@ -75,7 +85,6 @@ fn load_scripts(script_dir: &Path, cache_dir: &Path) -> Result<(), Error> {
     }
 
     let mut bundle: ScriptBundle = ScriptBundle::load(&mut BufReader::new(File::open(&backup_path)?))?;
-    let files = Files::from_dir(script_dir, manifest.source_filter())?;
 
     CompilationUnit::new(&mut bundle.pool)?.compile(&files)?;
 
@@ -85,7 +94,6 @@ fn load_scripts(script_dir: &Path, cache_dir: &Path) -> Result<(), Error> {
 
     CompileTimestamp::of_cache_file(&file)?.write(ts_file.deref_mut())?;
 
-    log::info!("Output successfully saved to {}", bundle_path.display());
     Ok(())
 }
 
@@ -143,4 +151,39 @@ impl ScriptManifest {
     pub fn source_filter(self) -> SourceFilter {
         SourceFilter::Exclude(self.exclusions)
     }
+}
+
+fn error_message(error: Error, files: &Files, scripts_dir: &Path) -> String {
+    fn detailed_message(msg: String, pos: Pos, files: &Files, scripts_dir: &Path) -> Option<String> {
+        let loc = files.lookup(pos)?;
+        let file = loc
+            .file
+            .path()
+            .strip_prefix(scripts_dir)
+            .ok()
+            .and_then(|p| p.iter().next())
+            .unwrap_or(loc.file.path().as_os_str());
+
+        let msg = format!(
+            "This is caused by an error in '{}', you can try updating or removing it to resolve the issue. The error message was: '{}'. You can consult the logs for more information.",
+            file.to_string_lossy(),
+            msg
+        );
+        Some(msg)
+    }
+
+    let str = match error {
+        Error::SyntaxError(msg, pos) => detailed_message(msg, pos, files, scripts_dir).unwrap_or_default(),
+        Error::CompileError(msg, pos) => detailed_message(msg, pos, files, scripts_dir).unwrap_or_default(),
+        Error::TypeError(msg, pos) => detailed_message(msg, pos, files, scripts_dir).unwrap_or_default(),
+        Error::ResolutionError(msg, pos) => detailed_message(msg, pos, files, scripts_dir).unwrap_or_default(),
+        Error::IoError(err) => format!("This is caused by an encoding error: {}", err),
+        Error::PoolError(err) => format!("This is caused by a constant pool error: {}", err),
+        _ => String::new(),
+    };
+
+    format!(
+        "REDScript compilation failed. The game will start, but none of the scripts will take effect. {}",
+        str
+    )
 }
