@@ -1,6 +1,6 @@
 [package]
 name = "redscript"
-version = "0.3.2"
+version = "0.3.3-dev"
 authors = ["jac3km4 <jac3km4@pm.me>"]
 edition = "2018"
 publish = false
