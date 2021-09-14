@@ -56,7 +56,10 @@ impl<'a> FileIndex<'a> {
             .pool
             .definitions()
             .filter(|(_, def)| match &def.value {
-                AnyDefinition::Class(cls) if cls.functions.is_empty() || cls.flags.is_native() => true,
+                AnyDefinition::Class(class) => {
+                    let mut funs = class.functions.iter().filter_map(|idx| self.pool.function(*idx).ok());
+                    funs.all(|fun| fun.flags.is_native())
+                }
                 AnyDefinition::Enum(_) => true,
                 AnyDefinition::Function(fun) if def.parent == PoolIndex::UNDEFINED && fun.flags.is_native() => true,
                 _ => false,
