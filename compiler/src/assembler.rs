@@ -356,7 +356,7 @@ impl Assembler {
         match typ {
             TypeId::ScriptRef(_) => match expr {
                 Expr::Call(Callable::Intrinsic(IntrinsicOp::AsRef, _), args, _) => match args.get(0) {
-                    Some(expr) => Some(Self::is_rvalue(&expr)),
+                    Some(expr) => Some(Self::is_rvalue(expr)),
                     _ => Some(true),
                 },
                 _ => Some(true),
@@ -371,8 +371,8 @@ impl Assembler {
             Expr::Ident(_, _) => false,
             Expr::This(_) => false,
             Expr::Super(_) => false,
-            Expr::Member(inner, _, _) => Self::is_rvalue(&inner),
-            Expr::ArrayElem(inner, _, _) => Self::is_rvalue(&&inner),
+            Expr::Member(inner, _, _) => Self::is_rvalue(inner),
+            Expr::ArrayElem(inner, _, _) => Self::is_rvalue(inner),
             _ => true,
         }
     }

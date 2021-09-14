@@ -8,7 +8,7 @@ use redscript::ast::Pos;
 use redscript::error::Error;
 use walkdir::WalkDir;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Files {
     files: Vec<File>,
 }
@@ -87,12 +87,6 @@ impl fmt::Display for Files {
             }
         }
         Ok(())
-    }
-}
-
-impl Default for Files {
-    fn default() -> Self {
-        Files { files: vec![] }
     }
 }
 
