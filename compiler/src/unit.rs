@@ -59,7 +59,7 @@ impl<'a> CompilationUnit<'a> {
                 }
 
                 if is_fatal {
-                    Err(Error::MultipleErrors)
+                    Err(Error::MultipleErrors(diagnostics.iter().map(Diagnostic::pos).collect()))
                 } else {
                     log::info!("Compilation complete");
                     Ok(())
@@ -70,7 +70,7 @@ impl<'a> CompilationUnit<'a> {
                     Self::print_diagnostic(files, &diagnostic);
 
                     if diagnostic.is_fatal() {
-                        Err(Error::MultipleErrors)
+                        Err(Error::MultipleErrors(vec![diagnostic.pos()]))
                     } else {
                         Ok(())
                     }
@@ -868,6 +868,13 @@ impl Diagnostic {
         match self {
             Diagnostic::MethodConflict(_, _) => false,
             Diagnostic::CompileError(_, _) => true,
+        }
+    }
+
+    pub fn pos(&self) -> Pos {
+        match self {
+            Diagnostic::MethodConflict(_, pos) => *pos,
+            Diagnostic::CompileError(_, pos) => *pos,
         }
     }
 }
