@@ -88,7 +88,7 @@ impl SymbolMap {
         Ok(())
     }
 
-    fn get_symbol(&self, path: &ModulePath, pos: Pos) -> Result<Symbol, Error> {
+    pub fn get_symbol(&self, path: &ModulePath, pos: Pos) -> Result<Symbol, Error> {
         self.symbols
             .get(path)
             .cloned()

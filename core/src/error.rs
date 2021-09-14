@@ -142,6 +142,11 @@ impl Error {
         let err = format!("{} is unsupported", name);
         Error::CompileError(err, pos)
     }
+
+    pub fn class_redefinition(pos: Pos) -> Error {
+        let err = "Class with this name is already defined elsewhere".to_owned();
+        Error::CompileError(err, pos)
+    }
 }
 
 impl From<io::Error> for Error {

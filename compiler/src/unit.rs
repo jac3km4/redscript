@@ -233,6 +233,10 @@ impl<'a> CompilationUnit<'a> {
                 let index = self.pool.stub_definition(name_index);
                 let visibility = source.qualifiers.visibility().unwrap_or(Visibility::Private);
 
+                if let Ok(Symbol::Class(_, _)) = self.symbols.get_symbol(&path, source.pos) {
+                    return Err(Error::class_redefinition(source.pos));
+                }
+
                 self.scope.add_type(path.render(), type_index);
                 self.symbols.add_class(&path, index, visibility);
 
