@@ -86,7 +86,7 @@ fn load_scripts(cache_dir: &Path, files: &Files) -> Result<(), Error> {
 
     let mut bundle: ScriptBundle = ScriptBundle::load(&mut BufReader::new(File::open(&backup_path)?))?;
 
-    CompilationUnit::new(&mut bundle.pool)?.compile(&files)?;
+    CompilationUnit::new(&mut bundle.pool)?.compile(files)?;
 
     let mut file = File::create(&bundle_path)?;
     bundle.save(&mut BufWriter::new(&mut file))?;
@@ -154,30 +154,42 @@ impl ScriptManifest {
 }
 
 fn error_message(error: Error, files: &Files, scripts_dir: &Path) -> String {
-    fn detailed_message(msg: String, pos: Pos, files: &Files, scripts_dir: &Path) -> Option<String> {
-        let loc = files.lookup(pos)?;
-        let file = loc
-            .file
-            .path()
-            .strip_prefix(scripts_dir)
-            .ok()
-            .and_then(|p| p.iter().next())
-            .unwrap_or(loc.file.path().as_os_str());
+    fn detailed_message(positions: Vec<Pos>, files: &Files, scripts_dir: &Path) -> Option<String> {
+        let mut causes = HashSet::new();
+
+        for pos in positions {
+            let loc = files.lookup(pos)?;
+            let cause = loc
+                .file
+                .path()
+                .strip_prefix(scripts_dir)
+                .ok()
+                .and_then(|p| p.iter().next())
+                .unwrap_or_else(|| loc.file.path().as_os_str())
+                .to_string_lossy();
+
+            causes.insert(cause);
+        }
+
+        let causes = causes
+            .iter()
+            .map(|file| format!("- {}\n", file))
+            .fold(String::new(), |acc, el| acc + &el);
 
         let msg = format!(
-            "This is caused by an error in '{}', you can try updating or removing it to resolve the issue. The error message was: '{}'. You can consult the logs for more information.",
-            file.to_string_lossy(),
-            msg
+            "This is caused by errors in:\n{}You can try updating or removing these scripts to resolve the issue. If you need more information, consult the logs.",
+            causes
         );
         Some(msg)
     }
 
     let str = match error {
-        Error::SyntaxError(msg, pos) => detailed_message(msg, pos, files, scripts_dir).unwrap_or_default(),
-        Error::CompileError(msg, pos) => detailed_message(msg, pos, files, scripts_dir).unwrap_or_default(),
-        Error::TypeError(msg, pos) => detailed_message(msg, pos, files, scripts_dir).unwrap_or_default(),
-        Error::ResolutionError(msg, pos) => detailed_message(msg, pos, files, scripts_dir).unwrap_or_default(),
-        Error::IoError(err) => format!("This is caused by an encoding error: {}", err),
+        Error::SyntaxError(_, pos) => detailed_message(vec![pos], files, scripts_dir).unwrap_or_default(),
+        Error::CompileError(_, pos) => detailed_message(vec![pos], files, scripts_dir).unwrap_or_default(),
+        Error::TypeError(_, pos) => detailed_message(vec![pos], files, scripts_dir).unwrap_or_default(),
+        Error::ResolutionError(_, pos) => detailed_message(vec![pos], files, scripts_dir).unwrap_or_default(),
+        Error::MultipleErrors(positions) => detailed_message(positions, files, scripts_dir).unwrap_or_default(),
+        Error::IoError(err) => format!("This is caused by an I/O error: {}", err),
         Error::PoolError(err) => format!("This is caused by a constant pool error: {}", err),
         _ => String::new(),
     };

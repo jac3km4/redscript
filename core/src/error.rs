@@ -13,6 +13,7 @@ pub enum Error {
     ResolutionError(String, Pos),
     PoolError(String),
     FormatError(fmt::Error),
+    MultipleErrors(Vec<Pos>),
 }
 
 impl Error {
