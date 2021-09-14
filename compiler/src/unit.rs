@@ -1,4 +1,5 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::fmt;
 use std::rc::Rc;
 
 use redscript::ast::{Expr, Ident, Pos, Seq, SourceAst};
@@ -11,7 +12,7 @@ use redscript::mapper::{MultiMapper, PoolMapper};
 use crate::assembler::Assembler;
 use crate::parser::*;
 use crate::scope::{Reference, Scope, Value};
-use crate::source_map::{Files, SourceLocation};
+use crate::source_map::Files;
 use crate::sugar::Desugar;
 use crate::symbol::{FunctionSignature, Import, ModulePath, Symbol, SymbolMap};
 use crate::transform::ExprTransformer;
@@ -50,38 +51,39 @@ impl<'a> CompilationUnit<'a> {
     pub fn compile(self, files: &Files) -> Result<(), Error> {
         log::info!("Compiling files: {}", files);
 
-        match self.try_compile(files) {
+        match self.parse_and_compile(files) {
             Ok(diagnostics) => {
-                for diagnostic in diagnostics {
+                let is_fatal = diagnostics.iter().any(Diagnostic::is_fatal);
+                for diagnostic in &diagnostics {
                     Self::print_diagnostic(files, diagnostic);
                 }
-                log::info!("Compilation complete");
-                Ok(())
+
+                if is_fatal {
+                    Err(Error::MultipleErrors)
+                } else {
+                    log::info!("Compilation complete");
+                    Ok(())
+                }
             }
-            Err(Error::CompileError(err, pos)) => {
-                Self::print_error(&err, files.lookup(pos).expect("Unknown file"));
-                Err(Error::CompileError(err, pos))
-            }
-            Err(Error::TypeError(err, pos)) => {
-                Self::print_error(&err, files.lookup(pos).expect("Unknown file"));
-                Err(Error::CompileError(err, pos))
-            }
-            Err(Error::ResolutionError(err, pos)) => {
-                Self::print_error(&err, files.lookup(pos).expect("Unknown file"));
-                Err(Error::CompileError(err, pos))
-            }
-            Err(Error::SyntaxError(err, pos)) => {
-                Self::print_error(&err, files.lookup(pos).expect("Unknown file"));
-                Err(Error::SyntaxError(err, pos))
-            }
-            Err(other) => {
-                log::error!("{}: {:?}", "Unexpected error during compilation", other);
-                Err(other)
-            }
+            Err(err) => match Diagnostic::from_error(err) {
+                Ok(diagnostic) => {
+                    Self::print_diagnostic(files, &diagnostic);
+
+                    if diagnostic.is_fatal() {
+                        Err(Error::MultipleErrors)
+                    } else {
+                        Ok(())
+                    }
+                }
+                Err(other) => {
+                    log::error!("{}: {:?}", "Unexpected error during compilation", other);
+                    Err(other)
+                }
+            },
         }
     }
 
-    fn try_compile(self, files: &Files) -> Result<Vec<Diagnostic>, Error> {
+    fn parse_and_compile(self, files: &Files) -> Result<Vec<Diagnostic>, Error> {
         let mut modules = vec![];
         for file in files.files() {
             let parsed = parse_file(file).map_err(|err| {
@@ -93,33 +95,40 @@ impl<'a> CompilationUnit<'a> {
         self.compile_modules(modules)
     }
 
-    fn print_diagnostic(files: &Files, diagnostic: Diagnostic) {
+    fn print_diagnostic(files: &Files, diagnostic: &Diagnostic) {
         match diagnostic {
             Diagnostic::MethodConflict(_, pos) => {
-                let loc = files.lookup(pos).unwrap();
-                log::warn!("At {}:\n Conflicting method replacement", loc)
+                let loc = files.lookup(*pos).unwrap();
+                Self::print_message(
+                    format_args!("At {}:\n Conflicting method replacement", loc),
+                    diagnostic.is_fatal(),
+                );
+            }
+            Diagnostic::CompileError(err, pos) => {
+                let loc = files.lookup(*pos).expect("Unknown file");
+                let line = loc.enclosing_line().trim_end().replace("\t", " ");
+                let padding = " ".repeat(loc.position.col);
+
+                Self::print_message(
+                    format_args!("At {}:\n {}\n {}^^^\n {}", loc, line, padding, err),
+                    diagnostic.is_fatal(),
+                );
             }
         }
     }
 
-    fn print_error(error: &str, loc: SourceLocation) {
-        let line = loc.enclosing_line().trim_end();
-        log::error!(
-            "At {}:\n \
-             {}\n \
-             {}^^^\n \
-             {}",
-            loc,
-            line,
-            " ".repeat(loc.position.col),
-            error
-        );
+    fn print_message(args: fmt::Arguments, fatal: bool) {
+        if fatal {
+            log::error!("{}", args);
+        } else {
+            log::warn!("{}", args);
+        }
     }
 
     pub fn compile_modules(mut self, modules: Vec<SourceModule>) -> Result<Vec<Diagnostic>, Error> {
         let mut compiled_funs = HashSet::new();
-        let mut diagnostics = Vec::new();
         let mut queue = Vec::with_capacity(modules.len());
+        let mut diagnostics = Vec::new();
 
         for module in modules {
             let path = module.path.unwrap_or(ModulePath::EMPTY);
@@ -191,7 +200,13 @@ impl<'a> CompilationUnit<'a> {
 
         // compile function bodies
         for item in self.function_bodies {
-            Self::compile_function(item, self.pool)?;
+            if let Some(err) = Self::compile_function(item, self.pool)
+                .err()
+                .map(Diagnostic::from_error)
+                .transpose()?
+            {
+                diagnostics.push(err);
+            }
         }
 
         // swap proxies with the functions they wrap
@@ -835,4 +850,24 @@ enum Slot {
 #[derive(Debug)]
 pub enum Diagnostic {
     MethodConflict(PoolIndex<Function>, Pos),
+    CompileError(String, Pos),
+}
+
+impl Diagnostic {
+    pub fn from_error(error: Error) -> Result<Diagnostic, Error> {
+        match error {
+            Error::SyntaxError(msg, pos) => Ok(Diagnostic::CompileError(msg, pos)),
+            Error::CompileError(msg, pos) => Ok(Diagnostic::CompileError(msg, pos)),
+            Error::TypeError(msg, pos) => Ok(Diagnostic::CompileError(msg, pos)),
+            Error::ResolutionError(msg, pos) => Ok(Diagnostic::CompileError(msg, pos)),
+            other => Err(other),
+        }
+    }
+
+    pub fn is_fatal(&self) -> bool {
+        match self {
+            Diagnostic::MethodConflict(_, _) => false,
+            Diagnostic::CompileError(_, _) => true,
+        }
+    }
 }

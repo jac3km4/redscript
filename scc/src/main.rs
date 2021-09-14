@@ -86,7 +86,7 @@ fn load_scripts(cache_dir: &Path, files: &Files) -> Result<(), Error> {
 
     let mut bundle: ScriptBundle = ScriptBundle::load(&mut BufReader::new(File::open(&backup_path)?))?;
 
-    CompilationUnit::new(&mut bundle.pool)?.compile(&files)?;
+    CompilationUnit::new(&mut bundle.pool)?.compile(files)?;
 
     let mut file = File::create(&bundle_path)?;
     bundle.save(&mut BufWriter::new(&mut file))?;
@@ -162,7 +162,7 @@ fn error_message(error: Error, files: &Files, scripts_dir: &Path) -> String {
             .strip_prefix(scripts_dir)
             .ok()
             .and_then(|p| p.iter().next())
-            .unwrap_or(loc.file.path().as_os_str());
+            .unwrap_or_else(|| loc.file.path().as_os_str());
 
         let msg = format!(
             "This is caused by an error in '{}', you can try updating or removing it to resolve the issue. The error message was: '{}'. You can consult the logs for more information.",
