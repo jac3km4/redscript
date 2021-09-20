@@ -142,6 +142,8 @@ impl<'a> TypeChecker<'a> {
             }
             Expr::Member(context, name, pos) => {
                 let checked_context = self.check(context, None, scope)?;
+                let type_ = type_of(&checked_context, scope, self.pool)?;
+
                 let member = match type_of(&checked_context, scope, self.pool)?.unwrapped() {
                     TypeId::Class(class) => {
                         let field = scope.resolve_field(name.clone(), *class, self.pool, *pos)?;
@@ -157,7 +159,12 @@ impl<'a> TypeChecker<'a> {
                     }
                     type_ => return Err(Error::invalid_context(type_.pretty(self.pool)?.as_ref(), *pos)),
                 };
-                Expr::Member(Box::new(checked_context), member, *pos)
+                let converted_context = if let TypeId::WeakRef(inner) = type_ {
+                    insert_conversion(checked_context, &TypeId::Ref(inner), Conversion::WeakRefToRef, *pos)
+                } else {
+                    checked_context
+                };
+                Expr::Member(Box::new(converted_context), member, *pos)
             }
             Expr::ArrayElem(expr, idx, pos) => {
                 let idx_type = scope.resolve_type(&TypeName::INT32, self.pool, *pos)?;
