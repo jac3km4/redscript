@@ -1,6 +1,6 @@
 use std::fs::File;
-use std::io::{BufReader, BufWriter};
-use std::path::PathBuf;
+use std::io;
+use std::path::{Path, PathBuf};
 
 use gumdrop::Options;
 use log::LevelFilter;
@@ -12,6 +12,7 @@ use redscript_compiler::unit::CompilationUnit;
 use redscript_decompiler::files::FileIndex;
 use redscript_decompiler::print::{write_definition, OutputMode};
 use simplelog::{ColorChoice, TermLogger, TerminalMode};
+use vmap::Map;
 
 #[derive(Debug, Options)]
 enum Command {
@@ -98,13 +99,13 @@ fn run() -> Result<(), Error> {
 }
 
 fn compile(opts: CompileOpts) -> Result<(), Error> {
-    let mut reader = BufReader::new(File::open(opts.bundle)?);
-    let mut bundle: ScriptBundle = ScriptBundle::load(&mut reader)?;
+    let mut bundle = load_bundle(&opts.bundle)?;
+
     let files = Files::from_dir(&opts.src, SourceFilter::None)?;
 
     match CompilationUnit::new(&mut bundle.pool)?.compile(&files) {
         Ok(()) => {
-            bundle.save(&mut BufWriter::new(File::create(&opts.output)?))?;
+            bundle.save(&mut io::BufWriter::new(File::create(&opts.output)?))?;
             log::info!("Output successfully saved to {}", opts.output.display());
         }
         Err(_) => {
@@ -115,8 +116,7 @@ fn compile(opts: CompileOpts) -> Result<(), Error> {
 }
 
 fn decompile(opts: DecompileOpts) -> Result<(), Error> {
-    let mut reader = BufReader::new(File::open(opts.input)?);
-    let bundle: ScriptBundle = ScriptBundle::load(&mut reader)?;
+    let bundle = load_bundle(&opts.input)?;
     let pool = &bundle.pool;
 
     let mode = match opts.mode.as_str() {
@@ -130,7 +130,7 @@ fn decompile(opts: DecompileOpts) -> Result<(), Error> {
             let path = opts.output.as_path().join(&entry.path);
 
             std::fs::create_dir_all(path.parent().unwrap())?;
-            let mut output = BufWriter::new(File::create(path)?);
+            let mut output = io::BufWriter::new(File::create(path)?);
             for def in entry.definitions {
                 if let Err(err) = write_definition(&mut output, def, pool, 0, mode) {
                     log::error!("Failed to process definition at {:?}: {:?}", def, err);
@@ -138,7 +138,7 @@ fn decompile(opts: DecompileOpts) -> Result<(), Error> {
             }
         }
     } else {
-        let mut output = BufWriter::new(File::create(&opts.output)?);
+        let mut output = io::BufWriter::new(File::create(&opts.output)?);
 
         for (_, def) in pool.roots().filter(|(_, def)| {
             matches!(&def.value, AnyDefinition::Class(_))
@@ -157,7 +157,8 @@ fn decompile(opts: DecompileOpts) -> Result<(), Error> {
 fn lint(opts: LintOpts) -> Result<(), Error> {
     match opts.bundle {
         Some(bundle_path) => {
-            let mut bundle: ScriptBundle = ScriptBundle::load(&mut BufReader::new(File::open(bundle_path)?))?;
+            let mut bundle = load_bundle(&bundle_path)?;
+
             let files = Files::from_dir(&opts.src, SourceFilter::None)?;
 
             if CompilationUnit::new(&mut bundle.pool)?.compile(&files).is_ok() {
@@ -167,4 +168,12 @@ fn lint(opts: LintOpts) -> Result<(), Error> {
         }
         None => Ok(()),
     }
+}
+
+fn load_bundle(path: &Path) -> Result<ScriptBundle, Error> {
+    let (map, _) = Map::with_options()
+        .open(path)
+        .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+    let mut reader = io::Cursor::new(map.as_ref());
+    ScriptBundle::load(&mut reader)
 }

@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, BufReader, BufWriter, SeekFrom};
+use std::io;
 use std::ops::DerefMut;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -15,6 +15,7 @@ use redscript_compiler::source_map::{Files, SourceFilter};
 use redscript_compiler::unit::CompilationUnit;
 use serde::Deserialize;
 use simplelog::{CombinedLogger, Config as LoggerConfig, SimpleLogger, WriteLogger};
+use vmap::Map;
 
 fn main() -> Result<(), Error> {
     // the way cyberpunk passes CLI args is broken, this is a workaround
@@ -84,12 +85,15 @@ fn load_scripts(cache_dir: &Path, files: &Files) -> Result<(), Error> {
         _ => {}
     }
 
-    let mut bundle: ScriptBundle = ScriptBundle::load(&mut BufReader::new(File::open(&backup_path)?))?;
+    let (map, _) = Map::with_options()
+        .open(backup_path)
+        .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+    let mut bundle = ScriptBundle::load(&mut io::Cursor::new(map.as_ref()))?;
 
     CompilationUnit::new(&mut bundle.pool)?.compile(files)?;
 
     let mut file = File::create(&bundle_path)?;
-    bundle.save(&mut BufWriter::new(&mut file))?;
+    bundle.save(&mut io::BufWriter::new(&mut file))?;
     file.sync_all()?;
 
     CompileTimestamp::of_cache_file(&file)?.write(ts_file.deref_mut())?;
@@ -104,13 +108,13 @@ struct CompileTimestamp {
 
 impl CompileTimestamp {
     fn read<R: io::Read + io::Seek>(input: &mut R) -> Result<Self, Error> {
-        input.seek(SeekFrom::Start(0))?;
+        input.seek(io::SeekFrom::Start(0))?;
         let nanos = input.read_u128::<LittleEndian>()?;
         Ok(CompileTimestamp { nanos })
     }
 
     fn write<W: io::Write + io::Seek>(&self, output: &mut W) -> Result<(), Error> {
-        output.seek(SeekFrom::Start(0))?;
+        output.seek(io::SeekFrom::Start(0))?;
         output.write_u128::<LittleEndian>(self.nanos)?;
         Ok(())
     }

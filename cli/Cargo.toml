@@ -9,6 +9,7 @@ publish = false
 redscript = { path = "../core" }
 redscript-decompiler = { path = "../decompiler" }
 redscript-compiler = { path = "../compiler" }
+vmap = "0.4"
 gumdrop = "0.8"
 log = "0.4"
 simplelog = "0.10"

@@ -9,6 +9,7 @@ publish = false
 redscript = { path = "../core" }
 redscript-compiler = { path = "../compiler" }
 byteorder = "1.4"
+vmap = "0.4"
 log = "0.4"
 simplelog = { version = "0.10", default_features = false }
 toml = "0.5"
