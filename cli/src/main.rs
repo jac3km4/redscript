@@ -2,8 +2,8 @@ use std::fs::File;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use fern::colors::ColoredLevelConfig;
 use gumdrop::Options;
-use log::LevelFilter;
 use redscript::bundle::ScriptBundle;
 use redscript::definition::AnyDefinition;
 use redscript::error::Error;
@@ -11,7 +11,6 @@ use redscript_compiler::source_map::{Files, SourceFilter};
 use redscript_compiler::unit::CompilationUnit;
 use redscript_decompiler::files::FileIndex;
 use redscript_decompiler::print::{write_definition, OutputMode};
-use simplelog::{ColorChoice, TermLogger, TerminalMode};
 use vmap::Map;
 
 #[derive(Debug, Options)]
@@ -57,13 +56,24 @@ struct LintOpts {
 }
 
 fn main() -> Result<(), Error> {
-    let log_config = simplelog::ConfigBuilder::new().set_time_format_str("").build();
-    TermLogger::init(LevelFilter::Info, log_config, TerminalMode::Stdout, ColorChoice::Auto).unwrap();
+    setup_logger();
 
     run().map_err(|err| {
         log::error!("{:?}", err);
         err
     })
+}
+
+fn setup_logger() {
+    let colors = ColoredLevelConfig::new();
+    fern::Dispatch::new()
+        .format(move |out, message, rec| {
+            out.finish(format_args!("[{}] {}", colors.color(rec.level()), message));
+        })
+        .level(log::LevelFilter::Info)
+        .chain(io::stdout())
+        .apply()
+        .expect("Failed to initialize the logger");
 }
 
 fn run() -> Result<(), Error> {

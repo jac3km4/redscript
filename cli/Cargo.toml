@@ -9,10 +9,10 @@ publish = false
 redscript = { path = "../core" }
 redscript-decompiler = { path = "../decompiler" }
 redscript-compiler = { path = "../compiler" }
-vmap = "0.4"
+vmap = { version = "0.4", default-features = false }
 gumdrop = "0.8"
 log = "0.4"
-simplelog = "0.10"
+fern = { version = "0.6", features = ["colored"] }
 
 [package.metadata.release]
 disable-tag = true

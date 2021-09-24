@@ -7,14 +7,14 @@ use std::time::SystemTime;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use fd_lock::RwLock;
-use log::LevelFilter;
 use redscript::ast::Pos;
 use redscript::bundle::ScriptBundle;
 use redscript::error::Error;
 use redscript_compiler::source_map::{Files, SourceFilter};
 use redscript_compiler::unit::CompilationUnit;
 use serde::Deserialize;
-use simplelog::{CombinedLogger, Config as LoggerConfig, SimpleLogger, WriteLogger};
+use time::format_description::well_known::Rfc3339 as Rfc3339Format;
+use time::OffsetDateTime;
 use vmap::Map;
 
 fn main() -> Result<(), Error> {
@@ -24,7 +24,7 @@ fn main() -> Result<(), Error> {
         [cmd, path_str, ..] if cmd == "-compile" => {
             let script_dir = PathBuf::from(path_str.split('"').next().unwrap());
             let cache_dir = script_dir.parent().unwrap().join("cache");
-            start_logger(&cache_dir)?;
+            setup_logger(&cache_dir)?;
             let manifest = ScriptManifest::load_with_fallback(&script_dir);
             let files = Files::from_dir(&script_dir, manifest.source_filter())?;
 
@@ -45,13 +45,18 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
-fn start_logger(cache_dir: &Path) -> Result<(), Error> {
-    let log_path = cache_dir.join("redscript.log");
-    CombinedLogger::init(vec![
-        SimpleLogger::new(LevelFilter::Info, LoggerConfig::default()),
-        WriteLogger::new(LevelFilter::Info, LoggerConfig::default(), File::create(log_path)?),
-    ])
-    .expect("Failed to initialize the logger");
+fn setup_logger(cache_dir: &Path) -> Result<(), Error> {
+    fern::Dispatch::new()
+        .format(move |out, message, rec| {
+            let time = OffsetDateTime::now_local().unwrap().format(&Rfc3339Format).unwrap();
+            out.finish(format_args!("{} [{}] {}", time, rec.level(), message));
+        })
+        .level(log::LevelFilter::Info)
+        .chain(io::stdout())
+        .chain(fern::log_file(cache_dir.join("redscript.log"))?)
+        .apply()
+        .expect("Failed to initialize the logger");
+
     Ok(())
 }
 
