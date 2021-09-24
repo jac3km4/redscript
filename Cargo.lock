@@ -870,7 +870,7 @@ dependencies = [
 
 [[package]]
 name = "redscript"
-version = "0.3.3"
+version = "0.3.4-dev"
 dependencies = [
  "byteorder",
  "crc32fast",
@@ -880,7 +880,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-cli"
-version = "0.3.3"
+version = "0.3.4-dev"
 dependencies = [
  "fern",
  "gumdrop",
@@ -893,7 +893,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-compiler"
-version = "0.3.3"
+version = "0.3.4-dev"
 dependencies = [
  "hamt-sync",
  "log",
@@ -906,7 +906,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-decompiler"
-version = "0.3.3"
+version = "0.3.4-dev"
 dependencies = [
  "log",
  "redscript",
@@ -923,7 +923,7 @@ dependencies = [
 
 [[package]]
 name = "scc"
-version = "0.3.3"
+version = "0.3.4-dev"
 dependencies = [
  "byteorder",
  "fd-lock",
