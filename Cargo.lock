@@ -876,6 +876,7 @@ dependencies = [
  "crc32fast",
  "modular-bitfield",
  "strum 0.21.0",
+ "thiserror",
 ]
 
 [[package]]

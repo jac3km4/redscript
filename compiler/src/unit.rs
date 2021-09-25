@@ -76,7 +76,7 @@ impl<'a> CompilationUnit<'a> {
                     }
                 }
                 Err(other) => {
-                    log::error!("{}: {:?}", "Unexpected error during compilation", other);
+                    log::error!("{}: {}", "Unexpected error during compilation", other);
                     Err(other)
                 }
             },

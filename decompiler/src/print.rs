@@ -60,7 +60,7 @@ pub fn write_definition<W: Write>(
             for method_index in &class.functions {
                 let method = pool.definition(*method_index)?;
                 if let Err(err) = write_definition(out, method, pool, depth + 1, mode) {
-                    log::error!("Method decompilation {:?} failed due to: {:?}", method_index, err)
+                    log::error!("Method decompilation {} failed (caused by {})", method_index, err)
                 }
             }
             writeln!(out, "}}")?

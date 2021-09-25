@@ -152,7 +152,7 @@ impl ScriptManifest {
 
     pub fn load_with_fallback(script_dir: &Path) -> Self {
         Self::load(script_dir).unwrap_or_else(|err| {
-            log::info!("Could not load the manifest: {:?}, falling back to defaults", err);
+            log::info!("Could not load the manifest, falling back to defaults (caused by {})", err);
             Self::default()
         })
     }

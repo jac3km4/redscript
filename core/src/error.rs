@@ -1,18 +1,29 @@
 use std::fmt::{self, Display};
 use std::{io, usize};
 
+use thiserror::Error;
+
 use crate::ast::Pos;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum Error {
-    IoError(io::Error),
+    #[error("I/O error")]
+    IoError(#[from] io::Error),
+    #[error("formatter error")]
+    FormatError(#[from] fmt::Error),
+    #[error("decompilation error: {0}")]
     DecompileError(String),
+    #[error("syntax error: {0}")]
     SyntaxError(String, Pos),
+    #[error("compilation error: {0}")]
     CompileError(String, Pos),
+    #[error("type error: {0}")]
     TypeError(String, Pos),
+    #[error("function resolution error: {0}")]
     ResolutionError(String, Pos),
+    #[error("constant pool error: {0}")]
     PoolError(String),
-    FormatError(fmt::Error),
+    #[error("multiple errors")]
     MultipleErrors(Vec<Pos>),
 }
 
@@ -146,18 +157,6 @@ impl Error {
     pub fn class_redefinition(pos: Pos) -> Error {
         let err = "Class with this name is already defined elsewhere".to_owned();
         Error::CompileError(err, pos)
-    }
-}
-
-impl From<io::Error> for Error {
-    fn from(err: io::Error) -> Self {
-        Error::IoError(err)
-    }
-}
-
-impl From<fmt::Error> for Error {
-    fn from(err: fmt::Error) -> Self {
-        Error::FormatError(err)
     }
 }
 

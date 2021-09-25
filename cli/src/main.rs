@@ -59,7 +59,7 @@ fn main() -> Result<(), Error> {
     setup_logger();
 
     run().map_err(|err| {
-        log::error!("{:?}", err);
+        log::error!("{}", err);
         err
     })
 }
@@ -143,7 +143,7 @@ fn decompile(opts: DecompileOpts) -> Result<(), Error> {
             let mut output = io::BufWriter::new(File::create(path)?);
             for def in entry.definitions {
                 if let Err(err) = write_definition(&mut output, def, pool, 0, mode) {
-                    log::error!("Failed to process definition at {:?}: {:?}", def, err);
+                    log::error!("Failed to process definition at {:?}: {}", def, err);
                 }
             }
         }
@@ -156,7 +156,7 @@ fn decompile(opts: DecompileOpts) -> Result<(), Error> {
                 || matches!(&def.value, AnyDefinition::Function(_))
         }) {
             if let Err(err) = write_definition(&mut output, def, pool, 0, mode) {
-                log::error!("Failed to process definition at {:?}: {:?}", def, err);
+                log::error!("Failed to process definition at {:?}: {}", def, err);
             }
         }
     }
