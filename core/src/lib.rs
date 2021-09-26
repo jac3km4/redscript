@@ -6,3 +6,8 @@ pub mod definition;
 pub mod encode;
 pub mod error;
 pub mod mapper;
+
+#[cfg(not(feature = "arc"))]
+pub type Ref<A> = std::rc::Rc<A>;
+#[cfg(feature = "arc")]
+pub type Ref<A> = std::sync::Arc<A>;

@@ -1,6 +1,5 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt;
-use std::rc::Rc;
 
 use redscript::ast::{Expr, Ident, Pos, Seq, SourceAst};
 use redscript::bundle::{ConstantPool, PoolIndex};
@@ -8,6 +7,7 @@ use redscript::bytecode::{Code, Instr};
 use redscript::definition::*;
 use redscript::error::Error;
 use redscript::mapper::{MultiMapper, PoolMapper};
+use redscript::Ref;
 
 use crate::assembler::Assembler;
 use crate::parser::*;
@@ -306,7 +306,7 @@ impl<'a> CompilationUnit<'a> {
             match member {
                 MemberSource::Function(fun) => {
                     let fun_sig = FunctionSignature::from_source(&fun);
-                    let name_idx = self.pool.names.add(Rc::new(fun_sig.into_owned()));
+                    let name_idx = self.pool.names.add(Ref::new(fun_sig.into_owned()));
                     let fun_idx = self.pool.stub_definition(name_idx);
 
                     self.define_function(fun_idx, class_idx, None, None, visibility, fun, scope)?;
@@ -547,7 +547,7 @@ impl<'a> CompilationUnit<'a> {
                         }
                     };
 
-                    let name_idx = self.pool.names.add(Rc::new(format!("wrapper${}", wrapped_idx)));
+                    let name_idx = self.pool.names.add(Ref::new(format!("wrapper${}", wrapped_idx)));
                     let wrapper_idx = self.pool.stub_definition(name_idx);
                     let base = self.pool.function(fun_idx)?.base_method;
 
@@ -627,7 +627,7 @@ impl<'a> CompilationUnit<'a> {
                     } else {
                         None
                     };
-                    let name_idx = self.pool.names.add(Rc::new(sig.into_owned()));
+                    let name_idx = self.pool.names.add(Ref::new(sig.into_owned()));
                     let fun_idx = self.pool.stub_definition(name_idx);
                     self.pool.class_mut(target_class_idx)?.functions.push(fun_idx);
 
@@ -735,7 +735,7 @@ impl<'a> CompilationUnit<'a> {
                 parameters,
                 ..fun
             };
-            let name = pool.names.add(Rc::new(format!("proxy${}", wrapper)));
+            let name = pool.names.add(Ref::new(format!("proxy${}", wrapper)));
             pool.put_definition(slot, Definition::function(name, def.parent.cast(), compiled));
             if !def.parent.is_undefined() {
                 pool.class_mut(def.parent.cast())?.functions.push(slot);
