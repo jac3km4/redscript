@@ -1,10 +1,10 @@
-use std::rc::Rc;
 use std::str::FromStr;
 
 use peg::error::ParseError;
 use peg::str::LineCol;
 use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, Pos, Seq, SourceAst, SwitchCase, TypeName, UnOp};
 use redscript::definition::Visibility;
+use redscript::Ref;
 use strum::EnumString;
 
 use crate::source_map::File;
@@ -226,7 +226,7 @@ peg::parser! {
             / keyword("false") { Constant::Bool(false) }
             / n:number() { n }
             / type_:literal_type()? str:escaped_string()
-                { Constant::String(type_.unwrap_or(Literal::String), Rc::new(str)) }
+                { Constant::String(type_.unwrap_or(Literal::String), Ref::new(str)) }
 
         rule seq() -> Seq<SourceAst> = exprs:(stmt() ** _) { Seq::new(exprs) }
 

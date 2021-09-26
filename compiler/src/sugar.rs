@@ -1,4 +1,3 @@
-use std::rc::Rc;
 use std::vec;
 
 use redscript::ast::{BinOp, Constant, Expr, Ident, Pos, Seq, TypeName};
@@ -6,6 +5,7 @@ use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::IntrinsicOp;
 use redscript::definition::{Definition, Local, LocalFlags};
 use redscript::error::Error;
+use redscript::Ref;
 
 use crate::scope::{Reference, Scope, TypeId, Value};
 use crate::symbol::{FunctionSignature, FunctionSignatureBuilder};
@@ -51,7 +51,7 @@ impl<'a> Desugar<'a> {
 
     fn fresh_local(&mut self, type_: &TypeId) -> Result<Reference, Error> {
         let fun_idx = self.scope.function.unwrap();
-        let name_idx = self.pool.names.add(Rc::new(format!("synthetic${}", self.name_count)));
+        let name_idx = self.pool.names.add(Ref::new(format!("synthetic${}", self.name_count)));
         let type_idx = self.scope.get_type_index(type_, self.pool)?;
         let local = Local::new(type_idx, LocalFlags::new());
         let def = Definition::local(name_idx, fun_idx, local);
