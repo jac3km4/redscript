@@ -1,9 +1,10 @@
 use std::fmt::{self, Debug, Display};
 use std::hash::Hash;
 use std::ops::Add;
-use std::rc::Rc;
 
 use strum::{Display, EnumString, IntoStaticStr};
+
+use crate::Ref;
 
 #[derive(Debug)]
 pub enum Expr<Name: NameKind>
@@ -87,7 +88,7 @@ where
 
 #[derive(Debug, Clone)]
 pub enum Constant {
-    String(Literal, Rc<String>),
+    String(Literal, Ref<String>),
     F32(f32),
     F64(f64),
     I32(i32),
@@ -100,17 +101,17 @@ pub enum Constant {
 #[derive(Debug, Clone, Eq, PartialOrd, Ord)]
 pub enum Ident {
     Static(&'static str),
-    Owned(Rc<String>),
+    Owned(Ref<String>),
 }
 
 impl Ident {
     pub fn new(str: String) -> Ident {
-        Ident::Owned(Rc::new(str))
+        Ident::Owned(Ref::new(str))
     }
 
-    pub fn to_owned(&self) -> Rc<String> {
+    pub fn to_owned(&self) -> Ref<String> {
         match self {
-            Ident::Static(str) => Rc::new(str.to_string()),
+            Ident::Static(str) => Ref::new(str.to_string()),
             Ident::Owned(rc) => rc.clone(),
         }
     }
@@ -393,7 +394,7 @@ impl TypeName {
         }
     }
 
-    pub fn basic_owned(name: Rc<String>) -> Self {
+    pub fn basic_owned(name: Ref<String>) -> Self {
         TypeName {
             name: Ident::Owned(name),
             arguments: vec![],
@@ -449,7 +450,7 @@ impl TypeName {
     }
 
     fn from_parts<'a>(name: &'a str, mut parts: impl Iterator<Item = &'a str>) -> Option<TypeName> {
-        let name = Rc::new(name.to_owned());
+        let name = Ref::new(name.to_owned());
         match parts.next() {
             Some(tail) => {
                 let arg = Self::from_parts(tail, parts)?;

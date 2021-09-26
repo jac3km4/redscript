@@ -3,7 +3,6 @@ use std::collections::hash_map::{Entry, HashMap};
 use std::hash::Hash;
 use std::io::Seek;
 use std::marker::PhantomData;
-use std::rc::Rc;
 use std::{fmt, io};
 
 use modular_bitfield::prelude::*;
@@ -12,6 +11,7 @@ use crate::decode::{Decode, DecodeExt};
 use crate::definition::{AnyDefinition, Class, Definition, Enum, Field, Function, Local, Parameter, Type};
 use crate::encode::{Encode, EncodeExt};
 use crate::error::Error;
+use crate::Ref;
 
 #[derive(Debug)]
 pub struct ScriptBundle {
@@ -327,7 +327,7 @@ impl ConstantPool {
         }
     }
 
-    pub fn definition_name<A>(&self, index: PoolIndex<A>) -> Result<Rc<String>, Error> {
+    pub fn definition_name<A>(&self, index: PoolIndex<A>) -> Result<Ref<String>, Error> {
         self.names.get(self.definition(index)?.name)
     }
 
@@ -372,8 +372,8 @@ impl ConstantPool {
 
 #[derive(Debug, Clone)]
 pub struct Names<K> {
-    pub strings: Vec<Rc<String>>,
-    mappings: HashMap<Rc<String>, PoolIndex<K>>,
+    pub strings: Vec<Ref<String>>,
+    mappings: HashMap<Ref<String>, PoolIndex<K>>,
     phantom: PhantomData<K>,
 }
 
@@ -383,7 +383,7 @@ impl<K> Names<K> {
         let mut mappings = HashMap::new();
         for (idx, offset) in offsets.iter().enumerate() {
             input.seek(io::SeekFrom::Start((*offset).into()))?;
-            let str: Rc<String> = Rc::new(input.decode()?);
+            let str: Ref<String> = Ref::new(input.decode()?);
             strings.push(str.clone());
             mappings.insert(str, PoolIndex::new(idx as u32));
         }
@@ -395,7 +395,7 @@ impl<K> Names<K> {
         Ok(result)
     }
 
-    fn encoded_offsets(&self, str_map: &HashMap<Rc<String>, u32>) -> io::Result<Vec<u8>> {
+    fn encoded_offsets(&self, str_map: &HashMap<Ref<String>, u32>) -> io::Result<Vec<u8>> {
         let mut offsets = io::Cursor::new(Vec::new());
         for string in &self.strings {
             offsets.encode(str_map.get(string).unwrap())?;
@@ -403,7 +403,7 @@ impl<K> Names<K> {
         Ok(offsets.into_inner())
     }
 
-    pub fn get(&self, index: PoolIndex<K>) -> Result<Rc<String>, Error> {
+    pub fn get(&self, index: PoolIndex<K>) -> Result<Ref<String>, Error> {
         self.strings
             .get(index.value as usize)
             .cloned()
@@ -417,7 +417,7 @@ impl<K> Names<K> {
             .ok_or_else(|| Error::PoolError(format!("Name {} not found", name)))
     }
 
-    pub fn add(&mut self, str: Rc<String>) -> PoolIndex<K> {
+    pub fn add(&mut self, str: Ref<String>) -> PoolIndex<K> {
         let idx = PoolIndex::new(self.strings.len() as u32);
         match self.mappings.entry(str.clone()) {
             Entry::Occupied(entry) => *entry.get(),

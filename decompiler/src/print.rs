@@ -1,11 +1,11 @@
 use std::io::Write;
-use std::rc::Rc;
 use std::str::FromStr;
 
 use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, Seq, SourceAst, SwitchCase, UnOp};
 use redscript::bundle::ConstantPool;
 use redscript::definition::{AnyDefinition, Definition, Function, Type};
 use redscript::error::Error;
+use redscript::Ref;
 
 use crate::Decompiler;
 
@@ -67,7 +67,7 @@ pub fn write_definition<W: Write>(
         }
         AnyDefinition::EnumValue(val) => {
             let name = if definition.name.is_undefined() {
-                Rc::new("Undefined".to_owned())
+                Ref::new("Undefined".to_owned())
             } else {
                 pool.names.get(definition.name)?
             };

@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 use std::io;
-use std::rc::Rc;
 
 use redscript::ast::{Constant, Expr, Ident, Literal, Pos, Seq, SourceAst, SwitchCase, Target, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{CodeCursor, Instr, IntrinsicOp, Location, Offset};
 use redscript::definition::Function;
 use redscript::error::Error;
+use redscript::Ref;
 
 pub mod files;
 pub mod print;
@@ -185,19 +185,19 @@ impl<'a> Decompiler<'a> {
             Instr::F64Const(val) => Expr::Constant(Constant::F64(val), Pos::ZERO),
             Instr::StringConst(idx) => {
                 let str = self.pool.strings.get(idx)?.to_string();
-                Expr::Constant(Constant::String(Literal::String, Rc::new(str)), Pos::ZERO)
+                Expr::Constant(Constant::String(Literal::String, Ref::new(str)), Pos::ZERO)
             }
             Instr::NameConst(idx) => {
                 let str = self.pool.names.get(idx)?.to_string();
-                Expr::Constant(Constant::String(Literal::Name, Rc::new(str)), Pos::ZERO)
+                Expr::Constant(Constant::String(Literal::Name, Ref::new(str)), Pos::ZERO)
             }
             Instr::TweakDbIdConst(idx) => {
                 let str = self.pool.tweakdb_ids.get(idx)?.to_string();
-                Expr::Constant(Constant::String(Literal::TweakDbId, Rc::new(str)), Pos::ZERO)
+                Expr::Constant(Constant::String(Literal::TweakDbId, Ref::new(str)), Pos::ZERO)
             }
             Instr::ResourceConst(idx) => {
                 let str = self.pool.resources.get(idx)?.to_string();
-                Expr::Constant(Constant::String(Literal::Resource, Rc::new(str)), Pos::ZERO)
+                Expr::Constant(Constant::String(Literal::Resource, Ref::new(str)), Pos::ZERO)
             }
             Instr::TrueConst => Expr::Constant(Constant::Bool(true), Pos::ZERO),
             Instr::FalseConst => Expr::Constant(Constant::Bool(false), Pos::ZERO),
