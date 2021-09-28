@@ -310,7 +310,7 @@ fn write_expr_nested<W: Write>(
         }
         Expr::Return(None, _) => write!(out, "return")?,
         Expr::Seq(exprs) => write_seq(out, exprs, verbose, depth)?,
-        Expr::Switch(expr, cases, default) => {
+        Expr::Switch(expr, cases, default, _) => {
             write!(out, "switch ")?;
             write_expr(out, expr, verbose, 0)?;
             writeln!(out, " {{")?;
@@ -365,7 +365,7 @@ fn write_expr_nested<W: Write>(
             write_unop(out, val, *op, verbose)?;
         }
         Expr::Break(_) => write!(out, "break")?,
-        Expr::Null => write!(out, "null")?,
+        Expr::Null(_) => write!(out, "null")?,
         Expr::This(_) => write!(out, "this")?,
         Expr::Super(_) => write!(out, "super")?,
         Expr::ArrayLit(_, _, _) => panic!("Shouldn't get here"),

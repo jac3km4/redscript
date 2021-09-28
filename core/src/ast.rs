@@ -17,31 +17,31 @@ where
     Name::Member: Debug,
     Name::Type: Debug,
 {
-    Ident(Name::Reference, Pos),
-    Constant(Constant, Pos),
-    ArrayLit(Vec<Self>, Option<Name::Type>, Pos),
-    Declare(Name::Local, Option<Name::Type>, Option<Box<Self>>, Pos),
-    Cast(Name::Type, Box<Self>, Pos),
-    Assign(Box<Self>, Box<Self>, Pos),
-    Call(Name::Callable, Vec<Self>, Pos),
-    MethodCall(Box<Self>, Name::Function, Vec<Self>, Pos),
-    Member(Box<Self>, Name::Member, Pos),
-    ArrayElem(Box<Self>, Box<Self>, Pos),
-    New(Name::Type, Vec<Self>, Pos),
-    Return(Option<Box<Self>>, Pos),
+    Ident(Name::Reference, Span),
+    Constant(Constant, Span),
+    ArrayLit(Vec<Self>, Option<Name::Type>, Span),
+    Declare(Name::Local, Option<Name::Type>, Option<Box<Self>>, Span),
+    Cast(Name::Type, Box<Self>, Span),
+    Assign(Box<Self>, Box<Self>, Span),
+    Call(Name::Callable, Vec<Self>, Span),
+    MethodCall(Box<Self>, Name::Function, Vec<Self>, Span),
+    Member(Box<Self>, Name::Member, Span),
+    ArrayElem(Box<Self>, Box<Self>, Span),
+    New(Name::Type, Vec<Self>, Span),
+    Return(Option<Box<Self>>, Span),
     Seq(Seq<Name>),
-    Switch(Box<Self>, Vec<SwitchCase<Name>>, Option<Seq<Name>>),
-    Goto(Target, Pos),
-    If(Box<Self>, Seq<Name>, Option<Seq<Name>>, Pos),
-    Conditional(Box<Self>, Box<Self>, Box<Self>, Pos),
-    While(Box<Self>, Seq<Name>, Pos),
-    ForIn(Name::Local, Box<Self>, Seq<Name>, Pos),
-    BinOp(Box<Self>, Box<Self>, BinOp, Pos),
-    UnOp(Box<Self>, UnOp, Pos),
-    This(Pos),
-    Super(Pos),
-    Break(Pos),
-    Null,
+    Switch(Box<Self>, Vec<SwitchCase<Name>>, Option<Seq<Name>>, Span),
+    Goto(Target, Span),
+    If(Box<Self>, Seq<Name>, Option<Seq<Name>>, Span),
+    Conditional(Box<Self>, Box<Self>, Box<Self>, Span),
+    While(Box<Self>, Seq<Name>, Span),
+    ForIn(Name::Local, Box<Self>, Seq<Name>, Span),
+    BinOp(Box<Self>, Box<Self>, BinOp, Span),
+    UnOp(Box<Self>, UnOp, Span),
+    This(Span),
+    Super(Span),
+    Break(Span),
+    Null(Span),
 }
 
 pub trait NameKind {
@@ -340,6 +340,20 @@ impl Add<usize> for Pos {
     #[inline(always)]
     fn add(self, rhs: usize) -> Pos {
         Pos(self.0 + rhs as u32)
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct Span {
+    pub low: Pos,
+    pub high: Pos,
+}
+
+impl Span {
+    pub const ZERO: Span = Span::new(Pos::ZERO, Pos::ZERO);
+
+    pub const fn new(low: Pos, high: Pos) -> Self {
+        Self { low, high }
     }
 }
 

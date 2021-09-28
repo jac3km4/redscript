@@ -1,7 +1,7 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt;
 
-use redscript::ast::{Expr, Ident, Pos, Seq, SourceAst};
+use redscript::ast::{Expr, Ident, Seq, SourceAst, Span};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Instr};
 use redscript::definition::*;
@@ -33,7 +33,7 @@ impl<'a> CompilationUnit<'a> {
         let mut scope = Scope::new(pool)?;
 
         symbols.populate_import(
-            Import::All(ModulePath::EMPTY, Pos::ZERO),
+            Import::All(ModulePath::EMPTY, Span::ZERO),
             &mut scope,
             Visibility::Private,
         )?;
@@ -59,7 +59,9 @@ impl<'a> CompilationUnit<'a> {
                 }
 
                 if is_fatal {
-                    Err(Error::MultipleErrors(diagnostics.iter().map(Diagnostic::pos).collect()))
+                    Err(Error::MultipleErrors(
+                        diagnostics.iter().map(Diagnostic::span).collect(),
+                    ))
                 } else {
                     log::info!("Compilation complete");
                     Ok(())
@@ -70,7 +72,7 @@ impl<'a> CompilationUnit<'a> {
                     Self::print_diagnostic(files, &diagnostic);
 
                     if diagnostic.is_fatal() {
-                        Err(Error::MultipleErrors(vec![diagnostic.pos()]))
+                        Err(Error::MultipleErrors(vec![diagnostic.span()]))
                     } else {
                         Ok(())
                     }
@@ -88,7 +90,8 @@ impl<'a> CompilationUnit<'a> {
         for file in files.files() {
             let parsed = parse_file(file).map_err(|err| {
                 let message = format!("Syntax error, expected {}", err.expected);
-                Error::SyntaxError(message, file.byte_offset() + err.location.offset)
+                let pos = file.byte_offset() + err.location.offset;
+                Error::SyntaxError(message, Span::new(pos, pos + 1))
             })?;
             modules.push(parsed);
         }
@@ -107,10 +110,16 @@ impl<'a> CompilationUnit<'a> {
             Diagnostic::CompileError(err, pos) => {
                 let loc = files.lookup(*pos).expect("Unknown file");
                 let line = loc.enclosing_line().trim_end().replace("\t", " ");
-                let padding = " ".repeat(loc.position.col);
+                let padding = " ".repeat(loc.start.col);
+                let underscore_len = if loc.start.line == loc.end.line {
+                    loc.end.col - loc.start.col
+                } else {
+                    3
+                };
+                let underscore = "^".repeat(underscore_len);
 
                 Self::print_message(
-                    format_args!("At {}:\n {}\n {}^^^\n {}", loc, line, padding, err),
+                    format_args!("At {}:\n {}\n {}{}\n {}", loc, line, padding, underscore, err),
                     diagnostic.is_fatal(),
                 );
             }
@@ -144,7 +153,7 @@ impl<'a> CompilationUnit<'a> {
 
             if !path.is_empty() {
                 self.symbols
-                    .populate_import(Import::All(path, Pos::ZERO), &mut module_scope, Visibility::Private)
+                    .populate_import(Import::All(path, Span::ZERO), &mut module_scope, Visibility::Private)
                     .ok();
             };
 
@@ -163,7 +172,7 @@ impl<'a> CompilationUnit<'a> {
                         visibility,
                         wrapped,
                     } => {
-                        let pos = source.declaration.pos;
+                        let pos = source.declaration.span;
                         self.define_function(index, parent, base, wrapped, visibility, source, &mut module_scope)?;
                         if compiled_funs.contains(&index) {
                             diagnostics.push(Diagnostic::MethodConflict(index, pos));
@@ -233,8 +242,8 @@ impl<'a> CompilationUnit<'a> {
                 let index = self.pool.stub_definition(name_index);
                 let visibility = source.qualifiers.visibility().unwrap_or(Visibility::Private);
 
-                if let Ok(Symbol::Class(_, _)) = self.symbols.get_symbol(&path, source.pos) {
-                    return Err(Error::class_redefinition(source.pos));
+                if let Ok(Symbol::Class(_, _)) = self.symbols.get_symbol(&path, source.span) {
+                    return Err(Error::class_redefinition(source.span));
                 }
 
                 self.scope.add_type(path.render(), type_index);
@@ -327,12 +336,12 @@ impl<'a> CompilationUnit<'a> {
         }
 
         let base_idx = if let Some(base_name) = source.base {
-            if let Symbol::Class(base_idx, _) = scope.resolve_symbol(base_name.clone(), source.pos)? {
+            if let Symbol::Class(base_idx, _) = scope.resolve_symbol(base_name.clone(), source.span)? {
                 base_idx
             } else {
-                return Err(Error::class_not_found(base_name, source.pos));
+                return Err(Error::class_not_found(base_name, source.span));
             }
-        } else if let Ok(Symbol::Class(class, _)) = scope.resolve_symbol(Ident::Static("IScriptable"), source.pos) {
+        } else if let Ok(Symbol::Class(class, _)) = scope.resolve_symbol(Ident::Static("IScriptable"), source.span) {
             class
         } else {
             log::warn!("No IScriptable in scope, defaulting to no implicit base class");
@@ -378,7 +387,7 @@ impl<'a> CompilationUnit<'a> {
             None => None,
             Some(type_) if type_.name.as_ref() == "Void" => None,
             Some(type_) => {
-                let type_ = scope.resolve_type(&type_, self.pool, decl.pos)?;
+                let type_ = scope.resolve_type(&type_, self.pool, decl.span)?;
                 Some(scope.get_type_index(&type_, self.pool)?)
             }
         };
@@ -386,7 +395,7 @@ impl<'a> CompilationUnit<'a> {
         let mut parameters = Vec::new();
 
         for param in &source.parameters {
-            let type_ = scope.resolve_type(&param.type_, self.pool, decl.pos)?;
+            let type_ = scope.resolve_type(&param.type_, self.pool, decl.span)?;
             let type_idx = scope.get_type_index(&type_, self.pool)?;
             let flags = ParameterFlags::new()
                 .with_is_optional(param.qualifiers.contain(Qualifier::Optional))
@@ -443,7 +452,7 @@ impl<'a> CompilationUnit<'a> {
         scope: &mut Scope,
     ) -> Result<(), Error> {
         let decl = source.declaration;
-        let type_ = scope.resolve_type(&source.type_, self.pool, decl.pos)?;
+        let type_ = scope.resolve_type(&source.type_, self.pool, decl.span)?;
         let type_idx = scope.get_type_index(&type_, self.pool)?;
         let flags = FieldFlags::new()
             .with_is_mutable(true)
@@ -497,19 +506,19 @@ impl<'a> CompilationUnit<'a> {
                     let ident = ann
                         .values
                         .first()
-                        .ok_or_else(|| Error::invalid_annotation_args(ann.pos))?;
-                    if let Symbol::Class(target_class, _) = scope.resolve_symbol(ident.clone(), ann.pos)? {
+                        .ok_or_else(|| Error::invalid_annotation_args(ann.span))?;
+                    if let Symbol::Class(target_class, _) = scope.resolve_symbol(ident.clone(), ann.span)? {
                         self.define_field(index, target_class, visibility, source, scope)?;
                         self.pool.class_mut(target_class)?.fields.push(index);
                         return Ok(());
                     } else {
-                        return Err(Error::class_not_found(ident, ann.pos));
+                        return Err(Error::class_not_found(ident, ann.span));
                     }
                 }
                 _ => {}
             }
         }
-        Err(Error::unsupported("Let binding", decl.pos))
+        Err(Error::unsupported("Let binding", decl.span))
     }
 
     fn determine_function_location(&mut self, source: FunctionSource, module: &ModulePath) -> Result<Slot, Error> {
@@ -525,22 +534,22 @@ impl<'a> CompilationUnit<'a> {
             match ann.name {
                 AnnotationName::WrapMethod => {
                     if source.declaration.qualifiers.contain(Qualifier::Native) {
-                        return Err(Error::unsupported("Wrapping natives", ann.pos));
+                        return Err(Error::unsupported("Wrapping natives", ann.span));
                     }
                     let class_name = ann
                         .values
                         .first()
-                        .ok_or_else(|| Error::invalid_annotation_args(ann.pos))?;
-                    let target_class_idx = match self.scope.resolve_symbol(class_name.clone(), ann.pos)? {
+                        .ok_or_else(|| Error::invalid_annotation_args(ann.span))?;
+                    let target_class_idx = match self.scope.resolve_symbol(class_name.clone(), ann.span)? {
                         Symbol::Class(idx, _) => idx,
                         Symbol::Struct(idx, _) => idx,
-                        _ => return Err(Error::class_not_found(class_name, ann.pos)),
+                        _ => return Err(Error::class_not_found(class_name, ann.span)),
                     };
                     let fun_idx = self
                         .scope
-                        .resolve_method(name.clone(), target_class_idx, self.pool, ann.pos)?
+                        .resolve_method(name.clone(), target_class_idx, self.pool, ann.span)?
                         .by_id(&sig, self.pool)
-                        .ok_or_else(|| Error::function_not_found(name, ann.pos))?;
+                        .ok_or_else(|| Error::function_not_found(name, ann.span))?;
 
                     let wrapped_idx = match self.wrappers.get(&fun_idx) {
                         Some(wrapped) => *wrapped,
@@ -572,17 +581,17 @@ impl<'a> CompilationUnit<'a> {
                     let class_name = ann
                         .values
                         .first()
-                        .ok_or_else(|| Error::invalid_annotation_args(ann.pos))?;
-                    let target_class_idx = match self.scope.resolve_symbol(class_name.clone(), ann.pos)? {
+                        .ok_or_else(|| Error::invalid_annotation_args(ann.span))?;
+                    let target_class_idx = match self.scope.resolve_symbol(class_name.clone(), ann.span)? {
                         Symbol::Class(idx, _) => idx,
                         Symbol::Struct(idx, _) => idx,
-                        _ => return Err(Error::class_not_found(class_name, ann.pos)),
+                        _ => return Err(Error::class_not_found(class_name, ann.span)),
                     };
                     let fun_idx = self
                         .scope
-                        .resolve_method(name.clone(), target_class_idx, self.pool, ann.pos)?
+                        .resolve_method(name.clone(), target_class_idx, self.pool, ann.span)?
                         .by_id(&sig, self.pool)
-                        .ok_or_else(|| Error::function_not_found(name, ann.pos))?;
+                        .ok_or_else(|| Error::function_not_found(name, ann.span))?;
                     let base = self.pool.function(fun_idx)?.base_method;
                     let slot = Slot::Function {
                         index: fun_idx,
@@ -597,9 +606,9 @@ impl<'a> CompilationUnit<'a> {
                 AnnotationName::ReplaceGlobal => {
                     let fun_idx = self
                         .scope
-                        .resolve_function(name.clone(), ann.pos)?
+                        .resolve_function(name.clone(), ann.span)?
                         .by_id(&sig, self.pool)
-                        .ok_or_else(|| Error::function_not_found(name, ann.pos))?;
+                        .ok_or_else(|| Error::function_not_found(name, ann.span))?;
 
                     let slot = Slot::Function {
                         index: fun_idx,
@@ -615,11 +624,11 @@ impl<'a> CompilationUnit<'a> {
                     let class_name = ann
                         .values
                         .first()
-                        .ok_or_else(|| Error::invalid_annotation_args(ann.pos))?;
-                    let target_class_idx = match self.scope.resolve_symbol(class_name.clone(), ann.pos)? {
+                        .ok_or_else(|| Error::invalid_annotation_args(ann.span))?;
+                    let target_class_idx = match self.scope.resolve_symbol(class_name.clone(), ann.span)? {
                         Symbol::Class(idx, _) => idx,
                         Symbol::Struct(idx, _) => idx,
-                        _ => return Err(Error::class_not_found(class_name, ann.pos)),
+                        _ => return Err(Error::class_not_found(class_name, ann.span)),
                     };
                     let class = self.pool.class(target_class_idx)?;
                     let base_method = if class.base != PoolIndex::UNDEFINED {
@@ -722,12 +731,12 @@ impl<'a> CompilationUnit<'a> {
                 let param = pool.definition(*param_idx)?.clone();
                 let proxy_idx = pool.add_definition(param);
                 parameters.push(proxy_idx);
-                args.push(Expr::Ident(Reference::Value(Value::Parameter(proxy_idx)), Pos::ZERO));
+                args.push(Expr::Ident(Reference::Value(Value::Parameter(proxy_idx)), Span::ZERO));
             }
 
-            let call = Expr::Call(Callable::Function(wrapper), args, Pos::ZERO);
+            let call = Expr::Call(Callable::Function(wrapper), args, Span::ZERO);
             let expr = if fun.return_type.is_some() {
-                Expr::Return(Some(Box::new(call)), Pos::ZERO)
+                Expr::Return(Some(Box::new(call)), Span::ZERO)
             } else {
                 call
             };
@@ -853,8 +862,8 @@ enum Slot {
 
 #[derive(Debug)]
 pub enum Diagnostic {
-    MethodConflict(PoolIndex<Function>, Pos),
-    CompileError(String, Pos),
+    MethodConflict(PoolIndex<Function>, Span),
+    CompileError(String, Span),
 }
 
 impl Diagnostic {
@@ -875,7 +884,7 @@ impl Diagnostic {
         }
     }
 
-    pub fn pos(&self) -> Pos {
+    pub fn span(&self) -> Span {
         match self {
             Diagnostic::MethodConflict(_, pos) => *pos,
             Diagnostic::CompileError(_, pos) => *pos,

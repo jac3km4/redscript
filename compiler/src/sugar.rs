@@ -1,6 +1,6 @@
 use std::vec;
 
-use redscript::ast::{BinOp, Constant, Expr, Ident, Pos, Seq, TypeName};
+use redscript::ast::{BinOp, Constant, Expr, Ident, Seq, Span, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::IntrinsicOp;
 use redscript::definition::{Definition, Local, LocalFlags};
@@ -39,7 +39,7 @@ impl<'a> Desugar<'a> {
         self.prefix_exprs.push(expr)
     }
 
-    fn get_function(&self, signature: FunctionSignature, pos: Pos) -> Result<Callable, Error> {
+    fn get_function(&self, signature: FunctionSignature, pos: Span) -> Result<Callable, Error> {
         let fun_idx = self
             .scope
             .resolve_function(Ident::new(signature.name().to_owned()), pos)?
@@ -67,7 +67,7 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
         &mut self,
         exprs: Vec<Expr<TypedAst>>,
         type_: Option<TypeId>,
-        pos: Pos,
+        pos: Span,
     ) -> Result<Expr<TypedAst>, Error> {
         let type_ = TypeId::Array(Box::new(type_.unwrap()));
         let local = self.fresh_local(&type_)?;
@@ -85,7 +85,7 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
         name: PoolIndex<Local>,
         array: Expr<TypedAst>,
         seq: Seq<TypedAst>,
-        pos: Pos,
+        pos: Span,
     ) -> Result<Expr<TypedAst>, Error> {
         let mut seq = self.on_seq(seq)?;
 

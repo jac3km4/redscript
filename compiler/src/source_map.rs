@@ -4,7 +4,7 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::{fmt, iter};
 
-use redscript::ast::Pos;
+use redscript::ast::{Pos, Span};
 use redscript::error::Error;
 use walkdir::WalkDir;
 
@@ -61,7 +61,7 @@ impl Files {
         self.files.push(file)
     }
 
-    pub fn lookup(&self, pos: Pos) -> Option<SourceLocation> {
+    pub fn lookup_file(&self, pos: Pos) -> Option<&File> {
         let index = self
             .files
             .binary_search_by(|file| match file.span() {
@@ -70,9 +70,14 @@ impl Files {
                 _ => Ordering::Equal,
             })
             .ok()?;
-        let file = self.files.get(index)?;
-        let position = file.lookup(pos)?;
-        let result = SourceLocation { file, position };
+        self.files.get(index)
+    }
+
+    pub fn lookup(&self, span: Span) -> Option<SourceLoc> {
+        let file = self.lookup_file(span.low)?;
+        let start = file.lookup(span.low)?;
+        let end = file.lookup(span.high)?;
+        let result = SourceLoc { file, start, end };
         Some(result)
     }
 }
@@ -116,7 +121,7 @@ impl File {
         File { source, ..self }
     }
 
-    fn lookup(&self, pos: Pos) -> Option<FilePosition> {
+    fn lookup(&self, pos: Pos) -> Option<FilePos> {
         let res = self.lines.1.binary_search(&pos).map(|p| p + 1);
         let index = res.err().or_else(|| res.ok()).unwrap();
         let (line, low) = if pos < self.lines.0 {
@@ -128,7 +133,7 @@ impl File {
         };
         let line_span = Span { low, high: pos };
         let col = self.source_slice(line_span).chars().count();
-        let loc = FilePosition { line, col };
+        let loc = FilePos { line, col };
         Some(loc)
     }
 
@@ -175,38 +180,33 @@ impl fmt::Display for File {
 struct NonEmptyVec<A>(pub A, pub Vec<A>);
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct Span {
-    pub low: Pos,
-    pub high: Pos,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct FilePosition {
+pub struct FilePos {
     pub line: usize,
     pub col: usize,
 }
 
-impl fmt::Display for FilePosition {
+impl fmt::Display for FilePos {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:{}", self.line + 1, self.col + 1)
     }
 }
 
 #[derive(Debug)]
-pub struct SourceLocation<'a> {
+pub struct SourceLoc<'a> {
     pub file: &'a File,
-    pub position: FilePosition,
+    pub start: FilePos,
+    pub end: FilePos,
 }
 
-impl<'a> SourceLocation<'a> {
+impl<'a> SourceLoc<'a> {
     pub fn enclosing_line(&self) -> &'a str {
-        self.file.enclosing_line(self.position.line)
+        self.file.enclosing_line(self.start.line)
     }
 }
 
-impl<'a> fmt::Display for SourceLocation<'a> {
+impl<'a> fmt::Display for SourceLoc<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.file.path.display(), self.position)
+        write!(f, "{}:{}", self.file.path.display(), self.start)
     }
 }
 
