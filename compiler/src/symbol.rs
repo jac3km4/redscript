@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::str::FromStr;
 
-use redscript::ast::{BinOp, Ident, Pos, TypeName};
+use redscript::ast::{BinOp, Ident, Span, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::definition::{AnyDefinition, Class, Enum, Function, Visibility};
 use redscript::error::Error;
@@ -88,7 +88,7 @@ impl SymbolMap {
         Ok(())
     }
 
-    pub fn get_symbol(&self, path: &ModulePath, pos: Pos) -> Result<Symbol, Error> {
+    pub fn get_symbol(&self, path: &ModulePath, pos: Span) -> Result<Symbol, Error> {
         self.symbols
             .get(path)
             .cloned()
@@ -98,7 +98,7 @@ impl SymbolMap {
     fn get_direct_children(
         &self,
         path: &ModulePath,
-        pos: Pos,
+        pos: Span,
     ) -> Result<impl Iterator<Item = (Ident, &Symbol)>, Error> {
         let node = self
             .symbols
@@ -141,9 +141,9 @@ impl Symbol {
 
 #[derive(Debug, Clone)]
 pub enum Import {
-    Exact(ModulePath, Pos),
-    Selected(ModulePath, Vec<Ident>, Pos),
-    All(ModulePath, Pos),
+    Exact(ModulePath, Span),
+    Selected(ModulePath, Vec<Ident>, Span),
+    All(ModulePath, Span),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

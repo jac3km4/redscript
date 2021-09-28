@@ -7,7 +7,7 @@ use std::time::SystemTime;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use fd_lock::RwLock;
-use redscript::ast::Pos;
+use redscript::ast::Span;
 use redscript::bundle::ScriptBundle;
 use redscript::error::Error;
 use redscript_compiler::source_map::{Files, SourceFilter};
@@ -166,18 +166,17 @@ impl ScriptManifest {
 }
 
 fn error_message(error: Error, files: &Files, scripts_dir: &Path) -> String {
-    fn detailed_message(positions: Vec<Pos>, files: &Files, scripts_dir: &Path) -> Option<String> {
+    fn detailed_message(spans: Vec<Span>, files: &Files, scripts_dir: &Path) -> Option<String> {
         let mut causes = HashSet::new();
 
-        for pos in positions {
-            let loc = files.lookup(pos)?;
-            let cause = loc
-                .file
+        for pos in spans {
+            let file = files.lookup_file(pos.low)?;
+            let cause = file
                 .path()
                 .strip_prefix(scripts_dir)
                 .ok()
                 .and_then(|p| p.iter().next())
-                .unwrap_or_else(|| loc.file.path().as_os_str())
+                .unwrap_or_else(|| file.path().as_os_str())
                 .to_string_lossy();
 
             causes.insert(cause);
@@ -200,7 +199,7 @@ fn error_message(error: Error, files: &Files, scripts_dir: &Path) -> String {
         Error::CompileError(_, pos) => detailed_message(vec![pos], files, scripts_dir).unwrap_or_default(),
         Error::TypeError(_, pos) => detailed_message(vec![pos], files, scripts_dir).unwrap_or_default(),
         Error::ResolutionError(_, pos) => detailed_message(vec![pos], files, scripts_dir).unwrap_or_default(),
-        Error::MultipleErrors(positions) => detailed_message(positions, files, scripts_dir).unwrap_or_default(),
+        Error::MultipleErrors(spans) => detailed_message(spans, files, scripts_dir).unwrap_or_default(),
         Error::IoError(err) => format!("This is caused by an I/O error: {}", err),
         Error::PoolError(err) => format!("This is caused by a constant pool error: {}", err),
         _ => String::new(),

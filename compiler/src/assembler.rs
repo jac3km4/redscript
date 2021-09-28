@@ -149,7 +149,7 @@ impl Assembler {
             Expr::Seq(seq) => {
                 self.assemble_seq(seq, scope, pool, exit)?;
             }
-            Expr::Switch(expr, cases, default) => {
+            Expr::Switch(expr, cases, default, _) => {
                 let type_ = type_of(&expr, scope, pool)?;
                 let first_case_label = self.new_label();
                 let mut next_case_label = self.new_label();
@@ -269,7 +269,7 @@ impl Assembler {
                 }
             }
 
-            Expr::Null => {
+            Expr::Null(_) => {
                 self.emit(Instr::Null);
             }
             Expr::This(_) | Expr::Super(_) => {
