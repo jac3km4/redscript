@@ -1,7 +1,7 @@
 use std::iter;
 use std::str::FromStr;
 
-use redscript::ast::{Constant, Expr, Ident, Literal, NameKind, Pos, Seq, SourceAst, SwitchCase, TypeName};
+use redscript::ast::{Constant, Expr, Ident, Literal, NameKind, Seq, SourceAst, Span, SwitchCase, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::IntrinsicOp;
 use redscript::definition::{Definition, Enum, Field, Function, Local, LocalFlags};
@@ -223,7 +223,7 @@ impl<'a> TypeChecker<'a> {
                 }
             }
             Expr::Seq(seq) => Expr::Seq(self.check_seq(seq, scope)?),
-            Expr::Switch(matched, cases, default) => {
+            Expr::Switch(matched, cases, default, pos) => {
                 let checked_matched = self.check(matched, None, scope)?;
                 let matched_type = type_of(&checked_matched, scope, self.pool).ok();
                 let mut checked_cases = Vec::with_capacity(cases.len());
@@ -236,7 +236,7 @@ impl<'a> TypeChecker<'a> {
                     .iter()
                     .try_fold(None, |_, body| self.check_seq(body, scope).map(Some))?;
 
-                Expr::Switch(Box::new(checked_matched), checked_cases, default)
+                Expr::Switch(Box::new(checked_matched), checked_cases, default, *pos)
             }
             Expr::Goto(target, pos) => Expr::Goto(target.clone(), *pos),
             Expr::If(cond, if_, else_, pos) => {
@@ -285,7 +285,7 @@ impl<'a> TypeChecker<'a> {
             Expr::This(pos) => Expr::This(*pos),
             Expr::Super(pos) => Expr::Super(*pos),
             Expr::Break(pos) => Expr::Break(*pos),
-            Expr::Null => Expr::Null,
+            Expr::Null(pos) => Expr::Null(*pos),
         };
         Ok(res)
     }
@@ -304,7 +304,7 @@ impl<'a> TypeChecker<'a> {
         args: &[Expr<SourceAst>],
         expected: Option<&TypeId>,
         scope: &mut Scope,
-        pos: Pos,
+        pos: Span,
     ) -> Result<Expr<TypedAst>, Error> {
         if args.len() != intrinsic.arg_count().into() {
             return Err(Error::invalid_arg_count(intrinsic, intrinsic.arg_count() as usize, pos));
@@ -442,7 +442,7 @@ impl<'a> TypeChecker<'a> {
         expr: &Expr<SourceAst>,
         to: &TypeId,
         scope: &mut Scope,
-        pos: Pos,
+        pos: Span,
     ) -> Result<Expr<TypedAst>, Error> {
         let checked = self.check(expr, Some(to), scope)?;
         let from = type_of(&checked, scope, self.pool)?;
@@ -458,7 +458,7 @@ impl<'a> TypeChecker<'a> {
         args: impl ExactSizeIterator<Item = &'b Expr<SourceAst>> + Clone,
         expected: Option<&TypeId>,
         scope: &mut Scope,
-        pos: Pos,
+        pos: Span,
     ) -> Result<FunctionMatch, Error> {
         let mut overload_errors = Vec::new();
         let mut inner_error = None;
@@ -484,7 +484,7 @@ impl<'a> TypeChecker<'a> {
         args: impl ExactSizeIterator<Item = &'b Expr<SourceAst>>,
         expected: Option<&TypeId>,
         scope: &mut Scope,
-        pos: Pos,
+        pos: Span,
     ) -> Result<Result<FunctionMatch, FunctionResolutionError>, Error> {
         let fun = self.pool.function(fun_idx)?;
         let params = fun.parameters.clone();
@@ -614,7 +614,7 @@ pub fn type_of(expr: &Expr<TypedAst>, scope: &Scope, pool: &ConstantPool) -> Res
         },
         Expr::Return(_, _) => TypeId::Void,
         Expr::Seq(_) => TypeId::Void,
-        Expr::Switch(_, _, _) => TypeId::Void,
+        Expr::Switch(_, _, _, _) => TypeId::Void,
         Expr::Goto(_, _) => TypeId::Void,
         Expr::If(_, _, _, _) => TypeId::Void,
         Expr::Conditional(_, lhs, _, _) => type_of(lhs, scope, pool)?,
@@ -632,7 +632,7 @@ pub fn type_of(expr: &Expr<TypedAst>, scope: &Scope, pool: &ConstantPool) -> Res
             None => return Err(Error::no_this_in_static_context(*pos)),
         },
         Expr::Break(_) => TypeId::Void,
-        Expr::Null => TypeId::Null,
+        Expr::Null(_) => TypeId::Null,
         Expr::BinOp(_, _, _, pos) => return Err(Error::unsupported("BinOp", *pos)),
         Expr::UnOp(_, _, pos) => return Err(Error::unsupported("UnOp", *pos)),
     };
@@ -690,7 +690,7 @@ fn find_conversion(from: &TypeId, to: &TypeId, pool: &ConstantPool) -> Result<Op
     Ok(result)
 }
 
-fn insert_conversion(expr: Expr<TypedAst>, type_: &TypeId, conversion: Conversion, pos: Pos) -> Expr<TypedAst> {
+fn insert_conversion(expr: Expr<TypedAst>, type_: &TypeId, conversion: Conversion, pos: Span) -> Expr<TypedAst> {
     match conversion {
         Conversion::Identity => expr,
         Conversion::RefToWeakRef => Expr::Call(

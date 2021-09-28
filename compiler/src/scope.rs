@@ -1,5 +1,5 @@
 use hamt_sync::Map;
-use redscript::ast::{Expr, Ident, Pos, TypeName};
+use redscript::ast::{Expr, Ident, Span, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::definition::{AnyDefinition, Class, Definition, Enum, Field, Function, Local, Parameter, Type};
 use redscript::error::Error;
@@ -76,7 +76,7 @@ impl Scope {
         }
     }
 
-    pub fn resolve_function(&self, name: Ident, pos: Pos) -> Result<FunctionCandidates, Error> {
+    pub fn resolve_function(&self, name: Ident, pos: Span) -> Result<FunctionCandidates, Error> {
         if let Some(Symbol::Functions(functions)) = self.symbols.find(&name) {
             Ok(FunctionCandidates {
                 functions: functions.iter().map(|(idx, _)| idx).copied().collect(),
@@ -91,7 +91,7 @@ impl Scope {
         ident: Ident,
         class_idx: PoolIndex<Class>,
         pool: &ConstantPool,
-        pos: Pos,
+        pos: Span,
     ) -> Result<PoolIndex<Field>, Error> {
         let class = pool.class(class_idx)?;
         for field in &class.fields {
@@ -112,7 +112,7 @@ impl Scope {
         ident: Ident,
         enum_idx: PoolIndex<Enum>,
         pool: &ConstantPool,
-        pos: Pos,
+        pos: Span,
     ) -> Result<PoolIndex<i64>, Error> {
         let enum_ = pool.enum_(enum_idx)?;
         for field in &enum_.members {
@@ -128,7 +128,7 @@ impl Scope {
         ident: Ident,
         class_idx: PoolIndex<Class>,
         pool: &ConstantPool,
-        pos: Pos,
+        pos: Span,
     ) -> Result<FunctionCandidates, Error> {
         let mut current_idx = class_idx;
         let mut functions = vec![];
@@ -149,21 +149,21 @@ impl Scope {
         }
     }
 
-    pub fn resolve_value(&self, name: Ident, pos: Pos) -> Result<Value, Error> {
+    pub fn resolve_value(&self, name: Ident, pos: Span) -> Result<Value, Error> {
         self.references
             .find(&name)
             .cloned()
             .ok_or_else(|| Error::unresolved_reference(name, pos))
     }
 
-    pub fn resolve_symbol(&self, name: Ident, pos: Pos) -> Result<Symbol, Error> {
+    pub fn resolve_symbol(&self, name: Ident, pos: Span) -> Result<Symbol, Error> {
         self.symbols
             .find(&name)
             .cloned()
             .ok_or_else(|| Error::unresolved_reference(name, pos))
     }
 
-    pub fn resolve_reference(&self, name: Ident, pos: Pos) -> Result<Reference, Error> {
+    pub fn resolve_reference(&self, name: Ident, pos: Span) -> Result<Reference, Error> {
         self.resolve_value(name.clone(), pos)
             .map(Reference::Value)
             .or_else(|_| self.resolve_symbol(name, pos).map(Reference::Symbol))
@@ -191,7 +191,7 @@ impl Scope {
         }
     }
 
-    pub fn resolve_type(&self, name: &TypeName, pool: &ConstantPool, pos: Pos) -> Result<TypeId, Error> {
+    pub fn resolve_type(&self, name: &TypeName, pool: &ConstantPool, pos: Span) -> Result<TypeId, Error> {
         let result = if let Some(res) = self.types.find(&name.repr()) {
             self.resolve_type_from_pool(*res, pool, pos)?
         } else {
@@ -215,7 +215,7 @@ impl Scope {
         &self,
         index: PoolIndex<Type>,
         pool: &ConstantPool,
-        pos: Pos,
+        pos: Span,
     ) -> Result<TypeId, Error> {
         let result = match pool.type_(index)? {
             Type::Prim => TypeId::Prim(index),
