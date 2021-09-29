@@ -1,6 +1,6 @@
 [package]
 name = "scc"
-version = "0.3.3-dev"
+version = "0.3.4-dev"
 authors = ["jac3km4 <jac3km4@pm.me>"]
 edition = "2018"
 publish = false
@@ -9,8 +9,10 @@ publish = false
 redscript = { path = "../core" }
 redscript-compiler = { path = "../compiler" }
 byteorder = "1.4"
+vmap = { version = "0.4", default-features = false }
 log = "0.4"
-simplelog = { version = "0.10", default_features = false }
+fern = "0.6"
+time = { version = "0.3", features = ["local-offset", "formatting", "macros"] }
 toml = "0.5"
 serde = { version = "1.0", features = ["derive"] }
 fd-lock = "3.0"

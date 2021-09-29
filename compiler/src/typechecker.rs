@@ -118,13 +118,12 @@ impl<'a> TypeChecker<'a> {
                 let candidates = scope.resolve_method(name.clone(), class, self.pool, *pos)?;
                 let match_ = self.resolve_overload(name.clone(), candidates, args.iter(), expected, scope, *pos)?;
 
-                if let TypeId::WeakRef(inner) = type_ {
-                    let converted =
-                        insert_conversion(checked_context, &TypeId::Ref(inner), Conversion::WeakRefToRef, *pos);
-                    Expr::MethodCall(Box::new(converted), match_.index, match_.args, *pos)
+                let converted_context = if let TypeId::WeakRef(inner) = type_ {
+                    insert_conversion(checked_context, &TypeId::Ref(inner), Conversion::WeakRefToRef, *pos)
                 } else {
-                    Expr::MethodCall(Box::new(checked_context), match_.index, match_.args, *pos)
-                }
+                    checked_context
+                };
+                Expr::MethodCall(Box::new(converted_context), match_.index, match_.args, *pos)
             }
             Expr::BinOp(lhs, rhs, op, pos) => {
                 let name = Ident::Static(op.into());
@@ -142,7 +141,9 @@ impl<'a> TypeChecker<'a> {
             }
             Expr::Member(context, name, pos) => {
                 let checked_context = self.check(context, None, scope)?;
-                let member = match type_of(&checked_context, scope, self.pool)?.unwrapped() {
+                let type_ = type_of(&checked_context, scope, self.pool)?;
+
+                let member = match type_.unwrapped() {
                     TypeId::Class(class) => {
                         let field = scope.resolve_field(name.clone(), *class, self.pool, *pos)?;
                         Member::ClassField(field)
@@ -157,7 +158,12 @@ impl<'a> TypeChecker<'a> {
                     }
                     type_ => return Err(Error::invalid_context(type_.pretty(self.pool)?.as_ref(), *pos)),
                 };
-                Expr::Member(Box::new(checked_context), member, *pos)
+                let converted_context = if let TypeId::WeakRef(inner) = type_ {
+                    insert_conversion(checked_context, &TypeId::Ref(inner), Conversion::WeakRefToRef, *pos)
+                } else {
+                    checked_context
+                };
+                Expr::Member(Box::new(converted_context), member, *pos)
             }
             Expr::ArrayElem(expr, idx, pos) => {
                 let idx_type = scope.resolve_type(&TypeName::INT32, self.pool, *pos)?;

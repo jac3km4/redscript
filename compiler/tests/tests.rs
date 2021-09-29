@@ -331,12 +331,18 @@ fn compile_implicit_conversions() -> Result<(), Error> {
             Test1("test");
             let a: wref<A> = new A();
             Test2(a);
+
+            a.method(a.member);
         }
 
         native func Test1(str: script_ref<String>)
         native func Test2(instance: ref<A>)
 
-        class A {}
+        class A {
+            let member: Int32;
+
+            func method(x: Int32) {}
+        }
         "#;
     let expected = vec![
         Instr::InvokeStatic(Offset::new(30), 0, PoolIndex::new(22), 0),
@@ -344,12 +350,21 @@ fn compile_implicit_conversions() -> Result<(), Error> {
         Instr::StringConst(PoolIndex::new(0)),
         Instr::ParamEnd,
         Instr::Assign,
-        Instr::Local(PoolIndex::new(31)),
+        Instr::Local(PoolIndex::new(34)),
         Instr::RefToWeakRef,
         Instr::New(PoolIndex::new(25)),
         Instr::InvokeStatic(Offset::new(26), 0, PoolIndex::new(23), 0),
         Instr::WeakRefToRef,
-        Instr::Local(PoolIndex::new(31)),
+        Instr::Local(PoolIndex::new(34)),
+        Instr::ParamEnd,
+        Instr::Context(Offset::new(51)),
+        Instr::WeakRefToRef,
+        Instr::Local(PoolIndex::new(34)),
+        Instr::InvokeVirtual(Offset::new(38), 0, PoolIndex::new(30), 0),
+        Instr::Context(Offset::new(22)),
+        Instr::WeakRefToRef,
+        Instr::Local(PoolIndex::new(34)),
+        Instr::ObjectField(PoolIndex::new(30)),
         Instr::ParamEnd,
         Instr::Nop,
     ];

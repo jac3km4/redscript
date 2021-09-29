@@ -1,6 +1,6 @@
 [package]
 name = "redscript"
-version = "0.3.3-dev"
+version = "0.3.4-dev"
 authors = ["jac3km4 <jac3km4@pm.me>"]
 edition = "2018"
 publish = false
@@ -10,6 +10,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 byteorder = "1.4"
+thiserror = "1.0"
 modular-bitfield = "0.11"
 crc32fast = "1.2"
 strum = { version = "0.21", features = ["derive"] }

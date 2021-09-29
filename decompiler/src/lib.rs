@@ -121,9 +121,10 @@ impl<'a> Decompiler<'a> {
         Ok(result)
     }
 
-    fn consume_switch(&mut self) -> Result<Expr<SourceAst>, Error> {
+    fn consume_switch(&mut self, start: Location) -> Result<Expr<SourceAst>, Error> {
         let subject = self.consume()?;
 
+        self.code.set_pos(start)?;
         let mut labels = Vec::new();
         while let Some(Instr::SwitchLabel(exit_offset, start_offset)) = self.code.peek() {
             let position = self.code.pos();
@@ -230,7 +231,7 @@ impl<'a> Decompiler<'a> {
                 }
             }
             Instr::ExternalVar => return Err(Error::DecompileError("Unexpected ExternalVar".to_owned())),
-            Instr::Switch(_, _) => self.consume_switch()?,
+            Instr::Switch(_, start) => self.consume_switch(start.absolute(position))?,
             Instr::SwitchLabel(_, _) => return Err(Error::DecompileError("Unexpected SwitchLabel".to_owned())),
             Instr::SwitchDefault => return Err(Error::DecompileError("Unexpected SwitchDefault".to_owned())),
             Instr::Jump(Offset { value: 3 }) => Expr::EMPTY,
