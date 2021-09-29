@@ -343,94 +343,101 @@ peg::parser! {
             / expr:expr() _ ";" { expr }
 
         pub rule expr() -> Expr<SourceAst> = precedence!{
-            x:@ _ pos:pos() "?" _ y:expr() _ ":" _ z:expr() end:pos()
-                { Expr::Conditional(Box::new(x), Box::new(y), Box::new(z), Span::new(pos, end)) }
-            x:@ _ pos:pos() "=" end:pos() _ y:(@)
-                { Expr::Assign(Box::new(x), Box::new(y), Span::new(pos, end)) }
-            x:@ _ pos:pos() "+=" end:pos() _ y:(@)
-                { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignAdd, Span::new(pos, end)) }
-            x:@ _ pos:pos() "-=" end:pos() _ y:(@)
-                { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignSubtract, Span::new(pos, end)) }
-            x:@ _ pos:pos() "*=" end:pos() _ y:(@)
-                { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignMultiply, Span::new(pos, end)) }
-            x:@ _ pos:pos() "/=" end:pos() _ y:(@)
-                { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignDivide, Span::new(pos, end)) }
-            x:@ _ pos:pos() "|=" end:pos() _ y:(@)
-                { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignOr, Span::new(pos, end)) }
-            x:@ _ pos:pos() "&=" end:pos() _ y:(@)
-                { Expr::BinOp(Box::new(x), Box::new(y), BinOp::AssignAnd, Span::new(pos, end)) }
+            x:@ _ "?" _ y:expr() _ ":" _ z:expr() {
+                let span = x.span().merge(z.span());
+                Expr::Conditional(Box::new(x), Box::new(y), Box::new(z), span)
+            }
+            x:@ _ "=" _ y:(@) {
+                let span = x.span().merge(y.span());
+                Expr::Assign(Box::new(x), Box::new(y), span)
+            }
+            x:@ _ pos:pos() "+=" end:pos() _ y:(@) { binop(x, y, BinOp::AssignAdd) }
+            x:@ _ pos:pos() "-=" end:pos() _ y:(@) { binop(x, y, BinOp::AssignSubtract) }
+            x:@ _ pos:pos() "*=" end:pos() _ y:(@) { binop(x, y, BinOp::AssignMultiply) }
+            x:@ _ pos:pos() "/=" end:pos() _ y:(@) { binop(x, y, BinOp::AssignDivide) }
+            x:@ _ pos:pos() "|=" end:pos() _ y:(@) { binop(x, y, BinOp::AssignOr) }
+            x:@ _ pos:pos() "&=" end:pos() _ y:(@) { binop(x, y, BinOp::AssignAnd) }
             --
-            x:(@) _ pos:pos() "||" end:pos() _ y:@
-                { Expr::BinOp(Box::new(x), Box::new(y), BinOp::LogicOr, Span::new(pos, end)) }
-            x:(@) _ pos:pos() "&&" end:pos() _ y:@
-                { Expr::BinOp(Box::new(x), Box::new(y), BinOp::LogicAnd, Span::new(pos, end)) }
-            x:(@) _ pos:pos() "|" end:pos() _ y:@
-                { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Or, Span::new(pos, end)) }
-            x:(@) _ pos:pos() "^" end:pos() _ y:@
-                { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Xor, Span::new(pos, end)) }
-            x:(@) _ pos:pos() "&" end:pos() _ y:@
-                { Expr::BinOp(Box::new(x), Box::new(y), BinOp::And, Span::new(pos, end)) }
+            x:(@) _ pos:pos() "||" end:pos() _ y:@ { binop(x, y, BinOp::LogicOr) }
+            x:(@) _ pos:pos() "&&" end:pos() _ y:@ { binop(x, y, BinOp::LogicAnd) }
+            x:(@) _ pos:pos() "|" end:pos() _ y:@ { binop(x, y, BinOp::Or) }
+            x:(@) _ pos:pos() "^" end:pos() _ y:@ { binop(x, y, BinOp::Xor) }
+            x:(@) _ pos:pos() "&" end:pos() _ y:@ { binop(x, y, BinOp::And) }
             --
-            x:(@) _ pos:pos() "==" end:pos() _ y:@
-                { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Equal, Span::new(pos, end)) }
-            x:(@) _ pos:pos() "!=" end:pos() _ y:@
-                { Expr::BinOp(Box::new(x), Box::new(y), BinOp::NotEqual, Span::new(pos, end)) }
+            x:(@) _ pos:pos() "==" end:pos() _ y:@ { binop(x, y, BinOp::Equal) }
+            x:(@) _ pos:pos() "!=" end:pos() _ y:@ { binop(x, y, BinOp::NotEqual) }
             --
-            x:(@) _ pos:pos() "<" end:pos() _ y:@
-                { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Less, Span::new(pos, end)) }
-            x:(@) _ pos:pos() "<=" end:pos() _ y:@
-                { Expr::BinOp(Box::new(x), Box::new(y), BinOp::LessEqual, Span::new(pos, end)) }
-            x:(@) _ pos:pos() ">" end:pos() _ y:@
-                { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Greater, Span::new(pos, end)) }
-            x:(@) _ pos:pos() ">=" end:pos() _ y:@
-                { Expr::BinOp(Box::new(x), Box::new(y), BinOp::GreaterEqual, Span::new(pos, end)) }
+            x:(@) _ pos:pos() "<" end:pos() _ y:@ { binop(x, y, BinOp::Less) }
+            x:(@) _ pos:pos() "<=" end:pos() _ y:@ { binop(x, y, BinOp::LessEqual) }
+            x:(@) _ pos:pos() ">" end:pos() _ y:@ { binop(x, y, BinOp::Greater) }
+            x:(@) _ pos:pos() ">=" end:pos() _ y:@ { binop(x, y, BinOp::GreaterEqual) }
             --
-            x:(@) _ pos:pos() "+" end:pos() _ y:@
-                { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Add, Span::new(pos, end)) }
-            x:(@) _ pos:pos() "-" end:pos() _ y:@
-                { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Subtract, Span::new(pos, end)) }
+            x:(@) _ pos:pos() "+" end:pos() _ y:@ { binop(x, y, BinOp::Add) }
+            x:(@) _ pos:pos() "-" end:pos() _ y:@ { binop(x, y, BinOp::Subtract) }
             --
-            x:(@) _ pos:pos() "*" end:pos() _ y:@
-                { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Multiply, Span::new(pos, end)) }
-            x:(@) _ pos:pos() "/" end:pos() _ y:@
-                { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Divide, Span::new(pos, end)) }
-            x:(@) _ pos:pos() "%" end:pos() _ y:@
-                { Expr::BinOp(Box::new(x), Box::new(y), BinOp::Modulo, Span::new(pos, end)) }
+            x:(@) _ pos:pos() "*" end:pos() _ y:@ { binop(x, y, BinOp::Multiply) }
+            x:(@) _ pos:pos() "/" end:pos() _ y:@ { binop(x, y, BinOp::Divide) }
+            x:(@) _ pos:pos() "%" end:pos() _ y:@ { binop(x, y, BinOp::Modulo) }
             --
-            pos:pos() "!" end:pos() _ x:@
-                { Expr::UnOp(Box::new(x), UnOp::LogicNot, Span::new(pos, end)) }
-            pos:pos() "~" end:pos() _ x:@
-                { Expr::UnOp(Box::new(x), UnOp::BitNot, Span::new(pos, end)) }
-            pos:pos() "-" end:pos() _ x:@
-                { Expr::UnOp(Box::new(x), UnOp::Neg, Span::new(pos, end)) }
-            pos:pos() keyword("new") _ id:ident() _ "(" _ params:commasep(<expr()>) _ ")" end:pos()
-                { Expr::New(TypeName::basic_owned(id.to_owned()), params, Span::new(pos, end)) }
+            "!" _ expr:@ { unop(expr, UnOp::LogicNot) }
+            "~" _ expr:@ { unop(expr, UnOp::BitNot) }
+            "-" _ expr:@ { unop(expr, UnOp::Neg) }
+
+            pos:pos() keyword("new") _ id:ident() _ "(" _ params:commasep(<expr()>) _ ")" end:pos() {
+                Expr::New(TypeName::basic_owned(id.to_owned()), params, Span::new(pos, end))
+            }
             --
-            expr:(@) _ pos:pos() "[" _ idx:expr() _ "]" end:pos()
-                { Expr::ArrayElem(Box::new(expr), Box::new(idx), Span::new(pos, end)) }
-            expr:(@) _ pos:pos() "." _ ident:ident() _ "(" _ params:commasep(<expr()>) _ ")" end:pos()
-                { Expr::MethodCall(Box::new(expr), ident, params, Span::new(pos, end)) }
-            expr:(@) _ pos:pos() "." _ ident:ident() end:pos()
-                { Expr::Member(Box::new(expr), ident, Span::new(pos, end)) }
-            expr:(@) _ pos:pos() keyword("as") _ type_:type_() end:pos()
-                { Expr::Cast(type_, Box::new(expr), Span::new(pos, end)) }
-            pos:pos() "[" _ exprs:commasep(<expr()>)_ "]" end:pos()
-                { Expr::ArrayLit(exprs, None, Span::new(pos, end)) }
+            expr:(@) _ "[" _ idx:expr() _ "]" high:pos() {
+                let span = expr.span();
+                Expr::ArrayElem(Box::new(expr), Box::new(idx), Span { high, ..span })
+            }
+            expr:(@) _ "." _ ident:ident() _ "(" _ params:commasep(<expr()>) _ ")" high:pos() {
+                let span = expr.span();
+                Expr::MethodCall(Box::new(expr), ident, params, Span { high, ..span })
+            }
+            expr:(@) _ "." _ ident:ident() high:pos() {
+                let span = expr.span();
+                Expr::Member(Box::new(expr), ident, Span { high, ..span })
+            }
+            expr:(@) _ keyword("as") _ type_:type_() high:pos() {
+                let span = expr.span();
+                Expr::Cast(type_, Box::new(expr), Span { high, ..span })
+            }
+            pos:pos() "[" _ exprs:commasep(<expr()>)_ "]" end:pos() {
+                Expr::ArrayLit(exprs, None, Span::new(pos, end))
+            }
             "(" _ v:expr() _ ")" { v }
-            pos:pos() keyword("null") end:pos()
-                { Expr::Null(Span::new(pos, end)) }
-            pos:pos() keyword("this") end:pos()
-                { Expr::This(Span::new(pos, end)) }
-            pos:pos() keyword("super") end:pos()
-                { Expr::Super(Span::new(pos, end)) }
-            pos:pos() cons:constant() end:pos()
-                { Expr::Constant(cons, Span::new(pos, end)) }
-            pos:pos() id:ident() _ "(" _ params:commasep(<expr()>) _ ")" end:pos()
-                { Expr::Call(id, params, Span::new(pos, end)) }
-            pos:pos() id:ident() end:pos()
-                { Expr::Ident(id, Span::new(pos, end)) }
+            pos:pos() keyword("null") end:pos() {
+                Expr::Null(Span::new(pos, end))
+            }
+            pos:pos() keyword("this") end:pos() {
+                Expr::This(Span::new(pos, end)) }
+            pos:pos() keyword("super") end:pos() {
+                Expr::Super(Span::new(pos, end))
+            }
+            pos:pos() cons:constant() end:pos() {
+                Expr::Constant(cons, Span::new(pos, end))
+            }
+            pos:pos() id:ident() _ "(" _ params:commasep(<expr()>) _ ")" end:pos() {
+                Expr::Call(id, params, Span::new(pos, end))
+            }
+            pos:pos() id:ident() end:pos() {
+                Expr::Ident(id, Span::new(pos, end))
+            }
         }
     }
+}
+
+#[inline]
+fn binop(lhs: Expr<SourceAst>, rhs: Expr<SourceAst>, op: BinOp) -> Expr<SourceAst> {
+    let span = lhs.span().merge(rhs.span());
+    Expr::BinOp(Box::new(lhs), Box::new(rhs), op, span)
+}
+
+#[inline]
+fn unop(expr: Expr<SourceAst>, op: UnOp) -> Expr<SourceAst> {
+    let span = expr.span();
+    Expr::UnOp(Box::new(expr), op, span)
 }
 
 #[cfg(test)]
@@ -442,7 +449,7 @@ mod tests {
         let expr = lang::expr("3.0 ? 5.0 : 5 + 4", Pos::ZERO).unwrap();
         assert_eq!(
             format!("{:?}", expr),
-            "Conditional(Constant(F32(3.0), Span { low: Pos(0), high: Pos(3) }), Constant(F32(5.0), Span { low: Pos(6), high: Pos(9) }), BinOp(Constant(I32(5), Span { low: Pos(12), high: Pos(13) }), Constant(I32(4), Span { low: Pos(16), high: Pos(17) }), Add, Span { low: Pos(14), high: Pos(15) }), Span { low: Pos(4), high: Pos(17) })"
+            "Conditional(Constant(F32(3.0), Span { low: Pos(0), high: Pos(3) }), Constant(F32(5.0), Span { low: Pos(6), high: Pos(9) }), BinOp(Constant(I32(5), Span { low: Pos(12), high: Pos(13) }), Constant(I32(4), Span { low: Pos(16), high: Pos(17) }), Add, Span { low: Pos(12), high: Pos(17) }), Span { low: Pos(0), high: Pos(17) })"
         );
     }
 
@@ -461,7 +468,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", module.entries),
-            r#"[Class(ClassSource { qualifiers: Qualifiers([Public]), name: Owned("A"), base: Some(Owned("IScriptable")), members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private, Const]), name: Owned("m_field"), span: Span { low: Pos(53), high: Pos(78) } }, type_: TypeName { name: Owned("Int32"), arguments: [] } }), Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public]), name: Owned("GetField"), span: Span { low: Pos(104), high: Pos(124) } }, type_: Some(TypeName { name: Owned("Int32"), arguments: [] }), parameters: [], body: Some(Seq { exprs: [Return(Some(Member(This(Span { low: Pos(165), high: Pos(169) }), Owned("m_field"), Span { low: Pos(169), high: Pos(177) })), Span { low: Pos(158), high: Pos(178) })] }) })], span: Span { low: Pos(0), high: Pos(211) } })]"#
+            r#"[Class(ClassSource { qualifiers: Qualifiers([Public]), name: Owned("A"), base: Some(Owned("IScriptable")), members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private, Const]), name: Owned("m_field"), span: Span { low: Pos(53), high: Pos(78) } }, type_: TypeName { name: Owned("Int32"), arguments: [] } }), Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public]), name: Owned("GetField"), span: Span { low: Pos(104), high: Pos(124) } }, type_: Some(TypeName { name: Owned("Int32"), arguments: [] }), parameters: [], body: Some(Seq { exprs: [Return(Some(Member(This(Span { low: Pos(165), high: Pos(169) }), Owned("m_field"), Span { low: Pos(165), high: Pos(177) })), Span { low: Pos(158), high: Pos(178) })] }) })], span: Span { low: Pos(0), high: Pos(211) } })]"#
         );
     }
 
@@ -476,7 +483,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", module.entries),
-            r#"[Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public, Static]), name: Owned("GetField"), span: Span { low: Pos(0), high: Pos(27) } }, type_: Some(TypeName { name: Owned("Uint64"), arguments: [] }), parameters: [ParameterSource { qualifiers: Qualifiers([]), name: Owned("optimum"), type_: TypeName { name: Owned("Uint64"), arguments: [] } }], body: Some(Seq { exprs: [Return(Some(Conditional(BinOp(Member(This(Span { low: Pos(80), high: Pos(84) }), Owned("m_field"), Span { low: Pos(84), high: Pos(92) }), Ident(Owned("optimum"), Span { low: Pos(95), high: Pos(102) }), Greater, Span { low: Pos(93), high: Pos(94) }), Member(This(Span { low: Pos(105), high: Pos(109) }), Owned("m_field"), Span { low: Pos(109), high: Pos(117) }), Ident(Owned("optimum"), Span { low: Pos(120), high: Pos(127) }), Span { low: Pos(103), high: Pos(127) })), Span { low: Pos(73), high: Pos(128) })] }) })]"#
+            r#"[Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public, Static]), name: Owned("GetField"), span: Span { low: Pos(0), high: Pos(27) } }, type_: Some(TypeName { name: Owned("Uint64"), arguments: [] }), parameters: [ParameterSource { qualifiers: Qualifiers([]), name: Owned("optimum"), type_: TypeName { name: Owned("Uint64"), arguments: [] } }], body: Some(Seq { exprs: [Return(Some(Conditional(BinOp(Member(This(Span { low: Pos(80), high: Pos(84) }), Owned("m_field"), Span { low: Pos(80), high: Pos(92) }), Ident(Owned("optimum"), Span { low: Pos(95), high: Pos(102) }), Greater, Span { low: Pos(80), high: Pos(102) }), Member(This(Span { low: Pos(105), high: Pos(109) }), Owned("m_field"), Span { low: Pos(105), high: Pos(117) }), Ident(Owned("optimum"), Span { low: Pos(120), high: Pos(127) }), Span { low: Pos(80), high: Pos(127) })), Span { low: Pos(73), high: Pos(128) })] }) })]"#
         );
     }
 
@@ -492,7 +499,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", stmt),
-            r#"While(BinOp(Ident(Owned("i"), Span { low: Pos(6), high: Pos(7) }), Constant(I32(1000), Span { low: Pos(10), high: Pos(14) }), Less, Span { low: Pos(8), high: Pos(9) }), Seq { exprs: [BinOp(Member(This(Span { low: Pos(33), high: Pos(37) }), Owned("counter"), Span { low: Pos(37), high: Pos(45) }), Member(Ident(Owned("Object"), Span { low: Pos(49), high: Pos(55) }), Owned("CONSTANT"), Span { low: Pos(55), high: Pos(64) }), AssignAdd, Span { low: Pos(46), high: Pos(48) }), BinOp(Ident(Owned("i"), Span { low: Pos(82), high: Pos(83) }), Constant(I32(1), Span { low: Pos(87), high: Pos(88) }), AssignAdd, Span { low: Pos(84), high: Pos(86) })] }, Span { low: Pos(0), high: Pos(104) })"#
+            r#"While(BinOp(Ident(Owned("i"), Span { low: Pos(6), high: Pos(7) }), Constant(I32(1000), Span { low: Pos(10), high: Pos(14) }), Less, Span { low: Pos(6), high: Pos(14) }), Seq { exprs: [BinOp(Member(This(Span { low: Pos(33), high: Pos(37) }), Owned("counter"), Span { low: Pos(33), high: Pos(45) }), Member(Ident(Owned("Object"), Span { low: Pos(49), high: Pos(55) }), Owned("CONSTANT"), Span { low: Pos(49), high: Pos(64) }), AssignAdd, Span { low: Pos(33), high: Pos(64) }), BinOp(Ident(Owned("i"), Span { low: Pos(82), high: Pos(83) }), Constant(I32(1), Span { low: Pos(87), high: Pos(88) }), AssignAdd, Span { low: Pos(82), high: Pos(88) })] }, Span { low: Pos(0), high: Pos(104) })"#
         );
     }
 
@@ -509,7 +516,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", stmt),
-            r#"If(Member(This(Span { low: Pos(3), high: Pos(7) }), Owned("m_fixBugs"), Span { low: Pos(7), high: Pos(17) }), Seq { exprs: [MethodCall(This(Span { low: Pos(36), high: Pos(40) }), Owned("NoBugs"), [], Span { low: Pos(40), high: Pos(49) })] }, Some(Seq { exprs: [MethodCall(This(Span { low: Pos(89), high: Pos(93) }), Owned("Bugs"), [], Span { low: Pos(93), high: Pos(100) })] }), Span { low: Pos(0), high: Pos(116) })"#
+            r#"If(Member(This(Span { low: Pos(3), high: Pos(7) }), Owned("m_fixBugs"), Span { low: Pos(3), high: Pos(17) }), Seq { exprs: [MethodCall(This(Span { low: Pos(36), high: Pos(40) }), Owned("NoBugs"), [], Span { low: Pos(36), high: Pos(49) })] }, Some(Seq { exprs: [MethodCall(This(Span { low: Pos(89), high: Pos(93) }), Owned("Bugs"), [], Span { low: Pos(89), high: Pos(100) })] }), Span { low: Pos(0), high: Pos(116) })"#
         );
     }
 

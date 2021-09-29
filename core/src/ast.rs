@@ -84,6 +84,40 @@ where
             _ => false,
         }
     }
+
+    pub fn span(&self) -> Span {
+        match self {
+            Expr::Ident(_, span) => *span,
+            Expr::Constant(_, span) => *span,
+            Expr::ArrayLit(_, _, span) => *span,
+            Expr::Declare(_, _, _, span) => *span,
+            Expr::Cast(_, _, span) => *span,
+            Expr::Assign(_, _, span) => *span,
+            Expr::Call(_, _, span) => *span,
+            Expr::MethodCall(_, _, _, span) => *span,
+            Expr::Member(_, _, span) => *span,
+            Expr::ArrayElem(_, _, span) => *span,
+            Expr::New(_, _, span) => *span,
+            Expr::Return(_, span) => *span,
+            Expr::Seq(seq) => {
+                let start = seq.exprs.first().map(Self::span).unwrap_or_default();
+                let end = seq.exprs.last().map(Self::span).unwrap_or_default();
+                start.merge(end)
+            }
+            Expr::Switch(_, _, _, span) => *span,
+            Expr::Goto(_, span) => *span,
+            Expr::If(_, _, _, span) => *span,
+            Expr::Conditional(_, _, _, span) => *span,
+            Expr::While(_, _, span) => *span,
+            Expr::ForIn(_, _, _, span) => *span,
+            Expr::BinOp(_, _, _, span) => *span,
+            Expr::UnOp(_, _, span) => *span,
+            Expr::This(span) => *span,
+            Expr::Super(span) => *span,
+            Expr::Break(span) => *span,
+            Expr::Null(span) => *span,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -317,7 +351,7 @@ pub enum Literal {
     TweakDbId,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Pos(pub u32);
 
 impl Pos {
@@ -343,7 +377,7 @@ impl Add<usize> for Pos {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct Span {
     pub low: Pos,
     pub high: Pos,
@@ -354,6 +388,10 @@ impl Span {
 
     pub const fn new(low: Pos, high: Pos) -> Self {
         Self { low, high }
+    }
+
+    pub fn merge(&self, other: Span) -> Span {
+        Span::new(self.low.min(other.low), self.high.max(other.high))
     }
 }
 
