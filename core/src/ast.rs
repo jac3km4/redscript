@@ -1,6 +1,6 @@
 use std::fmt::{self, Debug, Display};
 use std::hash::Hash;
-use std::ops::Add;
+use std::ops::{Add, Sub};
 
 use strum::{Display, EnumString, IntoStaticStr};
 
@@ -371,9 +371,25 @@ impl fmt::Display for Pos {
 impl Add<usize> for Pos {
     type Output = Pos;
 
-    #[inline(always)]
+    #[inline]
     fn add(self, rhs: usize) -> Pos {
         Pos(self.0 + rhs as u32)
+    }
+}
+
+impl Sub<usize> for Pos {
+    type Output = Pos;
+
+    #[inline]
+    fn sub(self, rhs: usize) -> Pos {
+        Pos(self.0 - rhs as u32)
+    }
+}
+
+impl From<Pos> for usize {
+    #[inline]
+    fn from(pos: Pos) -> Self {
+        pos.0 as usize
     }
 }
 
@@ -392,6 +408,10 @@ impl Span {
 
     pub fn merge(&self, other: Span) -> Span {
         Span::new(self.low.min(other.low), self.high.max(other.high))
+    }
+
+    pub fn contains(&self, pos: Pos) -> bool {
+        self.low <= pos && self.high > pos
     }
 }
 

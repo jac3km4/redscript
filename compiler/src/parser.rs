@@ -52,6 +52,7 @@ pub struct FunctionSource {
     pub type_: Option<TypeName>,
     pub parameters: Vec<ParameterSource>,
     pub body: Option<Seq<SourceAst>>,
+    pub span: Span,
 }
 
 #[derive(Debug)]
@@ -253,8 +254,8 @@ peg::parser! {
             { FieldSource { declaration, type_ }}
 
         pub rule function() -> FunctionSource
-            = declaration:decl(<keyword("func")>) _ "(" _ parameters:commasep(<param()>) _ ")" _ type_:func_type()? _ body:function_body()?
-            { FunctionSource { declaration, type_, parameters, body } }
+            = pos:pos() declaration:decl(<keyword("func")>) _ "(" _ parameters:commasep(<param()>) _ ")" _ type_:func_type()? _ body:function_body()? end:pos()
+            { FunctionSource { declaration, type_, parameters, body, span: Span::new(pos, end) } }
         rule function_body() -> Seq<SourceAst>
             = "{" _ body:seq() _ "}" { body }
             / pos:pos() "=" _ expr:expr() _ ";"? end:pos() { Seq::new(vec![Expr::Return(Some(Box::new(expr)), Span::new(pos, end))]) }
@@ -468,7 +469,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", module.entries),
-            r#"[Class(ClassSource { qualifiers: Qualifiers([Public]), name: Owned("A"), base: Some(Owned("IScriptable")), members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private, Const]), name: Owned("m_field"), span: Span { low: Pos(53), high: Pos(78) } }, type_: TypeName { name: Owned("Int32"), arguments: [] } }), Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public]), name: Owned("GetField"), span: Span { low: Pos(104), high: Pos(124) } }, type_: Some(TypeName { name: Owned("Int32"), arguments: [] }), parameters: [], body: Some(Seq { exprs: [Return(Some(Member(This(Span { low: Pos(165), high: Pos(169) }), Owned("m_field"), Span { low: Pos(165), high: Pos(177) })), Span { low: Pos(158), high: Pos(178) })] }) })], span: Span { low: Pos(0), high: Pos(211) } })]"#
+            r#"[Class(ClassSource { qualifiers: Qualifiers([Public]), name: Owned("A"), base: Some(Owned("IScriptable")), members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private, Const]), name: Owned("m_field"), span: Span { low: Pos(53), high: Pos(78) } }, type_: TypeName { name: Owned("Int32"), arguments: [] } }), Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public]), name: Owned("GetField"), span: Span { low: Pos(104), high: Pos(124) } }, type_: Some(TypeName { name: Owned("Int32"), arguments: [] }), parameters: [], body: Some(Seq { exprs: [Return(Some(Member(This(Span { low: Pos(165), high: Pos(169) }), Owned("m_field"), Span { low: Pos(165), high: Pos(177) })), Span { low: Pos(158), high: Pos(178) })] }), span: Span { low: Pos(104), high: Pos(196) } })], span: Span { low: Pos(0), high: Pos(211) } })]"#
         );
     }
 
@@ -483,7 +484,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", module.entries),
-            r#"[Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public, Static]), name: Owned("GetField"), span: Span { low: Pos(0), high: Pos(27) } }, type_: Some(TypeName { name: Owned("Uint64"), arguments: [] }), parameters: [ParameterSource { qualifiers: Qualifiers([]), name: Owned("optimum"), type_: TypeName { name: Owned("Uint64"), arguments: [] } }], body: Some(Seq { exprs: [Return(Some(Conditional(BinOp(Member(This(Span { low: Pos(80), high: Pos(84) }), Owned("m_field"), Span { low: Pos(80), high: Pos(92) }), Ident(Owned("optimum"), Span { low: Pos(95), high: Pos(102) }), Greater, Span { low: Pos(80), high: Pos(102) }), Member(This(Span { low: Pos(105), high: Pos(109) }), Owned("m_field"), Span { low: Pos(105), high: Pos(117) }), Ident(Owned("optimum"), Span { low: Pos(120), high: Pos(127) }), Span { low: Pos(80), high: Pos(127) })), Span { low: Pos(73), high: Pos(128) })] }) })]"#
+            r#"[Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public, Static]), name: Owned("GetField"), span: Span { low: Pos(0), high: Pos(27) } }, type_: Some(TypeName { name: Owned("Uint64"), arguments: [] }), parameters: [ParameterSource { qualifiers: Qualifiers([]), name: Owned("optimum"), type_: TypeName { name: Owned("Uint64"), arguments: [] } }], body: Some(Seq { exprs: [Return(Some(Conditional(BinOp(Member(This(Span { low: Pos(80), high: Pos(84) }), Owned("m_field"), Span { low: Pos(80), high: Pos(92) }), Ident(Owned("optimum"), Span { low: Pos(95), high: Pos(102) }), Greater, Span { low: Pos(80), high: Pos(102) }), Member(This(Span { low: Pos(105), high: Pos(109) }), Owned("m_field"), Span { low: Pos(105), high: Pos(117) }), Ident(Owned("optimum"), Span { low: Pos(120), high: Pos(127) }), Span { low: Pos(80), high: Pos(127) })), Span { low: Pos(73), high: Pos(128) })] }), span: Span { low: Pos(0), high: Pos(143) } })]"#
         );
     }
 

@@ -9,15 +9,23 @@ use redscript::error::{Error, FunctionResolutionError};
 
 use crate::scope::{FunctionCandidates, FunctionMatch, Reference, Scope, TypeId, Value};
 use crate::symbol::Symbol;
+use crate::unit::Diagnostic;
 
 pub struct TypeChecker<'a> {
     pool: &'a mut ConstantPool,
     locals: Vec<PoolIndex<Local>>,
+    diagnostics: Vec<Diagnostic>,
+    permissive: bool,
 }
 
 impl<'a> TypeChecker<'a> {
-    pub fn new(pool: &'a mut ConstantPool) -> TypeChecker<'a> {
-        TypeChecker { pool, locals: vec![] }
+    pub fn new(pool: &'a mut ConstantPool, permissive: bool) -> TypeChecker<'a> {
+        TypeChecker {
+            pool,
+            locals: vec![],
+            diagnostics: vec![],
+            permissive,
+        }
     }
 
     pub fn check(
@@ -27,10 +35,14 @@ impl<'a> TypeChecker<'a> {
         scope: &mut Scope,
     ) -> Result<Expr<TypedAst>, Error> {
         let res = match expr {
-            Expr::Ident(name, pos) => {
-                let reference = scope.resolve_reference(name.clone(), *pos)?;
-                Expr::Ident(reference, *pos)
-            }
+            Expr::Ident(name, pos) => match scope.resolve_reference(name.clone(), *pos) {
+                Ok(reference) => Expr::Ident(reference, *pos),
+                Err(err) if self.permissive => {
+                    self.diagnostics.push(Diagnostic::from_error(err)?);
+                    Expr::Null(*pos)
+                }
+                Err(err) => return Err(err),
+            },
             Expr::Constant(cons, pos) => {
                 let cons = match expected {
                     Some(type_) => {
@@ -86,7 +98,7 @@ impl<'a> TypeChecker<'a> {
                 let type_ = scope.resolve_type(type_name, self.pool, *pos)?;
                 let checked = self.check(expr, None, scope)?;
                 if let TypeId::WeakRef(inner) = type_of(&checked, scope, self.pool)? {
-                    let converted = insert_conversion(checked, &TypeId::Ref(inner), Conversion::WeakRefToRef, *pos);
+                    let converted = insert_conversion(checked, &TypeId::Ref(inner), Conversion::WeakRefToRef);
                     Expr::Cast(type_, Box::new(converted), *pos)
                 } else {
                     Expr::Cast(type_, Box::new(checked), *pos)
@@ -119,7 +131,7 @@ impl<'a> TypeChecker<'a> {
                 let match_ = self.resolve_overload(name.clone(), candidates, args.iter(), expected, scope, *pos)?;
 
                 let converted_context = if let TypeId::WeakRef(inner) = type_ {
-                    insert_conversion(checked_context, &TypeId::Ref(inner), Conversion::WeakRefToRef, *pos)
+                    insert_conversion(checked_context, &TypeId::Ref(inner), Conversion::WeakRefToRef)
                 } else {
                     checked_context
                 };
@@ -159,7 +171,7 @@ impl<'a> TypeChecker<'a> {
                     type_ => return Err(Error::invalid_context(type_.pretty(self.pool)?.as_ref(), *pos)),
                 };
                 let converted_context = if let TypeId::WeakRef(inner) = type_ {
-                    insert_conversion(checked_context, &TypeId::Ref(inner), Conversion::WeakRefToRef, *pos)
+                    insert_conversion(checked_context, &TypeId::Ref(inner), Conversion::WeakRefToRef)
                 } else {
                     checked_context
                 };
@@ -437,7 +449,7 @@ impl<'a> TypeChecker<'a> {
         Ok(Expr::Call(Callable::Intrinsic(intrinsic, type_), checked_args, pos))
     }
 
-    fn check_and_convert(
+    fn check_and_convert_faily(
         &mut self,
         expr: &Expr<SourceAst>,
         to: &TypeId,
@@ -448,10 +460,30 @@ impl<'a> TypeChecker<'a> {
         let from = type_of(&checked, scope, self.pool)?;
         let conversion = find_conversion(&from, to, self.pool)?
             .ok_or_else(|| Error::type_error(from.pretty(self.pool).unwrap(), to.pretty(self.pool).unwrap(), pos))?;
-        Ok(insert_conversion(checked, to, conversion, pos))
+        Ok(insert_conversion(checked, to, conversion))
     }
 
-    fn resolve_overload<'b>(
+    // version of check that recovers from type errors and logs them as diagnostics instead
+    fn check_and_convert(
+        &mut self,
+        expr: &Expr<SourceAst>,
+        to: &TypeId,
+        scope: &mut Scope,
+        pos: Span,
+    ) -> Result<Expr<TypedAst>, Error> {
+        let checked = self.check(expr, Some(to), scope)?;
+        let from = type_of(&checked, scope, self.pool)?;
+        match find_conversion(&from, to, self.pool)? {
+            Some(conversion) => Ok(insert_conversion(checked, to, conversion)),
+            None => {
+                let err = Error::type_error(from.pretty(self.pool).unwrap(), to.pretty(self.pool).unwrap(), pos);
+                self.diagnostics.push(Diagnostic::from_error(err)?);
+                Ok(checked)
+            }
+        }
+    }
+
+    fn resolve_overload_faily<'b>(
         &mut self,
         name: Ident,
         overloads: FunctionCandidates,
@@ -475,6 +507,30 @@ impl<'a> TypeChecker<'a> {
             Err(inner)
         } else {
             Err(Error::no_matching_overload(name, &overload_errors, pos))
+        }
+    }
+
+    fn resolve_overload<'b>(
+        &mut self,
+        name: Ident,
+        overloads: FunctionCandidates,
+        args: impl ExactSizeIterator<Item = &'b Expr<SourceAst>> + Clone,
+        expected: Option<&TypeId>,
+        scope: &mut Scope,
+        pos: Span,
+    ) -> Result<FunctionMatch, Error> {
+        let fst = overloads.functions.first().cloned();
+        match self.resolve_overload_faily(name, overloads, args.clone(), expected, scope, pos) {
+            Ok(res) => Ok(res),
+            Err(err) => {
+                self.diagnostics.push(Diagnostic::from_error(err)?);
+                let args = args.map(|e| self.check(e, None, scope)).collect::<Result<_, Error>>()?;
+                let dummy = FunctionMatch {
+                    index: fst.unwrap(),
+                    args,
+                };
+                Ok(dummy)
+            }
         }
     }
 
@@ -512,7 +568,7 @@ impl<'a> TypeChecker<'a> {
         for (idx, arg) in args.enumerate() {
             let param = self.pool.parameter(params[idx])?;
             let param_type = scope.resolve_type_from_pool(param.type_, self.pool, pos)?;
-            match self.check_and_convert(arg, &param_type, scope, pos) {
+            match self.check_and_convert_faily(arg, &param_type, scope, pos) {
                 Ok(converted) => compiled_args.push(converted),
                 Err(Error::TypeError(err, _)) => {
                     return Ok(Err(FunctionResolutionError::parameter_mismatch(&err, idx)))
@@ -549,8 +605,8 @@ impl<'a> TypeChecker<'a> {
         Ok(local_idx)
     }
 
-    pub fn locals(self) -> Vec<PoolIndex<Local>> {
-        self.locals
+    pub fn finish(self) -> (Vec<Diagnostic>, Vec<PoolIndex<Local>>) {
+        (self.diagnostics, self.locals)
     }
 }
 
@@ -690,20 +746,21 @@ fn find_conversion(from: &TypeId, to: &TypeId, pool: &ConstantPool) -> Result<Op
     Ok(result)
 }
 
-fn insert_conversion(expr: Expr<TypedAst>, type_: &TypeId, conversion: Conversion, pos: Span) -> Expr<TypedAst> {
+fn insert_conversion(expr: Expr<TypedAst>, type_: &TypeId, conversion: Conversion) -> Expr<TypedAst> {
+    let span = expr.span();
     match conversion {
         Conversion::Identity => expr,
         Conversion::RefToWeakRef => Expr::Call(
             Callable::Intrinsic(IntrinsicOp::RefToWeakRef, type_.clone()),
             vec![expr],
-            pos,
+            span,
         ),
         Conversion::WeakRefToRef => Expr::Call(
             Callable::Intrinsic(IntrinsicOp::WeakRefToRef, type_.clone()),
             vec![expr],
-            pos,
+            span,
         ),
-        Conversion::ToScriptRef => Expr::Call(Callable::Intrinsic(IntrinsicOp::AsRef, type_.clone()), vec![expr], pos),
+        Conversion::ToScriptRef => Expr::Call(Callable::Intrinsic(IntrinsicOp::AsRef, type_.clone()), vec![expr], span),
     }
 }
 
