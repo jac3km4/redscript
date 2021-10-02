@@ -16,15 +16,18 @@ use crate::source_map::Files;
 use crate::sugar::Desugar;
 use crate::symbol::{FunctionSignature, Import, ModulePath, Symbol, SymbolMap};
 use crate::transform::ExprTransformer;
-use crate::typechecker::{Callable, TypeChecker};
+use crate::typechecker::{Callable, TypeChecker, TypedAst};
+
+type ProxyMap = HashMap<PoolIndex<Function>, PoolIndex<Function>>;
 
 pub struct CompilationUnit<'a> {
     pool: &'a mut ConstantPool,
     symbols: SymbolMap,
     scope: Scope,
     function_bodies: Vec<FunctionBody>,
-    wrappers: HashMap<PoolIndex<Function>, PoolIndex<Function>>,
-    proxies: HashMap<PoolIndex<Function>, PoolIndex<Function>>,
+    wrappers: ProxyMap,
+    proxies: ProxyMap,
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl<'a> CompilationUnit<'a> {
@@ -45,13 +48,43 @@ impl<'a> CompilationUnit<'a> {
             function_bodies: Vec::new(),
             wrappers: HashMap::new(),
             proxies: HashMap::new(),
+            diagnostics: vec![],
         })
     }
 
-    pub fn compile(self, files: &Files) -> Result<(), Error> {
+    pub fn typecheck_parsed(
+        mut self,
+        modules: Vec<SourceModule>,
+        desugar: bool,
+        permissive: bool,
+    ) -> Result<(Vec<CompiledFunction>, Vec<Diagnostic>, Scope), Error> {
+        let funcs = self.compile_modules(modules, desugar, permissive)?;
+        Ok((funcs, self.diagnostics, self.scope))
+    }
+
+    pub fn typecheck(
+        mut self,
+        files: &Files,
+        desugar: bool,
+        permissive: bool,
+    ) -> Result<(Vec<CompiledFunction>, Vec<Diagnostic>), Error> {
+        let funcs = self.compile_modules(Self::parse(files)?, desugar, permissive)?;
+        Ok((funcs, self.diagnostics))
+    }
+
+    pub fn compile_parsed(mut self, modules: Vec<SourceModule>) -> Result<Vec<Diagnostic>, Error> {
+        let funcs = self.compile_modules(modules, true, false)?;
+        self.finish(funcs)
+    }
+
+    pub fn compile(self, files: &Files) -> Result<Vec<Diagnostic>, Error> {
+        self.compile_parsed(Self::parse(files)?)
+    }
+
+    pub fn compile_and_print(self, files: &Files) -> Result<(), Error> {
         log::info!("Compiling files: {}", files);
 
-        match self.parse_and_compile(files) {
+        match self.compile(files) {
             Ok(diagnostics) => {
                 let is_fatal = diagnostics.iter().any(Diagnostic::is_fatal);
                 for diagnostic in &diagnostics {
@@ -83,19 +116,6 @@ impl<'a> CompilationUnit<'a> {
                 }
             },
         }
-    }
-
-    fn parse_and_compile(self, files: &Files) -> Result<Vec<Diagnostic>, Error> {
-        let mut modules = vec![];
-        for file in files.files() {
-            let parsed = parse_file(file).map_err(|err| {
-                let message = format!("Syntax error, expected {}", err.expected);
-                let pos = file.byte_offset() + err.location.offset;
-                Error::SyntaxError(message, Span::new(pos, pos + 1))
-            })?;
-            modules.push(parsed);
-        }
-        self.compile_modules(modules)
     }
 
     fn print_diagnostic(files: &Files, diagnostic: &Diagnostic) {
@@ -134,16 +154,37 @@ impl<'a> CompilationUnit<'a> {
         }
     }
 
-    pub fn compile_modules(mut self, modules: Vec<SourceModule>) -> Result<Vec<Diagnostic>, Error> {
-        let mut compiled_funs = HashSet::new();
+    fn parse(files: &Files) -> Result<Vec<SourceModule>, Error> {
+        let mut modules = vec![];
+        for file in files.files() {
+            let parsed = parse_file(file).map_err(|err| {
+                let message = format!("Syntax error, expected {}", err.expected);
+                let pos = file.byte_offset() + err.location.offset;
+                Error::SyntaxError(message, Span::new(pos, pos + 1))
+            })?;
+            modules.push(parsed);
+        }
+        Ok(modules)
+    }
+
+    fn compile_modules(
+        &mut self,
+        modules: Vec<SourceModule>,
+        desugar: bool,
+        permissive: bool,
+    ) -> Result<Vec<CompiledFunction>, Error> {
+        let mut seen_funcs = HashSet::new();
         let mut queue = Vec::with_capacity(modules.len());
-        let mut diagnostics = Vec::new();
+        let mut compiled_funcs = Vec::new();
 
         for module in modules {
             let path = module.path.unwrap_or(ModulePath::EMPTY);
             let mut slots = Vec::with_capacity(module.entries.len());
             for entry in module.entries {
-                slots.push(self.define_symbol(entry, &path)?);
+                match self.define_symbol(entry, &path) {
+                    Ok(slot) => slots.push(slot),
+                    Err(err) => self.diagnostics.push(Diagnostic::from_error(err)?),
+                };
             }
             queue.push((path, module.imports, slots));
         }
@@ -163,7 +204,7 @@ impl<'a> CompilationUnit<'a> {
             }
 
             for slot in slots {
-                match slot {
+                let res = match slot {
                     Slot::Function {
                         index,
                         parent,
@@ -173,49 +214,57 @@ impl<'a> CompilationUnit<'a> {
                         wrapped,
                     } => {
                         let pos = source.declaration.span;
-                        self.define_function(index, parent, base, wrapped, visibility, source, &mut module_scope)?;
-                        if compiled_funs.contains(&index) {
-                            diagnostics.push(Diagnostic::MethodConflict(index, pos));
+                        if seen_funcs.contains(&index) {
+                            self.diagnostics.push(Diagnostic::MethodConflict(index, pos));
                         } else {
-                            compiled_funs.insert(index);
+                            seen_funcs.insert(index);
                         }
+                        self.define_function(index, parent, base, wrapped, visibility, source, &mut module_scope)
                     }
                     Slot::Class {
                         index,
                         source,
                         visibility,
-                    } => {
-                        self.define_class(index, visibility, source, &mut module_scope)?;
-                    }
+                    } => self.define_class(index, visibility, source, &mut module_scope),
                     Slot::Field {
                         index,
                         source,
                         visibility,
-                    } => {
-                        self.define_global_let(index, visibility, source, &mut module_scope)?;
-                    }
-                    Slot::Enum { index, source } => {
-                        self.define_enum(index, source)?;
-                    }
+                    } => self.define_global_let(index, visibility, source, &mut module_scope),
+                    Slot::Enum { index, source } => self.define_enum(index, source),
+                };
+                if let Err(err) = res {
+                    self.diagnostics.push(Diagnostic::from_error(err)?);
                 }
             }
         }
 
         // create function proxies
-        for (wrapped, wrapper) in self.wrappers {
+        for (wrapped, wrapper) in self.wrappers.drain() {
             let proxy = self.proxies.get(&wrapped).unwrap();
             Self::construct_proxy(*proxy, wrapped, wrapper, &mut self.scope, self.pool)?;
         }
 
         // compile function bodies
-        for item in self.function_bodies {
-            if let Some(err) = Self::compile_function(item, self.pool)
-                .err()
-                .map(Diagnostic::from_error)
-                .transpose()?
-            {
-                diagnostics.push(err);
+        for item in self.function_bodies.drain(..) {
+            match Self::compile_function(item, self.pool, desugar, permissive) {
+                Ok((func, diagnostics)) => {
+                    compiled_funcs.push(func);
+                    self.diagnostics.extend(diagnostics);
+                }
+                Err(err) => self.diagnostics.push(Diagnostic::from_error(err)?),
             }
+        }
+
+        Ok(compiled_funcs)
+    }
+
+    fn finish(self, functions: Vec<CompiledFunction>) -> Result<Vec<Diagnostic>, Error> {
+        for mut func in functions {
+            let code = Assembler::from_body(func.code, &mut func.scope, self.pool)?;
+            let function = self.pool.function_mut(func.index)?;
+            function.code = code;
+            function.locals = func.locals;
         }
 
         // swap proxies with the functions they wrap
@@ -230,7 +279,7 @@ impl<'a> CompilationUnit<'a> {
         }
 
         Self::cleanup_pool(self.pool);
-        Ok(diagnostics)
+        Ok(self.diagnostics)
     }
 
     fn define_symbol(&mut self, entry: SourceEntry, module: &ModulePath) -> Result<Slot, Error> {
@@ -427,10 +476,11 @@ impl<'a> CompilationUnit<'a> {
         if let Some(code) = source.body {
             let item = FunctionBody {
                 class: parent_idx,
-                function: fun_idx,
+                index: fun_idx,
                 wrapped,
                 code,
                 scope: scope.clone(),
+                span: source.span,
             };
             self.function_bodies.push(item)
         }
@@ -677,13 +727,18 @@ impl<'a> CompilationUnit<'a> {
         Ok(slot)
     }
 
-    fn compile_function(item: FunctionBody, pool: &mut ConstantPool) -> Result<(), Error> {
-        let fun = pool.function(item.function)?;
+    fn compile_function(
+        item: FunctionBody,
+        pool: &mut ConstantPool,
+        desugar: bool,
+        permissive: bool,
+    ) -> Result<(CompiledFunction, Vec<Diagnostic>), Error> {
+        let fun = pool.function(item.index)?;
 
         let mut local_scope = if fun.flags.is_static() {
-            item.scope.with_context(None, item.function)
+            item.scope.with_context(None, item.index)
         } else {
-            item.scope.with_context(Some(item.class), item.function)
+            item.scope.with_context(Some(item.class), item.index)
         };
 
         for param in &fun.parameters {
@@ -696,19 +751,27 @@ impl<'a> CompilationUnit<'a> {
             local_scope.add_symbol(wrapped_ident, Symbol::Functions(vec![(wrapped, Visibility::Public)]));
         }
 
-        let mut checker = TypeChecker::new(pool);
+        let mut checker = TypeChecker::new(pool, permissive);
         let checked = checker.check_seq(&item.code, &mut local_scope)?;
-        let mut locals = checker.locals();
+        let (diagnostics, mut locals) = checker.finish();
 
-        let mut desugar = Desugar::new(&mut local_scope, pool);
-        let desugared = desugar.on_seq(checked)?;
-        locals.extend(desugar.locals());
+        let ast = if desugar {
+            let mut desugar = Desugar::new(&mut local_scope, pool);
+            let desugared = desugar.on_seq(checked)?;
+            locals.extend(desugar.locals());
+            desugared
+        } else {
+            checked
+        };
 
-        let code = Assembler::from_body(desugared, &mut local_scope, pool)?;
-        let function = pool.function_mut(item.function)?;
-        function.code = code;
-        function.locals = locals;
-        Ok(())
+        let compiled = CompiledFunction {
+            index: item.index,
+            code: ast,
+            locals,
+            scope: local_scope,
+            span: item.span,
+        };
+        Ok((compiled, diagnostics))
     }
 
     fn construct_proxy(
@@ -839,10 +902,19 @@ impl<'a> CompilationUnit<'a> {
 
 struct FunctionBody {
     class: PoolIndex<Class>,
-    function: PoolIndex<Function>,
+    index: PoolIndex<Function>,
     wrapped: Option<PoolIndex<Function>>,
     code: Seq<SourceAst>,
     scope: Scope,
+    span: Span,
+}
+
+pub struct CompiledFunction {
+    pub index: PoolIndex<Function>,
+    pub code: Seq<TypedAst>,
+    pub locals: Vec<PoolIndex<Local>>,
+    pub scope: Scope,
+    pub span: Span,
 }
 
 enum Slot {
