@@ -57,9 +57,9 @@ impl<'a> CompilationUnit<'a> {
         modules: Vec<SourceModule>,
         desugar: bool,
         permissive: bool,
-    ) -> Result<(Vec<CompiledFunction>, Vec<Diagnostic>, Scope), Error> {
+    ) -> Result<(Vec<CompiledFunction>, Vec<Diagnostic>), Error> {
         let funcs = self.compile_modules(modules, desugar, permissive)?;
-        Ok((funcs, self.diagnostics, self.scope))
+        Ok((funcs, self.diagnostics))
     }
 
     pub fn typecheck(
@@ -181,7 +181,7 @@ impl<'a> CompilationUnit<'a> {
             let path = module.path.unwrap_or(ModulePath::EMPTY);
             let mut slots = Vec::with_capacity(module.entries.len());
             for entry in module.entries {
-                match self.define_symbol(entry, &path) {
+                match self.define_symbol(entry, &path, permissive) {
                     Ok(slot) => slots.push(slot),
                     Err(err) => self.diagnostics.push(Diagnostic::from_error(err)?),
                 };
@@ -282,17 +282,20 @@ impl<'a> CompilationUnit<'a> {
         Ok(self.diagnostics)
     }
 
-    fn define_symbol(&mut self, entry: SourceEntry, module: &ModulePath) -> Result<Slot, Error> {
+    fn define_symbol(&mut self, entry: SourceEntry, module: &ModulePath, permissive: bool) -> Result<Slot, Error> {
         match entry {
             SourceEntry::Class(source) => {
                 let path = module.with_child(source.name.clone());
-                let name_index = self.pool.names.add(path.render().to_owned());
-                let index = self.pool.stub_definition(name_index);
                 let visibility = source.qualifiers.visibility().unwrap_or(Visibility::Private);
 
                 if let Ok(Symbol::Class(_, _)) = self.symbols.get_symbol(&path, source.span) {
-                    return Err(Error::class_redefinition(source.span));
+                    if !permissive {
+                        return Err(Error::class_redefinition(source.span));
+                    }
                 }
+
+                let name_index = self.pool.names.add(path.render().to_owned());
+                let index = self.pool.stub_definition(name_index);
 
                 self.symbols.add_class(&path, index, visibility);
 
