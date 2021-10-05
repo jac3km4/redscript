@@ -684,6 +684,9 @@ fn find_conversion(from: &TypeId, to: &TypeId, pool: &ConstantPool) -> Result<Op
             (from, TypeId::ScriptRef(to)) if find_conversion(from, to, pool)? == Some(Conversion::Identity) => {
                 Some(Conversion::ToScriptRef)
             }
+            (_, TypeId::Prim(to)) if is_variant(*to, pool).is_ok() => {
+                Some(Conversion::ToVariant)
+            }
             _ => None,
         }
     };
@@ -704,7 +707,12 @@ fn insert_conversion(expr: Expr<TypedAst>, type_: &TypeId, conversion: Conversio
             pos,
         ),
         Conversion::ToScriptRef => Expr::Call(Callable::Intrinsic(IntrinsicOp::AsRef, type_.clone()), vec![expr], pos),
+        Conversion::ToVariant => Expr::Call(Callable::Intrinsic(IntrinsicOp::ToVariant, type_.clone()), vec![expr], pos),
     }
+}
+
+fn is_variant<A>(type_: PoolIndex<A>, pool: &ConstantPool) -> Result<bool, Error> {
+    Ok(pool.definition_name(type_)?.eq_ignore_ascii_case("Variant"))
 }
 
 #[derive(Debug)]
@@ -738,4 +746,5 @@ pub enum Conversion {
     RefToWeakRef,
     WeakRefToRef,
     ToScriptRef,
+    ToVariant,
 }
