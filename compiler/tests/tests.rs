@@ -554,6 +554,31 @@ fn compile_number_literals() -> Result<(), Error> {
 }
 
 #[test]
+fn compile_string_literals() -> Result<(), Error> {
+    let sources = r#"
+        func Testing() {
+            let a: String = "\u{1F4A9}";
+            let b: CName = n"back";
+            //let c: ResRef = r"base\\gameplay\\gui\\common\\buttonhints.inkwidget";
+            let d: TweakDBID = t"MappinIcons.QuestMappin";
+        }
+        "#;
+    let expected = vec![
+        Instr::Assign,
+        Instr::Local(PoolIndex::new(22)),
+        Instr::StringConst(PoolIndex::new(0)),
+        Instr::Assign,
+        Instr::Local(PoolIndex::new(23)),
+        Instr::NameConst(PoolIndex::new(25)),
+        Instr::Assign,
+        Instr::Local(PoolIndex::new(24)),
+        Instr::TweakDbIdConst(PoolIndex::new(0)),
+        Instr::Nop,
+    ];
+    check_function_bytecode(sources, expected)
+}
+
+#[test]
 fn compile_is_defined() -> Result<(), Error> {
     let sources = "
         func Testing() {
