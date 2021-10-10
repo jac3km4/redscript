@@ -772,10 +772,11 @@ impl<'a> CompilationUnit<'a> {
         }
         Ok(())
     }
+
     fn class_cardinality(idx: PoolIndex<Class>, pool: &ConstantPool) -> usize {
         let class = pool.class(idx).unwrap();
         if class.base.is_undefined() {
-            0
+            1
         } else {
             Self::class_cardinality(class.base, pool) + 1
         }
@@ -786,6 +787,7 @@ impl<'a> CompilationUnit<'a> {
         // a class which has a base class that is placed after the subclass in the pool
         let mut unsorted = BTreeSet::new();
 
+        // find any classes that appear before their base class in the pool
         for (def_idx, def) in pool.definitions() {
             if let AnyDefinition::Class(class) = &def.value {
                 let pos: u32 = def_idx.into();
@@ -796,15 +798,27 @@ impl<'a> CompilationUnit<'a> {
             }
         }
 
+        // additional iteration to find classes that extend the ones that need sorting
+        for (def_idx, def) in pool.definitions() {
+            if let AnyDefinition::Class(class) = &def.value {
+                if unsorted.contains(&class.base) {
+                    unsorted.insert(def_idx.cast());
+                }
+            }
+        }
+
+        // find out the order based on cardinality
         let mut sorted: Vec<PoolIndex<Class>> = unsorted.iter().copied().collect();
         sorted.sort_by_key(|k| Self::class_cardinality(*k, pool));
 
         let definitions: Vec<Definition> = sorted.iter().map(|k| pool.definition(*k).unwrap()).cloned().collect();
 
+        // insert classes based on the determined order
         for (def, target) in definitions.into_iter().zip(&unsorted) {
             pool.put_definition(*target, def);
         }
 
+        // fix any references to the reordered classes
         if !unsorted.is_empty() {
             let mappings = sorted.into_iter().zip(unsorted).collect();
             PoolMapper::default()
