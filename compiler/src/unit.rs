@@ -229,7 +229,6 @@ impl<'a> CompilationUnit<'a> {
             SourceEntry::Class(source) => {
                 let path = module.with_child(source.name.clone());
                 let name_index = self.pool.names.add(path.render().to_owned());
-                let type_index = self.pool.add_definition(Definition::type_(name_index, Type::Class));
                 let index = self.pool.stub_definition(name_index);
                 let visibility = source.qualifiers.visibility().unwrap_or(Visibility::Private);
 
@@ -237,7 +236,6 @@ impl<'a> CompilationUnit<'a> {
                     return Err(Error::class_redefinition(source.pos));
                 }
 
-                self.scope.add_type(path.render(), type_index);
                 self.symbols.add_class(&path, index, visibility);
 
                 // add to globals when no module
@@ -276,10 +274,8 @@ impl<'a> CompilationUnit<'a> {
             SourceEntry::Enum(source) => {
                 let path = module.with_child(source.name.clone());
                 let name_index = self.pool.names.add(path.render().to_owned());
-                let type_index = self.pool.add_definition(Definition::type_(name_index, Type::Class));
                 let index = self.pool.stub_definition(name_index);
 
-                self.scope.add_type(path.render(), type_index);
                 self.symbols.add_enum(&path, index);
 
                 // add to globals when no module
