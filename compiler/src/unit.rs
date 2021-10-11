@@ -52,7 +52,16 @@ impl<'a> CompilationUnit<'a> {
         })
     }
 
-    pub fn typecheck_parsed(
+    pub fn compile(mut self, modules: Vec<SourceModule>) -> Result<Vec<Diagnostic>, Error> {
+        let funcs = self.compile_modules(modules, true, false)?;
+        self.finish(funcs)
+    }
+
+    pub fn compile_files(self, files: &Files) -> Result<Vec<Diagnostic>, Error> {
+        self.compile(Self::parse(files)?)
+    }
+
+    pub fn typecheck(
         mut self,
         modules: Vec<SourceModule>,
         desugar: bool,
@@ -62,29 +71,10 @@ impl<'a> CompilationUnit<'a> {
         Ok((funcs, self.diagnostics))
     }
 
-    pub fn typecheck(
-        mut self,
-        files: &Files,
-        desugar: bool,
-        permissive: bool,
-    ) -> Result<(Vec<CompiledFunction>, Vec<Diagnostic>), Error> {
-        let funcs = self.compile_modules(Self::parse(files)?, desugar, permissive)?;
-        Ok((funcs, self.diagnostics))
-    }
-
-    pub fn compile_parsed(mut self, modules: Vec<SourceModule>) -> Result<Vec<Diagnostic>, Error> {
-        let funcs = self.compile_modules(modules, true, false)?;
-        self.finish(funcs)
-    }
-
-    pub fn compile(self, files: &Files) -> Result<Vec<Diagnostic>, Error> {
-        self.compile_parsed(Self::parse(files)?)
-    }
-
-    pub fn compile_and_print(self, files: &Files) -> Result<(), Error> {
+    pub fn compile_and_report(self, files: &Files) -> Result<(), Error> {
         log::info!("Compiling files: {}", files);
 
-        match self.compile(files) {
+        match self.compile_files(files) {
             Ok(diagnostics) => {
                 let is_fatal = diagnostics.iter().any(Diagnostic::is_fatal);
                 for diagnostic in &diagnostics {
