@@ -113,7 +113,7 @@ fn compile(opts: CompileOpts) -> Result<(), Error> {
 
     let files = Files::from_dir(&opts.src, SourceFilter::None)?;
 
-    match CompilationUnit::new(&mut bundle.pool)?.compile_and_print(&files) {
+    match CompilationUnit::new(&mut bundle.pool)?.compile_and_report(&files) {
         Ok(()) => {
             bundle.save(&mut io::BufWriter::new(File::create(&opts.output)?))?;
             log::info!("Output successfully saved to {}", opts.output.display());
@@ -172,7 +172,7 @@ fn lint(opts: LintOpts) -> Result<(), Error> {
             let files = Files::from_dir(&opts.src, SourceFilter::None)?;
 
             if CompilationUnit::new(&mut bundle.pool)?
-                .compile_and_print(&files)
+                .compile_and_report(&files)
                 .is_ok()
             {
                 log::info!("Lint successful");

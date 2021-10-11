@@ -641,7 +641,7 @@ fn compile_mutually_dependent_modules() -> Result<(), Error> {
     .unwrap();
 
     let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
-    CompilationUnit::new(&mut scripts.pool)?.compile_parsed(vec![sources1, sources2])?;
+    CompilationUnit::new(&mut scripts.pool)?.compile(vec![sources1, sources2])?;
     Ok(())
 }
 
@@ -709,7 +709,7 @@ fn compile_empty_return() -> Result<(), Error> {
 fn check_compilation_pool(code: &str) -> Result<ConstantPool, Error> {
     let module = parser::parse_str(code).unwrap();
     let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
-    CompilationUnit::new(&mut scripts.pool)?.compile_parsed(vec![module])?;
+    CompilationUnit::new(&mut scripts.pool)?.compile(vec![module])?;
 
     Ok(scripts.pool)
 }
