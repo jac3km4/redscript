@@ -1,8 +1,8 @@
 use std::fmt::Debug;
-use std::rc::Rc;
 
 use redscript::ast::{BinOp, Constant, Expr, NameKind, Seq, Span, SwitchCase, Target, UnOp};
 use redscript::error::Error;
+use redscript::Ref;
 
 pub trait ExprTransformer<N: NameKind>
 where
@@ -32,8 +32,8 @@ where
 
     fn on_interpolated_string(
         &mut self,
-        prefix: Rc<String>,
-        parts: Vec<(Expr<N>, Rc<String>)>,
+        prefix: Ref<String>,
+        parts: Vec<(Expr<N>, Ref<String>)>,
         pos: Span,
     ) -> Result<Expr<N>, Error> {
         let mut processed = Vec::with_capacity(parts.len());

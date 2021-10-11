@@ -1,4 +1,3 @@
-use std::rc::Rc;
 use std::vec;
 
 use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, Seq, Span, TypeName};
@@ -83,8 +82,8 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
 
     fn on_interpolated_string(
         &mut self,
-        prefix: Rc<String>,
-        parts: Vec<(Expr<TypedAst>, Rc<String>)>,
+        prefix: Ref<String>,
+        parts: Vec<(Expr<TypedAst>, Ref<String>)>,
         pos: Span,
     ) -> Result<Expr<TypedAst>, Error> {
         let mut acc = Expr::Constant(Constant::String(Literal::String, prefix), pos);

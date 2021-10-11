@@ -1,7 +1,6 @@
 use std::fmt::{self, Debug, Display};
 use std::hash::Hash;
 use std::ops::{Add, Sub};
-use std::rc::Rc;
 
 use strum::{Display, EnumString, IntoStaticStr};
 
@@ -21,7 +20,7 @@ where
     Ident(Name::Reference, Span),
     Constant(Constant, Span),
     ArrayLit(Vec<Self>, Option<Name::Type>, Span),
-    InterpolatedString(Rc<String>, Vec<(Self, Rc<String>)>, Span),
+    InterpolatedString(Ref<String>, Vec<(Self, Ref<String>)>, Span),
     Declare(Name::Local, Option<Name::Type>, Option<Box<Self>>, Span),
     Cast(Name::Type, Box<Self>, Span),
     Assign(Box<Self>, Box<Self>, Span),
