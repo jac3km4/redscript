@@ -593,3 +593,53 @@ fn compile_empty_return() {
     ];
     TestContext::compiled(sources).unwrap().run("Testing", check)
 }
+
+#[test]
+fn compile_string_interpolation() {
+    let sources = r#"
+        func Testing(year: Int32) -> String {
+            let birthYear = 1990;
+            let name = "John";
+            return s"My name is \(name) and I am \(year - birthYear) years old";
+        }
+        func OperatorAdd(a: script_ref<String>, b: script_ref<String>) -> String
+        func OperatorSubtract(a: Int32, b: Int32) -> Int32
+        "#;
+
+    let check = check_code![
+        pat!(Assign),
+        mem!(Local(birth_year)),
+        pat!(I32Const(1990)),
+        pat!(Assign),
+        mem!(Local(name)),
+        pat!(StringConst(_)),
+        pat!(Return),
+        pat!(InvokeStatic(Offset { value: 203 }, 0, _, 3)),
+        mem!(AsRef(str_type)),
+        pat!(InvokeStatic(Offset { value: 87 }, 0, _, 2)),
+        mem!(AsRef(str_type)),
+        pat!(StringConst(_)),
+        mem!(AsRef(str_type)),
+        pat!(InvokeStatic(Offset { value: 48 }, 0, _, 0)),
+        mem!(AsRef(str_type)),
+        mem!(Local(name)),
+        mem!(AsRef(str_type)),
+        pat!(StringConst(_)),
+        pat!(ParamEnd),
+        pat!(ParamEnd),
+        mem!(AsRef(str_type)),
+        pat!(InvokeStatic(Offset { value: 82 }, 0, _, 1)),
+        mem!(AsRef(str_type)),
+        pat!(ToString(_)),
+        pat!(InvokeStatic(Offset { value: 34 }, 0, _, 0)),
+        mem!(Param(year)),
+        mem!(Local(birth_year)),
+        pat!(ParamEnd),
+        mem!(AsRef(str_type)),
+        pat!(StringConst(_)),
+        pat!(ParamEnd),
+        pat!(ParamEnd),
+        pat!(Nop)
+    ];
+    TestContext::compiled(sources).unwrap().run("Testing", check)
+}

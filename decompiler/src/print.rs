@@ -369,6 +369,7 @@ fn write_expr_nested<W: Write>(
         Expr::This(_) => write!(out, "this")?,
         Expr::Super(_) => write!(out, "super")?,
         Expr::ArrayLit(_, _, _) => panic!("Shouldn't get here"),
+        Expr::InterpolatedString(_, _, _) => panic!("Shouldn't get here"),
         Expr::ForIn(_, _, _, _) => panic!("Shouldn't get here"),
     };
     Ok(())

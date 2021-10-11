@@ -1,6 +1,7 @@
+use std::rc::Rc;
 use std::vec;
 
-use redscript::ast::{BinOp, Constant, Expr, Ident, Seq, Span, TypeName};
+use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, Seq, Span, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::IntrinsicOp;
 use redscript::definition::{Definition, Local, LocalFlags};
@@ -78,6 +79,44 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
             self.add_prefix(Expr::Call(callable, vec![Expr::Ident(local.clone(), pos), expr], pos))
         }
         Ok(Expr::Ident(local, pos))
+    }
+
+    fn on_interpolated_string(
+        &mut self,
+        prefix: Rc<String>,
+        parts: Vec<(Expr<TypedAst>, Rc<String>)>,
+        pos: Span,
+    ) -> Result<Expr<TypedAst>, Error> {
+        let mut acc = Expr::Constant(Constant::String(Literal::String, prefix), pos);
+        let str_type = self.scope.resolve_type(&TypeName::STRING, self.pool, pos)?;
+
+        let add_str = FunctionSignatureBuilder::new(BinOp::Add.to_string())
+            .parameter(&TypeName::parametrized("script_ref", "String"), false)
+            .parameter(&TypeName::parametrized("script_ref", "String"), false)
+            .return_type(&TypeName::STRING);
+        let add_str = self.get_function(add_str, pos)?;
+
+        for (part, str) in parts {
+            let str: Expr<TypedAst> = Expr::Constant(Constant::String(Literal::String, str), pos);
+            let part = self.on_expr(part)?;
+
+            let part = match type_of(&part, self.scope, self.pool)? {
+                TypeId::ScriptRef(idx) if idx.pretty(self.pool)?.as_ref() == "String" => part,
+                typ if typ.pretty(self.pool)?.as_ref() == "String" => {
+                    let as_ref = Callable::Intrinsic(IntrinsicOp::AsRef, TypeId::ScriptRef(Box::new(str_type.clone())));
+                    Expr::Call(as_ref, vec![part], pos)
+                }
+                _ => {
+                    let to_string = Callable::Intrinsic(IntrinsicOp::ToString, str_type.clone());
+                    let as_ref = Callable::Intrinsic(IntrinsicOp::AsRef, TypeId::ScriptRef(Box::new(str_type.clone())));
+                    Expr::Call(as_ref, vec![Expr::Call(to_string, vec![part], pos)], pos)
+                }
+            };
+
+            let combined = Expr::Call(add_str.clone(), vec![part, str], pos);
+            acc = Expr::Call(add_str.clone(), vec![acc, combined], pos);
+        }
+        Ok(acc)
     }
 
     fn on_for_in(

@@ -55,6 +55,7 @@ impl TestContext {
                 _ => None,
             })
             .expect("Function not found in the pool");
+        println!("{:?}", fun.code);
         check(fun.code.clone(), self);
     }
 }

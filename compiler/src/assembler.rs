@@ -279,6 +279,7 @@ impl Assembler {
                 self.emit(Instr::Jump(exit.unwrap()));
             }
             Expr::ArrayLit(_, _, pos) => return Err(Error::unsupported("ArrayLit", pos)),
+            Expr::InterpolatedString(_, _, pos) => return Err(Error::unsupported("InterpolatedString", pos)),
             Expr::ForIn(_, _, _, pos) => return Err(Error::unsupported("For-in", pos)),
             Expr::BinOp(_, _, _, pos) => return Err(Error::unsupported("BinOp", pos)),
             Expr::UnOp(_, _, pos) => return Err(Error::unsupported("UnOp", pos)),

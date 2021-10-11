@@ -79,6 +79,13 @@ impl<'a> TypeChecker<'a> {
                     None => return Err(Error::type_annotation_required(*pos)),
                 },
             },
+            Expr::InterpolatedString(prefix, parts, pos) => {
+                let mut checked = Vec::with_capacity(parts.len());
+                for (part, str) in parts {
+                    checked.push((self.check(part, None, scope, silent)?, str.clone()));
+                }
+                Expr::InterpolatedString(prefix.clone(), checked, *pos)
+            }
             Expr::Declare(name, type_, init, pos) => {
                 let (initializer, type_) = match (type_, init) {
                     (None, None) => return Err(Error::type_annotation_required(*pos)),
@@ -655,6 +662,7 @@ pub fn type_of(expr: &Expr<TypedAst>, scope: &Scope, pool: &ConstantPool) -> Res
             Constant::Bool(_) => scope.resolve_type(&TypeName::BOOL, pool, *pos)?,
         },
         Expr::ArrayLit(_, type_, _) => TypeId::Array(Box::new(type_.clone().unwrap())),
+        Expr::InterpolatedString(_, _, pos) => scope.resolve_type(&TypeName::STRING, pool, *pos)?,
         Expr::Declare(_, _, _, _) => TypeId::Void,
         Expr::Cast(type_, expr, _) => match type_of(expr, scope, pool)? {
             TypeId::Ref(_) => TypeId::Ref(Box::new(type_.clone())),
@@ -795,7 +803,7 @@ impl NameKind for TypedAst {
     type Type = TypeId;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Callable {
     Function(PoolIndex<Function>),
     Intrinsic(IntrinsicOp, TypeId),
