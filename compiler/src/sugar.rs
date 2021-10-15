@@ -95,25 +95,30 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
             .return_type(&TypeName::STRING);
         let add_str = self.get_function(add_str, pos)?;
 
+        let as_ref = Callable::Intrinsic(IntrinsicOp::AsRef, TypeId::ScriptRef(Box::new(str_type.clone())));
+        let as_ref = |exp: Expr<TypedAst>| Expr::Call(as_ref.clone(), vec![exp], pos);
+
         for (part, str) in parts {
-            let str: Expr<TypedAst> = Expr::Constant(Constant::String(Literal::String, str), pos);
             let part = self.on_expr(part)?;
 
             let part = match type_of(&part, self.scope, self.pool)? {
+                TypeId::Void => return Err(Error::unsupported("Formatting void", pos)),
                 TypeId::ScriptRef(idx) if idx.pretty(self.pool)?.as_ref() == "String" => part,
-                typ if typ.pretty(self.pool)?.as_ref() == "String" => {
-                    let as_ref = Callable::Intrinsic(IntrinsicOp::AsRef, TypeId::ScriptRef(Box::new(str_type.clone())));
-                    Expr::Call(as_ref, vec![part], pos)
-                }
+                typ if typ.pretty(self.pool)?.as_ref() == "String" => as_ref(part),
                 _ => {
                     let to_string = Callable::Intrinsic(IntrinsicOp::ToString, str_type.clone());
-                    let as_ref = Callable::Intrinsic(IntrinsicOp::AsRef, TypeId::ScriptRef(Box::new(str_type.clone())));
-                    Expr::Call(as_ref, vec![Expr::Call(to_string, vec![part], pos)], pos)
+                    as_ref(Expr::Call(to_string, vec![part], pos))
                 }
             };
 
-            let combined = Expr::Call(add_str.clone(), vec![part, str], pos);
-            acc = Expr::Call(add_str.clone(), vec![acc, combined], pos);
+            let combined = if str.is_empty() {
+                part
+            } else {
+                let str: Expr<TypedAst> = as_ref(Expr::Constant(Constant::String(Literal::String, str), pos));
+                as_ref(Expr::Call(add_str.clone(), vec![part, str], pos))
+            };
+
+            acc = Expr::Call(add_str.clone(), vec![as_ref(acc), combined], pos);
         }
         Ok(acc)
     }
