@@ -176,7 +176,7 @@ impl Scope {
         } else {
             let name_idx = pool.names.add(name.to_owned());
             let value = match type_ {
-                TypeId::Prim(_) => Type::Prim,
+                TypeId::Prim(_) | TypeId::Variant => Type::Prim,
                 TypeId::Class(_) | TypeId::Struct(_) | TypeId::Enum(_) => Type::Class,
                 TypeId::Ref(inner) => Type::Ref(self.get_type_index(inner, pool)?),
                 TypeId::WeakRef(inner) => Type::WeakRef(self.get_type_index(inner, pool)?),
@@ -218,7 +218,12 @@ impl Scope {
         pos: Span,
     ) -> Result<TypeId, Error> {
         let result = match pool.type_(index)? {
-            Type::Prim => TypeId::Prim(index),
+            Type::Prim => {
+                match pool.definition_name(index)?.as_str() {
+                    "Variant" => TypeId::Variant,
+                    _ => TypeId::Prim(index)
+                }
+            },
             Type::Class => {
                 let name = pool.definition_name(index)?;
                 let ident = Ident::new(name.split('.').last().unwrap().to_owned());
@@ -277,6 +282,7 @@ pub enum TypeId {
     Array(Box<TypeId>),
     StaticArray(Box<TypeId>, u32),
     ScriptRef(Box<TypeId>),
+    Variant,
     Null,
     Void,
 }
@@ -302,6 +308,7 @@ impl TypeId {
             TypeId::Array(idx) => Ok(Ident::new(format!("array:{}", idx.repr(pool)?))),
             TypeId::StaticArray(idx, size) => Ok(Ident::new(format!("{}[{}]", idx.repr(pool)?, size))),
             TypeId::ScriptRef(idx) => Ok(Ident::new(format!("script_ref:{}", idx.repr(pool)?))),
+            TypeId::Variant => Ok(Ident::Static("Variant")),
             TypeId::Null => Err(Error::PoolError("Null type".to_owned())),
             TypeId::Void => Err(Error::PoolError("Void type".to_owned())),
         }
@@ -318,6 +325,7 @@ impl TypeId {
             TypeId::Array(idx) => Ok(Ident::new(format!("array<{}>", idx.pretty(pool)?))),
             TypeId::StaticArray(idx, size) => Ok(Ident::new(format!("array<{}, {}>", idx.pretty(pool)?, size))),
             TypeId::ScriptRef(idx) => Ok(Ident::new(format!("script_ref<{}>", idx.pretty(pool)?))),
+            TypeId::Variant => Ok(Ident::Static("Variant")),
             TypeId::Null => Ok(Ident::Static("Null")),
             TypeId::Void => Ok(Ident::Static("Void")),
         }

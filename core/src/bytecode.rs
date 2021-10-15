@@ -102,7 +102,7 @@ pub enum Instr<Loc> {
     VariantIsValid,
     VariantIsRef,
     VariantIsArray,
-    VatiantToCName,
+    VariantTypeName,
     VariantToString,
     WeakRefToRef,
     RefToWeakRef,
@@ -200,7 +200,7 @@ impl<L> Instr<L> {
             Instr::VariantIsValid => 0,
             Instr::VariantIsRef => 0,
             Instr::VariantIsArray => 0,
-            Instr::VatiantToCName => 0,
+            Instr::VariantTypeName => 0,
             Instr::VariantToString => 0,
             Instr::WeakRefToRef => 0,
             Instr::RefToWeakRef => 0,
@@ -317,7 +317,7 @@ impl Instr<Label> {
             Instr::VariantIsValid => Instr::VariantIsValid,
             Instr::VariantIsRef => Instr::VariantIsRef,
             Instr::VariantIsArray => Instr::VariantIsArray,
-            Instr::VatiantToCName => Instr::VatiantToCName,
+            Instr::VariantTypeName => Instr::VariantTypeName,
             Instr::VariantToString => Instr::VariantToString,
             Instr::WeakRefToRef => Instr::WeakRefToRef,
             Instr::RefToWeakRef => Instr::RefToWeakRef,
@@ -453,7 +453,7 @@ impl Decode for Instr<Offset> {
             92 => Ok(Instr::VariantIsValid),
             93 => Ok(Instr::VariantIsRef),
             94 => Ok(Instr::VariantIsArray),
-            95 => Ok(Instr::VatiantToCName),
+            95 => Ok(Instr::VariantTypeName),
             96 => Ok(Instr::VariantToString),
             97 => Ok(Instr::WeakRefToRef),
             98 => Ok(Instr::RefToWeakRef),
@@ -836,7 +836,7 @@ impl Encode for Instr<Offset> {
             Instr::VariantIsArray => {
                 output.encode(&94u8)?;
             }
-            Instr::VatiantToCName => {
+            Instr::VariantTypeName => {
                 output.encode(&95u8)?;
             }
             Instr::VariantToString => {
@@ -982,6 +982,9 @@ pub enum IntrinsicOp {
     IntEnum,
     ToVariant,
     FromVariant,
+    VariantIsRef,
+    VariantIsArray,
+    VariantTypeName,
     AsRef,
     Deref,
     RefToWeakRef,
@@ -1013,6 +1016,9 @@ impl IntrinsicOp {
             IntrinsicOp::IntEnum => 1,
             IntrinsicOp::ToVariant => 1,
             IntrinsicOp::FromVariant => 1,
+            IntrinsicOp::VariantIsRef => 1,
+            IntrinsicOp::VariantIsArray => 1,
+            IntrinsicOp::VariantTypeName => 1,
             IntrinsicOp::AsRef => 1,
             IntrinsicOp::Deref => 1,
             IntrinsicOp::RefToWeakRef => 1,

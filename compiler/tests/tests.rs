@@ -304,8 +304,11 @@ fn compile_nested_array_literals() -> Result<(), Error> {
 fn compile_variant_conversions() -> Result<(), Error> {
     let sources = "
         func Testing() {
+            // Explicit conversion
             let x = ToVariant(new A());
             let y: ref<A> = FromVariant(x);
+            // Implicit conversion
+            let z: Variant = y;
         }
 
         class A {}
@@ -319,6 +322,49 @@ fn compile_variant_conversions() -> Result<(), Error> {
         Instr::Local(PoolIndex::new(26)),
         Instr::FromVariant(PoolIndex::new(25)),
         Instr::Local(PoolIndex::new(24)),
+        Instr::Assign,
+        Instr::Local(PoolIndex::new(27)),
+        Instr::ToVariant(PoolIndex::new(25)),
+        Instr::Local(PoolIndex::new(26)),
+        Instr::Nop,
+    ];
+    check_function_bytecode(sources, expected)
+}
+
+#[test]
+fn compile_variant_operations() -> Result<(), Error> {
+    let sources = "
+        func Testing() {
+            let v: Variant = new A();
+            let s = ToString(v);
+            let n = VariantTypeName(v);
+            let b = IsDefined(v) && VariantIsRef(v);
+        }
+
+        class A {}
+        func OperatorLogicAnd(a: Bool, b: Bool) -> Bool
+        ";
+    let expected = vec![
+        Instr::Assign,
+        Instr::Local(PoolIndex::new(27)),
+        Instr::ToVariant(PoolIndex::new(31)),
+        Instr::New(PoolIndex::new(23)),
+        Instr::Assign,
+        Instr::Local(PoolIndex::new(28)),
+        Instr::VariantToString,
+        Instr::Local(PoolIndex::new(27)),
+        Instr::Assign,
+        Instr::Local(PoolIndex::new(29)),
+        Instr::VariantTypeName,
+        Instr::Local(PoolIndex::new(27)),
+        Instr::Assign,
+        Instr::Local(PoolIndex::new(30)),
+        Instr::InvokeStatic(Offset { value: 36 }, 0, PoolIndex::new(24), 0),
+        Instr::VariantIsValid,
+        Instr::Local(PoolIndex::new(27)),
+        Instr::VariantIsRef,
+        Instr::Local(PoolIndex::new(27)),
+        Instr::ParamEnd,
         Instr::Nop,
     ];
     check_function_bytecode(sources, expected)
