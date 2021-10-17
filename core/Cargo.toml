@@ -13,7 +13,7 @@ byteorder = "1.4"
 thiserror = "1.0"
 modular-bitfield = "0.11"
 crc32fast = "1.2"
-strum = { version = "0.21", features = ["derive"] }
+strum = { version = "0.22", features = ["derive"] }
 
 [features]
 arc = []
