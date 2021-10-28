@@ -212,6 +212,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
 
 [[package]]
+name = "enum-as-inner"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c5f0096a91d210159eceb2ff5e1c4da18388a170e1e3ce948aac9c8fdbbf595"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "fd-lock"
 version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -874,6 +886,7 @@ version = "0.3.5-dev"
 dependencies = [
  "byteorder",
  "crc32fast",
+ "enum-as-inner",
  "modular-bitfield",
  "strum 0.22.0",
  "thiserror",
@@ -896,6 +909,7 @@ dependencies = [
 name = "redscript-compiler"
 version = "0.3.5-dev"
 dependencies = [
+ "enum-as-inner",
  "hamt-sync",
  "log",
  "peg",

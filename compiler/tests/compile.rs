@@ -1,10 +1,4 @@
-use std::io::Cursor;
-
-use redscript::bundle::ScriptBundle;
 use redscript::definition::ClassFlags;
-use redscript::error::Error;
-use redscript_compiler::parser;
-use redscript_compiler::unit::CompilationUnit;
 
 #[allow(unused)]
 mod utils;
@@ -26,7 +20,7 @@ fn compile_simple_class() {
             }
         }";
 
-    compiled(sources).unwrap();
+    compiled(vec![sources]).unwrap();
 }
 
 #[test]
@@ -46,7 +40,7 @@ fn compile_ext_class() {
             }
         }";
 
-    compiled(sources).unwrap();
+    compiled(vec![sources]).unwrap();
 }
 
 #[test]
@@ -64,7 +58,7 @@ fn compile_class_with_forward_ref() {
             public let myTestVar: String;
         }";
 
-    compiled(sources).unwrap();
+    compiled(vec![sources]).unwrap();
 }
 
 #[test]
@@ -75,11 +69,11 @@ fn compile_class_with_shorthand_funcs() {
             public static func StaticVal() -> String = \"static\"
         }";
 
-    compiled(sources).unwrap();
+    compiled(vec![sources]).unwrap();
 }
 
 #[test]
-fn compile_class_attributes() -> Result<(), Error> {
+fn compile_class_attributes() {
     let source = r#"
         public abstract class Base {}
 
@@ -89,16 +83,14 @@ fn compile_class_attributes() -> Result<(), Error> {
     let expected_base_flags = ClassFlags::new().with_is_abstract(true);
     let expected_derived_flags = ClassFlags::new().with_is_final(true);
 
-    let pool = compiled(source)?;
-    check_class_flags(&pool, "Base", expected_base_flags)?;
-    check_class_flags(&pool, "Derived", expected_derived_flags)?;
-    Ok(())
+    let pool = compiled(vec![source]).unwrap();
+    check_class_flags(&pool, "Base", expected_base_flags).unwrap();
+    check_class_flags(&pool, "Derived", expected_derived_flags).unwrap();
 }
 
 #[test]
-fn compile_mutually_dependent_modules() -> Result<(), Error> {
-    let sources1 = parser::parse_str(
-        "
+fn compile_mutually_dependent_modules() {
+    let sources1 = "
         module MyModule.Module1
         import MyModule.Module2.{B, Func2}
 
@@ -109,12 +101,9 @@ fn compile_mutually_dependent_modules() -> Result<(), Error> {
                 Func2();
                 return new B().Thing();
             }
-        }",
-    )
-    .unwrap();
+        }";
 
-    let sources2 = parser::parse_str(
-        "
+    let sources2 = "
         module MyModule.Module2
         import MyModule.Module1.*
 
@@ -122,11 +111,7 @@ fn compile_mutually_dependent_modules() -> Result<(), Error> {
 
         public class B {
             func Thing() -> Int32 = Func1()
-        }",
-    )
-    .unwrap();
+        }";
 
-    let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
-    CompilationUnit::new(&mut scripts.pool)?.compile(vec![sources1, sources2])?;
-    Ok(())
+    compiled(vec![sources1, sources2]).unwrap();
 }

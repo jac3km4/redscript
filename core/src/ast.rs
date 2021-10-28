@@ -2,11 +2,12 @@ use std::fmt::{self, Debug, Display};
 use std::hash::Hash;
 use std::ops::{Add, Sub};
 
+use enum_as_inner::EnumAsInner;
 use strum::{Display, EnumString, IntoStaticStr};
 
 use crate::Ref;
 
-#[derive(Debug)]
+#[derive(Debug, EnumAsInner)]
 pub enum Expr<Name: NameKind>
 where
     Name: NameKind,

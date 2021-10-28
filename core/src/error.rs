@@ -25,6 +25,8 @@ pub enum Error {
     PoolError(String),
     #[error("multiple errors")]
     MultipleErrors(Vec<Span>),
+    #[error("compile-time eval error: {0}")]
+    CteError(String, Span),
 }
 
 impl Error {

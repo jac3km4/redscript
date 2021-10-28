@@ -25,6 +25,23 @@ pub enum SourceEntry {
     Enum(EnumSource),
 }
 
+impl SourceEntry {
+    pub fn annotations(&self) -> &[Annotation] {
+        match self {
+            SourceEntry::Function(fun) => &fun.declaration.annotations,
+            SourceEntry::GlobalLet(field) => &field.declaration.annotations,
+            _ => &[],
+        }
+    }
+
+    pub fn conditionals(&self) -> impl Iterator<Item = &Expr<SourceAst>> {
+        self.annotations()
+            .iter()
+            .filter(|ann| ann.kind == AnnotationKind::If)
+            .filter_map(|ann| ann.args.first())
+    }
+}
+
 #[derive(Debug)]
 pub struct ClassSource {
     pub qualifiers: Qualifiers,
@@ -120,19 +137,20 @@ pub struct Declaration {
 
 #[derive(Debug)]
 pub struct Annotation {
-    pub name: AnnotationName,
-    pub values: Vec<Ident>,
+    pub kind: AnnotationKind,
+    pub args: Vec<Expr<SourceAst>>,
     pub span: Span,
 }
 
 #[derive(Debug, PartialEq, Eq, EnumString)]
 #[strum(serialize_all = "camelCase")]
-pub enum AnnotationName {
+pub enum AnnotationKind {
     ReplaceMethod,
     WrapMethod,
     ReplaceGlobal,
     AddMethod,
     AddField,
+    If,
 }
 
 pub fn parse_file(file: &File) -> Result<SourceModule, ParseError<LineCol>> {
@@ -182,9 +200,9 @@ peg::parser! {
             / "t" { Literal::TweakDbId }
 
         rule annotation() -> Annotation
-            = pos:pos() "@" ident:ident() _ "(" _ values:commasep(<ident()>) _ ")" end:pos() {?
-                AnnotationName::from_str(ident.as_ref()).map(|name| {
-                    Annotation { name, values, span: Span::new(pos, end) }
+            = pos:pos() "@" ident:ident() _ "(" _ args:commasep(<expr()>) _ ")" end:pos() {?
+                AnnotationKind::from_str(ident.as_ref()).map(|kind| {
+                    Annotation { kind, args, span: Span::new(pos, end) }
                 }).map_err(|_| "annotation")
             }
 

@@ -10,6 +10,7 @@ use redscript::mapper::{MultiMapper, PoolMapper};
 use redscript::Ref;
 
 use crate::assembler::Assembler;
+use crate::cte;
 use crate::parser::*;
 use crate::scope::{Reference, Scope, Value};
 use crate::source_map::Files;
@@ -167,14 +168,27 @@ impl<'a> CompilationUnit<'a> {
         let mut queue = Vec::with_capacity(modules.len());
         let mut compiled_funcs = Vec::new();
 
+        let cte = cte::Context::new(modules.iter().filter_map(|m| m.path.clone()).collect());
+
         for module in modules {
             let path = module.path.unwrap_or(ModulePath::EMPTY);
             let mut slots = Vec::with_capacity(module.entries.len());
+
             for entry in module.entries {
-                match self.define_symbol(entry, &path, permissive) {
-                    Ok(slot) => slots.push(slot),
-                    Err(err) => self.diagnostics.push(Diagnostic::from_error(err)?),
-                };
+                let should_be_defined: Result<bool, Error> = entry.conditionals().try_fold(true, |acc, expr| {
+                    let res = cte.eval(expr)?;
+                    let res = res
+                        .as_bool()
+                        .ok_or_else(|| Error::CteError("Invalid CTE value".to_owned(), expr.span()))?;
+                    Ok(acc && *res)
+                });
+
+                if should_be_defined? {
+                    match self.define_symbol(entry, &path, permissive) {
+                        Ok(slot) => slots.push(slot),
+                        Err(err) => self.diagnostics.push(Diagnostic::from_error(err)?),
+                    };
+                }
             }
             queue.push((path, module.imports, slots));
         }
@@ -540,11 +554,12 @@ impl<'a> CompilationUnit<'a> {
     ) -> Result<(), Error> {
         let decl = &source.declaration;
         for ann in &source.declaration.annotations {
-            match ann.name {
-                AnnotationName::AddField => {
-                    let ident = ann
-                        .values
+            match ann.kind {
+                AnnotationKind::AddField => {
+                    let (ident, _) = ann
+                        .args
                         .first()
+                        .and_then(Expr::as_ident)
                         .ok_or_else(|| Error::invalid_annotation_args(ann.span))?;
                     if let Symbol::Class(target_class, _) = scope.resolve_symbol(ident.clone(), ann.span)? {
                         self.define_field(index, target_class, visibility, source, scope)?;
@@ -570,15 +585,17 @@ impl<'a> CompilationUnit<'a> {
             .unwrap_or(Visibility::Private);
 
         for ann in &source.declaration.annotations {
-            match ann.name {
-                AnnotationName::WrapMethod => {
+            match ann.kind {
+                AnnotationKind::WrapMethod => {
                     if source.declaration.qualifiers.contain(Qualifier::Native) {
                         return Err(Error::unsupported("Wrapping natives", ann.span));
                     }
-                    let class_name = ann
-                        .values
+                    let (class_name, _) = ann
+                        .args
                         .first()
+                        .and_then(Expr::as_ident)
                         .ok_or_else(|| Error::invalid_annotation_args(ann.span))?;
+
                     let target_class_idx = match self.scope.resolve_symbol(class_name.clone(), ann.span)? {
                         Symbol::Class(idx, _) => idx,
                         Symbol::Struct(idx, _) => idx,
@@ -616,10 +633,11 @@ impl<'a> CompilationUnit<'a> {
                     };
                     return Ok(slot);
                 }
-                AnnotationName::ReplaceMethod => {
-                    let class_name = ann
-                        .values
+                AnnotationKind::ReplaceMethod => {
+                    let (class_name, _) = ann
+                        .args
                         .first()
+                        .and_then(Expr::as_ident)
                         .ok_or_else(|| Error::invalid_annotation_args(ann.span))?;
                     let target_class_idx = match self.scope.resolve_symbol(class_name.clone(), ann.span)? {
                         Symbol::Class(idx, _) => idx,
@@ -642,7 +660,7 @@ impl<'a> CompilationUnit<'a> {
                     };
                     return Ok(slot);
                 }
-                AnnotationName::ReplaceGlobal => {
+                AnnotationKind::ReplaceGlobal => {
                     let fun_idx = self
                         .scope
                         .resolve_function(name.clone(), ann.span)?
@@ -659,10 +677,11 @@ impl<'a> CompilationUnit<'a> {
                     };
                     return Ok(slot);
                 }
-                AnnotationName::AddMethod => {
-                    let class_name = ann
-                        .values
+                AnnotationKind::AddMethod => {
+                    let (class_name, _) = ann
+                        .args
                         .first()
+                        .and_then(Expr::as_ident)
                         .ok_or_else(|| Error::invalid_annotation_args(ann.span))?;
                     let target_class_idx = match self.scope.resolve_symbol(class_name.clone(), ann.span)? {
                         Symbol::Class(idx, _) => idx,
@@ -693,7 +712,8 @@ impl<'a> CompilationUnit<'a> {
                     };
                     return Ok(slot);
                 }
-                AnnotationName::AddField => {}
+                AnnotationKind::AddField => {}
+                AnnotationKind::If => {}
             }
         }
 

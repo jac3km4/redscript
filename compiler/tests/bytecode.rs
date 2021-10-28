@@ -30,7 +30,7 @@ fn compile_dynamic_casts() {
         mem!(Local(b)),
         pat!(Nop)
     ];
-    TestContext::compiled(sources).unwrap().run("Testing", check)
+    TestContext::compiled(vec![sources]).unwrap().run("Testing", check)
 }
 
 #[test]
@@ -61,7 +61,7 @@ fn compile_base_class_overload() {
         pat!(ParamEnd),
         pat!(Nop)
     ];
-    TestContext::compiled(sources).unwrap().run("Testing", check)
+    TestContext::compiled(vec![sources]).unwrap().run("Testing", check)
 }
 
 #[test]
@@ -89,7 +89,7 @@ fn compile_basic_casts() {
         pat!(ParamEnd),
         pat!(Nop)
     ];
-    TestContext::compiled(sources).unwrap().run("Testing", check)
+    TestContext::compiled(vec![sources]).unwrap().run("Testing", check)
 }
 
 #[test]
@@ -119,7 +119,7 @@ fn compile_overloaded_call() {
         pat!(ParamEnd),
         pat!(Nop)
     ];
-    TestContext::compiled(sources).unwrap().run("Testing", check)
+    TestContext::compiled(vec![sources]).unwrap().run("Testing", check)
 }
 
 #[test]
@@ -171,7 +171,7 @@ fn compile_for_loop() {
         pat!(Jump(Offset { value: -147 })),
         pat!(Nop)
     ];
-    TestContext::compiled(sources).unwrap().run("Testing", check)
+    TestContext::compiled(vec![sources]).unwrap().run("Testing", check)
 }
 
 #[test]
@@ -215,7 +215,7 @@ fn compile_nested_array_literals() {
         mem!(Local(array_of_arrays)),
         pat!(Nop)
     ];
-    TestContext::compiled(sources).unwrap().run("Testing", check)
+    TestContext::compiled(vec![sources]).unwrap().run("Testing", check)
 }
 
 #[test]
@@ -240,7 +240,7 @@ fn compile_variant_conversions() {
         mem!(Local(x)),
         pat!(Nop)
     ];
-    TestContext::compiled(sources).unwrap().run("Testing", check)
+    TestContext::compiled(vec![sources]).unwrap().run("Testing", check)
 }
 
 #[test]
@@ -288,7 +288,7 @@ fn compile_implicit_conversions() {
         pat!(ParamEnd),
         pat!(Nop)
     ];
-    TestContext::compiled(sources).unwrap().run("Testing", check)
+    TestContext::compiled(vec![sources]).unwrap().run("Testing", check)
 }
 
 #[test]
@@ -329,7 +329,7 @@ fn compile_switch_case() {
         pat!(FalseConst),
         pat!(Nop)
     ];
-    TestContext::compiled(sources).unwrap().run("Testing", check)
+    TestContext::compiled(vec![sources]).unwrap().run("Testing", check)
 }
 
 #[test]
@@ -355,7 +355,7 @@ fn compile_ternary_op() {
         pat!(FalseConst),
         pat!(Nop)
     ];
-    TestContext::compiled(sources).unwrap().run("Testing", check)
+    TestContext::compiled(vec![sources]).unwrap().run("Testing", check)
 }
 
 #[test]
@@ -380,7 +380,7 @@ fn compile_if_else() {
         pat!(I32Const(0)),
         pat!(Nop)
     ];
-    TestContext::compiled(sources).unwrap().run("Testing", check)
+    TestContext::compiled(vec![sources]).unwrap().run("Testing", check)
 }
 
 #[test]
@@ -403,7 +403,7 @@ fn compile_method_overload_call() {
         pat!(ParamEnd),
         pat!(Nop)
     ];
-    TestContext::compiled(sources).unwrap().run("Testing", check)
+    TestContext::compiled(vec![sources]).unwrap().run("Testing", check)
 }
 
 #[test]
@@ -417,7 +417,7 @@ fn compile_null_wref_assignment() {
         ";
 
     let check = check_code![pat!(Assign), mem!(Local(a)), pat!(RefToWeakRef), pat!(Null), pat!(Nop)];
-    TestContext::compiled(sources).unwrap().run("Testing", check)
+    TestContext::compiled(vec![sources]).unwrap().run("Testing", check)
 }
 
 #[allow(illegal_floating_point_literal_pattern)]
@@ -471,7 +471,7 @@ fn compile_number_literals() {
         pat!(U64Const(10)),
         pat!(Nop)
     ];
-    TestContext::compiled(sources).unwrap().run("Testing", check)
+    TestContext::compiled(vec![sources]).unwrap().run("Testing", check)
 }
 
 #[test]
@@ -497,7 +497,7 @@ fn compile_string_literals() {
         pat!(TweakDbIdConst(_)),
         pat!(Nop)
     ];
-    TestContext::compiled(sources).unwrap().run("Testing", check)
+    TestContext::compiled(vec![sources]).unwrap().run("Testing", check)
 }
 
 #[test]
@@ -529,7 +529,7 @@ fn compile_is_defined() {
         mem!(Local(y)),
         pat!(Nop)
     ];
-    TestContext::compiled(sources).unwrap().run("Testing", check)
+    TestContext::compiled(vec![sources]).unwrap().run("Testing", check)
 }
 
 #[test]
@@ -565,7 +565,7 @@ fn compile_enum() {
         mem!(Param(dir)),
         pat!(Nop)
     ];
-    TestContext::compiled(sources).unwrap().run("Testing", check)
+    TestContext::compiled(vec![sources]).unwrap().run("Testing", check)
 }
 
 #[test]
@@ -591,7 +591,7 @@ fn compile_empty_return() {
         pat!(ParamEnd),
         pat!(Nop)
     ];
-    TestContext::compiled(sources).unwrap().run("Testing", check)
+    TestContext::compiled(vec![sources]).unwrap().run("Testing", check)
 }
 
 #[test]
@@ -641,5 +641,34 @@ fn compile_string_interpolation() {
         pat!(ParamEnd),
         pat!(Nop)
     ];
-    TestContext::compiled(sources).unwrap().run("Testing", check)
+    TestContext::compiled(vec![sources]).unwrap().run("Testing", check)
+}
+
+#[test]
+fn compile_conditional_functions() {
+    let sources1 = r#"
+        module My.Mod
+
+        @if(ModuleExists("Other.Mod"))
+        func Testing() -> Int32 {
+            return 1;
+        }
+
+        @if(!ModuleExists("Other.Mod"))
+        func Testing() -> Int32 {
+            return 2;
+        }
+        "#;
+
+    let sources2 = r#"module Other.Mod"#;
+
+    let check = check_code![pat!(Return), pat!(I32Const(1)), pat!(Nop)];
+    TestContext::compiled(vec![sources1, sources2])
+        .unwrap()
+        .run("My.Mod.Testing", check);
+
+    let check = check_code![pat!(Return), pat!(I32Const(2)), pat!(Nop)];
+    TestContext::compiled(vec![sources1])
+        .unwrap()
+        .run("My.Mod.Testing", check)
 }
