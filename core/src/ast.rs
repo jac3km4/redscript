@@ -20,6 +20,7 @@ where
     Ident(Name::Reference, Span),
     Constant(Constant, Span),
     ArrayLit(Vec<Self>, Option<Name::Type>, Span),
+    InterpolatedString(Ref<String>, Vec<(Self, Ref<String>)>, Span),
     Declare(Name::Local, Option<Name::Type>, Option<Box<Self>>, Span),
     Cast(Name::Type, Box<Self>, Span),
     Assign(Box<Self>, Box<Self>, Span),
@@ -90,6 +91,7 @@ where
             Expr::Ident(_, span) => *span,
             Expr::Constant(_, span) => *span,
             Expr::ArrayLit(_, _, span) => *span,
+            Expr::InterpolatedString(_, _, span) => *span,
             Expr::Declare(_, _, _, span) => *span,
             Expr::Cast(_, _, span) => *span,
             Expr::Assign(_, _, span) => *span,
@@ -466,6 +468,13 @@ impl TypeName {
         }
     }
 
+    pub fn parametrized(outer: &'static str, inner: &'static str) -> Self {
+        TypeName {
+            name: Ident::Static(outer),
+            arguments: vec![TypeName::basic(inner)],
+        }
+    }
+
     pub fn basic_owned(name: Ref<String>) -> Self {
         TypeName {
             name: Ident::Owned(name),
@@ -478,6 +487,9 @@ impl TypeName {
         let unwrapped = self.unwrapped();
         match unwrapped.arguments.first() {
             None => unwrapped.name.clone(),
+            Some(head) if unwrapped.name.as_ref() == "script_ref" => {
+                Ident::new(format!("Script_Ref{}", head.mangled()))
+            }
             Some(head) => {
                 let args = unwrapped
                     .arguments

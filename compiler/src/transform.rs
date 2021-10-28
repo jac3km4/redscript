@@ -2,6 +2,7 @@ use std::fmt::Debug;
 
 use redscript::ast::{BinOp, Constant, Expr, NameKind, Seq, Span, SwitchCase, Target, UnOp};
 use redscript::error::Error;
+use redscript::Ref;
 
 pub trait ExprTransformer<N: NameKind>
 where
@@ -27,6 +28,19 @@ where
             processed.push(self.on_expr(expr)?);
         }
         Ok(Expr::ArrayLit(processed, type_, pos))
+    }
+
+    fn on_interpolated_string(
+        &mut self,
+        prefix: Ref<String>,
+        parts: Vec<(Expr<N>, Ref<String>)>,
+        pos: Span,
+    ) -> Result<Expr<N>, Error> {
+        let mut processed = Vec::with_capacity(parts.len());
+        for (part, str) in parts {
+            processed.push((self.on_expr(part)?, str));
+        }
+        Ok(Expr::InterpolatedString(prefix, processed, pos))
     }
 
     fn on_declare(
@@ -190,6 +204,7 @@ where
             Expr::Ident(reference, pos) => self.on_ident(reference, pos),
             Expr::Constant(constant, pos) => self.on_constant(constant, pos),
             Expr::ArrayLit(exprs, type_, pos) => self.on_array_lit(exprs, type_, pos),
+            Expr::InterpolatedString(prefix, parts, pos) => self.on_interpolated_string(prefix, parts, pos),
             Expr::Declare(local, type_, init, pos) => self.on_declare(local, type_, init.map(|e| *e), pos),
             Expr::Cast(type_, expr, pos) => self.on_cast(type_, *expr, pos),
             Expr::Assign(lhs, rhs, pos) => self.on_assign(*lhs, *rhs, pos),

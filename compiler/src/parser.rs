@@ -220,8 +220,20 @@ peg::parser! {
                 String::from(char::from_u32(u32::from_str_radix(u, 16).unwrap()).unwrap())
             }
 
+        rule string_contents() -> String
+            = s:escaped_char()* { s.join("") }
+
         pub rule escaped_string() -> String
-            = "\"" s:escaped_char()* "\"" { s.join("") }
+            = "\"" s:string_contents() "\"" { s }
+
+        rule interpolation() -> Expr<SourceAst>
+            = r#"\("# _ expr:expr() _ ")" { expr }
+
+        rule string_part() -> (Expr<SourceAst>, Ref<String>)
+            = e:interpolation() s:string_contents() { (e, Ref::new(s)) }
+
+        pub rule interpolated_string() -> (Ref<String>, Vec<(Expr<SourceAst>, Ref<String>)>)
+            = "s\""  prefix:string_contents() parts:string_part()* "\"" { (Ref::new(prefix), parts) }
 
         rule constant() -> Constant
             = keyword("true") { Constant::Bool(true) }
@@ -416,6 +428,9 @@ peg::parser! {
             pos:pos() keyword("super") end:pos() {
                 Expr::Super(Span::new(pos, end))
             }
+            pos:pos() str:interpolated_string() end:pos() {
+                Expr::InterpolatedString(str.0, str.1, Span::new(pos, end))
+            }
             pos:pos() cons:constant() end:pos() {
                 Expr::Constant(cons, Span::new(pos, end))
             }
@@ -603,5 +618,18 @@ mod tests {
         );
 
         assert!(mangled.is_err());
+    }
+
+    #[test]
+    fn parse_interpolated_string() {
+        let str = lang::interpolated_string(
+            r#"s"My name is \(name) and I am \(currentYear - birthYear) years old""#,
+            Pos::ZERO,
+        )
+        .unwrap();
+        assert_eq!(
+            format!("{:?}", str),
+            r#"("My name is ", [(Ident(Owned("name"), Span { low: Pos(15), high: Pos(19) }), " and I am "), (BinOp(Ident(Owned("currentYear"), Span { low: Pos(32), high: Pos(43) }), Ident(Owned("birthYear"), Span { low: Pos(46), high: Pos(55) }), Subtract, Span { low: Pos(32), high: Pos(55) }), " years old")])"#
+        );
     }
 }
