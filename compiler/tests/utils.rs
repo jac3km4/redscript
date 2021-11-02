@@ -16,8 +16,8 @@ pub struct TestContext {
 }
 
 impl TestContext {
-    pub fn compiled(source: &str) -> Result<Self, Error> {
-        let pool = compiled(source)?;
+    pub fn compiled(sources: Vec<&str>) -> Result<Self, Error> {
+        let pool = compiled(sources)?;
         let res = Self {
             pool,
             indexes: HashMap::new(),
@@ -28,7 +28,7 @@ impl TestContext {
     pub fn match_index(&mut self, idx: PoolIndex<Definition>, name: &str) {
         match self.indexes.get(name) {
             Some(val) if *val == idx => (),
-            Some(val) => assert!(false, "{} is {}, expected {}", name, val, idx),
+            Some(val) => panic!("{} is {}, expected {}", name, val, idx),
             None => {
                 self.indexes.insert(name.to_owned(), idx);
             }
@@ -55,7 +55,6 @@ impl TestContext {
                 _ => None,
             })
             .expect("Function not found in the pool");
-        println!("{:?}", fun.code);
         check(fun.code.clone(), self);
     }
 }
@@ -111,10 +110,13 @@ macro_rules! check_code {
     }
 }
 
-pub fn compiled(code: &str) -> Result<ConstantPool, Error> {
-    let module = parser::parse_str(code).unwrap();
+pub fn compiled(sources: Vec<&str>) -> Result<ConstantPool, Error> {
+    let modules = sources
+        .iter()
+        .map(|source| parser::parse_str(&source).unwrap())
+        .collect();
     let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
-    CompilationUnit::new(&mut scripts.pool)?.compile(vec![module])?;
+    CompilationUnit::new(&mut scripts.pool)?.compile(modules)?;
 
     Ok(scripts.pool)
 }
@@ -130,7 +132,7 @@ pub fn check_class_flags(pool: &ConstantPool, name: &str, flags: ClassFlags) -> 
     if let Some(AnyDefinition::Class(ref class)) = match_ {
         assert_eq!(class.flags, flags)
     } else {
-        assert!(false, "Class definition {} not found in the pool", name)
+        panic!("Class definition {} not found in the pool", name)
     }
     Ok(())
 }

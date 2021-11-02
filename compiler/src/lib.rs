@@ -1,6 +1,7 @@
 #![feature(stmt_expr_attributes)]
 
 pub mod assembler;
+pub mod cte;
 #[allow(clippy::redundant_closure_call)]
 pub mod parser;
 pub mod scope;
