@@ -37,7 +37,7 @@ impl<'a> CompilationUnit<'a> {
         let mut scope = Scope::new(pool)?;
 
         symbols.populate_import(
-            Import::All(ModulePath::EMPTY, Span::ZERO),
+            Import::All(vec![], ModulePath::EMPTY, Span::ZERO),
             &mut scope,
             Visibility::Private,
         )?;
@@ -175,15 +175,7 @@ impl<'a> CompilationUnit<'a> {
             let mut slots = Vec::with_capacity(module.entries.len());
 
             for entry in module.entries {
-                let should_be_defined: Result<bool, Error> = entry.conditionals().try_fold(true, |acc, expr| {
-                    let res = cte.eval(expr)?;
-                    let res = res
-                        .as_bool()
-                        .ok_or_else(|| Error::CteError("Invalid CTE value".to_owned(), expr.span()))?;
-                    Ok(acc && *res)
-                });
-
-                if should_be_defined? {
+                if eval_conditions(&cte, entry.annotations())? {
                     match self.define_symbol(entry, &path, permissive) {
                         Ok(slot) => slots.push(slot),
                         Err(err) => self.diagnostics.push(Diagnostic::from_error(err)?),
@@ -198,13 +190,19 @@ impl<'a> CompilationUnit<'a> {
 
             if !path.is_empty() {
                 self.symbols
-                    .populate_import(Import::All(path, Span::ZERO), &mut module_scope, Visibility::Private)
+                    .populate_import(
+                        Import::All(vec![], path, Span::ZERO),
+                        &mut module_scope,
+                        Visibility::Private,
+                    )
                     .ok();
             };
 
             for import in imports {
-                self.symbols
-                    .populate_import(import, &mut module_scope, Visibility::Public)?;
+                if eval_conditions(&cte, import.annotations())? {
+                    self.symbols
+                        .populate_import(import, &mut module_scope, Visibility::Public)?;
+                }
             }
 
             for slot in slots {
@@ -988,4 +986,17 @@ impl Diagnostic {
             Diagnostic::CompileError(_, pos) => *pos,
         }
     }
+}
+
+fn eval_conditions(cte: &cte::Context, anns: &[Annotation]) -> Result<bool, Error> {
+    anns.iter()
+        .filter(|ann| ann.kind == AnnotationKind::If)
+        .filter_map(|ann| ann.args.first())
+        .try_fold(true, |acc, expr| {
+            let res = cte.eval(expr)?;
+            let res = res
+                .as_bool()
+                .ok_or_else(|| Error::CteError("Invalid CTE value".to_owned(), expr.span()))?;
+            Ok(acc && *res)
+        })
 }

@@ -651,6 +651,8 @@ fn compile_string_interpolation() {
 fn compile_conditional_functions() {
     let sources1 = r#"
         module My.Mod
+        @if(ModuleExists("Other.Mod"))
+        import Other.Mod.*
 
         @if(ModuleExists("Other.Mod"))
         func Testing() -> Int32 {
@@ -663,7 +665,10 @@ fn compile_conditional_functions() {
         }
         "#;
 
-    let sources2 = r#"module Other.Mod"#;
+    let sources2 = r#"
+        module Other.Mod
+        public func Exported() {}
+        "#;
 
     let check = check_code![pat!(Return), pat!(I32Const(1)), pat!(Nop)];
     TestContext::compiled(vec![sources1, sources2])

@@ -33,13 +33,6 @@ impl SourceEntry {
             _ => &[],
         }
     }
-
-    pub fn conditionals(&self) -> impl Iterator<Item = &Expr<SourceAst>> {
-        self.annotations()
-            .iter()
-            .filter(|ann| ann.kind == AnnotationKind::If)
-            .filter_map(|ann| ann.args.first())
-    }
 }
 
 #[derive(Debug)]
@@ -326,12 +319,12 @@ peg::parser! {
             / enum_:enum_() { SourceEntry::Enum(enum_) }
 
         rule import() -> Import
-            = pos:pos() keyword("import") _ parts: dotsep(<ident()>) _ "." _ "*" end:pos()
-                { Import::All(ModulePath::new(parts), Span::new(pos, end)) }
-            / pos:pos() keyword("import") _ parts: dotsep(<ident()>) _ "." _ "{" _ names:commasep(<ident()>) _ "}" end:pos()
-                { Import::Selected(ModulePath::new(parts), names, Span::new(pos, end)) }
-            / pos:pos() keyword("import") _ parts: dotsep(<ident()>) end:pos()
-                { Import::Exact(ModulePath::new(parts), Span::new(pos, end)) }
+            = pos:pos() annotations:(annotation() ** _) _ keyword("import") _ parts: dotsep(<ident()>) _ "." _ "*" end:pos()
+                { Import::All(annotations, ModulePath::new(parts), Span::new(pos, end)) }
+            / pos:pos() annotations:(annotation() ** _) _ keyword("import") _ parts: dotsep(<ident()>) _ "." _ "{" _ names:commasep(<ident()>) _ "}" end:pos()
+                { Import::Selected(annotations, ModulePath::new(parts), names, Span::new(pos, end)) }
+            / pos:pos() annotations:(annotation() ** _) _ keyword("import") _ parts: dotsep(<ident()>) end:pos()
+                { Import::Exact(annotations, ModulePath::new(parts), Span::new(pos, end)) }
 
         rule module_path() -> ModulePath  =
             keyword("module") _ parts:dotsep(<ident()>) { ModulePath { parts } }
