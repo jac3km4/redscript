@@ -90,8 +90,8 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
         let str_type = self.scope.resolve_type(&TypeName::STRING, self.pool, pos)?;
 
         let add_str = FunctionSignatureBuilder::new(BinOp::Add.to_string())
-            .parameter(&TypeName::parametrized("script_ref", "String"), false)
-            .parameter(&TypeName::parametrized("script_ref", "String"), false)
+            .parameter(&TypeName::basic("Script_RefString"), false)
+            .parameter(&TypeName::basic("Script_RefString"), false)
             .return_type(&TypeName::STRING);
         let add_str = self.get_function(add_str, pos)?;
 

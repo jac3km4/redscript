@@ -602,8 +602,11 @@ fn compile_string_interpolation() {
             let name = "John";
             return s"My name is \(name) and I am \(year - birthYear) years old";
         }
-        func OperatorAdd(a: script_ref<String>, b: script_ref<String>) -> String
+
+        func OperatorAdd(a: ref<Script_RefString>, b: ref<Script_RefString>) -> String
         func OperatorSubtract(a: Int32, b: Int32) -> Int32
+
+        class Script_RefString {}
         "#;
 
     let check = check_code![

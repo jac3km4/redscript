@@ -468,13 +468,6 @@ impl TypeName {
         }
     }
 
-    pub fn parametrized(outer: &'static str, inner: &'static str) -> Self {
-        TypeName {
-            name: Ident::Static(outer),
-            arguments: vec![TypeName::basic(inner)],
-        }
-    }
-
     pub fn basic_owned(name: Ref<String>) -> Self {
         TypeName {
             name: Ident::Owned(name),
@@ -487,9 +480,6 @@ impl TypeName {
         let unwrapped = self.unwrapped();
         match unwrapped.arguments.first() {
             None => unwrapped.name.clone(),
-            Some(head) if unwrapped.name.as_ref() == "script_ref" => {
-                Ident::new(format!("Script_Ref{}", head.mangled()))
-            }
             Some(head) => {
                 let args = unwrapped
                     .arguments
