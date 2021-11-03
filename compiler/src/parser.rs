@@ -279,11 +279,11 @@ peg::parser! {
             { FieldSource { declaration, type_ }}
 
         pub rule function() -> FunctionSource
-            = pos:pos() declaration:decl(<keyword("func")>) _ "(" _ parameters:commasep(<param()>) _ ")" _ type_:func_type()? _ body:function_body()? end:pos()
+            = pos:pos() declaration:decl(<keyword("func")>) _ "(" _ parameters:commasep(<param()>) _ ")" _ type_:func_type()? _ body:function_body()? ";"? end:pos()
             { FunctionSource { declaration, type_, parameters, body, span: Span::new(pos, end) } }
         rule function_body() -> Seq<SourceAst>
             = "{" _ body:seq() _ "}" { body }
-            / pos:pos() "=" _ expr:expr() _ ";"? end:pos() { Seq::new(vec![Expr::Return(Some(Box::new(expr)), Span::new(pos, end))]) }
+            / pos:pos() "=" _ expr:expr() _ end:pos() { Seq::new(vec![Expr::Return(Some(Box::new(expr)), Span::new(pos, end))]) }
 
         rule param() -> ParameterSource
             = qualifiers:qualifiers() _ name:ident() _ type_:let_type()
