@@ -222,8 +222,11 @@ fn compile_nested_array_literals() {
 fn compile_variant_conversions() {
     let sources = "
         func Testing() {
+            // Explicit conversion
             let x = ToVariant(new A());
             let y: ref<A> = FromVariant(x);
+            // Implicit conversion
+            let z: Variant = y;
         }
 
         class A {}
@@ -238,6 +241,50 @@ fn compile_variant_conversions() {
         mem!(Local(y)),
         mem!(FromVariant(typ)),
         mem!(Local(x)),
+        pat!(Assign),
+        mem!(Local(z)),
+        mem!(ToVariant(typ)),
+        mem!(Local(y)),
+        pat!(Nop)
+    ];
+    TestContext::compiled(vec![sources]).unwrap().run("Testing", check)
+}
+
+#[test]
+fn compile_variant_intrinsics() {
+    let sources = "
+        func Testing() {
+            let v: Variant = new A();
+            let s = ToString(v);
+            let n = VariantTypeName(v);
+            let b = IsDefined(v) && VariantIsRef(v);
+        }
+
+        class A {}
+        func OperatorLogicAnd(a: Bool, b: Bool) -> Bool
+        ";
+
+    let check = check_code![
+        pat!(Assign),
+        mem!(Local(v)),
+        mem!(ToVariant(typ)),
+        mem!(New(class)),
+        pat!(Assign),
+        mem!(Local(s)),
+        pat!(VariantToString),
+        mem!(Local(v)),
+        pat!(Assign),
+        mem!(Local(n)),
+        pat!(VariantTypeName),
+        mem!(Local(v)),
+        pat!(Assign),
+        mem!(Local(b)),
+        pat!(InvokeStatic(Offset { value: 36 }, 0, _, 0)),
+        pat!(VariantIsValid),
+        mem!(Local(v)),
+        pat!(VariantIsRef),
+        mem!(Local(v)),
+        pat!(ParamEnd),
         pat!(Nop)
     ];
     TestContext::compiled(vec![sources]).unwrap().run("Testing", check)
