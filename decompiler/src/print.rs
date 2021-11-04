@@ -38,7 +38,9 @@ pub fn write_definition<W: Write>(
             if class.flags.is_final() {
                 write!(out, "final ")?;
             }
-            if class.flags.is_native() {
+            if class.flags.is_import_only() {
+                write!(out, "importonly ")?;
+            } else if class.flags.is_native() {
                 write!(out, "native ")?;
             }
             if class.flags.is_struct() {
