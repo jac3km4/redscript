@@ -162,10 +162,10 @@ pub fn write_definition<W: Write>(
             if field.flags.is_inline() {
                 write!(out, "inline ")?;
             }
-            if field.flags.is_rep() {
+            if field.flags.is_replicated() {
                 write!(out, "replicated ")?;
             }
-            if field.flags.is_edit() {
+            if field.flags.is_editable() {
                 write!(out, "edit ")?;
             }
             if field.flags.is_native() {

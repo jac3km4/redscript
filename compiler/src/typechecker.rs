@@ -572,7 +572,7 @@ impl<'a> TypeChecker<'a> {
             return Ok(Err(FunctionResolutionError::too_many_args(params.len(), args.len())));
         }
 
-        if fun.flags.is_cast() || fun.flags.is_operator_overload() {
+        if fun.flags.is_cast() || fun.flags.is_operator() {
             if let Some(expected) = expected {
                 let ret_type_idx = ret_type.ok_or_else(|| Error::void_cannot_be_used(pos))?;
                 let ret_type = scope.resolve_type_from_pool(ret_type_idx, self.pool, pos)?;

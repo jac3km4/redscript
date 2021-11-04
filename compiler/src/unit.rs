@@ -560,7 +560,9 @@ impl<'a> CompilationUnit<'a> {
 
         let type_ = scope.resolve_type(&source.type_, self.pool, decl.span)?;
         let type_idx = scope.get_type_index(&type_, self.pool)?;
-        let flags = FieldFlags::new().with_is_mutable(true).with_is_native(is_field_native);
+        let flags = FieldFlags::new()
+            .with_is_browsable(true)
+            .with_is_native(is_field_native);
         let field = Field {
             visibility,
             type_: type_idx,
