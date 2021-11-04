@@ -28,6 +28,22 @@ func Testing() -> Int32 {
 - allow native and importonly classes (d2070bb)
 - allow semicolon after all function declarations (f91bb35)
 - fix an issue affecting locals with conflicting names (50c6955)
+- extended support for **Variant** native type (c9850e6)
+  - added implicit `ToVariant()` conversion when the expected `TypeId` is **Variant**
+  - added the remaining **Variant** intrinsic operations (`VariantIsRef`, `VariantIsArray` and `VariantTypeName`)
+  - extended `ToString()` and `IsDefined()` intrinsics to support their **Variant** counterparts
+```swift
+// Implicit conversion
+let v: Variant = new SomeClass();
+// ToString support
+let s: String = ToString(v);
+// Get the type stored in a variant
+let n: CName = VariantTypeName(v);
+// IsDefined support and variant intrinsics
+if IsDefined(v) && VariantIsRef(v) && !VariantIsArray(v) {
+  // ...
+}
+```
 
 ## [0.3.4]
 - fix encoding of native functions (7504d41)
