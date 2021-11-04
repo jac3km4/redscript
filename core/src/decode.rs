@@ -128,8 +128,7 @@ pub trait DecodeExt: io::Read + Sized {
 
     fn decode_bytes<S: Into<u32>>(&mut self, count: S) -> io::Result<Vec<u8>> {
         let size = count.into() as usize;
-        let mut vec = Vec::with_capacity(size);
-        unsafe { vec.set_len(size) }
+        let mut vec = vec![0; size];
         self.read_exact(&mut vec)?;
         Ok(vec)
     }

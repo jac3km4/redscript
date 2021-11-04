@@ -620,7 +620,7 @@ impl<'a> TypeChecker<'a> {
     fn add_local(&mut self, name: Ident, type_: &TypeId, scope: &mut Scope) -> Result<PoolIndex<Local>, Error> {
         let idx = self.locals.len();
         let name_mangled = Ref::new(format!("{}$local${}", name, idx));
-        let name_idx = self.pool.names.add(name_mangled.to_owned());
+        let name_idx = self.pool.names.add(name_mangled);
 
         let local = Local::new(scope.get_type_index(type_, self.pool)?, LocalFlags::new());
         let local_def = Definition::local(name_idx, scope.function.unwrap().cast(), local);
