@@ -15,4 +15,4 @@ log = "0.4"
 fern = { version = "0.6", features = ["colored"] }
 
 [package.metadata.release]
-disable-tag = true
+tag = false

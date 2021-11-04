@@ -13,4 +13,4 @@ redscript = { path = "../core" }
 log = "0.4"
 
 [package.metadata.release]
-disable-tag = true
+tag = false
