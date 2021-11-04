@@ -482,7 +482,7 @@ impl Assembler {
             IntrinsicOp::IsDefined => match type_of(&args[0], scope, pool)? {
                 TypeId::Ref(_) => self.emit(Instr::RefToBool),
                 TypeId::WeakRef(_) => self.emit(Instr::WeakRefToBool),
-                TypeId::Variant => self.emit(Instr::VariantIsValid),
+                TypeId::Variant => self.emit(Instr::VariantIsDefined),
                 _ => panic!("Invalid ToBool parameter"),
             },
         };

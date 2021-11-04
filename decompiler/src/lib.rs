@@ -374,7 +374,7 @@ impl<'a> Decompiler<'a> {
             Instr::ToString(_) => self.consume_intrisnic(IntrinsicOp::ToString)?,
             Instr::ToVariant(_) => self.consume_intrisnic(IntrinsicOp::ToVariant)?,
             Instr::FromVariant(_) => self.consume_intrisnic(IntrinsicOp::FromVariant)?,
-            Instr::VariantIsValid => self.consume_intrisnic(IntrinsicOp::IsDefined)?,
+            Instr::VariantIsDefined => self.consume_intrisnic(IntrinsicOp::IsDefined)?,
             Instr::VariantIsRef => self.consume_intrisnic(IntrinsicOp::VariantIsRef)?,
             Instr::VariantIsArray => self.consume_intrisnic(IntrinsicOp::VariantIsArray)?,
             Instr::VariantTypeName => self.consume_intrisnic(IntrinsicOp::VariantTypeName)?,

@@ -99,7 +99,7 @@ pub enum Instr<Loc> {
     ToString(PoolIndex<Type>),
     ToVariant(PoolIndex<Type>),
     FromVariant(PoolIndex<Type>),
-    VariantIsValid,
+    VariantIsDefined,
     VariantIsRef,
     VariantIsArray,
     VariantTypeName,
@@ -197,7 +197,7 @@ impl<L> Instr<L> {
             Instr::ToString(_) => 8,
             Instr::ToVariant(_) => 8,
             Instr::FromVariant(_) => 8,
-            Instr::VariantIsValid => 0,
+            Instr::VariantIsDefined => 0,
             Instr::VariantIsRef => 0,
             Instr::VariantIsArray => 0,
             Instr::VariantTypeName => 0,
@@ -314,7 +314,7 @@ impl Instr<Label> {
             Instr::ToString(idx) => Instr::ToString(idx),
             Instr::ToVariant(idx) => Instr::ToVariant(idx),
             Instr::FromVariant(idx) => Instr::FromVariant(idx),
-            Instr::VariantIsValid => Instr::VariantIsValid,
+            Instr::VariantIsDefined => Instr::VariantIsDefined,
             Instr::VariantIsRef => Instr::VariantIsRef,
             Instr::VariantIsArray => Instr::VariantIsArray,
             Instr::VariantTypeName => Instr::VariantTypeName,
@@ -450,7 +450,7 @@ impl Decode for Instr<Offset> {
             89 => Ok(Instr::ToString(input.decode()?)),
             90 => Ok(Instr::ToVariant(input.decode()?)),
             91 => Ok(Instr::FromVariant(input.decode()?)),
-            92 => Ok(Instr::VariantIsValid),
+            92 => Ok(Instr::VariantIsDefined),
             93 => Ok(Instr::VariantIsRef),
             94 => Ok(Instr::VariantIsArray),
             95 => Ok(Instr::VariantTypeName),
@@ -827,7 +827,7 @@ impl Encode for Instr<Offset> {
                 output.encode(&91u8)?;
                 output.encode(idx)?;
             }
-            Instr::VariantIsValid => {
+            Instr::VariantIsDefined => {
                 output.encode(&92u8)?;
             }
             Instr::VariantIsRef => {

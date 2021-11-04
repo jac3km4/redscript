@@ -280,7 +280,7 @@ fn compile_variant_intrinsics() {
         pat!(Assign),
         mem!(Local(b)),
         pat!(InvokeStatic(Offset { value: 36 }, 0, _, 0)),
-        pat!(VariantIsValid),
+        pat!(VariantIsDefined),
         mem!(Local(v)),
         pat!(VariantIsRef),
         mem!(Local(v)),
