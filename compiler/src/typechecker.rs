@@ -6,6 +6,7 @@ use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::IntrinsicOp;
 use redscript::definition::{Definition, Enum, Field, Function, Local, LocalFlags};
 use redscript::error::{Error, FunctionResolutionError};
+use redscript::Ref;
 
 use crate::scope::{FunctionCandidates, FunctionMatch, Reference, Scope, TypeId, Value};
 use crate::symbol::Symbol;
@@ -617,7 +618,10 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn add_local(&mut self, name: Ident, type_: &TypeId, scope: &mut Scope) -> Result<PoolIndex<Local>, Error> {
-        let name_idx = self.pool.names.add(name.to_owned());
+        let idx = self.locals.len();
+        let name_mangled = Ref::new(format!("{}$local${}", name, idx));
+        let name_idx = self.pool.names.add(name_mangled.to_owned());
+
         let local = Local::new(scope.get_type_index(type_, self.pool)?, LocalFlags::new());
         let local_def = Definition::local(name_idx, scope.function.unwrap().cast(), local);
         let local_idx = self.pool.add_definition(local_def);
