@@ -85,16 +85,15 @@ impl Decode for f32 {
 
 impl Decode for String {
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
-        let mut str = String::new();
-        let mut c: u8;
+        let mut buf = Vec::new();
         loop {
-            c = input.read_u8()?;
+            let c = input.read_u8()?;
             if c == 0 {
                 break;
             }
-            str.push(c.into());
+            buf.push(c);
         }
-        Ok(str)
+        String::from_utf8(buf).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
     }
 }
 
@@ -129,8 +128,7 @@ pub trait DecodeExt: io::Read + Sized {
 
     fn decode_bytes<S: Into<u32>>(&mut self, count: S) -> io::Result<Vec<u8>> {
         let size = count.into() as usize;
-        let mut vec = Vec::with_capacity(size);
-        unsafe { vec.set_len(size) }
+        let mut vec = vec![0; size];
         self.read_exact(&mut vec)?;
         Ok(vec)
     }

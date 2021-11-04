@@ -6,18 +6,27 @@ use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::IntrinsicOp;
 use redscript::definition::{Definition, Enum, Field, Function, Local, LocalFlags};
 use redscript::error::{Error, FunctionResolutionError};
+use redscript::Ref;
 
 use crate::scope::{FunctionCandidates, FunctionMatch, Reference, Scope, TypeId, Value};
 use crate::symbol::Symbol;
+use crate::unit::Diagnostic;
 
 pub struct TypeChecker<'a> {
     pool: &'a mut ConstantPool,
     locals: Vec<PoolIndex<Local>>,
+    diagnostics: Vec<Diagnostic>,
+    permissive: bool,
 }
 
 impl<'a> TypeChecker<'a> {
-    pub fn new(pool: &'a mut ConstantPool) -> TypeChecker<'a> {
-        TypeChecker { pool, locals: vec![] }
+    pub fn new(pool: &'a mut ConstantPool, permissive: bool) -> TypeChecker<'a> {
+        TypeChecker {
+            pool,
+            locals: vec![],
+            diagnostics: vec![],
+            permissive,
+        }
     }
 
     pub fn check(
@@ -25,12 +34,19 @@ impl<'a> TypeChecker<'a> {
         expr: &Expr<SourceAst>,
         expected: Option<&TypeId>,
         scope: &mut Scope,
+        silent: bool,
     ) -> Result<Expr<TypedAst>, Error> {
         let res = match expr {
-            Expr::Ident(name, pos) => {
-                let reference = scope.resolve_reference(name.clone(), *pos)?;
-                Expr::Ident(reference, *pos)
-            }
+            Expr::Ident(name, pos) => match scope.resolve_reference(name.clone(), *pos) {
+                Ok(reference) => Expr::Ident(reference, *pos),
+                Err(err) if self.permissive => {
+                    if !silent {
+                        self.report(err)?;
+                    }
+                    Expr::Null(*pos)
+                }
+                Err(err) => return Err(err),
+            },
             Expr::Constant(cons, pos) => {
                 let cons = match expected {
                     Some(type_) => {
@@ -50,11 +66,11 @@ impl<'a> TypeChecker<'a> {
             }
             Expr::ArrayLit(exprs, _, pos) => match exprs.split_first() {
                 Some((head, tail)) => {
-                    let head = self.check(head, None, scope)?;
+                    let head = self.check(head, None, scope, silent)?;
                     let type_ = type_of(&head, scope, self.pool)?;
                     let mut checked = vec![head];
                     for expr in tail {
-                        checked.push(self.check_and_convert(expr, &type_, scope, *pos)?);
+                        checked.push(self.check_and_convert(expr, &type_, scope, silent, *pos)?);
                     }
                     Expr::ArrayLit(checked, Some(type_), *pos)
                 }
@@ -64,18 +80,25 @@ impl<'a> TypeChecker<'a> {
                     None => return Err(Error::type_annotation_required(*pos)),
                 },
             },
+            Expr::InterpolatedString(prefix, parts, pos) => {
+                let mut checked = Vec::with_capacity(parts.len());
+                for (part, str) in parts {
+                    checked.push((self.check(part, None, scope, silent)?, str.clone()));
+                }
+                Expr::InterpolatedString(prefix.clone(), checked, *pos)
+            }
             Expr::Declare(name, type_, init, pos) => {
                 let (initializer, type_) = match (type_, init) {
                     (None, None) => return Err(Error::type_annotation_required(*pos)),
                     (None, Some(expr)) => {
-                        let checked = self.check(expr, None, scope)?;
+                        let checked = self.check(expr, None, scope, silent)?;
                         let type_ = type_of(&checked, scope, self.pool)?;
                         (Some(checked), type_)
                     }
                     (Some(type_name), None) => (None, scope.resolve_type(type_name, self.pool, *pos)?),
                     (Some(type_name), Some(expr)) => {
                         let type_ = scope.resolve_type(type_name, self.pool, *pos)?;
-                        let checked = self.check_and_convert(expr, &type_, scope, *pos)?;
+                        let checked = self.check_and_convert(expr, &type_, scope, silent, *pos)?;
                         (Some(checked), type_)
                     }
                 };
@@ -84,31 +107,32 @@ impl<'a> TypeChecker<'a> {
             }
             Expr::Cast(type_name, expr, pos) => {
                 let type_ = scope.resolve_type(type_name, self.pool, *pos)?;
-                let checked = self.check(expr, None, scope)?;
+                let checked = self.check(expr, None, scope, silent)?;
                 if let TypeId::WeakRef(inner) = type_of(&checked, scope, self.pool)? {
-                    let converted = insert_conversion(checked, &TypeId::Ref(inner), Conversion::WeakRefToRef, *pos);
+                    let converted = insert_conversion(checked, &TypeId::Ref(inner), Conversion::WeakRefToRef);
                     Expr::Cast(type_, Box::new(converted), *pos)
                 } else {
                     Expr::Cast(type_, Box::new(checked), *pos)
                 }
             }
             Expr::Assign(lhs, rhs, pos) => {
-                let lhs_typed = self.check(lhs, None, scope)?;
+                let lhs_typed = self.check(lhs, None, scope, silent)?;
                 let type_ = type_of(&lhs_typed, scope, self.pool)?;
-                let rhs_typed = self.check_and_convert(rhs, &type_, scope, *pos)?;
+                let rhs_typed = self.check_and_convert(rhs, &type_, scope, silent, *pos)?;
                 Expr::Assign(Box::new(lhs_typed), Box::new(rhs_typed), *pos)
             }
             Expr::Call(name, args, pos) => {
                 if let Ok(intrinsic) = IntrinsicOp::from_str(name.as_ref()) {
-                    self.check_intrinsic(intrinsic, args, expected, scope, *pos)?
+                    self.check_intrinsic(intrinsic, args, expected, scope, silent, *pos)?
                 } else {
                     let candidates = scope.resolve_function(name.clone(), *pos)?;
-                    let match_ = self.resolve_overload(name.clone(), candidates, args.iter(), expected, scope, *pos)?;
+                    let match_ =
+                        self.resolve_overload(name.clone(), candidates, args.iter(), expected, scope, silent, *pos)?;
                     Expr::Call(Callable::Function(match_.index), match_.args, *pos)
                 }
             }
             Expr::MethodCall(context, name, args, pos) => {
-                let checked_context = self.check(context, None, scope)?;
+                let checked_context = self.check(context, None, scope, silent)?;
                 let type_ = type_of(&checked_context, scope, self.pool)?;
                 let class = match type_.unwrapped() {
                     TypeId::Class(class) => *class,
@@ -116,10 +140,11 @@ impl<'a> TypeChecker<'a> {
                     type_ => return Err(Error::invalid_context(type_.pretty(self.pool)?, *pos)),
                 };
                 let candidates = scope.resolve_method(name.clone(), class, self.pool, *pos)?;
-                let match_ = self.resolve_overload(name.clone(), candidates, args.iter(), expected, scope, *pos)?;
+                let match_ =
+                    self.resolve_overload(name.clone(), candidates, args.iter(), expected, scope, silent, *pos)?;
 
                 let converted_context = if let TypeId::WeakRef(inner) = type_ {
-                    insert_conversion(checked_context, &TypeId::Ref(inner), Conversion::WeakRefToRef, *pos)
+                    insert_conversion(checked_context, &TypeId::Ref(inner), Conversion::WeakRefToRef)
                 } else {
                     checked_context
                 };
@@ -129,18 +154,18 @@ impl<'a> TypeChecker<'a> {
                 let name = Ident::Static(op.into());
                 let args = IntoIterator::into_iter([lhs.as_ref(), rhs.as_ref()]);
                 let candidates = scope.resolve_function(name.clone(), *pos)?;
-                let match_ = self.resolve_overload(name, candidates, args, expected, scope, *pos)?;
+                let match_ = self.resolve_overload(name, candidates, args, expected, scope, silent, *pos)?;
                 Expr::Call(Callable::Function(match_.index), match_.args, *pos)
             }
             Expr::UnOp(expr, op, pos) => {
                 let name = Ident::Static(op.into());
                 let args = iter::once(expr.as_ref());
                 let candidates = scope.resolve_function(name.clone(), *pos)?;
-                let match_ = self.resolve_overload(name, candidates, args, expected, scope, *pos)?;
+                let match_ = self.resolve_overload(name, candidates, args, expected, scope, silent, *pos)?;
                 Expr::Call(Callable::Function(match_.index), match_.args, *pos)
             }
             Expr::Member(context, name, pos) => {
-                let checked_context = self.check(context, None, scope)?;
+                let checked_context = self.check(context, None, scope, silent)?;
                 let type_ = type_of(&checked_context, scope, self.pool)?;
 
                 let member = match type_.unwrapped() {
@@ -159,7 +184,7 @@ impl<'a> TypeChecker<'a> {
                     type_ => return Err(Error::invalid_context(type_.pretty(self.pool)?.as_ref(), *pos)),
                 };
                 let converted_context = if let TypeId::WeakRef(inner) = type_ {
-                    insert_conversion(checked_context, &TypeId::Ref(inner), Conversion::WeakRefToRef, *pos)
+                    insert_conversion(checked_context, &TypeId::Ref(inner), Conversion::WeakRefToRef)
                 } else {
                     checked_context
                 };
@@ -167,8 +192,8 @@ impl<'a> TypeChecker<'a> {
             }
             Expr::ArrayElem(expr, idx, pos) => {
                 let idx_type = scope.resolve_type(&TypeName::INT32, self.pool, *pos)?;
-                let checked_expr = self.check(expr, None, scope)?;
-                let checked_idx = self.check_and_convert(idx, &idx_type, scope, *pos)?;
+                let checked_expr = self.check(expr, None, scope, silent)?;
+                let checked_idx = self.check_and_convert(idx, &idx_type, scope, silent, *pos)?;
                 Expr::ArrayElem(Box::new(checked_expr), Box::new(checked_idx), *pos)
             }
             Expr::New(type_name, args, pos) => {
@@ -192,7 +217,7 @@ impl<'a> TypeChecker<'a> {
                         for (arg, field_idx) in args.iter().zip(fields.iter()) {
                             let field = self.pool.field(*field_idx)?;
                             let field_type = scope.resolve_type_from_pool(field.type_, self.pool, *pos)?;
-                            let checked_arg = self.check_and_convert(arg, &field_type, scope, *pos)?;
+                            let checked_arg = self.check_and_convert(arg, &field_type, scope, silent, *pos)?;
                             checked_args.push(checked_arg)
                         }
                         Expr::New(type_, checked_args, *pos)
@@ -216,7 +241,7 @@ impl<'a> TypeChecker<'a> {
                 let fun = self.pool.function(scope.function.unwrap())?;
                 if let Some(ret_type) = fun.return_type {
                     let expected = scope.resolve_type_from_pool(ret_type, self.pool, *pos)?;
-                    let checked = self.check_and_convert(expr, &expected, scope, *pos)?;
+                    let checked = self.check_and_convert(expr, &expected, scope, silent, *pos)?;
                     Expr::Return(Some(Box::new(checked)), *pos)
                 } else {
                     return Err(Error::return_type_mismatch("Void", *pos));
@@ -224,11 +249,11 @@ impl<'a> TypeChecker<'a> {
             }
             Expr::Seq(seq) => Expr::Seq(self.check_seq(seq, scope)?),
             Expr::Switch(matched, cases, default, pos) => {
-                let checked_matched = self.check(matched, None, scope)?;
+                let checked_matched = self.check(matched, None, scope, silent)?;
                 let matched_type = type_of(&checked_matched, scope, self.pool).ok();
                 let mut checked_cases = Vec::with_capacity(cases.len());
                 for case in cases {
-                    let matcher = self.check(&case.matcher, matched_type.as_ref(), scope)?;
+                    let matcher = self.check(&case.matcher, matched_type.as_ref(), scope, silent)?;
                     let body = self.check_seq(&case.body, &mut scope.clone())?;
                     checked_cases.push(SwitchCase { matcher, body })
                 }
@@ -241,7 +266,7 @@ impl<'a> TypeChecker<'a> {
             Expr::Goto(target, pos) => Expr::Goto(target.clone(), *pos),
             Expr::If(cond, if_, else_, pos) => {
                 let cond_type = scope.resolve_type(&TypeName::BOOL, self.pool, *pos)?;
-                let checked_cond = self.check_and_convert(cond, &cond_type, scope, *pos)?;
+                let checked_cond = self.check_and_convert(cond, &cond_type, scope, silent, *pos)?;
                 let checked_if = self.check_seq(if_, &mut scope.clone())?;
                 let checked_else = else_
                     .iter()
@@ -251,10 +276,10 @@ impl<'a> TypeChecker<'a> {
             }
             Expr::Conditional(cond, true_, false_, pos) => {
                 let cond_type = scope.resolve_type(&TypeName::BOOL, self.pool, *pos)?;
-                let checked_cond = self.check_and_convert(cond, &cond_type, scope, *pos)?;
-                let checked_true = self.check(true_, None, scope)?;
+                let checked_cond = self.check_and_convert(cond, &cond_type, scope, silent, *pos)?;
+                let checked_true = self.check(true_, None, scope, silent)?;
                 let if_type = type_of(&checked_true, scope, self.pool)?;
-                let checked_false = self.check_and_convert(false_, &if_type, scope, *pos)?;
+                let checked_false = self.check_and_convert(false_, &if_type, scope, silent, *pos)?;
 
                 Expr::Conditional(
                     Box::new(checked_cond),
@@ -265,13 +290,13 @@ impl<'a> TypeChecker<'a> {
             }
             Expr::While(cond, body, pos) => {
                 let cond_type = scope.resolve_type(&TypeName::BOOL, self.pool, *pos)?;
-                let checked_cond = self.check_and_convert(cond, &cond_type, scope, *pos)?;
+                let checked_cond = self.check_and_convert(cond, &cond_type, scope, silent, *pos)?;
                 let checked_body = self.check_seq(body, &mut scope.clone())?;
 
                 Expr::While(Box::new(checked_cond), checked_body, *pos)
             }
             Expr::ForIn(name, array, body, pos) => {
-                let array = self.check(array, None, scope)?;
+                let array = self.check(array, None, scope, silent)?;
                 match type_of(&array, scope, self.pool)? {
                     TypeId::Array(inner) => {
                         let mut local_scope = scope.clone();
@@ -293,7 +318,7 @@ impl<'a> TypeChecker<'a> {
     pub fn check_seq(&mut self, seq: &Seq<SourceAst>, scope: &mut Scope) -> Result<Seq<TypedAst>, Error> {
         let mut exprs = Vec::with_capacity(seq.exprs.len());
         for expr in &seq.exprs {
-            exprs.push(self.check(expr, None, scope)?);
+            exprs.push(self.check(expr, None, scope, false)?);
         }
         Ok(Seq { exprs })
     }
@@ -304,23 +329,24 @@ impl<'a> TypeChecker<'a> {
         args: &[Expr<SourceAst>],
         expected: Option<&TypeId>,
         scope: &mut Scope,
+        silent: bool,
         pos: Span,
     ) -> Result<Expr<TypedAst>, Error> {
         if args.len() != intrinsic.arg_count().into() {
             return Err(Error::invalid_arg_count(intrinsic, intrinsic.arg_count() as usize, pos));
         }
-        let first_arg = self.check(&args[0], None, scope)?;
+        let first_arg = self.check(&args[0], None, scope, silent)?;
         let first_arg_type = type_of(&first_arg, scope, self.pool)?;
         let mut checked_args = vec![];
         let type_ = match (intrinsic, first_arg_type) {
             (IntrinsicOp::Equals, arg_type) => {
                 checked_args.push(first_arg);
-                checked_args.push(self.check(&args[1], Some(&arg_type), scope)?);
+                checked_args.push(self.check(&args[1], Some(&arg_type), scope, silent)?);
                 scope.resolve_type(&TypeName::BOOL, self.pool, pos)?
             }
             (IntrinsicOp::NotEquals, arg_type) => {
                 checked_args.push(first_arg);
-                checked_args.push(self.check(&args[1], Some(&arg_type), scope)?);
+                checked_args.push(self.check(&args[1], Some(&arg_type), scope, silent)?);
                 scope.resolve_type(&TypeName::BOOL, self.pool, pos)?
             }
             (IntrinsicOp::ArrayClear, TypeId::Array(_)) => {
@@ -334,32 +360,32 @@ impl<'a> TypeChecker<'a> {
             (IntrinsicOp::ArrayResize, TypeId::Array(_)) => {
                 let size_type = scope.resolve_type(&TypeName::INT32, self.pool, pos)?;
                 checked_args.push(first_arg);
-                checked_args.push(self.check_and_convert(&args[1], &size_type, scope, pos)?);
+                checked_args.push(self.check_and_convert(&args[1], &size_type, scope, silent, pos)?);
                 TypeId::Void
             }
             (IntrinsicOp::ArrayFindFirst, TypeId::Array(elem)) => {
                 checked_args.push(first_arg);
-                checked_args.push(self.check_and_convert(&args[1], &elem, scope, pos)?);
+                checked_args.push(self.check_and_convert(&args[1], &elem, scope, silent, pos)?);
                 *elem
             }
             (IntrinsicOp::ArrayFindLast, TypeId::Array(elem)) => {
                 checked_args.push(first_arg);
-                checked_args.push(self.check_and_convert(&args[1], &elem, scope, pos)?);
+                checked_args.push(self.check_and_convert(&args[1], &elem, scope, silent, pos)?);
                 *elem
             }
             (IntrinsicOp::ArrayContains, TypeId::Array(elem)) => {
                 checked_args.push(first_arg);
-                checked_args.push(self.check_and_convert(&args[1], &elem, scope, pos)?);
+                checked_args.push(self.check_and_convert(&args[1], &elem, scope, silent, pos)?);
                 scope.resolve_type(&TypeName::BOOL, self.pool, pos)?
             }
             (IntrinsicOp::ArrayCount, TypeId::Array(elem)) => {
                 checked_args.push(first_arg);
-                checked_args.push(self.check_and_convert(&args[1], &elem, scope, pos)?);
+                checked_args.push(self.check_and_convert(&args[1], &elem, scope, silent, pos)?);
                 scope.resolve_type(&TypeName::INT32, self.pool, pos)?
             }
             (IntrinsicOp::ArrayPush, TypeId::Array(elem)) => {
                 checked_args.push(first_arg);
-                checked_args.push(self.check_and_convert(&args[1], &elem, scope, pos)?);
+                checked_args.push(self.check_and_convert(&args[1], &elem, scope, silent, pos)?);
                 TypeId::Void
             }
             (IntrinsicOp::ArrayPop, TypeId::Array(elem)) => {
@@ -369,25 +395,25 @@ impl<'a> TypeChecker<'a> {
             (IntrinsicOp::ArrayInsert, TypeId::Array(elem)) => {
                 let idx_type = scope.resolve_type(&TypeName::INT32, self.pool, pos)?;
                 checked_args.push(first_arg);
-                checked_args.push(self.check_and_convert(&args[1], &idx_type, scope, pos)?);
-                checked_args.push(self.check_and_convert(&args[2], &elem, scope, pos)?);
+                checked_args.push(self.check_and_convert(&args[1], &idx_type, scope, silent, pos)?);
+                checked_args.push(self.check_and_convert(&args[2], &elem, scope, silent, pos)?);
                 TypeId::Void
             }
             (IntrinsicOp::ArrayRemove, TypeId::Array(elem)) => {
                 checked_args.push(first_arg);
-                checked_args.push(self.check_and_convert(&args[1], &elem, scope, pos)?);
+                checked_args.push(self.check_and_convert(&args[1], &elem, scope, silent, pos)?);
                 scope.resolve_type(&TypeName::BOOL, self.pool, pos)?
             }
             (IntrinsicOp::ArrayGrow, TypeId::Array(_)) => {
                 let size_type = scope.resolve_type(&TypeName::INT32, self.pool, pos)?;
                 checked_args.push(first_arg);
-                checked_args.push(self.check_and_convert(&args[1], &size_type, scope, pos)?);
+                checked_args.push(self.check_and_convert(&args[1], &size_type, scope, silent, pos)?);
                 TypeId::Void
             }
             (IntrinsicOp::ArrayErase, TypeId::Array(_)) => {
                 let idx_type = scope.resolve_type(&TypeName::INT32, self.pool, pos)?;
                 checked_args.push(first_arg);
-                checked_args.push(self.check_and_convert(&args[1], &idx_type, scope, pos)?);
+                checked_args.push(self.check_and_convert(&args[1], &idx_type, scope, silent, pos)?);
                 scope.resolve_type(&TypeName::BOOL, self.pool, pos)?
             }
             (IntrinsicOp::ArrayLast, TypeId::Array(elem)) => {
@@ -448,21 +474,44 @@ impl<'a> TypeChecker<'a> {
         Ok(Expr::Call(Callable::Intrinsic(intrinsic, type_), checked_args, pos))
     }
 
-    fn check_and_convert(
+    fn check_and_convert_faily(
         &mut self,
         expr: &Expr<SourceAst>,
         to: &TypeId,
         scope: &mut Scope,
         pos: Span,
     ) -> Result<Expr<TypedAst>, Error> {
-        let checked = self.check(expr, Some(to), scope)?;
+        let checked = self.check(expr, Some(to), scope, true)?;
         let from = type_of(&checked, scope, self.pool)?;
         let conversion = find_conversion(&from, to, self.pool)?
             .ok_or_else(|| Error::type_error(from.pretty(self.pool).unwrap(), to.pretty(self.pool).unwrap(), pos))?;
-        Ok(insert_conversion(checked, to, conversion, pos))
+        Ok(insert_conversion(checked, to, conversion))
     }
 
-    fn resolve_overload<'b>(
+    // version of check that recovers from type errors and logs them as diagnostics instead
+    fn check_and_convert(
+        &mut self,
+        expr: &Expr<SourceAst>,
+        to: &TypeId,
+        scope: &mut Scope,
+        silent: bool,
+        pos: Span,
+    ) -> Result<Expr<TypedAst>, Error> {
+        let checked = self.check(expr, Some(to), scope, silent)?;
+        let from = type_of(&checked, scope, self.pool)?;
+        match find_conversion(&from, to, self.pool)? {
+            Some(conversion) => Ok(insert_conversion(checked, to, conversion)),
+            None => {
+                if !silent {
+                    let err = Error::type_error(from.pretty(self.pool).unwrap(), to.pretty(self.pool).unwrap(), pos);
+                    self.report(err)?;
+                }
+                Ok(checked)
+            }
+        }
+    }
+
+    fn resolve_overload_faily<'b>(
         &mut self,
         name: Ident,
         overloads: FunctionCandidates,
@@ -489,6 +538,35 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
+    fn resolve_overload<'b>(
+        &mut self,
+        name: Ident,
+        overloads: FunctionCandidates,
+        args: impl ExactSizeIterator<Item = &'b Expr<SourceAst>> + Clone,
+        expected: Option<&TypeId>,
+        scope: &mut Scope,
+        silent: bool,
+        pos: Span,
+    ) -> Result<FunctionMatch, Error> {
+        let fst = overloads.functions.first().cloned();
+        match self.resolve_overload_faily(name, overloads, args.clone(), expected, scope, pos) {
+            Ok(res) => Ok(res),
+            Err(err) => {
+                if !silent {
+                    self.report(err)?;
+                }
+                let args = args
+                    .map(|e| self.check(e, None, scope, false))
+                    .collect::<Result<_, Error>>()?;
+                let dummy = FunctionMatch {
+                    index: fst.unwrap(),
+                    args,
+                };
+                Ok(dummy)
+            }
+        }
+    }
+
     fn try_overload<'b>(
         &mut self,
         fun_idx: PoolIndex<Function>,
@@ -505,7 +583,7 @@ impl<'a> TypeChecker<'a> {
             return Ok(Err(FunctionResolutionError::too_many_args(params.len(), args.len())));
         }
 
-        if fun.flags.is_cast() || fun.flags.is_operator_overload() {
+        if fun.flags.is_cast() || fun.flags.is_operator() {
             if let Some(expected) = expected {
                 let ret_type_idx = ret_type.ok_or_else(|| Error::void_cannot_be_used(pos))?;
                 let ret_type = scope.resolve_type_from_pool(ret_type_idx, self.pool, pos)?;
@@ -523,7 +601,7 @@ impl<'a> TypeChecker<'a> {
         for (idx, arg) in args.enumerate() {
             let param = self.pool.parameter(params[idx])?;
             let param_type = scope.resolve_type_from_pool(param.type_, self.pool, pos)?;
-            match self.check_and_convert(arg, &param_type, scope, pos) {
+            match self.check_and_convert_faily(arg, &param_type, scope, pos) {
                 Ok(converted) => compiled_args.push(converted),
                 Err(Error::TypeError(err, _)) => {
                     return Ok(Err(FunctionResolutionError::parameter_mismatch(&err, idx)))
@@ -551,7 +629,10 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn add_local(&mut self, name: Ident, type_: &TypeId, scope: &mut Scope) -> Result<PoolIndex<Local>, Error> {
-        let name_idx = self.pool.names.add(name.to_owned());
+        let idx = self.locals.len();
+        let name_mangled = Ref::new(format!("{}$local${}", name, idx));
+        let name_idx = self.pool.names.add(name_mangled);
+
         let local = Local::new(scope.get_type_index(type_, self.pool)?, LocalFlags::new());
         let local_def = Definition::local(name_idx, scope.function.unwrap().cast(), local);
         let local_idx = self.pool.add_definition(local_def);
@@ -560,8 +641,13 @@ impl<'a> TypeChecker<'a> {
         Ok(local_idx)
     }
 
-    pub fn locals(self) -> Vec<PoolIndex<Local>> {
-        self.locals
+    fn report(&mut self, err: Error) -> Result<(), Error> {
+        self.diagnostics.push(Diagnostic::from_error(err)?);
+        Ok(())
+    }
+
+    pub fn finish(self) -> (Vec<Diagnostic>, Vec<PoolIndex<Local>>) {
+        (self.diagnostics, self.locals)
     }
 }
 
@@ -591,6 +677,7 @@ pub fn type_of(expr: &Expr<TypedAst>, scope: &Scope, pool: &ConstantPool) -> Res
             Constant::Bool(_) => scope.resolve_type(&TypeName::BOOL, pool, *pos)?,
         },
         Expr::ArrayLit(_, type_, _) => TypeId::Array(Box::new(type_.clone().unwrap())),
+        Expr::InterpolatedString(_, _, pos) => scope.resolve_type(&TypeName::STRING, pool, *pos)?,
         Expr::Declare(_, _, _, _) => TypeId::Void,
         Expr::Cast(type_, expr, _) => match type_of(expr, scope, pool)? {
             TypeId::Ref(_) => TypeId::Ref(Box::new(type_.clone())),
@@ -702,21 +789,22 @@ fn find_conversion(from: &TypeId, to: &TypeId, pool: &ConstantPool) -> Result<Op
     Ok(result)
 }
 
-fn insert_conversion(expr: Expr<TypedAst>, type_: &TypeId, conversion: Conversion, pos: Span) -> Expr<TypedAst> {
+fn insert_conversion(expr: Expr<TypedAst>, type_: &TypeId, conversion: Conversion) -> Expr<TypedAst> {
+    let span = expr.span();
     match conversion {
         Conversion::Identity => expr,
         Conversion::RefToWeakRef => Expr::Call(
             Callable::Intrinsic(IntrinsicOp::RefToWeakRef, type_.clone()),
             vec![expr],
-            pos,
+            span,
         ),
         Conversion::WeakRefToRef => Expr::Call(
             Callable::Intrinsic(IntrinsicOp::WeakRefToRef, type_.clone()),
             vec![expr],
-            pos,
+            span,
         ),
-        Conversion::ToScriptRef => Expr::Call(Callable::Intrinsic(IntrinsicOp::AsRef, type_.clone()), vec![expr], pos),
-        Conversion::ToVariant => Expr::Call(Callable::Intrinsic(IntrinsicOp::ToVariant, type_.clone()), vec![expr], pos),
+        Conversion::ToScriptRef => Expr::Call(Callable::Intrinsic(IntrinsicOp::AsRef, type_.clone()), vec![expr], span),
+        Conversion::ToVariant => Expr::Call(Callable::Intrinsic(IntrinsicOp::ToVariant, type_.clone()), vec![expr], span),
     }
 }
 
@@ -732,7 +820,7 @@ impl NameKind for TypedAst {
     type Type = TypeId;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Callable {
     Function(PoolIndex<Function>),
     Intrinsic(IntrinsicOp, TypeId),

@@ -1,6 +1,6 @@
 [package]
 name = "scc"
-version = "0.3.4-dev"
+version = "0.4.0-RC1"
 authors = ["jac3km4 <jac3km4@pm.me>"]
 edition = "2018"
 publish = false
@@ -19,4 +19,4 @@ fd-lock = "3.0"
 msgbox = "0.6"
 
 [package.metadata.release]
-disable-tag = true
+tag = false

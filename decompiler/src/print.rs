@@ -38,7 +38,9 @@ pub fn write_definition<W: Write>(
             if class.flags.is_final() {
                 write!(out, "final ")?;
             }
-            if class.flags.is_native() {
+            if class.flags.is_import_only() {
+                write!(out, "importonly ")?;
+            } else if class.flags.is_native() {
                 write!(out, "native ")?;
             }
             if class.flags.is_struct() {
@@ -160,10 +162,10 @@ pub fn write_definition<W: Write>(
             if field.flags.is_inline() {
                 write!(out, "inline ")?;
             }
-            if field.flags.is_rep() {
+            if field.flags.is_replicated() {
                 write!(out, "replicated ")?;
             }
-            if field.flags.is_edit() {
+            if field.flags.is_editable() {
                 write!(out, "edit ")?;
             }
             if field.flags.is_native() {
@@ -369,6 +371,7 @@ fn write_expr_nested<W: Write>(
         Expr::This(_) => write!(out, "this")?,
         Expr::Super(_) => write!(out, "super")?,
         Expr::ArrayLit(_, _, _) => panic!("Shouldn't get here"),
+        Expr::InterpolatedString(_, _, _) => panic!("Shouldn't get here"),
         Expr::ForIn(_, _, _, _) => panic!("Shouldn't get here"),
     };
     Ok(())

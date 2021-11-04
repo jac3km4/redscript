@@ -1,12 +1,13 @@
 use std::fmt::{self, Debug, Display};
 use std::hash::Hash;
-use std::ops::Add;
+use std::ops::{Add, Sub};
 
+use enum_as_inner::EnumAsInner;
 use strum::{Display, EnumString, IntoStaticStr};
 
 use crate::Ref;
 
-#[derive(Debug)]
+#[derive(Debug, EnumAsInner)]
 pub enum Expr<Name: NameKind>
 where
     Name: NameKind,
@@ -20,6 +21,7 @@ where
     Ident(Name::Reference, Span),
     Constant(Constant, Span),
     ArrayLit(Vec<Self>, Option<Name::Type>, Span),
+    InterpolatedString(Ref<String>, Vec<(Self, Ref<String>)>, Span),
     Declare(Name::Local, Option<Name::Type>, Option<Box<Self>>, Span),
     Cast(Name::Type, Box<Self>, Span),
     Assign(Box<Self>, Box<Self>, Span),
@@ -90,6 +92,7 @@ where
             Expr::Ident(_, span) => *span,
             Expr::Constant(_, span) => *span,
             Expr::ArrayLit(_, _, span) => *span,
+            Expr::InterpolatedString(_, _, span) => *span,
             Expr::Declare(_, _, _, span) => *span,
             Expr::Cast(_, _, span) => *span,
             Expr::Assign(_, _, span) => *span,
@@ -371,9 +374,25 @@ impl fmt::Display for Pos {
 impl Add<usize> for Pos {
     type Output = Pos;
 
-    #[inline(always)]
+    #[inline]
     fn add(self, rhs: usize) -> Pos {
         Pos(self.0 + rhs as u32)
+    }
+}
+
+impl Sub<usize> for Pos {
+    type Output = Pos;
+
+    #[inline]
+    fn sub(self, rhs: usize) -> Pos {
+        Pos(self.0 - rhs as u32)
+    }
+}
+
+impl From<Pos> for usize {
+    #[inline]
+    fn from(pos: Pos) -> Self {
+        pos.0 as usize
     }
 }
 
@@ -392,6 +411,10 @@ impl Span {
 
     pub fn merge(&self, other: Span) -> Span {
         Span::new(self.low.min(other.low), self.high.max(other.high))
+    }
+
+    pub fn contains(&self, pos: Pos) -> bool {
+        self.low <= pos && self.high > pos
     }
 }
 

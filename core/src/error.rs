@@ -25,6 +25,8 @@ pub enum Error {
     PoolError(String),
     #[error("multiple errors")]
     MultipleErrors(Vec<Span>),
+    #[error("compile-time eval error: {0}")]
+    CteError(String, Span),
 }
 
 impl Error {
@@ -156,6 +158,21 @@ impl Error {
 
     pub fn class_redefinition(pos: Span) -> Error {
         let err = "Class with this name is already defined elsewhere".to_owned();
+        Error::CompileError(err, pos)
+    }
+
+    pub fn expected_body(pos: Span) -> Error {
+        let err = "This function must have a body".to_owned();
+        Error::CompileError(err, pos)
+    }
+
+    pub fn native_with_body(pos: Span) -> Error {
+        let err = "Native function cannot have a body".to_owned();
+        Error::CompileError(err, pos)
+    }
+
+    pub fn unexpected_native(pos: Span) -> Error {
+        let err = "Native member is not allowed on a non-native class".to_owned();
         Error::CompileError(err, pos)
     }
 }

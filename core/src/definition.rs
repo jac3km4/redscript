@@ -315,7 +315,7 @@ impl Decode for Function {
         } else {
             vec![]
         };
-        let operator = if flags.is_operator_overload() {
+        let operator = if flags.is_operator() {
             Some(input.decode()?)
         } else {
             None
@@ -349,7 +349,7 @@ impl Encode for Function {
             .with_has_base_method(value.base_method.is_some())
             .with_has_parameters(!value.parameters.is_empty())
             .with_has_locals(!value.locals.is_empty())
-            .with_is_operator_overload(value.operator.is_some())
+            .with_is_operator(value.operator.is_some())
             .with_has_body(!value.code.is_empty());
 
         output.encode(&value.visibility)?;
@@ -570,16 +570,16 @@ impl Encode for SourceFile {
 #[derive(Debug, Clone, Copy)]
 pub struct FieldFlags {
     pub is_native: bool,
-    pub is_edit: bool,
+    pub is_editable: bool,
     pub is_inline: bool,
     pub is_const: bool,
-    pub is_rep: bool,
+    pub is_replicated: bool,
     pub has_hint: bool,
-    pub is_inst_edit: bool,
+    pub is_instance_editable: bool,
     pub has_default: bool,
     pub is_persistent: bool,
     pub is_test_only: bool,
-    pub is_mutable: bool,
+    pub is_browsable: bool,
     #[skip]
     pub remainder: B5,
 }
@@ -648,7 +648,7 @@ pub struct ClassFlags {
     pub is_struct: bool,
     pub has_functions: bool,
     pub has_fields: bool,
-    pub is_native_only: bool,
+    pub is_import_only: bool,
     pub is_test_only: bool,
     pub has_overrides: bool,
     #[skip]
@@ -676,14 +676,14 @@ pub struct FunctionFlags {
     pub is_final: bool,
     pub is_native: bool,
     pub is_callback: bool,
-    pub is_operator_overload: bool,
+    pub is_operator: bool,
     pub has_return_value: bool,
     pub has_base_method: bool,
     pub has_parameters: bool,
     pub has_locals: bool,
     pub has_body: bool,
     pub is_cast: bool,
-    pub is_safe_cast: bool,
+    pub is_implicit_cast: bool,
     #[skip]
     pub padding: B4,
     pub is_const: bool,

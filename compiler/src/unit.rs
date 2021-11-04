@@ -10,21 +10,25 @@ use redscript::mapper::{MultiMapper, PoolMapper};
 use redscript::Ref;
 
 use crate::assembler::Assembler;
+use crate::cte;
 use crate::parser::*;
 use crate::scope::{Reference, Scope, Value};
 use crate::source_map::Files;
 use crate::sugar::Desugar;
 use crate::symbol::{FunctionSignature, Import, ModulePath, Symbol, SymbolMap};
 use crate::transform::ExprTransformer;
-use crate::typechecker::{Callable, TypeChecker};
+use crate::typechecker::{Callable, TypeChecker, TypedAst};
+
+type ProxyMap = HashMap<PoolIndex<Function>, PoolIndex<Function>>;
 
 pub struct CompilationUnit<'a> {
     pool: &'a mut ConstantPool,
     symbols: SymbolMap,
     scope: Scope,
     function_bodies: Vec<FunctionBody>,
-    wrappers: HashMap<PoolIndex<Function>, PoolIndex<Function>>,
-    proxies: HashMap<PoolIndex<Function>, PoolIndex<Function>>,
+    wrappers: ProxyMap,
+    proxies: ProxyMap,
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl<'a> CompilationUnit<'a> {
@@ -33,7 +37,7 @@ impl<'a> CompilationUnit<'a> {
         let mut scope = Scope::new(pool)?;
 
         symbols.populate_import(
-            Import::All(ModulePath::EMPTY, Span::ZERO),
+            Import::All(vec![], ModulePath::EMPTY, Span::ZERO),
             &mut scope,
             Visibility::Private,
         )?;
@@ -45,13 +49,33 @@ impl<'a> CompilationUnit<'a> {
             function_bodies: Vec::new(),
             wrappers: HashMap::new(),
             proxies: HashMap::new(),
+            diagnostics: vec![],
         })
     }
 
-    pub fn compile(self, files: &Files) -> Result<(), Error> {
+    pub fn compile(mut self, modules: Vec<SourceModule>) -> Result<Vec<Diagnostic>, Error> {
+        let funcs = self.compile_modules(modules, true, false)?;
+        self.finish(funcs)
+    }
+
+    pub fn compile_files(self, files: &Files) -> Result<Vec<Diagnostic>, Error> {
+        self.compile(Self::parse(files)?)
+    }
+
+    pub fn typecheck(
+        mut self,
+        modules: Vec<SourceModule>,
+        desugar: bool,
+        permissive: bool,
+    ) -> Result<(Vec<CompiledFunction>, Vec<Diagnostic>), Error> {
+        let funcs = self.compile_modules(modules, desugar, permissive)?;
+        Ok((funcs, self.diagnostics))
+    }
+
+    pub fn compile_and_report(self, files: &Files) -> Result<(), Error> {
         log::info!("Compiling files: {}", files);
 
-        match self.parse_and_compile(files) {
+        match self.compile_files(files) {
             Ok(diagnostics) => {
                 let is_fatal = diagnostics.iter().any(Diagnostic::is_fatal);
                 for diagnostic in &diagnostics {
@@ -83,19 +107,6 @@ impl<'a> CompilationUnit<'a> {
                 }
             },
         }
-    }
-
-    fn parse_and_compile(self, files: &Files) -> Result<Vec<Diagnostic>, Error> {
-        let mut modules = vec![];
-        for file in files.files() {
-            let parsed = parse_file(file).map_err(|err| {
-                let message = format!("Syntax error, expected {}", err.expected);
-                let pos = file.byte_offset() + err.location.offset;
-                Error::SyntaxError(message, Span::new(pos, pos + 1))
-            })?;
-            modules.push(parsed);
-        }
-        self.compile_modules(modules)
     }
 
     fn print_diagnostic(files: &Files, diagnostic: &Diagnostic) {
@@ -134,16 +145,42 @@ impl<'a> CompilationUnit<'a> {
         }
     }
 
-    pub fn compile_modules(mut self, modules: Vec<SourceModule>) -> Result<Vec<Diagnostic>, Error> {
-        let mut compiled_funs = HashSet::new();
+    fn parse(files: &Files) -> Result<Vec<SourceModule>, Error> {
+        let mut modules = vec![];
+        for file in files.files() {
+            let parsed = parse_file(file).map_err(|err| {
+                let message = format!("Syntax error, expected {}", err.expected);
+                let pos = file.byte_offset() + err.location.offset;
+                Error::SyntaxError(message, Span::new(pos, pos + 1))
+            })?;
+            modules.push(parsed);
+        }
+        Ok(modules)
+    }
+
+    fn compile_modules(
+        &mut self,
+        modules: Vec<SourceModule>,
+        desugar: bool,
+        permissive: bool,
+    ) -> Result<Vec<CompiledFunction>, Error> {
+        let mut seen_funcs = HashSet::new();
         let mut queue = Vec::with_capacity(modules.len());
-        let mut diagnostics = Vec::new();
+        let mut compiled_funcs = Vec::new();
+
+        let cte = cte::Context::new(modules.iter().filter_map(|m| m.path.clone()).collect());
 
         for module in modules {
             let path = module.path.unwrap_or(ModulePath::EMPTY);
             let mut slots = Vec::with_capacity(module.entries.len());
+
             for entry in module.entries {
-                slots.push(self.define_symbol(entry, &path)?);
+                if eval_conditions(&cte, entry.annotations())? {
+                    match self.define_symbol(entry, &path, permissive) {
+                        Ok(slot) => slots.push(slot),
+                        Err(err) => self.report(err)?,
+                    };
+                }
             }
             queue.push((path, module.imports, slots));
         }
@@ -153,17 +190,23 @@ impl<'a> CompilationUnit<'a> {
 
             if !path.is_empty() {
                 self.symbols
-                    .populate_import(Import::All(path, Span::ZERO), &mut module_scope, Visibility::Private)
+                    .populate_import(
+                        Import::All(vec![], path, Span::ZERO),
+                        &mut module_scope,
+                        Visibility::Private,
+                    )
                     .ok();
             };
 
             for import in imports {
-                self.symbols
-                    .populate_import(import, &mut module_scope, Visibility::Public)?;
+                if eval_conditions(&cte, import.annotations())? {
+                    self.symbols
+                        .populate_import(import, &mut module_scope, Visibility::Public)?;
+                }
             }
 
             for slot in slots {
-                match slot {
+                let res = match slot {
                     Slot::Function {
                         index,
                         parent,
@@ -171,51 +214,75 @@ impl<'a> CompilationUnit<'a> {
                         source,
                         visibility,
                         wrapped,
+                        is_replacement,
                     } => {
                         let pos = source.declaration.span;
-                        self.define_function(index, parent, base, wrapped, visibility, source, &mut module_scope)?;
-                        if compiled_funs.contains(&index) {
-                            diagnostics.push(Diagnostic::MethodConflict(index, pos));
+                        if seen_funcs.contains(&index) {
+                            self.diagnostics.push(Diagnostic::MethodConflict(index, pos));
                         } else {
-                            compiled_funs.insert(index);
+                            seen_funcs.insert(index);
                         }
+                        let flags = if !parent.is_undefined() {
+                            Some(self.pool.class(parent)?.flags)
+                        } else {
+                            None
+                        };
+                        self.define_function(
+                            index,
+                            parent,
+                            flags,
+                            base,
+                            wrapped,
+                            is_replacement,
+                            visibility,
+                            source,
+                            &mut module_scope,
+                        )
                     }
                     Slot::Class {
                         index,
                         source,
                         visibility,
-                    } => {
-                        self.define_class(index, visibility, source, &mut module_scope)?;
-                    }
+                    } => self.define_class(index, visibility, source, &mut module_scope),
                     Slot::Field {
                         index,
                         source,
                         visibility,
-                    } => {
-                        self.define_global_let(index, visibility, source, &mut module_scope)?;
-                    }
-                    Slot::Enum { index, source } => {
-                        self.define_enum(index, source)?;
-                    }
+                    } => self.define_global_let(index, visibility, source, &mut module_scope),
+                    Slot::Enum { index, source } => self.define_enum(index, source),
+                };
+                if let Err(err) = res {
+                    self.report(err)?;
                 }
             }
         }
 
         // create function proxies
-        for (wrapped, wrapper) in self.wrappers {
+        for (wrapped, wrapper) in self.wrappers.drain() {
             let proxy = self.proxies.get(&wrapped).unwrap();
             Self::construct_proxy(*proxy, wrapped, wrapper, &mut self.scope, self.pool)?;
         }
 
         // compile function bodies
-        for item in self.function_bodies {
-            if let Some(err) = Self::compile_function(item, self.pool)
-                .err()
-                .map(Diagnostic::from_error)
-                .transpose()?
-            {
-                diagnostics.push(err);
+        for item in self.function_bodies.drain(..) {
+            match Self::compile_function(item, self.pool, desugar, permissive) {
+                Ok((func, diagnostics)) => {
+                    compiled_funcs.push(func);
+                    self.diagnostics.extend(diagnostics);
+                }
+                Err(err) => self.diagnostics.push(Diagnostic::from_error(err)?),
             }
+        }
+
+        Ok(compiled_funcs)
+    }
+
+    fn finish(self, functions: Vec<CompiledFunction>) -> Result<Vec<Diagnostic>, Error> {
+        for mut func in functions {
+            let code = Assembler::from_body(func.code, &mut func.scope, self.pool)?;
+            let function = self.pool.function_mut(func.index)?;
+            function.code = code;
+            function.locals = func.locals;
         }
 
         // swap proxies with the functions they wrap
@@ -230,23 +297,24 @@ impl<'a> CompilationUnit<'a> {
         }
 
         Self::cleanup_pool(self.pool);
-        Ok(diagnostics)
+        Ok(self.diagnostics)
     }
 
-    fn define_symbol(&mut self, entry: SourceEntry, module: &ModulePath) -> Result<Slot, Error> {
+    fn define_symbol(&mut self, entry: SourceEntry, module: &ModulePath, permissive: bool) -> Result<Slot, Error> {
         match entry {
             SourceEntry::Class(source) => {
                 let path = module.with_child(source.name.clone());
-                let name_index = self.pool.names.add(path.render().to_owned());
-                let type_index = self.pool.add_definition(Definition::type_(name_index, Type::Class));
-                let index = self.pool.stub_definition(name_index);
                 let visibility = source.qualifiers.visibility().unwrap_or(Visibility::Private);
 
                 if let Ok(Symbol::Class(_, _)) = self.symbols.get_symbol(&path, source.span) {
-                    return Err(Error::class_redefinition(source.span));
+                    if !permissive {
+                        return Err(Error::class_redefinition(source.span));
+                    }
                 }
 
-                self.scope.add_type(path.render(), type_index);
+                let name_index = self.pool.names.add(path.render().to_owned());
+                let index = self.pool.stub_definition(name_index);
+
                 self.symbols.add_class(&path, index, visibility);
 
                 // add to globals when no module
@@ -285,10 +353,8 @@ impl<'a> CompilationUnit<'a> {
             SourceEntry::Enum(source) => {
                 let path = module.with_child(source.name.clone());
                 let name_index = self.pool.names.add(path.render().to_owned());
-                let type_index = self.pool.add_definition(Definition::type_(name_index, Type::Class));
                 let index = self.pool.stub_definition(name_index);
 
-                self.scope.add_type(path.render(), type_index);
                 self.symbols.add_enum(&path, index);
 
                 // add to globals when no module
@@ -309,9 +375,16 @@ impl<'a> CompilationUnit<'a> {
         source: ClassSource,
         scope: &mut Scope,
     ) -> Result<(), Error> {
+        let is_import_only = source.qualifiers.contain(Qualifier::ImportOnly);
+        let is_class_native = is_import_only || source.qualifiers.contain(Qualifier::Native);
+        let is_class_abstract = source.qualifiers.contain(Qualifier::Abstract);
+        let is_class_final = source.qualifiers.contain(Qualifier::Final);
+
         let flags = ClassFlags::new()
-            .with_is_abstract(source.qualifiers.contain(Qualifier::Abstract))
-            .with_is_final(source.qualifiers.contain(Qualifier::Final));
+            .with_is_abstract(is_class_abstract)
+            .with_is_final(is_class_final)
+            .with_is_native(is_class_native)
+            .with_is_import_only(is_import_only);
         let mut functions = vec![];
         let mut fields = vec![];
 
@@ -322,14 +395,24 @@ impl<'a> CompilationUnit<'a> {
                     let name_idx = self.pool.names.add(Ref::new(fun_sig.into_owned()));
                     let fun_idx = self.pool.stub_definition(name_idx);
 
-                    self.define_function(fun_idx, class_idx, None, None, visibility, fun, scope)?;
+                    self.define_function(
+                        fun_idx,
+                        class_idx,
+                        Some(flags),
+                        None,
+                        None,
+                        false,
+                        visibility,
+                        fun,
+                        scope,
+                    )?;
                     functions.push(fun_idx);
                 }
                 MemberSource::Field(let_) => {
                     let name_idx = self.pool.names.add(let_.declaration.name.to_owned());
                     let field_idx = self.pool.stub_definition(name_idx);
 
-                    self.define_field(field_idx, class_idx, visibility, let_, scope)?;
+                    self.define_field(field_idx, class_idx, flags, visibility, let_, scope)?;
                     fields.push(field_idx);
                 }
             }
@@ -365,23 +448,38 @@ impl<'a> CompilationUnit<'a> {
     fn define_function(
         &mut self,
         fun_idx: PoolIndex<Function>,
-        parent_idx: PoolIndex<Class>,
+        class_idx: PoolIndex<Class>,
+        class_flags: Option<ClassFlags>,
         base_method: Option<PoolIndex<Function>>,
         wrapped: Option<PoolIndex<Function>>,
+        is_replacement: bool,
         visibility: Visibility,
         source: FunctionSource,
         scope: &mut Scope,
     ) -> Result<(), Error> {
         let decl = &source.declaration;
+        let is_native = !is_replacement && decl.qualifiers.contain(Qualifier::Native);
+        let is_static = decl.qualifiers.contain(Qualifier::Static) || class_idx.is_undefined();
+
+        if is_native && class_flags.map(|f| !f.is_native()).unwrap_or(false) {
+            self.report(Error::unexpected_native(source.declaration.span))?;
+        }
+        if !is_native && class_flags.map(|f| !f.is_abstract()).unwrap_or(true) && source.body.is_none() {
+            self.report(Error::expected_body(source.declaration.span))?;
+        }
+        if is_native && source.body.is_some() {
+            self.report(Error::native_with_body(source.declaration.span))?;
+        }
+
         let flags = FunctionFlags::new()
-            .with_is_static(decl.qualifiers.contain(Qualifier::Static) || parent_idx == PoolIndex::UNDEFINED)
+            .with_is_static(is_static)
+            .with_is_native(is_native)
+            .with_is_cast(decl.name.as_ref() == "Cast")
             .with_is_exec(decl.qualifiers.contain(Qualifier::Exec))
             .with_is_final(decl.qualifiers.contain(Qualifier::Final))
-            .with_is_native(decl.qualifiers.contain(Qualifier::Native) && source.body.is_none())
             .with_is_callback(decl.qualifiers.contain(Qualifier::Callback))
             .with_is_const(decl.qualifiers.contain(Qualifier::Const))
-            .with_is_quest(decl.qualifiers.contain(Qualifier::Quest))
-            .with_is_cast(decl.name.as_ref() == "Cast");
+            .with_is_quest(decl.qualifiers.contain(Qualifier::Quest));
 
         let return_type = match source.type_ {
             None => None,
@@ -426,15 +524,16 @@ impl<'a> CompilationUnit<'a> {
             code: Code::EMPTY,
         };
         let name_idx = self.pool.definition(fun_idx)?.name;
-        let definition = Definition::function(name_idx, parent_idx.cast(), function);
+        let definition = Definition::function(name_idx, class_idx.cast(), function);
 
         if let Some(code) = source.body {
             let item = FunctionBody {
-                class: parent_idx,
-                function: fun_idx,
+                class: class_idx,
+                index: fun_idx,
                 wrapped,
                 code,
                 scope: scope.clone(),
+                span: source.span,
             };
             self.function_bodies.push(item)
         }
@@ -445,18 +544,25 @@ impl<'a> CompilationUnit<'a> {
 
     fn define_field(
         &mut self,
-        index: PoolIndex<Field>,
-        parent: PoolIndex<Class>,
+        field_idx: PoolIndex<Field>,
+        class_idx: PoolIndex<Class>,
+        class_flags: ClassFlags,
         visibility: Visibility,
         source: FieldSource,
         scope: &mut Scope,
     ) -> Result<(), Error> {
         let decl = source.declaration;
+        let is_field_native = decl.qualifiers.contain(Qualifier::Native);
+
+        if is_field_native && !class_flags.is_native() {
+            self.report(Error::unexpected_native(decl.span))?;
+        }
+
         let type_ = scope.resolve_type(&source.type_, self.pool, decl.span)?;
         let type_idx = scope.get_type_index(&type_, self.pool)?;
         let flags = FieldFlags::new()
-            .with_is_mutable(true)
-            .with_is_native(decl.qualifiers.contain(Qualifier::Native));
+            .with_is_browsable(true)
+            .with_is_native(is_field_native);
         let field = Field {
             visibility,
             type_: type_idx,
@@ -465,10 +571,10 @@ impl<'a> CompilationUnit<'a> {
             attributes: vec![],
             defaults: vec![],
         };
-        let name_index = self.pool.definition(index)?.name;
-        let definition = Definition::field(name_index, parent.cast(), field);
+        let name_index = self.pool.definition(field_idx)?.name;
+        let definition = Definition::field(name_index, class_idx.cast(), field);
 
-        self.pool.put_definition(index, definition);
+        self.pool.put_definition(field_idx, definition);
         Ok(())
     }
 
@@ -501,14 +607,16 @@ impl<'a> CompilationUnit<'a> {
     ) -> Result<(), Error> {
         let decl = &source.declaration;
         for ann in &source.declaration.annotations {
-            match ann.name {
-                AnnotationName::AddField => {
-                    let ident = ann
-                        .values
+            match ann.kind {
+                AnnotationKind::AddField => {
+                    let (ident, _) = ann
+                        .args
                         .first()
+                        .and_then(Expr::as_ident)
                         .ok_or_else(|| Error::invalid_annotation_args(ann.span))?;
                     if let Symbol::Class(target_class, _) = scope.resolve_symbol(ident.clone(), ann.span)? {
-                        self.define_field(index, target_class, visibility, source, scope)?;
+                        let flags = self.pool.class(target_class)?.flags;
+                        self.define_field(index, target_class, flags, visibility, source, scope)?;
                         self.pool.class_mut(target_class)?.fields.push(index);
                         return Ok(());
                     } else {
@@ -531,15 +639,17 @@ impl<'a> CompilationUnit<'a> {
             .unwrap_or(Visibility::Private);
 
         for ann in &source.declaration.annotations {
-            match ann.name {
-                AnnotationName::WrapMethod => {
+            match ann.kind {
+                AnnotationKind::WrapMethod => {
                     if source.declaration.qualifiers.contain(Qualifier::Native) {
                         return Err(Error::unsupported("Wrapping natives", ann.span));
                     }
-                    let class_name = ann
-                        .values
+                    let (class_name, _) = ann
+                        .args
                         .first()
+                        .and_then(Expr::as_ident)
                         .ok_or_else(|| Error::invalid_annotation_args(ann.span))?;
+
                     let target_class_idx = match self.scope.resolve_symbol(class_name.clone(), ann.span)? {
                         Symbol::Class(idx, _) => idx,
                         Symbol::Struct(idx, _) => idx,
@@ -572,15 +682,17 @@ impl<'a> CompilationUnit<'a> {
                         parent: target_class_idx,
                         base,
                         wrapped: Some(wrapped_idx),
+                        is_replacement: true,
                         source,
                         visibility,
                     };
                     return Ok(slot);
                 }
-                AnnotationName::ReplaceMethod => {
-                    let class_name = ann
-                        .values
+                AnnotationKind::ReplaceMethod => {
+                    let (class_name, _) = ann
+                        .args
                         .first()
+                        .and_then(Expr::as_ident)
                         .ok_or_else(|| Error::invalid_annotation_args(ann.span))?;
                     let target_class_idx = match self.scope.resolve_symbol(class_name.clone(), ann.span)? {
                         Symbol::Class(idx, _) => idx,
@@ -598,12 +710,13 @@ impl<'a> CompilationUnit<'a> {
                         parent: target_class_idx,
                         base,
                         wrapped: None,
+                        is_replacement: true,
                         source,
                         visibility,
                     };
                     return Ok(slot);
                 }
-                AnnotationName::ReplaceGlobal => {
+                AnnotationKind::ReplaceGlobal => {
                     let fun_idx = self
                         .scope
                         .resolve_function(name.clone(), ann.span)?
@@ -615,15 +728,17 @@ impl<'a> CompilationUnit<'a> {
                         parent: PoolIndex::UNDEFINED,
                         base: None,
                         wrapped: None,
+                        is_replacement: true,
                         source,
                         visibility,
                     };
                     return Ok(slot);
                 }
-                AnnotationName::AddMethod => {
-                    let class_name = ann
-                        .values
+                AnnotationKind::AddMethod => {
+                    let (class_name, _) = ann
+                        .args
                         .first()
+                        .and_then(Expr::as_ident)
                         .ok_or_else(|| Error::invalid_annotation_args(ann.span))?;
                     let target_class_idx = match self.scope.resolve_symbol(class_name.clone(), ann.span)? {
                         Symbol::Class(idx, _) => idx,
@@ -649,12 +764,14 @@ impl<'a> CompilationUnit<'a> {
                         parent: target_class_idx,
                         base: base_method,
                         wrapped: None,
+                        is_replacement: false,
                         source,
                         visibility,
                     };
                     return Ok(slot);
                 }
-                AnnotationName::AddField => {}
+                AnnotationKind::AddField => {}
+                AnnotationKind::If => {}
             }
         }
 
@@ -675,19 +792,25 @@ impl<'a> CompilationUnit<'a> {
             parent: PoolIndex::UNDEFINED,
             base: None,
             wrapped: None,
+            is_replacement: false,
             source,
             visibility,
         };
         Ok(slot)
     }
 
-    fn compile_function(item: FunctionBody, pool: &mut ConstantPool) -> Result<(), Error> {
-        let fun = pool.function(item.function)?;
+    fn compile_function(
+        item: FunctionBody,
+        pool: &mut ConstantPool,
+        desugar: bool,
+        permissive: bool,
+    ) -> Result<(CompiledFunction, Vec<Diagnostic>), Error> {
+        let fun = pool.function(item.index)?;
 
         let mut local_scope = if fun.flags.is_static() {
-            item.scope.with_context(None, item.function)
+            item.scope.with_context(None, item.index)
         } else {
-            item.scope.with_context(Some(item.class), item.function)
+            item.scope.with_context(Some(item.class), item.index)
         };
 
         for param in &fun.parameters {
@@ -700,19 +823,27 @@ impl<'a> CompilationUnit<'a> {
             local_scope.add_symbol(wrapped_ident, Symbol::Functions(vec![(wrapped, Visibility::Public)]));
         }
 
-        let mut checker = TypeChecker::new(pool);
+        let mut checker = TypeChecker::new(pool, permissive);
         let checked = checker.check_seq(&item.code, &mut local_scope)?;
-        let mut locals = checker.locals();
+        let (diagnostics, mut locals) = checker.finish();
 
-        let mut desugar = Desugar::new(&mut local_scope, pool);
-        let desugared = desugar.on_seq(checked)?;
-        locals.extend(desugar.locals());
+        let ast = if desugar {
+            let mut desugar = Desugar::new(&mut local_scope, pool);
+            let desugared = desugar.on_seq(checked)?;
+            locals.extend(desugar.locals());
+            desugared
+        } else {
+            checked
+        };
 
-        let code = Assembler::from_body(desugared, &mut local_scope, pool)?;
-        let function = pool.function_mut(item.function)?;
-        function.code = code;
-        function.locals = locals;
-        Ok(())
+        let compiled = CompiledFunction {
+            index: item.index,
+            code: ast,
+            locals,
+            scope: local_scope,
+            span: item.span,
+        };
+        Ok((compiled, diagnostics))
     }
 
     fn construct_proxy(
@@ -785,10 +916,11 @@ impl<'a> CompilationUnit<'a> {
         }
         Ok(())
     }
+
     fn class_cardinality(idx: PoolIndex<Class>, pool: &ConstantPool) -> usize {
         let class = pool.class(idx).unwrap();
         if class.base.is_undefined() {
-            0
+            1
         } else {
             Self::class_cardinality(class.base, pool) + 1
         }
@@ -799,6 +931,7 @@ impl<'a> CompilationUnit<'a> {
         // a class which has a base class that is placed after the subclass in the pool
         let mut unsorted = BTreeSet::new();
 
+        // find any classes that appear before their base class in the pool
         for (def_idx, def) in pool.definitions() {
             if let AnyDefinition::Class(class) = &def.value {
                 let pos: u32 = def_idx.into();
@@ -809,15 +942,27 @@ impl<'a> CompilationUnit<'a> {
             }
         }
 
+        // additional iteration to find classes that extend the ones that need sorting
+        for (def_idx, def) in pool.definitions() {
+            if let AnyDefinition::Class(class) = &def.value {
+                if unsorted.contains(&class.base) {
+                    unsorted.insert(def_idx.cast());
+                }
+            }
+        }
+
+        // find out the order based on cardinality
         let mut sorted: Vec<PoolIndex<Class>> = unsorted.iter().copied().collect();
         sorted.sort_by_key(|k| Self::class_cardinality(*k, pool));
 
         let definitions: Vec<Definition> = sorted.iter().map(|k| pool.definition(*k).unwrap()).cloned().collect();
 
+        // insert classes based on the determined order
         for (def, target) in definitions.into_iter().zip(&unsorted) {
             pool.put_definition(*target, def);
         }
 
+        // fix any references to the reordered classes
         if !unsorted.is_empty() {
             let mappings = sorted.into_iter().zip(unsorted).collect();
             PoolMapper::default()
@@ -825,14 +970,28 @@ impl<'a> CompilationUnit<'a> {
                 .map(pool);
         }
     }
+
+    fn report(&mut self, err: Error) -> Result<(), Error> {
+        self.diagnostics.push(Diagnostic::from_error(err)?);
+        Ok(())
+    }
 }
 
 struct FunctionBody {
     class: PoolIndex<Class>,
-    function: PoolIndex<Function>,
+    index: PoolIndex<Function>,
     wrapped: Option<PoolIndex<Function>>,
     code: Seq<SourceAst>,
     scope: Scope,
+    span: Span,
+}
+
+pub struct CompiledFunction {
+    pub index: PoolIndex<Function>,
+    pub code: Seq<TypedAst>,
+    pub locals: Vec<PoolIndex<Local>>,
+    pub scope: Scope,
+    pub span: Span,
 }
 
 enum Slot {
@@ -841,6 +1000,7 @@ enum Slot {
         parent: PoolIndex<Class>,
         base: Option<PoolIndex<Function>>,
         wrapped: Option<PoolIndex<Function>>,
+        is_replacement: bool,
         source: FunctionSource,
         visibility: Visibility,
     },
@@ -873,6 +1033,7 @@ impl Diagnostic {
             Error::CompileError(msg, pos) => Ok(Diagnostic::CompileError(msg, pos)),
             Error::TypeError(msg, pos) => Ok(Diagnostic::CompileError(msg, pos)),
             Error::ResolutionError(msg, pos) => Ok(Diagnostic::CompileError(msg, pos)),
+            Error::CteError(msg, pos) => Ok(Diagnostic::CompileError(msg, pos)),
             other => Err(other),
         }
     }
@@ -890,4 +1051,17 @@ impl Diagnostic {
             Diagnostic::CompileError(_, pos) => *pos,
         }
     }
+}
+
+fn eval_conditions(cte: &cte::Context, anns: &[Annotation]) -> Result<bool, Error> {
+    anns.iter()
+        .filter(|ann| ann.kind == AnnotationKind::If)
+        .filter_map(|ann| ann.args.first())
+        .try_fold(true, |acc, expr| {
+            let res = cte.eval(expr)?;
+            let res = res
+                .as_bool()
+                .ok_or_else(|| Error::CteError("Invalid CTE value".to_owned(), expr.span()))?;
+            Ok(acc && *res)
+        })
 }

@@ -1,6 +1,6 @@
 [package]
 name = "redscript-compiler"
-version = "0.3.4-dev"
+version = "0.4.0-RC1"
 authors = ["jac3km4 <jac3km4@pm.me>"]
 edition = "2018"
 publish = false
@@ -13,9 +13,10 @@ redscript = { path = "../core" }
 peg = "0.7"
 hamt-sync = "0.2"
 sequence_trie = "0.3"
-strum = { version = "0.21", features = ["derive"] }
+strum = { version = "0.22", features = ["derive"] }
+enum-as-inner = "0.3"
 walkdir = "2"
 log = "0.4"
 
 [package.metadata.release]
-disable-tag = true
+tag = false

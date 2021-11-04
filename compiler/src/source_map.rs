@@ -46,7 +46,7 @@ impl Files {
     }
 
     pub fn add(&mut self, path: PathBuf, source: String) {
-        let low = self.files.last().map(|f| f.high).unwrap_or(Pos(0));
+        let low = self.files.last().map(|f| f.high + 1).unwrap_or(Pos(0));
         let high = low + source.len();
         let mut lines = vec![];
         for (offset, _) in source.match_indices('\n') {
