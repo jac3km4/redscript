@@ -439,7 +439,10 @@ impl Assembler {
                 self.emit(Instr::ArrayLast(get_arg_type(0)?));
             }
             IntrinsicOp::ToString => {
-                self.emit(Instr::ToString(get_arg_type(0)?));
+                match type_of(&args[0], scope, pool)? {
+                    TypeId::Variant => self.emit(Instr::VariantToString),
+                    any => self.emit(Instr::ToString(scope.get_type_index(&any, pool)?))
+                }
             }
             IntrinsicOp::EnumInt => {
                 self.emit(Instr::EnumToI32(get_arg_type(0)?, 4));
@@ -454,6 +457,15 @@ impl Assembler {
             IntrinsicOp::FromVariant => {
                 let type_idx = scope.get_type_index(return_type, pool)?;
                 self.emit(Instr::FromVariant(type_idx));
+            }
+            IntrinsicOp::VariantIsRef => {
+                self.emit(Instr::VariantIsRef);
+            }
+            IntrinsicOp::VariantIsArray => {
+                self.emit(Instr::VariantIsArray);
+            }
+            IntrinsicOp::VariantTypeName => {
+                self.emit(Instr::VariantTypeName);
             }
             IntrinsicOp::AsRef => {
                 self.emit(Instr::AsRef(get_arg_type(0)?));
@@ -470,6 +482,7 @@ impl Assembler {
             IntrinsicOp::IsDefined => match type_of(&args[0], scope, pool)? {
                 TypeId::Ref(_) => self.emit(Instr::RefToBool),
                 TypeId::WeakRef(_) => self.emit(Instr::WeakRefToBool),
+                TypeId::Variant => self.emit(Instr::VariantIsDefined),
                 _ => panic!("Invalid ToBool parameter"),
             },
         };

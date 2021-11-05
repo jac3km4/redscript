@@ -440,10 +440,21 @@ impl<'a> TypeChecker<'a> {
                 checked_args.push(first_arg);
                 scope.resolve_type(&TypeName::VARIANT, self.pool, pos)?
             }
-            (IntrinsicOp::FromVariant, _) if expected.is_some() => {
-                let param_type = scope.resolve_type(&TypeName::VARIANT, self.pool, pos)?;
-                checked_args.push(self.check_and_convert(&args[0], &param_type, scope, silent, pos)?);
+            (IntrinsicOp::FromVariant, TypeId::Variant) if expected.is_some() => {
+                checked_args.push(first_arg);
                 expected.unwrap().clone()
+            }
+            (IntrinsicOp::VariantTypeName, TypeId::Variant) => {
+                checked_args.push(first_arg);
+                scope.resolve_type(&TypeName::CNAME, self.pool, pos)?
+            }
+            (IntrinsicOp::VariantIsRef, TypeId::Variant) => {
+                checked_args.push(first_arg);
+                scope.resolve_type(&TypeName::BOOL, self.pool, pos)?
+            }
+            (IntrinsicOp::VariantIsArray, TypeId::Variant) => {
+                checked_args.push(first_arg);
+                scope.resolve_type(&TypeName::BOOL, self.pool, pos)?
             }
             (IntrinsicOp::AsRef, type_) => {
                 checked_args.push(first_arg);
@@ -453,7 +464,7 @@ impl<'a> TypeChecker<'a> {
                 checked_args.push(first_arg);
                 *inner
             }
-            (IntrinsicOp::IsDefined, TypeId::Ref(_) | TypeId::WeakRef(_)) => {
+            (IntrinsicOp::IsDefined, TypeId::Ref(_) | TypeId::WeakRef(_) | TypeId::Variant) => {
                 checked_args.push(first_arg);
                 scope.resolve_type(&TypeName::BOOL, self.pool, pos)?
             }
@@ -771,6 +782,7 @@ fn find_conversion(from: &TypeId, to: &TypeId, pool: &ConstantPool) -> Result<Op
             (from, TypeId::ScriptRef(to)) if find_conversion(from, to, pool)? == Some(Conversion::Identity) => {
                 Some(Conversion::ToScriptRef)
             }
+            (_, TypeId::Variant) => Some(Conversion::ToVariant),
             _ => None,
         }
     };
@@ -792,6 +804,7 @@ fn insert_conversion(expr: Expr<TypedAst>, type_: &TypeId, conversion: Conversio
             span,
         ),
         Conversion::ToScriptRef => Expr::Call(Callable::Intrinsic(IntrinsicOp::AsRef, type_.clone()), vec![expr], span),
+        Conversion::ToVariant => Expr::Call(Callable::Intrinsic(IntrinsicOp::ToVariant, type_.clone()), vec![expr], span),
     }
 }
 
@@ -826,4 +839,5 @@ pub enum Conversion {
     RefToWeakRef,
     WeakRefToRef,
     ToScriptRef,
+    ToVariant,
 }
