@@ -1,4 +1,4 @@
-use redscript::ast::{Constant, Expr, Literal, Seq};
+use redscript::ast::{Constant, Expr, Literal, Seq, Span};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Instr, IntrinsicOp, Label, Location, Offset};
 use redscript::definition::{Function, ParameterFlags};
@@ -344,6 +344,12 @@ impl Assembler {
                 self.assemble(arg, scope, pool, None)?;
             }
         }
+        if param_flags.len() < args_len {
+            return Err(Error::CompileError(
+                "You've done something very naughty".to_owned(),
+                Span::ZERO,
+            ));
+        }
         for _ in 0..param_flags.len() - args_len {
             self.emit(Instr::Nop);
         }
@@ -438,12 +444,10 @@ impl Assembler {
             IntrinsicOp::ArrayLast => {
                 self.emit(Instr::ArrayLast(get_arg_type(0)?));
             }
-            IntrinsicOp::ToString => {
-                match type_of(&args[0], scope, pool)? {
-                    TypeId::Variant => self.emit(Instr::VariantToString),
-                    any => self.emit(Instr::ToString(scope.get_type_index(&any, pool)?))
-                }
-            }
+            IntrinsicOp::ToString => match type_of(&args[0], scope, pool)? {
+                TypeId::Variant => self.emit(Instr::VariantToString),
+                any => self.emit(Instr::ToString(scope.get_type_index(&any, pool)?)),
+            },
             IntrinsicOp::EnumInt => {
                 self.emit(Instr::EnumToI32(get_arg_type(0)?, 4));
             }
