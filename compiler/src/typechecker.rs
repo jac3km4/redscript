@@ -551,6 +551,7 @@ impl<'a> TypeChecker<'a> {
         let fst = overloads.functions.first().cloned();
         match self.resolve_overload_faily(name, overloads, args.clone(), expected, scope, pos) {
             Ok(res) => Ok(res),
+            Err(err) if !self.permissive => Err(err),
             Err(err) => {
                 if !silent {
                     self.report(err)?;
