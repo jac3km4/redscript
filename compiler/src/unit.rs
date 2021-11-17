@@ -72,6 +72,15 @@ impl<'a> CompilationUnit<'a> {
         Ok((funcs, self.diagnostics))
     }
 
+    pub fn typecheck_files(
+        self,
+        files: &Files,
+        desugar: bool,
+        permissive: bool,
+    ) -> Result<(Vec<CompiledFunction>, Vec<Diagnostic>), Error> {
+        self.typecheck(Self::parse(files)?, desugar, permissive)
+    }
+
     pub fn compile_and_report(self, files: &Files) -> Result<(), Error> {
         log::info!("Compiling files: {}", files);
 
