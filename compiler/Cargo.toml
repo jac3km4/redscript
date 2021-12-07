@@ -13,7 +13,7 @@ redscript = { path = "../core" }
 peg = "0.7"
 hamt-sync = "0.2"
 sequence_trie = "0.3"
-strum = { version = "0.22", features = ["derive"] }
+strum = { version = "0.23", features = ["derive"] }
 enum-as-inner = "0.3"
 walkdir = "2"
 log = "0.4"
