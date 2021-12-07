@@ -11,6 +11,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 redscript = { path = "../core" }
 log = "0.4"
+thiserror = "1"
 
 [package.metadata.release]
 tag = false

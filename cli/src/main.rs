@@ -6,7 +6,6 @@ use fern::colors::ColoredLevelConfig;
 use gumdrop::Options;
 use redscript::bundle::ScriptBundle;
 use redscript::definition::AnyDefinition;
-use redscript::error::Error;
 use redscript_compiler::source_map::{Files, SourceFilter};
 use redscript_compiler::unit::CompilationUnit;
 use redscript_decompiler::files::FileIndex;
@@ -55,7 +54,7 @@ struct LintOpts {
     bundle: Option<PathBuf>,
 }
 
-fn main() -> Result<(), Error> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     setup_logger();
 
     run().map_err(|err| {
@@ -76,7 +75,7 @@ fn setup_logger() {
         .expect("Failed to initialize the logger");
 }
 
-fn run() -> Result<(), Error> {
+fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let command: Command = match Command::parse_args_default(&args) {
         Ok(res) => res,
@@ -102,13 +101,14 @@ fn run() -> Result<(), Error> {
     };
 
     match command {
-        Command::Decompile(opts) => decompile(opts),
-        Command::Compile(opts) => compile(opts),
-        Command::Lint(opts) => lint(opts),
+        Command::Decompile(opts) => decompile(opts)?,
+        Command::Compile(opts) => compile(opts)?,
+        Command::Lint(opts) => lint(opts)?,
     }
+    Ok(())
 }
 
-fn compile(opts: CompileOpts) -> Result<(), Error> {
+fn compile(opts: CompileOpts) -> Result<(), redscript_compiler::error::Error> {
     let mut bundle = load_bundle(&opts.bundle)?;
 
     let files = Files::from_dir(&opts.src, SourceFilter::None)?;
@@ -125,7 +125,7 @@ fn compile(opts: CompileOpts) -> Result<(), Error> {
     Ok(())
 }
 
-fn decompile(opts: DecompileOpts) -> Result<(), Error> {
+fn decompile(opts: DecompileOpts) -> Result<(), redscript_decompiler::error::Error> {
     let bundle = load_bundle(&opts.input)?;
     let pool = &bundle.pool;
 
@@ -164,7 +164,7 @@ fn decompile(opts: DecompileOpts) -> Result<(), Error> {
     Ok(())
 }
 
-fn lint(opts: LintOpts) -> Result<(), Error> {
+fn lint(opts: LintOpts) -> Result<(), redscript_compiler::error::Error> {
     match opts.bundle {
         Some(bundle_path) => {
             let mut bundle = load_bundle(&bundle_path)?;
@@ -183,7 +183,7 @@ fn lint(opts: LintOpts) -> Result<(), Error> {
     }
 }
 
-fn load_bundle(path: &Path) -> Result<ScriptBundle, Error> {
+fn load_bundle(path: &Path) -> Result<ScriptBundle, io::Error> {
     let (map, _) = Map::with_options()
         .open(path)
         .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;

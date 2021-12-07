@@ -4,9 +4,9 @@ use std::str::FromStr;
 use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, Seq, SourceAst, SwitchCase, UnOp};
 use redscript::bundle::ConstantPool;
 use redscript::definition::{AnyDefinition, Definition, Function, Type};
-use redscript::error::Error;
 use redscript::Ref;
 
+use crate::error::Error;
 use crate::Decompiler;
 
 const INDENT: &str = "  ";
@@ -50,7 +50,7 @@ pub fn write_definition<W: Write>(
             }
             write!(out, "{} ", pool.names.get(definition.name)?)?;
             if !class.base.is_undefined() {
-                write!(out, "extends {} ", pool.definition_name(class.base)?)?;
+                write!(out, "extends {} ", pool.def_name(class.base)?)?;
             }
             writeln!(out, "{{")?;
 

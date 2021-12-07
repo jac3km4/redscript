@@ -6,11 +6,11 @@ use std::marker::PhantomData;
 use std::{fmt, io};
 
 use modular_bitfield::prelude::*;
+use thiserror::Error;
 
 use crate::decode::{Decode, DecodeExt};
 use crate::definition::{AnyDefinition, Class, Definition, Enum, Field, Function, Local, Parameter, Type};
 use crate::encode::{Encode, EncodeExt};
-use crate::error::Error;
 use crate::Ref;
 
 #[derive(Debug)]
@@ -20,14 +20,14 @@ pub struct ScriptBundle {
 }
 
 impl ScriptBundle {
-    pub fn load<I: io::Read + io::Seek>(input: &mut I) -> Result<Self, Error> {
+    pub fn load<I: io::Read + io::Seek>(input: &mut I) -> io::Result<Self> {
         let header: Header = input.decode()?;
         let pool = ConstantPool::decode(input, &header)?;
         let cache = ScriptBundle { header, pool };
         Ok(cache)
     }
 
-    pub fn save<O: io::Write + io::Seek>(&self, output: &mut O) -> Result<(), Error> {
+    pub fn save<O: io::Write + io::Seek>(&self, output: &mut O) -> io::Result<()> {
         output.seek(io::SeekFrom::Start(Header::SIZE as u64))?;
         let header = self.pool.encode(output, &self.header)?;
 
@@ -128,7 +128,7 @@ pub struct ConstantPool {
 }
 
 impl ConstantPool {
-    pub fn decode<I: io::Read + io::Seek>(input: &mut I, header: &Header) -> Result<Self, Error> {
+    pub fn decode<I: io::Read + io::Seek>(input: &mut I, header: &Header) -> io::Result<Self> {
         let buffer = input.decode_bytes(header.data.count)?;
 
         let mut cursor = io::Cursor::new(buffer);
@@ -157,7 +157,7 @@ impl ConstantPool {
         Ok(result)
     }
 
-    pub fn encode<O: io::Write + io::Seek>(&self, output: &mut O, header: &Header) -> Result<Header, Error> {
+    pub fn encode<O: io::Write + io::Seek>(&self, output: &mut O, header: &Header) -> io::Result<Header> {
         let mut buffer = io::Cursor::new(Vec::with_capacity(header.data.count as usize));
         let mut dedup_map = HashMap::new();
         for str in self
@@ -239,95 +239,70 @@ impl ConstantPool {
         Ok(header)
     }
 
-    pub fn definition<A>(&self, index: PoolIndex<A>) -> Result<&Definition, Error> {
+    fn definition_by<F: Fn(&AnyDefinition) -> Option<&A>, A>(
+        &self,
+        index: PoolIndex<A>,
+        get: F,
+    ) -> Result<&A, PoolError> {
         self.definitions
             .get(index.value as usize)
-            .ok_or_else(|| Error::PoolError(format!("Definition {} not found", index.value)))
+            .and_then(|def| get(&def.value))
+            .ok_or_else(|| PoolError(format!("Definition not found in the pool ({})", index)))
     }
 
-    pub fn function(&self, index: PoolIndex<Function>) -> Result<&Function, Error> {
-        if let AnyDefinition::Function(ref fun) = self.definition(index)?.value {
-            Ok(fun)
-        } else {
-            Err(Error::PoolError(format!("{} is not a function", index.value)))
-        }
+    pub fn definition<A>(&self, index: PoolIndex<A>) -> Result<&Definition, PoolError> {
+        self.definitions
+            .get(index.value as usize)
+            .ok_or_else(|| PoolError(format!("Definition not found in the pool ({})", index)))
     }
 
-    pub fn function_mut(&mut self, index: PoolIndex<Function>) -> Result<&mut Function, Error> {
-        let result = self.definitions.get_mut(index.value as usize).map(|def| &mut def.value);
-        if let Some(AnyDefinition::Function(fun)) = result {
-            Ok(fun)
-        } else {
-            Err(Error::PoolError(format!("{} is not a function", index.value)))
-        }
+    pub fn function(&self, index: PoolIndex<Function>) -> Result<&Function, PoolError> {
+        self.definition_by(index, AnyDefinition::as_function)
     }
 
-    pub fn field(&self, index: PoolIndex<Field>) -> Result<&Field, Error> {
-        if let AnyDefinition::Field(ref field) = self.definition(index)?.value {
-            Ok(field)
-        } else {
-            Err(Error::PoolError(format!("{} is not a field", index.value)))
-        }
+    pub fn function_mut(&mut self, index: PoolIndex<Function>) -> Result<&mut Function, PoolError> {
+        self.definitions
+            .get_mut(index.value as usize)
+            .and_then(|def| def.value.as_function_mut())
+            .ok_or_else(|| PoolError(format!("Function not found in the pool ({})", index)))
     }
 
-    pub fn parameter(&self, index: PoolIndex<Parameter>) -> Result<&Parameter, Error> {
-        if let AnyDefinition::Parameter(ref param) = self.definition(index)?.value {
-            Ok(param)
-        } else {
-            Err(Error::PoolError(format!("{} is not a parameter", index.value)))
-        }
+    pub fn field(&self, index: PoolIndex<Field>) -> Result<&Field, PoolError> {
+        self.definition_by(index, AnyDefinition::as_field)
     }
 
-    pub fn local(&self, index: PoolIndex<Local>) -> Result<&Local, Error> {
-        if let AnyDefinition::Local(ref local) = self.definition(index)?.value {
-            Ok(local)
-        } else {
-            Err(Error::PoolError(format!("{} is not a local", index.value)))
-        }
+    pub fn parameter(&self, index: PoolIndex<Parameter>) -> Result<&Parameter, PoolError> {
+        self.definition_by(index, AnyDefinition::as_parameter)
     }
 
-    pub fn type_(&self, index: PoolIndex<Type>) -> Result<&Type, Error> {
-        if let AnyDefinition::Type(ref type_) = self.definition(index)?.value {
-            Ok(type_)
-        } else {
-            Err(Error::PoolError(format!("{} is not a type", index.value)))
-        }
+    pub fn local(&self, index: PoolIndex<Local>) -> Result<&Local, PoolError> {
+        self.definition_by(index, AnyDefinition::as_local)
     }
 
-    pub fn class(&self, index: PoolIndex<Class>) -> Result<&Class, Error> {
-        if let AnyDefinition::Class(ref class) = self.definition(index)?.value {
-            Ok(class)
-        } else {
-            Err(Error::PoolError(format!("{} is not a class", index.value)))
-        }
+    pub fn type_(&self, index: PoolIndex<Type>) -> Result<&Type, PoolError> {
+        self.definition_by(index, AnyDefinition::as_type)
     }
 
-    pub fn class_mut(&mut self, index: PoolIndex<Class>) -> Result<&mut Class, Error> {
-        let result = self.definitions.get_mut(index.value as usize).map(|def| &mut def.value);
-        if let Some(AnyDefinition::Class(fun)) = result {
-            Ok(fun)
-        } else {
-            Err(Error::PoolError(format!("{} is not a class", index.value)))
-        }
+    pub fn class(&self, index: PoolIndex<Class>) -> Result<&Class, PoolError> {
+        self.definition_by(index, AnyDefinition::as_class)
     }
 
-    pub fn enum_(&self, index: PoolIndex<Enum>) -> Result<&Enum, Error> {
-        if let AnyDefinition::Enum(ref enum_) = self.definition(index)?.value {
-            Ok(enum_)
-        } else {
-            Err(Error::PoolError(format!("{} is not an enum", index.value)))
-        }
+    pub fn class_mut(&mut self, index: PoolIndex<Class>) -> Result<&mut Class, PoolError> {
+        self.definitions
+            .get_mut(index.value as usize)
+            .and_then(|def| def.value.as_class_mut())
+            .ok_or_else(|| PoolError(format!("Class not found in the pool ({})", index)))
     }
 
-    pub fn enum_value(&self, index: PoolIndex<i64>) -> Result<i64, Error> {
-        if let AnyDefinition::EnumValue(value) = self.definition(index)?.value {
-            Ok(value)
-        } else {
-            Err(Error::PoolError(format!("{} is not an enum value", index.value)))
-        }
+    pub fn enum_(&self, index: PoolIndex<Enum>) -> Result<&Enum, PoolError> {
+        self.definition_by(index, AnyDefinition::as_enum)
     }
 
-    pub fn definition_name<A>(&self, index: PoolIndex<A>) -> Result<Ref<String>, Error> {
+    pub fn enum_value(&self, index: PoolIndex<i64>) -> Result<i64, PoolError> {
+        self.definition_by(index, AnyDefinition::as_enum_value).cloned()
+    }
+
+    pub fn def_name<A>(&self, index: PoolIndex<A>) -> Result<Ref<String>, PoolError> {
         self.names.get(self.definition(index)?.name)
     }
 
@@ -403,18 +378,18 @@ impl<K> Names<K> {
         Ok(offsets.into_inner())
     }
 
-    pub fn get(&self, index: PoolIndex<K>) -> Result<Ref<String>, Error> {
+    pub fn get(&self, index: PoolIndex<K>) -> Result<Ref<String>, PoolError> {
         self.strings
             .get(index.value as usize)
             .cloned()
-            .ok_or_else(|| Error::PoolError(format!("String {} not found", index.value)))
+            .ok_or_else(|| PoolError(format!("String {} not found", index.value)))
     }
 
-    pub fn get_index(&self, name: &String) -> Result<PoolIndex<K>, Error> {
+    pub fn get_index(&self, name: &String) -> Result<PoolIndex<K>, PoolError> {
         self.mappings
             .get(name)
             .cloned()
-            .ok_or_else(|| Error::PoolError(format!("Name {} not found", name)))
+            .ok_or_else(|| PoolError(format!("Name {} not found", name)))
     }
 
     pub fn add(&mut self, str: Ref<String>) -> PoolIndex<K> {
@@ -689,6 +664,10 @@ pub struct Resource(String);
 #[derive(Debug, Clone)]
 pub struct TweakDbId(String);
 
+#[derive(Debug, Clone, Error)]
+#[error("{0}")]
+pub struct PoolError(pub String);
+
 fn crc(bytes: &[u8]) -> u32 {
     let mut hasher = crc32fast::Hasher::new();
     hasher.update(bytes);
@@ -697,15 +676,14 @@ fn crc(bytes: &[u8]) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
+    use std::io::{self, Cursor};
 
     use super::ScriptBundle;
-    use crate::error::Error;
 
     const PREDEF: &[u8] = include_bytes!("../../resources/predef.redscripts");
 
     #[test]
-    fn reload_scripts() -> Result<(), Error> {
+    fn reload_scripts() -> io::Result<()> {
         let scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
         let mut tmp = Cursor::new(Vec::new());
         scripts.save(&mut tmp)?;

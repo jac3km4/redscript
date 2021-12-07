@@ -2,6 +2,7 @@ use std::fmt::Display;
 use std::io;
 use std::path::PathBuf;
 
+use enum_as_inner::EnumAsInner;
 use modular_bitfield::prelude::*;
 
 use crate::bundle::{ConstantPool, DefinitionHeader, DefinitionType, PoolIndex};
@@ -123,7 +124,7 @@ impl Definition {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, EnumAsInner)]
 pub enum AnyDefinition {
     Type(Type),
     Class(Class),

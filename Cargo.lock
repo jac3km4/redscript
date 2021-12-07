@@ -893,6 +893,7 @@ dependencies = [
  "redscript",
  "sequence_trie",
  "strum 0.23.0",
+ "thiserror",
  "walkdir",
 ]
 
@@ -902,6 +903,7 @@ version = "0.4.0-RC1"
 dependencies = [
  "log",
  "redscript",
+ "thiserror",
 ]
 
 [[package]]

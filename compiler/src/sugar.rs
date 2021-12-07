@@ -4,9 +4,9 @@ use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, Seq, Span, TypeName}
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::IntrinsicOp;
 use redscript::definition::{Definition, Local, LocalFlags};
-use redscript::error::Error;
 use redscript::Ref;
 
+use crate::error::{Cause, Error, ResultSpan};
 use crate::scope::{Reference, Scope, TypeId, Value};
 use crate::symbol::{FunctionSignature, FunctionSignatureBuilder};
 use crate::transform::ExprTransformer;
@@ -39,12 +39,12 @@ impl<'a> Desugar<'a> {
         self.prefix_exprs.push(expr)
     }
 
-    fn get_function(&self, signature: FunctionSignature, pos: Span) -> Result<Callable, Error> {
+    fn get_function(&self, signature: FunctionSignature) -> Result<Callable, Cause> {
         let fun_idx = self
             .scope
-            .resolve_function(Ident::new(signature.name().to_owned()), pos)?
+            .resolve_function(Ident::new(signature.name().to_owned()))?
             .by_id(&signature, self.pool)
-            .ok_or_else(|| Error::function_not_found(signature.as_ref(), pos))?;
+            .ok_or_else(|| Cause::function_not_found(signature.as_ref()))?;
 
         Ok(Callable::Function(fun_idx))
     }
@@ -52,7 +52,7 @@ impl<'a> Desugar<'a> {
     fn fresh_local(&mut self, type_: &TypeId) -> Result<Reference, Error> {
         let fun_idx = self.scope.function.unwrap();
         let name_idx = self.pool.names.add(Ref::new(format!("synthetic${}", self.name_count)));
-        let type_idx = self.scope.get_type_index(type_, self.pool)?;
+        let type_idx = self.scope.get_type_index(type_, self.pool).map_err(Cause::pool_err)?;
         let local = Local::new(type_idx, LocalFlags::new());
         let def = Definition::local(name_idx, fun_idx, local);
         let idx = self.pool.add_definition(def);
@@ -84,41 +84,41 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
         &mut self,
         prefix: Ref<String>,
         parts: Vec<(Expr<TypedAst>, Ref<String>)>,
-        pos: Span,
+        span: Span,
     ) -> Result<Expr<TypedAst>, Error> {
-        let mut acc = Expr::Constant(Constant::String(Literal::String, prefix), pos);
-        let str_type = self.scope.resolve_type(&TypeName::STRING, self.pool, pos)?;
+        let mut acc = Expr::Constant(Constant::String(Literal::String, prefix), span);
+        let str_type = self.scope.resolve_type(&TypeName::STRING, self.pool).with_span(span)?;
 
         let add_str = FunctionSignatureBuilder::new(BinOp::Add.to_string())
             .parameter(&TypeName::basic("Script_RefString"), false)
             .parameter(&TypeName::basic("Script_RefString"), false)
             .return_type(&TypeName::STRING);
-        let add_str = self.get_function(add_str, pos)?;
+        let add_str = self.get_function(add_str).with_span(span)?;
 
         let as_ref = Callable::Intrinsic(IntrinsicOp::AsRef, TypeId::ScriptRef(Box::new(str_type.clone())));
-        let as_ref = |exp: Expr<TypedAst>| Expr::Call(as_ref.clone(), vec![exp], pos);
+        let as_ref = |exp: Expr<TypedAst>| Expr::Call(as_ref.clone(), vec![exp], span);
 
         for (part, str) in parts {
             let part = self.on_expr(part)?;
 
             let part = match type_of(&part, self.scope, self.pool)? {
-                TypeId::Void => return Err(Error::unsupported("Formatting void", pos)),
+                TypeId::Void => return Err(Cause::unsupported("Formatting void").with_span(span)),
                 TypeId::ScriptRef(idx) if idx.pretty(self.pool)?.as_ref() == "String" => part,
                 typ if typ.pretty(self.pool)?.as_ref() == "String" => as_ref(part),
                 _ => {
                     let to_string = Callable::Intrinsic(IntrinsicOp::ToString, str_type.clone());
-                    as_ref(Expr::Call(to_string, vec![part], pos))
+                    as_ref(Expr::Call(to_string, vec![part], span))
                 }
             };
 
             let combined = if str.is_empty() {
                 part
             } else {
-                let str: Expr<TypedAst> = as_ref(Expr::Constant(Constant::String(Literal::String, str), pos));
-                as_ref(Expr::Call(add_str.clone(), vec![part, str], pos))
+                let str: Expr<TypedAst> = as_ref(Expr::Constant(Constant::String(Literal::String, str), span));
+                as_ref(Expr::Call(add_str.clone(), vec![part, str], span))
             };
 
-            acc = Expr::Call(add_str.clone(), vec![as_ref(acc), combined], pos);
+            acc = Expr::Call(add_str.clone(), vec![as_ref(acc), combined], span);
         }
         Ok(acc)
     }
@@ -128,7 +128,7 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
         name: PoolIndex<Local>,
         array: Expr<TypedAst>,
         seq: Seq<TypedAst>,
-        pos: Span,
+        span: Span,
     ) -> Result<Expr<TypedAst>, Error> {
         let mut seq = self.on_seq(seq)?;
 
@@ -136,18 +136,18 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
         let arr_type = type_of(&array, self.scope, self.pool)?;
         let arr_local = self.fresh_local(&arr_type)?;
 
-        let counter_type = self.scope.resolve_type(&TypeName::INT32, self.pool, pos)?;
+        let counter_type = self.scope.resolve_type(&TypeName::INT32, self.pool).with_span(span)?;
         let counter_local = self.fresh_local(&counter_type)?;
 
         self.add_prefix(Expr::Assign(
-            Box::new(Expr::Ident(arr_local.clone(), pos)),
+            Box::new(Expr::Ident(arr_local.clone(), span)),
             Box::new(array),
-            pos,
+            span,
         ));
         self.add_prefix(Expr::Assign(
-            Box::new(Expr::Ident(counter_local.clone(), pos)),
-            Box::new(Expr::Constant(Constant::I32(0), pos)),
-            pos,
+            Box::new(Expr::Ident(counter_local.clone(), span)),
+            Box::new(Expr::Constant(Constant::I32(0), span)),
+            span,
         ));
 
         let array_size = Callable::Intrinsic(IntrinsicOp::ArraySize, counter_type);
@@ -155,42 +155,42 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
             .parameter(&TypeName::INT32, true)
             .parameter(&TypeName::INT32, false)
             .return_type(&TypeName::INT32);
-        let assign_add = self.get_function(assign_add, pos)?;
+        let assign_add = self.get_function(assign_add).with_span(span)?;
 
         let less_than = FunctionSignatureBuilder::new(BinOp::Less.to_string())
             .parameter(&TypeName::INT32, false)
             .parameter(&TypeName::INT32, false)
             .return_type(&TypeName::BOOL);
-        let less_than = self.get_function(less_than, pos)?;
+        let less_than = self.get_function(less_than).with_span(span)?;
 
         let condition = Expr::Call(
             less_than,
             vec![
-                Expr::Ident(counter_local.clone(), pos),
-                Expr::Call(array_size, vec![Expr::Ident(arr_local.clone(), pos)], pos),
+                Expr::Ident(counter_local.clone(), span),
+                Expr::Call(array_size, vec![Expr::Ident(arr_local.clone(), span)], span),
             ],
-            pos,
+            span,
         );
         let assign_iter_value = Expr::Assign(
-            Box::new(Expr::Ident(Reference::Value(Value::Local(name)), pos)),
+            Box::new(Expr::Ident(Reference::Value(Value::Local(name)), span)),
             Box::new(Expr::ArrayElem(
-                Box::new(Expr::Ident(arr_local, pos)),
-                Box::new(Expr::Ident(counter_local.clone(), pos)),
-                pos,
+                Box::new(Expr::Ident(arr_local, span)),
+                Box::new(Expr::Ident(counter_local.clone(), span)),
+                span,
             )),
-            pos,
+            span,
         );
         let increment_counter = Expr::Call(
             assign_add,
-            vec![Expr::Ident(counter_local, pos), Expr::Constant(Constant::I32(1), pos)],
-            pos,
+            vec![Expr::Ident(counter_local, span), Expr::Constant(Constant::I32(1), span)],
+            span,
         );
 
         let mut body = vec![assign_iter_value];
         body.append(&mut seq.exprs);
         body.push(increment_counter);
 
-        Ok(Expr::While(Box::new(condition), Seq::new(body), pos))
+        Ok(Expr::While(Box::new(condition), Seq::new(body), span))
     }
 
     fn on_seq(&mut self, seq: Seq<TypedAst>) -> Result<Seq<TypedAst>, Error> {

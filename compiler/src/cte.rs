@@ -2,9 +2,9 @@ use std::collections::HashSet;
 
 use enum_as_inner::EnumAsInner;
 use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, SourceAst, UnOp};
-use redscript::error::Error;
 use redscript::Ref;
 
+use crate::error::Error;
 use crate::symbol::ModulePath;
 
 #[derive(Debug, EnumAsInner)]

@@ -4,9 +4,9 @@ use std::str::FromStr;
 use redscript::ast::{BinOp, Ident, Span, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::definition::{AnyDefinition, Class, Enum, Function, Visibility};
-use redscript::error::Error;
 use sequence_trie::SequenceTrie;
 
+use crate::error::{Cause, Error, ResultSpan};
 use crate::parser::{Annotation, FunctionSource, Qualifier};
 use crate::scope::Scope;
 
@@ -19,7 +19,7 @@ impl SymbolMap {
         let mut symbols: SequenceTrie<Ident, Symbol> = SequenceTrie::new();
 
         for (idx, def) in pool.roots() {
-            let name = pool.definition_name(idx)?;
+            let name = pool.def_name(idx)?;
             let symbol = match def.value {
                 AnyDefinition::Class(ref class) if class.flags.is_struct() => {
                     Symbol::Struct(idx.cast(), class.visibility)
@@ -64,22 +64,22 @@ impl SymbolMap {
 
     pub fn populate_import(&self, import: Import, scope: &mut Scope, visibility: Visibility) -> Result<(), Error> {
         match import {
-            Import::Exact(_, path, pos) => {
-                if let Some(symbol) = self.get_symbol(&path, pos)?.visible(visibility) {
+            Import::Exact(_, path, span) => {
+                if let Some(symbol) = self.get_symbol(&path).with_span(span)?.visible(visibility) {
                     scope.add_symbol(path.last().unwrap(), symbol);
                 }
             }
-            Import::All(_, path, pos) => {
-                for (ident, symbol) in self.get_direct_children(&path, pos)? {
+            Import::All(_, path, span) => {
+                for (ident, symbol) in self.get_direct_children(&path).with_span(span)? {
                     if let Some(symbol) = symbol.clone().visible(visibility) {
                         scope.add_symbol(ident, symbol.clone());
                     }
                 }
             }
-            Import::Selected(_, path, names, pos) => {
+            Import::Selected(_, path, names, span) => {
                 for name in names {
                     let path = path.with_child(name);
-                    if let Some(symbol) = self.get_symbol(&path, pos)?.visible(visibility) {
+                    if let Some(symbol) = self.get_symbol(&path).with_span(span)?.visible(visibility) {
                         scope.add_symbol(path.last().unwrap(), symbol);
                     }
                 }
@@ -88,22 +88,18 @@ impl SymbolMap {
         Ok(())
     }
 
-    pub fn get_symbol(&self, path: &ModulePath, pos: Span) -> Result<Symbol, Error> {
+    pub fn get_symbol(&self, path: &ModulePath) -> Result<Symbol, Cause> {
         self.symbols
             .get(path)
             .cloned()
-            .ok_or_else(|| Error::unresolved_import(path.render(), pos))
+            .ok_or_else(|| Cause::unresolved_import(path.render()))
     }
 
-    fn get_direct_children(
-        &self,
-        path: &ModulePath,
-        pos: Span,
-    ) -> Result<impl Iterator<Item = (Ident, &Symbol)>, Error> {
+    fn get_direct_children(&self, path: &ModulePath) -> Result<impl Iterator<Item = (Ident, &Symbol)>, Cause> {
         let node = self
             .symbols
             .get_node(path)
-            .ok_or_else(|| Error::unresolved_module(path.render(), pos))?;
+            .ok_or_else(|| Cause::unresolved_module(path.render()))?;
         let res = node
             .iter()
             .filter(|(parts, _)| parts.len() == 1)

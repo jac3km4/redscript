@@ -7,7 +7,6 @@ use crate::bundle::{PoolIndex, Resource, TweakDbId};
 use crate::decode::{Decode, DecodeExt};
 use crate::definition::{Class, Enum, Field, Function, Local, Parameter, Type};
 use crate::encode::{Encode, EncodeExt};
-use crate::error::Error;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instr<Loc> {
@@ -1043,11 +1042,13 @@ impl<'a, Loc: Clone> CodeCursor<'a, Loc> {
         }
     }
 
-    pub fn pop(&mut self) -> Result<Instr<Loc>, Error> {
-        let instr = self
-            .code
-            .get(self.index as usize)
-            .ok_or_else(|| Error::eof(format!("Attempted to read past EOF: {}", self.position.value)))?;
+    pub fn pop(&mut self) -> io::Result<Instr<Loc>> {
+        let instr = self.code.get(self.index as usize).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                format!("Attempted to read past EOF: {}", self.position.value),
+            )
+        })?;
         self.index += 1;
         self.position = Location::new(self.position.value + instr.size());
         Ok(instr.clone())
@@ -1061,7 +1062,7 @@ impl<'a, Loc: Clone> CodeCursor<'a, Loc> {
         self.position
     }
 
-    pub fn set_pos(&mut self, position: Location) -> Result<(), Error> {
+    pub fn set_pos(&mut self, position: Location) -> io::Result<()> {
         self.reset();
         while self.position < position {
             self.pop()?;
@@ -1070,7 +1071,7 @@ impl<'a, Loc: Clone> CodeCursor<'a, Loc> {
         Ok(())
     }
 
-    pub fn seek(&mut self, offset: Offset) -> Result<(), Error> {
+    pub fn seek(&mut self, offset: Offset) -> io::Result<()> {
         self.set_pos(offset.absolute(self.position))
     }
 

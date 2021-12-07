@@ -2,6 +2,7 @@
 
 pub mod assembler;
 pub mod cte;
+pub mod error;
 #[allow(clippy::redundant_closure_call)]
 pub mod parser;
 pub mod scope;

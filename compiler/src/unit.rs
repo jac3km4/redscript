@@ -5,12 +5,12 @@ use redscript::ast::{Expr, Ident, Seq, SourceAst, Span};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Instr};
 use redscript::definition::*;
-use redscript::error::Error;
 use redscript::mapper::{MultiMapper, PoolMapper};
 use redscript::Ref;
 
 use crate::assembler::Assembler;
 use crate::cte;
+use crate::error::{Cause, Error, ResultSpan};
 use crate::parser::*;
 use crate::scope::{Reference, Scope, Value};
 use crate::source_map::Files;
@@ -315,9 +315,9 @@ impl<'a> CompilationUnit<'a> {
                 let path = module.with_child(source.name.clone());
                 let visibility = source.qualifiers.visibility().unwrap_or(Visibility::Private);
 
-                if let Ok(Symbol::Class(_, _)) = self.symbols.get_symbol(&path, source.span) {
+                if let Ok(Symbol::Class(_, _)) = self.symbols.get_symbol(&path).with_span(source.span) {
                     if !permissive {
-                        return Err(Error::class_redefinition(source.span));
+                        return Err(Cause::class_redefinition().with_span(source.span));
                     }
                 }
 
@@ -428,12 +428,15 @@ impl<'a> CompilationUnit<'a> {
         }
 
         let base_idx = if let Some(base_name) = source.base {
-            if let Symbol::Class(base_idx, _) = scope.resolve_symbol(base_name.clone(), source.span)? {
+            if let Symbol::Class(base_idx, _) = scope.resolve_symbol(base_name.clone()).with_span(source.span)? {
                 base_idx
             } else {
-                return Err(Error::class_not_found(base_name, source.span));
+                return Err(Cause::class_not_found(base_name).with_span(source.span));
             }
-        } else if let Ok(Symbol::Class(class, _)) = scope.resolve_symbol(Ident::Static("IScriptable"), source.span) {
+        } else if let Ok(Symbol::Class(class, _)) = scope
+            .resolve_symbol(Ident::Static("IScriptable"))
+            .with_span(source.span)
+        {
             class
         } else {
             log::warn!("No IScriptable in scope, defaulting to no implicit base class");
@@ -471,13 +474,13 @@ impl<'a> CompilationUnit<'a> {
         let is_static = decl.qualifiers.contain(Qualifier::Static) || class_idx.is_undefined();
 
         if is_native && class_flags.map(|f| !f.is_native()).unwrap_or(false) {
-            self.report(Error::unexpected_native(source.declaration.span))?;
+            self.report(Cause::unexpected_native().with_span(source.declaration.span))?;
         }
         if !is_native && class_flags.map(|f| !f.is_abstract()).unwrap_or(true) && source.body.is_none() {
-            self.report(Error::expected_body(source.declaration.span))?;
+            self.report(Cause::expected_body().with_span(source.declaration.span))?;
         }
         if is_native && source.body.is_some() {
-            self.report(Error::native_with_body(source.declaration.span))?;
+            self.report(Cause::native_with_body().with_span(source.declaration.span))?;
         }
 
         let flags = FunctionFlags::new()
@@ -494,16 +497,16 @@ impl<'a> CompilationUnit<'a> {
             None => None,
             Some(type_) if type_.name.as_ref() == "Void" => None,
             Some(type_) => {
-                let type_ = scope.resolve_type(&type_, self.pool, decl.span)?;
-                Some(scope.get_type_index(&type_, self.pool)?)
+                let type_ = scope.resolve_type(&type_, self.pool).with_span(decl.span)?;
+                Some(scope.get_type_index(&type_, self.pool).with_span(decl.span)?)
             }
         };
 
         let mut parameters = Vec::new();
 
         for param in &source.parameters {
-            let type_ = scope.resolve_type(&param.type_, self.pool, decl.span)?;
-            let type_idx = scope.get_type_index(&type_, self.pool)?;
+            let type_ = scope.resolve_type(&param.type_, self.pool).with_span(decl.span)?;
+            let type_idx = scope.get_type_index(&type_, self.pool).with_span(decl.span)?;
             let flags = ParameterFlags::new()
                 .with_is_optional(param.qualifiers.contain(Qualifier::Optional))
                 .with_is_out(param.qualifiers.contain(Qualifier::Out))
@@ -564,11 +567,11 @@ impl<'a> CompilationUnit<'a> {
         let is_field_native = decl.qualifiers.contain(Qualifier::Native);
 
         if is_field_native && !class_flags.is_native() {
-            self.report(Error::unexpected_native(decl.span))?;
+            self.report(Cause::unexpected_native().with_span(decl.span))?;
         }
 
-        let type_ = scope.resolve_type(&source.type_, self.pool, decl.span)?;
-        let type_idx = scope.get_type_index(&type_, self.pool)?;
+        let type_ = scope.resolve_type(&source.type_, self.pool).with_span(decl.span)?;
+        let type_idx = scope.get_type_index(&type_, self.pool).with_span(decl.span)?;
         let flags = FieldFlags::new()
             .with_is_browsable(true)
             .with_is_native(is_field_native);
@@ -622,20 +625,20 @@ impl<'a> CompilationUnit<'a> {
                         .args
                         .first()
                         .and_then(Expr::as_ident)
-                        .ok_or_else(|| Error::invalid_annotation_args(ann.span))?;
-                    if let Symbol::Class(target_class, _) = scope.resolve_symbol(ident.clone(), ann.span)? {
+                        .ok_or_else(|| Cause::invalid_annotation_args().with_span(ann.span))?;
+                    if let Symbol::Class(target_class, _) = scope.resolve_symbol(ident.clone()).with_span(ann.span)? {
                         let flags = self.pool.class(target_class)?.flags;
                         self.define_field(index, target_class, flags, visibility, source, scope)?;
                         self.pool.class_mut(target_class)?.fields.push(index);
                         return Ok(());
                     } else {
-                        return Err(Error::class_not_found(ident, ann.span));
+                        return Err(Cause::class_not_found(ident).with_span(ann.span));
                     }
                 }
                 _ => {}
             }
         }
-        Err(Error::unsupported("Let binding", decl.span))
+        Err(Cause::unsupported("Let binding").with_span(decl.span))
     }
 
     fn determine_function_location(&mut self, source: FunctionSource, module: &ModulePath) -> Result<Slot, Error> {
@@ -651,24 +654,25 @@ impl<'a> CompilationUnit<'a> {
             match ann.kind {
                 AnnotationKind::WrapMethod => {
                     if source.declaration.qualifiers.contain(Qualifier::Native) {
-                        return Err(Error::unsupported("Wrapping natives", ann.span));
+                        return Err(Cause::unsupported("Wrapping natives").with_span(ann.span));
                     }
                     let (class_name, _) = ann
                         .args
                         .first()
                         .and_then(Expr::as_ident)
-                        .ok_or_else(|| Error::invalid_annotation_args(ann.span))?;
+                        .ok_or_else(|| Cause::invalid_annotation_args().with_span(ann.span))?;
 
-                    let target_class_idx = match self.scope.resolve_symbol(class_name.clone(), ann.span)? {
+                    let target_class_idx = match self.scope.resolve_symbol(class_name.clone()).with_span(ann.span)? {
                         Symbol::Class(idx, _) => idx,
                         Symbol::Struct(idx, _) => idx,
-                        _ => return Err(Error::class_not_found(class_name, ann.span)),
+                        _ => return Err(Cause::class_not_found(class_name).with_span(ann.span)),
                     };
                     let fun_idx = self
                         .scope
-                        .resolve_method(name.clone(), target_class_idx, self.pool, ann.span)?
+                        .resolve_method(name.clone(), target_class_idx, self.pool)
+                        .with_span(ann.span)?
                         .by_id(&sig, self.pool)
-                        .ok_or_else(|| Error::function_not_found(name, ann.span))?;
+                        .ok_or_else(|| Cause::function_not_found(name).with_span(ann.span))?;
 
                     let wrapped_idx = match self.wrappers.get(&fun_idx) {
                         Some(wrapped) => *wrapped,
@@ -702,17 +706,18 @@ impl<'a> CompilationUnit<'a> {
                         .args
                         .first()
                         .and_then(Expr::as_ident)
-                        .ok_or_else(|| Error::invalid_annotation_args(ann.span))?;
-                    let target_class_idx = match self.scope.resolve_symbol(class_name.clone(), ann.span)? {
+                        .ok_or_else(|| Cause::invalid_annotation_args().with_span(ann.span))?;
+                    let target_class_idx = match self.scope.resolve_symbol(class_name.clone()).with_span(ann.span)? {
                         Symbol::Class(idx, _) => idx,
                         Symbol::Struct(idx, _) => idx,
-                        _ => return Err(Error::class_not_found(class_name, ann.span)),
+                        _ => return Err(Cause::class_not_found(class_name).with_span(ann.span)),
                     };
                     let fun_idx = self
                         .scope
-                        .resolve_method(name.clone(), target_class_idx, self.pool, ann.span)?
+                        .resolve_method(name.clone(), target_class_idx, self.pool)
+                        .with_span(ann.span)?
                         .by_id(&sig, self.pool)
-                        .ok_or_else(|| Error::function_not_found(name, ann.span))?;
+                        .ok_or_else(|| Cause::function_not_found(name).with_span(ann.span))?;
                     let base = self.pool.function(fun_idx)?.base_method;
                     let slot = Slot::Function {
                         index: fun_idx,
@@ -728,9 +733,10 @@ impl<'a> CompilationUnit<'a> {
                 AnnotationKind::ReplaceGlobal => {
                     let fun_idx = self
                         .scope
-                        .resolve_function(name.clone(), ann.span)?
+                        .resolve_function(name.clone())
+                        .with_span(ann.span)?
                         .by_id(&sig, self.pool)
-                        .ok_or_else(|| Error::function_not_found(name, ann.span))?;
+                        .ok_or_else(|| Cause::function_not_found(name).with_span(ann.span))?;
 
                     let slot = Slot::Function {
                         index: fun_idx,
@@ -748,18 +754,18 @@ impl<'a> CompilationUnit<'a> {
                         .args
                         .first()
                         .and_then(Expr::as_ident)
-                        .ok_or_else(|| Error::invalid_annotation_args(ann.span))?;
-                    let target_class_idx = match self.scope.resolve_symbol(class_name.clone(), ann.span)? {
+                        .ok_or_else(|| Cause::invalid_annotation_args().with_span(ann.span))?;
+                    let target_class_idx = match self.scope.resolve_symbol(class_name.clone()).with_span(ann.span)? {
                         Symbol::Class(idx, _) => idx,
                         Symbol::Struct(idx, _) => idx,
-                        _ => return Err(Error::class_not_found(class_name, ann.span)),
+                        _ => return Err(Cause::class_not_found(class_name).with_span(ann.span)),
                     };
                     let class = self.pool.class(target_class_idx)?;
                     let base_method = if class.base != PoolIndex::UNDEFINED {
                         let base = self.pool.class(class.base)?;
                         base.functions
                             .iter()
-                            .find(|fun| self.pool.definition_name(**fun).unwrap().as_str() == sig.as_ref())
+                            .find(|fun| self.pool.def_name(**fun).unwrap().as_str() == sig.as_ref())
                             .cloned()
                     } else {
                         None
@@ -823,7 +829,7 @@ impl<'a> CompilationUnit<'a> {
         };
 
         for param in &fun.parameters {
-            let ident = Ident::Owned(pool.definition_name(*param)?);
+            let ident = Ident::Owned(pool.def_name(*param)?);
             local_scope.add_parameter(ident, *param);
         }
 

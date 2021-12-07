@@ -5,8 +5,9 @@ use std::path::{Path, PathBuf};
 use std::{fmt, iter};
 
 use redscript::ast::{Pos, Span};
-use redscript::error::Error;
 use walkdir::WalkDir;
+
+use crate::error::Error;
 
 #[derive(Debug, Default)]
 pub struct Files {

@@ -1,13 +1,14 @@
 use std::collections::BTreeMap;
 use std::io;
 
+use error::Error;
 use redscript::ast::{Constant, Expr, Ident, Literal, Seq, SourceAst, Span, SwitchCase, Target, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{CodeCursor, Instr, IntrinsicOp, Location, Offset};
 use redscript::definition::Function;
-use redscript::error::Error;
 use redscript::Ref;
 
+pub mod error;
 pub mod files;
 pub mod print;
 
@@ -34,8 +35,8 @@ impl<'a> Decompiler<'a> {
         let mut locals = BTreeMap::new();
         for local_index in &function.locals {
             let local = pool.local(*local_index)?;
-            let name = Ident::Owned(pool.definition_name(*local_index)?);
-            let type_name = pool.definition_name(local.type_)?;
+            let name = Ident::Owned(pool.def_name(*local_index)?);
+            let type_name = pool.def_name(local.type_)?;
             let type_ = TypeName::from_repr(type_name.as_ref());
             locals.insert(name, type_);
         }
@@ -50,7 +51,7 @@ impl<'a> Decompiler<'a> {
     }
 
     fn definition_ident<A>(&self, index: PoolIndex<A>) -> Result<Ident, Error> {
-        Ok(Ident::Owned(self.pool.definition_name(index)?))
+        Ok(Ident::Owned(self.pool.def_name(index)?))
     }
 
     fn consume_n(&mut self, n: usize) -> Result<Vec<Expr<SourceAst>>, Error> {
@@ -249,11 +250,7 @@ impl<'a> Decompiler<'a> {
             }
             Instr::Construct(n, class) => {
                 let params = self.consume_n(n.into())?;
-                Expr::New(
-                    TypeName::basic_owned(self.pool.definition_name(class)?),
-                    params,
-                    Span::ZERO,
-                )
+                Expr::New(TypeName::basic_owned(self.pool.def_name(class)?), params, Span::ZERO)
             }
             Instr::InvokeStatic(_, _, idx, _) => {
                 let def = self.pool.definition(idx)?;
@@ -265,7 +262,7 @@ impl<'a> Decompiler<'a> {
                     if def.parent.is_undefined() {
                         Expr::Call(name, params, Span::ZERO)
                     } else {
-                        let class_name = Ident::Owned(self.pool.definition_name(def.parent)?);
+                        let class_name = Ident::Owned(self.pool.def_name(def.parent)?);
                         let expr = Box::new(Expr::Ident(class_name, Span::ZERO));
                         Expr::MethodCall(expr, name, params, Span::ZERO)
                     }
@@ -310,11 +307,7 @@ impl<'a> Decompiler<'a> {
             }
             Instr::Equals(_) => self.consume_intrisnic(IntrinsicOp::Equals)?,
             Instr::NotEquals(_) => self.consume_intrisnic(IntrinsicOp::NotEquals)?,
-            Instr::New(class) => Expr::New(
-                TypeName::basic_owned(self.pool.definition_name(class)?),
-                vec![],
-                Span::ZERO,
-            ),
+            Instr::New(class) => Expr::New(TypeName::basic_owned(self.pool.def_name(class)?), vec![], Span::ZERO),
             Instr::Delete => self.consume_call("Delete", 1)?,
             Instr::This => Expr::This(Span::ZERO),
             Instr::StartProfiling(_, _) => Expr::EMPTY,
@@ -363,7 +356,7 @@ impl<'a> Decompiler<'a> {
             Instr::EnumToI32(_, _) => self.consume_intrisnic(IntrinsicOp::EnumInt)?,
             Instr::I32ToEnum(_, _) => self.consume_intrisnic(IntrinsicOp::IntEnum)?,
             Instr::DynamicCast(type_, _) => {
-                let name = self.pool.definition_name(type_)?;
+                let name = self.pool.def_name(type_)?;
                 let type_name = TypeName {
                     name: Ident::Owned(name),
                     arguments: vec![],

@@ -1,8 +1,9 @@
 use std::fmt::Debug;
 
 use redscript::ast::{BinOp, Constant, Expr, NameKind, Seq, Span, SwitchCase, Target, UnOp};
-use redscript::error::Error;
 use redscript::Ref;
+
+use crate::error::Error;
 
 pub trait ExprTransformer<N: NameKind>
 where
