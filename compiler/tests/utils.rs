@@ -6,7 +6,7 @@ use redscript::bytecode::{Code, Offset};
 use redscript::definition::{AnyDefinition, ClassFlags, Definition};
 use redscript_compiler::error::Error;
 use redscript_compiler::parser;
-use redscript_compiler::unit::CompilationUnit;
+use redscript_compiler::unit::{CompilationUnit, Diagnostic};
 
 pub const PREDEF: &[u8] = include_bytes!("../../resources/predef.redscripts");
 
@@ -17,7 +17,7 @@ pub struct TestContext {
 
 impl TestContext {
     pub fn compiled(sources: Vec<&str>) -> Result<Self, Error> {
-        let pool = compiled(sources)?;
+        let (pool, _) = compiled(sources)?;
         let res = Self {
             pool,
             indexes: HashMap::new(),
@@ -110,15 +110,15 @@ macro_rules! check_code {
     }
 }
 
-pub fn compiled(sources: Vec<&str>) -> Result<ConstantPool, Error> {
+pub fn compiled(sources: Vec<&str>) -> Result<(ConstantPool, Vec<Diagnostic>), Error> {
     let modules = sources
         .iter()
         .map(|source| parser::parse_str(&source).unwrap())
         .collect();
     let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
-    CompilationUnit::new(&mut scripts.pool)?.compile(modules)?;
+    let res = CompilationUnit::new(&mut scripts.pool)?.compile(modules)?;
 
-    Ok(scripts.pool)
+    Ok((scripts.pool, res))
 }
 
 pub fn check_class_flags(pool: &ConstantPool, name: &str, flags: ClassFlags) -> Result<(), Error> {

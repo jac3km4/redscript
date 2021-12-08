@@ -299,8 +299,8 @@ impl TypeId {
             TypeId::StaticArray(idx, size) => Ok(Ident::new(format!("{}[{}]", idx.repr(pool)?, size))),
             TypeId::ScriptRef(idx) => Ok(Ident::new(format!("script_ref:{}", idx.repr(pool)?))),
             TypeId::Variant => Ok(Ident::Static("Variant")),
-            TypeId::Null => Err(PoolError("Null type".to_owned())),
-            TypeId::Void => Err(PoolError("Void type".to_owned())),
+            TypeId::Null => Err(PoolError("Unexpected null type".to_owned())),
+            TypeId::Void => Err(PoolError("Unexpected void type".to_owned())),
         }
     }
 

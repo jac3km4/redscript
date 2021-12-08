@@ -189,6 +189,11 @@ impl Cause {
         let err = "Native member is not allowed on a non-native class".to_owned();
         Cause(err)
     }
+
+    pub fn unification_failed<A: Display, B: Display>(a: A, b: B) -> Cause {
+        let err = format!("Cannot unify {} and {}", a, b);
+        Cause(err)
+    }
 }
 
 #[derive(Debug)]

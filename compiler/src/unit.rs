@@ -2,7 +2,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt;
 
 use redscript::ast::{Expr, Ident, Seq, SourceAst, Span};
-use redscript::bundle::{ConstantPool, PoolIndex};
+use redscript::bundle::{ConstantPool, PoolError, PoolIndex};
 use redscript::bytecode::{Code, Instr};
 use redscript::definition::*;
 use redscript::mapper::{MultiMapper, PoolMapper};
@@ -17,7 +17,7 @@ use crate::source_map::Files;
 use crate::sugar::Desugar;
 use crate::symbol::{FunctionSignature, Import, ModulePath, Symbol, SymbolMap};
 use crate::transform::ExprTransformer;
-use crate::typechecker::{Callable, TypeChecker, TypedAst};
+use crate::typechecker::{collect_subtypes, Callable, TypeChecker, TypedAst};
 
 type ProxyMap = HashMap<PoolIndex<Function>, PoolIndex<Function>>;
 
@@ -932,13 +932,8 @@ impl<'a> CompilationUnit<'a> {
         Ok(())
     }
 
-    fn class_cardinality(idx: PoolIndex<Class>, pool: &ConstantPool) -> usize {
-        let class = pool.class(idx).unwrap();
-        if class.base.is_undefined() {
-            1
-        } else {
-            Self::class_cardinality(class.base, pool) + 1
-        }
+    fn class_cardinality(idx: PoolIndex<Class>, pool: &ConstantPool) -> Result<usize, PoolError> {
+        Ok(collect_subtypes(idx, pool)?.len())
     }
 
     fn cleanup_pool(pool: &mut ConstantPool) {
@@ -968,7 +963,7 @@ impl<'a> CompilationUnit<'a> {
 
         // find out the order based on cardinality
         let mut sorted: Vec<PoolIndex<Class>> = unsorted.iter().copied().collect();
-        sorted.sort_by_key(|k| Self::class_cardinality(*k, pool));
+        sorted.sort_by_key(|k| Self::class_cardinality(*k, pool).unwrap());
 
         let definitions: Vec<Definition> = sorted.iter().map(|k| pool.definition(*k).unwrap()).cloned().collect();
 
@@ -1035,7 +1030,7 @@ enum Slot {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Diagnostic {
     MethodConflict(PoolIndex<Function>, Span),
     CompileError(String, Span),

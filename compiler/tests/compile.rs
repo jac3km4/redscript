@@ -20,7 +20,8 @@ fn compile_simple_class() {
             }
         }";
 
-    compiled(vec![sources]).unwrap();
+    let (_, errs) = compiled(vec![sources]).unwrap();
+    assert_eq!(errs, vec![]);
 }
 
 #[test]
@@ -40,7 +41,8 @@ fn compile_ext_class() {
             }
         }";
 
-    compiled(vec![sources]).unwrap();
+    let (_, errs) = compiled(vec![sources]).unwrap();
+    assert_eq!(errs, vec![]);
 }
 
 #[test]
@@ -58,7 +60,8 @@ fn compile_class_with_forward_ref() {
             public let myTestVar: String;
         }";
 
-    compiled(vec![sources]).unwrap();
+    let (_, errs) = compiled(vec![sources]).unwrap();
+    assert_eq!(errs, vec![]);
 }
 
 #[test]
@@ -69,7 +72,8 @@ fn compile_class_with_shorthand_funcs() {
             public static func StaticVal() -> String = \"static\"
         }";
 
-    compiled(vec![sources]).unwrap();
+    let (_, errs) = compiled(vec![sources]).unwrap();
+    assert_eq!(errs, vec![]);
 }
 
 #[test]
@@ -83,7 +87,7 @@ fn compile_class_attributes() {
     let expected_base_flags = ClassFlags::new().with_is_abstract(true);
     let expected_derived_flags = ClassFlags::new().with_is_final(true);
 
-    let pool = compiled(vec![source]).unwrap();
+    let (pool, _) = compiled(vec![source]).unwrap();
     check_class_flags(&pool, "Base", expected_base_flags).unwrap();
     check_class_flags(&pool, "Derived", expected_derived_flags).unwrap();
 }
@@ -113,5 +117,27 @@ fn compile_mutually_dependent_modules() {
             func Thing() -> Int32 = Func1()
         }";
 
-    compiled(vec![sources1, sources2]).unwrap();
+    let (_, errs) = compiled(vec![sources1, sources2]).unwrap();
+    assert_eq!(errs, vec![]);
+}
+
+#[test]
+fn compile_lub_types() {
+    let sources = "
+        func Testing() {
+            let a: array<ref<A>> = [ new C(), new B(), new A() ];
+            let b: array<ref<A>> = [ new C(), new B(), new D() ];
+            let c: ref<A> = true ? new B() : new C();
+            let d: array<ref<A>> = [ true ? new B() :  new D() ];
+            let a: ref<A> = true ? new A() : null;
+        }
+
+        class A {}
+        class B extends A {}
+        class C extends B {}
+        class D extends A {}
+    ";
+
+    let (_, errs) = compiled(vec![sources]).unwrap();
+    assert_eq!(errs, vec![]);
 }
