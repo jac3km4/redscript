@@ -869,40 +869,37 @@ impl<'a> CompilationUnit<'a> {
         pool: &mut ConstantPool,
     ) -> Result<(), Error> {
         let def = pool.definition(wrapped)?.clone();
-        if let AnyDefinition::Function(fun) = def.value {
-            let mut parameters = vec![];
-            let mut args = vec![];
+        let fun = def.value.into_function().expect("Invalid proxy");
+        let mut parameters = vec![];
+        let mut args = vec![];
 
-            for param_idx in &fun.parameters {
-                let param = pool.definition(*param_idx)?.clone();
-                let proxy_idx = pool.add_definition(param);
-                parameters.push(proxy_idx);
-                args.push(Expr::Ident(Reference::Value(Value::Parameter(proxy_idx)), Span::ZERO));
-            }
-
-            let call = Expr::Call(Callable::Function(wrapper), args, Span::ZERO);
-            let expr = if fun.return_type.is_some() {
-                Expr::Return(Some(Box::new(call)), Span::ZERO)
-            } else {
-                call
-            };
-            let code = Assembler::from_body(Seq::new(vec![expr]), scope, pool)?;
-
-            let compiled = Function {
-                code,
-                locals: vec![],
-                parameters,
-                ..fun
-            };
-            let name = pool.names.add(Ref::new(format!("proxy${}", wrapper)));
-            pool.put_definition(slot, Definition::function(name, def.parent.cast(), compiled));
-            if !def.parent.is_undefined() {
-                pool.class_mut(def.parent.cast())?.functions.push(slot);
-            }
-            Ok(())
-        } else {
-            panic!("Invalid proxy")
+        for param_idx in &fun.parameters {
+            let param = pool.definition(*param_idx)?.clone();
+            let proxy_idx = pool.add_definition(param);
+            parameters.push(proxy_idx);
+            args.push(Expr::Ident(Reference::Value(Value::Parameter(proxy_idx)), Span::ZERO));
         }
+
+        let call = Expr::Call(Callable::Function(wrapper), args, Span::ZERO);
+        let expr = if fun.return_type.is_some() {
+            Expr::Return(Some(Box::new(call)), Span::ZERO)
+        } else {
+            call
+        };
+        let code = Assembler::from_body(Seq::new(vec![expr]), scope, pool)?;
+
+        let compiled = Function {
+            code,
+            locals: vec![],
+            parameters,
+            ..fun
+        };
+        let name = pool.names.add(Ref::new(format!("proxy${}", wrapper)));
+        pool.put_definition(slot, Definition::function(name, def.parent.cast(), compiled));
+        if !def.parent.is_undefined() {
+            pool.class_mut(def.parent.cast())?.functions.push(slot);
+        }
+        Ok(())
     }
 
     fn remap_locals(

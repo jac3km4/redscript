@@ -439,35 +439,29 @@ fn write_unop<W: Write>(out: &mut W, param: &Expr<SourceAst>, op: UnOp, verbose:
 }
 
 fn format_param(def: &Definition, pool: &ConstantPool) -> Result<String, Error> {
-    if let AnyDefinition::Parameter(ref param) = def.value {
-        let type_name = format_type(pool.definition(param.type_)?, pool)?;
-        let name = pool.names.get(def.name)?;
-        let out = if param.flags.is_out() { "out " } else { "" };
-        let optional = if param.flags.is_optional() { "opt " } else { "" };
-        let const_ = if param.flags.is_const() { "const " } else { "" };
-        Ok(format!("{}{}{}{}: {}", const_, out, optional, name, type_name))
-    } else {
-        Err(Error::DecompileError("Invalid type definition received".to_owned()))
-    }
+    let param = def.value.as_parameter().expect("Expected a param definition");
+    let type_name = format_type(pool.definition(param.type_)?, pool)?;
+    let name = pool.names.get(def.name)?;
+    let out = if param.flags.is_out() { "out " } else { "" };
+    let optional = if param.flags.is_optional() { "opt " } else { "" };
+    let const_ = if param.flags.is_const() { "const " } else { "" };
+    Ok(format!("{}{}{}{}: {}", const_, out, optional, name, type_name))
 }
 
 fn format_type(def: &Definition, pool: &ConstantPool) -> Result<String, Error> {
-    if let AnyDefinition::Type(ref type_) = def.value {
-        let result = match type_ {
-            Type::Prim => pool.names.get(def.name)?.to_string(),
-            Type::Class => pool.names.get(def.name)?.to_string(),
-            Type::Ref(nested) => format!("ref<{}>", format_type(pool.definition(*nested)?, pool)?),
-            Type::WeakRef(nested) => format!("wref<{}>", format_type(pool.definition(*nested)?, pool)?),
-            Type::Array(nested) => format!("array<{}>", format_type(pool.definition(*nested)?, pool)?),
-            Type::StaticArray(nested, size) => {
-                format!("array<{}; {}>", format_type(pool.definition(*nested)?, pool)?, size)
-            }
-            Type::ScriptRef(nested) => format!("script_ref<{}>", format_type(pool.definition(*nested)?, pool)?),
-        };
-        Ok(result)
-    } else {
-        Err(Error::DecompileError("Invalid type definition received".to_owned()))
-    }
+    let type_ = def.value.as_type().expect("Expected a type definition");
+    let result = match type_ {
+        Type::Prim => pool.names.get(def.name)?.to_string(),
+        Type::Class => pool.names.get(def.name)?.to_string(),
+        Type::Ref(nested) => format!("ref<{}>", format_type(pool.definition(*nested)?, pool)?),
+        Type::WeakRef(nested) => format!("wref<{}>", format_type(pool.definition(*nested)?, pool)?),
+        Type::Array(nested) => format!("array<{}>", format_type(pool.definition(*nested)?, pool)?),
+        Type::StaticArray(nested, size) => {
+            format!("array<{}; {}>", format_type(pool.definition(*nested)?, pool)?, size)
+        }
+        Type::ScriptRef(nested) => format!("script_ref<{}>", format_type(pool.definition(*nested)?, pool)?),
+    };
+    Ok(result)
 }
 
 fn format_binop(op: BinOp) -> &'static str {
