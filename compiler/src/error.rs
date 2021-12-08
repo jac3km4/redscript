@@ -13,8 +13,8 @@ pub enum Error {
     SyntaxError(String, Span),
     #[error("compilation error: {0}")]
     CompileError(String, Span),
-    #[error("type error: {0}")]
-    TypeError(String, Span),
+    #[error("function argument error: {0}")]
+    ArgumentError(String, Span),
     #[error("function resolution error: {0}")]
     ResolutionError(String, Span),
     #[error("constant pool error: {0}")]
@@ -26,9 +26,8 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn type_error<F: Display, T: Display>(from: F, to: T, span: Span) -> Error {
-        let error = format!("Can't coerce {} to {}", from, to);
-        Error::TypeError(error, span)
+    pub fn arg_type_error<F: Display, T: Display>(from: F, to: T, span: Span) -> Error {
+        Error::ArgumentError(Cause::type_error(from, to).0, span)
     }
 
     pub fn no_matching_overload<N: Display>(name: N, errors: &[FunctionResolutionError], span: Span) -> Error {
@@ -70,6 +69,11 @@ impl Cause {
     #[inline]
     pub fn pool_err(self) -> Error {
         Error::PoolError(PoolError(self.0))
+    }
+
+    pub fn type_error<F: Display, T: Display>(from: F, to: T) -> Cause {
+        let error = format!("Can't coerce {} to {}", from, to);
+        Cause(error)
     }
 
     pub fn function_not_found<F: Display>(fun_name: F) -> Cause {

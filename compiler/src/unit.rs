@@ -1041,7 +1041,7 @@ impl Diagnostic {
         match error {
             Error::SyntaxError(msg, pos) => Ok(Diagnostic::CompileError(msg, pos)),
             Error::CompileError(msg, pos) => Ok(Diagnostic::CompileError(msg, pos)),
-            Error::TypeError(msg, pos) => Ok(Diagnostic::CompileError(msg, pos)),
+            Error::ArgumentError(msg, pos) => Ok(Diagnostic::CompileError(msg, pos)),
             Error::ResolutionError(msg, pos) => Ok(Diagnostic::CompileError(msg, pos)),
             Error::CteError(msg, pos) => Ok(Diagnostic::CompileError(msg, pos)),
             other => Err(other),

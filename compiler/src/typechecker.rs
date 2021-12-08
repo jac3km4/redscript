@@ -68,7 +68,9 @@ impl<'a> TypeChecker<'a> {
                 if exprs.is_empty() {
                     match expected {
                         Some(TypeId::Array(inner)) => Expr::ArrayLit(vec![], Some(*inner.clone()), *span),
-                        Some(type_) => return Err(Error::type_error("array", type_.pretty(self.pool)?, *span)),
+                        Some(type_) => {
+                            return Err(Cause::type_error("array", type_.pretty(self.pool)?).with_span(*span))
+                        }
                         None => return Err(Cause::type_annotation_required().with_span(*span)),
                     }
                 } else {
@@ -230,7 +232,7 @@ impl<'a> TypeChecker<'a> {
                         for (arg, field_idx) in args.iter().zip(fields.iter()) {
                             let field = self.pool.field(*field_idx)?;
                             let field_type = scope.resolve_type_from_pool(field.type_, self.pool).with_span(*span)?;
-                            let checked_arg = self.check_and_convert(arg, &field_type, scope, silent)?;
+                            let checked_arg = self.check_and_convert(arg, &field_type, scope, false)?;
                             checked_args.push(checked_arg)
                         }
                         Expr::New(type_, checked_args, *span)
@@ -320,7 +322,7 @@ impl<'a> TypeChecker<'a> {
                         let body = self.check_seq(body, &mut local_scope)?;
                         Expr::ForIn(local, Box::new(array), body, *span)
                     }
-                    other => return Err(Error::type_error(other.pretty(self.pool)?, "array", *span)),
+                    other => return Err(Cause::type_error(other.pretty(self.pool)?, "array").with_span(*span)),
                 }
             }
             Expr::This(span) => Expr::This(*span),
@@ -449,7 +451,7 @@ impl<'a> TypeChecker<'a> {
                 if let Some(TypeId::Enum(idx)) = expected {
                     TypeId::Enum(*idx)
                 } else {
-                    return Err(Error::type_error("Enum", expected.unwrap().pretty(self.pool)?, span));
+                    return Err(Cause::type_error("Enum", expected.unwrap().pretty(self.pool)?).with_span(span));
                 }
             }
             (IntrinsicOp::ToVariant, _) => {
@@ -499,8 +501,9 @@ impl<'a> TypeChecker<'a> {
     ) -> Result<Expr<TypedAst>, Error> {
         let checked = self.check(expr, Some(to), scope, true)?;
         let from = type_of(&checked, scope, self.pool)?;
-        let conversion = find_conversion(&from, to, self.pool)?
-            .ok_or_else(|| Error::type_error(from.pretty(self.pool).unwrap(), to.pretty(self.pool).unwrap(), span))?;
+        let conversion = find_conversion(&from, to, self.pool)?.ok_or_else(|| {
+            Error::arg_type_error(from.pretty(self.pool).unwrap(), to.pretty(self.pool).unwrap(), span)
+        })?;
         Ok(insert_conversion(checked, to, conversion))
     }
 
@@ -518,7 +521,7 @@ impl<'a> TypeChecker<'a> {
             Some(conversion) => Ok(insert_conversion(checked, to, conversion)),
             None => {
                 if !silent {
-                    let err = Error::type_error(from.pretty(self.pool)?, to.pretty(self.pool)?, expr.span());
+                    let err = Cause::type_error(from.pretty(self.pool)?, to.pretty(self.pool)?).with_span(expr.span());
                     self.report(err)?;
                 }
                 Ok(checked)
@@ -619,7 +622,7 @@ impl<'a> TypeChecker<'a> {
             let param_type = scope.resolve_type_from_pool(param.type_, self.pool).with_span(span)?;
             match self.check_and_convert_faily(arg, &param_type, scope, span) {
                 Ok(converted) => compiled_args.push(converted),
-                Err(Error::TypeError(err, _)) => {
+                Err(Error::ArgumentError(err, _)) => {
                     return Ok(Err(FunctionResolutionError::parameter_mismatch(&err, idx)))
                 }
                 Err(err) => return Err(err),
