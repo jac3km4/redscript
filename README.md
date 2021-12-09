@@ -1,4 +1,12 @@
-# redscript
+
+<p align="center"> 
+  <img src="https://user-images.githubusercontent.com/11986158/145484796-9bf1f77f-e706-4e15-b46b-c9b949f0086c.png" width=124 height=124>
+</p>
+<h1 align="center">
+  redscript
+</h1>
+
+
 Toolkit for working with scripts used by REDengine in Cyberpunk 2077.
 Currently includes a compiler, a decompiler and a disassembler.
 
