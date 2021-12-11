@@ -1,7 +1,7 @@
 use std::io::Write;
 use std::str::FromStr;
 
-use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, Seq, SourceAst, SwitchCase, UnOp};
+use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, Seq, SourceAst, SwitchCase, TypeName, UnOp};
 use redscript::bundle::ConstantPool;
 use redscript::definition::{AnyDefinition, Definition, Function, Type};
 use redscript::Ref;
@@ -283,11 +283,11 @@ fn write_expr_nested<W: Write>(
             write!(out, " = ")?;
             write_expr(out, rhs, verbose, 0)?
         }
-        Expr::Call(fun, params, _) => write_call(out, fun, params, parent_op, verbose)?,
+        Expr::Call(fun, type_args, params, _) => write_call(out, fun, type_args, params, parent_op, verbose)?,
         Expr::MethodCall(obj, fun, params, _) => {
             write_expr_nested(out, obj, Some(ParentOp::Dot), verbose, 0)?;
             write!(out, ".")?;
-            write_call(out, fun, params, None, verbose)?
+            write_call(out, fun, &[], params, None, verbose)?
         }
         Expr::ArrayElem(arr, idx, _) => {
             write_expr(out, arr, verbose, 0)?;
@@ -380,6 +380,7 @@ fn write_expr_nested<W: Write>(
 fn write_call<W: Write>(
     out: &mut W,
     name: &Ident,
+    type_params: &[TypeName],
     params: &[Expr<SourceAst>],
     parent_op: Option<ParentOp>,
     verbose: bool,
@@ -408,7 +409,15 @@ fn write_call<W: Write>(
     } else if (fun_name == "WeakRefToRef" || fun_name == "RefToWeakRef" || fun_name == "AsRef") && !verbose {
         write_expr(out, &params[0], verbose, 0)
     } else {
-        write!(out, "{}(", fun_name)?;
+        write!(out, "{}", fun_name)?;
+        if !type_params.is_empty() {
+            write!(out, "<")?;
+            for typ in type_params.iter().take(type_params.len() - 1) {
+                write!(out, "{}, ", typ.pretty())?;
+            }
+            write!(out, "{}>", type_params.last().unwrap())?;
+        }
+        write!(out, "(")?;
         if !params.is_empty() {
             for param in params.iter().take(params.len() - 1) {
                 write_expr(out, param, verbose, 0)?;

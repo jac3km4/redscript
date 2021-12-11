@@ -880,7 +880,7 @@ impl<'a> CompilationUnit<'a> {
             args.push(Expr::Ident(Reference::Value(Value::Parameter(proxy_idx)), Span::ZERO));
         }
 
-        let call = Expr::Call(Callable::Function(wrapper), args, Span::ZERO);
+        let call = Expr::Call(Callable::Function(wrapper), vec![], args, Span::ZERO);
         let expr = if fun.return_type.is_some() {
             Expr::Return(Some(Box::new(call)), Span::ZERO)
         } else {

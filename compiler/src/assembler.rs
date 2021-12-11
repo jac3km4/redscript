@@ -237,7 +237,7 @@ impl Assembler {
                     self.emit(Instr::EnumConst(enum_, member));
                 }
             },
-            Expr::Call(callable, args, _) => match callable {
+            Expr::Call(callable, _, args, _) => match callable {
                 Callable::Function(fun) => {
                     self.assemble_call(fun, args, scope, pool, false)?;
                 }
@@ -366,7 +366,7 @@ impl Assembler {
         let typ = type_of(expr, scope, pool).ok()?;
         match typ {
             TypeId::ScriptRef(_) => match expr {
-                Expr::Call(Callable::Intrinsic(IntrinsicOp::AsRef, _), args, _) => match args.get(0) {
+                Expr::Call(Callable::Intrinsic(IntrinsicOp::AsRef, _), _, args, _) => match args.get(0) {
                     Some(expr) => Some(Self::is_rvalue(expr)),
                     _ => Some(true),
                 },

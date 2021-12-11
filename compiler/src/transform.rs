@@ -67,12 +67,18 @@ where
         Ok(Expr::Assign(lhs, rhs, pos))
     }
 
-    fn on_call(&mut self, callable: N::Callable, args: Vec<Expr<N>>, pos: Span) -> Result<Expr<N>, Error> {
+    fn on_call(
+        &mut self,
+        callable: N::Callable,
+        type_args: Vec<N::Type>,
+        args: Vec<Expr<N>>,
+        pos: Span,
+    ) -> Result<Expr<N>, Error> {
         let mut processed = Vec::with_capacity(args.len());
         for arg in args {
             processed.push(self.on_expr(arg)?)
         }
-        Ok(Expr::Call(callable, processed, pos))
+        Ok(Expr::Call(callable, type_args, processed, pos))
     }
 
     fn on_method_call(
@@ -209,7 +215,7 @@ where
             Expr::Declare(local, type_, init, pos) => self.on_declare(local, type_, init.map(|e| *e), pos),
             Expr::Cast(type_, expr, pos) => self.on_cast(type_, *expr, pos),
             Expr::Assign(lhs, rhs, pos) => self.on_assign(*lhs, *rhs, pos),
-            Expr::Call(callable, args, pos) => self.on_call(callable, args, pos),
+            Expr::Call(callable, type_args, args, pos) => self.on_call(callable, type_args, args, pos),
             Expr::MethodCall(context, name, args, pos) => self.on_method_call(*context, name, args, pos),
             Expr::Member(context, name, pos) => self.on_member(*context, name, pos),
             Expr::ArrayElem(expr, index, pos) => self.on_array_elem(*expr, *index, pos),

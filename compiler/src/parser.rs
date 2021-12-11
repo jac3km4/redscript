@@ -447,8 +447,8 @@ peg::parser! {
             pos:pos() cons:constant() end:pos() {
                 Expr::Constant(cons, Span::new(pos, end))
             }
-            pos:pos() id:ident() _ "(" _ params:commasep(<expr()>) _ ")" end:pos() {
-                Expr::Call(id, params, Span::new(pos, end))
+            pos:pos() id:ident() _ type_args:type_args()? _ "(" _ params:commasep(<expr()>) _ ")" end:pos() {
+                Expr::Call(id, type_args.unwrap_or_else(Vec::new), params, Span::new(pos, end))
             }
             pos:pos() id:ident() end:pos() {
                 Expr::Ident(id, Span::new(pos, end))
@@ -566,7 +566,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", stmt),
-            r#"Switch(Ident(Owned("value"), Span { low: Pos(7), high: Pos(12) }), [SwitchCase { matcher: Constant(String(String, "0"), Span { low: Pos(37), high: Pos(40) }), body: Seq { exprs: [] } }, SwitchCase { matcher: Constant(String(String, "1"), Span { low: Pos(64), high: Pos(67) }), body: Seq { exprs: [Call(Owned("Log"), [Constant(String(String, "0 or 1"), Span { low: Pos(93), high: Pos(101) })], Span { low: Pos(89), high: Pos(102) })] } }, SwitchCase { matcher: Constant(String(String, "2"), Span { low: Pos(126), high: Pos(129) }), body: Seq { exprs: [Break(Span { low: Pos(151), high: Pos(157) })] } }], Some(Seq { exprs: [Call(Owned("Log"), [Constant(String(String, "default"), Span { low: Pos(208), high: Pos(217) })], Span { low: Pos(204), high: Pos(218) })] }), Span { low: Pos(0), high: Pos(233) })"#
+            r#"Switch(Ident(Owned("value"), Span { low: Pos(7), high: Pos(12) }), [SwitchCase { matcher: Constant(String(String, "0"), Span { low: Pos(37), high: Pos(40) }), body: Seq { exprs: [] } }, SwitchCase { matcher: Constant(String(String, "1"), Span { low: Pos(64), high: Pos(67) }), body: Seq { exprs: [Call(Owned("Log"), [], [Constant(String(String, "0 or 1"), Span { low: Pos(93), high: Pos(101) })], Span { low: Pos(89), high: Pos(102) })] } }, SwitchCase { matcher: Constant(String(String, "2"), Span { low: Pos(126), high: Pos(129) }), body: Seq { exprs: [Break(Span { low: Pos(151), high: Pos(157) })] } }], Some(Seq { exprs: [Call(Owned("Log"), [], [Constant(String(String, "default"), Span { low: Pos(208), high: Pos(217) })], Span { low: Pos(204), high: Pos(218) })] }), Span { low: Pos(0), high: Pos(233) })"#
         );
     }
 

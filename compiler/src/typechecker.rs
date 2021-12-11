@@ -133,14 +133,18 @@ impl<'a> TypeChecker<'a> {
                 let rhs_typed = self.check_and_convert(rhs, &type_, scope)?;
                 Expr::Assign(Box::new(lhs_typed), Box::new(rhs_typed), *span)
             }
-            Expr::Call(name, args, span) => {
+            Expr::Call(name, type_args, args, span) => {
+                let expected = match type_args.as_slice() {
+                    [target] => Some(scope.resolve_type(target, self.pool).with_span(*span)?),
+                    _ => expected.cloned(),
+                };
                 if let Ok(intrinsic) = IntrinsicOp::from_str(name.as_ref()) {
-                    self.check_intrinsic(intrinsic, args, expected, scope, *span)?
+                    self.check_intrinsic(intrinsic, args, expected.as_ref(), scope, *span)?
                 } else {
                     let candidates = scope.resolve_function(name.clone()).with_span(*span)?;
                     let match_ =
-                        self.resolve_overload(name.clone(), candidates, args.iter(), expected, scope, *span)?;
-                    Expr::Call(Callable::Function(match_.index), match_.args, *span)
+                        self.resolve_overload(name.clone(), candidates, args.iter(), expected.as_ref(), scope, *span)?;
+                    Expr::Call(Callable::Function(match_.index), vec![], match_.args, *span)
                 }
             }
             Expr::MethodCall(context, name, args, span) => {
@@ -166,14 +170,14 @@ impl<'a> TypeChecker<'a> {
                 let args = IntoIterator::into_iter([lhs.as_ref(), rhs.as_ref()]);
                 let candidates = scope.resolve_function(name.clone()).with_span(*span)?;
                 let match_ = self.resolve_overload(name, candidates, args, expected, scope, *span)?;
-                Expr::Call(Callable::Function(match_.index), match_.args, *span)
+                Expr::Call(Callable::Function(match_.index), vec![], match_.args, *span)
             }
             Expr::UnOp(expr, op, span) => {
                 let name = Ident::Static(op.into());
                 let args = iter::once(expr.as_ref());
                 let candidates = scope.resolve_function(name.clone()).with_span(*span)?;
                 let match_ = self.resolve_overload(name, candidates, args, expected, scope, *span)?;
-                Expr::Call(Callable::Function(match_.index), match_.args, *span)
+                Expr::Call(Callable::Function(match_.index), vec![], match_.args, *span)
             }
             Expr::Member(context, name, span) => {
                 let checked_context = self.check(context, None, scope)?;
@@ -457,7 +461,10 @@ impl<'a> TypeChecker<'a> {
             }
             (IntrinsicOp::FromVariant, TypeId::Variant) if expected.is_some() => {
                 checked_args.push(first_arg);
-                expected.unwrap().clone()
+                match expected {
+                    Some(TypeId::Class(class)) => TypeId::Ref(Box::new(TypeId::Class(*class))),
+                    other => other.unwrap().clone(),
+                }
             }
             (IntrinsicOp::VariantTypeName, TypeId::Variant) => {
                 checked_args.push(first_arg);
@@ -486,7 +493,12 @@ impl<'a> TypeChecker<'a> {
             (_, type_) => return Err(Cause::invalid_intrinsic(intrinsic, type_.pretty(self.pool)?).with_span(span)),
         };
 
-        Ok(Expr::Call(Callable::Intrinsic(intrinsic, type_), checked_args, span))
+        Ok(Expr::Call(
+            Callable::Intrinsic(intrinsic, type_),
+            vec![],
+            checked_args,
+            span,
+        ))
     }
 
     fn check_and_convert(
@@ -688,11 +700,11 @@ pub fn type_of(expr: &Expr<TypedAst>, scope: &Scope, pool: &ConstantPool) -> Res
             _ => type_.clone(),
         },
         Expr::Assign(_, _, _) => TypeId::Void,
-        Expr::Call(Callable::Function(index), _, span) => match pool.function(*index)?.return_type {
+        Expr::Call(Callable::Function(index), _, _, span) => match pool.function(*index)?.return_type {
             None => TypeId::Void,
             Some(return_type) => scope.resolve_type_from_pool(return_type, pool).with_span(*span)?,
         },
-        Expr::Call(Callable::Intrinsic(_, type_), _, _) => type_.clone(),
+        Expr::Call(Callable::Intrinsic(_, type_), _, _, _) => type_.clone(),
         Expr::MethodCall(_, fun, _, span) => match pool.function(*fun)?.return_type {
             None => TypeId::Void,
             Some(return_type) => scope.resolve_type_from_pool(return_type, pool).with_span(*span)?,
@@ -808,9 +820,6 @@ fn find_conversion(from: &TypeId, to: &TypeId, pool: &ConstantPool) -> Result<Op
                     None
                 }
             }
-            (from @ TypeId::Class(_), TypeId::Ref(to)) => {
-                find_conversion(from, to, pool)?.filter(|conv| *conv == Conversion::Identity)
-            }
             (TypeId::Ref(from), TypeId::Ref(to)) => {
                 find_conversion(from, to, pool)?.filter(|conv| *conv == Conversion::Identity)
             }
@@ -843,17 +852,25 @@ fn insert_conversion(expr: Expr<TypedAst>, type_: &TypeId, conversion: Conversio
         Conversion::Identity => expr,
         Conversion::RefToWeakRef => Expr::Call(
             Callable::Intrinsic(IntrinsicOp::RefToWeakRef, type_.clone()),
+            vec![],
             vec![expr],
             span,
         ),
         Conversion::WeakRefToRef => Expr::Call(
             Callable::Intrinsic(IntrinsicOp::WeakRefToRef, type_.clone()),
+            vec![],
             vec![expr],
             span,
         ),
-        Conversion::ToScriptRef => Expr::Call(Callable::Intrinsic(IntrinsicOp::AsRef, type_.clone()), vec![expr], span),
+        Conversion::ToScriptRef => Expr::Call(
+            Callable::Intrinsic(IntrinsicOp::AsRef, type_.clone()),
+            vec![],
+            vec![expr],
+            span,
+        ),
         Conversion::ToVariant => Expr::Call(
             Callable::Intrinsic(IntrinsicOp::ToVariant, type_.clone()),
+            vec![],
             vec![expr],
             span,
         ),

@@ -141,3 +141,22 @@ fn compile_lub_types() {
     let (_, errs) = compiled(vec![sources]).unwrap();
     assert_eq!(errs, vec![]);
 }
+
+#[test]
+fn compile_casts() {
+    let sources = "
+        func Testing() {
+            let a = Cast<Float>(1);
+            let b: Int32 = Cast(a);
+            let c = Cast<Double>(b);
+        }
+
+        native func Cast(i: Int32) -> Float;
+        native func Cast(i: Int32) -> Double;
+        native func Cast(i: Float) -> Int32;
+        native func Cast(i: Float) -> Double;
+    ";
+
+    let (_, errs) = compiled(vec![sources]).unwrap();
+    assert_eq!(errs, vec![]);
+}

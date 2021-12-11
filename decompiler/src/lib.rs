@@ -36,8 +36,7 @@ impl<'a> Decompiler<'a> {
         for local_index in &function.locals {
             let local = pool.local(*local_index)?;
             let name = Ident::Owned(pool.def_name(*local_index)?);
-            let type_name = pool.def_name(local.type_)?;
-            let type_ = TypeName::from_repr(type_name.as_ref());
+            let type_ = TypeName::from_repr(&pool.def_name(local.type_)?);
             locals.insert(name, type_);
         }
 
@@ -80,14 +79,18 @@ impl<'a> Decompiler<'a> {
         Ok(Seq::new(body))
     }
 
-    fn consume_intrisnic(&mut self, op: IntrinsicOp) -> Result<Expr<SourceAst>, Error> {
+    fn consume_intrisnic_typed(&mut self, op: IntrinsicOp, type_args: Vec<TypeName>) -> Result<Expr<SourceAst>, Error> {
         let params = self.consume_n(op.arg_count() as usize)?;
-        Ok(Expr::Call(Ident::Static(op.into()), params, Span::ZERO))
+        Ok(Expr::Call(Ident::Static(op.into()), type_args, params, Span::ZERO))
+    }
+
+    fn consume_intrisnic(&mut self, op: IntrinsicOp) -> Result<Expr<SourceAst>, Error> {
+        self.consume_intrisnic_typed(op, vec![])
     }
 
     fn consume_call(&mut self, name: &'static str, param_count: usize) -> Result<Expr<SourceAst>, Error> {
         let params = self.consume_n(param_count)?;
-        Ok(Expr::Call(Ident::Static(name), params, Span::ZERO))
+        Ok(Expr::Call(Ident::Static(name), vec![], params, Span::ZERO))
     }
 
     fn consume_params(&mut self) -> Result<Vec<Expr<SourceAst>>, Error> {
@@ -205,11 +208,16 @@ impl<'a> Decompiler<'a> {
             Instr::EnumConst(enum_, member) => {
                 let enum_ident = self.definition_ident(enum_)?;
                 let member_ident = self.definition_ident(member)?;
-                let expr = Box::new(Expr::Ident(enum_ident, Span::ZERO));
+                let expr = Box::new(Expr::Ident(enum_ident.clone(), Span::ZERO));
                 if member_ident.as_ref().is_empty() {
                     let value = self.pool.enum_value(member)?;
                     let constant = Expr::Constant(Constant::I64(value), Span::ZERO);
-                    Expr::Call(Ident::Static(IntrinsicOp::IntEnum.into()), vec![constant], Span::ZERO)
+                    Expr::Call(
+                        Ident::Static(IntrinsicOp::IntEnum.into()),
+                        vec![TypeName::basic_owned(enum_ident.to_owned())],
+                        vec![constant],
+                        Span::ZERO,
+                    )
                 } else {
                     Expr::Member(expr, member_ident, Span::ZERO)
                 }
@@ -254,13 +262,22 @@ impl<'a> Decompiler<'a> {
             }
             Instr::InvokeStatic(_, _, idx, _) => {
                 let def = self.pool.definition(idx)?;
+                let fun = self.pool.function(idx)?;
                 let name = Ident::Owned(self.pool.names.get(def.name)?);
                 let params = self.consume_params()?;
                 if let Some(ctx) = context {
                     Expr::MethodCall(Box::new(ctx), name, params, Span::ZERO)
-                } else if self.pool.function(idx)?.flags.is_static() {
+                } else if fun.flags.is_static() {
                     if def.parent.is_undefined() {
-                        Expr::Call(name, params, Span::ZERO)
+                        if name.as_ref().starts_with("Cast;") {
+                            let ret_type = fun
+                                .return_type
+                                .ok_or_else(|| Error::DecompileError("Cast without return type".to_owned()))?;
+                            let type_name = TypeName::from_repr(&self.pool.def_name(ret_type)?);
+                            Expr::Call(name, vec![type_name], params, Span::ZERO)
+                        } else {
+                            Expr::Call(name, vec![], params, Span::ZERO)
+                        }
                     } else {
                         let class_name = Ident::Owned(self.pool.def_name(def.parent)?);
                         let expr = Box::new(Expr::Ident(class_name, Span::ZERO));
@@ -354,19 +371,21 @@ impl<'a> Decompiler<'a> {
             Instr::RefToBool => self.consume_intrisnic(IntrinsicOp::IsDefined)?,
             Instr::WeakRefToBool => self.consume_intrisnic(IntrinsicOp::IsDefined)?,
             Instr::EnumToI32(_, _) => self.consume_intrisnic(IntrinsicOp::EnumInt)?,
-            Instr::I32ToEnum(_, _) => self.consume_intrisnic(IntrinsicOp::IntEnum)?,
-            Instr::DynamicCast(type_, _) => {
-                let name = self.pool.def_name(type_)?;
-                let type_name = TypeName {
-                    name: Ident::Owned(name),
-                    arguments: vec![],
-                };
+            Instr::I32ToEnum(typ, _) => {
+                let type_name = TypeName::from_repr(&self.pool.def_name(typ)?);
+                self.consume_intrisnic_typed(IntrinsicOp::IntEnum, vec![type_name])?
+            }
+            Instr::DynamicCast(typ, _) => {
+                let type_name = TypeName::from_repr(&self.pool.def_name(typ)?);
                 let expr = self.consume()?;
                 Expr::Cast(type_name, Box::new(expr), Span::ZERO)
             }
             Instr::ToString(_) => self.consume_intrisnic(IntrinsicOp::ToString)?,
             Instr::ToVariant(_) => self.consume_intrisnic(IntrinsicOp::ToVariant)?,
-            Instr::FromVariant(_) => self.consume_intrisnic(IntrinsicOp::FromVariant)?,
+            Instr::FromVariant(typ) => {
+                let type_name = TypeName::from_repr(&self.pool.def_name(typ)?);
+                self.consume_intrisnic_typed(IntrinsicOp::FromVariant, vec![type_name])?
+            }
             Instr::VariantIsDefined => self.consume_intrisnic(IntrinsicOp::IsDefined)?,
             Instr::VariantIsRef => self.consume_intrisnic(IntrinsicOp::VariantIsRef)?,
             Instr::VariantIsArray => self.consume_intrisnic(IntrinsicOp::VariantIsArray)?,
