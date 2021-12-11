@@ -519,7 +519,7 @@ impl<'a> TypeChecker<'a> {
         &mut self,
         name: Ident,
         overloads: FunctionCandidates,
-        args: impl ExactSizeIterator<Item = &'b Expr<SourceAst>>,
+        args: impl ExactSizeIterator<Item = &'b Expr<SourceAst>> + Clone,
         expected: Option<&TypeId>,
         scope: &mut Scope,
         span: Span,
@@ -528,17 +528,18 @@ impl<'a> TypeChecker<'a> {
         let mut eligible = vec![];
         let mut overload_errors = vec![];
 
-        for overload in overloads.functions {
-            match Self::validate_call(overload, arg_count, scope, self.pool) {
+        for overload in &overloads.functions {
+            match Self::validate_call(*overload, arg_count, scope, self.pool) {
                 Ok(res) => eligible.push(res),
                 Err(MatcherError::MatchError(err)) => overload_errors.push(err),
                 Err(MatcherError::Other(err)) => return Err(err),
             }
         }
 
-        match eligible.into_iter().exactly_one() {
+        let match_ = match eligible.into_iter().exactly_one() {
             Ok((fun_index, types)) => {
                 let checked_args: Vec<_> = args
+                    .clone()
                     .zip(&types)
                     .map(|(arg, typ)| self.check(arg, Some(typ), scope))
                     .try_collect()?;
@@ -553,7 +554,7 @@ impl<'a> TypeChecker<'a> {
                 }
             }
             Err(eligible) => {
-                let checked_args: Vec<_> = args.map(|expr| self.check(expr, None, scope)).try_collect()?;
+                let checked_args: Vec<_> = args.clone().map(|expr| self.check(expr, None, scope)).try_collect()?;
 
                 let mut matches = vec![];
                 for (fun_index, types) in eligible {
@@ -570,6 +571,17 @@ impl<'a> TypeChecker<'a> {
                     Some((fun_index, convs)) => Ok(FunctionMatch::new(fun_index, checked_args, convs)),
                 }
             }
+        };
+        match match_ {
+            Ok(match_) => Ok(match_),
+            Err(err) if self.permissive => {
+                self.report(err)?;
+
+                let dummy_args: Vec<_> = args.map(|expr| self.check(expr, None, scope)).try_collect()?;
+                let convs = iter::repeat(ArgConversion::identity()).take(dummy_args.len()).collect();
+                Ok(FunctionMatch::new(overloads.functions[0], dummy_args, convs))
+            }
+            Err(err) => Err(err),
         }
     }
 
@@ -887,13 +899,17 @@ impl From<PoolError> for MatcherError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ArgConversion {
     conversion: Conversion,
     target: TypeId,
 }
 
 impl ArgConversion {
+    fn identity() -> Self {
+        Self::new(Conversion::Identity, TypeId::Void)
+    }
+
     fn new(conversion: Conversion, target: TypeId) -> Self {
         Self { conversion, target }
     }
