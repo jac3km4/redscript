@@ -1,7 +1,7 @@
 use std::iter;
 use std::str::FromStr;
 
-use itertools::Itertools;
+use itertools::{izip, Itertools};
 use redscript::ast::{Constant, Expr, Ident, Literal, NameKind, Seq, SourceAst, Span, SwitchCase, TypeName};
 use redscript::bundle::{ConstantPool, PoolError, PoolIndex};
 use redscript::bytecode::IntrinsicOp;
@@ -231,7 +231,7 @@ impl<'a> TypeChecker<'a> {
                             return Err(Cause::invalid_arg_count(type_name.pretty(), fields.len()).with_span(*span));
                         }
                         let mut checked_args = Vec::with_capacity(args.len());
-                        for (arg, field_idx) in args.iter().zip(fields.iter()) {
+                        for (arg, field_idx) in args.iter().zip(&fields) {
                             let field = self.pool.field(*field_idx)?;
                             let field_type = scope.resolve_type_from_pool(field.type_, self.pool).with_span(*span)?;
                             let checked_arg = self.check_and_convert(arg, &field_type, scope)?;
@@ -275,8 +275,8 @@ impl<'a> TypeChecker<'a> {
                     checked_cases.push(SwitchCase { matcher, body })
                 }
                 let default = default
-                    .iter()
-                    .try_fold(None, |_, body| self.check_seq(body, scope).map(Some))?;
+                    .as_ref()
+                    .map_or_else(|| Ok(None), |body| self.check_seq(body, &mut scope.clone()).map(Some))?;
 
                 Expr::Switch(Box::new(checked_matched), checked_cases, default, *span)
             }
@@ -286,8 +286,8 @@ impl<'a> TypeChecker<'a> {
                 let checked_cond = self.check_and_convert(cond, &cond_type, scope)?;
                 let checked_if = self.check_seq(if_, &mut scope.clone())?;
                 let checked_else = else_
-                    .iter()
-                    .try_fold(None, |_, body| self.check_seq(body, &mut scope.clone()).map(Some))?;
+                    .as_ref()
+                    .map_or_else(|| Ok(None), |body| self.check_seq(body, &mut scope.clone()).map(Some))?;
 
                 Expr::If(Box::new(checked_cond), checked_if, checked_else, *span)
             }
@@ -461,10 +461,7 @@ impl<'a> TypeChecker<'a> {
             }
             (IntrinsicOp::FromVariant, TypeId::Variant) if expected.is_some() => {
                 checked_args.push(first_arg);
-                match expected {
-                    Some(TypeId::Class(class)) => TypeId::Ref(Box::new(TypeId::Class(*class))),
-                    other => other.unwrap().clone(),
-                }
+                expected.unwrap().clone()
             }
             (IntrinsicOp::VariantTypeName, TypeId::Variant) => {
                 checked_args.push(first_arg);
@@ -622,16 +619,15 @@ impl<'a> TypeChecker<'a> {
             }
         }
 
-        args.iter()
-            .zip(param_types)
-            .enumerate()
-            .map(|(i, (arg, param_typ))| {
+        izip!(args, param_types, 0..args.len())
+            .map(|(arg, param_typ, i)| {
                 let arg_typ = type_of(arg, scope, pool)?;
+
                 match find_conversion(&arg_typ, param_typ, pool)? {
                     Some(conv) => Ok(ArgConversion::new(conv, param_typ.clone())),
                     None => {
                         let cause = Cause::type_error(arg_typ.pretty(pool)?, param_typ.pretty(pool)?);
-                        Err(FunctionMatchError::parameter_mismatch(cause, i + 1).into())
+                        Err(FunctionMatchError::parameter_mismatch(cause, i).into())
                     }
                 }
             })

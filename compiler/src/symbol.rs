@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::str::FromStr;
 
+use itertools::Itertools;
 use redscript::ast::{BinOp, Ident, Span, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::definition::{AnyDefinition, Class, Enum, Function, Visibility};
@@ -192,11 +193,8 @@ impl ModulePath {
     }
 
     pub fn render(&self) -> Ident {
-        self.parts
-            .iter()
-            .cloned()
-            .reduce(|acc, m| Ident::new(format!("{}.{}", acc, m)))
-            .unwrap_or(Ident::Static(""))
+        let str = self.parts.iter().join(".");
+        Ident::new(str)
     }
 }
 

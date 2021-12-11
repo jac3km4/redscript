@@ -1,6 +1,7 @@
 use std::io::Write;
 use std::str::FromStr;
 
+use itertools::Itertools;
 use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, Seq, SourceAst, SwitchCase, TypeName, UnOp};
 use redscript::bundle::ConstantPool;
 use redscript::definition::{AnyDefinition, Definition, Function, Type};
@@ -98,7 +99,6 @@ pub fn write_definition<W: Write>(
                 .parameters
                 .iter()
                 .map(|param| format_param(pool.definition(*param).unwrap(), pool).unwrap())
-                .collect::<Vec<_>>()
                 .join(", ");
 
             writeln!(out)?;
@@ -411,11 +411,7 @@ fn write_call<W: Write>(
     } else {
         write!(out, "{}", fun_name)?;
         if !type_params.is_empty() {
-            write!(out, "<")?;
-            for typ in type_params.iter().take(type_params.len() - 1) {
-                write!(out, "{}, ", typ.pretty())?;
-            }
-            write!(out, "{}>", type_params.last().unwrap())?;
+            write!(out, "<{}>", type_params.iter().map(TypeName::pretty).format(", "))?;
         }
         write!(out, "(")?;
         if !params.is_empty() {

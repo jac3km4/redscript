@@ -1,6 +1,7 @@
 use std::fmt::Display;
 use std::{io, usize};
 
+use itertools::Itertools;
 use redscript::ast::Span;
 use redscript::bundle::PoolError;
 use thiserror::Error;
@@ -9,7 +10,7 @@ use thiserror::Error;
 pub enum Error {
     #[error("I/O error")]
     IoError(#[from] io::Error),
-    #[error("formatter error")]
+    #[error("formatter error {0}")]
     SyntaxError(String, Span),
     #[error("compilation error: {0}")]
     CompileError(String, Span),
@@ -32,10 +33,7 @@ impl Error {
 
     pub fn no_matching_overload<N: Display>(name: N, errors: &[FunctionMatchError], span: Span) -> Error {
         let max_errors = 10;
-        let messages = errors
-            .iter()
-            .take(max_errors)
-            .fold(String::new(), |acc, str| acc + "\n " + &str.0);
+        let messages = errors.iter().take(max_errors).join("\n ");
 
         let detail = if errors.len() > max_errors {
             format!("{}\n...and more", messages)
@@ -43,7 +41,7 @@ impl Error {
             messages
         };
         let error = format!(
-            "Arguments passed to {} do not match any of the overloads:{}",
+            "Arguments passed to {} do not match any of the overloads:\n {}",
             name, detail
         );
         Error::ResolutionError(error, span)
@@ -212,18 +210,13 @@ pub struct FunctionMatchError(String);
 
 impl FunctionMatchError {
     pub fn parameter_mismatch<C: Display>(cause: C, index: usize) -> FunctionMatchError {
-        let message = format!("Invalid parameter at position {}: {}", index, cause);
+        let message = format!("Parameter at position {}: {}", index + 1, cause);
         FunctionMatchError(message)
     }
 
     pub fn return_mismatch<N: Display>(expected: N, given: N) -> FunctionMatchError {
         let message = format!("Return type {} does not match expected {}", given, expected);
         FunctionMatchError(message)
-    }
-
-    pub fn too_many_args(expected: usize, got: usize) -> FunctionMatchError {
-        let error = format!("Too many arguments, expected {} but got {}", expected, got);
-        FunctionMatchError(error)
     }
 
     pub fn invalid_arg_count(received: usize, min: usize, max: usize) -> FunctionMatchError {

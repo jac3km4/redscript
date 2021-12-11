@@ -1,7 +1,8 @@
+use itertools::Itertools;
 use redscript::ast::{Constant, Expr, Literal, Seq, Span};
-use redscript::bundle::{ConstantPool, PoolError, PoolIndex};
+use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Instr, IntrinsicOp, Label, Location, Offset};
-use redscript::definition::{Function, ParameterFlags};
+use redscript::definition::Function;
 
 use crate::error::{Cause, Error, ResultSpan};
 use crate::scope::{Reference, Scope, TypeId, Value};
@@ -317,11 +318,11 @@ impl Assembler {
     ) -> Result<(), Error> {
         let fun = pool.function(function_idx)?;
         let fun_flags = fun.flags;
-        let param_flags = fun
+        let param_flags: Vec<_> = fun
             .parameters
             .iter()
             .map(|idx| pool.parameter(*idx).map(|param| param.flags))
-            .collect::<std::result::Result<Vec<ParameterFlags>, PoolError>>()?;
+            .try_collect()?;
         let args_len = args.len();
         let exit_label = self.new_label();
         let mut invoke_flags = 0u16;
@@ -338,7 +339,7 @@ impl Assembler {
         } else {
             self.emit(Instr::InvokeStatic(exit_label, 0, function_idx, invoke_flags));
         }
-        for (arg, flags) in args.into_iter().zip(param_flags.iter()) {
+        for (arg, flags) in args.into_iter().zip(&param_flags) {
             if flags.is_short_circuit() {
                 let skip_label = self.new_label();
                 self.emit(Instr::Skip(skip_label));

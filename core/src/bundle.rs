@@ -5,6 +5,7 @@ use std::io::Seek;
 use std::marker::PhantomData;
 use std::{fmt, io};
 
+use itertools::chain;
 use modular_bitfield::prelude::*;
 use thiserror::Error;
 
@@ -160,14 +161,12 @@ impl ConstantPool {
     pub fn encode<O: io::Write + io::Seek>(&self, output: &mut O, header: &Header) -> io::Result<Header> {
         let mut buffer = io::Cursor::new(Vec::with_capacity(header.data.count as usize));
         let mut dedup_map = HashMap::new();
-        for str in self
-            .names
-            .strings
-            .iter()
-            .chain(&self.tweakdb_ids.strings)
-            .chain(&self.resources.strings)
-            .chain(&self.strings.strings)
-        {
+        for str in chain!(
+            &self.names.strings,
+            &self.tweakdb_ids.strings,
+            &self.resources.strings,
+            &self.strings.strings
+        ) {
             match dedup_map.entry(str.clone()) {
                 hash_map::Entry::Vacant(entry) => {
                     entry.insert(buffer.stream_position()? as u32);
@@ -206,13 +205,11 @@ impl ConstantPool {
         output.write_all(&string_offsets)?;
 
         let mut buffer = io::Cursor::new(Vec::with_capacity(def_header_size as usize));
-        for (idx, definition) in self.definitions.iter().enumerate() {
-            if idx == 0 {
-                buffer.encode(&DefinitionHeader::DEFAULT)?;
-            } else {
-                let header = DefinitionHeader::encode_definition(output, definition)?;
-                buffer.encode(&header)?;
-            }
+        buffer.encode(&DefinitionHeader::DEFAULT)?;
+
+        for definition in self.definitions.iter().skip(1) {
+            let header = DefinitionHeader::encode_definition(output, definition)?;
+            buffer.encode(&header)?;
         }
         output.seek(io::SeekFrom::Start(def_header_pos))?;
         output.write_all(buffer.get_ref())?;
@@ -385,6 +382,7 @@ impl<K> Names<K> {
             .ok_or_else(|| PoolError(format!("String {} not found", index.value)))
     }
 
+    #[allow(clippy::ptr_arg)]
     pub fn get_index(&self, name: &String) -> Result<PoolIndex<K>, PoolError> {
         self.mappings
             .get(name)

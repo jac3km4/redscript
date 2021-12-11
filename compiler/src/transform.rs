@@ -51,9 +51,7 @@ where
         init: Option<Expr<N>>,
         pos: Span,
     ) -> Result<Expr<N>, Error> {
-        let init = init
-            .into_iter()
-            .fold(Ok(None), |_, expr| self.on_expr(expr).map(Some))?;
+        let init = init.map_or_else(|| Ok(None), |expr| self.on_expr(expr).map(Some))?;
         Ok(Expr::Declare(local, type_, init.map(Box::new), pos))
     }
 
@@ -116,9 +114,7 @@ where
     }
 
     fn on_return(&mut self, expr: Option<Expr<N>>, pos: Span) -> Result<Expr<N>, Error> {
-        let expr = expr
-            .into_iter()
-            .fold(Ok(None), |_, expr| self.on_expr(expr).map(Some))?;
+        let expr = expr.map_or_else(|| Ok(None), |expr| self.on_expr(expr).map(Some))?;
         Ok(Expr::Return(expr.map(Box::new), pos))
     }
 
@@ -135,9 +131,7 @@ where
             let matcher = self.on_expr(case.matcher)?;
             processed.push(SwitchCase { matcher, body });
         }
-        let default = default
-            .into_iter()
-            .fold(Ok(None), |_, expr| self.on_seq(expr).map(Some))?;
+        let default = default.map_or_else(|| Ok(None), |expr| self.on_seq(expr).map(Some))?;
         let matched = self.on_expr(matched)?;
         Ok(Expr::Switch(Box::new(matched), processed, default, pos))
     }
@@ -148,9 +142,7 @@ where
 
     fn on_if(&mut self, cond: Expr<N>, if_: Seq<N>, else_: Option<Seq<N>>, pos: Span) -> Result<Expr<N>, Error> {
         let if_ = self.on_seq(if_)?;
-        let else_ = else_
-            .into_iter()
-            .fold(Ok(None), |_, expr| self.on_seq(expr).map(Some))?;
+        let else_ = else_.map_or_else(|| Ok(None), |expr| self.on_seq(expr).map(Some))?;
         let cond = self.on_expr(cond)?;
         Ok(Expr::If(Box::new(cond), if_, else_, pos))
     }

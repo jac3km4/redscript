@@ -1,8 +1,10 @@
 use std::fmt::{self, Debug, Display};
 use std::hash::Hash;
+use std::iter;
 use std::ops::{Add, Sub};
 
 use enum_as_inner::EnumAsInner;
+use itertools::Itertools;
 use strum::{Display, EnumString, IntoStaticStr};
 
 use crate::Ref;
@@ -479,32 +481,20 @@ impl TypeName {
     // Used for identifying functions
     pub fn mangled(&self) -> Ident {
         let unwrapped = self.unwrapped();
-        match unwrapped.arguments.first() {
-            None => unwrapped.name.clone(),
-            Some(head) => {
-                let args = unwrapped
-                    .arguments
-                    .iter()
-                    .skip(1)
-                    .map(|tp| tp.mangled())
-                    .fold(head.mangled(), |acc, el| Ident::new(format!("{},{}", acc, el)));
-                Ident::new(format!("{}<{}>", unwrapped.name.as_ref(), args))
-            }
+        if unwrapped.arguments.is_empty() {
+            unwrapped.name.clone()
+        } else {
+            let args = unwrapped.arguments.iter().map(TypeName::mangled).join(",");
+            Ident::new(format!("{}<{}>", unwrapped.name, args))
         }
     }
 
     pub fn pretty(&self) -> Ident {
-        match self.arguments.first() {
-            None => self.name.clone(),
-            Some(head) => {
-                let args = self
-                    .arguments
-                    .iter()
-                    .skip(1)
-                    .map(|tp| tp.pretty())
-                    .fold(head.pretty(), |acc, el| Ident::new(format!("{},{}", acc, el)));
-                Ident::new(format!("{}<{}>", self.name.as_ref(), args))
-            }
+        if self.arguments.is_empty() {
+            self.name.clone()
+        } else {
+            let args = self.arguments.iter().map(TypeName::pretty).join(",");
+            Ident::new(format!("{}<{}>", self.name, args))
         }
     }
 
@@ -513,9 +503,10 @@ impl TypeName {
         if self.arguments.is_empty() {
             self.name.clone()
         } else {
-            self.arguments.iter().fold(self.name.clone(), |acc, tp| {
-                Ident::new(format!("{}:{}", acc, tp.repr()))
-            })
+            let str = iter::once(self.name.clone())
+                .chain(self.arguments.iter().map(TypeName::repr))
+                .join(":");
+            Ident::new(str)
         }
     }
 

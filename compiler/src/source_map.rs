@@ -4,6 +4,7 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::{fmt, iter};
 
+use itertools::Itertools;
 use redscript::ast::{Pos, Span};
 use walkdir::WalkDir;
 
@@ -85,14 +86,7 @@ impl Files {
 
 impl fmt::Display for Files {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (idx, file) in self.files.iter().enumerate() {
-            if idx == self.files.len() - 1 {
-                f.write_fmt(format_args!("{}", file))?;
-            } else {
-                f.write_fmt(format_args!("{}, ", file))?;
-            }
-        }
-        Ok(())
+        self.files.iter().format(", ").fmt(f)
     }
 }
 

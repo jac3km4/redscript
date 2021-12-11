@@ -457,6 +457,7 @@ impl<'a> CompilationUnit<'a> {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn define_function(
         &mut self,
         fun_idx: PoolIndex<Function>,
@@ -619,23 +620,20 @@ impl<'a> CompilationUnit<'a> {
     ) -> Result<(), Error> {
         let decl = &source.declaration;
         for ann in &source.declaration.annotations {
-            match ann.kind {
-                AnnotationKind::AddField => {
-                    let (ident, _) = ann
-                        .args
-                        .first()
-                        .and_then(Expr::as_ident)
-                        .ok_or_else(|| Cause::invalid_annotation_args().with_span(ann.span))?;
-                    if let Symbol::Class(target_class, _) = scope.resolve_symbol(ident.clone()).with_span(ann.span)? {
-                        let flags = self.pool.class(target_class)?.flags;
-                        self.define_field(index, target_class, flags, visibility, source, scope)?;
-                        self.pool.class_mut(target_class)?.fields.push(index);
-                        return Ok(());
-                    } else {
-                        return Err(Cause::class_not_found(ident).with_span(ann.span));
-                    }
+            if ann.kind == AnnotationKind::AddField {
+                let (ident, _) = ann
+                    .args
+                    .first()
+                    .and_then(Expr::as_ident)
+                    .ok_or_else(|| Cause::invalid_annotation_args().with_span(ann.span))?;
+                if let Symbol::Class(target_class, _) = scope.resolve_symbol(ident.clone()).with_span(ann.span)? {
+                    let flags = self.pool.class(target_class)?.flags;
+                    self.define_field(index, target_class, flags, visibility, source, scope)?;
+                    self.pool.class_mut(target_class)?.fields.push(index);
+                    return Ok(());
+                } else {
+                    return Err(Cause::class_not_found(ident).with_span(ann.span));
                 }
-                _ => {}
             }
         }
         Err(Cause::unsupported("Let binding").with_span(decl.span))
@@ -962,7 +960,8 @@ impl<'a> CompilationUnit<'a> {
         let mut sorted: Vec<PoolIndex<Class>> = unsorted.iter().copied().collect();
         sorted.sort_by_key(|k| Self::class_cardinality(*k, pool).unwrap());
 
-        let definitions: Vec<Definition> = sorted.iter().map(|k| pool.definition(*k).unwrap()).cloned().collect();
+        #[allow(clippy::needless_collect)]
+        let definitions: Vec<_> = sorted.iter().map(|k| pool.definition(*k).unwrap().clone()).collect();
 
         // insert classes based on the determined order
         for (def, target) in definitions.into_iter().zip(&unsorted) {
