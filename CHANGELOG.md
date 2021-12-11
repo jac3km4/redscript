@@ -44,6 +44,38 @@ if IsDefined(v) && VariantIsRef(v) && !VariantIsArray(v) {
   // ...
 }
 ```
+- new function resolution algorithm (8d604af)
+  - the new algorithm is a bit more strict, but it makes operator overloads and casts work more predictably
+  - it no longer allows using expressions that can resolve to different types inside 'overloaded' contexts - this means that you can no longer use `Cast(x)`, `FromVariant(x)` and `IntEnum(x)` inside calls to operators, overloaded methods and casts
+  - a new syntax has been introduced to solve this - you can now write `Cast<Float>(x)`, `FromVariant<ItemID>` and `IntEnum<gamedataItemType>` to explicitly specify the desired type
+  - most of your code will probably still work - this change rarely affects anything except for `Casts`s inside operators
+```swift
+func Testing() {
+  // the line below will no longer compile!
+  // let a = 0.1 + Cast(1);
+  // you can write it like this:
+  let a = 0.1 + Cast<Float>(1);
+  // IMPORTANT
+  // you can make your code forwards-compatible though!
+  // you can support both versions of the redscript compiler by extracting the Cast to a local:
+  let tmp: Float = Cast(1);
+  let a = 0.1 + tmp;
+}
+```
+- improved type inference for conditionals and array literals (79d2dc8)
+```swift
+func Testing() {
+    // we infer the most general type to use for the array (array<ref<a>>)
+    let a = [ new C(), new B(), new D() ];
+    // the type of 'b' is ref<B>
+    let b = true ? new B() : new C();
+}
+
+class A {}
+class B extends A {}
+class C extends B {}
+class D extends A {}
+```
 
 ## [0.3.4]
 - fix encoding of native functions (7504d41)

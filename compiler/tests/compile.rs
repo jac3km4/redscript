@@ -127,7 +127,7 @@ fn compile_lub_types() {
         func Testing() {
             let a: array<ref<A>> = [ new C(), new B(), new A() ];
             let b: array<ref<A>> = [ new C(), new B(), new D() ];
-            let c: ref<A> = true ? new B() : new C();
+            let c: ref<B> = true ? new B() : new C();
             let d: array<ref<A>> = [ true ? new B() :  new D() ];
             let a: ref<A> = true ? new A() : null;
         }
