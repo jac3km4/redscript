@@ -474,7 +474,7 @@ checksum = "41486a26d1366a8032b160b59065a59fb528530a46a49f627e7048fb8c064039"
 dependencies = [
  "anyhow",
  "heck",
- "itertools",
+ "itertools 0.9.0",
  "proc-macro-crate",
  "proc-macro-error",
  "proc-macro2",
@@ -601,6 +601,15 @@ name = "itertools"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "284f18f85651fe11e8a991b2adb42cb078325c996ed026d994719efcfca1d54b"
+dependencies = [
+ "either",
+]
+
+[[package]]
+name = "itertools"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a9a9d19fa1e79b6215ff29b9d6880b706147f16e9b1dbb1e4e5947b5b02bc5e3"
 dependencies = [
  "either",
 ]
@@ -888,6 +897,7 @@ version = "0.4.0-RC1"
 dependencies = [
  "enum-as-inner",
  "hamt-sync",
+ "itertools 0.10.3",
  "log",
  "peg",
  "redscript",

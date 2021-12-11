@@ -1,11 +1,10 @@
 use hamt_sync::Map;
-use redscript::ast::{Expr, Ident, TypeName};
+use redscript::ast::{Ident, TypeName};
 use redscript::bundle::{ConstantPool, PoolError, PoolIndex};
 use redscript::definition::{AnyDefinition, Class, Definition, Enum, Field, Function, Local, Parameter, Type};
 
 use crate::error::{Cause, Error};
 use crate::symbol::{FunctionSignature, Symbol};
-use crate::typechecker::TypedAst;
 
 #[derive(Debug, Clone)]
 pub struct Scope {
@@ -336,10 +335,4 @@ impl FunctionCandidates {
                 .map(|_| idx)
         })
     }
-}
-
-#[derive(Debug)]
-pub struct FunctionMatch {
-    pub index: PoolIndex<Function>,
-    pub args: Vec<Expr<TypedAst>>,
 }

@@ -30,7 +30,7 @@ impl Error {
         Error::ArgumentError(Cause::type_error(from, to).0, span)
     }
 
-    pub fn no_matching_overload<N: Display>(name: N, errors: &[FunctionResolutionError], span: Span) -> Error {
+    pub fn no_matching_overload<N: Display>(name: N, errors: &[FunctionMatchError], span: Span) -> Error {
         let max_errors = 10;
         let messages = errors
             .iter()
@@ -48,9 +48,15 @@ impl Error {
         );
         Error::ResolutionError(error, span)
     }
+
+    pub fn too_many_matching_overloads<N: Display>(name: N, span: Span) -> Error {
+        let error = format!("Arguments passed to {} satisfy more than one overload", name);
+        Error::ResolutionError(error, span)
+    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
+#[error("{0}")]
 pub struct Cause(pub String);
 
 impl From<PoolError> for Cause {
@@ -200,28 +206,29 @@ impl Cause {
     }
 }
 
-#[derive(Debug)]
-pub struct FunctionResolutionError(String);
+#[derive(Debug, Error)]
+#[error("{0}")]
+pub struct FunctionMatchError(String);
 
-impl FunctionResolutionError {
-    pub fn parameter_mismatch<C: Display>(cause: C, index: usize) -> FunctionResolutionError {
+impl FunctionMatchError {
+    pub fn parameter_mismatch<C: Display>(cause: C, index: usize) -> FunctionMatchError {
         let message = format!("Invalid parameter at position {}: {}", index, cause);
-        FunctionResolutionError(message)
+        FunctionMatchError(message)
     }
 
-    pub fn return_mismatch<N: Display>(expected: N, given: N) -> FunctionResolutionError {
+    pub fn return_mismatch<N: Display>(expected: N, given: N) -> FunctionMatchError {
         let message = format!("Return type {} does not match expected {}", given, expected);
-        FunctionResolutionError(message)
+        FunctionMatchError(message)
     }
 
-    pub fn too_many_args(expected: usize, got: usize) -> FunctionResolutionError {
+    pub fn too_many_args(expected: usize, got: usize) -> FunctionMatchError {
         let error = format!("Too many arguments, expected {} but got {}", expected, got);
-        FunctionResolutionError(error)
+        FunctionMatchError(error)
     }
 
-    pub fn invalid_arg_count(received: usize, min: usize, max: usize) -> FunctionResolutionError {
+    pub fn invalid_arg_count(received: usize, min: usize, max: usize) -> FunctionMatchError {
         let message = format!("Expected {}-{} parameters, given {}", min, max, received);
-        FunctionResolutionError(message)
+        FunctionMatchError(message)
     }
 }
 
