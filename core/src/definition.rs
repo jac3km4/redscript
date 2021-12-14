@@ -553,7 +553,7 @@ impl Decode for SourceFile {
         let id = input.decode()?;
         let path_hash = input.decode()?;
         let raw_path = input.decode_str_prefixed::<u16>()?;
-        let path = PathBuf::from(raw_path.replace("\\", "/"));
+        let path = PathBuf::from(raw_path.replace('\\', "/"));
         let result = SourceFile { id, path_hash, path };
         Ok(result)
     }
@@ -563,7 +563,7 @@ impl Encode for SourceFile {
     fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
         output.encode(&value.id)?;
         output.encode(&value.path_hash)?;
-        output.encode_str_prefixed::<u16>(&value.path.to_str().unwrap().replace("/", "\\"))
+        output.encode_str_prefixed::<u16>(&value.path.to_str().unwrap().replace('/', "\\"))
     }
 }
 

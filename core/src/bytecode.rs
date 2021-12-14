@@ -875,7 +875,7 @@ impl Location {
         Location { value }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn relative(&self, base: Location) -> Offset {
         Offset::new(self.value as i16 - base.value as i16)
     }
@@ -891,21 +891,21 @@ impl Offset {
         Offset { value }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn absolute(&self, position: Location) -> Location {
         Location::new((position.value as i32 + self.value as i32) as u16)
     }
 }
 
 impl Decode for Offset {
-    #[inline(always)]
+    #[inline]
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
         Ok(Offset::new(input.decode()?))
     }
 }
 
 impl Encode for Offset {
-    #[inline(always)]
+    #[inline]
     fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
         output.encode(&value.value)
     }

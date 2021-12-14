@@ -579,7 +579,7 @@ impl<A> PoolIndex<A> {
         self.value == 0
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn cast<B>(&self) -> PoolIndex<B> {
         PoolIndex {
             value: self.value,

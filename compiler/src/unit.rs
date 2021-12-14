@@ -129,7 +129,7 @@ impl<'a> CompilationUnit<'a> {
             }
             Diagnostic::CompileError(err, pos) => {
                 let loc = files.lookup(*pos).expect("Unknown file");
-                let line = loc.enclosing_line().trim_end().replace("\t", " ");
+                let line = loc.enclosing_line().trim_end().replace('\t', " ");
                 let padding = " ".repeat(loc.start.col);
                 let underscore_len = if loc.start.line == loc.end.line {
                     loc.end.col - loc.start.col

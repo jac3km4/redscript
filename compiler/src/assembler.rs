@@ -22,17 +22,17 @@ impl Assembler {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn emit(&mut self, instr: Instr<Label>) {
         self.instructions.push(instr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn emit_label(&mut self, label: Label) {
         self.instructions.push(Instr::Target(label))
     }
 
-    #[inline(always)]
+    #[inline]
     fn new_label(&mut self) -> Label {
         let label = Label { index: self.labels };
         self.labels += 1;
@@ -397,7 +397,7 @@ impl Assembler {
         scope: &mut Scope,
         pool: &mut ConstantPool,
     ) -> Result<(), Error> {
-        let mut get_arg_type = #[inline(always)]
+        let mut get_arg_type = #[inline]
         |i| {
             type_of(&args[i], scope, pool).and_then(|typ| scope.get_type_index(&typ, pool).map_err(Cause::pool_err))
         };

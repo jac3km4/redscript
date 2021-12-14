@@ -32,7 +32,7 @@ impl<A: Eq + Hash + Clone> Mapper<A> for MultiMapper<A> {
 pub struct NoopMapper<A>(PhantomData<A>);
 
 impl<A> Mapper<A> for NoopMapper<A> {
-    #[inline(always)]
+    #[inline]
     fn apply(&self, value: A) -> A {
         value
     }

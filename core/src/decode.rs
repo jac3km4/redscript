@@ -7,77 +7,77 @@ pub trait Decode: Sized {
 }
 
 impl Decode for i64 {
-    #[inline(always)]
+    #[inline]
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
         input.read_i64::<LittleEndian>()
     }
 }
 
 impl Decode for i32 {
-    #[inline(always)]
+    #[inline]
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
         input.read_i32::<LittleEndian>()
     }
 }
 
 impl Decode for i16 {
-    #[inline(always)]
+    #[inline]
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
         input.read_i16::<LittleEndian>()
     }
 }
 
 impl Decode for i8 {
-    #[inline(always)]
+    #[inline]
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
         input.read_i8()
     }
 }
 
 impl Decode for u64 {
-    #[inline(always)]
+    #[inline]
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
         input.read_u64::<LittleEndian>()
     }
 }
 
 impl Decode for u32 {
-    #[inline(always)]
+    #[inline]
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
         input.read_u32::<LittleEndian>()
     }
 }
 
 impl Decode for u16 {
-    #[inline(always)]
+    #[inline]
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
         input.read_u16::<LittleEndian>()
     }
 }
 
 impl Decode for u8 {
-    #[inline(always)]
+    #[inline]
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
         input.read_u8()
     }
 }
 
 impl Decode for bool {
-    #[inline(always)]
+    #[inline]
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
         Ok(input.read_u8()? != 0)
     }
 }
 
 impl Decode for f64 {
-    #[inline(always)]
+    #[inline]
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
         input.read_f64::<LittleEndian>()
     }
 }
 
 impl Decode for f32 {
-    #[inline(always)]
+    #[inline]
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
         input.read_f32::<LittleEndian>()
     }
@@ -98,7 +98,7 @@ impl Decode for String {
 }
 
 impl<const N: usize> Decode for [u8; N] {
-    #[inline(always)]
+    #[inline]
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
         let mut buf: [u8; N] = [0; N];
         input.read_exact(&mut buf)?;
@@ -107,7 +107,7 @@ impl<const N: usize> Decode for [u8; N] {
 }
 
 pub trait DecodeExt: io::Read + Sized {
-    #[inline(always)]
+    #[inline]
     fn decode<A: Decode>(&mut self) -> io::Result<A> {
         Decode::decode(self)
     }
