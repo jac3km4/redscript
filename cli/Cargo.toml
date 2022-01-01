@@ -9,7 +9,7 @@ publish = false
 redscript = { path = "../core" }
 redscript-decompiler = { path = "../decompiler" }
 redscript-compiler = { path = "../compiler" }
-vmap = { version = "0.4", default-features = false }
+vmap = { version = "0.5", default-features = false }
 gumdrop = "0.8"
 log = "0.4"
 fern = { version = "0.6", features = ["colored"] }

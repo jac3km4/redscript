@@ -1135,9 +1135,9 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 
 [[package]]
 name = "vmap"
-version = "0.4.4"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13bcb5e8d74af5ed6699097ef2eac47a076b8f833f64ade7f642b3b87dddf3ef"
+checksum = "2bd2c7b24cb83f8f22f930d9e22770de6393dcac7dc276b38bd1e94019df7913"
 dependencies = [
  "libc",
  "system_error",
