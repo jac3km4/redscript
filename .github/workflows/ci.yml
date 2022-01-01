@@ -16,7 +16,7 @@ jobs:
           toolchain: nightly
           override: true
       - name: copy cargo config
-        run: xcopy /H /E /Y .\\.cargo C:\\Rust\\.cargo
+        run: xcopy /H /E /Y .\\.cargo C:\\Rust\\.cargo\
       - name: Build
         uses: actions-rs/cargo@v1
         with:
