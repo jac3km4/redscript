@@ -484,7 +484,7 @@ impl TypeName {
         if unwrapped.arguments.is_empty() {
             unwrapped.name.clone()
         } else {
-            let args = unwrapped.arguments.iter().map(TypeName::mangled).join(",");
+            let args = unwrapped.arguments.iter().map(TypeName::mangled).format(",");
             Ident::new(format!("{}<{}>", unwrapped.name, args))
         }
     }
@@ -493,7 +493,7 @@ impl TypeName {
         if self.arguments.is_empty() {
             self.name.clone()
         } else {
-            let args = self.arguments.iter().map(TypeName::pretty).join(",");
+            let args = self.arguments.iter().map(TypeName::pretty).format(", ");
             Ident::new(format!("{}<{}>", self.name, args))
         }
     }

@@ -99,7 +99,7 @@ pub fn write_definition<W: Write>(
                 .parameters
                 .iter()
                 .map(|param| format_param(pool.definition(*param).unwrap(), pool).unwrap())
-                .join(", ");
+                .format(", ");
 
             writeln!(out)?;
             write!(out, "{}{} ", padding, fun.visibility)?;
