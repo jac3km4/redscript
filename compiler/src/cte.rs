@@ -1,8 +1,7 @@
 use std::collections::HashSet;
 
 use enum_as_inner::EnumAsInner;
-use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, SourceAst, UnOp};
-use redscript::Ref;
+use redscript::ast::{BinOp, Constant, Expr, Literal, SourceAst, UnOp};
 
 use crate::error::Error;
 use crate::symbol::ModulePath;
@@ -51,11 +50,6 @@ impl Context {
     }
 
     fn does_module_exist(&self, name: &str) -> bool {
-        let parts = name
-            .split('.')
-            .map(|str| Ident::Owned(Ref::new(str.to_owned())))
-            .collect();
-        let path = ModulePath::new(parts);
-        self.modules.contains(&path)
+        self.modules.contains(&ModulePath::parse(name))
     }
 }
