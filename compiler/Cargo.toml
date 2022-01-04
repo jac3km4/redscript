@@ -10,7 +10,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 redscript = { path = "../core" }
-peg = "0.7"
+peg = "0.8"
 hamt-sync = "0.2"
 sequence_trie = "0.3"
 strum = { version = "0.23", features = ["derive"] }
