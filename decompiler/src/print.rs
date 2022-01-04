@@ -261,11 +261,11 @@ fn write_expr_nested<W: Write>(
             if parent_op.is_some() {
                 write!(out, "(")?;
                 write_expr(out, expr, verbose, 0)?;
-                write!(out, " as {}", type_.repr())?;
+                write!(out, " as {}", type_.pretty())?;
                 write!(out, ")")?;
             } else {
                 write_expr(out, expr, verbose, 0)?;
-                write!(out, " as {}", type_.repr())?;
+                write!(out, " as {}", type_.pretty())?;
             }
         }
         Expr::Declare(name, type_, val, _) => {
