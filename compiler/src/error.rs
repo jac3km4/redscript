@@ -66,6 +66,11 @@ impl From<PoolError> for Cause {
 
 impl Cause {
     #[inline]
+    pub fn new<S: ToString>(error: S) -> Cause {
+        Cause(error.to_string())
+    }
+
+    #[inline]
     pub fn with_span(self, span: Span) -> Error {
         Error::CompileError(self.0, span)
     }

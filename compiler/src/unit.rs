@@ -432,6 +432,10 @@ impl<'a> CompilationUnit<'a> {
         }
 
         let base_idx = if let Some(base_name) = source.base {
+            if base_name.as_ref() == "PersistentState" {
+                let err = Cause::new("Extending PersistentState is unsafe and can corrupt game save files");
+                self.report(err.with_span(source.span))?;
+            }
             if let Symbol::Class(base_idx, _) = scope.resolve_symbol(base_name.clone()).with_span(source.span)? {
                 base_idx
             } else {
@@ -569,9 +573,10 @@ impl<'a> CompilationUnit<'a> {
         scope: &mut Scope,
     ) -> Result<(), Error> {
         let decl = source.declaration;
-        let is_field_native = decl.qualifiers.contain(Qualifier::Native);
+        let is_native = decl.qualifiers.contain(Qualifier::Native);
+        let is_persistent = decl.qualifiers.contain(Qualifier::Persistent);
 
-        if is_field_native && !class_flags.is_native() {
+        if is_native && !class_flags.is_native() {
             self.report(Cause::unexpected_native().with_span(decl.span))?;
         }
 
@@ -579,7 +584,8 @@ impl<'a> CompilationUnit<'a> {
         let type_idx = scope.get_type_index(&type_, self.pool).with_span(decl.span)?;
         let flags = FieldFlags::new()
             .with_is_browsable(true)
-            .with_is_native(is_field_native);
+            .with_is_native(is_native)
+            .with_is_persistent(is_persistent);
         let field = Field {
             visibility,
             type_: type_idx,
