@@ -1,5 +1,3 @@
-cargo-features = ["strip"]
-
 [workspace]
 members = [
   "core",
@@ -10,4 +8,4 @@ members = [
 ]
 
 [profile.release]
-strip = "symbols"
+lto = "thin"

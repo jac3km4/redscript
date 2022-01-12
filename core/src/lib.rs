@@ -1,4 +1,3 @@
-#![feature(result_cloned)]
 pub mod ast;
 pub mod bundle;
 pub mod bytecode;
