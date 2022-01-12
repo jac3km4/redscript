@@ -32,10 +32,13 @@ fn main() -> Result<(), Error> {
                 Ok(_) => {
                     log::info!("Output successfully saved in {}", cache_dir.display());
                 }
+                #[cfg(feature = "popup")]
                 Err(err) => {
                     let content = error_message(err, &files, &script_dir);
                     msgbox::create("Compilation error", &content, msgbox::IconType::Error).unwrap();
                 }
+                #[cfg(not(feature = "popup"))]
+                Err(_) => {}
             }
         }
         _ => {
@@ -165,6 +168,7 @@ impl ScriptManifest {
     }
 }
 
+#[allow(dead_code)]
 fn error_message(error: Error, files: &Files, scripts_dir: &Path) -> String {
     fn detailed_message(spans: Vec<Span>, files: &Files, scripts_dir: &Path) -> Option<String> {
         let mut causes = HashSet::new();
