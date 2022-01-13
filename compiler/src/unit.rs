@@ -1,8 +1,8 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt;
 
-use redscript::ast::{Expr, Ident, Seq, SourceAst, Span};
-use redscript::bundle::{ConstantPool, PoolError, PoolIndex};
+use redscript::ast::{Expr, Ident, Seq, SourceAst, Span, TypeName};
+use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Instr};
 use redscript::definition::*;
 use redscript::mapper::{MultiMapper, PoolMapper};
@@ -17,7 +17,7 @@ use crate::source_map::Files;
 use crate::sugar::Desugar;
 use crate::symbol::{FunctionSignature, Import, ModulePath, Symbol, SymbolMap};
 use crate::transform::ExprTransformer;
-use crate::typechecker::{collect_subtypes, Callable, TypeChecker, TypedAst};
+use crate::typechecker::{collect_supertypes, Callable, TypeChecker, TypedAst};
 
 type ProxyMap = HashMap<PoolIndex<Function>, PoolIndex<Function>>;
 
@@ -432,10 +432,6 @@ impl<'a> CompilationUnit<'a> {
         }
 
         let base_idx = if let Some(base_name) = source.base {
-            if base_name.as_ref() == "PersistentState" {
-                let err = Cause::new("Extending PersistentState is unsafe and can corrupt game save files");
-                self.report(err.with_span(source.span))?;
-            }
             if let Symbol::Class(base_idx, _) = scope.resolve_symbol(base_name.clone()).with_span(source.span)? {
                 base_idx
             } else {
@@ -578,6 +574,19 @@ impl<'a> CompilationUnit<'a> {
 
         if is_native && !class_flags.is_native() {
             self.report(Cause::unexpected_native().with_span(decl.span))?;
+        }
+
+        fn can_be_persistent(typ: &TypeName) -> bool {
+            const DISALLOWED_TYPES: &[TypeName] = &[TypeName::STRING, TypeName::VARIANT, TypeName::RESOURCE];
+            if DISALLOWED_TYPES.contains(typ) {
+                false
+            } else {
+                typ.arguments.iter().all(can_be_persistent)
+            }
+        }
+
+        if is_persistent && !can_be_persistent(&source.type_) {
+            self.report(Cause::unsupported(format_args!("Persistent {}", source.type_)).with_span(decl.span))?;
         }
 
         let type_ = scope.resolve_type(&source.type_, self.pool).with_span(decl.span)?;
@@ -937,10 +946,6 @@ impl<'a> CompilationUnit<'a> {
         Ok(())
     }
 
-    fn class_cardinality(idx: PoolIndex<Class>, pool: &ConstantPool) -> Result<usize, PoolError> {
-        Ok(collect_subtypes(idx, pool)?.len())
-    }
-
     fn cleanup_pool(pool: &mut ConstantPool) {
         // this is a workaround for a game crash which happens when the game loads
         // a class which has a base class that is placed after the subclass in the pool
@@ -968,7 +973,7 @@ impl<'a> CompilationUnit<'a> {
 
         // find out the order based on cardinality
         let mut sorted: Vec<PoolIndex<Class>> = unsorted.iter().copied().collect();
-        sorted.sort_by_key(|k| Self::class_cardinality(*k, pool).unwrap());
+        sorted.sort_by_key(|idx| collect_supertypes(*idx, pool).unwrap().len());
 
         #[allow(clippy::needless_collect)]
         let definitions: Vec<_> = sorted.iter().map(|k| pool.definition(*k).unwrap().clone()).collect();

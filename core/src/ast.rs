@@ -435,7 +435,7 @@ impl Target {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct TypeName {
     pub name: Ident,
     pub arguments: Vec<TypeName>,

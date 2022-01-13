@@ -767,12 +767,15 @@ pub fn type_of(expr: &Expr<TypedAst>, scope: &Scope, pool: &ConstantPool) -> Res
     Ok(res)
 }
 
-pub fn collect_subtypes(class_idx: PoolIndex<Class>, pool: &ConstantPool) -> Result<Vec<PoolIndex<Class>>, PoolError> {
+pub fn collect_supertypes(
+    class_idx: PoolIndex<Class>,
+    pool: &ConstantPool,
+) -> Result<Vec<PoolIndex<Class>>, PoolError> {
     if class_idx.is_undefined() {
         Ok(vec![])
     } else {
         let class = pool.class(class_idx)?;
-        let mut res = collect_subtypes(class.base, pool)?;
+        let mut res = collect_supertypes(class.base, pool)?;
         res.push(class_idx);
         Ok(res)
     }
@@ -781,8 +784,8 @@ pub fn collect_subtypes(class_idx: PoolIndex<Class>, pool: &ConstantPool) -> Res
 // least upper type bound
 pub fn lub(a: TypeId, b: TypeId, pool: &ConstantPool) -> Result<TypeId, Cause> {
     fn lub_class(a: PoolIndex<Class>, b: PoolIndex<Class>, pool: &ConstantPool) -> Result<PoolIndex<Class>, Cause> {
-        let subs_a = collect_subtypes(a, pool)?;
-        let subs_b = collect_subtypes(b, pool)?;
+        let subs_a = collect_supertypes(a, pool)?;
+        let subs_b = collect_supertypes(b, pool)?;
         let res = subs_a.into_iter().zip(subs_b).take_while(|(a, b)| a == b).last();
         res.map(|x| x.0)
             .ok_or_else(|| Cause::unification_failed(pool.def_name(a).unwrap(), pool.def_name(b).unwrap()))
