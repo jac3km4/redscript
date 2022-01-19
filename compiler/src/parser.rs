@@ -101,6 +101,7 @@ pub enum Qualifier {
     Optional,
     Quest,
     ImportOnly,
+    Persistent,
 }
 
 #[derive(Debug)]
@@ -188,6 +189,7 @@ peg::parser! {
             / keyword("opt") { Qualifier::Optional }
             / keyword("quest") { Qualifier::Quest }
             / keyword("importonly") { Qualifier::ImportOnly }
+            / keyword("persistent") { Qualifier::Persistent }
 
         rule literal_type() -> Literal
             = "n" { Literal::Name }
