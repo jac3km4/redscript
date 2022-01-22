@@ -1,4 +1,10 @@
-## [0.4.0] - Unreleased
+## [0.4.2] - Unreleased
+- support `persistent` fields (5b28213)
+
+## [0.4.1]
+- fix an issue with wrapped callback methods (a6a22cf)
+
+## [0.4.0]
 - add string interpolation (493b983)
 ```swift
 // create interpolated strings using the 's' prefix
@@ -25,7 +31,7 @@ func Testing() -> Int32 {
 }
 ```
 - enforce basic correctness rules for native and abstract classes/functions (da8dd33)
-- allow native and importonly classes (d2070bb)
+- allow native and importonly classes (7fc4e29)
 - allow semicolon after all function declarations (f91bb35)
 - fix an issue affecting locals with conflicting names (50c6955)
 - extended support for **Variant** native type (c9850e6)
@@ -68,7 +74,7 @@ func Testing() {
     // we infer the most general type to use for the array (array<ref<a>>)
     let a = [ new C(), new B(), new D() ];
     // the type of 'b' is ref<B>
-    let b = true ? new B() : new C();
+    let b = true ? new C() : new B();
 }
 
 class A {}
