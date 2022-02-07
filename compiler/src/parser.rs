@@ -450,7 +450,7 @@ peg::parser! {
                 Expr::Constant(cons, Span::new(pos, end))
             }
             pos:pos() id:ident() _ type_args:type_args()? _ "(" _ params:commasep(<expr()>) _ ")" end:pos() {
-                Expr::Call(id, type_args.unwrap_or_else(Vec::new), params, Span::new(pos, end))
+                Expr::Call(id, type_args.unwrap_or_default(), params, Span::new(pos, end))
             }
             pos:pos() id:ident() end:pos() {
                 Expr::Ident(id, Span::new(pos, end))
