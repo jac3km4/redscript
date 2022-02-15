@@ -676,6 +676,7 @@ pub struct FunctionFlags {
     pub is_timer: bool,
     pub is_final: bool,
     pub is_native: bool,
+    pub unk1: bool,
     pub is_callback: bool,
     pub is_operator: bool,
     pub has_return_value: bool,
@@ -686,13 +687,17 @@ pub struct FunctionFlags {
     pub is_cast: bool,
     pub is_implicit_cast: bool,
     #[skip]
-    pub padding: B4,
-    pub is_const: bool,
+    pub padding: B3,
     pub is_thread_safe: bool,
+    pub is_const: bool,
+    pub unk2: bool, // is_constant?
+    pub unk3: bool, // is_native related?
     pub is_quest: bool,
-    pub is_test_only: bool,
+    pub unk4: bool,
+    pub unk5: bool, // callback related?
+    pub unk6: bool, // callback related?
     #[skip]
-    pub remainder: B10,
+    pub remainder: B6,
 }
 
 impl Decode for FunctionFlags {
