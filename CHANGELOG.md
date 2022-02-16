@@ -1,4 +1,9 @@
-## [0.4.2] - Unreleased
+## [0.5.0] - Unreleased
+
+## [0.5.0]
+- support for the 1.5 game update (af21a68)
+
+## [0.4.2]
 - support `persistent` fields (5b28213)
 
 ## [0.4.1]
