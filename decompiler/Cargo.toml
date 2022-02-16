@@ -1,6 +1,6 @@
 [package]
 name = "redscript-decompiler"
-version = "0.5.0-RC1"
+version = "0.5.0"
 authors = ["jac3km4 <jac3km4@pm.me>"]
 edition = "2021"
 publish = false
