@@ -93,7 +93,11 @@ impl<'a> CompilationUnit<'a> {
 
                 if is_fatal {
                     Err(Error::MultipleErrors(
-                        diagnostics.iter().map(Diagnostic::span).collect(),
+                        diagnostics
+                            .iter()
+                            .filter(|d| d.is_fatal())
+                            .map(Diagnostic::span)
+                            .collect(),
                     ))
                 } else {
                     log::info!("Compilation complete");
