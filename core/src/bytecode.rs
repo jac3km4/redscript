@@ -460,7 +460,7 @@ impl Decode for Instr<Offset> {
             100 => Ok(Instr::AsRef(input.decode()?)),
             101 => Ok(Instr::Deref(input.decode()?)),
             other => {
-                let msg = format!("Invalid instruction code: {}", other);
+                let msg = format!("Invalid instruction code: {other}");
                 Err(io::Error::new(io::ErrorKind::InvalidData, msg))
             }
         }

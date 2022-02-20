@@ -450,7 +450,7 @@ fn format_param(def: &Definition, pool: &ConstantPool) -> Result<String, Error> 
     let out = if param.flags.is_out() { "out " } else { "" };
     let optional = if param.flags.is_optional() { "opt " } else { "" };
     let const_ = if param.flags.is_const() { "const " } else { "" };
-    Ok(format!("{}{}{}{}: {}", const_, out, optional, name, type_name))
+    Ok(format!("{const_}{out}{optional}{name}: {type_name}"))
 }
 
 fn format_type(def: &Definition, pool: &ConstantPool) -> Result<String, Error> {
@@ -462,7 +462,7 @@ fn format_type(def: &Definition, pool: &ConstantPool) -> Result<String, Error> {
         Type::WeakRef(nested) => format!("wref<{}>", format_type(pool.definition(*nested)?, pool)?),
         Type::Array(nested) => format!("array<{}>", format_type(pool.definition(*nested)?, pool)?),
         Type::StaticArray(nested, size) => {
-            format!("array<{}; {}>", format_type(pool.definition(*nested)?, pool)?, size)
+            format!("array<{}; {size}>", format_type(pool.definition(*nested)?, pool)?)
         }
         Type::ScriptRef(nested) => format!("script_ref<{}>", format_type(pool.definition(*nested)?, pool)?),
     };

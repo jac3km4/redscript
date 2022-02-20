@@ -704,7 +704,7 @@ impl<'a> CompilationUnit<'a> {
                         }
                     };
 
-                    let name_idx = self.pool.names.add(Ref::new(format!("wrapper${}", wrapped_idx)));
+                    let name_idx = self.pool.names.add(Ref::new(format!("wrapper${wrapped_idx}")));
                     let wrapper_idx = self.pool.stub_definition(name_idx);
                     let base = self.pool.function(fun_idx)?.base_method;
 
@@ -915,7 +915,7 @@ impl<'a> CompilationUnit<'a> {
             parameters,
             ..fun
         };
-        let name = pool.names.add(Ref::new(format!("proxy${}", wrapper)));
+        let name = pool.names.add(Ref::new(format!("proxy${wrapper}")));
         pool.put_definition(slot, Definition::function(name, def.parent.cast(), compiled));
         if !def.parent.is_undefined() {
             pool.class_mut(def.parent.cast())?.functions.push(slot);

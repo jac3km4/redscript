@@ -485,7 +485,7 @@ impl TypeName {
             unwrapped.name.clone()
         } else {
             let args = unwrapped.arguments.iter().map(TypeName::mangled).format(",");
-            Ident::new(format!("{}<{}>", unwrapped.name, args))
+            Ident::new(format!("{}<{args}>", unwrapped.name))
         }
     }
 
@@ -494,7 +494,7 @@ impl TypeName {
             self.name.clone()
         } else {
             let args = self.arguments.iter().map(TypeName::pretty).format(", ");
-            Ident::new(format!("{}<{}>", self.name, args))
+            Ident::new(format!("{}<{args}>", self.name))
         }
     }
 

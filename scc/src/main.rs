@@ -188,12 +188,11 @@ fn error_message(error: Error, files: &Files, scripts_dir: &Path) -> String {
 
         let causes = causes
             .iter()
-            .map(|file| format!("- {}\n", file))
+            .map(|file| format!("- {file}\n"))
             .fold(String::new(), |acc, el| acc + &el);
 
         let msg = format!(
-            "This is caused by errors in:\n{}You can try updating or removing these scripts to resolve the issue. If you need more information, consult the logs.",
-            causes
+            "This is caused by errors in:\n{causes}You can try updating or removing these scripts to resolve the issue. If you need more information, consult the logs."
         );
         Some(msg)
     }
@@ -204,13 +203,10 @@ fn error_message(error: Error, files: &Files, scripts_dir: &Path) -> String {
         Error::ArgumentError(_, pos) => detailed_message(vec![pos], files, scripts_dir).unwrap_or_default(),
         Error::ResolutionError(_, pos) => detailed_message(vec![pos], files, scripts_dir).unwrap_or_default(),
         Error::MultipleErrors(spans) => detailed_message(spans, files, scripts_dir).unwrap_or_default(),
-        Error::IoError(err) => format!("This is caused by an I/O error: {}", err),
-        Error::PoolError(err) => format!("This is caused by a constant pool error: {}", err),
+        Error::IoError(err) => format!("This is caused by an I/O error: {err}"),
+        Error::PoolError(err) => format!("This is caused by a constant pool error: {err}"),
         _ => String::new(),
     };
 
-    format!(
-        "REDScript compilation failed. The game will start, but none of the scripts will take effect. {}",
-        str
-    )
+    format!("REDScript compilation failed. The game will start, but none of the scripts will take effect. {str}")
 }

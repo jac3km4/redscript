@@ -239,13 +239,13 @@ impl ConstantPool {
         self.definitions
             .get(index.value as usize)
             .and_then(|def| get(&def.value))
-            .ok_or_else(|| PoolError(format!("Definition not found in the pool ({})", index)))
+            .ok_or_else(|| PoolError(format!("Definition not found in the pool ({index})")))
     }
 
     pub fn definition<A>(&self, index: PoolIndex<A>) -> Result<&Definition, PoolError> {
         self.definitions
             .get(index.value as usize)
-            .ok_or_else(|| PoolError(format!("Definition not found in the pool ({})", index)))
+            .ok_or_else(|| PoolError(format!("Definition not found in the pool ({index})")))
     }
 
     pub fn function(&self, index: PoolIndex<Function>) -> Result<&Function, PoolError> {
@@ -256,7 +256,7 @@ impl ConstantPool {
         self.definitions
             .get_mut(index.value as usize)
             .and_then(|def| def.value.as_function_mut())
-            .ok_or_else(|| PoolError(format!("Function not found in the pool ({})", index)))
+            .ok_or_else(|| PoolError(format!("Function not found in the pool ({index})")))
     }
 
     pub fn field(&self, index: PoolIndex<Field>) -> Result<&Field, PoolError> {
@@ -283,7 +283,7 @@ impl ConstantPool {
         self.definitions
             .get_mut(index.value as usize)
             .and_then(|def| def.value.as_class_mut())
-            .ok_or_else(|| PoolError(format!("Class not found in the pool ({})", index)))
+            .ok_or_else(|| PoolError(format!("Class not found in the pool ({index})")))
     }
 
     pub fn enum_(&self, index: PoolIndex<Enum>) -> Result<&Enum, PoolError> {
@@ -374,7 +374,7 @@ impl<K> Names<K> {
         self.strings
             .get(index.value as usize)
             .cloned()
-            .ok_or_else(|| PoolError(format!("String {} not found", index.value)))
+            .ok_or_else(|| PoolError(format!("String {index} not found")))
     }
 
     #[allow(clippy::ptr_arg)]
@@ -382,7 +382,7 @@ impl<K> Names<K> {
         self.mappings
             .get(name)
             .cloned()
-            .ok_or_else(|| PoolError(format!("Name {} not found", name)))
+            .ok_or_else(|| PoolError(format!("Name {name} not found")))
     }
 
     pub fn add(&mut self, str: Ref<String>) -> PoolIndex<K> {

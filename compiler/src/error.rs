@@ -36,19 +36,16 @@ impl Error {
         let messages = errors.iter().take(max_errors).join("\n ");
 
         let detail = if errors.len() > max_errors {
-            format!("{}\n...and more", messages)
+            format!("{messages}\n...and more")
         } else {
             messages
         };
-        let error = format!(
-            "Arguments passed to {} do not match any of the overloads:\n {}",
-            name, detail
-        );
+        let error = format!("Arguments passed to {name} do not match any of the overloads:\n {detail}",);
         Error::ResolutionError(error, span)
     }
 
     pub fn too_many_matching_overloads<N: Display>(name: N, span: Span) -> Error {
-        let error = format!("Arguments passed to {} satisfy more than one overload", name);
+        let error = format!("Arguments passed to {name} satisfy more than one overload");
         Error::ResolutionError(error, span)
     }
 }
@@ -81,46 +78,46 @@ impl Cause {
     }
 
     pub fn type_error<F: Display, T: Display>(from: F, to: T) -> Cause {
-        let error = format!("Can't coerce {} to {}", from, to);
+        let error = format!("Can't coerce {from} to {to}");
         Cause(error)
     }
 
     pub fn function_not_found<F: Display>(fun_name: F) -> Cause {
-        let error = format!("Function {} not found", fun_name);
+        let error = format!("Function {fun_name} not found");
         Cause(error)
     }
 
     pub fn member_not_found<M: Display, C: Display>(member: M, context: C) -> Cause {
-        let error = format!("Member {} not found on {}", member, context);
+        let error = format!("Member {member} not found on {context}");
         Cause(error)
     }
 
     pub fn class_not_found<N: Display>(class_name: N) -> Cause {
-        let error = format!("Can't find class {}", class_name);
+        let error = format!("Can't find class {class_name}");
         Cause(error)
     }
 
     pub fn class_is_abstract<N: Display>(class_name: N) -> Cause {
-        let error = format!("Cannot instantiate abstract class {}", class_name);
+        let error = format!("Cannot instantiate abstract class {class_name}");
         Cause(error)
     }
 
     pub fn unresolved_reference<N: Display>(name: N) -> Cause {
-        let error = format!("Unresolved reference {}", name);
+        let error = format!("Unresolved reference {name}");
         Cause(error)
     }
 
     pub fn unresolved_type<N: Display>(name: N) -> Cause {
-        let error = format!("Unresolved type {}", name);
+        let error = format!("Unresolved type {name}");
         Cause(error)
     }
 
     pub fn unresolved_import<N: Display>(import: N) -> Cause {
-        Cause(format!("Unresolved import {}", import))
+        Cause(format!("Unresolved import {import}"))
     }
 
     pub fn unresolved_module<N: Display>(import: N) -> Cause {
-        Cause(format!("Module {} has no members or does not exist", import))
+        Cause(format!("Module {import} has no members or does not exist"))
     }
 
     pub fn invalid_annotation_args() -> Cause {
@@ -132,17 +129,17 @@ impl Cause {
     }
 
     pub fn invalid_context<N: Display>(type_: N) -> Cause {
-        let error = format!("{} doesn't have members", type_);
+        let error = format!("{type_} doesn't have members");
         Cause(error)
     }
 
     pub fn invalid_op<N: Display>(type_: N, op: &str) -> Cause {
-        let error = format!("{} is not supported on {}", op, type_);
+        let error = format!("{op} is not supported on {type_}");
         Cause(error)
     }
 
     pub fn invalid_arg_count<N: Display>(name: N, expected: usize) -> Cause {
-        let error = format!("Expected {} parameters for {}", expected, name);
+        let error = format!("Expected {expected} parameters for {name}");
         Cause(error)
     }
 
@@ -151,26 +148,26 @@ impl Cause {
     }
 
     pub fn value_expected<N: Display>(found: N) -> Cause {
-        Cause(format!("Expected a value, found {}", found))
+        Cause(format!("Expected a value, found {found}"))
     }
 
     pub fn return_type_mismatch<N: Display>(type_: N) -> Cause {
-        let error = format!("Function should return {}", type_);
+        let error = format!("Function should return {type_}");
         Cause(error)
     }
 
     pub fn invalid_intrinsic<N: Display, T: Display>(name: N, type_: T) -> Cause {
-        let err = format!("Invalid intrinsic {} call: unexpected {}", name, type_);
+        let err = format!("Invalid intrinsic {name} call: unexpected {type_}");
         Cause(err)
     }
 
     pub fn expected_static_method<N: Display>(name: N) -> Cause {
-        let err = format!("Method {} is not static", name);
+        let err = format!("Method {name} is not static");
         Cause(err)
     }
 
     pub fn expected_non_static_method<N: Display>(name: N) -> Cause {
-        let err = format!("Method {} is static", name);
+        let err = format!("Method {name} is static");
         Cause(err)
     }
 
@@ -179,7 +176,7 @@ impl Cause {
     }
 
     pub fn unsupported<N: Display>(name: N) -> Cause {
-        let err = format!("{} is unsupported", name);
+        let err = format!("{name} is unsupported");
         Cause(err)
     }
 
@@ -204,7 +201,7 @@ impl Cause {
     }
 
     pub fn unification_failed<A: Display, B: Display>(a: A, b: B) -> Cause {
-        let err = format!("Cannot unify {} and {}", a, b);
+        let err = format!("Cannot unify {a} and {b}");
         Cause(err)
     }
 }
@@ -215,17 +212,17 @@ pub struct FunctionMatchError(String);
 
 impl FunctionMatchError {
     pub fn parameter_mismatch<C: Display>(cause: C, index: usize) -> FunctionMatchError {
-        let message = format!("Parameter at position {}: {}", index + 1, cause);
+        let message = format!("Parameter at position {}: {cause}", index + 1);
         FunctionMatchError(message)
     }
 
     pub fn return_mismatch<N: Display>(expected: N, given: N) -> FunctionMatchError {
-        let message = format!("Return type {} does not match expected {}", given, expected);
+        let message = format!("Return type {given} does not match expected {expected}");
         FunctionMatchError(message)
     }
 
     pub fn invalid_arg_count(received: usize, min: usize, max: usize) -> FunctionMatchError {
-        let message = format!("Expected {}-{} parameters, given {}", min, max, received);
+        let message = format!("Expected {min}-{max} parameters, given {received}");
         FunctionMatchError(message)
     }
 }
