@@ -116,10 +116,10 @@ impl Encode for Header {
 
 #[derive(Debug, Clone, Default)]
 pub struct ConstantPool {
-    pub names: Names<String>,
-    pub tweakdb_ids: Names<TweakDbId>,
-    pub resources: Names<Resource>,
-    pub strings: Names<String>,
+    pub names: Strings<String>,
+    pub tweakdb_ids: Strings<TweakDbId>,
+    pub resources: Strings<Resource>,
+    pub strings: Strings<String>,
     pub(crate) definitions: Vec<Definition>,
 }
 
@@ -129,11 +129,11 @@ impl ConstantPool {
 
         let mut cursor = io::Cursor::new(buffer);
 
-        let names = Names::decode_from(&mut cursor, &input.decode_vec(header.names.count)?)?;
-        let tweakdb_ids = Names::decode_from(&mut cursor, &input.decode_vec(header.tweakdb_indexes.count)?)?;
-        let resources = Names::decode_from(&mut cursor, &input.decode_vec(header.resources.count)?)?;
+        let names = Strings::decode_from(&mut cursor, &input.decode_vec(header.names.count)?)?;
+        let tweakdb_ids = Strings::decode_from(&mut cursor, &input.decode_vec(header.tweakdb_indexes.count)?)?;
+        let resources = Strings::decode_from(&mut cursor, &input.decode_vec(header.resources.count)?)?;
         let headers: Vec<DefinitionHeader> = input.decode_vec(header.definitions.count)?;
-        let strings = Names::decode_from(&mut cursor, &input.decode_vec(header.strings.count)?)?;
+        let strings = Strings::decode_from(&mut cursor, &input.decode_vec(header.strings.count)?)?;
 
         let mut definitions = Vec::with_capacity(headers.len());
         definitions.push(Definition::DEFAULT);
@@ -338,14 +338,14 @@ impl ConstantPool {
 }
 
 #[derive(Debug, Clone)]
-pub struct Names<K> {
+pub struct Strings<K> {
     strings: Vec<Ref<String>>,
     mappings: HashMap<Ref<String>, PoolIndex<K>>,
     phantom: PhantomData<K>,
 }
 
-impl<K> Names<K> {
-    fn decode_from<I: io::Read + io::Seek>(input: &mut I, offsets: &[u32]) -> io::Result<Names<K>> {
+impl<K> Strings<K> {
+    fn decode_from<I: io::Read + io::Seek>(input: &mut I, offsets: &[u32]) -> io::Result<Strings<K>> {
         let mut strings = Vec::with_capacity(offsets.len());
         let mut mappings = HashMap::new();
         for (idx, offset) in offsets.iter().enumerate() {
@@ -354,7 +354,7 @@ impl<K> Names<K> {
             strings.push(str.clone());
             mappings.insert(str, PoolIndex::new(idx as u32));
         }
-        let result = Names {
+        let result = Strings {
             strings,
             mappings,
             phantom: PhantomData,
@@ -397,7 +397,7 @@ impl<K> Names<K> {
     }
 }
 
-impl<K> Default for Names<K> {
+impl<K> Default for Strings<K> {
     fn default() -> Self {
         Self {
             strings: vec![],
