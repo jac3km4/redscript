@@ -1,5 +1,4 @@
-use std::collections::hash_map;
-use std::collections::hash_map::{Entry, HashMap};
+use std::collections::hash_map::{self, Entry, HashMap};
 use std::hash::Hash;
 use std::io::Seek;
 use std::marker::PhantomData;
@@ -42,8 +41,7 @@ impl ScriptBundle {
 pub struct Header {
     version: u32,
     flags: u32,
-    unk1: u32,
-    unk2: u32,
+    timestamp: Timestamp,
     unk3: u32,
     hash: u32,
     chunks: u32,
@@ -69,8 +67,7 @@ impl Decode for Header {
 
         let version: u32 = input.decode()?;
         let flags: u32 = input.decode()?;
-        let unk1: u32 = input.decode()?;
-        let unk2: u32 = input.decode()?;
+        let timestamp: Timestamp = input.decode()?;
         let unk3: u32 = input.decode()?;
         let hash: u32 = input.decode()?;
         let chunks: u32 = input.decode()?;
@@ -84,8 +81,7 @@ impl Decode for Header {
         let result = Header {
             version,
             flags,
-            unk1,
-            unk2,
+            timestamp,
             unk3,
             hash,
             chunks,
@@ -105,8 +101,7 @@ impl Encode for Header {
         output.encode(&Header::MAGIC)?;
         output.encode(&value.version)?;
         output.encode(&value.flags)?;
-        output.encode(&value.unk1)?;
-        output.encode(&value.unk2)?;
+        output.encode(&value.timestamp)?;
         output.encode(&value.unk3)?;
         output.encode(&value.hash)?;
         output.encode(&value.chunks)?;
@@ -556,6 +551,32 @@ impl Decode for DefinitionType {
 impl Encode for DefinitionType {
     fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
         output.encode(&DefinitionType::into_bytes(*value).unwrap())
+    }
+}
+
+#[bitfield]
+#[derive(Debug, Clone, Copy)]
+pub struct Timestamp {
+    #[skip]
+    padding: B10,
+    pub day: B5,
+    pub month: B5,
+    pub year: B12,
+    pub millis: B10,
+    pub seconds: B6,
+    pub minutes: B6,
+    pub hours: B10,
+}
+
+impl Encode for Timestamp {
+    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
+        output.write_all(&value.into_bytes())
+    }
+}
+
+impl Decode for Timestamp {
+    fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
+        Ok(Timestamp::from_bytes(input.decode()?))
     }
 }
 
