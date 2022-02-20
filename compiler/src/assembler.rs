@@ -7,7 +7,7 @@ use redscript::definition::Function;
 use crate::error::{Cause, Error, ResultSpan};
 use crate::scope::{Reference, Scope, TypeId, Value};
 use crate::symbol::Symbol;
-use crate::typechecker::{lub, type_of, Callable, Member, TypedAst};
+use crate::typechecker::{type_of, Callable, Member, TypedAst};
 
 pub struct Assembler {
     instructions: Vec<Instr<Label>>,
@@ -404,18 +404,12 @@ impl Assembler {
 
         match intrinsic {
             IntrinsicOp::Equals => {
-                let lhs = type_of(&args[0], scope, pool)?;
-                let rhs = type_of(&args[1], scope, pool)?;
-                let typ = lub(lhs, rhs, pool).unwrap();
-                let typ_idx = scope.get_type_index(&typ, pool).map_err(Cause::pool_err)?;
-                self.emit(Instr::Equals(typ_idx));
+                // TODO: eventually enforce type compatibility (https://github.com/jac3km4/redscript/issues/69)
+                self.emit(Instr::Equals(get_arg_type(0)?));
             }
             IntrinsicOp::NotEquals => {
-                let lhs = type_of(&args[0], scope, pool)?;
-                let rhs = type_of(&args[1], scope, pool)?;
-                let typ = lub(lhs, rhs, pool).unwrap();
-                let typ_idx = scope.get_type_index(&typ, pool).map_err(Cause::pool_err)?;
-                self.emit(Instr::NotEquals(typ_idx));
+                // TODO: eventually enforce type compatibility (https://github.com/jac3km4/redscript/issues/69)
+                self.emit(Instr::NotEquals(get_arg_type(0)?));
             }
             IntrinsicOp::ArrayClear => {
                 self.emit(Instr::ArrayClear(get_arg_type(0)?));

@@ -165,7 +165,7 @@ fn compile_casts() {
 fn compile_intrinsic_null_cases() {
     let sources = "
         func Testing() {
-            Equals(null, new A());
+            // Equals(null, new A()); // uncomment this after https://github.com/jac3km4/redscript/issues/69
             Equals(new A(), null);
             IsDefined(null);
         }

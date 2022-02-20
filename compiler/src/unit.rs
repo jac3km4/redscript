@@ -127,9 +127,13 @@ impl<'a> CompilationUnit<'a> {
             Diagnostic::MethodConflict(_, pos) => {
                 let loc = files.lookup(*pos).unwrap();
                 Self::print_message(
-                    format_args!("At {}:\n Conflicting method replacement", loc),
+                    format_args!("At {loc}:\n Conflicting method replacement"),
                     diagnostic.is_fatal(),
                 );
+            }
+            Diagnostic::Deprecation(msg, pos) => {
+                let loc = files.lookup(*pos).unwrap();
+                Self::print_message(format_args!("At {loc}:\n {msg}"), diagnostic.is_fatal());
             }
             Diagnostic::CompileError(err, pos) => {
                 let loc = files.lookup(*pos).expect("Unknown file");
@@ -1048,6 +1052,7 @@ enum Slot {
 #[derive(Debug, PartialEq, Eq)]
 pub enum Diagnostic {
     MethodConflict(PoolIndex<Function>, Span),
+    Deprecation(String, Span),
     CompileError(String, Span),
 }
 
@@ -1066,15 +1071,22 @@ impl Diagnostic {
     pub fn is_fatal(&self) -> bool {
         match self {
             Diagnostic::MethodConflict(_, _) => false,
+            Diagnostic::Deprecation(_, _) => false,
             Diagnostic::CompileError(_, _) => true,
         }
     }
 
     pub fn span(&self) -> Span {
         match self {
-            Diagnostic::MethodConflict(_, pos) => *pos,
-            Diagnostic::CompileError(_, pos) => *pos,
+            Diagnostic::MethodConflict(_, span) => *span,
+            Diagnostic::Deprecation(_, span) => *span,
+            Diagnostic::CompileError(_, span) => *span,
         }
+    }
+
+    pub fn unrelated_type_equals(span: Span) -> Self {
+        let msg = format!("Comparing unrelated types, this is deprecated and will not be allowed in the future");
+        Self::Deprecation(msg, span)
     }
 }
 
