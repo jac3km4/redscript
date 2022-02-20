@@ -1,4 +1,4 @@
-use std::collections::hash_map::{self, Entry, HashMap};
+use std::collections::hash_map::{self, HashMap};
 use std::hash::Hash;
 use std::io::Seek;
 use std::marker::PhantomData;
@@ -339,7 +339,7 @@ impl ConstantPool {
 
 #[derive(Debug, Clone)]
 pub struct Names<K> {
-    pub strings: Vec<Ref<String>>,
+    strings: Vec<Ref<String>>,
     mappings: HashMap<Ref<String>, PoolIndex<K>>,
     phantom: PhantomData<K>,
 }
@@ -388,8 +388,8 @@ impl<K> Names<K> {
     pub fn add(&mut self, str: Ref<String>) -> PoolIndex<K> {
         let idx = PoolIndex::new(self.strings.len() as u32);
         match self.mappings.entry(str.clone()) {
-            Entry::Occupied(entry) => *entry.get(),
-            Entry::Vacant(slot) => {
+            hash_map::Entry::Occupied(entry) => *entry.get(),
+            hash_map::Entry::Vacant(slot) => {
                 self.strings.push(str);
                 *slot.insert(idx)
             }
@@ -464,8 +464,8 @@ impl DefinitionHeader {
         size: 0,
         type_: DefinitionType::Type,
         unk1: 0,
-        unk2: 213,
-        unk3: 222,
+        unk2: 0,
+        unk3: 0,
     };
 
     fn encode_definition<O: io::Write + io::Seek>(
@@ -474,7 +474,7 @@ impl DefinitionHeader {
     ) -> io::Result<DefinitionHeader> {
         let offset = output.stream_position()?;
         output.encode(&definition.value)?;
-        let size = output.stream_position()?;
+        let size = output.stream_position()? - offset;
         let header = DefinitionHeader {
             name: definition.name,
             parent: definition.parent,
