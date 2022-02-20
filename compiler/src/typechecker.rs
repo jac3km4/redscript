@@ -359,13 +359,17 @@ impl<'a> TypeChecker<'a> {
         let mut checked_args = vec![];
         let type_ = match (intrinsic, first_arg_type) {
             (IntrinsicOp::Equals, arg_type) => {
+                let snd_arg = self.check(&args[1], Some(&arg_type), scope)?;
+                lub(arg_type, type_of(&snd_arg, scope, self.pool)?, self.pool).with_span(span)?;
                 checked_args.push(first_arg);
-                checked_args.push(self.check(&args[1], Some(&arg_type), scope)?);
+                checked_args.push(snd_arg);
                 scope.resolve_type(&TypeName::BOOL, self.pool).with_span(span)?
             }
             (IntrinsicOp::NotEquals, arg_type) => {
+                let snd_arg = self.check(&args[1], Some(&arg_type), scope)?;
+                lub(arg_type, type_of(&snd_arg, scope, self.pool)?, self.pool).with_span(span)?;
                 checked_args.push(first_arg);
-                checked_args.push(self.check(&args[1], Some(&arg_type), scope)?);
+                checked_args.push(snd_arg);
                 scope.resolve_type(&TypeName::BOOL, self.pool).with_span(span)?
             }
             (IntrinsicOp::ArrayClear, TypeId::Array(_)) => {
@@ -483,7 +487,7 @@ impl<'a> TypeChecker<'a> {
                 checked_args.push(first_arg);
                 *inner
             }
-            (IntrinsicOp::IsDefined, TypeId::Ref(_) | TypeId::WeakRef(_) | TypeId::Variant) => {
+            (IntrinsicOp::IsDefined, TypeId::Ref(_) | TypeId::WeakRef(_) | TypeId::Null | TypeId::Variant) => {
                 checked_args.push(first_arg);
                 scope.resolve_type(&TypeName::BOOL, self.pool).with_span(span)?
             }

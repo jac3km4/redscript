@@ -160,3 +160,19 @@ fn compile_casts() {
     let (_, errs) = compiled(vec![sources]).unwrap();
     assert_eq!(errs, vec![]);
 }
+
+#[test]
+fn compile_intrinsic_null_cases() {
+    let sources = "
+        func Testing() {
+            Equals(null, new A());
+            Equals(new A(), null);
+            IsDefined(null);
+        }
+
+        class A {}
+    ";
+
+    let (_, errs) = compiled(vec![sources]).unwrap();
+    assert_eq!(errs, vec![]);
+}
