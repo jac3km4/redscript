@@ -3,7 +3,7 @@ use std::{io, usize};
 
 use strum::{Display, EnumString, IntoStaticStr};
 
-use crate::bundle::{PoolIndex, Resource, TweakDbId};
+use crate::bundle::{CName, PoolIndex, Resource, TweakDbId};
 use crate::decode::{Decode, DecodeExt};
 use crate::definition::{Class, Enum, Field, Function, Local, Parameter, Type};
 use crate::encode::{Encode, EncodeExt};
@@ -24,7 +24,7 @@ pub enum Instr<Loc> {
     U64Const(u64),
     F32Const(f32),
     F64Const(f64),
-    NameConst(PoolIndex<String>),
+    NameConst(PoolIndex<CName>),
     EnumConst(PoolIndex<Enum>, PoolIndex<i64>),
     StringConst(PoolIndex<String>),
     TweakDbIdConst(PoolIndex<TweakDbId>),
@@ -47,7 +47,7 @@ pub enum Instr<Loc> {
     Conditional(Loc, Loc),
     Construct(u8, PoolIndex<Class>),
     InvokeStatic(Loc, u16, PoolIndex<Function>, u16),
-    InvokeVirtual(Loc, u16, PoolIndex<String>, u16),
+    InvokeVirtual(Loc, u16, PoolIndex<CName>, u16),
     ParamEnd,
     Return,
     StructField(PoolIndex<Field>),

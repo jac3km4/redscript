@@ -6,7 +6,6 @@ use redscript::ast::{Constant, Expr, Ident, Literal, Seq, SourceAst, Span, Switc
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{CodeCursor, Instr, IntrinsicOp, Location, Offset};
 use redscript::definition::Function;
-use redscript::Ref;
 
 pub mod error;
 pub mod files;
@@ -188,39 +187,28 @@ impl<'a> Decompiler<'a> {
             Instr::F32Const(val) => Expr::Constant(Constant::F32(val), Span::ZERO),
             Instr::F64Const(val) => Expr::Constant(Constant::F64(val), Span::ZERO),
             Instr::StringConst(idx) => {
-                let str = self.pool.strings.get(idx)?.to_string();
-                Expr::Constant(Constant::String(Literal::String, Ref::new(str)), Span::ZERO)
+                let str = self.pool.strings.get(idx)?;
+                Expr::Constant(Constant::String(Literal::String, str), Span::ZERO)
             }
             Instr::NameConst(idx) => {
-                let str = self.pool.names.get(idx)?.to_string();
-                Expr::Constant(Constant::String(Literal::Name, Ref::new(str)), Span::ZERO)
+                let str = self.pool.names.get(idx)?;
+                Expr::Constant(Constant::String(Literal::Name, str), Span::ZERO)
             }
             Instr::TweakDbIdConst(idx) => {
-                let str = self.pool.tweakdb_ids.get(idx)?.to_string();
-                Expr::Constant(Constant::String(Literal::TweakDbId, Ref::new(str)), Span::ZERO)
+                let str = self.pool.tweakdb_ids.get(idx)?;
+                Expr::Constant(Constant::String(Literal::TweakDbId, str), Span::ZERO)
             }
             Instr::ResourceConst(idx) => {
-                let str = self.pool.resources.get(idx)?.to_string();
-                Expr::Constant(Constant::String(Literal::Resource, Ref::new(str)), Span::ZERO)
+                let str = self.pool.resources.get(idx)?;
+                Expr::Constant(Constant::String(Literal::Resource, str), Span::ZERO)
             }
             Instr::TrueConst => Expr::Constant(Constant::Bool(true), Span::ZERO),
             Instr::FalseConst => Expr::Constant(Constant::Bool(false), Span::ZERO),
             Instr::EnumConst(enum_, member) => {
                 let enum_ident = self.definition_ident(enum_)?;
                 let member_ident = self.definition_ident(member)?;
-                let expr = Box::new(Expr::Ident(enum_ident.clone(), Span::ZERO));
-                if member_ident.as_ref().is_empty() {
-                    let value = self.pool.enum_value(member)?;
-                    let constant = Expr::Constant(Constant::I64(value), Span::ZERO);
-                    Expr::Call(
-                        Ident::Static(IntrinsicOp::IntEnum.into()),
-                        vec![TypeName::basic_owned(enum_ident.to_owned())],
-                        vec![constant],
-                        Span::ZERO,
-                    )
-                } else {
-                    Expr::Member(expr, member_ident, Span::ZERO)
-                }
+                let expr = Box::new(Expr::Ident(enum_ident, Span::ZERO));
+                Expr::Member(expr, member_ident, Span::ZERO)
             }
             Instr::Breakpoint(_, _, _, _, _, _) => Expr::EMPTY,
             Instr::Assign => {

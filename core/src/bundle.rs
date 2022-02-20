@@ -116,7 +116,7 @@ impl Encode for Header {
 
 #[derive(Debug, Clone, Default)]
 pub struct ConstantPool {
-    pub names: Strings<String>,
+    pub names: Strings<CName>,
     pub tweakdb_ids: Strings<TweakDbId>,
     pub resources: Strings<Resource>,
     pub strings: Strings<String>,
@@ -324,11 +324,11 @@ impl ConstantPool {
         PoolIndex::new(position as u32)
     }
 
-    pub fn stub_definition<A>(&mut self, name_idx: PoolIndex<String>) -> PoolIndex<A> {
+    pub fn stub_definition<A>(&mut self, name_idx: PoolIndex<CName>) -> PoolIndex<A> {
         self.add_definition(Definition::type_(name_idx, Type::Prim))
     }
 
-    pub fn rename<A>(&mut self, index: PoolIndex<A>, name: PoolIndex<String>) {
+    pub fn rename<A>(&mut self, index: PoolIndex<A>, name: PoolIndex<CName>) {
         self.definitions[index.value as usize].name = name;
     }
 
@@ -344,7 +344,7 @@ pub struct Strings<K> {
     phantom: PhantomData<K>,
 }
 
-impl<K> Strings<K> {
+impl<K: DefaultString> Strings<K> {
     fn decode_from<I: io::Read + io::Seek>(input: &mut I, offsets: &[u32]) -> io::Result<Strings<K>> {
         let mut strings = Vec::with_capacity(offsets.len());
         let mut mappings = HashMap::new();
@@ -371,10 +371,14 @@ impl<K> Strings<K> {
     }
 
     pub fn get(&self, index: PoolIndex<K>) -> Result<Ref<String>, PoolError> {
-        self.strings
-            .get(index.value as usize)
-            .cloned()
-            .ok_or_else(|| PoolError(format!("String {index} not found")))
+        match K::default() {
+            Some(default) if index.is_undefined() => Ok(Ref::new(default.to_owned())),
+            _ => self
+                .strings
+                .get(index.value as usize)
+                .cloned()
+                .ok_or_else(|| PoolError(format!("String {index} not found"))),
+        }
     }
 
     #[allow(clippy::ptr_arg)]
@@ -386,12 +390,16 @@ impl<K> Strings<K> {
     }
 
     pub fn add(&mut self, str: Ref<String>) -> PoolIndex<K> {
-        let idx = PoolIndex::new(self.strings.len() as u32);
-        match self.mappings.entry(str.clone()) {
-            hash_map::Entry::Occupied(entry) => *entry.get(),
-            hash_map::Entry::Vacant(slot) => {
-                self.strings.push(str);
-                *slot.insert(idx)
+        if K::default() == Some(str.as_ref()) {
+            PoolIndex::UNDEFINED
+        } else {
+            let idx = PoolIndex::new(self.strings.len() as u32);
+            match self.mappings.entry(str.clone()) {
+                hash_map::Entry::Occupied(entry) => *entry.get(),
+                hash_map::Entry::Vacant(slot) => {
+                    self.strings.push(str);
+                    *slot.insert(idx)
+                }
             }
         }
     }
@@ -444,7 +452,7 @@ impl Encode for TableHeader {
 
 #[derive(Debug)]
 pub struct DefinitionHeader {
-    pub name: PoolIndex<String>,
+    pub name: PoolIndex<CName>,
     pub parent: PoolIndex<Definition>,
     pub offset: u32,
     pub size: u32,
@@ -677,12 +685,46 @@ impl<A> From<PoolIndex<A>> for u32 {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Resource(String);
+pub trait DefaultString {
+    fn default() -> Option<&'static str>;
+}
+
+impl DefaultString for String {
+    #[inline]
+    fn default() -> Option<&'static str> {
+        None
+    }
+}
 
 #[derive(Debug, Clone)]
-pub struct TweakDbId(String);
+pub struct CName;
 
+impl DefaultString for CName {
+    #[inline]
+    fn default() -> Option<&'static str> {
+        Some("None")
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Resource;
+
+impl DefaultString for Resource {
+    #[inline]
+    fn default() -> Option<&'static str> {
+        None
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct TweakDbId;
+
+impl DefaultString for TweakDbId {
+    #[inline]
+    fn default() -> Option<&'static str> {
+        None
+    }
+}
 #[derive(Debug, Clone, Error)]
 #[error("{0}")]
 pub struct PoolError(pub String);

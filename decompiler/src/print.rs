@@ -5,7 +5,6 @@ use itertools::Itertools;
 use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, Seq, SourceAst, SwitchCase, TypeName, UnOp};
 use redscript::bundle::ConstantPool;
 use redscript::definition::{AnyDefinition, Definition, Function, Type};
-use redscript::Ref;
 
 use crate::error::Error;
 use crate::Decompiler;
@@ -69,11 +68,7 @@ pub fn write_definition<W: Write>(
             writeln!(out, "}}")?
         }
         AnyDefinition::EnumValue(val) => {
-            let name = if definition.name.is_undefined() {
-                Ref::new("Undefined".to_owned())
-            } else {
-                pool.names.get(definition.name)?
-            };
+            let name = pool.names.get(definition.name)?;
             writeln!(out, "{}{} = {},", padding, name, val)?
         }
         AnyDefinition::Enum(enum_) => {
@@ -385,8 +380,7 @@ fn write_call<W: Write>(
     parent_op: Option<ParentOp>,
     verbose: bool,
 ) -> Result<(), Error> {
-    let extracted = name.as_ref().split(';').next().expect("Empty function name");
-    let fun_name = if extracted.is_empty() { "undefined" } else { extracted };
+    let fun_name = name.as_ref().split(';').next().expect("Empty function name");
 
     if let Ok(binop) = BinOp::from_str(fun_name) {
         if parent_op

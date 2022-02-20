@@ -5,14 +5,14 @@ use std::path::PathBuf;
 use enum_as_inner::EnumAsInner;
 use modular_bitfield::prelude::*;
 
-use crate::bundle::{ConstantPool, DefinitionHeader, DefinitionType, PoolIndex};
+use crate::bundle::{CName, ConstantPool, DefinitionHeader, DefinitionType, PoolIndex};
 use crate::bytecode::{Code, Offset};
 use crate::decode::{Decode, DecodeExt};
 use crate::encode::{Encode, EncodeExt};
 
 #[derive(Debug, Clone)]
 pub struct Definition {
-    pub name: PoolIndex<String>,
+    pub name: PoolIndex<CName>,
     pub parent: PoolIndex<Definition>,
     pub unk1: u8,
     pub unk2: u8,
@@ -80,7 +80,7 @@ impl Definition {
         }
     }
 
-    fn default(name: PoolIndex<String>, parent: PoolIndex<Definition>, value: AnyDefinition) -> Definition {
+    fn default(name: PoolIndex<CName>, parent: PoolIndex<Definition>, value: AnyDefinition) -> Definition {
         Definition {
             name,
             parent,
@@ -91,35 +91,35 @@ impl Definition {
         }
     }
 
-    pub fn local(name: PoolIndex<String>, parent: PoolIndex<Function>, local: Local) -> Definition {
+    pub fn local(name: PoolIndex<CName>, parent: PoolIndex<Function>, local: Local) -> Definition {
         Definition::default(name, parent.cast(), AnyDefinition::Local(local))
     }
 
-    pub fn param(name: PoolIndex<String>, parent: PoolIndex<Function>, param: Parameter) -> Definition {
+    pub fn param(name: PoolIndex<CName>, parent: PoolIndex<Function>, param: Parameter) -> Definition {
         Definition::default(name, parent.cast(), AnyDefinition::Parameter(param))
     }
 
-    pub fn class(name: PoolIndex<String>, class: Class) -> Definition {
+    pub fn class(name: PoolIndex<CName>, class: Class) -> Definition {
         Definition::default(name, PoolIndex::UNDEFINED, AnyDefinition::Class(class))
     }
 
-    pub fn type_(name: PoolIndex<String>, type_: Type) -> Definition {
+    pub fn type_(name: PoolIndex<CName>, type_: Type) -> Definition {
         Definition::default(name, PoolIndex::UNDEFINED, AnyDefinition::Type(type_))
     }
 
-    pub fn function(name: PoolIndex<String>, parent: PoolIndex<Class>, fun: Function) -> Definition {
+    pub fn function(name: PoolIndex<CName>, parent: PoolIndex<Class>, fun: Function) -> Definition {
         Definition::default(name, parent.cast(), AnyDefinition::Function(fun))
     }
 
-    pub fn field(name: PoolIndex<String>, parent: PoolIndex<Class>, field: Field) -> Definition {
+    pub fn field(name: PoolIndex<CName>, parent: PoolIndex<Class>, field: Field) -> Definition {
         Definition::default(name, parent.cast(), AnyDefinition::Field(field))
     }
 
-    pub fn enum_(name: PoolIndex<String>, enum_: Enum) -> Definition {
+    pub fn enum_(name: PoolIndex<CName>, enum_: Enum) -> Definition {
         Definition::default(name, PoolIndex::UNDEFINED, AnyDefinition::Enum(enum_))
     }
 
-    pub fn enum_value(name: PoolIndex<String>, parent: PoolIndex<Enum>, value: i64) -> Definition {
+    pub fn enum_value(name: PoolIndex<CName>, parent: PoolIndex<Enum>, value: i64) -> Definition {
         Definition::default(name, parent.cast(), AnyDefinition::EnumValue(value))
     }
 }
