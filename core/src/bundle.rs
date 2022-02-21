@@ -54,6 +54,7 @@ pub struct Header {
 }
 
 impl Header {
+    const SUPPORTED_VERSION: u32 = 14;
     const MAGIC: u32 = 0x53444552;
     const SIZE: usize = 104;
 }
@@ -68,6 +69,12 @@ impl Decode for Header {
         let version: u32 = input.decode()?;
         let flags: u32 = input.decode()?;
         let timestamp: Timestamp = input.decode()?;
+        if version != Self::SUPPORTED_VERSION {
+            log::warn!(
+                "Loading an unsupported version of the script cache (v{version}) built at {timestamp}. \
+                 You might be running the wrong version of redscript."
+            )
+        }
         let unk3: u32 = input.decode()?;
         let hash: u32 = input.decode()?;
         let chunks: u32 = input.decode()?;
@@ -574,6 +581,21 @@ pub struct Timestamp {
     pub seconds: B6,
     pub minutes: B6,
     pub hours: B10,
+}
+
+impl fmt::Display for Timestamp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!(
+            "{:02}/{:02}/{} {:02}:{:02}:{:02}:{:03}",
+            self.day() + 1,
+            self.month() + 1,
+            self.year(),
+            self.hours(),
+            self.minutes(),
+            self.seconds(),
+            self.millis()
+        ))
+    }
 }
 
 impl Encode for Timestamp {

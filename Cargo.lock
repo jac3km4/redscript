@@ -919,6 +919,7 @@ dependencies = [
  "crc32fast",
  "enum-as-inner",
  "itertools 0.10.3",
+ "log",
  "modular-bitfield",
  "strum 0.23.0",
  "thiserror",
