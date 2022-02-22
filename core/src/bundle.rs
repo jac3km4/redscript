@@ -232,7 +232,7 @@ impl ConstantPool {
         buffer.encode(&header_for_hash)?;
 
         let header = Header {
-            hash: crc(buffer.get_ref()),
+            hash: crc32fast::hash(buffer.get_ref()),
             ..header_for_hash
         };
         Ok(header)
@@ -434,7 +434,7 @@ impl TableHeader {
         TableHeader {
             offset,
             count,
-            hash: crc(bytes),
+            hash: crc32fast::hash(bytes),
         }
     }
 }
@@ -750,12 +750,6 @@ impl DefaultString for TweakDbId {
 #[derive(Debug, Clone, Error)]
 #[error("{0}")]
 pub struct PoolError(pub String);
-
-fn crc(bytes: &[u8]) -> u32 {
-    let mut hasher = crc32fast::Hasher::new();
-    hasher.update(bytes);
-    hasher.finalize()
-}
 
 #[cfg(test)]
 mod tests {
