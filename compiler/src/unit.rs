@@ -12,7 +12,7 @@ use crate::assembler::Assembler;
 use crate::cte;
 use crate::error::{Cause, Error, ResultSpan};
 use crate::parser::*;
-use crate::scope::{Reference, Scope, Value};
+use crate::scope::{Reference, Scope, TypeId, Value};
 use crate::source_map::Files;
 use crate::sugar::Desugar;
 use crate::symbol::{FunctionSignature, Import, ModulePath, Symbol, SymbolMap};
@@ -510,7 +510,7 @@ impl<'a> CompilationUnit<'a> {
             None => None,
             Some(type_) if type_.name.as_ref() == "Void" => None,
             Some(type_) => {
-                let type_ = scope.resolve_type(&type_, self.pool).with_span(decl.span)?;
+                let type_ = self.try_resolve_type(&type_, scope, decl.span)?;
                 Some(scope.get_type_index(&type_, self.pool).with_span(decl.span)?)
             }
         };
@@ -518,7 +518,7 @@ impl<'a> CompilationUnit<'a> {
         let mut parameters = Vec::new();
 
         for param in &source.parameters {
-            let type_ = scope.resolve_type(&param.type_, self.pool).with_span(decl.span)?;
+            let type_ = self.try_resolve_type(&param.type_, scope, decl.span)?;
             let type_idx = scope.get_type_index(&type_, self.pool).with_span(decl.span)?;
             let flags = ParameterFlags::new()
                 .with_is_optional(param.qualifiers.contain(Qualifier::Optional))
@@ -597,7 +597,7 @@ impl<'a> CompilationUnit<'a> {
             self.report(Cause::unsupported(format_args!("Persistent {}", source.type_)).with_span(decl.span))?;
         }
 
-        let type_ = scope.resolve_type(&source.type_, self.pool).with_span(decl.span)?;
+        let type_ = self.try_resolve_type(&source.type_, scope, decl.span)?;
         let type_idx = scope.get_type_index(&type_, self.pool).with_span(decl.span)?;
         let flags = FieldFlags::new()
             .with_is_browsable(true)
@@ -997,6 +997,17 @@ impl<'a> CompilationUnit<'a> {
             PoolMapper::default()
                 .with_class_mapper(MultiMapper::new(mappings))
                 .map(pool);
+        }
+    }
+
+    fn try_resolve_type(&mut self, name: &TypeName, scope: &Scope, span: Span) -> Result<TypeId, Error> {
+        match scope.resolve_type(name, self.pool) {
+            Ok(ty) => Ok(ty),
+            Err(err) => {
+                // report the fatal error and return a dummy type
+                self.report(err.with_span(span))?;
+                Ok(TypeId::Null)
+            }
         }
     }
 
