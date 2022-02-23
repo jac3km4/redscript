@@ -284,6 +284,8 @@ pub struct Function {
     pub operator: Option<u32>,
     pub cast: u8,
     pub code: Code<Offset>,
+    pub unk2: Vec<PoolIndex<Parameter>>,
+    pub unk3: Option<PoolIndex<Type>>,
 }
 
 impl Decode for Function {
@@ -324,6 +326,14 @@ impl Decode for Function {
         let cast = if flags.is_cast() { input.decode()? } else { 0u8 };
         let code = if flags.has_body() { input.decode()? } else { Code::EMPTY };
 
+        let (unk2, unk3) = if flags.unk4() {
+            let params = input.decode_vec_prefixed::<u32, PoolIndex<Parameter>>()?;
+            let typ = input.decode()?;
+            (params, Some(typ))
+        } else {
+            (vec![], None)
+        };
+
         let result = Function {
             visibility,
             flags,
@@ -336,6 +346,8 @@ impl Decode for Function {
             operator,
             cast,
             code,
+            unk2,
+            unk3,
         };
 
         Ok(result)
@@ -381,6 +393,12 @@ impl Encode for Function {
         }
         if flags.has_body() {
             output.encode(&value.code)?;
+        }
+        if flags.unk4() {
+            output.encode_slice_prefixed::<u32, PoolIndex<Parameter>>(&value.unk2)?;
+            if let Some(typ) = value.unk3 {
+                output.encode(&typ)?;
+            }
         }
         Ok(())
     }
