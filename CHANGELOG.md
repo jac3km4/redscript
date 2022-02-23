@@ -1,4 +1,13 @@
-## [0.5.0] - Unreleased
+## [0.5.2] - Unreleased
+
+## [0.5.1]
+- fix an encoding issue which would cause the game to hang for 10 seconds before starting (af8857e6c22c5204c6b643b1193a39302b578686)
+- handle empty `CName`s correctly (e980cc5cb553db4b1da542a216f38ec072b765a0)
+  - this enables use of methods like `TDBID.None` and enum members who were previously shown as `Unknown`
+- only show fatal errors in the `scc` popup (the previous behaviour would misleadingly show mods with compilation warnings as broken) (fc02231bcdd52d6d3621f306246c77a4ca77dd93)
+- log a nice warning when running against an incompatible game version (5f038bbf8d470d8875f4bfc7e096dfa01c46742f)
+- fix an issue which would lead to confusing pool errors (53e55a02b05f07c6bd4f2551b883a31daf68c6d9)
+- be more permissive for some uses of `null` (like in `IsDefined`) (ad5d21bd32aabf87b1575d493f7102f0a37fa54b)
 
 ## [0.5.0]
 - support for the 1.5 game update (af21a68)
