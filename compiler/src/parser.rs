@@ -20,6 +20,7 @@ pub struct SourceModule {
 #[derive(Debug)]
 pub enum SourceEntry {
     Class(ClassSource),
+    Struct(ClassSource),
     Function(FunctionSource),
     GlobalLet(FieldSource),
     Enum(EnumSource),
@@ -297,6 +298,10 @@ peg::parser! {
             = pos:pos() qualifiers:qualifiers() _ keyword("class") _ name:ident() _ base:extends()? _ "{" _ members:member()**_ _ "}" end:pos()
             { ClassSource { qualifiers, name, base, members, span: Span::new(pos, end) } }
 
+        pub rule struct_() -> ClassSource
+            = pos:pos() qualifiers:qualifiers() _ keyword("struct") _ name:ident() _ "{" _ members:member()**_ _ "}" end:pos()
+            { ClassSource { qualifiers, name, base: None, members, span: Span::new(pos, end) } }
+
         rule member() -> MemberSource
             = fun:function() { MemberSource::Function(fun) }
             / field:field() { MemberSource::Field(field) }
@@ -317,6 +322,7 @@ peg::parser! {
         pub rule source_entry() -> SourceEntry
             = fun:function() { SourceEntry::Function(fun) }
             / class:class() { SourceEntry::Class(class) }
+            / struct_:struct_() { SourceEntry::Struct(struct_) }
             / field:field() { SourceEntry::GlobalLet(field) }
             / enum_:enum_() { SourceEntry::Enum(enum_) }
 

@@ -1,8 +1,10 @@
+use redscript::ast::{Pos, Span};
 use redscript::definition::ClassFlags;
 
 #[allow(unused)]
 mod utils;
 
+use redscript_compiler::unit::Diagnostic;
 use utils::*;
 
 #[test]
@@ -175,4 +177,43 @@ fn compile_intrinsic_null_cases() {
 
     let (_, errs) = compiled(vec![sources]).unwrap();
     assert_eq!(errs, vec![]);
+}
+
+#[test]
+fn compile_structs() {
+    let sources = "
+        func Testing() {
+            let a: A = new A(1, 2);
+        }
+
+        struct A {
+            let x: Int32;
+            let y: Int32;
+        }
+    ";
+
+    let (_, errs) = compiled(vec![sources]).unwrap();
+    assert_eq!(errs, vec![]);
+}
+
+#[test]
+fn fail_on_invalid_structs() {
+    let sources = "
+        func Testing() {
+            let a: A = new A(1, 2);
+        }
+
+        struct A {
+            let x: Int32;
+            let y: Int32;
+
+            func Test() {}
+        }
+    ";
+
+    let (_, errs) = compiled(vec![sources]).unwrap();
+    assert_eq!(errs, vec![Diagnostic::CompileError(
+        "Defining non-static struct methods is unsupported".to_owned(),
+        Span::new(Pos::new(157), Pos::new(166))
+    )]);
 }

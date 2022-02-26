@@ -260,7 +260,12 @@ impl<'a> CompilationUnit<'a> {
                         index,
                         source,
                         visibility,
-                    } => self.define_class(index, visibility, source, &mut module_scope),
+                    } => self.define_class(index, visibility, source, false, &mut module_scope),
+                    Slot::Struct {
+                        index,
+                        source,
+                        visibility,
+                    } => self.define_class(index, visibility, source, true, &mut module_scope),
                     Slot::Field {
                         index,
                         source,
@@ -327,15 +332,16 @@ impl<'a> CompilationUnit<'a> {
                 let path = module.with_child(source.name.clone());
                 let visibility = source.qualifiers.visibility().unwrap_or(Visibility::Private);
 
-                if let Ok(Symbol::Class(_, _)) = self.symbols.get_symbol(&path).with_span(source.span) {
+                if let Ok(Symbol::Class(_, _) | Symbol::Struct(_, _)) =
+                    self.symbols.get_symbol(&path).with_span(source.span)
+                {
                     if !permissive {
-                        return Err(Cause::class_redefinition().with_span(source.span));
+                        return Err(Cause::symbol_redefinition().with_span(source.span));
                     }
                 }
 
                 let name_index = self.pool.names.add(path.render().to_owned());
                 let index = self.pool.stub_definition(name_index);
-
                 self.symbols.add_class(&path, index, visibility);
 
                 // add to globals when no module
@@ -345,6 +351,35 @@ impl<'a> CompilationUnit<'a> {
                 }
 
                 let slot = Slot::Class {
+                    index,
+                    source,
+                    visibility,
+                };
+                Ok(slot)
+            }
+            SourceEntry::Struct(source) => {
+                let path = module.with_child(source.name.clone());
+                let visibility = source.qualifiers.visibility().unwrap_or(Visibility::Private);
+
+                if let Ok(Symbol::Class(_, _) | Symbol::Struct(_, _)) =
+                    self.symbols.get_symbol(&path).with_span(source.span)
+                {
+                    if !permissive {
+                        return Err(Cause::symbol_redefinition().with_span(source.span));
+                    }
+                }
+
+                let name_index = self.pool.names.add(path.render().to_owned());
+                let index = self.pool.stub_definition(name_index);
+                self.symbols.add_struct(&path, index, visibility);
+
+                // add to globals when no module
+                if module.is_empty() {
+                    self.scope
+                        .add_symbol(source.name.clone(), Symbol::Struct(index, visibility));
+                }
+
+                let slot = Slot::Struct {
                     index,
                     source,
                     visibility,
@@ -394,24 +429,32 @@ impl<'a> CompilationUnit<'a> {
         class_idx: PoolIndex<Class>,
         visibility: Visibility,
         source: ClassSource,
+        is_struct: bool,
         scope: &mut Scope,
     ) -> Result<(), Error> {
         let is_import_only = source.qualifiers.contain(Qualifier::ImportOnly);
         let is_class_native = is_import_only || source.qualifiers.contain(Qualifier::Native);
-        let is_class_abstract = source.qualifiers.contain(Qualifier::Abstract);
+        let is_class_abstract = !is_struct && source.qualifiers.contain(Qualifier::Abstract);
         let is_class_final = source.qualifiers.contain(Qualifier::Final);
 
         let flags = ClassFlags::new()
             .with_is_abstract(is_class_abstract)
             .with_is_final(is_class_final)
             .with_is_native(is_class_native)
-            .with_is_import_only(is_import_only);
+            .with_is_import_only(is_import_only)
+            .with_is_struct(is_struct);
         let mut functions = vec![];
         let mut fields = vec![];
 
         for member in source.members {
             match member {
                 MemberSource::Function(fun) => {
+                    if is_struct && !fun.declaration.qualifiers.contain(Qualifier::Static) {
+                        let err =
+                            Cause::unsupported("Defining non-static struct methods").with_span(fun.declaration.span);
+                        self.report(err)?;
+                    }
+
                     let fun_sig = FunctionSignature::from_source(&fun);
                     let name_idx = self.pool.names.add(Ref::new(fun_sig.into_owned()));
                     let fun_idx = self.pool.stub_definition(name_idx);
@@ -439,7 +482,9 @@ impl<'a> CompilationUnit<'a> {
             }
         }
 
-        let base_idx = if let Some(base_name) = source.base {
+        let base_idx = if is_struct {
+            PoolIndex::UNDEFINED
+        } else if let Some(base_name) = source.base {
             if let Symbol::Class(base_idx, _) = scope.resolve_symbol(base_name.clone()).with_span(source.span)? {
                 base_idx
             } else {
@@ -1047,6 +1092,11 @@ enum Slot {
         visibility: Visibility,
     },
     Class {
+        index: PoolIndex<Class>,
+        source: ClassSource,
+        visibility: Visibility,
+    },
+    Struct {
         index: PoolIndex<Class>,
         source: ClassSource,
         visibility: Visibility,

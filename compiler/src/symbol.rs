@@ -48,6 +48,10 @@ impl SymbolMap {
         self.symbols.insert(path, Symbol::Class(class, visibility));
     }
 
+    pub fn add_struct(&mut self, path: &ModulePath, class: PoolIndex<Class>, visibility: Visibility) {
+        self.symbols.insert(path, Symbol::Struct(class, visibility));
+    }
+
     pub fn add_enum(&mut self, path: &ModulePath, enum_: PoolIndex<Enum>) {
         self.symbols.insert(path, Symbol::Enum(enum_));
     }

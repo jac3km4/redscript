@@ -180,8 +180,8 @@ impl Cause {
         Cause(err)
     }
 
-    pub fn class_redefinition() -> Cause {
-        let err = "Class with this name is already defined elsewhere".to_owned();
+    pub fn symbol_redefinition() -> Cause {
+        let err = "Symbol with this name is already defined".to_owned();
         Cause(err)
     }
 
