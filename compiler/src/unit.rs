@@ -1098,7 +1098,7 @@ impl Diagnostic {
     }
 
     pub fn unrelated_type_equals(span: Span) -> Self {
-        let msg = format!("Comparing unrelated types, this is deprecated and will not be allowed in the future");
+        let msg = "Comparing unrelated types, this is deprecated and will not be allowed in the future".to_owned();
         Self::Deprecation(msg, span)
     }
 }

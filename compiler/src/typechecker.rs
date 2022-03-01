@@ -360,7 +360,7 @@ impl<'a> TypeChecker<'a> {
         let type_ = match (intrinsic, first_arg_type) {
             (IntrinsicOp::Equals, arg_type) => {
                 let snd_arg = self.check(&args[1], Some(&arg_type), scope)?;
-                if let Err(_) = lub(arg_type, type_of(&snd_arg, scope, self.pool)?, self.pool).with_span(span) {
+                if lub(arg_type, type_of(&snd_arg, scope, self.pool)?, self.pool).is_err() {
                     self.diagnostics.push(Diagnostic::unrelated_type_equals(span));
                 };
                 checked_args.push(first_arg);
@@ -369,7 +369,7 @@ impl<'a> TypeChecker<'a> {
             }
             (IntrinsicOp::NotEquals, arg_type) => {
                 let snd_arg = self.check(&args[1], Some(&arg_type), scope)?;
-                if let Err(_) = lub(arg_type, type_of(&snd_arg, scope, self.pool)?, self.pool).with_span(span) {
+                if lub(arg_type, type_of(&snd_arg, scope, self.pool)?, self.pool).is_err() {
                     self.diagnostics.push(Diagnostic::unrelated_type_equals(span));
                 };
                 checked_args.push(first_arg);
