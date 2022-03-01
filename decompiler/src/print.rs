@@ -195,7 +195,7 @@ fn write_function_body<W: Write>(
         OutputMode::SyntaxTree => {
             let code = Decompiler::decompiled(fun, pool)?;
             for expr in code.exprs {
-                writeln!(out, "{}{:?}", INDENT.repeat(depth + 1), expr)?;
+                writeln!(out, "{}{:#?}", INDENT.repeat(depth + 1), expr)?;
             }
         }
         OutputMode::Bytecode => {

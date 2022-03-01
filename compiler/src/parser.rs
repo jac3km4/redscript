@@ -387,9 +387,13 @@ peg::parser! {
             x:@ _ pos:pos() "&=" end:pos() _ y:(@) { binop(x, y, BinOp::AssignAnd) }
             --
             x:(@) _ pos:pos() "||" end:pos() _ y:@ { binop(x, y, BinOp::LogicOr) }
+            --
             x:(@) _ pos:pos() "&&" end:pos() _ y:@ { binop(x, y, BinOp::LogicAnd) }
+            --
             x:(@) _ pos:pos() "|" end:pos() _ y:@ { binop(x, y, BinOp::Or) }
+            --
             x:(@) _ pos:pos() "^" end:pos() _ y:@ { binop(x, y, BinOp::Xor) }
+            --
             x:(@) _ pos:pos() "&" end:pos() _ y:@ { binop(x, y, BinOp::And) }
             --
             x:(@) _ pos:pos() "==" end:pos() _ y:@ { binop(x, y, BinOp::Equal) }
@@ -645,6 +649,15 @@ mod tests {
         assert_eq!(
             format!("{:?}", str),
             r#"("My name is ", [(Ident(Owned("name"), Span { low: Pos(15), high: Pos(19) }), " and I am "), (BinOp(Ident(Owned("currentYear"), Span { low: Pos(32), high: Pos(43) }), Ident(Owned("birthYear"), Span { low: Pos(46), high: Pos(55) }), Subtract, Span { low: Pos(32), high: Pos(55) }), " years old")])"#
+        );
+    }
+
+    #[test]
+    fn parse_complex_logic() {
+        let str = lang::expr(r#"(true || false && false) && ((true || false) && true)"#, Pos::ZERO).unwrap();
+        assert_eq!(
+            format!("{:?}", str),
+            r#"BinOp(BinOp(Constant(Bool(true), Span { low: Pos(1), high: Pos(5) }), BinOp(Constant(Bool(false), Span { low: Pos(9), high: Pos(14) }), Constant(Bool(false), Span { low: Pos(18), high: Pos(23) }), LogicAnd, Span { low: Pos(9), high: Pos(23) }), LogicOr, Span { low: Pos(1), high: Pos(23) }), BinOp(BinOp(Constant(Bool(true), Span { low: Pos(30), high: Pos(34) }), Constant(Bool(false), Span { low: Pos(38), high: Pos(43) }), LogicOr, Span { low: Pos(30), high: Pos(43) }), Constant(Bool(true), Span { low: Pos(48), high: Pos(52) }), LogicAnd, Span { low: Pos(30), high: Pos(52) }), LogicAnd, Span { low: Pos(1), high: Pos(52) })"#
         );
     }
 }
