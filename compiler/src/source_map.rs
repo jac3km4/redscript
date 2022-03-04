@@ -118,9 +118,9 @@ impl File {
 
     fn lookup(&self, pos: Pos) -> Option<FilePos> {
         let res = self.lines.1.binary_search(&pos).map(|p| p + 1);
-        let index = res.err().or_else(|| res.ok()).unwrap();
+        let index = res.unwrap_or_else(|i| i);
         let (line, low) = if pos < self.lines.0 {
-            None?
+            return None;
         } else if index == 0 {
             (0, self.lines.0)
         } else {

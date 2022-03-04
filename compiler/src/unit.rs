@@ -140,7 +140,7 @@ impl<'a> CompilationUnit<'a> {
                 let line = loc.enclosing_line().trim_end().replace('\t', " ");
                 let padding = " ".repeat(loc.start.col);
                 let underscore_len = if loc.start.line == loc.end.line {
-                    loc.end.col - loc.start.col
+                    (loc.end.col - loc.start.col).max(1)
                 } else {
                     3
                 };
@@ -168,7 +168,7 @@ impl<'a> CompilationUnit<'a> {
             let parsed = parse_file(file).map_err(|err| {
                 let message = format!("Syntax error, expected {}", err.expected);
                 let pos = file.byte_offset() + err.location.offset;
-                Error::SyntaxError(message, Span::new(pos, pos + 1))
+                Error::SyntaxError(message, Span::new(pos, pos))
             })?;
             modules.push(parsed);
         }
