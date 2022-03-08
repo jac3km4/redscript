@@ -727,3 +727,27 @@ fn compile_conditional_functions() {
         .unwrap()
         .run("My.Mod.Testing", check)
 }
+
+#[test]
+fn compile_struct_constructor() {
+    let sources = r#"
+        func Testing() {
+            let a = new TestStruct(1, 2);
+        }
+
+        struct TestStruct {
+            let a: Int32;
+            let b: Int32;
+        }
+        "#;
+
+    let check = check_code![
+        pat!(Assign),
+        mem!(Local(a)),
+        pat!(Construct(2, _)),
+        pat!(I32Const(1)),
+        pat!(I32Const(2)),
+        pat!(Nop)
+    ];
+    TestContext::compiled(vec![sources]).unwrap().run("Testing", check)
+}
