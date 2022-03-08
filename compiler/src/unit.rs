@@ -10,6 +10,7 @@ use redscript::Ref;
 
 use crate::assembler::Assembler;
 use crate::cte;
+use crate::diagnostics::return_val::ReturnValueCheck;
 use crate::diagnostics::unused::UnusedCheck;
 use crate::diagnostics::DiagnosticPass;
 use crate::error::{Cause, Error, ResultSpan};
@@ -36,7 +37,8 @@ pub struct CompilationUnit<'a> {
 
 impl<'a> CompilationUnit<'a> {
     pub fn new_with_defaults(pool: &'a mut ConstantPool) -> Result<Self, Error> {
-        Self::new(pool, vec![Box::new(UnusedCheck)])
+        let passes: Vec<Box<dyn DiagnosticPass>> = vec![Box::new(UnusedCheck), Box::new(ReturnValueCheck)];
+        Self::new(pool, passes)
     }
 
     pub fn new(pool: &'a mut ConstantPool, passes: Vec<Box<dyn DiagnosticPass>>) -> Result<Self, Error> {
@@ -146,6 +148,13 @@ impl<'a> CompilationUnit<'a> {
             Diagnostic::UnusedLocal(pos) => {
                 let loc = files.lookup(*pos).unwrap();
                 Self::print_message(format_args!("At {loc}: Unused variable"), diagnostic.is_fatal());
+            }
+            Diagnostic::MissingReturn(pos) => {
+                let loc = files.lookup(*pos).unwrap();
+                Self::print_message(
+                    format_args!("At {loc}: Function might not return a value"),
+                    diagnostic.is_fatal(),
+                );
             }
             Diagnostic::CompileError(err, pos) => {
                 let loc = files.lookup(*pos).expect("Unknown file");
@@ -303,8 +312,9 @@ impl<'a> CompilationUnit<'a> {
                 Ok((func, diagnostics)) => {
                     self.diagnostics.extend(diagnostics);
 
+                    let flags = self.pool.function(func.index)?.flags;
                     for pass in &self.diagnostic_passes {
-                        self.diagnostics.extend(pass.diagnose(&func.code));
+                        self.diagnostics.extend(pass.diagnose(&func.code, flags, func.span));
                     }
 
                     compiled_funcs.push(func);
@@ -558,16 +568,6 @@ impl<'a> CompilationUnit<'a> {
             self.report(Cause::native_with_body().with_span(source.declaration.span))?;
         }
 
-        let flags = FunctionFlags::new()
-            .with_is_static(is_static)
-            .with_is_native(is_native)
-            .with_is_cast(decl.name.as_ref() == "Cast")
-            .with_is_exec(decl.qualifiers.contain(Qualifier::Exec))
-            .with_is_final(decl.qualifiers.contain(Qualifier::Final))
-            .with_is_callback(decl.qualifiers.contain(Qualifier::Callback) && wrapped.is_none())
-            .with_is_const(decl.qualifiers.contain(Qualifier::Const))
-            .with_is_quest(decl.qualifiers.contain(Qualifier::Quest));
-
         let return_type = match source.type_ {
             None => None,
             Some(type_) if type_.name.as_ref() == "Void" => None,
@@ -596,6 +596,18 @@ impl<'a> CompilationUnit<'a> {
             file: PoolIndex::DEFAULT_SOURCE,
             line: 0,
         };
+
+        let flags = FunctionFlags::new()
+            .with_is_static(is_static)
+            .with_is_native(is_native)
+            .with_is_cast(decl.name.as_ref() == "Cast")
+            .with_is_exec(decl.qualifiers.contain(Qualifier::Exec))
+            .with_is_final(decl.qualifiers.contain(Qualifier::Final))
+            .with_is_callback(decl.qualifiers.contain(Qualifier::Callback) && wrapped.is_none())
+            .with_is_const(decl.qualifiers.contain(Qualifier::Const))
+            .with_is_quest(decl.qualifiers.contain(Qualifier::Quest))
+            .with_has_return_value(return_type.is_some())
+            .with_has_parameters(!parameters.is_empty());
 
         let function = Function {
             visibility,
@@ -1134,6 +1146,7 @@ pub enum Diagnostic {
     MethodConflict(PoolIndex<Function>, Span),
     Deprecation(String, Span),
     UnusedLocal(Span),
+    MissingReturn(Span),
     CompileError(String, Span),
 }
 
@@ -1154,6 +1167,7 @@ impl Diagnostic {
             Diagnostic::MethodConflict(_, _) => false,
             Diagnostic::Deprecation(_, _) => false,
             Diagnostic::UnusedLocal(_) => false,
+            Diagnostic::MissingReturn(_) => false,
             Diagnostic::CompileError(_, _) => true,
         }
     }
@@ -1163,6 +1177,7 @@ impl Diagnostic {
             Diagnostic::MethodConflict(_, span) => *span,
             Diagnostic::Deprecation(_, span) => *span,
             Diagnostic::UnusedLocal(span) => *span,
+            Diagnostic::MissingReturn(span) => *span,
             Diagnostic::CompileError(_, span) => *span,
         }
     }
