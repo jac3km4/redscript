@@ -10,6 +10,8 @@ use redscript::Ref;
 
 use crate::assembler::Assembler;
 use crate::cte;
+use crate::diagnostics::unused::UnusedCheck;
+use crate::diagnostics::DiagnosticPass;
 use crate::error::{Cause, Error, ResultSpan};
 use crate::parser::*;
 use crate::scope::{Reference, Scope, TypeId, Value};
@@ -29,10 +31,15 @@ pub struct CompilationUnit<'a> {
     wrappers: ProxyMap,
     proxies: ProxyMap,
     diagnostics: Vec<Diagnostic>,
+    diagnostic_passes: Vec<Box<dyn DiagnosticPass>>,
 }
 
 impl<'a> CompilationUnit<'a> {
-    pub fn new(pool: &'a mut ConstantPool) -> Result<CompilationUnit<'a>, Error> {
+    pub fn new_with_defaults(pool: &'a mut ConstantPool) -> Result<Self, Error> {
+        Self::new(pool, vec![Box::new(UnusedCheck)])
+    }
+
+    pub fn new(pool: &'a mut ConstantPool, passes: Vec<Box<dyn DiagnosticPass>>) -> Result<Self, Error> {
         let symbols = SymbolMap::new(pool)?;
         let mut scope = Scope::new(pool)?;
 
@@ -50,6 +57,7 @@ impl<'a> CompilationUnit<'a> {
             wrappers: HashMap::new(),
             proxies: HashMap::new(),
             diagnostics: vec![],
+            diagnostic_passes: passes,
         })
     }
 
@@ -133,7 +141,11 @@ impl<'a> CompilationUnit<'a> {
             }
             Diagnostic::Deprecation(msg, pos) => {
                 let loc = files.lookup(*pos).unwrap();
-                Self::print_message(format_args!("At {loc}:\n {msg}"), diagnostic.is_fatal());
+                Self::print_message(format_args!("At {loc}: {msg}"), diagnostic.is_fatal());
+            }
+            Diagnostic::UnusedLocal(pos) => {
+                let loc = files.lookup(*pos).unwrap();
+                Self::print_message(format_args!("At {loc}: Unused variable"), diagnostic.is_fatal());
             }
             Diagnostic::CompileError(err, pos) => {
                 let loc = files.lookup(*pos).expect("Unknown file");
@@ -289,8 +301,13 @@ impl<'a> CompilationUnit<'a> {
         for item in self.function_bodies.drain(..) {
             match Self::compile_function(item, self.pool, desugar, permissive) {
                 Ok((func, diagnostics)) => {
-                    compiled_funcs.push(func);
                     self.diagnostics.extend(diagnostics);
+
+                    for pass in &self.diagnostic_passes {
+                        self.diagnostics.extend(pass.diagnose(&func.code));
+                    }
+
+                    compiled_funcs.push(func);
                 }
                 Err(err) => self.diagnostics.push(Diagnostic::from_error(err)?),
             }
@@ -1116,6 +1133,7 @@ enum Slot {
 pub enum Diagnostic {
     MethodConflict(PoolIndex<Function>, Span),
     Deprecation(String, Span),
+    UnusedLocal(Span),
     CompileError(String, Span),
 }
 
@@ -1135,6 +1153,7 @@ impl Diagnostic {
         match self {
             Diagnostic::MethodConflict(_, _) => false,
             Diagnostic::Deprecation(_, _) => false,
+            Diagnostic::UnusedLocal(_) => false,
             Diagnostic::CompileError(_, _) => true,
         }
     }
@@ -1143,12 +1162,13 @@ impl Diagnostic {
         match self {
             Diagnostic::MethodConflict(_, span) => *span,
             Diagnostic::Deprecation(_, span) => *span,
+            Diagnostic::UnusedLocal(span) => *span,
             Diagnostic::CompileError(_, span) => *span,
         }
     }
 
     pub fn unrelated_type_equals(span: Span) -> Self {
-        let msg = "Comparing unrelated types, this is deprecated and will not be allowed in the future".to_owned();
+        let msg = "Comparing unrelated types, this is will not be allowed in the future".to_owned();
         Self::Deprecation(msg, span)
     }
 }

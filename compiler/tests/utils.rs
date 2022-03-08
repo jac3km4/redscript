@@ -116,7 +116,7 @@ pub fn compiled(sources: Vec<&str>) -> Result<(ConstantPool, Vec<Diagnostic>), E
         .map(|source| parser::parse_str(&source).unwrap())
         .collect();
     let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
-    let res = CompilationUnit::new(&mut scripts.pool)?.compile(modules)?;
+    let res = CompilationUnit::new_with_defaults(&mut scripts.pool)?.compile(modules)?;
 
     Ok((scripts.pool, res))
 }

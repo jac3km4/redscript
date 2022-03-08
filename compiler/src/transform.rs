@@ -4,6 +4,7 @@ use redscript::ast::{BinOp, Constant, Expr, NameKind, Seq, Span, SwitchCase, Tar
 use redscript::Ref;
 
 use crate::error::Error;
+use crate::typechecker::TypedAst;
 
 pub trait ExprTransformer<N: NameKind>
 where
@@ -235,5 +236,105 @@ where
             processed.push(self.on_expr(expr)?)
         }
         Ok(Seq::new(processed))
+    }
+}
+
+#[macro_export]
+macro_rules! visit_expr {
+    ($self:expr, $fun:ident, $expr:expr) => {
+        match $expr {
+            Expr::ArrayLit(exprs, _, _) => {
+                for expr in exprs {
+                    $self.$fun(expr);
+                }
+            }
+            Expr::InterpolatedString(_, parts, _) => {
+                for (expr, _) in parts {
+                    $self.$fun(expr);
+                }
+            }
+            Expr::Declare(_, _, Some(expr), _) => {
+                $self.$fun(expr);
+            }
+            Expr::Cast(_, expr, _) => {
+                $self.$fun(expr);
+            }
+            Expr::Assign(lhs, rhs, _) => {
+                $self.$fun(lhs);
+                $self.$fun(rhs);
+            }
+            Expr::Call(_, _, args, _) => {
+                for expr in args {
+                    $self.$fun(expr);
+                }
+            }
+            Expr::MethodCall(context, _, args, _) => {
+                $self.$fun(context);
+                for expr in args {
+                    $self.$fun(expr);
+                }
+            }
+            Expr::Member(context, _, _) => {
+                $self.$fun(context);
+            }
+            Expr::ArrayElem(expr, index, _) => {
+                $self.$fun(expr);
+                $self.$fun(index);
+            }
+            Expr::New(_, args, _) => {
+                for expr in args {
+                    $self.$fun(expr);
+                }
+            }
+            Expr::Return(Some(expr), _) => {
+                $self.$fun(expr);
+            }
+            Expr::Seq(seq) => {
+                $crate::transform::visit_seq(&seq, |e| $self.$fun(e));
+            }
+            Expr::Switch(matched, cases, default, _) => {
+                $self.$fun(matched);
+                for case in cases {
+                    $crate::transform::visit_seq(&case.body, |e| $self.$fun(e));
+                }
+                if let Some(seq) = default {
+                    $crate::transform::visit_seq(&seq, |e| $self.$fun(e));
+                }
+            }
+            Expr::If(cond, if_, else_, _) => {
+                $self.$fun(cond);
+                $crate::transform::visit_seq(if_, |e| $self.$fun(e));
+                if let Some(seq) = else_ {
+                    $crate::transform::visit_seq(&seq, |e| $self.$fun(e));
+                }
+            }
+            Expr::Conditional(cond, true_, false_, _) => {
+                $self.$fun(cond);
+                $self.$fun(true_);
+                $self.$fun(false_);
+            }
+            Expr::While(cond, body, _) => {
+                $self.$fun(cond);
+                $crate::transform::visit_seq(body, |e| $self.$fun(e));
+            }
+            Expr::ForIn(_, array, body, _) => {
+                $self.$fun(array);
+                $crate::transform::visit_seq(body, |e| $self.$fun(e));
+            }
+            Expr::BinOp(lhs, rhs, _, _) => {
+                $self.$fun(lhs);
+                $self.$fun(rhs);
+            }
+            Expr::UnOp(expr, _, _) => {
+                $self.$fun(expr);
+            }
+            _ => {}
+        }
+    };
+}
+
+pub fn visit_seq<F: FnMut(&Expr<TypedAst>)>(seq: &Seq<TypedAst>, mut fun: F) {
+    for item in &seq.exprs {
+        fun(item);
     }
 }

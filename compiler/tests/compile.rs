@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use redscript::ast::{Pos, Span};
 use redscript::definition::ClassFlags;
 
@@ -141,7 +142,7 @@ fn compile_lub_types() {
     ";
 
     let (_, errs) = compiled(vec![sources]).unwrap();
-    assert_eq!(errs, vec![]);
+    assert_eq!(errs.into_iter().filter(Diagnostic::is_fatal).collect_vec(), vec![]);
 }
 
 #[test]
@@ -160,7 +161,7 @@ fn compile_casts() {
     ";
 
     let (_, errs) = compiled(vec![sources]).unwrap();
-    assert_eq!(errs, vec![]);
+    assert_eq!(errs.into_iter().filter(Diagnostic::is_fatal).collect_vec(), vec![]);
 }
 
 #[test]
@@ -193,16 +194,12 @@ fn compile_structs() {
     ";
 
     let (_, errs) = compiled(vec![sources]).unwrap();
-    assert_eq!(errs, vec![]);
+    assert_eq!(errs.into_iter().filter(Diagnostic::is_fatal).collect_vec(), vec![]);
 }
 
 #[test]
 fn fail_on_invalid_structs() {
     let sources = "
-        func Testing() {
-            let a: A = new A(1, 2);
-        }
-
         struct A {
             let x: Int32;
             let y: Int32;
@@ -214,6 +211,6 @@ fn fail_on_invalid_structs() {
     let (_, errs) = compiled(vec![sources]).unwrap();
     assert_eq!(errs, vec![Diagnostic::CompileError(
         "Defining non-static struct methods is unsupported".to_owned(),
-        Span::new(Pos::new(157), Pos::new(166))
+        Span::new(Pos::new(85), Pos::new(94))
     )]);
 }
