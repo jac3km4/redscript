@@ -12,7 +12,7 @@ use crate::assembler::Assembler;
 use crate::cte;
 use crate::diagnostics::return_val::ReturnValueCheck;
 use crate::diagnostics::unused::UnusedCheck;
-use crate::diagnostics::DiagnosticPass;
+use crate::diagnostics::{DiagnosticPass, FunctionMetadata};
 use crate::error::{Cause, Error, ResultSpan};
 use crate::parser::*;
 use crate::scope::{Reference, Scope, TypeId, Value};
@@ -308,13 +308,15 @@ impl<'a> CompilationUnit<'a> {
 
         // compile function bodies
         for item in self.function_bodies.drain(..) {
+            let was_callback = item.was_callback;
             match Self::compile_function(item, self.pool, desugar, permissive) {
                 Ok((func, diagnostics)) => {
                     self.diagnostics.extend(diagnostics);
 
                     let flags = self.pool.function(func.index)?.flags;
+                    let metadata = FunctionMetadata::new(flags, was_callback, func.span);
                     for pass in &self.diagnostic_passes {
-                        self.diagnostics.extend(pass.diagnose(&func.code, flags, func.span));
+                        self.diagnostics.extend(pass.diagnose(&func.code, &metadata));
                     }
 
                     compiled_funcs.push(func);
@@ -557,6 +559,7 @@ impl<'a> CompilationUnit<'a> {
         let decl = &source.declaration;
         let is_native = !is_replacement && decl.qualifiers.contain(Qualifier::Native);
         let is_static = decl.qualifiers.contain(Qualifier::Static) || class_idx.is_undefined();
+        let is_callback = decl.qualifiers.contain(Qualifier::Callback);
 
         if is_native && class_flags.map(|f| !f.is_native()).unwrap_or(false) {
             self.report(Cause::unexpected_native().with_span(source.declaration.span))?;
@@ -603,7 +606,7 @@ impl<'a> CompilationUnit<'a> {
             .with_is_cast(decl.name.as_ref() == "Cast")
             .with_is_exec(decl.qualifiers.contain(Qualifier::Exec))
             .with_is_final(decl.qualifiers.contain(Qualifier::Final))
-            .with_is_callback(decl.qualifiers.contain(Qualifier::Callback) && wrapped.is_none())
+            .with_is_callback(is_callback && wrapped.is_none())
             .with_is_const(decl.qualifiers.contain(Qualifier::Const))
             .with_is_quest(decl.qualifiers.contain(Qualifier::Quest))
             .with_has_return_value(return_type.is_some())
@@ -634,6 +637,7 @@ impl<'a> CompilationUnit<'a> {
                 wrapped,
                 code,
                 scope: scope.clone(),
+                was_callback: is_callback,
                 span: source.span,
             };
             self.function_bodies.push(item)
@@ -1099,6 +1103,7 @@ struct FunctionBody {
     wrapped: Option<PoolIndex<Function>>,
     code: Seq<SourceAst>,
     scope: Scope,
+    was_callback: bool,
     span: Span,
 }
 

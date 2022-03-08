@@ -2,9 +2,9 @@ use std::collections::HashSet;
 
 use redscript::ast::{Expr, Seq, Span};
 use redscript::bundle::PoolIndex;
-use redscript::definition::{FunctionFlags, Local, Parameter};
+use redscript::definition::{Local, Parameter};
 
-use super::DiagnosticPass;
+use super::{DiagnosticPass, FunctionMetadata};
 use crate::scope::{Reference, Value};
 use crate::typechecker::TypedAst;
 use crate::unit::Diagnostic;
@@ -13,7 +13,7 @@ use crate::visit_expr;
 pub struct UnusedCheck;
 
 impl DiagnosticPass for UnusedCheck {
-    fn diagnose(&self, body: &Seq<TypedAst>, _flags: FunctionFlags, _fun_span: Span) -> Vec<Diagnostic> {
+    fn diagnose(&self, body: &Seq<TypedAst>, _meta: &FunctionMetadata) -> Vec<Diagnostic> {
         let names = UsedNames::from_seq(body);
         let mut diagnostics = vec![];
 

@@ -1,16 +1,15 @@
-use redscript::ast::{Expr, Seq, Span};
-use redscript::definition::FunctionFlags;
+use redscript::ast::{Expr, Seq};
 
-use super::DiagnosticPass;
+use super::{DiagnosticPass, FunctionMetadata};
 use crate::typechecker::TypedAst;
 use crate::unit::Diagnostic;
 
 pub struct ReturnValueCheck;
 
 impl DiagnosticPass for ReturnValueCheck {
-    fn diagnose(&self, body: &Seq<TypedAst>, flags: FunctionFlags, fun_span: Span) -> Vec<Diagnostic> {
-        if flags.has_return_value() && !flags.is_callback() && !does_seq_return(body) {
-            vec![Diagnostic::MissingReturn(fun_span)]
+    fn diagnose(&self, body: &Seq<TypedAst>, meta: &FunctionMetadata) -> Vec<Diagnostic> {
+        if meta.flags.has_return_value() && !meta.was_callback && !does_seq_return(body) {
+            vec![Diagnostic::MissingReturn(meta.span)]
         } else {
             vec![]
         }
