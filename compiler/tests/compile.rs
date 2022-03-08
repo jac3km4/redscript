@@ -214,3 +214,36 @@ fn fail_on_invalid_structs() {
         Span::new(Pos::new(85), Pos::new(94))
     )]);
 }
+
+#[test]
+fn report_unused_variables() {
+    let sources = "
+        func Testing() {
+            let x = 100;
+            let y = x + 120;
+            let z = 130;
+            let w = y + 240; 
+        }
+
+        func OperatorAdd(x: Int32, y: Int32) -> Int32 = 0;
+    ";
+
+    let (_, errs) = compiled(vec![sources]).unwrap();
+    assert_eq!(errs, vec![
+        Diagnostic::UnusedLocal(Span::new(Pos::new(92), Pos::new(104))),
+        Diagnostic::UnusedLocal(Span::new(Pos::new(117), Pos::new(133))),
+    ]);
+}
+
+#[test]
+fn report_missing_return() {
+    let sources = "
+        func Testing() -> Int32 {}
+    ";
+
+    let (_, errs) = compiled(vec![sources]).unwrap();
+    assert_eq!(errs, vec![Diagnostic::MissingReturn(Span::new(
+        Pos::new(9),
+        Pos::new(35)
+    ))]);
+}
