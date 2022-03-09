@@ -32,16 +32,16 @@ pub struct CompilationUnit<'a> {
     wrappers: ProxyMap,
     proxies: ProxyMap,
     diagnostics: Vec<Diagnostic>,
-    diagnostic_passes: Vec<Box<dyn DiagnosticPass>>,
+    diagnostic_passes: Vec<Box<dyn DiagnosticPass + Send>>,
 }
 
 impl<'a> CompilationUnit<'a> {
     pub fn new_with_defaults(pool: &'a mut ConstantPool) -> Result<Self, Error> {
-        let passes: Vec<Box<dyn DiagnosticPass>> = vec![Box::new(UnusedCheck), Box::new(ReturnValueCheck)];
+        let passes: Vec<Box<dyn DiagnosticPass + Send>> = vec![Box::new(UnusedCheck), Box::new(ReturnValueCheck)];
         Self::new(pool, passes)
     }
 
-    pub fn new(pool: &'a mut ConstantPool, passes: Vec<Box<dyn DiagnosticPass>>) -> Result<Self, Error> {
+    pub fn new(pool: &'a mut ConstantPool, passes: Vec<Box<dyn DiagnosticPass + Send>>) -> Result<Self, Error> {
         let symbols = SymbolMap::new(pool)?;
         let mut scope = Scope::new(pool)?;
 
