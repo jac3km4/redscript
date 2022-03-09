@@ -98,7 +98,7 @@ fn load_scripts(cache_dir: &Path, files: &Files) -> Result<(), Error> {
         .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
     let mut bundle = ScriptBundle::load(&mut io::Cursor::new(map.as_ref()))?;
 
-    CompilationUnit::new(&mut bundle.pool)?.compile_and_report(files)?;
+    CompilationUnit::new_with_defaults(&mut bundle.pool)?.compile_and_report(files)?;
 
     let mut file = File::create(&bundle_path)?;
     bundle.save(&mut io::BufWriter::new(&mut file))?;
