@@ -238,8 +238,12 @@ impl<'a> CompilationUnit<'a> {
 
             for import in imports {
                 if eval_conditions(&cte, import.annotations())? {
-                    self.symbols
-                        .populate_import(import, &mut module_scope, Visibility::Public)?;
+                    if let Err(err) = self
+                        .symbols
+                        .populate_import(import, &mut module_scope, Visibility::Public)
+                    {
+                        self.report(err)?;
+                    }
                 }
             }
 
