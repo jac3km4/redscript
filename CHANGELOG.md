@@ -1,4 +1,10 @@
-## [0.5.2] - Unreleased
+## [0.5.3] - Unreleased
+
+## [0.5.2]
+- fix an operator precedence issue (f0edc543396ebb10d9748ea100cb533965d0dc4c)
+- fix a multi-byte character issue (b9b1adb78c6f03e582614400380b1ffd2740f1d3)
+- add experimental support for structs (a9f44b5763131075525c062504eec4d6fdfbafac)
+- add basic diagnostics for unused variables and missing return statements (c1573ecba707da64aba71c78ea87e4c69bbaf130)
 
 ## [0.5.1]
 - fix an encoding issue which would cause the game to hang for 10 seconds before starting (af8857e6c22c5204c6b643b1193a39302b578686)
