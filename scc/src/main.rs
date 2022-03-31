@@ -15,6 +15,7 @@ use redscript_compiler::unit::CompilationUnit;
 use serde::Deserialize;
 use time::format_description::well_known::Rfc3339 as Rfc3339Format;
 use time::OffsetDateTime;
+#[cfg(feature = "mmap")]
 use vmap::Map;
 
 fn main() -> Result<(), Error> {
@@ -93,10 +94,15 @@ fn load_scripts(cache_dir: &Path, files: &Files) -> Result<(), Error> {
         _ => {}
     }
 
-    let (map, _) = Map::with_options()
-        .open(backup_path)
-        .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
-    let mut bundle = ScriptBundle::load(&mut io::Cursor::new(map.as_ref()))?;
+    #[cfg(feature = "mmap")]
+    let mut bundle = {
+        let (map, _) = Map::with_options()
+            .open(backup_path)
+            .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+        ScriptBundle::load(&mut io::Cursor::new(map.as_ref()))?
+    };
+    #[cfg(not(feature = "mmap"))]
+    let mut bundle = ScriptBundle::load(&mut io::BufReader::new(File::open(backup_path)?))?;
 
     CompilationUnit::new_with_defaults(&mut bundle.pool)?.compile_and_report(files)?;
 
