@@ -28,7 +28,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release --features popup
+          args: --release --features mmap,popup
       - run: mkdir staging
       - name: Create the mod archive
         working-directory: staging
