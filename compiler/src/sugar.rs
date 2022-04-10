@@ -71,17 +71,26 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
     ) -> Result<Expr<TypedAst>, Error> {
         let type_ = TypeId::Array(Box::new(type_.unwrap()));
         let local = self.fresh_local(&type_)?;
+        let array_ref = Expr::Ident(local.clone(), pos);
 
-        for expr in exprs {
-            let callable = Callable::Intrinsic(IntrinsicOp::ArrayPush, TypeId::Void);
+        self.add_prefix(Expr::Call(
+            Callable::Intrinsic(IntrinsicOp::ArrayResize, TypeId::Void),
+            vec![],
+            vec![array_ref, Expr::Constant(Constant::U64(exprs.len() as u64), pos)],
+            pos,
+        ));
+
+        for (i, expr) in exprs.into_iter().enumerate() {
             let expr = self.on_expr(expr)?;
-            self.add_prefix(Expr::Call(
-                callable,
-                vec![],
-                vec![Expr::Ident(local.clone(), pos), expr],
+            let array_ref = Expr::Ident(local.clone(), pos);
+            let index = Expr::Constant(Constant::U64(i as u64), pos);
+            self.add_prefix(Expr::Assign(
+                Expr::ArrayElem(array_ref.into(), index.into(), pos).into(),
+                expr.into(),
                 pos,
             ))
         }
+
         Ok(Expr::Ident(local, pos))
     }
 
