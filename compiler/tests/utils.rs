@@ -4,9 +4,10 @@ use std::io::Cursor;
 use redscript::bundle::{ConstantPool, PoolIndex, ScriptBundle};
 use redscript::bytecode::{Code, Offset};
 use redscript::definition::{AnyDefinition, ClassFlags, Definition};
+use redscript_compiler::diagnostics::Diagnostic;
 use redscript_compiler::error::Error;
 use redscript_compiler::parser;
-use redscript_compiler::unit::{CompilationUnit, Diagnostic};
+use redscript_compiler::unit::CompilationUnit;
 
 pub const PREDEF: &[u8] = include_bytes!("../../resources/predef.redscripts");
 

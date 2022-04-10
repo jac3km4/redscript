@@ -4,10 +4,9 @@ use redscript::ast::{Expr, Seq, Span};
 use redscript::bundle::PoolIndex;
 use redscript::definition::{Local, Parameter};
 
-use super::{DiagnosticPass, FunctionMetadata};
+use super::{Diagnostic, DiagnosticPass, FunctionMetadata};
 use crate::scope::{Reference, Value};
 use crate::typechecker::TypedAst;
-use crate::unit::Diagnostic;
 use crate::visit_expr;
 
 pub struct UnusedCheck;

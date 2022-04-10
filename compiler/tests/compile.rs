@@ -5,7 +5,7 @@ use redscript::definition::ClassFlags;
 #[allow(unused)]
 mod utils;
 
-use redscript_compiler::unit::Diagnostic;
+use redscript_compiler::diagnostics::Diagnostic;
 use utils::*;
 
 #[test]

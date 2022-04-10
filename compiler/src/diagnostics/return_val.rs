@@ -1,8 +1,7 @@
 use redscript::ast::{Expr, Seq};
 
-use super::{DiagnosticPass, FunctionMetadata};
+use super::{Diagnostic, DiagnosticPass, FunctionMetadata};
 use crate::typechecker::TypedAst;
-use crate::unit::Diagnostic;
 
 pub struct ReturnValueCheck;
 

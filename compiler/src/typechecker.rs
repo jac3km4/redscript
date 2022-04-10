@@ -9,10 +9,10 @@ use redscript::definition::{Class, Definition, Enum, Field, Function, Local, Loc
 use redscript::Ref;
 use thiserror::Error;
 
+use crate::diagnostics::Diagnostic;
 use crate::error::{Cause, Error, FunctionMatchError, ResultSpan};
 use crate::scope::{FunctionCandidates, Reference, Scope, TypeId, Value};
 use crate::symbol::Symbol;
-use crate::unit::Diagnostic;
 
 pub struct TypeChecker<'a> {
     pool: &'a mut ConstantPool,
