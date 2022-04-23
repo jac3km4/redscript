@@ -57,7 +57,7 @@ pub enum Instr<Loc> {
     New(PoolIndex<Class>),
     Delete,
     This,
-    StartProfiling(Vec<u8>, u8),
+    StartProfiling(Box<[u8]>, u8),
     ArrayClear(PoolIndex<Type>),
     ArraySize(PoolIndex<Type>),
     ArrayResize(PoolIndex<Type>),
@@ -404,7 +404,7 @@ impl Decode for Instr<Offset> {
             49 => Ok(Instr::Delete),
             50 => Ok(Instr::This),
             51 => Ok(Instr::StartProfiling(
-                input.decode_vec_prefixed::<u32, u8>()?,
+                input.decode_vec_prefixed::<u32, u8>()?.into_boxed_slice(),
                 input.decode()?,
             )),
             52 => Ok(Instr::ArrayClear(input.decode()?)),
