@@ -23,7 +23,7 @@ where
     Ident(Name::Reference, Span),
     Constant(Constant, Span),
     ArrayLit(Vec<Self>, Option<Name::Type>, Span),
-    InterpolatedString(Ref<String>, Vec<(Self, Ref<String>)>, Span),
+    InterpolatedString(Ref<str>, Vec<(Self, Ref<str>)>, Span),
     Declare(Name::Local, Option<Name::Type>, Option<Box<Self>>, Span),
     Cast(Name::Type, Box<Self>, Span),
     Assign(Box<Self>, Box<Self>, Span),
@@ -127,7 +127,7 @@ where
 
 #[derive(Debug, Clone)]
 pub enum Constant {
-    String(Literal, Ref<String>),
+    String(Literal, Ref<str>),
     F32(f32),
     F64(f64),
     I32(i32),
@@ -140,17 +140,17 @@ pub enum Constant {
 #[derive(Debug, Clone, Eq, PartialOrd, Ord)]
 pub enum Ident {
     Static(&'static str),
-    Owned(Ref<String>),
+    Owned(Ref<str>),
 }
 
 impl Ident {
     pub fn new(str: String) -> Ident {
-        Ident::Owned(Ref::new(str))
+        Ident::Owned(Ref::from(str))
     }
 
-    pub fn to_owned(&self) -> Ref<String> {
+    pub fn to_owned(&self) -> Ref<str> {
         match self {
-            Ident::Static(str) => Ref::new(str.to_string()),
+            Ident::Static(str) => Ref::from(*str),
             Ident::Owned(rc) => rc.clone(),
         }
     }
@@ -471,7 +471,7 @@ impl TypeName {
         }
     }
 
-    pub fn basic_owned(name: Ref<String>) -> Self {
+    pub fn basic_owned(name: Ref<str>) -> Self {
         TypeName {
             name: Ident::Owned(name),
             arguments: vec![],
@@ -516,7 +516,7 @@ impl TypeName {
     }
 
     fn from_parts<'a>(name: &'a str, mut parts: impl Iterator<Item = &'a str>) -> Option<TypeName> {
-        let name = Ref::new(name.to_owned());
+        let name = Ref::from(name);
         match parts.next() {
             Some(tail) => {
                 let arg = Self::from_parts(tail, parts)?;

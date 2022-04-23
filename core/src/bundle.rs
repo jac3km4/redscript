@@ -172,7 +172,7 @@ impl ConstantPool {
             match dedup_map.entry(str.clone()) {
                 hash_map::Entry::Vacant(entry) => {
                     entry.insert(buffer.stream_position()? as u32);
-                    buffer.encode(&str.as_str())?;
+                    buffer.encode(&str.as_ref())?;
                 }
                 hash_map::Entry::Occupied(_) => {}
             }
@@ -301,7 +301,7 @@ impl ConstantPool {
         self.definition_by(index, AnyDefinition::as_enum_value).cloned()
     }
 
-    pub fn def_name<A>(&self, index: PoolIndex<A>) -> Result<Ref<String>, PoolError> {
+    pub fn def_name<A>(&self, index: PoolIndex<A>) -> Result<Ref<str>, PoolError> {
         self.names.get(self.definition(index)?.name)
     }
 
@@ -346,8 +346,8 @@ impl ConstantPool {
 
 #[derive(Debug, Clone)]
 pub struct Strings<K> {
-    strings: Vec<Ref<String>>,
-    mappings: HashMap<Ref<String>, PoolIndex<K>>,
+    strings: Vec<Ref<str>>,
+    mappings: HashMap<Ref<str>, PoolIndex<K>>,
     phantom: PhantomData<K>,
 }
 
@@ -357,7 +357,7 @@ impl<K: DefaultString> Strings<K> {
         let mut mappings = HashMap::new();
         for (idx, offset) in offsets.iter().enumerate() {
             input.seek(io::SeekFrom::Start((*offset).into()))?;
-            let str: Ref<String> = Ref::new(input.decode()?);
+            let str: Ref<str> = Ref::from(input.decode::<String>()?);
             strings.push(str.clone());
             mappings.insert(str, PoolIndex::new(idx as u32));
         }
@@ -369,7 +369,7 @@ impl<K: DefaultString> Strings<K> {
         Ok(result)
     }
 
-    fn encoded_offsets(&self, str_map: &HashMap<Ref<String>, u32>) -> io::Result<Vec<u8>> {
+    fn encoded_offsets(&self, str_map: &HashMap<Ref<str>, u32>) -> io::Result<Vec<u8>> {
         let mut offsets = io::Cursor::new(Vec::new());
         for string in &self.strings {
             offsets.encode(str_map.get(string).unwrap())?;
@@ -377,9 +377,9 @@ impl<K: DefaultString> Strings<K> {
         Ok(offsets.into_inner())
     }
 
-    pub fn get(&self, index: PoolIndex<K>) -> Result<Ref<String>, PoolError> {
+    pub fn get(&self, index: PoolIndex<K>) -> Result<Ref<str>, PoolError> {
         match K::default() {
-            Some(default) if index.is_undefined() => Ok(Ref::new(default.to_owned())),
+            Some(default) if index.is_undefined() => Ok(Ref::from(default)),
             _ => self
                 .strings
                 .get(index.value as usize)
@@ -389,15 +389,15 @@ impl<K: DefaultString> Strings<K> {
     }
 
     #[allow(clippy::ptr_arg)]
-    pub fn get_index(&self, name: &String) -> Result<PoolIndex<K>, PoolError> {
+    pub fn get_index(&self, name: &str) -> Result<PoolIndex<K>, PoolError> {
         self.mappings
             .get(name)
             .cloned()
             .ok_or_else(|| PoolError(format!("Name {name} not found")))
     }
 
-    pub fn add(&mut self, str: Ref<String>) -> PoolIndex<K> {
-        if K::default() == Some(str.as_ref()) {
+    pub fn add(&mut self, str: Ref<str>) -> PoolIndex<K> {
+        if K::default() == Some(&str) {
             PoolIndex::UNDEFINED
         } else {
             let idx = PoolIndex::new(self.strings.len() as u32);

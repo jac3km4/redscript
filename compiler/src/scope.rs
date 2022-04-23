@@ -209,7 +209,7 @@ impl Scope {
 
     pub fn resolve_type_from_pool(&self, index: PoolIndex<Type>, pool: &ConstantPool) -> Result<TypeId, Cause> {
         let result = match pool.type_(index)? {
-            Type::Prim => match pool.def_name(index)?.as_str() {
+            Type::Prim => match pool.def_name(index)?.as_ref() {
                 "Variant" => TypeId::Variant,
                 _ => TypeId::Prim(index),
             },

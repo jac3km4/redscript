@@ -188,7 +188,7 @@ impl ModulePath {
     }
 
     pub fn with_function(&self, fun_sig: FunctionSignature) -> ModulePath {
-        let ident = Ident::new(fun_sig.into_owned());
+        let ident = Ident::new(fun_sig.into_string());
         self.with_child(ident)
     }
 
@@ -245,7 +245,7 @@ impl<'a> FunctionSignature<'a> {
         self.as_ref().split(';').next().unwrap()
     }
 
-    pub fn into_owned(self) -> String {
+    pub fn into_string(self) -> String {
         self.0.into_owned()
     }
 }

@@ -489,7 +489,7 @@ impl<'a> CompilationUnit<'a> {
                     }
 
                     let fun_sig = FunctionSignature::from_source(&fun);
-                    let name_idx = self.pool.names.add(Ref::new(fun_sig.into_owned()));
+                    let name_idx = self.pool.names.add(Ref::from(fun_sig.into_string()));
                     let fun_idx = self.pool.stub_definition(name_idx);
 
                     self.define_function(
@@ -792,7 +792,7 @@ impl<'a> CompilationUnit<'a> {
                         }
                     };
 
-                    let name_idx = self.pool.names.add(Ref::new(format!("wrapper${wrapped_idx}")));
+                    let name_idx = self.pool.names.add(Ref::from(format!("wrapper${wrapped_idx}")));
                     let wrapper_idx = self.pool.stub_definition(name_idx);
                     let base = self.pool.function(fun_idx)?.base_method;
 
@@ -874,12 +874,12 @@ impl<'a> CompilationUnit<'a> {
                         let base = self.pool.class(class.base)?;
                         base.functions
                             .iter()
-                            .find(|fun| self.pool.def_name(**fun).unwrap().as_str() == sig.as_ref())
+                            .find(|fun| self.pool.def_name(**fun).unwrap().as_ref() == sig.as_ref())
                             .cloned()
                     } else {
                         None
                     };
-                    let name_idx = self.pool.names.add(Ref::new(sig.into_owned()));
+                    let name_idx = self.pool.names.add(Ref::from(sig.into_string()));
                     let fun_idx = self.pool.stub_definition(name_idx);
                     self.pool.class_mut(target_class_idx)?.functions.push(fun_idx);
 
@@ -1003,7 +1003,7 @@ impl<'a> CompilationUnit<'a> {
             parameters,
             ..fun
         };
-        let name = pool.names.add(Ref::new(format!("proxy${wrapper}")));
+        let name = pool.names.add(Ref::from(format!("proxy${wrapper}")));
         pool.put_definition(slot, Definition::function(name, def.parent.cast(), compiled));
         if !def.parent.is_undefined() {
             pool.class_mut(def.parent.cast())?.functions.push(slot);

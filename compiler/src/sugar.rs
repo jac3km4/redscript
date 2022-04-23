@@ -51,7 +51,7 @@ impl<'a> Desugar<'a> {
 
     fn fresh_local(&mut self, type_: &TypeId) -> Result<Reference, Error> {
         let fun_idx = self.scope.function.unwrap();
-        let name_idx = self.pool.names.add(Ref::new(format!("synthetic${}", self.name_count)));
+        let name_idx = self.pool.names.add(Ref::from(format!("synthetic${}", self.name_count)));
         let type_idx = self.scope.get_type_index(type_, self.pool).map_err(Cause::pool_err)?;
         let local = Local::new(type_idx, LocalFlags::new());
         let def = Definition::local(name_idx, fun_idx, local);
@@ -96,8 +96,8 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
 
     fn on_interpolated_string(
         &mut self,
-        prefix: Ref<String>,
-        parts: Vec<(Expr<TypedAst>, Ref<String>)>,
+        prefix: Ref<str>,
+        parts: Vec<(Expr<TypedAst>, Ref<str>)>,
         span: Span,
     ) -> Result<Expr<TypedAst>, Error> {
         let mut acc = Expr::Constant(Constant::String(Literal::String, prefix), span);

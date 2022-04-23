@@ -245,18 +245,18 @@ peg::parser! {
         rule interpolation() -> Expr<SourceAst>
             = r#"\("# _ expr:expr() _ ")" { expr }
 
-        rule string_part() -> (Expr<SourceAst>, Ref<String>)
-            = e:interpolation() s:string_contents() { (e, Ref::new(s)) }
+        rule string_part() -> (Expr<SourceAst>, Ref<str>)
+            = e:interpolation() s:string_contents() { (e, Ref::from(s)) }
 
-        pub rule interpolated_string() -> (Ref<String>, Vec<(Expr<SourceAst>, Ref<String>)>)
-            = "s\""  prefix:string_contents() parts:string_part()* "\"" { (Ref::new(prefix), parts) }
+        pub rule interpolated_string() -> (Ref<str>, Vec<(Expr<SourceAst>, Ref<str>)>)
+            = "s\""  prefix:string_contents() parts:string_part()* "\"" { (Ref::from(prefix), parts) }
 
         rule constant() -> Constant
             = keyword("true") { Constant::Bool(true) }
             / keyword("false") { Constant::Bool(false) }
             / n:number() { n }
             / type_:literal_type()? str:escaped_string()
-                { Constant::String(type_.unwrap_or(Literal::String), Ref::new(str)) }
+                { Constant::String(type_.unwrap_or(Literal::String), Ref::from(str)) }
 
         rule seq() -> Seq<SourceAst> = exprs:(stmt() ** _) { Seq::new(exprs) }
 

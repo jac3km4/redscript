@@ -34,8 +34,8 @@ where
 
     fn on_interpolated_string(
         &mut self,
-        prefix: Ref<String>,
-        parts: Vec<(Expr<N>, Ref<String>)>,
+        prefix: Ref<str>,
+        parts: Vec<(Expr<N>, Ref<str>)>,
         pos: Span,
     ) -> Result<Expr<N>, Error> {
         let mut processed = Vec::with_capacity(parts.len());
