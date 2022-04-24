@@ -36,7 +36,7 @@ cargo run --bin redscript-cli --release -- decompile -i '/mnt/d/games/Cyberpunk 
 ## language
 The scripts use a Swift-like language.
 
-You can find a brief overview of it's features in the [wiki](https://github.com/jac3km4/redscript/wiki).
+You can find a brief overview of it's features in the [wiki](https://wiki.redmodding.org/redscript).
 
 You can also try it out [in your browser](https://try-redscript.surge.sh).
 
