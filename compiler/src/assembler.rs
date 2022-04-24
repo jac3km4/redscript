@@ -357,8 +357,8 @@ impl Assembler {
             TypeId::WeakRef(_) => {
                 emit_assignment(Instr::WeakRefNull);
             }
-            TypeId::Array(elem_type) => {
-                self.emit(Instr::ArrayClear(scope.get_type_index(&elem_type, pool)?));
+            TypeId::Array(_) => {
+                self.emit(Instr::ArrayClear(scope.get_type_index(&typ, pool)?));
             }
             _ => {}
         }
