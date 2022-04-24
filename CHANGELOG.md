@@ -1,4 +1,9 @@
-## [0.5.3] - Unreleased
+## [0.5.4] - Unreleased
+
+## [0.5.3]
+- local initializers - fixes surprising behavior with some types, particularly arrays (4870193b2493d158106e6f241f760fef89024bfa, 766b6aa6c0fa042a22d955e8d29ad96df260c8cb)
+- various improvements for diagnostics (3fb78638c137fabc7da04cf436b45756a63a2b9f)
+- various compiler optimizations (5a97c0d39a0cdfaf02ef711a70ca175faf01d012, e487792e820fdf4eee085b78a9d1b374a7531c4e)
 
 ## [0.5.2]
 - fix an operator precedence issue (f0edc543396ebb10d9748ea100cb533965d0dc4c)
