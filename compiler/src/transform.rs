@@ -295,6 +295,7 @@ macro_rules! visit_expr {
             Expr::Switch(matched, cases, default, _) => {
                 $self.$fun(matched);
                 for case in cases {
+                    $self.$fun(&case.matcher);
                     $crate::transform::visit_seq(&case.body, |e| $self.$fun(e));
                 }
                 if let Some(seq) = default {
