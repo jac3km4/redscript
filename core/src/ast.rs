@@ -2,7 +2,6 @@ use std::fmt::{self, Debug, Display};
 use std::hash::Hash;
 use std::iter;
 use std::ops::{Add, Sub};
-use std::rc::Rc;
 
 use enum_as_inner::EnumAsInner;
 use itertools::Itertools;
@@ -187,8 +186,8 @@ impl AsRef<str> for Ident {
     }
 }
 
-impl From<Rc<str>> for Ident {
-    fn from(rc: Rc<str>) -> Self {
+impl From<Ref<str>> for Ident {
+    fn from(rc: Ref<str>) -> Self {
         Self::Owned(rc)
     }
 }
