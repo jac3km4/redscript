@@ -40,7 +40,10 @@ You can find a brief overview of it's features in the [wiki](https://github.com/
 
 You can also try it out [in your browser](https://try-redscript.surge.sh).
 
-Some simple reference script examples can be found [here](https://github.com/jac3km4/redscript/blob/master/resources/patches.reds).
+For examples, you can have a look at some projects using redscript:
+- [pxiberx/cp2077-playground](https://github.com/psiberx/cp2077-playground)
+- [djkovrik/CP77Mods](https://github.com/djkovrik/CP77Mods)
+- [jackhumbert/flight_control](https://github.com/jackhumbert/flight_control)
 
 ## integrating with the game
 You can integrate this compiler with the game and make it compile your scripts on startup.
