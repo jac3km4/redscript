@@ -44,15 +44,15 @@ impl<'a> Desugar<'a> {
             .scope
             .resolve_function(Ident::new(signature.name().to_owned()))?
             .by_id(&signature, self.pool)
-            .ok_or_else(|| Cause::function_not_found(signature.as_ref()))?;
+            .ok_or_else(|| Cause::FunctionNotFound(Ident::new(signature.as_ref().to_owned())))?;
 
         Ok(Callable::Function(fun_idx))
     }
 
-    fn fresh_local(&mut self, type_: &TypeId) -> Result<Reference, Error> {
+    fn fresh_local(&mut self, type_: &TypeId) -> Result<Reference, Cause> {
         let fun_idx = self.scope.function.unwrap();
         let name_idx = self.pool.names.add(Ref::from(format!("synthetic${}", self.name_count)));
-        let type_idx = self.scope.get_type_index(type_, self.pool).map_err(Cause::pool_err)?;
+        let type_idx = self.scope.get_type_index(type_, self.pool)?;
         let local = Local::new(type_idx, LocalFlags::new());
         let def = Definition::local(name_idx, fun_idx, local);
         let idx = self.pool.add_definition(def);
@@ -70,7 +70,7 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
         pos: Span,
     ) -> Result<Expr<TypedAst>, Error> {
         let type_ = TypeId::Array(Box::new(type_.unwrap()));
-        let local = self.fresh_local(&type_)?;
+        let local = self.fresh_local(&type_).with_span(pos)?;
         let array_ref = Expr::Ident(local.clone(), pos);
 
         self.add_prefix(Expr::Call(
@@ -116,7 +116,7 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
             let part = self.on_expr(part)?;
 
             let part = match type_of(&part, self.scope, self.pool)? {
-                TypeId::Void => return Err(Cause::unsupported("Formatting void").with_span(span)),
+                TypeId::Void => return Err(Cause::UnsupportedFeature("formatting void").with_span(span)),
                 TypeId::ScriptRef(idx) if idx.pretty(self.pool)?.as_ref() == "String" => part,
                 typ if typ.pretty(self.pool)?.as_ref() == "String" => as_ref(part),
                 _ => {
@@ -148,10 +148,10 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
 
         let array = self.on_expr(array)?;
         let arr_type = type_of(&array, self.scope, self.pool)?;
-        let arr_local = self.fresh_local(&arr_type)?;
+        let arr_local = self.fresh_local(&arr_type).with_span(span)?;
 
         let counter_type = self.scope.resolve_type(&TypeName::INT32, self.pool).with_span(span)?;
-        let counter_local = self.fresh_local(&counter_type)?;
+        let counter_local = self.fresh_local(&counter_type).with_span(span)?;
 
         self.add_prefix(Expr::Assign(
             Box::new(Expr::Ident(arr_local.clone(), span)),

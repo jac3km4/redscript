@@ -126,7 +126,7 @@ pub fn compiled(sources: Vec<&str>) -> Result<(ConstantPool, Vec<Diagnostic>), E
 }
 
 pub fn check_class_flags(pool: &ConstantPool, name: &str, flags: ClassFlags) -> Result<(), Error> {
-    let name_index = pool.names.get_index(&String::from(name))?;
+    let name_index = pool.names.get_index(&String::from(name)).unwrap();
     let match_ = pool
         .definitions()
         .filter(|(_, def)| matches!(def.value, AnyDefinition::Class(_)))

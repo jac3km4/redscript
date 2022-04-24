@@ -9,7 +9,7 @@ use redscript::definition::{Class, Definition, Enum, Field, Function, Local, Loc
 use redscript::Ref;
 use thiserror::Error;
 
-use crate::diagnostics::Diagnostic;
+use crate::diagnostics::{Deprecation, Diagnostic};
 use crate::error::{Cause, Error, FunctionMatchError, ResultSpan};
 use crate::scope::{FunctionCandidates, Reference, Scope, TypeId, Value};
 use crate::symbol::Symbol;
@@ -68,9 +68,10 @@ impl<'a> TypeChecker<'a> {
                     match expected {
                         Some(TypeId::Array(inner)) => Expr::ArrayLit(vec![], Some(*inner.clone()), *span),
                         Some(type_) => {
-                            return Err(Cause::type_error("array", type_.pretty(self.pool)?).with_span(*span))
+                            let cause = Cause::TypeError(Ident::new("array".to_owned()), type_.pretty(self.pool)?);
+                            return Err(cause.with_span(*span));
                         }
-                        None => return Err(Cause::type_annotation_required().with_span(*span)),
+                        None => return Err(Cause::TypeAnnotationRequired.with_span(*span)),
                     }
                 } else {
                     let mut checked = Vec::with_capacity(exprs.len());
@@ -101,7 +102,7 @@ impl<'a> TypeChecker<'a> {
             }
             Expr::Declare(name, type_, init, span) => {
                 let (initializer, type_) = match (type_, init) {
-                    (None, None) => return Err(Cause::type_annotation_required().with_span(*span)),
+                    (None, None) => return Err(Cause::TypeAnnotationRequired.with_span(*span)),
                     (None, Some(expr)) => {
                         let checked = self.check(expr, None, scope)?;
                         let type_ = type_of(&checked, scope, self.pool)?;
@@ -153,7 +154,7 @@ impl<'a> TypeChecker<'a> {
                 let class = match type_.unwrapped() {
                     TypeId::Class(class) => *class,
                     TypeId::Struct(class) => *class,
-                    type_ => return Err(Cause::invalid_context(type_.pretty(self.pool)?).with_span(*span)),
+                    type_ => return Err(Cause::InvalidMemberAccess(type_.pretty(self.pool)?).with_span(*span)),
                 };
                 let candidates = scope.resolve_method(name.clone(), class, self.pool).with_span(*span)?;
                 let match_ = self.resolve_overload(name.clone(), candidates, args.iter(), expected, scope, *span)?;
@@ -198,7 +199,7 @@ impl<'a> TypeChecker<'a> {
                             .with_span(*span)?;
                         Member::EnumMember(*enum_, member)
                     }
-                    type_ => return Err(Cause::invalid_context(type_.pretty(self.pool)?).with_span(*span)),
+                    type_ => return Err(Cause::InvalidMemberAccess(type_.pretty(self.pool)?).with_span(*span)),
                 };
                 let converted_context = if let TypeId::WeakRef(inner) = type_ {
                     insert_conversion(checked_context, &TypeId::Ref(inner), Conversion::WeakRefToRef)
@@ -218,17 +219,17 @@ impl<'a> TypeChecker<'a> {
                 match type_ {
                     TypeId::Class(class_idx) => {
                         if self.pool.class(class_idx)?.flags.is_abstract() {
-                            return Err(Cause::class_is_abstract(type_name.pretty()).with_span(*span));
+                            return Err(Cause::InstantiatingAbstract(type_name.pretty()).with_span(*span));
                         }
                         if !args.is_empty() {
-                            return Err(Cause::invalid_arg_count(type_name.pretty(), 0).with_span(*span));
+                            return Err(Cause::InvalidArgCount(type_name.pretty(), 0).with_span(*span));
                         }
                         Expr::New(type_, vec![], *span)
                     }
                     TypeId::Struct(class_idx) => {
                         let fields = self.pool.class(class_idx)?.fields.clone();
                         if fields.len() != args.len() {
-                            return Err(Cause::invalid_arg_count(type_name.pretty(), fields.len()).with_span(*span));
+                            return Err(Cause::InvalidArgCount(type_name.pretty(), fields.len()).with_span(*span));
                         }
                         let mut checked_args = Vec::with_capacity(args.len());
                         for (arg, field_idx) in args.iter().zip(&fields) {
@@ -240,7 +241,7 @@ impl<'a> TypeChecker<'a> {
                         Expr::New(type_, checked_args, *span)
                     }
                     _ => {
-                        return Err(Cause::invalid_op(type_name.pretty(), "Constructing").with_span(*span));
+                        return Err(Cause::UnsupportedOperation("constructing", type_name.pretty()).with_span(*span));
                     }
                 }
             }
@@ -249,7 +250,7 @@ impl<'a> TypeChecker<'a> {
                 match fun.return_type {
                     Some(type_idx) => {
                         let type_ = scope.resolve_type_from_pool(type_idx, self.pool).with_span(*span)?;
-                        return Err(Cause::return_type_mismatch(type_.pretty(self.pool)?).with_span(*span));
+                        return Err(Cause::UnexpectedVoidReturn(type_.pretty(self.pool)?).with_span(*span));
                     }
                     None => Expr::Return(None, *span),
                 }
@@ -261,7 +262,7 @@ impl<'a> TypeChecker<'a> {
                     let checked = self.check_and_convert(expr, &expected, scope)?;
                     Expr::Return(Some(Box::new(checked)), *span)
                 } else {
-                    return Err(Cause::return_type_mismatch("Void").with_span(*span));
+                    return Err(Cause::UnexpectedValueReturn.with_span(*span));
                 }
             }
             Expr::Seq(seq) => Expr::Seq(self.check_seq(seq, scope)?),
@@ -324,7 +325,10 @@ impl<'a> TypeChecker<'a> {
                         let body = self.check_seq(body, &mut local_scope)?;
                         Expr::ForIn(local, Box::new(array), body, *span)
                     }
-                    other => return Err(Cause::type_error(other.pretty(self.pool)?, "array").with_span(*span)),
+                    other => {
+                        let cause = Cause::TypeError(other.pretty(self.pool)?, Ident::new("array".to_owned()));
+                        return Err(cause.with_span(*span));
+                    }
                 }
             }
             Expr::This(span) => Expr::This(*span),
@@ -352,7 +356,8 @@ impl<'a> TypeChecker<'a> {
         span: Span,
     ) -> Result<Expr<TypedAst>, Error> {
         if args.len() != intrinsic.arg_count().into() {
-            return Err(Cause::invalid_arg_count(intrinsic, intrinsic.arg_count() as usize)).with_span(span);
+            let cause = Cause::InvalidArgCount(Ident::new(intrinsic.to_string()), intrinsic.arg_count() as usize);
+            return Err(cause.with_span(span));
         }
         let first_arg = self.check(&args[0], None, scope)?;
         let first_arg_type = type_of(&first_arg, scope, self.pool)?;
@@ -361,7 +366,8 @@ impl<'a> TypeChecker<'a> {
             (IntrinsicOp::Equals, arg_type) => {
                 let snd_arg = self.check(&args[1], Some(&arg_type), scope)?;
                 if lub(arg_type, type_of(&snd_arg, scope, self.pool)?, self.pool).is_err() {
-                    self.diagnostics.push(Diagnostic::unrelated_type_equals(span));
+                    self.diagnostics
+                        .push(Diagnostic::Deprecation(Deprecation::UnrelatedTypeEquals, span));
                 };
                 checked_args.push(first_arg);
                 checked_args.push(snd_arg);
@@ -370,7 +376,8 @@ impl<'a> TypeChecker<'a> {
             (IntrinsicOp::NotEquals, arg_type) => {
                 let snd_arg = self.check(&args[1], Some(&arg_type), scope)?;
                 if lub(arg_type, type_of(&snd_arg, scope, self.pool)?, self.pool).is_err() {
-                    self.diagnostics.push(Diagnostic::unrelated_type_equals(span));
+                    self.diagnostics
+                        .push(Diagnostic::Deprecation(Deprecation::UnrelatedTypeEquals, span));
                 };
                 checked_args.push(first_arg);
                 checked_args.push(snd_arg);
@@ -460,7 +467,8 @@ impl<'a> TypeChecker<'a> {
                 if let Some(TypeId::Enum(idx)) = expected {
                     TypeId::Enum(*idx)
                 } else {
-                    return Err(Cause::type_error("Enum", expected.unwrap().pretty(self.pool)?).with_span(span));
+                    let cause = Cause::TypeError(Ident::new("enum".to_owned()), expected.unwrap().pretty(self.pool)?);
+                    return Err(cause.with_span(span));
                 }
             }
             (IntrinsicOp::ToVariant, _) => {
@@ -495,7 +503,7 @@ impl<'a> TypeChecker<'a> {
                 checked_args.push(first_arg);
                 scope.resolve_type(&TypeName::BOOL, self.pool).with_span(span)?
             }
-            (_, type_) => return Err(Cause::invalid_intrinsic(intrinsic, type_.pretty(self.pool)?).with_span(span)),
+            (_, type_) => return Err(Cause::InvalidIntrinsicUse(intrinsic, type_.pretty(self.pool)?).with_span(span)),
         };
 
         Ok(Expr::Call(
@@ -517,7 +525,7 @@ impl<'a> TypeChecker<'a> {
         match find_conversion(&from, to, self.pool)? {
             Some(conversion) => Ok(insert_conversion(checked, to, conversion)),
             None => {
-                self.report(Cause::type_error(from.pretty(self.pool)?, to.pretty(self.pool)?).with_span(expr.span()))?;
+                self.report(Cause::TypeError(from.pretty(self.pool)?, to.pretty(self.pool)?).with_span(expr.span()))?;
                 Ok(checked)
             }
         }
@@ -537,7 +545,7 @@ impl<'a> TypeChecker<'a> {
         let mut overload_errors = vec![];
 
         for overload in &overloads.functions {
-            match Self::validate_call(*overload, arg_count, scope, self.pool) {
+            match Self::validate_call(*overload, arg_count, scope, self.pool, span) {
                 Ok(res) => eligible.push(res),
                 Err(MatcherError::MatchError(err)) => overload_errors.push(err),
                 Err(MatcherError::Other(err)) => return Err(err),
@@ -598,6 +606,7 @@ impl<'a> TypeChecker<'a> {
         arg_count: usize,
         scope: &Scope,
         pool: &ConstantPool,
+        span: Span,
     ) -> Result<(PoolIndex<Function>, Vec<TypeId>), MatcherError> {
         let fun = pool.function(fun_index)?;
         let params = fun
@@ -612,7 +621,7 @@ impl<'a> TypeChecker<'a> {
         }
 
         let types = params
-            .map(|res| res.and_then(|param| scope.resolve_type_from_pool(param.type_, pool).map_err(Cause::pool_err)))
+            .map(|res| res.and_then(|param| scope.resolve_type_from_pool(param.type_, pool).with_span(span)))
             .try_collect()?;
         Ok((fun_index, types))
     }
@@ -629,7 +638,7 @@ impl<'a> TypeChecker<'a> {
         let fun = pool.function(fun_index)?;
         if fun.flags.is_cast() {
             if let Some(expected) = expected {
-                let type_idx = fun.return_type.ok_or_else(Cause::void_cannot_be_used).with_span(span)?;
+                let type_idx = fun.return_type.ok_or(Cause::VoidCannotBeUsed).with_span(span)?;
                 let ret_type = scope.resolve_type_from_pool(type_idx, pool).with_span(span)?;
 
                 if find_conversion(&ret_type, expected, pool)?.is_none() {
@@ -646,7 +655,7 @@ impl<'a> TypeChecker<'a> {
                 match find_conversion(&arg_typ, param_typ, pool)? {
                     Some(conv) => Ok(ArgConversion::new(conv, param_typ.clone())),
                     None => {
-                        let cause = Cause::type_error(arg_typ.pretty(pool)?, param_typ.pretty(pool)?);
+                        let cause = Cause::TypeError(arg_typ.pretty(pool)?, param_typ.pretty(pool)?);
                         Err(FunctionMatchError::parameter_mismatch(cause, i).into())
                     }
                 }
@@ -689,7 +698,7 @@ pub fn type_of(expr: &Expr<TypedAst>, scope: &Scope, pool: &ConstantPool) -> Res
             Reference::Symbol(Symbol::Class(idx, _)) => TypeId::Class(*idx),
             Reference::Symbol(Symbol::Struct(idx, _)) => TypeId::Struct(*idx),
             Reference::Symbol(Symbol::Enum(idx)) => TypeId::Enum(*idx),
-            Reference::Symbol(Symbol::Functions(_)) => return Err(Cause::value_expected("function").with_span(*span)),
+            Reference::Symbol(Symbol::Functions(_)) => return Err(Cause::UnexpectedToken("function").with_span(*span)),
         },
         Expr::Constant(cons, span) => match cons {
             Constant::String(Literal::String, _) => scope.resolve_type(&TypeName::STRING, pool).with_span(*span)?,
@@ -737,12 +746,12 @@ pub fn type_of(expr: &Expr<TypedAst>, scope: &Scope, pool: &ConstantPool) -> Res
         Expr::ArrayElem(expr, _, span) => match type_of(expr, scope, pool)? {
             TypeId::Array(inner) => *inner,
             TypeId::StaticArray(inner, _) => *inner,
-            type_ => return Err(Cause::invalid_op(type_.pretty(pool)?, "Indexing").with_span(*span)),
+            type_ => return Err(Cause::UnsupportedOperation("indexing", type_.pretty(pool)?).with_span(*span)),
         },
         Expr::New(type_, _, span) => match type_ {
             TypeId::Struct(s) => TypeId::Struct(*s),
             TypeId::Class(s) => TypeId::Ref(Box::new(TypeId::Class(*s))),
-            type_ => return Err(Cause::invalid_op(type_.pretty(pool)?, "Constructing").with_span(*span)),
+            type_ => return Err(Cause::UnsupportedOperation("constructing", type_.pretty(pool)?).with_span(*span)),
         },
         Expr::Return(_, _) => TypeId::Void,
         Expr::Seq(_) => TypeId::Void,
@@ -758,19 +767,19 @@ pub fn type_of(expr: &Expr<TypedAst>, scope: &Scope, pool: &ConstantPool) -> Res
         Expr::ForIn(_, _, _, _) => TypeId::Void,
         Expr::This(span) => match scope.this {
             Some(class_idx) => TypeId::Ref(Box::new(TypeId::Class(class_idx))),
-            None => return Err(Cause::no_this_in_static_context().with_span(*span)),
+            None => return Err(Cause::UnexpectedThis.with_span(*span)),
         },
         Expr::Super(span) => match scope.this {
             Some(class_idx) => {
                 let base_idx = pool.class(class_idx)?.base;
                 TypeId::Ref(Box::new(TypeId::Class(base_idx)))
             }
-            None => return Err(Cause::no_this_in_static_context().with_span(*span)),
+            None => return Err(Cause::UnexpectedThis.with_span(*span)),
         },
         Expr::Break(_) => TypeId::Void,
         Expr::Null(_) => TypeId::Null,
-        Expr::BinOp(_, _, _, span) => return Err(Cause::unsupported("BinOp").with_span(*span)),
-        Expr::UnOp(_, _, span) => return Err(Cause::unsupported("UnOp").with_span(*span)),
+        Expr::BinOp(_, _, _, span) => return Err(Cause::UnsupportedFeature("BinOp").with_span(*span)),
+        Expr::UnOp(_, _, span) => return Err(Cause::UnsupportedFeature("UnOp").with_span(*span)),
     };
     Ok(res)
 }
@@ -796,7 +805,7 @@ pub fn lub(a: TypeId, b: TypeId, pool: &ConstantPool) -> Result<TypeId, Cause> {
         let subs_b = collect_supertypes(b, pool)?;
         let res = subs_a.into_iter().zip(subs_b).take_while(|(a, b)| a == b).last();
         res.map(|x| x.0)
-            .ok_or_else(|| Cause::unification_failed(pool.def_name(a).unwrap(), pool.def_name(b).unwrap()))
+            .ok_or_else(|| Cause::UnificationFailed(pool.def_name(a).unwrap().into(), pool.def_name(b).unwrap().into()))
     }
 
     if a == b {
@@ -811,7 +820,7 @@ pub fn lub(a: TypeId, b: TypeId, pool: &ConstantPool) -> Result<TypeId, Cause> {
             (TypeId::Null, TypeId::WeakRef(a)) => Ok(TypeId::WeakRef(a)),
             (TypeId::Class(a), TypeId::Class(b)) => Ok(TypeId::Class(lub_class(a, b, pool)?)),
             (TypeId::Struct(a), TypeId::Struct(b)) => Ok(TypeId::Struct(lub_class(a, b, pool)?)),
-            (a, b) => Err(Cause::unification_failed(a.pretty(pool)?, b.pretty(pool)?)),
+            (a, b) => Err(Cause::UnificationFailed(a.pretty(pool)?, b.pretty(pool)?)),
         }
     }
 }

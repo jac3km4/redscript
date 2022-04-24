@@ -51,7 +51,7 @@ impl Assembler {
                 match reference {
                     Reference::Value(Value::Local(idx)) => self.emit(Instr::Local(idx)),
                     Reference::Value(Value::Parameter(idx)) => self.emit(Instr::Param(idx)),
-                    _ => return Err(Cause::value_expected("a symbol").with_span(span)),
+                    _ => return Err(Cause::UnexpectedToken("symbol").with_span(span)),
                 };
             }
             Expr::Constant(cons, _) => match cons {
@@ -101,7 +101,7 @@ impl Assembler {
                     self.emit(Instr::DynamicCast(class, 0));
                     self.assemble(*expr, scope, pool, None)?;
                 } else {
-                    return Err(Cause::invalid_op(type_.pretty(pool)?, "Cast").with_span(span));
+                    return Err(Cause::UnsupportedOperation("casting", type_.pretty(pool)?).with_span(span));
                 }
             }
             Expr::Declare(local, typ, init, span) => {
@@ -129,7 +129,7 @@ impl Assembler {
                         let type_idx = scope.get_type_index(&type_, pool).with_span(span)?;
                         self.emit(Instr::StaticArrayElement(type_idx));
                     }
-                    other => return Err(Cause::invalid_op(other.pretty(pool)?, "Indexing").with_span(span)),
+                    other => return Err(Cause::UnsupportedOperation("indexing", other.pretty(pool)?).with_span(span)),
                 }
                 self.assemble(*expr, scope, pool, None)?;
                 self.assemble(*idx, scope, pool, None)?;
@@ -142,7 +142,7 @@ impl Assembler {
                         self.assemble(arg, scope, pool, None)?;
                     }
                 }
-                _ => return Err(Cause::invalid_op(type_.pretty(pool)?, "Constructing").with_span(span)),
+                _ => return Err(Cause::UnsupportedOperation("constructing", type_.pretty(pool)?).with_span(span)),
             },
             Expr::Return(Some(expr), _) => {
                 self.emit(Instr::Return);
@@ -241,12 +241,12 @@ impl Assembler {
                     self.emit(Instr::EnumConst(enum_, member));
                 }
             },
-            Expr::Call(callable, _, args, _) => match callable {
+            Expr::Call(callable, _, args, span) => match callable {
                 Callable::Function(fun) => {
                     self.assemble_call(fun, args, scope, pool, false)?;
                 }
                 Callable::Intrinsic(op, type_) => {
-                    self.assemble_intrinsic(op, args, &type_, scope, pool)?;
+                    self.assemble_intrinsic(op, args, &type_, scope, pool, span)?;
                 }
             },
             Expr::MethodCall(expr, fun_idx, args, span) => {
@@ -259,11 +259,13 @@ impl Assembler {
                         if fun.flags.is_static() {
                             self.assemble_call(fun_idx, args, scope, pool, true)?
                         } else {
-                            return Err(Cause::expected_static_method(pool.def_name(fun_idx)?).with_span(span));
+                            return Err(
+                                Cause::InvalidNonStaticMethodCall(pool.def_name(fun_idx)?.into()).with_span(span)
+                            );
                         }
                     }
                     _ if fun.flags.is_static() => {
-                        return Err(Cause::expected_non_static_method(pool.def_name(fun_idx)?).with_span(span));
+                        return Err(Cause::InvalidStaticMethodCall(pool.def_name(fun_idx)?.into()).with_span(span));
                     }
                     expr => {
                         let force_static_call = matches!(&expr, Expr::Super(_));
@@ -285,15 +287,15 @@ impl Assembler {
             Expr::Break(_) if exit.is_some() => {
                 self.emit(Instr::Jump(exit.unwrap()));
             }
-            Expr::ArrayLit(_, _, span) => return Err(Cause::unsupported("ArrayLit").with_span(span)),
+            Expr::ArrayLit(_, _, span) => return Err(Cause::UnsupportedFeature("ArrayLit").with_span(span)),
             Expr::InterpolatedString(_, _, span) => {
-                return Err(Cause::unsupported("InterpolatedString").with_span(span))
+                return Err(Cause::UnsupportedFeature("InterpolatedString").with_span(span))
             }
-            Expr::ForIn(_, _, _, span) => return Err(Cause::unsupported("For-in").with_span(span)),
-            Expr::BinOp(_, _, _, span) => return Err(Cause::unsupported("BinOp").with_span(span)),
-            Expr::UnOp(_, _, span) => return Err(Cause::unsupported("UnOp").with_span(span)),
-            Expr::Break(span) => return Err(Cause::unsupported("Break").with_span(span)),
-            Expr::Goto(_, span) => return Err(Cause::unsupported("Goto").with_span(span)),
+            Expr::ForIn(_, _, _, span) => return Err(Cause::UnsupportedFeature("For-in").with_span(span)),
+            Expr::BinOp(_, _, _, span) => return Err(Cause::UnsupportedFeature("BinOp").with_span(span)),
+            Expr::UnOp(_, _, span) => return Err(Cause::UnsupportedFeature("UnOp").with_span(span)),
+            Expr::Break(span) => return Err(Cause::UnsupportedFeature("Break").with_span(span)),
+            Expr::Goto(_, span) => return Err(Cause::UnsupportedFeature("Goto").with_span(span)),
         };
         Ok(())
     }
@@ -408,7 +410,7 @@ impl Assembler {
         }
         if param_flags.len() < args_len {
             return Err(Error::CompileError(
-                "You've done something very naughty".to_owned(),
+                Cause::UnsupportedFeature("cannot emit function call (probably invalid signature)"),
                 Span::ZERO,
             ));
         }
@@ -453,11 +455,11 @@ impl Assembler {
         return_type: &TypeId,
         scope: &mut Scope,
         pool: &mut ConstantPool,
+        span: Span,
     ) -> Result<(), Error> {
-        let mut get_arg_type = #[inline]
-        |i| {
-            type_of(&args[i], scope, pool).and_then(|typ| scope.get_type_index(&typ, pool).map_err(Cause::pool_err))
-        };
+        let mut get_arg_type =
+            #[inline]
+            |i| type_of(&args[i], scope, pool).and_then(|typ| scope.get_type_index(&typ, pool).with_span(span));
 
         match intrinsic {
             IntrinsicOp::Equals => {
@@ -513,7 +515,7 @@ impl Assembler {
             IntrinsicOp::ToString => match type_of(&args[0], scope, pool)? {
                 TypeId::Variant => self.emit(Instr::VariantToString),
                 any => {
-                    let type_idx = scope.get_type_index(&any, pool).map_err(Cause::pool_err)?;
+                    let type_idx = scope.get_type_index(&any, pool).with_span(span)?;
                     self.emit(Instr::ToString(type_idx))
                 }
             },
@@ -521,14 +523,14 @@ impl Assembler {
                 self.emit(Instr::EnumToI32(get_arg_type(0)?, 4));
             }
             IntrinsicOp::IntEnum => {
-                let type_idx = scope.get_type_index(return_type, pool).map_err(Cause::pool_err)?;
+                let type_idx = scope.get_type_index(return_type, pool).with_span(span)?;
                 self.emit(Instr::I32ToEnum(type_idx, 4));
             }
             IntrinsicOp::ToVariant => {
                 self.emit(Instr::ToVariant(get_arg_type(0)?));
             }
             IntrinsicOp::FromVariant => {
-                let type_idx = scope.get_type_index(return_type, pool).map_err(Cause::pool_err)?;
+                let type_idx = scope.get_type_index(return_type, pool).with_span(span)?;
                 self.emit(Instr::FromVariant(type_idx));
             }
             IntrinsicOp::VariantIsRef => {

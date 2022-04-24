@@ -97,14 +97,14 @@ impl SymbolMap {
         self.symbols
             .get(path)
             .cloned()
-            .ok_or_else(|| Cause::unresolved_import(path.render()))
+            .ok_or_else(|| Cause::UnresolvedImport(path.render()))
     }
 
     fn get_direct_children(&self, path: &ModulePath) -> Result<impl Iterator<Item = (Ident, &Symbol)>, Cause> {
         let node = self
             .symbols
             .get_node(path)
-            .ok_or_else(|| Cause::unresolved_module(path.render()))?;
+            .ok_or_else(|| Cause::UnresolvedModule(path.render()))?;
         let res = node
             .iter()
             .filter(|(parts, _)| parts.len() == 1)

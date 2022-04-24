@@ -1,11 +1,11 @@
 use itertools::Itertools;
-use redscript::ast::{Pos, Span};
 use redscript::definition::ClassFlags;
 
 #[allow(unused)]
 mod utils;
 
 use redscript_compiler::diagnostics::Diagnostic;
+use redscript_compiler::error::Cause;
 use utils::*;
 
 #[test]
@@ -24,7 +24,7 @@ fn compile_simple_class() {
         }";
 
     let (_, errs) = compiled(vec![sources]).unwrap();
-    assert_eq!(errs, vec![]);
+    assert!(matches!(&errs[..], &[]));
 }
 
 #[test]
@@ -45,7 +45,7 @@ fn compile_ext_class() {
         }";
 
     let (_, errs) = compiled(vec![sources]).unwrap();
-    assert_eq!(errs, vec![]);
+    assert!(matches!(&errs[..], &[]));
 }
 
 #[test]
@@ -64,7 +64,7 @@ fn compile_class_with_forward_ref() {
         }";
 
     let (_, errs) = compiled(vec![sources]).unwrap();
-    assert_eq!(errs, vec![]);
+    assert!(matches!(&errs[..], &[]));
 }
 
 #[test]
@@ -76,7 +76,7 @@ fn compile_class_with_shorthand_funcs() {
         }";
 
     let (_, errs) = compiled(vec![sources]).unwrap();
-    assert_eq!(errs, vec![]);
+    assert!(matches!(&errs[..], &[]));
 }
 
 #[test]
@@ -121,7 +121,7 @@ fn compile_mutually_dependent_modules() {
         }";
 
     let (_, errs) = compiled(vec![sources1, sources2]).unwrap();
-    assert_eq!(errs, vec![]);
+    assert!(matches!(&errs[..], &[]));
 }
 
 #[test]
@@ -142,7 +142,8 @@ fn compile_lub_types() {
     ";
 
     let (_, errs) = compiled(vec![sources]).unwrap();
-    assert_eq!(errs.into_iter().filter(Diagnostic::is_fatal).collect_vec(), vec![]);
+    let errs = errs.into_iter().filter(Diagnostic::is_fatal).collect_vec();
+    assert!(matches!(&errs[..], &[]));
 }
 
 #[test]
@@ -161,7 +162,8 @@ fn compile_casts() {
     ";
 
     let (_, errs) = compiled(vec![sources]).unwrap();
-    assert_eq!(errs.into_iter().filter(Diagnostic::is_fatal).collect_vec(), vec![]);
+    let errs = errs.into_iter().filter(Diagnostic::is_fatal).collect_vec();
+    assert!(matches!(&errs[..], &[]));
 }
 
 #[test]
@@ -177,7 +179,7 @@ fn compile_intrinsic_null_cases() {
     ";
 
     let (_, errs) = compiled(vec![sources]).unwrap();
-    assert_eq!(errs, vec![]);
+    assert!(matches!(&errs[..], &[]));
 }
 
 #[test]
@@ -194,7 +196,8 @@ fn compile_structs() {
     ";
 
     let (_, errs) = compiled(vec![sources]).unwrap();
-    assert_eq!(errs.into_iter().filter(Diagnostic::is_fatal).collect_vec(), vec![]);
+    let errs = errs.into_iter().filter(Diagnostic::is_fatal).collect_vec();
+    assert!(matches!(&errs[..], &[]));
 }
 
 #[test]
@@ -209,10 +212,10 @@ fn fail_on_invalid_structs() {
     ";
 
     let (_, errs) = compiled(vec![sources]).unwrap();
-    assert_eq!(errs, vec![Diagnostic::CompileError(
-        "Defining non-static struct methods is unsupported".to_owned(),
-        Span::new(Pos::new(85), Pos::new(94))
-    )]);
+    assert!(matches!(&errs[..], &[Diagnostic::CompileError(
+        Cause::UnsupportedFeature(_),
+        _
+    )]));
 }
 
 #[test]
@@ -229,10 +232,10 @@ fn report_unused_variables() {
     ";
 
     let (_, errs) = compiled(vec![sources]).unwrap();
-    assert_eq!(errs, vec![
-        Diagnostic::UnusedLocal(Span::new(Pos::new(92), Pos::new(104))),
-        Diagnostic::UnusedLocal(Span::new(Pos::new(117), Pos::new(133))),
-    ]);
+    assert!(matches!(&errs[..], &[
+        Diagnostic::UnusedLocal(_),
+        Diagnostic::UnusedLocal(_),
+    ]));
 }
 
 #[test]
@@ -242,8 +245,5 @@ fn report_missing_return() {
     ";
 
     let (_, errs) = compiled(vec![sources]).unwrap();
-    assert_eq!(errs, vec![Diagnostic::MissingReturn(Span::new(
-        Pos::new(9),
-        Pos::new(35)
-    ))]);
+    assert!(matches!(&errs[..], &[Diagnostic::MissingReturn(_)]));
 }

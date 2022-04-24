@@ -1,5 +1,4 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::fmt;
 
 use redscript::ast::{Expr, Ident, Seq, SourceAst, Span, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
@@ -95,20 +94,20 @@ impl<'a> CompilationUnit<'a> {
         log::info!("Compiling files: {}", files);
 
         match self.compile_files(files) {
-            Ok(diagnostics) => {
-                let is_fatal = diagnostics.iter().any(Diagnostic::is_fatal);
+            Ok(mut diagnostics) => {
+                diagnostics.sort_by_key(Diagnostic::is_fatal);
+
                 for diagnostic in &diagnostics {
-                    Self::print_diagnostic(files, diagnostic);
+                    diagnostic.log(files);
                 }
 
-                if is_fatal {
-                    Err(Error::MultipleErrors(
-                        diagnostics
-                            .iter()
-                            .filter(|d| d.is_fatal())
-                            .map(Diagnostic::span)
-                            .collect(),
-                    ))
+                if diagnostics.iter().any(Diagnostic::is_fatal) {
+                    let spans = diagnostics
+                        .iter()
+                        .filter(|d| d.is_fatal())
+                        .map(Diagnostic::span)
+                        .collect();
+                    Err(Error::MultipleErrors(spans))
                 } else {
                     log::info!("Compilation complete");
                     Ok(())
@@ -116,7 +115,7 @@ impl<'a> CompilationUnit<'a> {
             }
             Err(err) => match Diagnostic::from_error(err) {
                 Ok(diagnostic) => {
-                    Self::print_diagnostic(files, &diagnostic);
+                    diagnostic.log(files);
 
                     if diagnostic.is_fatal() {
                         Err(Error::MultipleErrors(vec![diagnostic.span()]))
@@ -132,64 +131,12 @@ impl<'a> CompilationUnit<'a> {
         }
     }
 
-    fn print_diagnostic(files: &Files, diagnostic: &Diagnostic) {
-        match diagnostic {
-            Diagnostic::MethodConflict(_, pos) => {
-                let loc = files.lookup(*pos).unwrap();
-                Self::print_message(
-                    format_args!("At {loc}:\n Conflicting method replacement"),
-                    diagnostic.is_fatal(),
-                );
-            }
-            Diagnostic::Deprecation(msg, pos) => {
-                let loc = files.lookup(*pos).unwrap();
-                Self::print_message(format_args!("At {loc}: {msg}"), diagnostic.is_fatal());
-            }
-            Diagnostic::UnusedLocal(pos) => {
-                let loc = files.lookup(*pos).unwrap();
-                Self::print_message(format_args!("At {loc}: Unused variable"), diagnostic.is_fatal());
-            }
-            Diagnostic::MissingReturn(pos) => {
-                let loc = files.lookup(*pos).unwrap();
-                Self::print_message(
-                    format_args!("At {loc}: Function might not return a value"),
-                    diagnostic.is_fatal(),
-                );
-            }
-            Diagnostic::CompileError(err, pos) => {
-                let loc = files.lookup(*pos).expect("Unknown file");
-                let line = loc.enclosing_line().trim_end().replace('\t', " ");
-                let padding = " ".repeat(loc.start.col);
-                let underscore_len = if loc.start.line == loc.end.line {
-                    (loc.end.col - loc.start.col).max(1)
-                } else {
-                    3
-                };
-                let underscore = "^".repeat(underscore_len);
-
-                Self::print_message(
-                    format_args!("At {}:\n {}\n {}{}\n {}", loc, line, padding, underscore, err),
-                    diagnostic.is_fatal(),
-                );
-            }
-        }
-    }
-
-    fn print_message(args: fmt::Arguments, fatal: bool) {
-        if fatal {
-            log::error!("{}", args);
-        } else {
-            log::warn!("{}", args);
-        }
-    }
-
     fn parse(files: &Files) -> Result<Vec<SourceModule>, Error> {
         let mut modules = vec![];
         for file in files.files() {
             let parsed = parse_file(file).map_err(|err| {
-                let message = format!("Syntax error, expected {}", err.expected);
                 let pos = file.byte_offset() + err.location.offset;
-                Error::SyntaxError(message, Span::new(pos, pos))
+                Error::SyntaxError(err.expected, Span::new(pos, pos))
             })?;
             modules.push(parsed);
         }
@@ -369,7 +316,7 @@ impl<'a> CompilationUnit<'a> {
                     self.symbols.get_symbol(&path).with_span(source.span)
                 {
                     if !permissive {
-                        return Err(Cause::symbol_redefinition().with_span(source.span));
+                        return Err(Cause::SymbolRedefinition.with_span(source.span));
                     }
                 }
 
@@ -398,7 +345,7 @@ impl<'a> CompilationUnit<'a> {
                     self.symbols.get_symbol(&path).with_span(source.span)
                 {
                     if !permissive {
-                        return Err(Cause::symbol_redefinition().with_span(source.span));
+                        return Err(Cause::SymbolRedefinition.with_span(source.span));
                     }
                 }
 
@@ -483,8 +430,8 @@ impl<'a> CompilationUnit<'a> {
             match member {
                 MemberSource::Function(fun) => {
                     if is_struct && !fun.declaration.qualifiers.contain(Qualifier::Static) {
-                        let err =
-                            Cause::unsupported("Defining non-static struct methods").with_span(fun.declaration.span);
+                        let err = Cause::UnsupportedFeature("defining non-static struct methods")
+                            .with_span(fun.declaration.span);
                         self.report(err)?;
                     }
 
@@ -521,7 +468,7 @@ impl<'a> CompilationUnit<'a> {
             if let Symbol::Class(base_idx, _) = scope.resolve_symbol(base_name.clone()).with_span(source.span)? {
                 base_idx
             } else {
-                return Err(Cause::class_not_found(base_name).with_span(source.span));
+                return Err(Cause::ClassNotFound(base_name).with_span(source.span));
             }
         } else if let Ok(Symbol::Class(class, _)) = scope
             .resolve_symbol(Ident::Static("IScriptable"))
@@ -566,13 +513,13 @@ impl<'a> CompilationUnit<'a> {
         let is_callback = decl.qualifiers.contain(Qualifier::Callback);
 
         if is_native && class_flags.map(|f| !f.is_native()).unwrap_or(false) {
-            self.report(Cause::unexpected_native().with_span(source.declaration.span))?;
+            self.report(Cause::UnexpectedNative.with_span(source.declaration.span))?;
         }
         if !is_native && class_flags.map(|f| !f.is_abstract()).unwrap_or(true) && source.body.is_none() {
-            self.report(Cause::expected_body().with_span(source.declaration.span))?;
+            self.report(Cause::MissingBody.with_span(source.declaration.span))?;
         }
         if is_native && source.body.is_some() {
-            self.report(Cause::native_with_body().with_span(source.declaration.span))?;
+            self.report(Cause::UnexpectedBody.with_span(source.declaration.span))?;
         }
 
         let return_type = match source.type_ {
@@ -665,7 +612,7 @@ impl<'a> CompilationUnit<'a> {
         let is_persistent = decl.qualifiers.contain(Qualifier::Persistent);
 
         if is_native && !class_flags.is_native() {
-            self.report(Cause::unexpected_native().with_span(decl.span))?;
+            self.report(Cause::UnexpectedNative.with_span(decl.span))?;
         }
 
         fn can_be_persistent(typ: &TypeName) -> bool {
@@ -678,7 +625,7 @@ impl<'a> CompilationUnit<'a> {
         }
 
         if is_persistent && !can_be_persistent(&source.type_) {
-            self.report(Cause::unsupported(format_args!("Persistent {}", source.type_)).with_span(decl.span))?;
+            self.report(Cause::UnsupportedPersistent(source.type_.pretty()).with_span(decl.span))?;
         }
 
         let type_ = self.try_resolve_type(&source.type_, scope, decl.span)?;
@@ -736,18 +683,18 @@ impl<'a> CompilationUnit<'a> {
                     .args
                     .first()
                     .and_then(Expr::as_ident)
-                    .ok_or_else(|| Cause::invalid_annotation_args().with_span(ann.span))?;
+                    .ok_or_else(|| Cause::InvalidAnnotationArgs.with_span(ann.span))?;
                 if let Symbol::Class(target_class, _) = scope.resolve_symbol(ident.clone()).with_span(ann.span)? {
                     let flags = self.pool.class(target_class)?.flags;
                     self.define_field(index, target_class, flags, visibility, source, scope)?;
                     self.pool.class_mut(target_class)?.fields.push(index);
                     return Ok(());
                 } else {
-                    return Err(Cause::class_not_found(ident).with_span(ann.span));
+                    return Err(Cause::ClassNotFound(ident.clone()).with_span(ann.span));
                 }
             }
         }
-        Err(Cause::unsupported("Let binding").with_span(decl.span))
+        Err(Cause::UnsupportedFeature("global let binding").with_span(decl.span))
     }
 
     fn determine_function_location(&mut self, source: FunctionSource, module: &ModulePath) -> Result<Slot, Error> {
@@ -763,25 +710,25 @@ impl<'a> CompilationUnit<'a> {
             match ann.kind {
                 AnnotationKind::WrapMethod => {
                     if source.declaration.qualifiers.contain(Qualifier::Native) {
-                        return Err(Cause::unsupported("Wrapping natives").with_span(ann.span));
+                        return Err(Cause::UnsupportedFeature("wrapping natives").with_span(ann.span));
                     }
                     let (class_name, _) = ann
                         .args
                         .first()
                         .and_then(Expr::as_ident)
-                        .ok_or_else(|| Cause::invalid_annotation_args().with_span(ann.span))?;
+                        .ok_or_else(|| Cause::InvalidAnnotationArgs.with_span(ann.span))?;
 
                     let target_class_idx = match self.scope.resolve_symbol(class_name.clone()).with_span(ann.span)? {
                         Symbol::Class(idx, _) => idx,
                         Symbol::Struct(idx, _) => idx,
-                        _ => return Err(Cause::class_not_found(class_name).with_span(ann.span)),
+                        _ => return Err(Cause::ClassNotFound(class_name.clone()).with_span(ann.span)),
                     };
                     let fun_idx = self
                         .scope
                         .resolve_method(name.clone(), target_class_idx, self.pool)
                         .with_span(ann.span)?
                         .by_id(&sig, self.pool)
-                        .ok_or_else(|| Cause::function_not_found(name).with_span(ann.span))?;
+                        .ok_or_else(|| Cause::FunctionNotFound(name).with_span(ann.span))?;
 
                     let wrapped_idx = match self.wrappers.get(&fun_idx) {
                         Some(wrapped) => *wrapped,
@@ -815,18 +762,18 @@ impl<'a> CompilationUnit<'a> {
                         .args
                         .first()
                         .and_then(Expr::as_ident)
-                        .ok_or_else(|| Cause::invalid_annotation_args().with_span(ann.span))?;
+                        .ok_or_else(|| Cause::InvalidAnnotationArgs.with_span(ann.span))?;
                     let target_class_idx = match self.scope.resolve_symbol(class_name.clone()).with_span(ann.span)? {
                         Symbol::Class(idx, _) => idx,
                         Symbol::Struct(idx, _) => idx,
-                        _ => return Err(Cause::class_not_found(class_name).with_span(ann.span)),
+                        _ => return Err(Cause::ClassNotFound(class_name.clone()).with_span(ann.span)),
                     };
                     let fun_idx = self
                         .scope
                         .resolve_method(name.clone(), target_class_idx, self.pool)
                         .with_span(ann.span)?
                         .by_id(&sig, self.pool)
-                        .ok_or_else(|| Cause::function_not_found(name).with_span(ann.span))?;
+                        .ok_or_else(|| Cause::FunctionNotFound(name).with_span(ann.span))?;
                     let base = self.pool.function(fun_idx)?.base_method;
                     let slot = Slot::Function {
                         index: fun_idx,
@@ -845,7 +792,7 @@ impl<'a> CompilationUnit<'a> {
                         .resolve_function(name.clone())
                         .with_span(ann.span)?
                         .by_id(&sig, self.pool)
-                        .ok_or_else(|| Cause::function_not_found(name).with_span(ann.span))?;
+                        .ok_or_else(|| Cause::FunctionNotFound(name).with_span(ann.span))?;
 
                     let slot = Slot::Function {
                         index: fun_idx,
@@ -863,11 +810,11 @@ impl<'a> CompilationUnit<'a> {
                         .args
                         .first()
                         .and_then(Expr::as_ident)
-                        .ok_or_else(|| Cause::invalid_annotation_args().with_span(ann.span))?;
+                        .ok_or_else(|| Cause::InvalidAnnotationArgs.with_span(ann.span))?;
                     let target_class_idx = match self.scope.resolve_symbol(class_name.clone()).with_span(ann.span)? {
                         Symbol::Class(idx, _) => idx,
                         Symbol::Struct(idx, _) => idx,
-                        _ => return Err(Cause::class_not_found(class_name).with_span(ann.span)),
+                        _ => return Err(Cause::ClassNotFound(class_name.clone()).with_span(ann.span)),
                     };
                     let class = self.pool.class(target_class_idx)?;
                     let base_method = if class.base != PoolIndex::UNDEFINED {
@@ -1158,7 +1105,7 @@ fn eval_conditions(cte: &cte::Context, anns: &[Annotation]) -> Result<bool, Erro
             let res = cte.eval(expr)?;
             let res = res
                 .as_bool()
-                .ok_or_else(|| Error::CteError("Invalid CTE value".to_owned(), expr.span()))?;
+                .ok_or_else(|| Error::CteError("invalid value", expr.span()))?;
             Ok(acc && *res)
         })
 }

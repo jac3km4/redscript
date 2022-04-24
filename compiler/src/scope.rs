@@ -81,7 +81,7 @@ impl Scope {
                 functions: functions.iter().map(|(idx, _)| idx).copied().collect(),
             })
         } else {
-            Err(Cause::function_not_found(name))
+            Err(Cause::FunctionNotFound(name))
         }
     }
 
@@ -99,9 +99,9 @@ impl Scope {
         }
         if class.base != PoolIndex::UNDEFINED {
             self.resolve_field(ident.clone(), class.base, pool)
-                .map_err(|_| Cause::member_not_found(ident, pool.def_name(class_idx).unwrap()))
+                .map_err(|_| Cause::MemberNotFound(ident, pool.def_name(class_idx).unwrap().into()))
         } else {
-            Err(Cause::member_not_found(ident, pool.def_name(class_idx)?))
+            Err(Cause::MemberNotFound(ident, pool.def_name(class_idx)?.into()))
         }
     }
 
@@ -117,7 +117,7 @@ impl Scope {
                 return Ok(*field);
             }
         }
-        Err(Cause::member_not_found(ident, pool.def_name(enum_idx)?))
+        Err(Cause::MemberNotFound(ident, pool.def_name(enum_idx)?.into()))
     }
 
     pub fn resolve_method(
@@ -139,7 +139,7 @@ impl Scope {
             current_idx = class.base;
         }
         if functions.is_empty() {
-            Err(Cause::member_not_found(ident, pool.def_name(class_idx)?))
+            Err(Cause::MemberNotFound(ident, pool.def_name(class_idx)?.into()))
         } else {
             Ok(FunctionCandidates { functions })
         }
@@ -148,15 +148,15 @@ impl Scope {
     pub fn resolve_value(&self, name: Ident) -> Result<Value, Cause> {
         self.references
             .find(&name)
+            .ok_or(Cause::UnresolvedReference(name))
             .cloned()
-            .ok_or_else(|| Cause::unresolved_reference(name))
     }
 
     pub fn resolve_symbol(&self, name: Ident) -> Result<Symbol, Cause> {
         self.symbols
             .find(&name)
+            .ok_or(Cause::UnresolvedReference(name))
             .cloned()
-            .ok_or_else(|| Cause::unresolved_reference(name))
     }
 
     pub fn resolve_reference(&self, name: Ident) -> Result<Reference, Cause> {
@@ -200,7 +200,7 @@ impl Scope {
                     Some(Symbol::Class(idx, _)) => TypeId::Class(*idx),
                     Some(Symbol::Struct(idx, _)) => TypeId::Struct(*idx),
                     Some(Symbol::Enum(idx)) => TypeId::Enum(*idx),
-                    _ => return Err(Cause::unresolved_type(name)),
+                    _ => return Err(Cause::UnresolvedType(name.pretty())),
                 },
             }
         };
@@ -220,7 +220,7 @@ impl Scope {
                     Some(Symbol::Class(class_idx, _)) => TypeId::Class(*class_idx),
                     Some(Symbol::Struct(struct_idx, _)) => TypeId::Struct(*struct_idx),
                     Some(Symbol::Enum(enum_idx)) => TypeId::Enum(*enum_idx),
-                    _ => return Err(Cause::unresolved_type(ident)),
+                    _ => return Err(Cause::UnresolvedType(ident)),
                 }
             }
             Type::Ref(type_) => {
@@ -299,7 +299,7 @@ impl TypeId {
             TypeId::ScriptRef(idx) => Ok(Ident::new(format!("script_ref:{}", idx.repr(pool)?))),
             TypeId::Variant => Ok(Ident::Static("Variant")),
             TypeId::Null => Ok(Ident::Static("ref:IScriptable")),
-            TypeId::Void => Err(PoolError("Unexpected void type".to_owned())),
+            TypeId::Void => Err(PoolError::UnexpectedEntry("void type")),
         }
     }
 
