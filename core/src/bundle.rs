@@ -378,7 +378,7 @@ impl<K: DefaultString> Strings<K> {
     }
 
     pub fn get(&self, index: PoolIndex<K>) -> Result<Ref<str>, PoolError> {
-        match K::default() {
+        match K::DEFAULT {
             Some(default) if index.is_undefined() => Ok(Ref::from(default)),
             _ => self
                 .strings
@@ -393,7 +393,7 @@ impl<K: DefaultString> Strings<K> {
     }
 
     pub fn add(&mut self, str: Ref<str>) -> PoolIndex<K> {
-        if K::default() == Some(&str) {
+        if K::DEFAULT == Some(&str) {
             PoolIndex::UNDEFINED
         } else {
             let idx = PoolIndex::new(self.strings.len() as u32);
@@ -704,44 +704,32 @@ impl<A> From<PoolIndex<A>> for u32 {
 }
 
 pub trait DefaultString {
-    fn default() -> Option<&'static str>;
+    const DEFAULT: Option<&'static str>;
 }
 
 impl DefaultString for String {
-    #[inline]
-    fn default() -> Option<&'static str> {
-        None
-    }
+    const DEFAULT: Option<&'static str> = None;
 }
 
 #[derive(Debug, Clone)]
 pub struct CName;
 
 impl DefaultString for CName {
-    #[inline]
-    fn default() -> Option<&'static str> {
-        Some("None")
-    }
+    const DEFAULT: Option<&'static str> = Some("None");
 }
 
 #[derive(Debug, Clone)]
 pub struct Resource;
 
 impl DefaultString for Resource {
-    #[inline]
-    fn default() -> Option<&'static str> {
-        None
-    }
+    const DEFAULT: Option<&'static str> = None;
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct TweakDbId;
 
 impl DefaultString for TweakDbId {
-    #[inline]
-    fn default() -> Option<&'static str> {
-        None
-    }
+    const DEFAULT: Option<&'static str> = None;
 }
 
 #[derive(Debug, Clone, Error)]
