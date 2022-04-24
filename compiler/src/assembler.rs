@@ -2,7 +2,7 @@ use itertools::Itertools;
 use redscript::ast::{Constant, Expr, Literal, Seq, Span};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Instr, IntrinsicOp, Label, Location, Offset};
-use redscript::definition::Function;
+use redscript::definition::{Function, Local};
 
 use crate::error::{Cause, Error, ResultSpan};
 use crate::scope::{Reference, Scope, TypeId, Value};
@@ -104,11 +104,14 @@ impl Assembler {
                     return Err(Cause::invalid_op(type_.pretty(pool)?, "Cast").with_span(span));
                 }
             }
-            Expr::Declare(local, _, init, _) => {
+            Expr::Declare(local, typ, init, span) => {
                 if let Some(val) = init {
                     self.emit(Instr::Assign);
                     self.emit(Instr::Local(local));
                     self.assemble(*val, scope, pool, None)?;
+                } else {
+                    let typ = typ.expect("Local without type");
+                    self.emit_initializer(local, typ, scope, pool).with_span(span)?;
                 }
             }
             Expr::Assign(lhs, rhs, _) => {
@@ -304,6 +307,60 @@ impl Assembler {
     ) -> Result<(), Error> {
         for expr in seq.exprs {
             self.assemble(expr, scope, pool, exit)?;
+        }
+        Ok(())
+    }
+
+    fn emit_initializer(
+        &mut self,
+        local: PoolIndex<Local>,
+        typ: TypeId,
+        scope: &mut Scope,
+        pool: &mut ConstantPool,
+    ) -> Result<(), Cause> {
+        let mut emit_assignment = |instr: Instr<Label>| {
+            self.emit(Instr::Assign);
+            self.emit(Instr::Local(local));
+            self.emit(instr);
+        };
+
+        match typ {
+            TypeId::Prim(typ_idx) => match pool.def_name(typ_idx)?.as_ref() {
+                "Int8" => emit_assignment(Instr::I8Const(0)),
+                "Int16" => emit_assignment(Instr::I16Const(0)),
+                "Int32" => emit_assignment(Instr::I32Zero),
+                "Int64" => emit_assignment(Instr::I64Const(0)),
+                "Uint8" => emit_assignment(Instr::U8Const(0)),
+                "Uint16" => emit_assignment(Instr::U16Const(0)),
+                "Uint32" => emit_assignment(Instr::U32Const(0)),
+                "Uint64" => emit_assignment(Instr::U64Const(0)),
+                "Float" => emit_assignment(Instr::F32Const(0.0)),
+                "Double" => emit_assignment(Instr::F64Const(0.0)),
+                "String" => emit_assignment(Instr::StringConst(PoolIndex::UNDEFINED)),
+                "CName" => emit_assignment(Instr::NameConst(PoolIndex::UNDEFINED)),
+                "TweakDBID" => emit_assignment(Instr::TweakDbIdConst(PoolIndex::UNDEFINED)),
+                "ResRef" => emit_assignment(Instr::ResourceConst(PoolIndex::UNDEFINED)),
+                _ => {}
+            },
+            TypeId::Struct(struct_) => {
+                emit_assignment(Instr::Construct(0, struct_));
+            }
+            TypeId::Enum(enum_idx) => {
+                let enum_ = pool.enum_(enum_idx)?;
+                if let Some(member) = enum_.members.first() {
+                    emit_assignment(Instr::EnumConst(enum_idx, *member));
+                }
+            }
+            TypeId::Ref(_) => {
+                emit_assignment(Instr::Null);
+            }
+            TypeId::WeakRef(_) => {
+                emit_assignment(Instr::WeakRefNull);
+            }
+            TypeId::Array(elem_type) => {
+                self.emit(Instr::ArrayClear(scope.get_type_index(&elem_type, pool)?));
+            }
+            _ => {}
         }
         Ok(())
     }

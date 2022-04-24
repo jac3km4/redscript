@@ -72,8 +72,8 @@ fn compile_basic_casts() {
             let b: String = Cast(2);
         }
 
-        func Cast(i: Int32) -> Float = 0.0
-        func Cast(i: Int32) -> String = \"\"
+        native func Cast(i: Int32) -> Float
+        native func Cast(i: Int32) -> String
         ";
 
     let check = check_code![
@@ -131,9 +131,9 @@ fn compile_for_loop() {
             }
         }
 
-        func Log(str: String) {}
-        func OperatorAssignAdd(out l: Int32, r: Int32) -> Int32 = 0
-        func OperatorLess(l: Int32, r: Int32) -> Bool = true
+        native func Log(str: String)
+        native func OperatorAssignAdd(out l: Int32, r: Int32) -> Int32
+        native func OperatorLess(l: Int32, r: Int32) -> Bool
         ";
 
     let check = check_code![
@@ -280,7 +280,7 @@ fn compile_variant_intrinsics() {
         }
 
         class A {}
-        func OperatorLogicAnd(a: Bool, b: Bool) -> Bool
+        native func OperatorLogicAnd(a: Bool, b: Bool) -> Bool
         ";
 
     let check = check_code![
@@ -372,7 +372,7 @@ fn compile_switch_case() {
             return false;
         }
 
-        func OperatorModulo(l: Int32, r: Int32) -> Int32 = 0
+        native func OperatorModulo(l: Int32, r: Int32) -> Int32
         ";
 
     let check = check_code![
@@ -403,8 +403,8 @@ fn compile_ternary_op() {
     let sources = "
         func Testing(val: Int32) -> Bool = val % 2 == 0 ? true : false
 
-        func OperatorModulo(l: Int32, r: Int32) -> Int32 = 0
-        func OperatorEqual(l: Int32, r: Int32) -> Bool = false
+        native func OperatorModulo(l: Int32, r: Int32) -> Int32
+        native func OperatorEqual(l: Int32, r: Int32) -> Bool
         ";
 
     let check = check_code![
@@ -644,7 +644,7 @@ fn compile_empty_return() {
             Log("hello");
         }
 
-        func Log(str: String) -> Void {}
+        native func Log(str: String) -> Void
         "#;
 
     let check = check_code![
@@ -669,8 +669,8 @@ fn compile_string_interpolation() {
             return s"My name is \(name) and I am \(year - birthYear) years old";
         }
 
-        func OperatorAdd(a: ref<Script_RefString>, b: ref<Script_RefString>) -> String
-        func OperatorSubtract(a: Int32, b: Int32) -> Int32
+        native func OperatorAdd(a: ref<Script_RefString>, b: ref<Script_RefString>) -> String
+        native func OperatorSubtract(a: Int32, b: Int32) -> Int32
 
         class Script_RefString {}
         "#;
@@ -766,6 +766,85 @@ fn compile_struct_constructor() {
         pat!(Construct(2, _)),
         pat!(I32Const(1)),
         pat!(I32Const(2)),
+        pat!(Nop)
+    ];
+    TestContext::compiled(vec![sources]).unwrap().run("Testing", check)
+}
+
+#[allow(illegal_floating_point_literal_pattern)]
+#[test]
+fn compile_initializers() {
+    let sources = r#"
+        func Testing() {
+            let a: TestStruct;
+            let b: ref<TestClass>;
+            let c: wref<TestClass>;
+            let d: TestEnum;
+            let e: String;
+            let f: CName;
+            let g: TweakDBID;
+            let h: array<Int32>;
+            let i: Int8;
+            let j: Int16;
+            let k: Int32;
+            let l: Int64;
+            let m: Float;
+            let n: Double;
+        }
+
+        struct TestStruct {
+            let a: Int32;
+            let b: Int32;
+        }
+
+        class TestClass {}
+
+        enum TestEnum {
+            Member = 0
+        }
+        "#;
+
+    let check = check_code![
+        pat!(Assign),
+        mem!(Local(a)),
+        pat!(Construct(0, _)),
+        pat!(Assign),
+        mem!(Local(b)),
+        pat!(Null),
+        pat!(Assign),
+        mem!(Local(c)),
+        pat!(WeakRefNull),
+        pat!(Assign),
+        mem!(Local(d)),
+        pat!(EnumConst(_, _)),
+        pat!(Assign),
+        mem!(Local(e)),
+        pat!(StringConst(_)),
+        pat!(Assign),
+        mem!(Local(f)),
+        pat!(NameConst(_)),
+        pat!(Assign),
+        mem!(Local(g)),
+        pat!(TweakDbIdConst(_)),
+        pat!(ArrayClear(_)),
+        pat!(Assign),
+        mem!(Local(i)),
+        pat!(I8Const(0)),
+        pat!(Assign),
+        mem!(Local(j)),
+        pat!(I16Const(0)),
+        pat!(Assign),
+        mem!(Local(k)),
+        pat!(I32Zero),
+        pat!(Assign),
+        mem!(Local(l)),
+        pat!(I64Const(0)),
+        pat!(Assign),
+        mem!(Local(m)),
+        pat!(F32Const(0.0)),
+        pat!(Assign),
+        mem!(Local(n)),
+        pat!(F64Const(0.0)),
         pat!(Nop)
     ];
     TestContext::compiled(vec![sources]).unwrap().run("Testing", check)

@@ -18,7 +18,10 @@ pub struct TestContext {
 
 impl TestContext {
     pub fn compiled(sources: Vec<&str>) -> Result<Self, Error> {
-        let (pool, _) = compiled(sources)?;
+        let (pool, diagnostics) = compiled(sources)?;
+        if diagnostics.iter().any(Diagnostic::is_fatal) {
+            panic!("Fatal errors: {:#?}", diagnostics);
+        }
         let res = Self {
             pool,
             indexes: HashMap::new(),
