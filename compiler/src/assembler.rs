@@ -362,6 +362,7 @@ impl Assembler {
             }
             TypeId::Array(_) => {
                 self.emit(Instr::ArrayClear(scope.get_type_index(&typ, pool)?));
+                self.emit(Instr::Local(local));
             }
             _ => {}
         }

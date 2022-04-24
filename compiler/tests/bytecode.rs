@@ -827,6 +827,7 @@ fn compile_initializers() {
         mem!(Local(g)),
         pat!(TweakDbIdConst(_)),
         pat!(ArrayClear(_)),
+        mem!(Local(h)),
         pat!(Assign),
         mem!(Local(i)),
         pat!(I8Const(0)),
