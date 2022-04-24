@@ -31,7 +31,7 @@ pub enum Instr<Loc> {
     ResourceConst(PoolIndex<Resource>),
     TrueConst,
     FalseConst,
-    Breakpoint(u16, u32, u16, u16, u8, u64),
+    Breakpoint(Box<Breakpoint>),
     Assign,
     Target(Loc),
     Local(PoolIndex<Local>),
@@ -57,7 +57,7 @@ pub enum Instr<Loc> {
     New(PoolIndex<Class>),
     Delete,
     This,
-    StartProfiling(Box<[u8]>, u8),
+    StartProfiling(Box<StartProfiling>),
     ArrayClear(PoolIndex<Type>),
     ArraySize(PoolIndex<Type>),
     ArrayResize(PoolIndex<Type>),
@@ -129,7 +129,7 @@ impl<L> Instr<L> {
             Instr::StringConst(_) => 4,
             Instr::TweakDbIdConst(_) => 8,
             Instr::ResourceConst(_) => 8,
-            Instr::Breakpoint(_, _, _, _, _, _) => 19,
+            Instr::Breakpoint(_) => 19,
             Instr::Assign => 0,
             Instr::Target(_) => return 0, // not present in bytecode
             Instr::Local(_) => 8,
@@ -155,7 +155,7 @@ impl<L> Instr<L> {
             Instr::New(_) => 8,
             Instr::Delete => 0,
             Instr::This => 0,
-            Instr::StartProfiling(bytes, _) => 5 + bytes.len() as u16,
+            Instr::StartProfiling(instr) => 5 + instr.0.len() as u16,
             Instr::ArrayClear(_) => 8,
             Instr::ArraySize(_) => 8,
             Instr::ArrayResize(_) => 8,
@@ -236,7 +236,7 @@ impl Instr<Label> {
             Instr::ResourceConst(idx) => Instr::ResourceConst(idx),
             Instr::TrueConst => Instr::TrueConst,
             Instr::FalseConst => Instr::FalseConst,
-            Instr::Breakpoint(_0, _1, _2, _3, _4, _5) => Instr::Breakpoint(_0, _1, _2, _3, _4, _5),
+            Instr::Breakpoint(_0) => Instr::Breakpoint(_0),
             Instr::Assign => Instr::Assign,
             Instr::Target(label) => Instr::Target(targets[label.index].relative(location)),
             Instr::Local(idx) => Instr::Local(idx),
@@ -272,7 +272,7 @@ impl Instr<Label> {
             Instr::New(idx) => Instr::New(idx),
             Instr::Delete => Instr::Delete,
             Instr::This => Instr::This,
-            Instr::StartProfiling(_0, _1) => Instr::StartProfiling(_0, _1),
+            Instr::StartProfiling(_0) => Instr::StartProfiling(_0),
             Instr::ArrayClear(idx) => Instr::ArrayClear(idx),
             Instr::ArraySize(idx) => Instr::ArraySize(idx),
             Instr::ArrayResize(idx) => Instr::ArrayResize(idx),
@@ -352,14 +352,7 @@ impl Decode for Instr<Offset> {
             18 => Ok(Instr::ResourceConst(input.decode()?)),
             19 => Ok(Instr::TrueConst),
             20 => Ok(Instr::FalseConst),
-            21 => Ok(Instr::Breakpoint(
-                input.decode()?,
-                input.decode()?,
-                input.decode()?,
-                input.decode()?,
-                input.decode()?,
-                input.decode()?,
-            )),
+            21 => Ok(Instr::Breakpoint(Box::new(input.decode()?))),
             22 => Ok(Instr::Assign),
             23 => Ok(Instr::Target(Offset::new(0))),
             24 => Ok(Instr::Local(input.decode()?)),
@@ -403,10 +396,7 @@ impl Decode for Instr<Offset> {
             48 => Ok(Instr::New(input.decode()?)),
             49 => Ok(Instr::Delete),
             50 => Ok(Instr::This),
-            51 => Ok(Instr::StartProfiling(
-                input.decode_vec_prefixed::<u32, u8>()?.into_boxed_slice(),
-                input.decode()?,
-            )),
+            51 => Ok(Instr::StartProfiling(Box::new(input.decode()?))),
             52 => Ok(Instr::ArrayClear(input.decode()?)),
             53 => Ok(Instr::ArraySize(input.decode()?)),
             54 => Ok(Instr::ArrayResize(input.decode()?)),
@@ -549,14 +539,9 @@ impl Encode for Instr<Offset> {
             Instr::FalseConst => {
                 output.encode(&20u8)?;
             }
-            Instr::Breakpoint(unk1, unk2, unk3, unk4, unk5, unk6) => {
+            Instr::Breakpoint(bp) => {
                 output.encode(&21u8)?;
-                output.encode(unk1)?;
-                output.encode(unk2)?;
-                output.encode(unk3)?;
-                output.encode(unk4)?;
-                output.encode(unk5)?;
-                output.encode(unk6)?;
+                output.encode(bp.as_ref())?;
             }
             Instr::Assign => {
                 output.encode(&22u8)?;
@@ -660,10 +645,9 @@ impl Encode for Instr<Offset> {
             Instr::This => {
                 output.encode(&50u8)?;
             }
-            Instr::StartProfiling(vec, byte) => {
+            Instr::StartProfiling(instr) => {
                 output.encode(&51u8)?;
-                output.encode_slice_prefixed::<u32, u8>(vec)?;
-                output.encode(byte)?;
+                output.encode(instr.as_ref())?;
             }
             Instr::ArrayClear(idx) => {
                 output.encode(&52u8)?;
@@ -860,6 +844,66 @@ impl Encode for Instr<Offset> {
             }
         }
         Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Breakpoint {
+    line: u16,
+    line_start: u32,
+    col: u16,
+    length: u16,
+    enabled: bool,
+    padding: u64,
+}
+
+impl Decode for Breakpoint {
+    fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
+        let line = input.decode()?;
+        let line_start = input.decode()?;
+        let col = input.decode()?;
+        let length = input.decode()?;
+        let enabled = input.decode()?;
+        let padding = input.decode()?;
+        let res = Self {
+            line,
+            line_start,
+            col,
+            length,
+            enabled,
+            padding,
+        };
+        Ok(res)
+    }
+}
+
+impl Encode for Breakpoint {
+    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
+        output.encode(&value.line)?;
+        output.encode(&value.line_start)?;
+        output.encode(&value.col)?;
+        output.encode(&value.length)?;
+        output.encode(&value.enabled)?;
+        output.encode(&value.padding)?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StartProfiling(String, u8);
+
+impl Decode for StartProfiling {
+    fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
+        let function = input.decode_str_prefixed::<u32>()?;
+        let enabled = input.decode()?;
+        Ok(StartProfiling(function, enabled))
+    }
+}
+
+impl Encode for StartProfiling {
+    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
+        output.encode_str_prefixed::<u32>(&value.0)?;
+        output.encode(&value.1)
     }
 }
 
@@ -1087,5 +1131,15 @@ impl<'a, Loc: Clone> Iterator for CodeCursor<'a, Loc> {
     fn next(&mut self) -> Option<Self::Item> {
         let position = self.pos();
         self.pop().ok().map(|instr| (position, instr))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn instr_size() {
+        assert_eq!(std::mem::size_of::<Instr<Offset>>(), 16);
     }
 }

@@ -210,7 +210,7 @@ impl<'a> Decompiler<'a> {
                 let expr = Box::new(Expr::Ident(enum_ident, Span::ZERO));
                 Expr::Member(expr, member_ident, Span::ZERO)
             }
-            Instr::Breakpoint(_, _, _, _, _, _) => Expr::EMPTY,
+            Instr::Breakpoint(_) => Expr::EMPTY,
             Instr::Assign => {
                 let lhs = self.consume()?;
                 let rhs = self.consume()?;
@@ -315,7 +315,7 @@ impl<'a> Decompiler<'a> {
             Instr::New(class) => Expr::New(TypeName::basic_owned(self.pool.def_name(class)?), vec![], Span::ZERO),
             Instr::Delete => self.consume_call("Delete", 1)?,
             Instr::This => Expr::This(Span::ZERO),
-            Instr::StartProfiling(_, _) => Expr::EMPTY,
+            Instr::StartProfiling(_) => Expr::EMPTY,
             Instr::ArrayClear(_) => self.consume_intrisnic(IntrinsicOp::ArrayClear)?,
             Instr::ArraySize(_) => self.consume_intrisnic(IntrinsicOp::ArraySize)?,
             Instr::ArrayResize(_) => self.consume_intrisnic(IntrinsicOp::ArrayResize)?,
