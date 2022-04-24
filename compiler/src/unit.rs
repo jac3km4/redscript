@@ -524,7 +524,7 @@ impl<'a> CompilationUnit<'a> {
 
         let return_type = match source.type_ {
             None => None,
-            Some(type_) if type_.name.as_ref() == "Void" => None,
+            Some(type_) if type_ == TypeName::VOID => None,
             Some(type_) => {
                 let type_ = self.try_resolve_type(&type_, scope, decl.span)?;
                 Some(scope.get_type_index(&type_, self.pool).with_span(decl.span)?)
@@ -620,7 +620,7 @@ impl<'a> CompilationUnit<'a> {
             if DISALLOWED_TYPES.contains(typ) {
                 false
             } else {
-                typ.arguments.iter().all(can_be_persistent)
+                typ.arguments().iter().all(can_be_persistent)
             }
         }
 

@@ -1,5 +1,5 @@
 use hamt_sync::Map;
-use redscript::ast::{Ident, TypeName};
+use redscript::ast::{Ident, Kind, TypeName};
 use redscript::bundle::{ConstantPool, PoolError, PoolIndex};
 use redscript::definition::{AnyDefinition, Class, Definition, Enum, Field, Function, Local, Parameter, Type};
 
@@ -191,11 +191,11 @@ impl Scope {
         let result = if let Some(res) = self.types.find(&name.repr()) {
             self.resolve_type_from_pool(*res, pool)?
         } else {
-            match (name.name.as_ref(), name.arguments.as_slice()) {
-                ("ref", [nested]) => TypeId::Ref(Box::new(self.resolve_type(nested, pool)?)),
-                ("wref", [nested]) => TypeId::WeakRef(Box::new(self.resolve_type(nested, pool)?)),
-                ("script_ref", [nested]) => TypeId::ScriptRef(Box::new(self.resolve_type(nested, pool)?)),
-                ("array", [nested]) => TypeId::Array(Box::new(self.resolve_type(nested, pool)?)),
+            match (name.kind(), name.arguments()) {
+                (Kind::Ref, [nested]) => TypeId::Ref(Box::new(self.resolve_type(nested, pool)?)),
+                (Kind::WRef, [nested]) => TypeId::WeakRef(Box::new(self.resolve_type(nested, pool)?)),
+                (Kind::ScriptRef, [nested]) => TypeId::ScriptRef(Box::new(self.resolve_type(nested, pool)?)),
+                (Kind::Array, [nested]) => TypeId::Array(Box::new(self.resolve_type(nested, pool)?)),
                 _ => match self.symbols.find(&name.repr()) {
                     Some(Symbol::Class(idx, _)) => TypeId::Class(*idx),
                     Some(Symbol::Struct(idx, _)) => TypeId::Struct(*idx),
@@ -209,8 +209,8 @@ impl Scope {
 
     pub fn resolve_type_from_pool(&self, index: PoolIndex<Type>, pool: &ConstantPool) -> Result<TypeId, Cause> {
         let result = match pool.type_(index)? {
-            Type::Prim => match pool.def_name(index)?.as_ref() {
-                "Variant" => TypeId::Variant,
+            Type::Prim => match Ident::Owned(pool.def_name(index)?) {
+                tp if tp == TypeName::VARIANT.name() => TypeId::Variant,
                 _ => TypeId::Prim(index),
             },
             Type::Class => {

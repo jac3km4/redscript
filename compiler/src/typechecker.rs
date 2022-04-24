@@ -51,11 +51,11 @@ impl<'a> TypeChecker<'a> {
                     Some(type_) => {
                         let type_name = type_.pretty(self.pool)?;
                         match cons {
-                            Constant::I32(i) if type_name == TypeName::FLOAT.pretty() => Constant::F32(*i as f32),
-                            Constant::I32(i) if type_name == TypeName::DOUBLE.pretty() => Constant::F64(*i as f64),
-                            Constant::I32(i) if type_name == TypeName::INT64.pretty() => Constant::I64((*i).into()),
-                            Constant::U32(i) if type_name == TypeName::UINT64.pretty() => Constant::U64((*i).into()),
-                            Constant::F32(i) if type_name == TypeName::DOUBLE.pretty() => Constant::F64((*i).into()),
+                            Constant::I32(i) if type_name == TypeName::FLOAT.name() => Constant::F32(*i as f32),
+                            Constant::I32(i) if type_name == TypeName::DOUBLE.name() => Constant::F64(*i as f64),
+                            Constant::I32(i) if type_name == TypeName::INT64.name() => Constant::I64((*i).into()),
+                            Constant::U32(i) if type_name == TypeName::UINT64.name() => Constant::U64((*i).into()),
+                            Constant::F32(i) if type_name == TypeName::DOUBLE.name() => Constant::F64((*i).into()),
                             other => other.clone(),
                         }
                     }

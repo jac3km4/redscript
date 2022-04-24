@@ -444,14 +444,18 @@ impl Target {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct TypeName {
-    pub name: Ident,
-    pub arguments: Vec<TypeName>,
+    name: Ident,
+    arguments: Vec<TypeName>,
 }
 
 impl TypeName {
     pub const BOOL: Self = TypeName::basic("Bool");
+    pub const INT8: Self = TypeName::basic("Int8");
+    pub const INT16: Self = TypeName::basic("Int16");
     pub const INT32: Self = TypeName::basic("Int32");
     pub const INT64: Self = TypeName::basic("Int64");
+    pub const UINT8: Self = TypeName::basic("Uint8");
+    pub const UINT16: Self = TypeName::basic("Uint16");
     pub const UINT32: Self = TypeName::basic("Uint32");
     pub const UINT64: Self = TypeName::basic("Uint64");
     pub const FLOAT: Self = TypeName::basic("Float");
@@ -463,25 +467,46 @@ impl TypeName {
     pub const TWEAKDB_ID: Self = TypeName::basic("TweakDBID");
     pub const VOID: Self = TypeName::basic("Void");
 
-    fn unwrapped(&self) -> &Self {
-        match self.name.as_ref() {
-            "ref" => self.arguments[0].unwrapped(),
-            "wref" => self.arguments[0].unwrapped(),
-            _ => self,
-        }
+    #[inline]
+    pub const fn new(name: Ident, arguments: Vec<TypeName>) -> Self {
+        TypeName { name, arguments }
     }
 
+    #[inline]
     pub const fn basic(name: &'static str) -> Self {
-        TypeName {
-            name: Ident::Static(name),
-            arguments: vec![],
+        TypeName::new(Ident::Static(name), vec![])
+    }
+
+    #[inline]
+    pub fn basic_owned(name: Ref<str>) -> Self {
+        TypeName::new(Ident::Owned(name), vec![])
+    }
+
+    #[inline]
+    pub fn name(&self) -> Ident {
+        self.name.clone()
+    }
+
+    #[inline]
+    pub fn arguments(&self) -> &[TypeName] {
+        &self.arguments
+    }
+
+    pub fn kind(&self) -> Kind {
+        match self.name.as_ref() {
+            "ref" => Kind::Ref,
+            "wref" => Kind::WRef,
+            "script_ref" => Kind::ScriptRef,
+            "array" => Kind::Array,
+            _ => Kind::Prim,
         }
     }
 
-    pub fn basic_owned(name: Ref<str>) -> Self {
-        TypeName {
-            name: Ident::Owned(name),
-            arguments: vec![],
+    fn unwrapped(&self) -> &Self {
+        match self.kind() {
+            Kind::Ref => self.arguments[0].unwrapped(),
+            Kind::WRef => self.arguments[0].unwrapped(),
+            _ => self,
         }
     }
 
@@ -542,4 +567,13 @@ impl Display for TypeName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.mangled().as_ref())
     }
+}
+
+#[derive(Debug)]
+pub enum Kind {
+    Prim,
+    Ref,
+    WRef,
+    ScriptRef,
+    Array,
 }

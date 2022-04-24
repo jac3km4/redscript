@@ -261,7 +261,7 @@ peg::parser! {
         rule seq() -> Seq<SourceAst> = exprs:(stmt() ** _) { Seq::new(exprs) }
 
         rule type_() -> TypeName
-            = name:ident() args:type_args()? { TypeName { name, arguments: args.unwrap_or_default() } }
+            = name:ident() args:type_args()? { TypeName::new(name, args.unwrap_or_default()) }
         rule type_args() -> Vec<TypeName> = "<" _ args:commasep(<type_()>) _ ">" { args }
 
         rule let_type() -> TypeName = ":" _ type_:type_() { type_ }

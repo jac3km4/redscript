@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use redscript::ast::{Constant, Expr, Literal, Seq, Span};
+use redscript::ast::{Constant, Expr, Ident, Literal, Seq, Span, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Instr, IntrinsicOp, Label, Location, Offset};
 use redscript::definition::{Function, Local};
@@ -327,21 +327,22 @@ impl Assembler {
         };
 
         match typ {
-            TypeId::Prim(typ_idx) => match pool.def_name(typ_idx)?.as_ref() {
-                "Int8" => emit_assignment(Instr::I8Const(0)),
-                "Int16" => emit_assignment(Instr::I16Const(0)),
-                "Int32" => emit_assignment(Instr::I32Zero),
-                "Int64" => emit_assignment(Instr::I64Const(0)),
-                "Uint8" => emit_assignment(Instr::U8Const(0)),
-                "Uint16" => emit_assignment(Instr::U16Const(0)),
-                "Uint32" => emit_assignment(Instr::U32Const(0)),
-                "Uint64" => emit_assignment(Instr::U64Const(0)),
-                "Float" => emit_assignment(Instr::F32Const(0.0)),
-                "Double" => emit_assignment(Instr::F64Const(0.0)),
-                "String" => emit_assignment(Instr::StringConst(PoolIndex::UNDEFINED)),
-                "CName" => emit_assignment(Instr::NameConst(PoolIndex::UNDEFINED)),
-                "TweakDBID" => emit_assignment(Instr::TweakDbIdConst(PoolIndex::UNDEFINED)),
-                "ResRef" => emit_assignment(Instr::ResourceConst(PoolIndex::UNDEFINED)),
+            TypeId::Prim(typ_idx) => match Ident::Owned(pool.def_name(typ_idx)?) {
+                tp if tp == TypeName::BOOL.name() => emit_assignment(Instr::FalseConst),
+                tp if tp == TypeName::INT8.name() => emit_assignment(Instr::I8Const(0)),
+                tp if tp == TypeName::INT16.name() => emit_assignment(Instr::I16Const(0)),
+                tp if tp == TypeName::INT32.name() => emit_assignment(Instr::I32Zero),
+                tp if tp == TypeName::INT64.name() => emit_assignment(Instr::I64Const(0)),
+                tp if tp == TypeName::UINT8.name() => emit_assignment(Instr::U8Const(0)),
+                tp if tp == TypeName::UINT16.name() => emit_assignment(Instr::U16Const(0)),
+                tp if tp == TypeName::UINT32.name() => emit_assignment(Instr::U32Const(0)),
+                tp if tp == TypeName::UINT64.name() => emit_assignment(Instr::U64Const(0)),
+                tp if tp == TypeName::FLOAT.name() => emit_assignment(Instr::F32Const(0.0)),
+                tp if tp == TypeName::DOUBLE.name() => emit_assignment(Instr::F64Const(0.0)),
+                tp if tp == TypeName::STRING.name() => emit_assignment(Instr::StringConst(PoolIndex::UNDEFINED)),
+                tp if tp == TypeName::CNAME.name() => emit_assignment(Instr::NameConst(PoolIndex::UNDEFINED)),
+                tp if tp == TypeName::TWEAKDB_ID.name() => emit_assignment(Instr::TweakDbIdConst(PoolIndex::UNDEFINED)),
+                tp if tp == TypeName::RESOURCE.name() => emit_assignment(Instr::ResourceConst(PoolIndex::UNDEFINED)),
                 _ => {}
             },
             TypeId::Struct(struct_) => {
