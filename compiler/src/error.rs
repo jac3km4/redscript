@@ -14,8 +14,6 @@ pub enum Error {
     SyntaxError(String, Span),
     #[error("compilation error: {0}")]
     CompileError(String, Span),
-    #[error("function argument error: {0}")]
-    ArgumentError(String, Span),
     #[error("function resolution error: {0}")]
     ResolutionError(String, Span),
     #[error("constant pool error: {0}")]
@@ -27,10 +25,6 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn arg_type_error<F: Display, T: Display>(from: F, to: T, span: Span) -> Error {
-        Error::ArgumentError(Cause::type_error(from, to).0, span)
-    }
-
     pub fn no_matching_overload<N: Display>(name: N, errors: &[FunctionMatchError], span: Span) -> Error {
         let max_errors = 10;
         let messages = errors.iter().take(max_errors).join("\n ");
