@@ -339,7 +339,10 @@ impl Assembler {
                 tp if tp == TypeName::UINT64.name() => emit_assignment(Instr::U64Const(0)),
                 tp if tp == TypeName::FLOAT.name() => emit_assignment(Instr::F32Const(0.0)),
                 tp if tp == TypeName::DOUBLE.name() => emit_assignment(Instr::F64Const(0.0)),
-                tp if tp == TypeName::STRING.name() => emit_assignment(Instr::StringConst(PoolIndex::UNDEFINED)),
+                tp if tp == TypeName::STRING.name() => {
+                    let empty = pool.strings.add("".into());
+                    emit_assignment(Instr::StringConst(empty))
+                }
                 tp if tp == TypeName::CNAME.name() => emit_assignment(Instr::NameConst(PoolIndex::UNDEFINED)),
                 tp if tp == TypeName::TWEAKDB_ID.name() => emit_assignment(Instr::TweakDbIdConst(PoolIndex::UNDEFINED)),
                 tp if tp == TypeName::RESOURCE.name() => emit_assignment(Instr::ResourceConst(PoolIndex::UNDEFINED)),
