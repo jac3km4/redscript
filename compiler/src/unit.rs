@@ -685,6 +685,9 @@ impl<'a> CompilationUnit<'a> {
                     .and_then(Expr::as_ident)
                     .ok_or_else(|| Cause::InvalidAnnotationArgs.with_span(ann.span))?;
                 if let Symbol::Class(target_class, _) = scope.resolve_symbol(ident.clone()).with_span(ann.span)? {
+                    if scope.resolve_field(decl.name.clone(), target_class, self.pool).is_ok() {
+                        return Err(Cause::FieldRedefinition.with_span(ann.span));
+                    }
                     let flags = self.pool.class(target_class)?.flags;
                     self.define_field(index, target_class, flags, visibility, source, scope)?;
                     self.pool.class_mut(target_class)?.fields.push(index);

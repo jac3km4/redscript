@@ -98,6 +98,8 @@ pub enum Cause {
     UnsupportedFeature(&'static str),
     #[error("symbol with this name is already defined")]
     SymbolRedefinition,
+    #[error("field with this name is already defined")]
+    FieldRedefinition,
     #[error("this function must have a body")]
     MissingBody,
     #[error("this function can't have have a body")]
