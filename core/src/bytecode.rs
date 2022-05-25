@@ -847,7 +847,7 @@ impl Encode for Instr<Offset> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Breakpoint {
     line: u16,
     line_start: u32,
@@ -889,7 +889,7 @@ impl Encode for Breakpoint {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StartProfiling(String, u8);
 
 impl Decode for StartProfiling {
