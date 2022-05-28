@@ -15,6 +15,7 @@ pub mod unused;
 #[derive(Debug)]
 pub enum Diagnostic {
     MethodConflict(PoolIndex<Function>, Span),
+    FieldConflict(Span),
     Deprecation(Deprecation, Span),
     UnusedLocal(Span),
     MissingReturn(Span),
@@ -69,6 +70,7 @@ impl Diagnostic {
         !matches!(
             self,
             Diagnostic::MethodConflict(_, _)
+                | Diagnostic::FieldConflict(_)
                 | Diagnostic::Deprecation(_, _)
                 | Diagnostic::UnusedLocal(_)
                 | Diagnostic::MissingReturn(_)
@@ -79,6 +81,7 @@ impl Diagnostic {
     pub fn span(&self) -> Span {
         match self {
             Diagnostic::MethodConflict(_, span) => *span,
+            Diagnostic::FieldConflict(span) => *span,
             Diagnostic::Deprecation(_, span) => *span,
             Diagnostic::UnusedLocal(span) => *span,
             Diagnostic::MissingReturn(span) => *span,
@@ -93,7 +96,12 @@ impl Diagnostic {
 impl fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Diagnostic::MethodConflict(_, _) => f.write_str("conflicting method replacement"),
+            Diagnostic::MethodConflict(_, _) => {
+                f.write_str("this replacement overwrites a previous replacement on the same method")
+            }
+            Diagnostic::FieldConflict(_) => {
+                f.write_str("field with this name is already defined in the class, this will have no effect")
+            }
             Diagnostic::Deprecation(msg, _) => f.write_fmt(format_args!("{msg}")),
             Diagnostic::UnusedLocal(_) => f.write_str("unused variable"),
             Diagnostic::MissingReturn(_) => f.write_str("function might not return a value"),

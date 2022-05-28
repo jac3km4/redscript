@@ -703,7 +703,10 @@ impl<'a> CompilationUnit<'a> {
                     .ok_or_else(|| Cause::InvalidAnnotationArgs.with_span(ann.span))?;
                 if let Symbol::Class(target_class, _) = scope.resolve_symbol(ident.clone()).with_span(ann.span)? {
                     if scope.resolve_field(decl.name.clone(), target_class, self.pool).is_ok() {
-                        return Err(Cause::FieldRedefinition.with_span(ann.span));
+                        self.diagnostics
+                            .push(Diagnostic::FieldConflict(source.declaration.span));
+                        // we avoid redefining the field because it'd crash the game
+                        return Ok(());
                     }
                     let flags = self.pool.class(target_class)?.flags;
                     self.define_field(index, target_class, flags, visibility, source, scope)?;
