@@ -1,6 +1,6 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use redscript::ast::{Constant, Expr, Ident, Seq, SourceAst, Span, TypeName};
+use redscript::ast::{Constant, Expr, Ident, Literal, Seq, SourceAst, Span, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Instr};
 use redscript::definition::*;
@@ -642,12 +642,23 @@ impl<'a> CompilationUnit<'a> {
             .with_is_native(is_native)
             .with_is_persistent(is_persistent);
 
+        let attributes = decl
+            .annotations
+            .iter()
+            .filter(|ann| ann.kind == AnnotationKind::RuntimeProperty)
+            .map(|ann| match &ann.args[..] {
+                [Expr::Constant(Constant::String(Literal::String, key), _), Expr::Constant(Constant::String(Literal::String, val), _)] =>
+                    Ok(Property { name: key.as_ref().to_owned(), value: val.as_ref().to_owned() }),
+                _ => Err(Cause::InvalidAnnotationArgs.with_span(ann.span)),
+            })
+            .collect::<Result<_, Error>>()?;
+
         let field = Field {
             visibility,
             type_: type_idx,
             flags,
             hint: None,
-            attributes: vec![],
+            attributes,
             defaults: vec![],
         };
         let name_index = self.pool.definition(field_idx)?.name;
@@ -866,6 +877,7 @@ impl<'a> CompilationUnit<'a> {
                 }
                 AnnotationKind::AddField => {}
                 AnnotationKind::If => {}
+                AnnotationKind::RuntimeProperty => {}
             }
         }
 

@@ -148,6 +148,7 @@ pub enum AnnotationKind {
     AddMethod,
     AddField,
     If,
+    RuntimeProperty,
 }
 
 pub fn parse_file(file: &File) -> Result<SourceModule, ParseError<LineCol>> {
@@ -202,7 +203,7 @@ peg::parser! {
             = pos:pos() "@" ident:ident() _ "(" _ args:commasep(<expr()>) _ ")" end:pos() {?
                 AnnotationKind::from_str(ident.as_ref()).map(|kind| {
                     Annotation { kind, args, span: Span::new(pos, end) }
-                }).map_err(|_| "annotation")
+                }).map_err(|_| "valid annotation")
             }
 
         rule qualifiers() -> Qualifiers = qs:qualifier() ** _ { Qualifiers(qs) }
