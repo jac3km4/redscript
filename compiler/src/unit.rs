@@ -1,6 +1,6 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use redscript::ast::{Expr, Ident, Seq, SourceAst, Span, TypeName};
+use redscript::ast::{Constant, Expr, Ident, Seq, SourceAst, Span, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Instr};
 use redscript::definition::*;
@@ -28,6 +28,7 @@ pub struct CompilationUnit<'a> {
     symbols: SymbolMap,
     scope: Scope,
     function_bodies: Vec<FunctionBody>,
+    field_defaults: Vec<FieldDefault>,
     wrappers: ProxyMap,
     proxies: ProxyMap,
     diagnostics: Vec<Diagnostic>,
@@ -55,6 +56,7 @@ impl<'a> CompilationUnit<'a> {
             symbols,
             scope,
             function_bodies: Vec::new(),
+            field_defaults: Vec::new(),
             wrappers: HashMap::new(),
             proxies: HashMap::new(),
             diagnostics: vec![],
@@ -249,6 +251,11 @@ impl<'a> CompilationUnit<'a> {
                     self.report(err)?;
                 }
             }
+        }
+
+        for default in self.field_defaults.drain(..) {
+            let diagnostics = Self::compile_default(default, self.pool)?;
+            self.diagnostics.extend(diagnostics);
         }
 
         // create function proxies
@@ -634,6 +641,7 @@ impl<'a> CompilationUnit<'a> {
             .with_is_browsable(true)
             .with_is_native(is_native)
             .with_is_persistent(is_persistent);
+
         let field = Field {
             visibility,
             type_: type_idx,
@@ -644,6 +652,15 @@ impl<'a> CompilationUnit<'a> {
         };
         let name_index = self.pool.definition(field_idx)?.name;
         let definition = Definition::field(name_index, class_idx.cast(), field);
+
+        if let Some(value) = source.default {
+            self.field_defaults.push(FieldDefault {
+                class: class_idx,
+                index: field_idx,
+                value,
+                scope: scope.clone(),
+            });
+        }
 
         self.pool.put_definition(field_idx, definition);
         Ok(())
@@ -899,7 +916,7 @@ impl<'a> CompilationUnit<'a> {
 
         let mut checker = TypeChecker::new(pool, permissive);
         let checked = checker.check_seq(&item.code, &mut local_scope)?;
-        let (diagnostics, mut locals) = checker.finish();
+        let (diagnostics, mut locals) = checker.into_inner();
 
         let ast = if desugar {
             let mut desugar = Desugar::new(&mut local_scope, pool);
@@ -918,6 +935,46 @@ impl<'a> CompilationUnit<'a> {
             span: item.span,
         };
         Ok((compiled, diagnostics))
+    }
+
+    fn compile_default(mut default: FieldDefault, pool: &mut ConstantPool) -> Result<Vec<Diagnostic>, Error> {
+        fn stringify_default(expr: &Expr<SourceAst>) -> Result<String, Error> {
+            match expr {
+                Expr::Constant(constant, _) => match constant {
+                    Constant::String(_, val) => Ok(val.as_ref().to_owned()),
+                    Constant::F32(val) => Ok(val.to_string()),
+                    Constant::F64(val) => Ok(val.to_string()),
+                    Constant::I32(val) => Ok(val.to_string()),
+                    Constant::I64(val) => Ok(val.to_string()),
+                    Constant::U32(val) => Ok(val.to_string()),
+                    Constant::U64(val) => Ok(val.to_string()),
+                    Constant::Bool(val) => Ok(val.to_string()),
+                },
+                Expr::Member(receiver, name, _) => {
+                    if let Expr::Ident(receiver_name, _) = receiver.as_ref() {
+                        Ok(format!("{}.{}", receiver_name, name))
+                    } else {
+                        Err(Cause::InvalidConstant.with_span(expr.span()))
+                    }
+                }
+                Expr::Null(_) => Ok("null".to_owned()),
+                _ => Err(Cause::InvalidConstant.with_span(expr.span())),
+            }
+        }
+
+        let type_id = default
+            .scope
+            .resolve_type_from_pool(pool.field(default.index)?.type_, pool)
+            .with_span(default.value.span())?;
+        let property = Property {
+            name: pool.def_name(default.class)?.as_ref().to_owned(),
+            value: stringify_default(&default.value)?,
+        };
+        pool.field_mut(default.index)?.defaults = vec![property];
+
+        let mut typeck = TypeChecker::new(pool, false);
+        typeck.check_and_convert(&default.value, &type_id, &mut default.scope)?;
+        Ok(typeck.into_diagnostics())
     }
 
     fn construct_proxy(
@@ -1059,6 +1116,13 @@ struct FunctionBody {
     scope: Scope,
     was_callback: bool,
     span: Span,
+}
+
+struct FieldDefault {
+    class: PoolIndex<Class>,
+    index: PoolIndex<Field>,
+    value: Expr<SourceAst>,
+    scope: Scope,
 }
 
 pub struct CompiledFunction {

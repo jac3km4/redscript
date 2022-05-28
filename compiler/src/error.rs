@@ -110,6 +110,8 @@ pub enum Cause {
     UnificationFailed(Ident, Ident),
     #[error("{0} cannot be made persistent")]
     UnsupportedPersistent(Ident),
+    #[error(r#"this value must be a constant (e.g. 1, "string")"#)]
+    InvalidConstant,
 }
 
 impl Cause {

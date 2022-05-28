@@ -55,6 +55,7 @@ pub enum MemberSource {
 pub struct FieldSource {
     pub declaration: Declaration,
     pub type_: TypeName,
+    pub default: Option<Expr<SourceAst>>,
 }
 
 #[derive(Debug)]
@@ -278,8 +279,8 @@ peg::parser! {
             { Declaration { annotations, qualifiers, name, span: Span::new(pos, end) } }
 
         rule field() -> FieldSource
-            = declaration:decl(<keyword("let")>) _ type_:let_type() _ ";"
-            { FieldSource { declaration, type_ }}
+            = declaration:decl(<keyword("let")>) _ type_:let_type() _ default:initializer()? _ ";"
+            { FieldSource { declaration, type_, default }}
 
         pub rule function() -> FunctionSource
             = pos:pos() declaration:decl(<keyword("func")>) _ "(" _ parameters:commasep(<param()>) _ ")" _ type_:func_type()? _ body:function_body()? ";"? end:pos()
@@ -509,7 +510,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", module.entries),
-            r#"[Class(ClassSource { qualifiers: Qualifiers([Public]), name: Owned("A"), base: Some(Owned("IScriptable")), members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private, Const]), name: Owned("m_field"), span: Span { low: Pos(53), high: Pos(78) } }, type_: TypeName { name: Owned("Int32"), arguments: [] } }), Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public]), name: Owned("GetField"), span: Span { low: Pos(104), high: Pos(124) } }, type_: Some(TypeName { name: Owned("Int32"), arguments: [] }), parameters: [], body: Some(Seq { exprs: [Return(Some(Member(This(Span { low: Pos(165), high: Pos(169) }), Owned("m_field"), Span { low: Pos(165), high: Pos(177) })), Span { low: Pos(158), high: Pos(178) })] }), span: Span { low: Pos(104), high: Pos(196) } })], span: Span { low: Pos(0), high: Pos(211) } })]"#
+            r#"[Class(ClassSource { qualifiers: Qualifiers([Public]), name: Owned("A"), base: Some(Owned("IScriptable")), members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private, Const]), name: Owned("m_field"), span: Span { low: Pos(53), high: Pos(78) } }, type_: TypeName { name: Owned("Int32"), arguments: [] }, default: None }), Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public]), name: Owned("GetField"), span: Span { low: Pos(104), high: Pos(124) } }, type_: Some(TypeName { name: Owned("Int32"), arguments: [] }), parameters: [], body: Some(Seq { exprs: [Return(Some(Member(This(Span { low: Pos(165), high: Pos(169) }), Owned("m_field"), Span { low: Pos(165), high: Pos(177) })), Span { low: Pos(158), high: Pos(178) })] }), span: Span { low: Pos(104), high: Pos(196) } })], span: Span { low: Pos(0), high: Pos(211) } })]"#
         );
     }
 
@@ -598,7 +599,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", module.entries),
-            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: Owned("Test"), base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: Owned("m_field"), span: Span { low: Pos(130), high: Pos(149) } }, type_: TypeName { name: Owned("String"), arguments: [] } })], span: Span { low: Pos(101), high: Pos(189) } })]"#
+            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: Owned("Test"), base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: Owned("m_field"), span: Span { low: Pos(130), high: Pos(149) } }, type_: TypeName { name: Owned("String"), arguments: [] }, default: None })], span: Span { low: Pos(101), high: Pos(189) } })]"#
         );
     }
 
@@ -616,7 +617,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", module.entries),
-            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: Owned("Test"), base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: Owned("m_field"), span: Span { low: Pos(114), high: Pos(133) } }, type_: TypeName { name: Owned("String"), arguments: [] } })], span: Span { low: Pos(13), high: Pos(156) } })]"#
+            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: Owned("Test"), base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: Owned("m_field"), span: Span { low: Pos(114), high: Pos(133) } }, type_: TypeName { name: Owned("String"), arguments: [] }, default: None })], span: Span { low: Pos(13), high: Pos(156) } })]"#
         );
     }
 

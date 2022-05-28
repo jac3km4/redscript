@@ -514,7 +514,7 @@ impl<'a> TypeChecker<'a> {
         ))
     }
 
-    fn check_and_convert(
+    pub fn check_and_convert(
         &mut self,
         expr: &Expr<SourceAst>,
         to: &TypeId,
@@ -681,8 +681,12 @@ impl<'a> TypeChecker<'a> {
         Ok(())
     }
 
-    pub fn finish(self) -> (Vec<Diagnostic>, Vec<PoolIndex<Local>>) {
+    pub fn into_inner(self) -> (Vec<Diagnostic>, Vec<PoolIndex<Local>>) {
         (self.diagnostics, self.locals)
+    }
+
+    pub fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
     }
 }
 

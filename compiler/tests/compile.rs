@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use redscript::definition::ClassFlags;
+use redscript::definition::{ClassFlags, Property};
 
 #[allow(unused)]
 mod utils;
@@ -246,4 +246,52 @@ fn report_missing_return() {
 
     let (_, errs) = compiled(vec![sources]).unwrap();
     assert!(matches!(&errs[..], &[Diagnostic::MissingReturn(_)]));
+}
+
+#[test]
+fn compile_defaults() {
+    let sources = r#"
+        func Testing() {
+            let class = new Class();
+        }
+
+        enum Enum {
+            Zero = 0
+        }
+
+        class Class {
+            let a: Int32 = 10;
+            let b: Enum = Enum.Zero;
+            let b: String = "str";
+            let c: CName = n"name";
+        }
+    "#;
+
+    let (pool, errs) = compiled(vec![sources]).unwrap();
+    let errs = errs.into_iter().filter(Diagnostic::is_fatal).collect_vec();
+    assert!(matches!(&errs[..], &[]));
+
+    let props: Vec<&Property> = pool
+        .definitions()
+        .filter_map(|(_, d)| d.value.as_field())
+        .flat_map(|f| &f.defaults)
+        .collect();
+    assert_eq!(props, vec![
+        &Property {
+            name: "Class".to_owned(),
+            value: "10".to_owned()
+        },
+        &Property {
+            name: "Class".to_owned(),
+            value: "Enum.Zero".to_owned()
+        },
+        &Property {
+            name: "Class".to_owned(),
+            value: "str".to_owned()
+        },
+        &Property {
+            name: "Class".to_owned(),
+            value: "name".to_owned()
+        }
+    ]);
 }

@@ -784,7 +784,7 @@ impl Encode for SourceReference {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Property {
     pub name: String,
     pub value: String,

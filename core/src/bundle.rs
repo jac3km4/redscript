@@ -270,6 +270,13 @@ impl ConstantPool {
         self.definition_by(index, AnyDefinition::as_field)
     }
 
+    pub fn field_mut(&mut self, index: PoolIndex<Field>) -> Result<&mut Field, PoolError> {
+        self.definitions
+            .get_mut(index.value as usize)
+            .and_then(|def| def.value.as_field_mut())
+            .ok_or_else(|| PoolError::DefinitionNotFound(index.cast()))
+    }
+
     pub fn parameter(&self, index: PoolIndex<Parameter>) -> Result<&Parameter, PoolError> {
         self.definition_by(index, AnyDefinition::as_parameter)
     }
