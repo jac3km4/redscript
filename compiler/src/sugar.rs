@@ -117,8 +117,8 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
 
             let part = match type_of(&part, self.scope, self.pool)? {
                 TypeId::Void => return Err(Cause::UnsupportedFeature("formatting void").with_span(span)),
-                TypeId::ScriptRef(idx) if idx.pretty(self.pool)?.as_ref() == "String" => part,
-                typ if typ.pretty(self.pool)?.as_ref() == "String" => as_ref(part),
+                TypeId::ScriptRef(idx) if idx.pretty(self.pool)? == TypeName::STRING.name() => part,
+                typ if typ.pretty(self.pool)? == TypeName::STRING.name() => as_ref(part),
                 _ => {
                     let to_string = Callable::Intrinsic(IntrinsicOp::ToString, str_type.clone());
                     as_ref(Expr::Call(to_string, [].into(), [part].into(), span))
