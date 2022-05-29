@@ -104,7 +104,7 @@ fn load_scripts(cache_dir: &Path, files: &Files) -> Result<(), Error> {
     #[cfg(not(feature = "mmap"))]
     let mut bundle = ScriptBundle::load(&mut io::BufReader::new(File::open(backup_path)?))?;
 
-    CompilationUnit::new_with_defaults(&mut bundle.pool)?.compile_and_report(files)?;
+    CompilationUnit::new(&mut bundle.pool, vec![])?.compile_and_report(files)?;
 
     let mut file = File::create(&bundle_path)?;
     bundle.save(&mut io::BufWriter::new(&mut file))?;

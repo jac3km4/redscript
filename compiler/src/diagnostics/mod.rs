@@ -97,7 +97,7 @@ impl fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Diagnostic::MethodConflict(_, _) => {
-                f.write_str("this replacement overwrites a previous replacement on the same method")
+                f.write_str("this replacement overwrites a previous replacement of the same method")
             }
             Diagnostic::FieldConflict(_) => {
                 f.write_str("field with this name is already defined in the class, this will have no effect")
