@@ -146,7 +146,11 @@ pub fn write_definition<W: Write>(
 
             writeln!(out)?;
             for property in &field.attributes {
-                writeln!(out, "{}@attrib({}, \"{}\")", padding, property.name, property.value)?;
+                writeln!(
+                    out,
+                    "{}@runtimeProperty(\"{}\", \"{}\")",
+                    padding, property.name, property.value
+                )?;
             }
 
             for property in &field.defaults {
