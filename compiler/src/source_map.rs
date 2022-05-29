@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -64,14 +63,7 @@ impl Files {
     }
 
     pub fn lookup_file(&self, pos: Pos) -> Option<&File> {
-        let index = self
-            .files
-            .binary_search_by(|file| match file.span() {
-                Span { low, .. } if low > pos => Ordering::Greater,
-                Span { high, .. } if high < pos => Ordering::Less,
-                _ => Ordering::Equal,
-            })
-            .ok()?;
+        let index = self.files.binary_search_by(|file| file.span().compare_pos(pos)).ok()?;
         self.files.get(index)
     }
 

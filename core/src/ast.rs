@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::fmt::{self, Debug, Display};
 use std::iter;
 use std::ops::{Add, Not, Sub};
@@ -370,6 +371,16 @@ impl Span {
 
     pub fn contains(&self, pos: Pos) -> bool {
         self.low <= pos && self.high > pos
+    }
+
+    pub fn compare_pos(&self, pos: Pos) -> Ordering {
+        if self.low > pos {
+            Ordering::Greater
+        } else if self.high < pos {
+            Ordering::Less
+        } else {
+            Ordering::Equal
+        }
     }
 }
 
