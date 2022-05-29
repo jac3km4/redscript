@@ -1,4 +1,26 @@
 ## [0.5.4] - Unreleased
+- field defaults (2a15c1eb12a9523ba065accc1224bd1f477b4358)
+```swift
+// you can define defaults for fields in classes and structs
+// the defaults can only be constants, they cannot contain any complex expressions
+class Class {
+    let int: Int32 = 1000;
+    let enum: EPriority = EPriority.Medium;
+    let float: Float = 1.0;
+    let string: String = "string";
+    let name: CName = n"name";
+}
+```
+- runtime properties (caf8c442de0887b9d544a6e237be02a01e0598ff)
+```swift
+class Class {
+    @runtimeProperty("myText", "Lorem ipsum dolor sit amet, consectetur adipiscing elit")
+    let int: Int32;
+}
+```
+- better handling for conflicting field additions (da4af0573a6e84a707c49d459783190371dae09d)
+  - multiple `@addField` with the same name will now result in only one field being added to the class (to prevent game crashes)
+  - a warning will now be emitted for each conflict
 
 ## [0.5.3]
 - local initializers - fixes surprising behavior with some types, particularly arrays (4870193b2493d158106e6f241f760fef89024bfa, 766b6aa6c0fa042a22d955e8d29ad96df260c8cb)
