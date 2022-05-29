@@ -218,12 +218,13 @@ peg::parser! {
             ##parse_string_literal(id) !['0'..='9' | 'a'..='z' | 'A'..='Z' | '_']
 
         rule number() -> Constant
-            = n:$(['0'..='9' | '.']+) postfix:$(['u' | 'l' | 'd'])?
-            {? if postfix == Some("d") { n.parse::<f64>().or(Err("valid double")).map(Constant::F64) }
-               else if n.contains('.') { n.parse::<f32>().or(Err("valid float")).map(Constant::F32) }
-               else if postfix == Some("l") { n.parse::<i64>().or(Err("valid 64-bit int")).map(Constant::I64) }
-               else if postfix == Some("u") { n.parse::<u32>().or(Err("valid 32-bit uint")).map(Constant::U32) }
-               else { n.parse::<i32>().or(Err("valid 32-bit int")).map(Constant::I32) }
+            = str:$(['-']? ['0'..='9' | '.']+) unsigned: $(['u'])? postfix:$(['l' | 'd'])?
+            {? if postfix == Some("d") { str.parse::<f64>().or(Err("valid double")).map(Constant::F64) }
+               else if str.contains('.') { str.parse::<f32>().or(Err("valid float")).map(Constant::F32) }
+               else if postfix == Some("l") && unsigned.is_some() { str.parse::<u64>().or(Err("valid unsigned 64-bit int")).map(Constant::U64) }
+               else if unsigned.is_some() { str.parse::<u32>().or(Err("valid unsigned 32-bit int")).map(Constant::U32) }
+               else if postfix == Some("l") { str.parse::<i64>().or(Err("valid 64-bit int")).map(Constant::I64) }
+               else { str.parse::<i32>().or(Err("valid 32-bit int")).map(Constant::I32) }
             }
 
         rule escaped_char() -> String
@@ -317,7 +318,7 @@ peg::parser! {
             {? match value {
                  Constant::I32(value) => Ok(EnumMember { name, value: value.into() }),
                  Constant::I64(value) => Ok(EnumMember { name, value }),
-                 _ => Err("int")
+                 _ => Err("signed 64-bit int")
                }
             }
 
