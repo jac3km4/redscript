@@ -2,6 +2,7 @@ use hamt_sync::Map;
 use redscript::ast::{Ident, Kind, TypeName};
 use redscript::bundle::{ConstantPool, PoolError, PoolIndex};
 use redscript::definition::{AnyDefinition, Class, Definition, Enum, Field, Function, Local, Parameter, Type};
+use redscript::str_fmt;
 
 use crate::error::{Cause, Error};
 use crate::symbol::{FunctionSignature, Symbol};
@@ -298,11 +299,11 @@ impl TypeId {
             TypeId::Class(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
             TypeId::Struct(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
             TypeId::Enum(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
-            TypeId::Ref(idx) => Ok(Ident::from(format!("ref:{}", idx.repr(pool)?))),
-            TypeId::WeakRef(idx) => Ok(Ident::from(format!("wref:{}", idx.repr(pool)?))),
-            TypeId::Array(idx) => Ok(Ident::from(format!("array:{}", idx.repr(pool)?))),
-            TypeId::StaticArray(idx, size) => Ok(Ident::from(format!("{}[{}]", idx.repr(pool)?, size))),
-            TypeId::ScriptRef(idx) => Ok(Ident::from(format!("script_ref:{}", idx.repr(pool)?))),
+            TypeId::Ref(idx) => Ok(str_fmt!("ref:{}", idx.repr(pool)?)),
+            TypeId::WeakRef(idx) => Ok(str_fmt!("wref:{}", idx.repr(pool)?)),
+            TypeId::Array(idx) => Ok(str_fmt!("array:{}", idx.repr(pool)?)),
+            TypeId::StaticArray(idx, size) => Ok(str_fmt!("{}[{}]", idx.repr(pool)?, size)),
+            TypeId::ScriptRef(idx) => Ok(str_fmt!("script_ref:{}", idx.repr(pool)?)),
             TypeId::Variant => Ok(Ident::from_static("Variant")),
             TypeId::Null => Ok(Ident::from_static("ref:IScriptable")),
             TypeId::Void => Err(PoolError::UnexpectedEntry("void type")),
@@ -315,11 +316,11 @@ impl TypeId {
             TypeId::Class(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
             TypeId::Struct(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
             TypeId::Enum(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
-            TypeId::Ref(idx) => Ok(Ident::from(format!("ref<{}>", idx.pretty(pool)?))),
-            TypeId::WeakRef(idx) => Ok(Ident::from(format!("wref<{}>", idx.pretty(pool)?))),
-            TypeId::Array(idx) => Ok(Ident::from(format!("array<{}>", idx.pretty(pool)?))),
-            TypeId::StaticArray(idx, size) => Ok(Ident::from(format!("array<{}, {}>", idx.pretty(pool)?, size))),
-            TypeId::ScriptRef(idx) => Ok(Ident::from(format!("script_ref<{}>", idx.pretty(pool)?))),
+            TypeId::Ref(idx) => Ok(str_fmt!("ref<{}>", idx.pretty(pool)?)),
+            TypeId::WeakRef(idx) => Ok(str_fmt!("wref<{}>", idx.pretty(pool)?)),
+            TypeId::Array(idx) => Ok(str_fmt!("array<{}>", idx.pretty(pool)?)),
+            TypeId::StaticArray(idx, size) => Ok(str_fmt!("array<{}, {}>", idx.pretty(pool)?, size)),
+            TypeId::ScriptRef(idx) => Ok(str_fmt!("script_ref<{}>", idx.pretty(pool)?)),
             TypeId::Variant => Ok(Ident::from_static("Variant")),
             TypeId::Null => Ok(Ident::from_static("Null")),
             TypeId::Void => Ok(Ident::from_static("Void")),

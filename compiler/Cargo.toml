@@ -10,12 +10,13 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 redscript = { path = "../core" }
+flexstr = "0.9"
 peg = "0.8"
 hamt-sync = "0.2"
 sequence_trie = "0.3"
 strum = { version = "0.24", features = ["derive"] }
 thiserror = "1.0"
-enum-as-inner = "0.4"
+enum-as-inner = "0.5"
 walkdir = "2"
 itertools = "0.10"
 log = "0.4"

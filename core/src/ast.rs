@@ -6,6 +6,7 @@ use enum_as_inner::EnumAsInner;
 use itertools::Itertools;
 use strum::{Display, EnumString, IntoStaticStr};
 
+use super::str_fmt;
 use crate::Ref;
 
 #[derive(Debug, EnumAsInner)]
@@ -136,10 +137,7 @@ pub enum Constant {
     Bool(bool),
 }
 
-#[cfg(not(feature = "arc"))]
-pub type Ident = flexstr::LocalStr;
-#[cfg(feature = "arc")]
-pub type Ident = flexstr::SharedStr;
+pub type Ident = super::Str;
 
 #[derive(Debug, Clone, Copy, Display, EnumString, IntoStaticStr)]
 pub enum BinOp {
@@ -473,7 +471,7 @@ impl TypeName {
         match &unwrapped.arguments {
             Some(arguments) => {
                 let args = arguments.iter().map(TypeName::mangled).format(",");
-                Ident::from(format!("{}<{args}>", unwrapped.name))
+                str_fmt!("{}<{args}>", unwrapped.name)
             }
             None => unwrapped.name.clone(),
         }
@@ -483,7 +481,7 @@ impl TypeName {
         match &self.arguments {
             Some(arguments) => {
                 let args = arguments.iter().map(TypeName::pretty).format(", ");
-                Ident::from(format!("{}<{args}>", self.name))
+                str_fmt!("{}<{args}>", self.name)
             }
             None => self.name.clone(),
         }
