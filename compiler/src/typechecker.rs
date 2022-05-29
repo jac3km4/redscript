@@ -66,7 +66,7 @@ impl<'a> TypeChecker<'a> {
             Expr::ArrayLit(exprs, _, span) => {
                 if exprs.is_empty() {
                     match expected {
-                        Some(TypeId::Array(inner)) => Expr::ArrayLit(vec![], Some(*inner.clone()), *span),
+                        Some(TypeId::Array(inner)) => Expr::ArrayLit([].into(), Some(inner.clone()), *span),
                         Some(type_) => {
                             let cause = Cause::TypeError(Ident::from_static("array"), type_.pretty(self.pool)?);
                             return Err(cause.with_span(*span));
@@ -75,7 +75,7 @@ impl<'a> TypeChecker<'a> {
                     }
                 } else {
                     let mut checked = Vec::with_capacity(exprs.len());
-                    for expr in exprs {
+                    for expr in exprs.iter() {
                         let val = match expected {
                             Some(TypeId::Array(elem)) => self.check_and_convert(expr, elem, scope)?,
                             _ => self.check(expr, None, scope)?,
@@ -90,7 +90,7 @@ impl<'a> TypeChecker<'a> {
                             lub(acc, type_of(expr, scope, self.pool)?, self.pool).with_span(*span)
                         });
 
-                    Expr::ArrayLit(checked, Some(typ?), *span)
+                    Expr::ArrayLit(checked.into_boxed_slice(), Some(typ?.into()), *span)
                 }
             }
             Expr::InterpolatedString(prefix, parts, pos) => {
@@ -239,7 +239,7 @@ impl<'a> TypeChecker<'a> {
                         if !args.is_empty() {
                             return Err(Cause::InvalidArgCount(type_name.pretty(), 0).with_span(*span));
                         }
-                        Expr::New(type_, vec![], *span)
+                        Expr::New(type_, [].into(), *span)
                     }
                     TypeId::Struct(class_idx) => {
                         let fields = self.pool.class(class_idx)?.fields.clone();
@@ -253,7 +253,7 @@ impl<'a> TypeChecker<'a> {
                             let checked_arg = self.check_and_convert(arg, &field_type, scope)?;
                             checked_args.push(checked_arg)
                         }
-                        Expr::New(type_, checked_args, *span)
+                        Expr::New(type_, checked_args.into_boxed_slice(), *span)
                     }
                     _ => {
                         return Err(Cause::UnsupportedOperation("constructing", type_name.pretty()).with_span(*span));
@@ -734,7 +734,7 @@ pub fn type_of(expr: &Expr<TypedAst>, scope: &Scope, pool: &ConstantPool) -> Res
             Constant::U64(_) => scope.resolve_type(&TypeName::UINT64, pool).with_span(*span)?,
             Constant::Bool(_) => scope.resolve_type(&TypeName::BOOL, pool).with_span(*span)?,
         },
-        Expr::ArrayLit(_, type_, _) => TypeId::Array(Box::new(type_.clone().unwrap())),
+        Expr::ArrayLit(_, type_, _) => TypeId::Array(type_.clone().unwrap()),
         Expr::InterpolatedString(_, _, span) => scope.resolve_type(&TypeName::STRING, pool).with_span(*span)?,
         Expr::Declare(_, _, _, _) => TypeId::Void,
         Expr::Cast(type_, expr, _) => match type_of(expr, scope, pool)? {

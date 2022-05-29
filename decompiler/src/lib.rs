@@ -256,7 +256,11 @@ impl<'a> Decompiler<'a> {
             }
             Instr::Construct(n, class) => {
                 let params = self.consume_n(n.into())?;
-                Expr::New(TypeName::basic_owned(self.pool.def_name(class)?), params, Span::ZERO)
+                Expr::New(
+                    TypeName::basic_owned(self.pool.def_name(class)?),
+                    params.into_boxed_slice(),
+                    Span::ZERO,
+                )
             }
             Instr::InvokeStatic(_, _, idx, _) => {
                 let def = self.pool.definition(idx)?;
@@ -322,7 +326,7 @@ impl<'a> Decompiler<'a> {
             }
             Instr::Equals(_) => self.consume_intrisnic(IntrinsicOp::Equals)?,
             Instr::NotEquals(_) => self.consume_intrisnic(IntrinsicOp::NotEquals)?,
-            Instr::New(class) => Expr::New(TypeName::basic_owned(self.pool.def_name(class)?), vec![], Span::ZERO),
+            Instr::New(class) => Expr::New(TypeName::basic_owned(self.pool.def_name(class)?), [].into(), Span::ZERO),
             Instr::Delete => self.consume_call("Delete", 1)?,
             Instr::This => Expr::This(Span::ZERO),
             Instr::StartProfiling(_) => Expr::EMPTY,

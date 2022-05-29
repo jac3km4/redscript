@@ -22,7 +22,7 @@ where
 {
     Ident(Name::Reference, Span),
     Constant(Constant, Span),
-    ArrayLit(Vec<Self>, Option<Name::Type>, Span),
+    ArrayLit(Box<[Self]>, Option<Box<Name::Type>>, Span),
     InterpolatedString(Ref<str>, Vec<(Self, Ref<str>)>, Span),
     Declare(Name::Local, Option<Box<Name::Type>>, Option<Box<Self>>, Span),
     Cast(Name::Type, Box<Self>, Span),
@@ -31,7 +31,7 @@ where
     MethodCall(Box<Self>, Name::Function, Vec<Self>, Span),
     Member(Box<Self>, Name::Member, Span),
     ArrayElem(Box<Self>, Box<Self>, Span),
-    New(Name::Type, Vec<Self>, Span),
+    New(Name::Type, Box<[Self]>, Span),
     Return(Option<Box<Self>>, Span),
     Seq(Seq<Name>),
     Switch(Box<Self>, Vec<SwitchCase<Name>>, Option<Seq<Name>>, Span),

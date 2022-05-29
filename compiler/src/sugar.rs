@@ -65,11 +65,11 @@ impl<'a> Desugar<'a> {
 impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
     fn on_array_lit(
         &mut self,
-        exprs: Vec<Expr<TypedAst>>,
-        type_: Option<TypeId>,
+        exprs: Box<[Expr<TypedAst>]>,
+        type_: Option<Box<TypeId>>,
         pos: Span,
     ) -> Result<Expr<TypedAst>, Error> {
-        let type_ = TypeId::Array(Box::new(type_.unwrap()));
+        let type_ = TypeId::Array(type_.unwrap());
         let local = self.fresh_local(&type_).with_span(pos)?;
         let array_ref = Expr::Ident(local.clone(), pos);
 
@@ -80,7 +80,7 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
             pos,
         ));
 
-        for (i, expr) in exprs.into_iter().enumerate() {
+        for (i, expr) in exprs.into_vec().into_iter().enumerate() {
             let expr = self.on_expr(expr)?;
             let array_ref = Expr::Ident(local.clone(), pos);
             let index = Expr::Constant(Constant::U64(i as u64), pos);

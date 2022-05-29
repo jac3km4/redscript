@@ -24,12 +24,17 @@ where
         Ok(Expr::Constant(constant, pos))
     }
 
-    fn on_array_lit(&mut self, exprs: Vec<Expr<N>>, type_: Option<N::Type>, pos: Span) -> Result<Expr<N>, Error> {
+    fn on_array_lit(
+        &mut self,
+        exprs: Box<[Expr<N>]>,
+        type_: Option<Box<N::Type>>,
+        pos: Span,
+    ) -> Result<Expr<N>, Error> {
         let mut processed = Vec::with_capacity(exprs.len());
-        for expr in exprs {
+        for expr in exprs.into_vec() {
             processed.push(self.on_expr(expr)?);
         }
-        Ok(Expr::ArrayLit(processed, type_, pos))
+        Ok(Expr::ArrayLit(processed.into_boxed_slice(), type_, pos))
     }
 
     fn on_interpolated_string(
@@ -106,12 +111,12 @@ where
         Ok(Expr::ArrayElem(Box::new(expr), Box::new(index), pos))
     }
 
-    fn on_new(&mut self, name: N::Type, args: Vec<Expr<N>>, pos: Span) -> Result<Expr<N>, Error> {
+    fn on_new(&mut self, name: N::Type, args: Box<[Expr<N>]>, pos: Span) -> Result<Expr<N>, Error> {
         let mut processed = Vec::with_capacity(args.len());
-        for arg in args {
+        for arg in args.into_vec() {
             processed.push(self.on_expr(arg)?)
         }
-        Ok(Expr::New(name, processed, pos))
+        Ok(Expr::New(name, processed.into_boxed_slice(), pos))
     }
 
     fn on_return(&mut self, expr: Option<Expr<N>>, pos: Span) -> Result<Expr<N>, Error> {
@@ -244,7 +249,7 @@ macro_rules! visit_expr {
     ($self:expr, $fun:ident, $expr:expr) => {
         match $expr {
             Expr::ArrayLit(exprs, _, _) => {
-                for expr in exprs {
+                for expr in exprs.iter() {
                     $self.$fun(expr);
                 }
             }
@@ -282,7 +287,7 @@ macro_rules! visit_expr {
                 $self.$fun(index);
             }
             Expr::New(_, args, _) => {
-                for expr in args {
+                for expr in args.iter() {
                     $self.$fun(expr);
                 }
             }

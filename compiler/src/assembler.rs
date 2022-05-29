@@ -138,7 +138,7 @@ impl Assembler {
                 TypeId::Class(idx) => self.emit(Instr::New(idx)),
                 TypeId::Struct(idx) => {
                     self.emit(Instr::Construct(args.len() as u8, idx));
-                    for arg in args {
+                    for arg in args.into_vec() {
                         self.assemble(arg, scope, pool, None)?;
                     }
                 }

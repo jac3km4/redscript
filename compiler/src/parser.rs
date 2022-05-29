@@ -424,7 +424,7 @@ peg::parser! {
             "-" _ expr:@ { unop(expr, UnOp::Neg) }
 
             pos:pos() keyword("new") _ id:ident() _ "(" _ params:commasep(<expr()>) _ ")" end:pos() {
-                Expr::New(TypeName::new(id, vec![]), params, Span::new(pos, end))
+                Expr::New(TypeName::new(id, vec![]), params.into_boxed_slice(), Span::new(pos, end))
             }
             --
             expr:(@) _ "[" _ idx:expr() _ "]" high:pos() {
@@ -444,7 +444,7 @@ peg::parser! {
                 Expr::Cast(type_, Box::new(expr), Span { high, ..span })
             }
             pos:pos() "[" _ exprs:commasep(<expr()>)_ "]" end:pos() {
-                Expr::ArrayLit(exprs, None, Span::new(pos, end))
+                Expr::ArrayLit(exprs.into_boxed_slice(), None, Span::new(pos, end))
             }
             "(" _ v:expr() _ ")" { v }
             pos:pos() keyword("null") end:pos() {
