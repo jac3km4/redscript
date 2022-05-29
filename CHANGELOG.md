@@ -1,5 +1,5 @@
 ## [0.5.4] - Unreleased
-- field defaults (2a15c1eb12a9523ba065accc1224bd1f477b4358)
+- support field defaults (2a15c1eb12a9523ba065accc1224bd1f477b4358)
 ```swift
 // you can define defaults for fields in classes and structs
 // the defaults can only be constants, they cannot contain any complex expressions
@@ -11,16 +11,20 @@ class Class {
     let name: CName = n"name";
 }
 ```
-- runtime properties (caf8c442de0887b9d544a6e237be02a01e0598ff)
+- improve number literal parsing (d06f14c715c18705adfba421619f7a2421be2986)
+  - unsigned long literals are now allowed (e.g. `18446744073709551615ul`)
+  - this also fixes an issue with enums that use negative integers
+- better handling of conflicting field additions (da4af0573a6e84a707c49d459783190371dae09d)
+  - multiple `@addField` with the same name will now result in only one field being added to the class (to prevent game crashes)
+  - a warning will now be emitted for each conflict
+- disable optional diagnostics in `scc` (to minimize game startup overhead) (3886dd082d466379f62a2b56d374eccb62fa370a)
+- support runtime properties (caf8c442de0887b9d544a6e237be02a01e0598ff)
 ```swift
 class Class {
     @runtimeProperty("myText", "Lorem ipsum dolor sit amet, consectetur adipiscing elit")
     let int: Int32;
 }
 ```
-- better handling for conflicting field additions (da4af0573a6e84a707c49d459783190371dae09d)
-  - multiple `@addField` with the same name will now result in only one field being added to the class (to prevent game crashes)
-  - a warning will now be emitted for each conflict
 
 ## [0.5.3]
 - local initializers - fixes surprising behavior with some types, particularly arrays (4870193b2493d158106e6f241f760fef89024bfa, 766b6aa6c0fa042a22d955e8d29ad96df260c8cb)
