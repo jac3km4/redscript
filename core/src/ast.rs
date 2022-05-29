@@ -1,7 +1,6 @@
 use std::fmt::{self, Debug, Display};
-use std::hash::Hash;
 use std::iter;
-use std::ops::{Add, Sub};
+use std::ops::{Add, Not, Sub};
 
 use enum_as_inner::EnumAsInner;
 use itertools::Itertools;
@@ -24,10 +23,10 @@ where
     Constant(Constant, Span),
     ArrayLit(Vec<Self>, Option<Name::Type>, Span),
     InterpolatedString(Ref<str>, Vec<(Self, Ref<str>)>, Span),
-    Declare(Name::Local, Option<Name::Type>, Option<Box<Self>>, Span),
+    Declare(Name::Local, Option<Box<Name::Type>>, Option<Box<Self>>, Span),
     Cast(Name::Type, Box<Self>, Span),
     Assign(Box<Self>, Box<Self>, Span),
-    Call(Name::Callable, Vec<Name::Type>, Vec<Self>, Span),
+    Call(Name::Callable, Box<[Name::Type]>, Box<[Self]>, Span),
     MethodCall(Box<Self>, Name::Function, Vec<Self>, Span),
     Member(Box<Self>, Name::Member, Span),
     ArrayElem(Box<Self>, Box<Self>, Span),
@@ -137,60 +136,10 @@ pub enum Constant {
     Bool(bool),
 }
 
-#[derive(Debug, Clone, Eq, PartialOrd, Ord)]
-pub enum Ident {
-    Static(&'static str),
-    Owned(Ref<str>),
-}
-
-impl Ident {
-    pub fn new(str: String) -> Ident {
-        Ident::Owned(Ref::from(str))
-    }
-
-    pub fn to_owned(&self) -> Ref<str> {
-        match self {
-            Ident::Static(str) => Ref::from(*str),
-            Ident::Owned(rc) => rc.clone(),
-        }
-    }
-}
-
-impl PartialEq for Ident {
-    fn eq(&self, other: &Self) -> bool {
-        self.as_ref() == other.as_ref()
-    }
-}
-
-impl Hash for Ident {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.as_ref().hash(state)
-    }
-}
-
-impl Display for Ident {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Ident::Static(str) => f.write_str(str),
-            Ident::Owned(str) => f.write_str(str),
-        }
-    }
-}
-
-impl AsRef<str> for Ident {
-    fn as_ref(&self) -> &str {
-        match self {
-            Ident::Static(str) => str,
-            Ident::Owned(rc) => rc,
-        }
-    }
-}
-
-impl From<Ref<str>> for Ident {
-    fn from(rc: Ref<str>) -> Self {
-        Self::Owned(rc)
-    }
-}
+#[cfg(not(feature = "arc"))]
+pub type Ident = flexstr::LocalStr;
+#[cfg(feature = "arc")]
+pub type Ident = flexstr::SharedStr;
 
 #[derive(Debug, Clone, Copy, Display, EnumString, IntoStaticStr)]
 pub enum BinOp {
@@ -444,7 +393,7 @@ impl Target {
 #[derive(Debug, PartialEq, Eq)]
 pub struct TypeName {
     name: Ident,
-    arguments: Vec<TypeName>,
+    arguments: Option<Box<[TypeName]>>,
 }
 
 impl TypeName {
@@ -467,18 +416,27 @@ impl TypeName {
     pub const VOID: Self = TypeName::basic("Void");
 
     #[inline]
-    pub const fn new(name: Ident, arguments: Vec<TypeName>) -> Self {
-        TypeName { name, arguments }
+    pub fn new(name: Ident, arguments: Vec<TypeName>) -> Self {
+        TypeName {
+            name,
+            arguments: arguments.is_empty().not().then(|| arguments.into_boxed_slice()),
+        }
     }
 
     #[inline]
     pub const fn basic(name: &'static str) -> Self {
-        TypeName::new(Ident::Static(name), vec![])
+        TypeName {
+            name: Ident::from_static(name),
+            arguments: None,
+        }
     }
 
     #[inline]
     pub fn basic_owned(name: Ref<str>) -> Self {
-        TypeName::new(Ident::Owned(name), vec![])
+        TypeName {
+            name: Ident::from_heap(name),
+            arguments: None,
+        }
     }
 
     #[inline]
@@ -488,7 +446,7 @@ impl TypeName {
 
     #[inline]
     pub fn arguments(&self) -> &[TypeName] {
-        &self.arguments
+        self.arguments.as_deref().unwrap_or_default()
     }
 
     pub fn kind(&self) -> Kind {
@@ -502,9 +460,9 @@ impl TypeName {
     }
 
     fn unwrapped(&self) -> &Self {
-        match self.kind() {
-            Kind::Ref => self.arguments[0].unwrapped(),
-            Kind::WRef => self.arguments[0].unwrapped(),
+        match (self.kind(), self.arguments()) {
+            (Kind::Ref, [arg]) => arg.unwrapped(),
+            (Kind::WRef, [arg]) => arg.unwrapped(),
             _ => self,
         }
     }
@@ -512,32 +470,35 @@ impl TypeName {
     // Used for identifying functions
     pub fn mangled(&self) -> Ident {
         let unwrapped = self.unwrapped();
-        if unwrapped.arguments.is_empty() {
-            unwrapped.name.clone()
-        } else {
-            let args = unwrapped.arguments.iter().map(TypeName::mangled).format(",");
-            Ident::new(format!("{}<{args}>", unwrapped.name))
+        match &unwrapped.arguments {
+            Some(arguments) => {
+                let args = arguments.iter().map(TypeName::mangled).format(",");
+                Ident::from(format!("{}<{args}>", unwrapped.name))
+            }
+            None => unwrapped.name.clone(),
         }
     }
 
     pub fn pretty(&self) -> Ident {
-        if self.arguments.is_empty() {
-            self.name.clone()
-        } else {
-            let args = self.arguments.iter().map(TypeName::pretty).format(", ");
-            Ident::new(format!("{}<{args}>", self.name))
+        match &self.arguments {
+            Some(arguments) => {
+                let args = arguments.iter().map(TypeName::pretty).format(", ");
+                Ident::from(format!("{}<{args}>", self.name))
+            }
+            None => self.name.clone(),
         }
     }
 
     // Used for storing types in the constant pool
     pub fn repr(&self) -> Ident {
-        if self.arguments.is_empty() {
-            self.name.clone()
-        } else {
-            let str = iter::once(self.name.clone())
-                .chain(self.arguments.iter().map(TypeName::repr))
-                .join(":");
-            Ident::new(str)
+        match &self.arguments {
+            Some(arguments) => {
+                let str = iter::once(self.name.clone())
+                    .chain(arguments.iter().map(TypeName::repr))
+                    .join(":");
+                Ident::from_heap(str.into())
+            }
+            None => self.name.clone(),
         }
     }
 
@@ -547,17 +508,17 @@ impl TypeName {
     }
 
     fn from_parts<'a>(name: &'a str, mut parts: impl Iterator<Item = &'a str>) -> Option<TypeName> {
-        let name = Ref::from(name);
+        let name = Ident::from_ref(name);
         match parts.next() {
             Some(tail) => {
                 let arg = Self::from_parts(tail, parts)?;
                 let type_ = TypeName {
-                    name: Ident::Owned(name),
-                    arguments: vec![arg],
+                    name,
+                    arguments: Some([arg].into()),
                 };
                 Some(type_)
             }
-            None => Some(TypeName::basic_owned(name)),
+            None => Some(TypeName { name, arguments: None }),
         }
     }
 }

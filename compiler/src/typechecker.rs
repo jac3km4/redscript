@@ -68,7 +68,7 @@ impl<'a> TypeChecker<'a> {
                     match expected {
                         Some(TypeId::Array(inner)) => Expr::ArrayLit(vec![], Some(*inner.clone()), *span),
                         Some(type_) => {
-                            let cause = Cause::TypeError(Ident::new("array".to_owned()), type_.pretty(self.pool)?);
+                            let cause = Cause::TypeError(Ident::from_static("array"), type_.pretty(self.pool)?);
                             return Err(cause.with_span(*span));
                         }
                         None => return Err(Cause::TypeAnnotationRequired.with_span(*span)),
@@ -116,7 +116,7 @@ impl<'a> TypeChecker<'a> {
                     }
                 };
                 let local = self.add_local(name.clone(), &type_, scope).with_span(*span)?;
-                Expr::Declare(local, Some(type_), initializer.map(Box::new), *span)
+                Expr::Declare(local, Some(type_.into()), initializer.map(Box::new), *span)
             }
             Expr::Cast(type_name, expr, span) => {
                 let type_ = scope.resolve_type(type_name, self.pool).with_span(*span)?;
@@ -135,7 +135,7 @@ impl<'a> TypeChecker<'a> {
                 Expr::Assign(Box::new(lhs_typed), Box::new(rhs_typed), *span)
             }
             Expr::Call(name, type_args, args, span) => {
-                let expected = match type_args.as_slice() {
+                let expected = match &type_args[..] {
                     [target] => Some(scope.resolve_type(target, self.pool).with_span(*span)?),
                     _ => expected.cloned(),
                 };
@@ -145,7 +145,12 @@ impl<'a> TypeChecker<'a> {
                     let candidates = scope.resolve_function(name.clone()).with_span(*span)?;
                     let match_ =
                         self.resolve_overload(name.clone(), candidates, args.iter(), expected.as_ref(), scope, *span)?;
-                    Expr::Call(Callable::Function(match_.index), vec![], match_.args, *span)
+                    Expr::Call(
+                        Callable::Function(match_.index),
+                        [].into(),
+                        match_.args.into_boxed_slice(),
+                        *span,
+                    )
                 }
             }
             Expr::MethodCall(context, name, args, span) => {
@@ -167,18 +172,28 @@ impl<'a> TypeChecker<'a> {
                 Expr::MethodCall(Box::new(converted_context), match_.index, match_.args, *span)
             }
             Expr::BinOp(lhs, rhs, op, span) => {
-                let name = Ident::Static(op.into());
+                let name = Ident::from_static(op.into());
                 let args = IntoIterator::into_iter([lhs.as_ref(), rhs.as_ref()]);
                 let candidates = scope.resolve_function(name.clone()).with_span(*span)?;
                 let match_ = self.resolve_overload(name, candidates, args, expected, scope, *span)?;
-                Expr::Call(Callable::Function(match_.index), vec![], match_.args, *span)
+                Expr::Call(
+                    Callable::Function(match_.index),
+                    [].into(),
+                    match_.args.into_boxed_slice(),
+                    *span,
+                )
             }
             Expr::UnOp(expr, op, span) => {
-                let name = Ident::Static(op.into());
+                let name = Ident::from_static(op.into());
                 let args = iter::once(expr.as_ref());
                 let candidates = scope.resolve_function(name.clone()).with_span(*span)?;
                 let match_ = self.resolve_overload(name, candidates, args, expected, scope, *span)?;
-                Expr::Call(Callable::Function(match_.index), vec![], match_.args, *span)
+                Expr::Call(
+                    Callable::Function(match_.index),
+                    [].into(),
+                    match_.args.into_boxed_slice(),
+                    *span,
+                )
             }
             Expr::Member(context, name, span) => {
                 let checked_context = self.check(context, None, scope)?;
@@ -326,7 +341,7 @@ impl<'a> TypeChecker<'a> {
                         Expr::ForIn(local, Box::new(array), body, *span)
                     }
                     other => {
-                        let cause = Cause::TypeError(other.pretty(self.pool)?, Ident::new("array".to_owned()));
+                        let cause = Cause::TypeError(other.pretty(self.pool)?, Ident::from_static("array"));
                         return Err(cause.with_span(*span));
                     }
                 }
@@ -356,7 +371,7 @@ impl<'a> TypeChecker<'a> {
         span: Span,
     ) -> Result<Expr<TypedAst>, Error> {
         if args.len() != intrinsic.arg_count().into() {
-            let cause = Cause::InvalidArgCount(Ident::new(intrinsic.to_string()), intrinsic.arg_count() as usize);
+            let cause = Cause::InvalidArgCount(Ident::from_static(intrinsic.into()), intrinsic.arg_count() as usize);
             return Err(cause.with_span(span));
         }
         let first_arg = self.check(&args[0], None, scope)?;
@@ -467,7 +482,7 @@ impl<'a> TypeChecker<'a> {
                 if let Some(TypeId::Enum(idx)) = expected {
                     TypeId::Enum(*idx)
                 } else {
-                    let cause = Cause::TypeError(Ident::new("enum".to_owned()), expected.unwrap().pretty(self.pool)?);
+                    let cause = Cause::TypeError(Ident::from_static("enum"), expected.unwrap().pretty(self.pool)?);
                     return Err(cause.with_span(span));
                 }
             }
@@ -508,8 +523,8 @@ impl<'a> TypeChecker<'a> {
 
         Ok(Expr::Call(
             Callable::Intrinsic(intrinsic, type_),
-            vec![],
-            checked_args,
+            [].into(),
+            checked_args.into_boxed_slice(),
             span,
         ))
     }
@@ -808,8 +823,12 @@ pub fn lub(a: TypeId, b: TypeId, pool: &ConstantPool) -> Result<TypeId, Cause> {
         let subs_a = collect_supertypes(a, pool)?;
         let subs_b = collect_supertypes(b, pool)?;
         let res = subs_a.into_iter().zip(subs_b).take_while(|(a, b)| a == b).last();
-        res.map(|x| x.0)
-            .ok_or_else(|| Cause::UnificationFailed(pool.def_name(a).unwrap().into(), pool.def_name(b).unwrap().into()))
+        res.map(|(i, _)| i).ok_or_else(|| {
+            Cause::UnificationFailed(
+                Ident::from_heap(pool.def_name(a).unwrap()),
+                Ident::from_heap(pool.def_name(b).unwrap()),
+            )
+        })
     }
 
     if a == b {
@@ -884,26 +903,26 @@ fn insert_conversion(expr: Expr<TypedAst>, type_: &TypeId, conversion: Conversio
         Conversion::Identity => expr,
         Conversion::RefToWeakRef => Expr::Call(
             Callable::Intrinsic(IntrinsicOp::RefToWeakRef, type_.clone()),
-            vec![],
-            vec![expr],
+            [].into(),
+            [expr].into(),
             span,
         ),
         Conversion::WeakRefToRef => Expr::Call(
             Callable::Intrinsic(IntrinsicOp::WeakRefToRef, type_.clone()),
-            vec![],
-            vec![expr],
+            [].into(),
+            [expr].into(),
             span,
         ),
         Conversion::ToScriptRef => Expr::Call(
             Callable::Intrinsic(IntrinsicOp::AsRef, type_.clone()),
-            vec![],
-            vec![expr],
+            [].into(),
+            [expr].into(),
             span,
         ),
         Conversion::ToVariant => Expr::Call(
             Callable::Intrinsic(IntrinsicOp::ToVariant, type_.clone()),
-            vec![],
-            vec![expr],
+            [].into(),
+            [expr].into(),
             span,
         ),
     }

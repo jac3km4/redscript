@@ -34,7 +34,7 @@ impl<'a> Decompiler<'a> {
         let mut locals = BTreeMap::new();
         for local_index in &function.locals {
             let local = pool.local(*local_index)?;
-            let name = Ident::Owned(pool.def_name(*local_index)?);
+            let name = Ident::from_heap(pool.def_name(*local_index)?);
             let type_ = TypeName::from_repr(&pool.def_name(local.type_)?);
             locals.insert(name, type_);
         }
@@ -49,7 +49,7 @@ impl<'a> Decompiler<'a> {
     }
 
     fn definition_ident<A>(&self, index: PoolIndex<A>) -> Result<Ident, Error> {
-        Ok(Ident::Owned(self.pool.def_name(index)?))
+        Ok(Ident::from_heap(self.pool.def_name(index)?))
     }
 
     fn consume_n(&mut self, n: usize) -> Result<Vec<Expr<SourceAst>>, Error> {
@@ -80,7 +80,12 @@ impl<'a> Decompiler<'a> {
 
     fn consume_intrisnic_typed(&mut self, op: IntrinsicOp, type_args: Vec<TypeName>) -> Result<Expr<SourceAst>, Error> {
         let params = self.consume_n(op.arg_count() as usize)?;
-        Ok(Expr::Call(Ident::Static(op.into()), type_args, params, Span::ZERO))
+        Ok(Expr::Call(
+            Ident::from_static(op.into()),
+            type_args.into_boxed_slice(),
+            params.into_boxed_slice(),
+            Span::ZERO,
+        ))
     }
 
     fn consume_intrisnic(&mut self, op: IntrinsicOp) -> Result<Expr<SourceAst>, Error> {
@@ -89,7 +94,12 @@ impl<'a> Decompiler<'a> {
 
     fn consume_call(&mut self, name: &'static str, param_count: usize) -> Result<Expr<SourceAst>, Error> {
         let params = self.consume_n(param_count)?;
-        Ok(Expr::Call(Ident::Static(name), vec![], params, Span::ZERO))
+        Ok(Expr::Call(
+            Ident::from_static(name),
+            [].into(),
+            params.into_boxed_slice(),
+            Span::ZERO,
+        ))
     }
 
     fn consume_params(&mut self) -> Result<Vec<Expr<SourceAst>>, Error> {
@@ -251,7 +261,7 @@ impl<'a> Decompiler<'a> {
             Instr::InvokeStatic(_, _, idx, _) => {
                 let def = self.pool.definition(idx)?;
                 let fun = self.pool.function(idx)?;
-                let name = Ident::Owned(self.pool.names.get(def.name)?);
+                let name = Ident::from_heap(self.pool.names.get(def.name)?);
                 let params = self.consume_params()?;
                 if let Some(ctx) = context {
                     Expr::MethodCall(Box::new(ctx), name, params, Span::ZERO)
@@ -262,12 +272,12 @@ impl<'a> Decompiler<'a> {
                                 .return_type
                                 .ok_or_else(|| Error::DecompileError("Cast without return type".to_owned()))?;
                             let type_name = TypeName::from_repr(&self.pool.def_name(ret_type)?);
-                            Expr::Call(name, vec![type_name], params, Span::ZERO)
+                            Expr::Call(name, [type_name].into(), params.into_boxed_slice(), Span::ZERO)
                         } else {
-                            Expr::Call(name, vec![], params, Span::ZERO)
+                            Expr::Call(name, [].into(), params.into_boxed_slice(), Span::ZERO)
                         }
                     } else {
-                        let class_name = Ident::Owned(self.pool.def_name(def.parent)?);
+                        let class_name = Ident::from_heap(self.pool.def_name(def.parent)?);
                         let expr = Box::new(Expr::Ident(class_name, Span::ZERO));
                         Expr::MethodCall(expr, name, params, Span::ZERO)
                     }
@@ -284,7 +294,7 @@ impl<'a> Decompiler<'a> {
                 // }
             }
             Instr::InvokeVirtual(_, _, idx, _) => {
-                let name = Ident::Owned(self.pool.names.get(idx)?);
+                let name = Ident::from_heap(self.pool.names.get(idx)?);
                 let params = self.consume_params()?;
                 if let Some(ctx) = context {
                     Expr::MethodCall(Box::new(ctx), name, params, Span::ZERO)
@@ -399,7 +409,7 @@ fn merge_declarations(mut locals: BTreeMap<Ident, TypeName>, seq: Seq<SourceAst>
             Some(Expr::Assign(ident, val, _)) => {
                 if let Expr::Ident(name, _) = ident.as_ref() {
                     if let Some(ty) = locals.remove(name) {
-                        init.push(Expr::Declare(name.clone(), Some(ty), Some(val), Span::ZERO));
+                        init.push(Expr::Declare(name.clone(), Some(ty.into()), Some(val), Span::ZERO));
                     } else {
                         init.push(Expr::Assign(ident, val, Span::ZERO));
                     }
@@ -412,7 +422,7 @@ fn merge_declarations(mut locals: BTreeMap<Ident, TypeName>, seq: Seq<SourceAst>
     };
 
     for (name, ty) in locals {
-        body.push(Expr::Declare(name.clone(), Some(ty), None, Span::ZERO));
+        body.push(Expr::Declare(name.clone(), Some(ty.into()), None, Span::ZERO));
     }
 
     body.extend(init);

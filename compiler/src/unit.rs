@@ -327,7 +327,7 @@ impl<'a> CompilationUnit<'a> {
                     }
                 }
 
-                let name_index = self.pool.names.add(path.render().to_owned());
+                let name_index = self.pool.names.add(path.render().to_heap());
                 let index = self.pool.stub_definition(name_index);
                 self.symbols.add_class(&path, index, visibility);
 
@@ -356,7 +356,7 @@ impl<'a> CompilationUnit<'a> {
                     }
                 }
 
-                let name_index = self.pool.names.add(path.render().to_owned());
+                let name_index = self.pool.names.add(path.render().to_heap());
                 let index = self.pool.stub_definition(name_index);
                 self.symbols.add_struct(&path, index, visibility);
 
@@ -378,7 +378,7 @@ impl<'a> CompilationUnit<'a> {
                 Ok(slot)
             }
             SourceEntry::GlobalLet(source) => {
-                let name_index = self.pool.names.add(source.declaration.name.to_owned());
+                let name_index = self.pool.names.add(source.declaration.name.to_heap());
                 let index = self.pool.stub_definition(name_index);
                 let visibility = source
                     .declaration
@@ -395,7 +395,7 @@ impl<'a> CompilationUnit<'a> {
             }
             SourceEntry::Enum(source) => {
                 let path = module.with_child(source.name.clone());
-                let name_index = self.pool.names.add(path.render().to_owned());
+                let name_index = self.pool.names.add(path.render().to_heap());
                 let index = self.pool.stub_definition(name_index);
 
                 self.symbols.add_enum(&path, index);
@@ -443,7 +443,7 @@ impl<'a> CompilationUnit<'a> {
                     }
 
                     let fun_sig = FunctionSignature::from_source(&fun);
-                    let name_idx = self.pool.names.add(Ref::from(fun_sig.into_string()));
+                    let name_idx = self.pool.names.add(Ref::from(fun_sig.as_ref()));
                     let fun_idx = self.pool.stub_definition(name_idx);
 
                     self.define_function(
@@ -460,7 +460,7 @@ impl<'a> CompilationUnit<'a> {
                     functions.push(fun_idx);
                 }
                 MemberSource::Field(let_) => {
-                    let name_idx = self.pool.names.add(let_.declaration.name.to_owned());
+                    let name_idx = self.pool.names.add(let_.declaration.name.to_heap());
                     let field_idx = self.pool.stub_definition(name_idx);
 
                     self.define_field(field_idx, class_idx, flags, visibility, let_, scope)?;
@@ -478,7 +478,7 @@ impl<'a> CompilationUnit<'a> {
                 return Err(Cause::ClassNotFound(base_name).with_span(source.span));
             }
         } else if let Ok(Symbol::Class(class, _)) = scope
-            .resolve_symbol(Ident::Static("IScriptable"))
+            .resolve_symbol(Ident::from_static("IScriptable"))
             .with_span(source.span)
         {
             class
@@ -547,7 +547,7 @@ impl<'a> CompilationUnit<'a> {
                 .with_is_optional(param.qualifiers.contain(Qualifier::Optional))
                 .with_is_out(param.qualifiers.contain(Qualifier::Out))
                 .with_is_const(param.qualifiers.contain(Qualifier::Const));
-            let name = self.pool.names.add(param.name.to_owned());
+            let name = self.pool.names.add(param.name.to_heap());
             let param = Parameter { type_: type_idx, flags };
             let idx = self.pool.add_definition(Definition::param(name, fun_idx.cast(), param));
             parameters.push(idx);
@@ -681,7 +681,7 @@ impl<'a> CompilationUnit<'a> {
         let mut members = Vec::with_capacity(source.members.len());
 
         for member in source.members {
-            let name_index = self.pool.names.add(member.name.to_owned());
+            let name_index = self.pool.names.add(member.name.to_heap());
             let def = Definition::enum_value(name_index, index, member.value);
             members.push(self.pool.add_definition(def));
         }
@@ -860,7 +860,7 @@ impl<'a> CompilationUnit<'a> {
                     } else {
                         None
                     };
-                    let name_idx = self.pool.names.add(Ref::from(sig.into_string()));
+                    let name_idx = self.pool.names.add(Ref::from(sig.as_ref()));
                     let fun_idx = self.pool.stub_definition(name_idx);
                     self.pool.class_mut(target_class_idx)?.functions.push(fun_idx);
 
@@ -881,7 +881,7 @@ impl<'a> CompilationUnit<'a> {
             }
         }
 
-        let name_idx = self.pool.names.add(module.with_function(sig).render().to_owned());
+        let name_idx = self.pool.names.add(module.with_function(sig).render().to_heap());
         let fun_idx = self.pool.stub_definition(name_idx);
 
         let path = module.with_child(name.clone());
@@ -920,12 +920,12 @@ impl<'a> CompilationUnit<'a> {
         };
 
         for param in &fun.parameters {
-            let ident = Ident::Owned(pool.def_name(*param)?);
+            let ident = Ident::from_heap(pool.def_name(*param)?);
             local_scope.add_parameter(ident, *param);
         }
 
         if let Some(wrapped) = item.wrapped {
-            let wrapped_ident = Ident::Static("wrappedMethod");
+            let wrapped_ident = Ident::from_static("wrappedMethod");
             local_scope.add_symbol(wrapped_ident, Symbol::Functions(vec![(wrapped, Visibility::Public)]));
         }
 
@@ -1011,7 +1011,12 @@ impl<'a> CompilationUnit<'a> {
             args.push(Expr::Ident(Reference::Value(Value::Parameter(proxy_idx)), Span::ZERO));
         }
 
-        let call = Expr::Call(Callable::Function(wrapper), vec![], args, Span::ZERO);
+        let call = Expr::Call(
+            Callable::Function(wrapper),
+            [].into(),
+            args.into_boxed_slice(),
+            Span::ZERO,
+        );
         let expr = if fun.return_type.is_some() {
             Expr::Return(Some(Box::new(call)), Span::ZERO)
         } else {

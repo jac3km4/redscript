@@ -42,9 +42,9 @@ impl<'a> Desugar<'a> {
     fn get_function(&self, signature: FunctionSignature) -> Result<Callable, Cause> {
         let fun_idx = self
             .scope
-            .resolve_function(Ident::new(signature.name().to_owned()))?
+            .resolve_function(Ident::from_ref(signature.name()))?
             .by_id(&signature, self.pool)
-            .ok_or_else(|| Cause::FunctionNotFound(Ident::new(signature.as_ref().to_owned())))?;
+            .ok_or_else(|| Cause::FunctionNotFound(Ident::from_ref(signature)))?;
 
         Ok(Callable::Function(fun_idx))
     }
@@ -75,8 +75,8 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
 
         self.add_prefix(Expr::Call(
             Callable::Intrinsic(IntrinsicOp::ArrayResize, TypeId::Void),
-            vec![],
-            vec![array_ref, Expr::Constant(Constant::U64(exprs.len() as u64), pos)],
+            [].into(),
+            [array_ref, Expr::Constant(Constant::U64(exprs.len() as u64), pos)].into(),
             pos,
         ));
 
@@ -110,7 +110,7 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
         let add_str = self.get_function(add_str).with_span(span)?;
 
         let as_ref = Callable::Intrinsic(IntrinsicOp::AsRef, TypeId::ScriptRef(Box::new(str_type.clone())));
-        let as_ref = |exp: Expr<TypedAst>| Expr::Call(as_ref.clone(), vec![], vec![exp], span);
+        let as_ref = |exp: Expr<TypedAst>| Expr::Call(as_ref.clone(), [].into(), [exp].into(), span);
 
         for (part, str) in parts {
             let part = self.on_expr(part)?;
@@ -121,7 +121,7 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
                 typ if typ.pretty(self.pool)?.as_ref() == "String" => as_ref(part),
                 _ => {
                     let to_string = Callable::Intrinsic(IntrinsicOp::ToString, str_type.clone());
-                    as_ref(Expr::Call(to_string, vec![], vec![part], span))
+                    as_ref(Expr::Call(to_string, [].into(), [part].into(), span))
                 }
             };
 
@@ -129,10 +129,10 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
                 part
             } else {
                 let str: Expr<TypedAst> = as_ref(Expr::Constant(Constant::String(Literal::String, str), span));
-                as_ref(Expr::Call(add_str.clone(), vec![], vec![part, str], span))
+                as_ref(Expr::Call(add_str.clone(), [].into(), [part, str].into(), span))
             };
 
-            acc = Expr::Call(add_str.clone(), vec![], vec![as_ref(acc), combined], span);
+            acc = Expr::Call(add_str.clone(), [].into(), [as_ref(acc), combined].into(), span);
         }
         Ok(acc)
     }
@@ -179,11 +179,17 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
 
         let condition = Expr::Call(
             less_than,
-            vec![],
-            vec![
+            [].into(),
+            [
                 Expr::Ident(counter_local.clone(), span),
-                Expr::Call(array_size, vec![], vec![Expr::Ident(arr_local.clone(), span)], span),
-            ],
+                Expr::Call(
+                    array_size,
+                    [].into(),
+                    [Expr::Ident(arr_local.clone(), span)].into(),
+                    span,
+                ),
+            ]
+            .into(),
             span,
         );
         let assign_iter_value = Expr::Assign(
@@ -197,8 +203,8 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
         );
         let increment_counter = Expr::Call(
             assign_add,
-            vec![],
-            vec![Expr::Ident(counter_local, span), Expr::Constant(Constant::I32(1), span)],
+            [].into(),
+            [Expr::Ident(counter_local, span), Expr::Constant(Constant::I32(1), span)].into(),
             span,
         );
 

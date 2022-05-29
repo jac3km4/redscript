@@ -172,7 +172,7 @@ impl ModulePath {
     pub fn parse(str: &str) -> ModulePath {
         let parts = str
             .split('.')
-            .map(|str| Ident::new(str.split(';').next().unwrap().to_owned()))
+            .map(|str| Ident::from_ref(str.split(';').next().unwrap()))
             .collect();
         ModulePath { parts }
     }
@@ -188,7 +188,7 @@ impl ModulePath {
     }
 
     pub fn with_function(&self, fun_sig: FunctionSignature) -> ModulePath {
-        let ident = Ident::new(fun_sig.into_string());
+        let ident = Ident::from_ref(fun_sig);
         self.with_child(ident)
     }
 
@@ -198,7 +198,7 @@ impl ModulePath {
 
     pub fn render(&self) -> Ident {
         let str = self.parts.iter().join(".");
-        Ident::new(str)
+        Ident::from(str)
     }
 }
 
@@ -243,10 +243,6 @@ impl<'a> FunctionSignature<'a> {
 
     pub fn name(&self) -> &str {
         self.as_ref().split(';').next().unwrap()
-    }
-
-    pub fn into_string(self) -> String {
-        self.0.into_owned()
     }
 }
 

@@ -211,7 +211,7 @@ peg::parser! {
         rule ident() -> Ident
             = quiet!{
                 x:$(['a'..='z' | 'A'..='Z' | '_']) xs:$(['0'..='9' | 'a'..='z' | 'A'..='Z' | '_']*)
-                { Ident::new(format!("{}{}", x, xs)) }
+                { Ident::from(x) + xs }
             } / expected!("identifier")
 
         rule keyword(id: &'static str) -> () =
@@ -273,7 +273,7 @@ peg::parser! {
 
         rule let() -> Expr<SourceAst>
             = pos:pos() keyword("let") _ name:ident() _ type_:let_type()? _ val:initializer()? _ ";" end:pos()
-            { Expr::Declare(name, type_, val.map(Box::new), Span::new(pos, end)) }
+            { Expr::Declare(name, type_.map(Box::new), val.map(Box::new), Span::new(pos, end)) }
 
         rule decl(inner: rule<()>) -> Declaration
             = pos:pos() annotations:(annotation() ** _) _ qualifiers:qualifiers() _ inner() _ name:ident() end:pos()
@@ -424,7 +424,7 @@ peg::parser! {
             "-" _ expr:@ { unop(expr, UnOp::Neg) }
 
             pos:pos() keyword("new") _ id:ident() _ "(" _ params:commasep(<expr()>) _ ")" end:pos() {
-                Expr::New(TypeName::basic_owned(id.to_owned()), params, Span::new(pos, end))
+                Expr::New(TypeName::new(id, vec![]), params, Span::new(pos, end))
             }
             --
             expr:(@) _ "[" _ idx:expr() _ "]" high:pos() {
@@ -462,7 +462,7 @@ peg::parser! {
                 Expr::Constant(cons, Span::new(pos, end))
             }
             pos:pos() id:ident() _ type_args:type_args()? _ "(" _ params:commasep(<expr()>) _ ")" end:pos() {
-                Expr::Call(id, type_args.unwrap_or_default(), params, Span::new(pos, end))
+                Expr::Call(id, type_args.unwrap_or_default().into_boxed_slice(), params.into_boxed_slice(), Span::new(pos, end))
             }
             pos:pos() id:ident() end:pos() {
                 Expr::Ident(id, Span::new(pos, end))
@@ -511,7 +511,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", module.entries),
-            r#"[Class(ClassSource { qualifiers: Qualifiers([Public]), name: Owned("A"), base: Some(Owned("IScriptable")), members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private, Const]), name: Owned("m_field"), span: Span { low: Pos(53), high: Pos(78) } }, type_: TypeName { name: Owned("Int32"), arguments: [] }, default: None }), Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public]), name: Owned("GetField"), span: Span { low: Pos(104), high: Pos(124) } }, type_: Some(TypeName { name: Owned("Int32"), arguments: [] }), parameters: [], body: Some(Seq { exprs: [Return(Some(Member(This(Span { low: Pos(165), high: Pos(169) }), Owned("m_field"), Span { low: Pos(165), high: Pos(177) })), Span { low: Pos(158), high: Pos(178) })] }), span: Span { low: Pos(104), high: Pos(196) } })], span: Span { low: Pos(0), high: Pos(211) } })]"#
+            r#"[Class(ClassSource { qualifiers: Qualifiers([Public]), name: "A", base: Some("IScriptable"), members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private, Const]), name: "m_field", span: Span { low: Pos(53), high: Pos(78) } }, type_: TypeName { name: "Int32", arguments: None }, default: None }), Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public]), name: "GetField", span: Span { low: Pos(104), high: Pos(124) } }, type_: Some(TypeName { name: "Int32", arguments: None }), parameters: [], body: Some(Seq { exprs: [Return(Some(Member(This(Span { low: Pos(165), high: Pos(169) }), "m_field", Span { low: Pos(165), high: Pos(177) })), Span { low: Pos(158), high: Pos(178) })] }), span: Span { low: Pos(104), high: Pos(196) } })], span: Span { low: Pos(0), high: Pos(211) } })]"#
         );
     }
 
@@ -526,7 +526,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", module.entries),
-            r#"[Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public, Static]), name: Owned("GetField"), span: Span { low: Pos(0), high: Pos(27) } }, type_: Some(TypeName { name: Owned("Uint64"), arguments: [] }), parameters: [ParameterSource { qualifiers: Qualifiers([]), name: Owned("optimum"), type_: TypeName { name: Owned("Uint64"), arguments: [] } }], body: Some(Seq { exprs: [Return(Some(Conditional(BinOp(Member(This(Span { low: Pos(80), high: Pos(84) }), Owned("m_field"), Span { low: Pos(80), high: Pos(92) }), Ident(Owned("optimum"), Span { low: Pos(95), high: Pos(102) }), Greater, Span { low: Pos(80), high: Pos(102) }), Member(This(Span { low: Pos(105), high: Pos(109) }), Owned("m_field"), Span { low: Pos(105), high: Pos(117) }), Ident(Owned("optimum"), Span { low: Pos(120), high: Pos(127) }), Span { low: Pos(80), high: Pos(127) })), Span { low: Pos(73), high: Pos(128) })] }), span: Span { low: Pos(0), high: Pos(143) } })]"#
+            r#"[Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public, Static]), name: "GetField", span: Span { low: Pos(0), high: Pos(27) } }, type_: Some(TypeName { name: "Uint64", arguments: None }), parameters: [ParameterSource { qualifiers: Qualifiers([]), name: "optimum", type_: TypeName { name: "Uint64", arguments: None } }], body: Some(Seq { exprs: [Return(Some(Conditional(BinOp(Member(This(Span { low: Pos(80), high: Pos(84) }), "m_field", Span { low: Pos(80), high: Pos(92) }), Ident("optimum", Span { low: Pos(95), high: Pos(102) }), Greater, Span { low: Pos(80), high: Pos(102) }), Member(This(Span { low: Pos(105), high: Pos(109) }), "m_field", Span { low: Pos(105), high: Pos(117) }), Ident("optimum", Span { low: Pos(120), high: Pos(127) }), Span { low: Pos(80), high: Pos(127) })), Span { low: Pos(73), high: Pos(128) })] }), span: Span { low: Pos(0), high: Pos(143) } })]"#
         );
     }
 
@@ -542,7 +542,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", stmt),
-            r#"While(BinOp(Ident(Owned("i"), Span { low: Pos(6), high: Pos(7) }), Constant(I32(1000), Span { low: Pos(10), high: Pos(14) }), Less, Span { low: Pos(6), high: Pos(14) }), Seq { exprs: [BinOp(Member(This(Span { low: Pos(33), high: Pos(37) }), Owned("counter"), Span { low: Pos(33), high: Pos(45) }), Member(Ident(Owned("Object"), Span { low: Pos(49), high: Pos(55) }), Owned("CONSTANT"), Span { low: Pos(49), high: Pos(64) }), AssignAdd, Span { low: Pos(33), high: Pos(64) }), BinOp(Ident(Owned("i"), Span { low: Pos(82), high: Pos(83) }), Constant(I32(1), Span { low: Pos(87), high: Pos(88) }), AssignAdd, Span { low: Pos(82), high: Pos(88) })] }, Span { low: Pos(0), high: Pos(104) })"#
+            r#"While(BinOp(Ident("i", Span { low: Pos(6), high: Pos(7) }), Constant(I32(1000), Span { low: Pos(10), high: Pos(14) }), Less, Span { low: Pos(6), high: Pos(14) }), Seq { exprs: [BinOp(Member(This(Span { low: Pos(33), high: Pos(37) }), "counter", Span { low: Pos(33), high: Pos(45) }), Member(Ident("Object", Span { low: Pos(49), high: Pos(55) }), "CONSTANT", Span { low: Pos(49), high: Pos(64) }), AssignAdd, Span { low: Pos(33), high: Pos(64) }), BinOp(Ident("i", Span { low: Pos(82), high: Pos(83) }), Constant(I32(1), Span { low: Pos(87), high: Pos(88) }), AssignAdd, Span { low: Pos(82), high: Pos(88) })] }, Span { low: Pos(0), high: Pos(104) })"#
         );
     }
 
@@ -559,7 +559,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", stmt),
-            r#"If(Member(This(Span { low: Pos(3), high: Pos(7) }), Owned("m_fixBugs"), Span { low: Pos(3), high: Pos(17) }), Seq { exprs: [MethodCall(This(Span { low: Pos(36), high: Pos(40) }), Owned("NoBugs"), [], Span { low: Pos(36), high: Pos(49) })] }, Some(Seq { exprs: [MethodCall(This(Span { low: Pos(89), high: Pos(93) }), Owned("Bugs"), [], Span { low: Pos(89), high: Pos(100) })] }), Span { low: Pos(0), high: Pos(116) })"#
+            r#"If(Member(This(Span { low: Pos(3), high: Pos(7) }), "m_fixBugs", Span { low: Pos(3), high: Pos(17) }), Seq { exprs: [MethodCall(This(Span { low: Pos(36), high: Pos(40) }), "NoBugs", [], Span { low: Pos(36), high: Pos(49) })] }, Some(Seq { exprs: [MethodCall(This(Span { low: Pos(89), high: Pos(93) }), "Bugs", [], Span { low: Pos(89), high: Pos(100) })] }), Span { low: Pos(0), high: Pos(116) })"#
         );
     }
 
@@ -580,7 +580,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", stmt),
-            r#"Switch(Ident(Owned("value"), Span { low: Pos(7), high: Pos(12) }), [SwitchCase { matcher: Constant(String(String, "0"), Span { low: Pos(37), high: Pos(40) }), body: Seq { exprs: [] } }, SwitchCase { matcher: Constant(String(String, "1"), Span { low: Pos(64), high: Pos(67) }), body: Seq { exprs: [Call(Owned("Log"), [], [Constant(String(String, "0 or 1"), Span { low: Pos(93), high: Pos(101) })], Span { low: Pos(89), high: Pos(102) })] } }, SwitchCase { matcher: Constant(String(String, "2"), Span { low: Pos(126), high: Pos(129) }), body: Seq { exprs: [Break(Span { low: Pos(151), high: Pos(157) })] } }], Some(Seq { exprs: [Call(Owned("Log"), [], [Constant(String(String, "default"), Span { low: Pos(208), high: Pos(217) })], Span { low: Pos(204), high: Pos(218) })] }), Span { low: Pos(0), high: Pos(233) })"#
+            r#"Switch(Ident("value", Span { low: Pos(7), high: Pos(12) }), [SwitchCase { matcher: Constant(String(String, "0"), Span { low: Pos(37), high: Pos(40) }), body: Seq { exprs: [] } }, SwitchCase { matcher: Constant(String(String, "1"), Span { low: Pos(64), high: Pos(67) }), body: Seq { exprs: [Call("Log", [], [Constant(String(String, "0 or 1"), Span { low: Pos(93), high: Pos(101) })], Span { low: Pos(89), high: Pos(102) })] } }, SwitchCase { matcher: Constant(String(String, "2"), Span { low: Pos(126), high: Pos(129) }), body: Seq { exprs: [Break(Span { low: Pos(151), high: Pos(157) })] } }], Some(Seq { exprs: [Call("Log", [], [Constant(String(String, "default"), Span { low: Pos(208), high: Pos(217) })], Span { low: Pos(204), high: Pos(218) })] }), Span { low: Pos(0), high: Pos(233) })"#
         );
     }
 
@@ -600,7 +600,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", module.entries),
-            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: Owned("Test"), base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: Owned("m_field"), span: Span { low: Pos(130), high: Pos(149) } }, type_: TypeName { name: Owned("String"), arguments: [] }, default: None })], span: Span { low: Pos(101), high: Pos(189) } })]"#
+            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: "Test", base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: "m_field", span: Span { low: Pos(130), high: Pos(149) } }, type_: TypeName { name: "String", arguments: None }, default: None })], span: Span { low: Pos(101), high: Pos(189) } })]"#
         );
     }
 
@@ -618,7 +618,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", module.entries),
-            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: Owned("Test"), base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: Owned("m_field"), span: Span { low: Pos(114), high: Pos(133) } }, type_: TypeName { name: Owned("String"), arguments: [] }, default: None })], span: Span { low: Pos(13), high: Pos(156) } })]"#
+            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: "Test", base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: "m_field", span: Span { low: Pos(114), high: Pos(133) } }, type_: TypeName { name: "String", arguments: None }, default: None })], span: Span { low: Pos(13), high: Pos(156) } })]"#
         );
     }
 
@@ -656,7 +656,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", str),
-            r#"("My name is ", [(Ident(Owned("name"), Span { low: Pos(15), high: Pos(19) }), " and I am "), (BinOp(Ident(Owned("currentYear"), Span { low: Pos(32), high: Pos(43) }), Ident(Owned("birthYear"), Span { low: Pos(46), high: Pos(55) }), Subtract, Span { low: Pos(32), high: Pos(55) }), " years old")])"#
+            r#"("My name is ", [(Ident("name", Span { low: Pos(15), high: Pos(19) }), " and I am "), (BinOp(Ident("currentYear", Span { low: Pos(32), high: Pos(43) }), Ident("birthYear", Span { low: Pos(46), high: Pos(55) }), Subtract, Span { low: Pos(32), high: Pos(55) }), " years old")])"#
         );
     }
 

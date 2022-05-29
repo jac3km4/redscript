@@ -48,7 +48,7 @@ where
     fn on_declare(
         &mut self,
         local: N::Local,
-        type_: Option<N::Type>,
+        type_: Option<Box<N::Type>>,
         init: Option<Expr<N>>,
         pos: Span,
     ) -> Result<Expr<N>, Error> {
@@ -69,15 +69,15 @@ where
     fn on_call(
         &mut self,
         callable: N::Callable,
-        type_args: Vec<N::Type>,
-        args: Vec<Expr<N>>,
+        type_args: Box<[N::Type]>,
+        args: Box<[Expr<N>]>,
         pos: Span,
     ) -> Result<Expr<N>, Error> {
         let mut processed = Vec::with_capacity(args.len());
-        for arg in args {
+        for arg in args.into_vec() {
             processed.push(self.on_expr(arg)?)
         }
-        Ok(Expr::Call(callable, type_args, processed, pos))
+        Ok(Expr::Call(callable, type_args, processed.into_boxed_slice(), pos))
     }
 
     fn on_method_call(
@@ -264,7 +264,7 @@ macro_rules! visit_expr {
                 $self.$fun(rhs);
             }
             Expr::Call(_, _, args, _) => {
-                for expr in args {
+                for expr in args.iter() {
                     $self.$fun(expr);
                 }
             }

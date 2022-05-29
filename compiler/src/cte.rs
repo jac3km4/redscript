@@ -26,8 +26,8 @@ impl Context {
                 Constant::Bool(val) => Ok(Value::Bool(*val)),
                 _ => Err(Error::CteError("unsupported constant", *span)),
             },
-            Expr::Call(ident, _, args, span) => match (ident.as_ref(), &args.as_slice()) {
-                ("ModuleExists", &[Expr::Constant(Constant::String(Literal::String, str), _)]) => {
+            Expr::Call(ident, _, args, span) => match (ident.as_ref(), &args[..]) {
+                ("ModuleExists", &[Expr::Constant(Constant::String(Literal::String, ref str), _)]) => {
                     Ok(Value::Bool(self.does_module_exist(str.as_ref())))
                 }
                 _ => Err(Error::CteError("unsupported funtion", *span)),

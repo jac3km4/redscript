@@ -111,7 +111,7 @@ impl Assembler {
                     self.assemble(*val, scope, pool, None)?;
                 } else {
                     let typ = typ.expect("Local without type");
-                    self.emit_initializer(local, typ, scope, pool).with_span(span)?;
+                    self.emit_initializer(local, *typ, scope, pool).with_span(span)?;
                 }
             }
             Expr::Assign(lhs, rhs, _) => {
@@ -243,10 +243,10 @@ impl Assembler {
             },
             Expr::Call(callable, _, args, span) => match callable {
                 Callable::Function(fun) => {
-                    self.assemble_call(fun, args, scope, pool, false)?;
+                    self.assemble_call(fun, args.into_vec(), scope, pool, false)?;
                 }
                 Callable::Intrinsic(op, type_) => {
-                    self.assemble_intrinsic(op, args, &type_, scope, pool, span)?;
+                    self.assemble_intrinsic(op, args.into_vec(), &type_, scope, pool, span)?;
                 }
             },
             Expr::MethodCall(expr, fun_idx, args, span) => {
@@ -260,12 +260,15 @@ impl Assembler {
                             self.assemble_call(fun_idx, args, scope, pool, true)?
                         } else {
                             return Err(
-                                Cause::InvalidNonStaticMethodCall(pool.def_name(fun_idx)?.into()).with_span(span)
+                                Cause::InvalidNonStaticMethodCall(Ident::from_heap(pool.def_name(fun_idx)?))
+                                    .with_span(span),
                             );
                         }
                     }
                     _ if fun.flags.is_static() => {
-                        return Err(Cause::InvalidStaticMethodCall(pool.def_name(fun_idx)?.into()).with_span(span));
+                        return Err(
+                            Cause::InvalidStaticMethodCall(Ident::from_heap(pool.def_name(fun_idx)?)).with_span(span),
+                        );
                     }
                     expr => {
                         let force_static_call = matches!(&expr, Expr::Super(_));
@@ -327,7 +330,7 @@ impl Assembler {
         };
 
         match typ {
-            TypeId::Prim(typ_idx) => match Ident::Owned(pool.def_name(typ_idx)?) {
+            TypeId::Prim(typ_idx) => match Ident::from_heap(pool.def_name(typ_idx)?) {
                 tp if tp == TypeName::BOOL.name() => emit_assignment(Instr::FalseConst),
                 tp if tp == TypeName::INT8.name() => emit_assignment(Instr::I8Const(0)),
                 tp if tp == TypeName::INT16.name() => emit_assignment(Instr::I16Const(0)),
