@@ -20,9 +20,9 @@ use time::OffsetDateTime;
 
 fn main() -> Result<(), Error> {
     // the way cyberpunk passes CLI args is broken, this is a workaround
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    match &args[..] {
-        [cmd, path_str, ..] if cmd == "-compile" => {
+    let mut iter = std::env::args().skip(1);
+    match (iter.next().as_deref(), iter.next()) {
+        (Some("-compile"), Some(path_str)) => {
             let script_dir = PathBuf::from(path_str.split('"').next().unwrap());
             let cache_dir = script_dir.parent().unwrap().join("cache");
 
@@ -50,7 +50,14 @@ fn main() -> Result<(), Error> {
 
             let files = Files::from_dir(&script_dir, manifest.source_filter())?;
 
-            match load_scripts(&cache_dir, &files) {
+            let result = match (iter.next().as_deref(), iter.next()) {
+                (Some("-customPath"), Some(custom_path)) => {
+                    log::info!("Custom path provided: {}", custom_path);
+                    compile_custom_bundle(&cache_dir, custom_path.as_ref(), &files)
+                }
+                _ => compile_default_bundle(&cache_dir, &files),
+            };
+            match result {
                 Ok(_) => {
                     log::info!("Output successfully saved in {}", cache_dir.display());
                 }
@@ -100,20 +107,35 @@ fn setup_logger(cache_dir: &Path, include_date_in_filename: bool) -> Result<(), 
     Ok(())
 }
 
-fn load_scripts(cache_dir: &Path, files: &Files) -> Result<(), Error> {
+fn compile_custom_bundle(cache_dir: &Path, custom_path: &Path, files: &Files) -> Result<(), Error> {
+    let bundle_path = cache_dir.join("final.redscripts");
+    let backup_path = cache_dir.join("final.redscripts.bk");
+    let input_path = if backup_path.is_file() {
+        backup_path
+    } else {
+        bundle_path
+    };
+
+    let mut output_file = RwLock::new(File::create(&custom_path)?);
+    compile_scripts(&input_path, files, output_file.write()?.deref_mut())?;
+    Ok(())
+}
+
+fn compile_default_bundle(cache_dir: &Path, files: &Files) -> Result<(), Error> {
     let bundle_path = cache_dir.join("final.redscripts");
     let backup_path = cache_dir.join("final.redscripts.bk");
     let timestamp_path = cache_dir.join("redscript.ts");
-    let mut ts_lock = RwLock::new(
+
+    let mut ts_file = RwLock::new(
         OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .open(&timestamp_path)?,
     );
-    let mut ts_file = ts_lock.write()?;
+    let mut ts_lock = ts_file.write()?;
     let write_timestamp = CompileTimestamp::of_cache_file(&File::open(&bundle_path)?)?;
-    let saved_timestamp = CompileTimestamp::read(ts_file.deref_mut()).ok();
+    let saved_timestamp = CompileTimestamp::read(ts_lock.deref_mut()).ok();
 
     match saved_timestamp {
         None if backup_path.exists() => {
@@ -132,6 +154,17 @@ fn load_scripts(cache_dir: &Path, files: &Files) -> Result<(), Error> {
         _ => {}
     }
 
+    let mut file = File::create(&bundle_path)?;
+    compile_scripts(&backup_path, files, &mut file)?;
+    file.sync_all()?;
+
+    CompileTimestamp::of_cache_file(&file)?.write(ts_lock.deref_mut())
+}
+
+fn compile_scripts<W>(input_path: &Path, files: &Files, output: W) -> Result<(), Error>
+where
+    W: io::Write + io::Seek,
+{
     #[cfg(feature = "mmap")]
     let mut bundle = {
         let (map, _) = vmap::Map::with_options()
@@ -140,16 +173,11 @@ fn load_scripts(cache_dir: &Path, files: &Files) -> Result<(), Error> {
         ScriptBundle::load(&mut io::Cursor::new(map.as_ref()))?
     };
     #[cfg(not(feature = "mmap"))]
-    let mut bundle = ScriptBundle::load(&mut io::BufReader::new(File::open(backup_path)?))?;
+    let mut bundle = ScriptBundle::load(&mut io::BufReader::new(File::open(input_path)?))?;
 
     CompilationUnit::new(&mut bundle.pool, vec![])?.compile_and_report(files)?;
 
-    let mut file = File::create(&bundle_path)?;
-    bundle.save(&mut io::BufWriter::new(&mut file))?;
-    file.sync_all()?;
-
-    CompileTimestamp::of_cache_file(&file)?.write(ts_file.deref_mut())?;
-
+    bundle.save(&mut io::BufWriter::new(output))?;
     Ok(())
 }
 

@@ -1,0 +1,11 @@
+[args]
+scriptsBlobPath = "{game_dir}/r6/cache/final.redscripts.modded"
+
+[[tasks]]
+command = "{game_dir}/engine/tools/scc.exe"
+args = [
+    "-compile",
+    "{game_dir}/r6/scripts",
+    "-customPath",
+    "{game_dir}/r6/cache/final.redscripts.modded",
+]
