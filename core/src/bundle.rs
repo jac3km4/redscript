@@ -11,6 +11,7 @@ use thiserror::Error;
 use crate::decode::{Decode, DecodeExt};
 use crate::definition::{AnyDefinition, Class, Definition, Enum, Field, Function, Local, Parameter, Type};
 use crate::encode::{Encode, EncodeExt};
+use crate::io::StreamOffset;
 use crate::Ref;
 
 #[derive(Debug)]
@@ -209,10 +210,12 @@ impl ConstantPool {
         let mut buffer = io::Cursor::new(Vec::with_capacity(def_header_size as usize));
         buffer.encode(&DefinitionHeader::DEFAULT)?;
 
+        let mut offset_output = StreamOffset::new_seekable(output)?;
         for definition in self.definitions.iter().skip(1) {
-            let header = DefinitionHeader::encode_definition(output, definition)?;
+            let header = DefinitionHeader::encode_definition(&mut offset_output, definition)?;
             buffer.encode(&header)?;
         }
+        let output = offset_output.into_inner();
         output.seek(io::SeekFrom::Start(def_header_pos))?;
         output.write_all(buffer.get_ref())?;
 
@@ -487,12 +490,12 @@ impl DefinitionHeader {
     };
 
     fn encode_definition<O: io::Write + io::Seek>(
-        output: &mut O,
+        output: &mut StreamOffset<O>,
         definition: &Definition,
     ) -> io::Result<DefinitionHeader> {
-        let offset = output.stream_position()?;
+        let offset = output.offset();
         output.encode(&definition.value)?;
-        let size = output.stream_position()? - offset;
+        let size = output.offset() - offset;
         let header = DefinitionHeader {
             name: definition.name,
             parent: definition.parent,
@@ -643,6 +646,7 @@ impl<A> PoolIndex<A> {
 }
 
 impl<A> Decode for PoolIndex<A> {
+    #[inline]
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
         let index = input.decode::<u32>()?;
         Ok(PoolIndex {
@@ -653,6 +657,7 @@ impl<A> Decode for PoolIndex<A> {
 }
 
 impl<A> Encode for PoolIndex<A> {
+    #[inline]
     fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
         output.encode(&(value.value as u32))
     }

@@ -991,14 +991,12 @@ impl Decode for Code<Offset> {
 
 impl Encode for Code<Offset> {
     fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        let mut buffer = io::Cursor::new(Vec::new());
-        let mut size = 0u32;
-        for instr in &value.0 {
-            buffer.encode(instr)?;
-            size += instr.size() as u32;
-        }
+        let size: u32 = value.0.iter().map(|i| i.size() as u32).sum();
         output.encode(&size)?;
-        output.write_all(buffer.get_ref())
+        for instr in &value.0 {
+            output.encode(instr)?;
+        }
+        Ok(())
     }
 }
 

@@ -4,6 +4,7 @@ pub mod bytecode;
 pub mod decode;
 pub mod definition;
 pub mod encode;
+pub mod io;
 pub mod mapper;
 
 #[cfg(not(feature = "arc"))]
