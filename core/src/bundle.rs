@@ -105,20 +105,20 @@ impl Decode for Header {
 }
 
 impl Encode for Header {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
         output.encode(&Header::MAGIC)?;
-        output.encode(&value.version)?;
-        output.encode(&value.flags)?;
-        output.encode(&value.timestamp)?;
-        output.encode(&value.unk3)?;
-        output.encode(&value.hash)?;
-        output.encode(&value.chunks)?;
-        output.encode(&value.data)?;
-        output.encode(&value.names)?;
-        output.encode(&value.tweakdb_indexes)?;
-        output.encode(&value.resources)?;
-        output.encode(&value.definitions)?;
-        output.encode(&value.strings)
+        output.encode(&self.version)?;
+        output.encode(&self.flags)?;
+        output.encode(&self.timestamp)?;
+        output.encode(&self.unk3)?;
+        output.encode(&self.hash)?;
+        output.encode(&self.chunks)?;
+        output.encode(&self.data)?;
+        output.encode(&self.names)?;
+        output.encode(&self.tweakdb_indexes)?;
+        output.encode(&self.resources)?;
+        output.encode(&self.definitions)?;
+        output.encode(&self.strings)
     }
 }
 
@@ -456,10 +456,10 @@ impl Decode for TableHeader {
 }
 
 impl Encode for TableHeader {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.encode(&value.offset)?;
-        output.encode(&value.count)?;
-        output.encode(&value.hash)
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.encode(&self.offset)?;
+        output.encode(&self.count)?;
+        output.encode(&self.hash)
     }
 }
 
@@ -535,15 +535,15 @@ impl Decode for DefinitionHeader {
 }
 
 impl Encode for DefinitionHeader {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.encode(&value.name)?;
-        output.encode(&value.parent)?;
-        output.encode(&value.offset)?;
-        output.encode(&value.size)?;
-        output.encode(&value.type_)?;
-        output.encode(&value.unk1)?;
-        output.encode(&value.unk2)?;
-        output.encode(&value.unk3)
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.encode(&self.name)?;
+        output.encode(&self.parent)?;
+        output.encode(&self.offset)?;
+        output.encode(&self.size)?;
+        output.encode(&self.type_)?;
+        output.encode(&self.unk1)?;
+        output.encode(&self.unk2)?;
+        output.encode(&self.unk3)
     }
 }
 
@@ -570,8 +570,8 @@ impl Decode for DefinitionType {
 }
 
 impl Encode for DefinitionType {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.encode(&DefinitionType::into_bytes(*value).unwrap())
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.encode(&DefinitionType::into_bytes(*self).unwrap())
     }
 }
 
@@ -605,8 +605,8 @@ impl fmt::Display for Timestamp {
 }
 
 impl Encode for Timestamp {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.write_all(&value.into_bytes())
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.write_all(&self.into_bytes())
     }
 }
 
@@ -658,8 +658,8 @@ impl<A> Decode for PoolIndex<A> {
 
 impl<A> Encode for PoolIndex<A> {
     #[inline]
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.encode(&(value.value as u32))
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.encode(&(self.value as u32))
     }
 }
 

@@ -5,105 +5,105 @@ use std::io;
 use byteorder::{LittleEndian, WriteBytesExt};
 
 pub trait Encode {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()>;
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()>;
 }
 
 impl Encode for i64 {
     #[inline]
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.write_i64::<LittleEndian>(*value)
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.write_i64::<LittleEndian>(*self)
     }
 }
 
 impl Encode for i32 {
     #[inline]
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.write_i32::<LittleEndian>(*value)
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.write_i32::<LittleEndian>(*self)
     }
 }
 
 impl Encode for i16 {
     #[inline]
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.write_i16::<LittleEndian>(*value)
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.write_i16::<LittleEndian>(*self)
     }
 }
 
 impl Encode for i8 {
     #[inline]
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.write_i8(*value)
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.write_i8(*self)
     }
 }
 
 impl Encode for u64 {
     #[inline]
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.write_u64::<LittleEndian>(*value)
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.write_u64::<LittleEndian>(*self)
     }
 }
 
 impl Encode for u32 {
     #[inline]
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.write_u32::<LittleEndian>(*value)
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.write_u32::<LittleEndian>(*self)
     }
 }
 
 impl Encode for u16 {
     #[inline]
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.write_u16::<LittleEndian>(*value)
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.write_u16::<LittleEndian>(*self)
     }
 }
 
 impl Encode for u8 {
     #[inline]
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.write_u8(*value)
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.write_u8(*self)
     }
 }
 
 impl Encode for bool {
     #[inline]
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.write_u8(if *value { 1 } else { 0 })
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.write_u8(if *self { 1 } else { 0 })
     }
 }
 
 impl Encode for f64 {
     #[inline]
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.write_f64::<LittleEndian>(*value)
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.write_f64::<LittleEndian>(*self)
     }
 }
 
 impl Encode for f32 {
     #[inline]
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.write_f32::<LittleEndian>(*value)
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.write_f32::<LittleEndian>(*self)
     }
 }
 
 impl Encode for &str {
     #[inline]
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.write_all(value.as_bytes())?;
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.write_all(self.as_bytes())?;
         output.write_u8(0)
     }
 }
 
 impl<const N: usize> Encode for [u8; N] {
     #[inline]
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.write_all(value)
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.write_all(self)
     }
 }
 
 pub trait EncodeExt: io::Write + Sized {
     #[inline]
     fn encode<A: Encode>(&mut self, value: &A) -> io::Result<()> {
-        Encode::encode(self, value)
+        value.encode(self)
     }
 
     fn encode_slice<A: Encode>(&mut self, value: &[A]) -> io::Result<()> {

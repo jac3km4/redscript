@@ -458,8 +458,8 @@ impl Decode for Instr<Offset> {
 }
 
 impl Encode for Instr<Offset> {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        match value {
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        match self {
             Instr::Nop => {
                 output.encode(&0u8)?;
             }
@@ -878,13 +878,13 @@ impl Decode for Breakpoint {
 }
 
 impl Encode for Breakpoint {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.encode(&value.line)?;
-        output.encode(&value.line_start)?;
-        output.encode(&value.col)?;
-        output.encode(&value.length)?;
-        output.encode(&value.enabled)?;
-        output.encode(&value.padding)?;
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.encode(&self.line)?;
+        output.encode(&self.line_start)?;
+        output.encode(&self.col)?;
+        output.encode(&self.length)?;
+        output.encode(&self.enabled)?;
+        output.encode(&self.padding)?;
         Ok(())
     }
 }
@@ -901,9 +901,9 @@ impl Decode for StartProfiling {
 }
 
 impl Encode for StartProfiling {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.encode_str_prefixed::<u32>(&value.0)?;
-        output.encode(&value.1)
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.encode_str_prefixed::<u32>(&self.0)?;
+        output.encode(&self.1)
     }
 }
 
@@ -950,8 +950,8 @@ impl Decode for Offset {
 
 impl Encode for Offset {
     #[inline]
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.encode(&value.value)
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.encode(&self.value)
     }
 }
 
@@ -990,10 +990,10 @@ impl Decode for Code<Offset> {
 }
 
 impl Encode for Code<Offset> {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        let size: u32 = value.0.iter().map(|i| i.size() as u32).sum();
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        let size: u32 = self.0.iter().map(|i| i.size() as u32).sum();
         output.encode(&size)?;
-        for instr in &value.0 {
+        for instr in &self.0 {
             output.encode(instr)?;
         }
         Ok(())

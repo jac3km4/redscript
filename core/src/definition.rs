@@ -154,8 +154,8 @@ impl AnyDefinition {
 }
 
 impl Encode for AnyDefinition {
-    fn encode<O: io::Write>(output: &mut O, def: &Self) -> io::Result<()> {
-        match &def {
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        match &self {
             AnyDefinition::Type(type_) => output.encode(type_),
             AnyDefinition::Class(class) => output.encode(class),
             AnyDefinition::EnumValue(value) => output.encode(value),
@@ -214,24 +214,24 @@ impl Decode for Class {
 }
 
 impl Encode for Class {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        let flags = value
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        let flags = self
             .flags
-            .with_has_functions(!value.functions.is_empty())
-            .with_has_fields(!value.fields.is_empty())
-            .with_has_overrides(!value.overrides.is_empty());
+            .with_has_functions(!self.functions.is_empty())
+            .with_has_fields(!self.fields.is_empty())
+            .with_has_overrides(!self.overrides.is_empty());
 
-        output.encode(&value.visibility)?;
+        output.encode(&self.visibility)?;
         output.encode(&flags)?;
-        output.encode(&value.base)?;
+        output.encode(&self.base)?;
         if flags.has_functions() {
-            output.encode_slice_prefixed::<u32, PoolIndex<Function>>(&value.functions)?;
+            output.encode_slice_prefixed::<u32, PoolIndex<Function>>(&self.functions)?;
         }
         if flags.has_fields() {
-            output.encode_slice_prefixed::<u32, PoolIndex<Field>>(&value.fields)?;
+            output.encode_slice_prefixed::<u32, PoolIndex<Field>>(&self.fields)?;
         }
         if flags.has_overrides() {
-            output.encode_slice_prefixed::<u32, PoolIndex<Field>>(&value.overrides)?;
+            output.encode_slice_prefixed::<u32, PoolIndex<Field>>(&self.overrides)?;
         }
         Ok(())
     }
@@ -263,11 +263,11 @@ impl Decode for Enum {
 }
 
 impl Encode for Enum {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.encode(&value.flags)?;
-        output.encode(&value.size)?;
-        output.encode_slice_prefixed::<u32, PoolIndex<i64>>(&value.members)?;
-        output.encode(&value.unk1)
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.encode(&self.flags)?;
+        output.encode(&self.size)?;
+        output.encode_slice_prefixed::<u32, PoolIndex<i64>>(&self.members)?;
+        output.encode(&self.unk1)
     }
 }
 
@@ -355,48 +355,48 @@ impl Decode for Function {
 }
 
 impl Encode for Function {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        let flags = value
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        let flags = self
             .flags
-            .with_has_return_value(value.return_type.is_some())
-            .with_has_base_method(value.base_method.is_some())
-            .with_has_parameters(!value.parameters.is_empty())
-            .with_has_locals(!value.locals.is_empty())
-            .with_is_operator(value.operator.is_some())
-            .with_has_body(!value.code.is_empty());
+            .with_has_return_value(self.return_type.is_some())
+            .with_has_base_method(self.base_method.is_some())
+            .with_has_parameters(!self.parameters.is_empty())
+            .with_has_locals(!self.locals.is_empty())
+            .with_is_operator(self.operator.is_some())
+            .with_has_body(!self.code.is_empty());
 
-        output.encode(&value.visibility)?;
+        output.encode(&self.visibility)?;
         output.encode(&flags)?;
         if !flags.is_native() {
-            if let Some(ref source) = value.source {
+            if let Some(ref source) = self.source {
                 output.encode(source)?;
             }
         }
-        if let Some(ref type_) = value.return_type {
+        if let Some(ref type_) = self.return_type {
             output.encode(type_)?;
-            output.encode(&value.unk1)?;
+            output.encode(&self.unk1)?;
         }
-        if let Some(ref method) = value.base_method {
+        if let Some(ref method) = self.base_method {
             output.encode(method)?;
         }
         if flags.has_parameters() {
-            output.encode_slice_prefixed::<u32, PoolIndex<Parameter>>(&value.parameters)?;
+            output.encode_slice_prefixed::<u32, PoolIndex<Parameter>>(&self.parameters)?;
         }
         if flags.has_locals() {
-            output.encode_slice_prefixed::<u32, PoolIndex<Local>>(&value.locals)?;
+            output.encode_slice_prefixed::<u32, PoolIndex<Local>>(&self.locals)?;
         }
-        if let Some(ref operator) = value.operator {
+        if let Some(ref operator) = self.operator {
             output.encode(operator)?;
         }
         if flags.is_cast() {
-            output.encode(&value.cast)?;
+            output.encode(&self.cast)?;
         }
         if flags.has_body() {
-            output.encode(&value.code)?;
+            output.encode(&self.code)?;
         }
         if flags.unk4() {
-            output.encode_slice_prefixed::<u32, PoolIndex<Parameter>>(&value.unk2)?;
-            if let Some(typ) = value.unk3 {
+            output.encode_slice_prefixed::<u32, PoolIndex<Parameter>>(&self.unk2)?;
+            if let Some(typ) = self.unk3 {
                 output.encode(&typ)?;
             }
         }
@@ -440,17 +440,17 @@ impl Decode for Field {
 }
 
 impl Encode for Field {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        let flags = value.flags.with_has_hint(value.hint.is_some());
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        let flags = self.flags.with_has_hint(self.hint.is_some());
 
-        output.encode(&value.visibility)?;
-        output.encode(&value.type_)?;
+        output.encode(&self.visibility)?;
+        output.encode(&self.type_)?;
         output.encode(&flags)?;
-        if let Some(ref hint) = value.hint {
+        if let Some(ref hint) = self.hint {
             output.encode_str_prefixed::<u16>(hint)?;
         }
-        output.encode_slice_prefixed::<u32, Property>(&value.attributes)?;
-        output.encode_slice_prefixed::<u32, Property>(&value.defaults)
+        output.encode_slice_prefixed::<u32, Property>(&self.attributes)?;
+        output.encode_slice_prefixed::<u32, Property>(&self.defaults)
     }
 }
 
@@ -482,8 +482,8 @@ impl Decode for Type {
 }
 
 impl Encode for Type {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        match value {
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        match self {
             Type::Prim => output.encode(&0u8),
             Type::Class => output.encode(&1u8),
             Type::Ref(inner) => {
@@ -532,9 +532,9 @@ impl Decode for Local {
 }
 
 impl Encode for Local {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.encode(&value.type_)?;
-        output.encode(&value.flags)
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.encode(&self.type_)?;
+        output.encode(&self.flags)
     }
 }
 
@@ -553,9 +553,9 @@ impl Decode for Parameter {
 }
 
 impl Encode for Parameter {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.encode(&value.type_)?;
-        output.encode(&value.flags)
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.encode(&self.type_)?;
+        output.encode(&self.flags)
     }
 }
 
@@ -578,10 +578,10 @@ impl Decode for SourceFile {
 }
 
 impl Encode for SourceFile {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.encode(&value.id)?;
-        output.encode(&value.path_hash)?;
-        output.encode_str_prefixed::<u16>(&value.path.to_str().unwrap().replace('/', "\\"))
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.encode(&self.id)?;
+        output.encode(&self.path_hash)?;
+        output.encode_str_prefixed::<u16>(&self.path.to_str().unwrap().replace('/', "\\"))
     }
 }
 
@@ -610,8 +610,8 @@ impl Decode for FieldFlags {
 }
 
 impl Encode for FieldFlags {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.write_all(&FieldFlags::into_bytes(*value))
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.write_all(&FieldFlags::into_bytes(*self))
     }
 }
 
@@ -630,8 +630,8 @@ impl Decode for LocalFlags {
 }
 
 impl Encode for LocalFlags {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.write_all(&LocalFlags::into_bytes(*value))
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.write_all(&LocalFlags::into_bytes(*self))
     }
 }
 
@@ -653,8 +653,8 @@ impl Decode for ParameterFlags {
 }
 
 impl Encode for ParameterFlags {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.write_all(&ParameterFlags::into_bytes(*value))
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.write_all(&ParameterFlags::into_bytes(*self))
     }
 }
 
@@ -681,8 +681,8 @@ impl Decode for ClassFlags {
 }
 
 impl Encode for ClassFlags {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.write_all(&ClassFlags::into_bytes(*value))
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.write_all(&ClassFlags::into_bytes(*self))
     }
 }
 
@@ -725,8 +725,8 @@ impl Decode for FunctionFlags {
 }
 
 impl Encode for FunctionFlags {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.write_all(&FunctionFlags::into_bytes(*value))
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.write_all(&FunctionFlags::into_bytes(*self))
     }
 }
 
@@ -757,8 +757,8 @@ impl Decode for Visibility {
 }
 
 impl Encode for Visibility {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.encode(&Visibility::into_bytes(*value).unwrap())
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.encode(&Visibility::into_bytes(*self).unwrap())
     }
 }
 
@@ -778,9 +778,9 @@ impl Decode for SourceReference {
 }
 
 impl Encode for SourceReference {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.encode(&value.file)?;
-        output.encode(&value.line)
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.encode(&self.file)?;
+        output.encode(&self.line)
     }
 }
 
@@ -799,8 +799,8 @@ impl Decode for Property {
 }
 
 impl Encode for Property {
-    fn encode<O: io::Write>(output: &mut O, value: &Self) -> io::Result<()> {
-        output.encode_str_prefixed::<u16>(&value.name)?;
-        output.encode_str_prefixed::<u16>(&value.value)
+    fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
+        output.encode_str_prefixed::<u16>(&self.name)?;
+        output.encode_str_prefixed::<u16>(&self.value)
     }
 }
