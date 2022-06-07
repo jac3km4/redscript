@@ -1076,10 +1076,11 @@ impl IntrinsicOp {
     }
 }
 
+#[derive(Debug)]
 pub struct CodeCursor<'a, Loc> {
     code: &'a [Instr<Loc>],
     offsets: Vec<u16>,
-    index: u16,
+    index: usize,
 }
 
 impl<'a, Loc: Clone> CodeCursor<'a, Loc> {
@@ -1117,21 +1118,40 @@ impl<'a, Loc: Clone> CodeCursor<'a, Loc> {
         }
     }
 
+    pub fn range(
+        &self,
+        from: Location,
+        to: Location,
+    ) -> Result<impl Iterator<Item = (Location, &Instr<Loc>)>, CursorError> {
+        let start = self.get_index(from)?;
+        let end = self.get_index(to)?;
+        let iter = std::iter::once(&0u16)
+            .chain(&self.offsets[start..end])
+            .copied()
+            .map(Location::new)
+            .zip(&self.code[start..end]);
+        Ok(iter)
+    }
+
     pub fn seek_abs(&mut self, position: Location) -> Result<(), CursorError> {
-        if position.value == 0 {
-            self.index = 0;
-        } else {
-            let i = self
-                .offsets
-                .binary_search_by(|i| i.cmp(&position.value))
-                .map_err(|_| CursorError::InvalidInstructionOffset(position))?;
-            self.index = i as u16 + 1;
-        }
+        self.index = self.get_index(position)?;
         Ok(())
     }
 
     pub fn seek_rel(&mut self, offset: Offset) -> Result<(), CursorError> {
         self.seek_abs(offset.absolute(self.pos()))
+    }
+
+    fn get_index(&self, position: Location) -> Result<usize, CursorError> {
+        if position.value == 0 {
+            Ok(0)
+        } else {
+            let idx = self
+                .offsets
+                .binary_search_by(|i| i.cmp(&position.value))
+                .map_err(|_| CursorError::InvalidInstructionOffset(position))?;
+            Ok(idx + 1)
+        }
     }
 }
 

@@ -13,7 +13,7 @@ pub enum Error {
     #[error("pool error: {0}")]
     PoolError(#[from] PoolError),
     #[error("decompile error: {0}")]
-    DecompileError(String),
+    DecompileError(&'static str),
     #[error("code cursor error: {0}")]
     CursorError(#[from] CursorError),
 }

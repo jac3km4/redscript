@@ -8,6 +8,7 @@ use itertools::Itertools;
 use strum::{Display, EnumString, IntoStaticStr};
 
 use super::str_fmt;
+use crate::bytecode::Location;
 use crate::Ref;
 
 #[derive(Debug, EnumAsInner)]
@@ -386,12 +387,12 @@ impl Span {
 
 #[derive(Debug, Clone)]
 pub struct Target {
-    pub position: u16,
+    pub position: Location,
     pub resolved: bool,
 }
 
 impl Target {
-    pub fn new(position: u16) -> Target {
+    pub fn new(position: Location) -> Target {
         Target {
             position,
             resolved: false,

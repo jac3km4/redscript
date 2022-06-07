@@ -44,7 +44,7 @@ impl<'a> Decompiler<'a> {
     }
 
     pub fn decompile(&mut self) -> Result<Seq<SourceAst>, Error> {
-        self.consume_path(Location::MAX)
+        self.consume_path(Location::MAX, None)
     }
 
     fn definition_ident<A>(&self, index: PoolIndex<A>) -> Result<Ident, Error> {
@@ -59,16 +59,17 @@ impl<'a> Decompiler<'a> {
         Ok(body)
     }
 
-    fn consume_path(&mut self, target: Location) -> Result<Seq<SourceAst>, Error> {
+    fn consume_path(&mut self, target: Location, block: Option<BlockContext>) -> Result<Seq<SourceAst>, Error> {
         let mut body = Vec::new();
         loop {
             if self.code.pos() >= target
                 || matches!(body.last(), Some(Expr::Goto(_, _)))
+                || matches!(body.last(), Some(Expr::Break(_)))
                 || matches!(body.last(), Some(Expr::Return(_, _)))
             {
                 break;
             }
-            match self.consume() {
+            match self.consume_with(None, block) {
                 Ok(expr) => body.push(expr),
                 Err(Error::CursorError(CursorError::EndOfCode)) => break,
                 Err(err) => return Err(err),
@@ -116,20 +117,35 @@ impl<'a> Decompiler<'a> {
         Ok(params)
     }
 
-    fn consume_conditional_jump(&mut self, position: Location, offset: Offset) -> Result<Expr<SourceAst>, Error> {
+    fn consume_conditional_jump(
+        &mut self,
+        position: Location,
+        offset: Offset,
+        block: Option<BlockContext>,
+    ) -> Result<Expr<SourceAst>, Error> {
         let condition = self.consume()?;
         let target = offset.absolute(position);
-        let mut body = self.consume_path(target)?;
-        self.code.seek_abs(target)?;
 
-        let result = if resolve_jump(&mut body, Some(position)).is_some() {
-            Expr::While(Box::new(condition), body, Span::ZERO)
-        } else if let Some(jump) = resolve_jump(&mut body, None) {
-            let else_case = self.consume_path(Location::new(jump.position))?;
-            Expr::If(Box::new(condition), body, Some(else_case), Span::ZERO)
+        let is_loop = self
+            .code
+            .range(position, target)?
+            .any(|(loc, i)| matches!(i, Instr::Jump(offset) if offset.absolute(loc) == position));
+
+        let result = if is_loop {
+            let block = BlockContext::new_loop(position, target);
+            let body = self.consume_path(target, Some(block))?;
+            Expr::While(condition.into(), body, Span::ZERO)
         } else {
-            Expr::If(Box::new(condition), body, None, Span::ZERO)
+            let mut body = self.consume_path(target, block)?;
+            self.code.seek_abs(target)?;
+            if let Some(jump) = resolve_jump(&mut body, None) {
+                let else_case = self.consume_path(jump.position, block)?;
+                Expr::If(condition.into(), body, Some(else_case), Span::ZERO)
+            } else {
+                Expr::If(condition.into(), body, None, Span::ZERO)
+            }
         };
+
         Ok(result)
     }
 
@@ -150,6 +166,7 @@ impl<'a> Decompiler<'a> {
 
         let mut default = None;
         let mut cases = Vec::new();
+        let mut block = None;
         for (label, start_position) in labels {
             self.code.seek_abs(label)?;
 
@@ -158,16 +175,32 @@ impl<'a> Decompiler<'a> {
                     let exit = exit_offset.absolute(label);
                     let matcher = self.consume()?;
 
+                    if block.is_none() && exit > start_position {
+                        if let Some(epilogue) = self.code.range(start_position, exit)?.find_map(|(loc, i)| match i {
+                            Instr::Jump(offset) if offset.absolute(loc) > exit => Some(offset.absolute(loc)),
+                            _ => None,
+                        }) {
+                            block = Some(BlockContext::new_switch(epilogue));
+                        }
+                    }
+
                     self.code.seek_abs(start_position)?;
-                    let mut body = self.consume_path(exit)?;
+                    let mut body = self.consume_path(exit, block)?;
+
                     if let Some(Expr::Goto(_, _)) = body.exprs.last() {
                         body.exprs.pop();
                         body.exprs.push(Expr::Break(Span::ZERO));
                     }
                     cases.push(SwitchCase { matcher, body });
                 }
-                Instr::SwitchDefault => default = Some(Seq::new(vec![self.consume()?])),
-                _ => return Err(Error::DecompileError("Unexpected switch label instruction".to_owned())),
+                Instr::SwitchDefault => {
+                    if let Some(BlockContext::Switch { epilogue }) = block {
+                        default = Some(self.consume_path(epilogue, block)?)
+                    } else {
+                        default = Some(Seq::new(vec![self.consume_with(None, block)?]))
+                    }
+                }
+                _ => return Err(Error::DecompileError("Unexpected switch label instruction")),
             }
         }
 
@@ -175,10 +208,14 @@ impl<'a> Decompiler<'a> {
     }
 
     fn consume(&mut self) -> Result<Expr<SourceAst>, Error> {
-        self.consume_with(None)
+        self.consume_with(None, None)
     }
 
-    fn consume_with(&mut self, context: Option<Expr<SourceAst>>) -> Result<Expr<SourceAst>, Error> {
+    fn consume_with(
+        &mut self,
+        context: Option<Expr<SourceAst>>,
+        block: Option<BlockContext>,
+    ) -> Result<Expr<SourceAst>, Error> {
         let position = self.code.pos();
         let res = match self.code.pop()? {
             Instr::Nop => Expr::EMPTY,
@@ -225,7 +262,7 @@ impl<'a> Decompiler<'a> {
                 let rhs = self.consume()?;
                 Expr::Assign(Box::new(lhs), Box::new(rhs), Span::ZERO)
             }
-            Instr::Target(_) => return Err(Error::DecompileError("Unexpected Target".to_owned())),
+            Instr::Target(_) => return Err(Error::DecompileError("Unexpected Target")),
             Instr::Local(idx) => Expr::Ident(self.definition_ident(idx)?, Span::ZERO),
             Instr::Param(idx) => Expr::Ident(self.definition_ident(idx)?, Span::ZERO),
             Instr::ObjectField(idx) => {
@@ -236,17 +273,40 @@ impl<'a> Decompiler<'a> {
                     Expr::Member(Box::new(Expr::This(Span::ZERO)), field, Span::ZERO)
                 }
             }
-            Instr::ExternalVar => return Err(Error::DecompileError("Unexpected ExternalVar".to_owned())),
+            Instr::ExternalVar => return Err(Error::DecompileError("Unexpected ExternalVar")),
             Instr::Switch(_, start) => self.consume_switch(start.absolute(position))?,
-            Instr::SwitchLabel(_, _) => return Err(Error::DecompileError("Unexpected SwitchLabel".to_owned())),
-            Instr::SwitchDefault => return Err(Error::DecompileError("Unexpected SwitchDefault".to_owned())),
+            Instr::SwitchLabel(_, _) => return Err(Error::DecompileError("Unexpected SwitchLabel")),
+            Instr::SwitchDefault => return Err(Error::DecompileError("Unexpected SwitchDefault")),
             Instr::Jump(Offset { value: 3 }) => Expr::EMPTY,
-            Instr::Jump(offset) => Expr::Goto(Target::new(offset.absolute(position).value), Span::ZERO),
+            Instr::Jump(offset) => {
+                let jump_loc = offset.absolute(position);
+                match block {
+                    Some(BlockContext::Loop { epilogue, .. }) if jump_loc == epilogue => {
+                        // we're jumping out of the loop
+                        Expr::Break(Span::ZERO)
+                    }
+                    Some(BlockContext::Loop { prologue, epilogue })
+                        if jump_loc == prologue && self.code.pos() == epilogue =>
+                    {
+                        // we're jumping back to the beginning of the loop
+                        // while being at the tail of it - no control flow required
+                        Expr::EMPTY
+                    }
+                    Some(BlockContext::Switch { epilogue }) if jump_loc == epilogue => {
+                        // we're jumping out of the switch
+                        Expr::Break(Span::ZERO)
+                    }
+                    _ => {
+                        // unknown control flow construct
+                        Expr::Goto(Target::new(offset.absolute(position)), Span::ZERO)
+                    }
+                }
+            }
             Instr::JumpIfFalse(offset) => {
                 assert!(offset.value >= 0, "negative offset is not supported for JumpIfFalse");
-                self.consume_conditional_jump(position, offset)?
+                self.consume_conditional_jump(position, offset, block)?
             }
-            Instr::Skip(offset) => Expr::Goto(Target::new(offset.absolute(position).value), Span::ZERO),
+            Instr::Skip(offset) => Expr::Goto(Target::new(offset.absolute(position)), Span::ZERO),
             Instr::Conditional(_, _) => {
                 let expr = self.consume()?;
                 let true_case = self.consume()?;
@@ -273,7 +333,7 @@ impl<'a> Decompiler<'a> {
                         if name.as_ref().starts_with("Cast;") {
                             let ret_type = fun
                                 .return_type
-                                .ok_or_else(|| Error::DecompileError("Cast without return type".to_owned()))?;
+                                .ok_or(Error::DecompileError("Cast without return type"))?;
                             let type_name = TypeName::from_repr(&self.pool.def_name(ret_type)?);
                             Expr::Call(name, [type_name].into(), params.into_boxed_slice(), Span::ZERO)
                         } else {
@@ -305,7 +365,7 @@ impl<'a> Decompiler<'a> {
                     Expr::MethodCall(Box::new(Expr::This(Span::ZERO)), name, params, Span::ZERO)
                 }
             }
-            Instr::ParamEnd => return Err(Error::DecompileError("Unexpected ParamEnd".to_owned())),
+            Instr::ParamEnd => return Err(Error::DecompileError("Unexpected ParamEnd")),
             Instr::Return => {
                 if let Some(Instr::Nop) = self.code.peek() {
                     self.code.pop()?;
@@ -321,7 +381,7 @@ impl<'a> Decompiler<'a> {
             }
             Instr::Context(_) => {
                 let expr = self.consume()?;
-                self.consume_with(Some(expr))?
+                self.consume_with(Some(expr), None)?
             }
             Instr::Equals(_) => self.consume_intrisnic(IntrinsicOp::Equals)?,
             Instr::NotEquals(_) => self.consume_intrisnic(IntrinsicOp::NotEquals)?,
@@ -436,7 +496,7 @@ fn merge_declarations(mut locals: BTreeMap<Ident, TypeName>, seq: Seq<SourceAst>
 
 fn resolve_jump(seq: &mut Seq<SourceAst>, target: Option<Location>) -> Option<&mut Target> {
     seq.exprs.iter_mut().rev().find_map(|expr| match expr {
-        Expr::Goto(goto, _) if !goto.resolved && target.map(|target| goto.position == target.value).unwrap_or(true) => {
+        Expr::Goto(goto, _) if !goto.resolved && target.map(|target| goto.position == target).unwrap_or(true) => {
             goto.resolved = true;
             Some(goto)
         }
@@ -444,4 +504,20 @@ fn resolve_jump(seq: &mut Seq<SourceAst>, target: Option<Location>) -> Option<&m
         Expr::If(_, if_, Some(else_), _) => resolve_jump(if_, target).or_else(move || resolve_jump(else_, target)),
         _ => None,
     })
+}
+
+#[derive(Debug, Clone, Copy)]
+enum BlockContext {
+    Loop { prologue: Location, epilogue: Location },
+    Switch { epilogue: Location },
+}
+
+impl BlockContext {
+    fn new_loop(prologue: Location, epilogue: Location) -> Self {
+        Self::Loop { prologue, epilogue }
+    }
+
+    fn new_switch(epilogue: Location) -> Self {
+        Self::Switch { epilogue }
+    }
 }
