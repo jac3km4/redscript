@@ -1,7 +1,8 @@
-use std::fmt::Debug;
+use std::fmt::{self, Debug};
 use std::{io, usize};
 
 use strum::{Display, EnumString, IntoStaticStr};
+use thiserror::Error;
 
 use crate::bundle::{CName, PoolIndex, Resource, TweakDbId};
 use crate::decode::{Decode, DecodeExt};
@@ -925,6 +926,12 @@ impl Location {
     }
 }
 
+impl fmt::Display for Location {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.value)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Offset {
     pub value: i16,
@@ -1071,28 +1078,30 @@ impl IntrinsicOp {
 
 pub struct CodeCursor<'a, Loc> {
     code: &'a [Instr<Loc>],
-    position: Location,
+    offsets: Vec<u16>,
     index: u16,
 }
 
 impl<'a, Loc: Clone> CodeCursor<'a, Loc> {
-    pub fn new(code: &'a Code<Loc>) -> Self {
+    pub fn new(Code(code): &'a Code<Loc>) -> Self {
+        let offsets = code
+            .iter()
+            .scan(0, |acc, instr| {
+                *acc += instr.size();
+                Some(*acc)
+            })
+            .collect();
+
         CodeCursor {
-            code: &code.0,
-            position: Location { value: 0 },
+            code,
+            offsets,
             index: 0,
         }
     }
 
-    pub fn pop(&mut self) -> io::Result<Instr<Loc>> {
-        let instr = self.code.get(self.index as usize).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::UnexpectedEof,
-                format!("Attempted to read past EOF: {}", self.position.value),
-            )
-        })?;
+    pub fn pop(&mut self) -> Result<Instr<Loc>, CursorError> {
+        let instr = self.code.get(self.index as usize).ok_or(CursorError::EndOfCode)?;
         self.index += 1;
-        self.position = Location::new(self.position.value + instr.size());
         Ok(instr.clone())
     }
 
@@ -1101,25 +1110,28 @@ impl<'a, Loc: Clone> CodeCursor<'a, Loc> {
     }
 
     pub fn pos(&self) -> Location {
-        self.position
+        if self.index == 0 {
+            Location::new(0)
+        } else {
+            Location::new(self.offsets[self.index as usize - 1])
+        }
     }
 
-    pub fn set_pos(&mut self, position: Location) -> io::Result<()> {
-        self.reset();
-        while self.position < position {
-            self.pop()?;
+    pub fn seek_abs(&mut self, position: Location) -> Result<(), CursorError> {
+        if position.value == 0 {
+            self.index = 0;
+        } else {
+            let i = self
+                .offsets
+                .binary_search_by(|i| i.cmp(&position.value))
+                .map_err(|_| CursorError::InvalidInstructionOffset(position))?;
+            self.index = i as u16 + 1;
         }
-        assert_eq!(self.position, position);
         Ok(())
     }
 
-    pub fn seek(&mut self, offset: Offset) -> io::Result<()> {
-        self.set_pos(offset.absolute(self.position))
-    }
-
-    pub fn reset(&mut self) {
-        self.index = 0;
-        self.position = Location { value: 0 };
+    pub fn seek_rel(&mut self, offset: Offset) -> Result<(), CursorError> {
+        self.seek_abs(offset.absolute(self.pos()))
     }
 }
 
@@ -1130,6 +1142,14 @@ impl<'a, Loc: Clone> Iterator for CodeCursor<'a, Loc> {
         let position = self.pos();
         self.pop().ok().map(|instr| (position, instr))
     }
+}
+
+#[derive(Debug, Error)]
+pub enum CursorError {
+    #[error("invalid instruction offset: {0}")]
+    InvalidInstructionOffset(Location),
+    #[error("unexpected end of code")]
+    EndOfCode,
 }
 
 #[cfg(test)]

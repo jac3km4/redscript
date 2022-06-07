@@ -1,10 +1,9 @@
 use std::collections::BTreeMap;
-use std::io;
 
 use error::Error;
 use redscript::ast::{Constant, Expr, Ident, Literal, Seq, SourceAst, Span, SwitchCase, Target, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
-use redscript::bytecode::{CodeCursor, Instr, IntrinsicOp, Location, Offset};
+use redscript::bytecode::{CodeCursor, CursorError, Instr, IntrinsicOp, Location, Offset};
 use redscript::definition::Function;
 
 pub mod error;
@@ -71,7 +70,7 @@ impl<'a> Decompiler<'a> {
             }
             match self.consume() {
                 Ok(expr) => body.push(expr),
-                Err(Error::IoError(err)) if err.kind() == io::ErrorKind::UnexpectedEof => break,
+                Err(Error::CursorError(CursorError::EndOfCode)) => break,
                 Err(err) => return Err(err),
             }
         }
@@ -121,7 +120,7 @@ impl<'a> Decompiler<'a> {
         let condition = self.consume()?;
         let target = offset.absolute(position);
         let mut body = self.consume_path(target)?;
-        self.code.set_pos(target)?;
+        self.code.seek_abs(target)?;
 
         let result = if resolve_jump(&mut body, Some(position)).is_some() {
             Expr::While(Box::new(condition), body, Span::ZERO)
@@ -137,12 +136,12 @@ impl<'a> Decompiler<'a> {
     fn consume_switch(&mut self, start: Location) -> Result<Expr<SourceAst>, Error> {
         let subject = self.consume()?;
 
-        self.code.set_pos(start)?;
+        self.code.seek_abs(start)?;
         let mut labels = Vec::new();
         while let Some(Instr::SwitchLabel(exit_offset, start_offset)) = self.code.peek() {
             let position = self.code.pos();
             labels.push((position, start_offset.absolute(position)));
-            self.code.seek(exit_offset)?;
+            self.code.seek_rel(exit_offset)?;
         }
         if let Some(Instr::SwitchDefault) = self.code.peek() {
             labels.push((self.code.pos(), self.code.pos()));
@@ -152,14 +151,14 @@ impl<'a> Decompiler<'a> {
         let mut default = None;
         let mut cases = Vec::new();
         for (label, start_position) in labels {
-            self.code.set_pos(label)?;
+            self.code.seek_abs(label)?;
 
             match self.code.pop()? {
                 Instr::SwitchLabel(exit_offset, _) => {
                     let exit = exit_offset.absolute(label);
                     let matcher = self.consume()?;
 
-                    self.code.set_pos(start_position)?;
+                    self.code.seek_abs(start_position)?;
                     let mut body = self.consume_path(exit)?;
                     if let Some(Expr::Goto(_, _)) = body.exprs.last() {
                         body.exprs.pop();

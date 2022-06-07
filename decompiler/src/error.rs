@@ -1,6 +1,7 @@
 use std::{fmt, io};
 
 use redscript::bundle::PoolError;
+use redscript::bytecode::CursorError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -9,8 +10,10 @@ pub enum Error {
     IoError(#[from] io::Error),
     #[error("formatter error")]
     FormatError(#[from] fmt::Error),
-    #[error("decompilation error: {0}")]
+    #[error("pool error: {0}")]
     PoolError(#[from] PoolError),
-    #[error("multiple errors")]
+    #[error("decompile error: {0}")]
     DecompileError(String),
+    #[error("code cursor error: {0}")]
+    CursorError(#[from] CursorError),
 }
