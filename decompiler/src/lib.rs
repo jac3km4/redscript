@@ -138,7 +138,7 @@ impl<'a> Decompiler<'a> {
         } else {
             let mut body = self.consume_path(target, block)?;
             self.code.seek_abs(target)?;
-            if let Some(jump) = resolve_jump(&mut body, None) {
+            if let Some(jump) = resolve_jump(&mut body) {
                 let else_case = self.consume_path(jump.position, block)?;
                 Expr::If(condition.into(), body, Some(else_case), Span::ZERO)
             } else {
@@ -494,14 +494,15 @@ fn merge_declarations(mut locals: BTreeMap<Ident, TypeName>, seq: Seq<SourceAst>
     Ok(Seq::new(body))
 }
 
-fn resolve_jump(seq: &mut Seq<SourceAst>, target: Option<Location>) -> Option<&mut Target> {
+fn resolve_jump(seq: &mut Seq<SourceAst>) -> Option<Target> {
     seq.exprs.iter_mut().rev().find_map(|expr| match expr {
-        Expr::Goto(goto, _) if !goto.resolved && target.map(|target| goto.position == target).unwrap_or(true) => {
-            goto.resolved = true;
-            Some(goto)
+        Expr::Goto(target, _) => {
+            let res = *target;
+            *expr = Expr::EMPTY;
+            Some(res)
         }
-        Expr::If(_, if_, None, _) => resolve_jump(if_, target),
-        Expr::If(_, if_, Some(else_), _) => resolve_jump(if_, target).or_else(move || resolve_jump(else_, target)),
+        Expr::If(_, if_, None, _) => resolve_jump(if_),
+        Expr::If(_, if_, Some(else_), _) => resolve_jump(if_).or_else(move || resolve_jump(else_)),
         _ => None,
     })
 }

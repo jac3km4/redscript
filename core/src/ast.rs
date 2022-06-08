@@ -86,7 +86,6 @@ where
     pub fn is_empty(&self) -> bool {
         match self {
             Expr::Seq(seq) => seq.exprs.iter().all(|expr| expr.is_empty()),
-            Expr::Goto(target, _) => target.resolved,
             _ => false,
         }
     }
@@ -385,18 +384,14 @@ impl Span {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Target {
     pub position: Location,
-    pub resolved: bool,
 }
 
 impl Target {
     pub fn new(position: Location) -> Target {
-        Target {
-            position,
-            resolved: false,
-        }
+        Self { position }
     }
 }
 

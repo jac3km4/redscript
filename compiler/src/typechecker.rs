@@ -296,7 +296,7 @@ impl<'a> TypeChecker<'a> {
 
                 Expr::Switch(Box::new(checked_matched), checked_cases, default, *span)
             }
-            Expr::Goto(target, span) => Expr::Goto(target.clone(), *span),
+            Expr::Goto(target, span) => Expr::Goto(*target, *span),
             Expr::If(cond, if_, else_, span) => {
                 let cond_type = scope.resolve_type(&TypeName::BOOL, self.pool).with_span(*span)?;
                 let checked_cond = self.check_and_convert(cond, &cond_type, scope)?;

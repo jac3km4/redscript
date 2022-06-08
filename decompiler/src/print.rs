@@ -338,8 +338,7 @@ fn write_expr_nested<W: Write>(
             write_indent(out, depth)?;
             write!(out, "}}")?
         }
-        Expr::Goto(jump, _) if !jump.resolved => write!(out, "goto {}", jump.position)?,
-        Expr::Goto(_, _) => (),
+        Expr::Goto(jump, _) => write!(out, "goto {}", jump.position)?,
         Expr::If(condition, true_, false_, _) => {
             write!(out, "if ")?;
             write_expr(out, condition, verbose, 0)?;
