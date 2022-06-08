@@ -215,6 +215,11 @@ impl<'a> IntoIterator for &'a ModulePath {
 pub struct FunctionSignature<'a>(Cow<'a, str>);
 
 impl<'a> FunctionSignature<'a> {
+    #[inline]
+    pub fn from_raw(name: &'a str) -> Self {
+        Self(Cow::Borrowed(name))
+    }
+
     pub fn from_source(source: &'a FunctionSource) -> Self {
         let qs = &source.declaration.qualifiers;
         let name = source.declaration.name.as_ref();
@@ -242,11 +247,14 @@ impl<'a> FunctionSignature<'a> {
     }
 
     pub fn name(&self) -> &str {
-        self.as_ref().split(';').next().unwrap()
+        self.as_ref()
+            .split_once(';')
+            .map_or(self.as_ref(), |(prefix, _)| prefix)
     }
 }
 
 impl<'a> AsRef<str> for FunctionSignature<'a> {
+    #[inline]
     fn as_ref(&self) -> &str {
         self.0.as_ref()
     }

@@ -206,7 +206,6 @@ fn error_message(error: Error, files: &Files, scripts_dir: &Path) -> String {
     let str = match error {
         Error::SyntaxError(_, pos) => detailed_message(vec![pos], files, scripts_dir).unwrap_or_default(),
         Error::CompileError(_, pos) => detailed_message(vec![pos], files, scripts_dir).unwrap_or_default(),
-        Error::ResolutionError(_, pos) => detailed_message(vec![pos], files, scripts_dir).unwrap_or_default(),
         Error::MultipleErrors(spans) => detailed_message(spans, files, scripts_dir).unwrap_or_default(),
         Error::IoError(err) => format!("This is caused by an I/O error: {err}"),
         Error::PoolError(err) => format!("This is caused by a constant pool error: {err}"),

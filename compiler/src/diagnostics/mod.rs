@@ -59,7 +59,6 @@ impl Diagnostic {
         match error {
             Error::SyntaxError(set, pos) => Ok(Diagnostic::SyntaxError(set, pos)),
             Error::CompileError(cause, pos) => Ok(Diagnostic::CompileError(cause, pos)),
-            Error::ResolutionError(msg, pos) => Ok(Diagnostic::ResolutionError(msg, pos)),
             Error::CteError(msg, pos) => Ok(Diagnostic::CteError(msg, pos)),
             other => Err(other),
         }

@@ -7,6 +7,7 @@ use redscript::definition::{AnyDefinition, ClassFlags, Definition};
 use redscript_compiler::diagnostics::Diagnostic;
 use redscript_compiler::error::Error;
 use redscript_compiler::parser;
+use redscript_compiler::symbol::FunctionSignature;
 use redscript_compiler::unit::CompilationUnit;
 
 pub const PREDEF: &[u8] = include_bytes!("../../resources/predef.redscripts");
@@ -49,8 +50,7 @@ impl TestContext {
             .find_map(|(_, def)| match &def.value {
                 AnyDefinition::Function(fun) => {
                     let fun_name = self.pool.names.get(def.name).ok()?;
-                    let fun_name = fun_name.split(";").next()?;
-                    if fun_name == name {
+                    if FunctionSignature::from_raw(&fun_name).name() == name {
                         Some(fun)
                     } else {
                         None

@@ -136,7 +136,7 @@ impl Scope {
         while current_idx != PoolIndex::UNDEFINED {
             let class = pool.class(current_idx)?;
             for fun in &class.functions {
-                if pool.def_name(*fun)?.split(';').next().unwrap() == ident.as_ref() {
+                if FunctionSignature::from_raw(&pool.def_name(*fun)?).name() == ident.as_ref() {
                     functions.push(*fun);
                 }
             }

@@ -1,4 +1,4 @@
-use std::fmt::{Display, Write};
+use std::fmt::Display;
 use std::{io, usize};
 
 use itertools::Itertools;
@@ -8,6 +8,8 @@ use redscript::bundle::PoolError;
 use redscript::bytecode::IntrinsicOp;
 use thiserror::Error;
 
+const MAX_RESOLUTION_ERRORS: usize = 6;
+
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("I/O error")]
@@ -16,34 +18,12 @@ pub enum Error {
     SyntaxError(ExpectedSet, Span),
     #[error("compilation error: {0}")]
     CompileError(Cause, Span),
-    #[error("function resolution error: {0}")]
-    ResolutionError(String, Span),
     #[error("constant pool error: {0}")]
     PoolError(#[from] PoolError),
     #[error("multiple errors")]
     MultipleErrors(Vec<Span>),
     #[error("compile-time eval error: {0}")]
     CteError(&'static str, Span),
-}
-
-impl Error {
-    pub fn no_matching_overload<N: Display>(name: N, errors: &[FunctionMatchError], span: Span) -> Error {
-        let max_errors = 10;
-        let messages = errors.iter().take(max_errors).join("\n");
-
-        let detail = if errors.len() > max_errors {
-            format!("{messages}\n...and more")
-        } else {
-            messages
-        };
-        let error = format!("arguments passed to {name} do not match any of the overloads:\n{detail}",);
-        Error::ResolutionError(error, span)
-    }
-
-    pub fn too_many_matching_overloads<N: Display>(name: N, span: Span) -> Error {
-        let error = format!("arguments passed to {name} satisfy more than one overload");
-        Error::ResolutionError(error, span)
-    }
 }
 
 #[derive(Debug, Error)]
@@ -112,6 +92,12 @@ pub enum Cause {
     UnsupportedPersistent(Ident),
     #[error(r#"this value must be a constant (e.g. 1, "string")"#)]
     InvalidConstant,
+    #[error(
+        "arguments passed to {0} do not match any of the overloads:\n{}{}",
+        .1.iter().take(MAX_RESOLUTION_ERRORS).format("\n"),
+        if .1.len() > MAX_RESOLUTION_ERRORS {"\n...and more"} else {""}
+    )]
+    NoMatchingOverload(Ident, Box<[FunctionMatchError]>),
 }
 
 impl Cause {
@@ -122,31 +108,29 @@ impl Cause {
 }
 
 #[derive(Debug, Error)]
-#[error("{0}")]
-pub struct FunctionMatchError(String);
+pub enum FunctionMatchError {
+    #[error("{} argument: expected {expected}, given {given}", NthArg(*index))]
+    ParameterMismatch {
+        given: Ident,
+        expected: Ident,
+        index: usize,
+    },
+    #[error("return type {expected} does not match {given}")]
+    ReturnMismatch { given: Ident, expected: Ident },
+    #[error("expected {min}-{max} arguments, given {given}")]
+    ArgumentCountMismatch { given: usize, min: usize, max: usize },
+}
 
-impl FunctionMatchError {
-    pub fn parameter_mismatch<C: Display>(cause: C, index: usize) -> FunctionMatchError {
-        let mut output = String::new();
-        match index {
-            0 => write!(output, "1st").unwrap(),
-            1 => write!(output, "2nd").unwrap(),
-            2 => write!(output, "3rd").unwrap(),
-            n => write!(output, "{}th", n + 1).unwrap(),
-        };
-        write!(output, " argument: {cause}").unwrap();
+struct NthArg(usize);
 
-        FunctionMatchError(output)
-    }
-
-    pub fn return_mismatch<N: Display>(expected: N, given: N) -> FunctionMatchError {
-        let message = format!("return type {given} does not match expected {expected}");
-        FunctionMatchError(message)
-    }
-
-    pub fn invalid_arg_count(received: usize, min: usize, max: usize) -> FunctionMatchError {
-        let message = format!("expected {min}-{max} arguments, given {received}");
-        FunctionMatchError(message)
+impl Display for NthArg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.0 {
+            0 => write!(f, "1st"),
+            1 => write!(f, "2nd"),
+            2 => write!(f, "3rd"),
+            n => write!(f, "{}th", n + 1),
+        }
     }
 }
 

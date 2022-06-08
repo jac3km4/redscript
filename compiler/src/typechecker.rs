@@ -579,7 +579,7 @@ impl<'a> TypeChecker<'a> {
                     Ok(conversions) => Ok(FunctionMatch::new(fun_index, checked_args, conversions)),
                     Err(MatcherError::MatchError(err)) => {
                         overload_errors.push(err);
-                        Err(Error::no_matching_overload(name, &overload_errors, span))
+                        Err(Cause::NoMatchingOverload(name, overload_errors.into_boxed_slice()).with_span(span))
                     }
                     Err(MatcherError::Other(err)) => Err(err),
                 }
@@ -598,7 +598,7 @@ impl<'a> TypeChecker<'a> {
 
                 let mut it = matches.into_iter();
                 match it.next() {
-                    None => Err(Error::no_matching_overload(name, &overload_errors, span)),
+                    None => Err(Cause::NoMatchingOverload(name, overload_errors.into_boxed_slice()).with_span(span)),
                     Some((fun_index, convs)) => Ok(FunctionMatch::new(fun_index, checked_args, convs)),
                 }
             }
@@ -631,7 +631,11 @@ impl<'a> TypeChecker<'a> {
         let min_params = params.clone().filter_ok(|param| !param.flags.is_optional()).count();
 
         if arg_count < min_params || arg_count > fun.parameters.len() {
-            let err = FunctionMatchError::invalid_arg_count(arg_count, min_params, fun.parameters.len());
+            let err = FunctionMatchError::ArgumentCountMismatch {
+                given: arg_count,
+                min: min_params,
+                max: fun.parameters.len(),
+            };
             return Err(err.into());
         }
 
@@ -645,33 +649,35 @@ impl<'a> TypeChecker<'a> {
         fun_index: PoolIndex<Function>,
         args: &[Expr<TypedAst>],
         param_types: &[TypeId],
-        expected: Option<&TypeId>,
+        wanted_ret_type: Option<&TypeId>,
         scope: &mut Scope,
         pool: &ConstantPool,
         span: Span,
     ) -> Result<Vec<ArgConversion>, MatcherError> {
         let fun = pool.function(fun_index)?;
         if fun.flags.is_cast() {
-            if let Some(expected) = expected {
+            if let Some(wanted_ret_type) = wanted_ret_type {
                 let type_idx = fun.return_type.ok_or(Cause::VoidCannotBeUsed).with_span(span)?;
                 let ret_type = scope.resolve_type_from_pool(type_idx, pool).with_span(span)?;
 
-                if find_conversion(&ret_type, expected, pool)?.is_none() {
-                    let err = FunctionMatchError::return_mismatch(expected.pretty(pool)?, ret_type.pretty(pool)?);
-                    return Err(err.into());
+                if find_conversion(&ret_type, wanted_ret_type, pool)?.is_none() {
+                    let given = wanted_ret_type.pretty(pool)?;
+                    let expected = ret_type.pretty(pool)?;
+                    return Err(FunctionMatchError::ReturnMismatch { given, expected }.into());
                 }
             }
         }
 
         izip!(args, param_types, 0..args.len())
-            .map(|(arg, param_typ, i)| {
+            .map(|(arg, param_typ, index)| {
                 let arg_typ = type_of(arg, scope, pool)?;
 
                 match find_conversion(&arg_typ, param_typ, pool)? {
                     Some(conv) => Ok(ArgConversion::new(conv, param_typ.clone())),
                     None => {
-                        let cause = Cause::TypeError(arg_typ.pretty(pool)?, param_typ.pretty(pool)?);
-                        Err(FunctionMatchError::parameter_mismatch(cause, i).into())
+                        let given = arg_typ.pretty(pool)?;
+                        let expected = param_typ.pretty(pool)?;
+                        Err(FunctionMatchError::ParameterMismatch { given, expected, index }.into())
                     }
                 }
             })
