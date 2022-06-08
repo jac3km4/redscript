@@ -9,13 +9,21 @@ use redscript::definition::{AnyDefinition, Definition, Function, Type};
 use crate::error::Error;
 use crate::Decompiler;
 
-const INDENT: &str = "  ";
+const INDENT_CHAR: char = ' ';
+const INDENT_SIZE: usize = 2;
 
 #[derive(Debug, Clone, Copy)]
 pub enum OutputMode {
     Code { verbose: bool },
     SyntaxTree,
     Bytecode,
+}
+
+fn write_indent<W: Write>(out: &mut W, depth: usize) -> Result<(), Error> {
+    if depth > 0 {
+        write!(out, "{0:1$}", INDENT_CHAR, INDENT_SIZE * depth)?;
+    }
+    Ok(())
 }
 
 pub fn write_definition<W: Write>(
@@ -25,8 +33,6 @@ pub fn write_definition<W: Write>(
     depth: usize,
     mode: OutputMode,
 ) -> Result<(), Error> {
-    let padding = INDENT.repeat(depth);
-
     match &definition.value {
         AnyDefinition::Type(_) => write!(out, "{}", format_type(definition, pool)?)?,
         AnyDefinition::Class(class) => {
@@ -69,7 +75,8 @@ pub fn write_definition<W: Write>(
         }
         AnyDefinition::EnumValue(val) => {
             let name = pool.names.get(definition.name)?;
-            writeln!(out, "{}{} = {},", padding, name, val)?
+            write_indent(out, depth)?;
+            writeln!(out, "{} = {},", name, val)?
         }
         AnyDefinition::Enum(enum_) => {
             writeln!(out)?;
@@ -97,7 +104,8 @@ pub fn write_definition<W: Write>(
                 .format(", ");
 
             writeln!(out)?;
-            write!(out, "{}{} ", padding, fun.visibility)?;
+            write_indent(out, depth)?;
+            write!(out, "{} ", fun.visibility)?;
             if fun.flags.is_final() {
                 write!(out, "final ")?;
             }
@@ -132,7 +140,7 @@ pub fn write_definition<W: Write>(
         AnyDefinition::Local(local) => {
             let type_name = format_type(pool.definition(local.type_)?, pool)?;
             let name = pool.names.get(definition.name)?;
-            write!(out, "{}", padding)?;
+            write_indent(out, depth)?;
             if local.flags.is_const() {
                 write!(out, "const ")?;
             } else {
@@ -146,18 +154,17 @@ pub fn write_definition<W: Write>(
 
             writeln!(out)?;
             for property in &field.attributes {
-                writeln!(
-                    out,
-                    "{}@runtimeProperty(\"{}\", \"{}\")",
-                    padding, property.name, property.value
-                )?;
+                write_indent(out, depth)?;
+                writeln!(out, "@runtimeProperty(\"{}\", \"{}\")", property.name, property.value)?;
             }
 
             for property in &field.defaults {
-                writeln!(out, "{}@default({}, {})", padding, property.name, property.value)?;
+                write_indent(out, depth)?;
+                writeln!(out, "@default({}, {})", property.name, property.value)?;
             }
 
-            write!(out, "{}{} ", padding, field.visibility)?;
+            write_indent(out, depth)?;
+            write!(out, "{} ", field.visibility)?;
             if field.flags.is_inline() {
                 write!(out, "inline ")?;
             }
@@ -199,7 +206,8 @@ fn write_function_body<W: Write>(
         OutputMode::SyntaxTree => {
             let code = Decompiler::decompiled(fun, pool)?;
             for expr in code.exprs {
-                writeln!(out, "{}{:#?}", INDENT.repeat(depth + 1), expr)?;
+                write_indent(out, depth + 1)?;
+                writeln!(out, "{:#?}", expr)?;
             }
         }
         OutputMode::Bytecode => {
@@ -209,18 +217,20 @@ fn write_function_body<W: Write>(
             }
             for (offset, instr) in fun.code.iter() {
                 let op = format!("{:?}", instr).to_lowercase();
-                writeln!(out, "{}{}: {}", INDENT.repeat(depth + 1), offset.value, op)?;
+                write_indent(out, depth + 1)?;
+                writeln!(out, "{}: {}", offset.value, op)?;
             }
         }
     }
 
-    write!(out, "{}}}", INDENT.repeat(depth))?;
+    write_indent(out, depth)?;
+    write!(out, "}}")?;
     Ok(())
 }
 
 fn write_seq<W: Write>(out: &mut W, code: &Seq<SourceAst>, verbose: bool, depth: usize) -> Result<(), Error> {
     for expr in code.exprs.iter().filter(|expr| !expr.is_empty()) {
-        write!(out, "{}", INDENT.repeat(depth))?;
+        write_indent(out, depth)?;
         write_expr(out, expr, verbose, depth)?;
         writeln!(out, ";")?;
     }
@@ -238,8 +248,6 @@ fn write_expr_nested<W: Write>(
     verbose: bool,
     depth: usize,
 ) -> Result<(), Error> {
-    let padding = INDENT.repeat(depth);
-
     match expr {
         Expr::Ident(ident, _) => write!(out, "{}", ident)?,
         Expr::Constant(cons, _) => match cons {
@@ -316,16 +324,19 @@ fn write_expr_nested<W: Write>(
             write_expr(out, expr, verbose, 0)?;
             writeln!(out, " {{")?;
             for SwitchCase { matcher, body } in cases {
-                write!(out, "{}  case ", padding)?;
+                write_indent(out, depth + 1)?;
+                write!(out, "case ")?;
                 write_expr(out, matcher, verbose, 0)?;
                 writeln!(out, ":")?;
                 write_seq(out, body, verbose, depth + 2)?;
             }
             if let Some(default_body) = default {
-                writeln!(out, "{}  default:", padding)?;
+                write_indent(out, depth + 1)?;
+                writeln!(out, "default:")?;
                 write_seq(out, default_body, verbose, depth + 2)?;
             }
-            write!(out, "{}}}", padding)?
+            write_indent(out, depth)?;
+            write!(out, "}}")?
         }
         Expr::Goto(jump, _) if !jump.resolved => write!(out, "goto {}", jump.position)?,
         Expr::Goto(_, _) => (),
@@ -334,11 +345,13 @@ fn write_expr_nested<W: Write>(
             write_expr(out, condition, verbose, 0)?;
             writeln!(out, " {{")?;
             write_seq(out, true_, verbose, depth + 1)?;
-            write!(out, "{}}}", padding)?;
+            write_indent(out, depth)?;
+            write!(out, "}}")?;
             if let Some(branch) = false_ {
                 writeln!(out, " else {{")?;
                 write_seq(out, branch, verbose, depth + 1)?;
-                write!(out, "{}}}", padding)?
+                write_indent(out, depth)?;
+                write!(out, "}}")?
             }
         }
         Expr::Conditional(condition, true_, false_, _) => {
@@ -353,7 +366,8 @@ fn write_expr_nested<W: Write>(
             write_expr(out, condition, verbose, 0)?;
             writeln!(out, " {{")?;
             write_seq(out, body, verbose, depth + 1)?;
-            write!(out, "{}}}", padding)?;
+            write_indent(out, depth)?;
+            write!(out, "}}")?;
         }
         Expr::Member(expr, accessor, _) => {
             write_expr(out, expr, verbose, 0)?;
