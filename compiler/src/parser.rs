@@ -227,20 +227,20 @@ peg::parser! {
                else { str.parse::<i32>().or(Err("valid 32-bit int")).map(Constant::I32) }
             }
 
-        rule escaped_char() -> String
-            = !['\\' | '\"'] c:$([_]) { String::from(c) }
-            / r#"\n"# { String::from('\n') }
-            / r#"\r"# { String::from('\r') }
-            / r#"\t"# { String::from('\t') }
-            / r#"\'"# { String::from('\'') }
-            / r#"\""# { String::from('\"') }
-            / r#"\\"# { String::from('\\') }
+        rule escaped_char() -> char
+            = !['\\' | '\"'] c:[_] { c }
+            / r#"\n"# { '\n' }
+            / r#"\r"# { '\r' }
+            / r#"\t"# { '\t' }
+            / r#"\'"# { '\'' }
+            / r#"\""# { '\"' }
+            / r#"\\"# { '\\' }
             / "\\u{" u:$(['a'..='f' | 'A'..='F' | '0'..='9']*<1,6>) "}" {
-                String::from(char::from_u32(u32::from_str_radix(u, 16).unwrap()).unwrap())
+                char::from_u32(u32::from_str_radix(u, 16).unwrap()).unwrap()
             }
 
         rule string_contents() -> String
-            = s:escaped_char()* { s.join("") }
+            = s:escaped_char()* { s.into_iter().collect() }
 
         pub rule escaped_string() -> String
             = "\"" s:string_contents() "\"" { s }
