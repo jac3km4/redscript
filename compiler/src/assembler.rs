@@ -580,14 +580,14 @@ impl Assembler {
         locations.resize(self.labels, Location::new(0));
 
         let code = Code(self.instructions);
-        for (loc, instr) in code.cursor() {
+        for (loc, instr) in code.iter() {
             if let Instr::Target(label) = instr {
                 locations[label.index] = loc;
             }
         }
 
         let mut resolved = Vec::with_capacity(code.0.len());
-        for (loc, instr) in code.cursor().filter(|(_, instr)| !matches!(instr, Instr::Target(_))) {
+        for (loc, instr) in code.iter().filter(|(_, instr)| !matches!(instr, Instr::Target(_))) {
             resolved.push(instr.resolve_labels(loc, &locations));
         }
         Code(resolved)

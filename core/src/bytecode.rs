@@ -914,9 +914,10 @@ pub struct Location {
 }
 
 impl Location {
-    pub const MAX: Location = Location { value: std::u16::MAX };
+    pub const MAX: Location = Location::new(u16::MAX);
+    pub const ZERO: Location = Location::new(0);
 
-    pub fn new(value: u16) -> Location {
+    pub const fn new(value: u16) -> Location {
         Location { value }
     }
 
@@ -978,7 +979,11 @@ impl<Loc: Clone> Code<Loc> {
     }
 
     pub fn cursor(&self) -> CodeCursor<Loc> {
-        CodeCursor::new(self)
+        CodeCursor::new(&self.0)
+    }
+
+    pub fn iter(&self) -> CodeIter<Loc> {
+        CodeIter::new(&self.0)
     }
 }
 
@@ -1084,16 +1089,15 @@ pub struct CodeCursor<'a, Loc> {
 }
 
 impl<'a, Loc: Clone> CodeCursor<'a, Loc> {
-    pub fn new(Code(code): &'a Code<Loc>) -> Self {
-        let offsets = code
-            .iter()
-            .scan(0, |acc, instr| {
-                *acc += instr.size();
-                Some(*acc)
-            })
-            .collect();
+    pub fn new(code: &'a [Instr<Loc>]) -> Self {
+        let mut offsets = Vec::with_capacity(code.len());
+        let mut size = 0;
+        for instr in code {
+            size += instr.size();
+            offsets.push(size);
+        }
 
-        CodeCursor {
+        Self {
             code,
             offsets,
             index: 0,
@@ -1106,31 +1110,24 @@ impl<'a, Loc: Clone> CodeCursor<'a, Loc> {
         Ok(instr.clone())
     }
 
+    #[inline]
     pub fn peek(&self) -> Option<Instr<Loc>> {
         self.code.get(self.index as usize).cloned()
     }
 
     pub fn pos(&self) -> Location {
         if self.index == 0 {
-            Location::new(0)
+            Location::ZERO
         } else {
             Location::new(self.offsets[self.index as usize - 1])
         }
     }
 
-    pub fn range(
-        &self,
-        from: Location,
-        to: Location,
-    ) -> Result<impl Iterator<Item = (Location, &Instr<Loc>)>, CursorError> {
+    pub fn range(&self, from: Location, to: Location) -> Result<CodeIter<Loc>, CursorError> {
         let start = self.get_index(from)?;
         let end = self.get_index(to)?;
-        let iter = std::iter::once(&0u16)
-            .chain(&self.offsets[start..end])
-            .copied()
-            .map(Location::new)
-            .zip(&self.code[start..end]);
-        Ok(iter)
+        let slice = &self.code[start..end];
+        Ok(CodeIter::new_at(slice, from))
     }
 
     pub fn seek_abs(&mut self, position: Location) -> Result<(), CursorError> {
@@ -1155,12 +1152,37 @@ impl<'a, Loc: Clone> CodeCursor<'a, Loc> {
     }
 }
 
-impl<'a, Loc: Clone> Iterator for CodeCursor<'a, Loc> {
+#[derive(Debug)]
+pub struct CodeIter<'a, Loc> {
+    slice: &'a [Instr<Loc>],
+    offset: u16,
+}
+
+impl<'a, Loc> CodeIter<'a, Loc> {
+    pub fn new(code: &'a [Instr<Loc>]) -> Self {
+        Self::new_at(code, Location::ZERO)
+    }
+
+    fn new_at(code: &'a [Instr<Loc>], loc: Location) -> Self {
+        Self {
+            offset: loc.value,
+            slice: code,
+        }
+    }
+}
+
+impl<'a, Loc: Clone> Iterator for CodeIter<'a, Loc> {
     type Item = (Location, Instr<Loc>);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let position = self.pos();
-        self.pop().ok().map(|instr| (position, instr))
+        if let [head, tail @ ..] = self.slice {
+            let location = Location::new(self.offset);
+            self.slice = tail;
+            self.offset += head.size();
+            Some((location, head.clone()))
+        } else {
+            None
+        }
     }
 }
 

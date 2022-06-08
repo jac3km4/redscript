@@ -207,7 +207,7 @@ fn write_function_body<W: Write>(
                 write_definition(out, pool.definition(*local)?, pool, depth + 1, mode)?;
                 writeln!(out)?;
             }
-            for (offset, instr) in fun.code.cursor() {
+            for (offset, instr) in fun.code.iter() {
                 let op = format!("{:?}", instr).to_lowercase();
                 writeln!(out, "{}{}: {}", INDENT.repeat(depth + 1), offset.value, op)?;
             }
