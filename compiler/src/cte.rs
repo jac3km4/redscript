@@ -32,16 +32,16 @@ impl Context {
                 }
                 _ => Err(Error::CteError("unsupported funtion", *span)),
             },
-            Expr::Conditional(cond, true_, false_, _) => match self.eval(&*cond)? {
-                Value::Bool(true) => self.eval(&*true_),
-                Value::Bool(false) => self.eval(&*false_),
+            Expr::Conditional(cond, true_, false_, _) => match self.eval(cond)? {
+                Value::Bool(true) => self.eval(true_),
+                Value::Bool(false) => self.eval(false_),
             },
-            Expr::BinOp(lhs, rhs, op, span) => match (op, self.eval(&*lhs)?, self.eval(&*rhs)?) {
+            Expr::BinOp(lhs, rhs, op, span) => match (op, self.eval(lhs)?, self.eval(rhs)?) {
                 (BinOp::LogicAnd, Value::Bool(x), Value::Bool(y)) => Ok(Value::Bool(x && y)),
                 (BinOp::LogicOr, Value::Bool(x), Value::Bool(y)) => Ok(Value::Bool(x || y)),
                 _ => Err(Error::CteError("unsupported operation", *span)),
             },
-            Expr::UnOp(expr, op, span) => match (op, self.eval(&*expr)?) {
+            Expr::UnOp(expr, op, span) => match (op, self.eval(expr)?) {
                 (UnOp::LogicNot, Value::Bool(res)) => Ok(Value::Bool(!res)),
                 _ => Err(Error::CteError("unsupported operation", *span)),
             },
