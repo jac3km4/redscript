@@ -1,4 +1,6 @@
-## [0.5.4] - Unreleased
+## [0.5.6]
+
+## [0.5.5]
 - support field defaults (2a15c1eb12a9523ba065accc1224bd1f477b4358)
 ```swift
 // you can define defaults for fields in classes and structs
@@ -25,6 +27,9 @@ class Class {
     let int: Int32;
 }
 ```
+
+## [0.5.4]
+- fix String initialization (5a647a976e08b700fae32d625028735e9c4728d1)
 
 ## [0.5.3]
 - local initializers - fixes surprising behavior with some types, particularly arrays (4870193b2493d158106e6f241f760fef89024bfa, 766b6aa6c0fa042a22d955e8d29ad96df260c8cb)
