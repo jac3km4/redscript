@@ -14,13 +14,15 @@ use redscript_compiler::source_map::{Files, SourceFilter};
 use redscript_compiler::unit::CompilationUnit;
 use serde::Deserialize;
 use time::format_description::well_known::Rfc3339 as Rfc3339Format;
-use time::{OffsetDateTime};
+use time::format_description::FormatItem;
+use time::macros::format_description;
+use time::OffsetDateTime;
 #[cfg(feature = "mmap")]
 use vmap::Map;
 
 fn main() -> Result<(), Error> {
     // the way cyberpunk passes CLI args is broken, this is a workaround
-    let args: Vec<String> = std::env::args().skip(1).collect(); 
+    let args: Vec<String> = std::env::args().skip(1).collect();
     match &args[..] {
         [cmd, path_str, ..] if cmd == "-compile" => {
             let script_dir = PathBuf::from(path_str.split('"').next().unwrap());
@@ -30,11 +32,21 @@ fn main() -> Result<(), Error> {
             let manifest = ScriptManifest::load(&script_dir);
 
             // set up logger with an optional manifest
-            setup_logger(&cache_dir, manifest.as_ref().ok().unwrap().append_date_to_logfiles.unwrap())?;
+            setup_logger(
+                &cache_dir,
+                manifest
+                    .as_ref()
+                    .ok()
+                    .and_then(|m| m.append_date_to_logfiles)
+                    .unwrap_or(false),
+            )?;
 
             // get manifest or fallback
             let manifest = manifest.unwrap_or_else(|err| {
-                log::info!("Could not load the manifest, falling back to defaults (caused by {})", err);
+                log::info!(
+                    "Could not load the manifest, falling back to defaults (caused by {})",
+                    err
+                );
                 ScriptManifest::default()
             });
 
@@ -60,44 +72,32 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
-pub fn exists(file : &Path) -> bool {
-    fs::metadata(file).is_ok()
-}
+fn setup_logger(cache_dir: &Path, include_date_in_filename: bool) -> Result<(), Error> {
+    let parent_dir = cache_dir.parent().unwrap();
 
-fn setup_logger(cache_dir: &Path, date_time_logger : bool) -> Result<(), Error> 
-{
-    let parent_dir  = cache_dir.parent().unwrap();
-    let mut log_name : String = "redscript".to_owned();
-    
-    if date_time_logger == true
-    {
-        log_name.push_str("_");
-        let time_create = OffsetDateTime::now_local().unwrap().format(&Rfc3339Format).unwrap();
-        log_name.push_str(&time_create);
-
-        log_name = log_name.replace("-", ".").replace(":", "-")[..29].to_string();
-        log_name.replace_range(20..21, "_");
-    }
-    
-    log_name.push_str(".log");
+    let log_file_name = if include_date_in_filename == true {
+        const DATE_FORMAT: &[FormatItem] = format_description!("[year].[month].[day]_[hour]-[minute]-[second]");
+        let date = OffsetDateTime::now_utc().format(&DATE_FORMAT).unwrap();
+        format!("redscript-{date}.log")
+    } else {
+        "redscript.log".to_owned()
+    };
 
     // Log directory make
-    let log_dir = parent_dir.join("logs");
+    let log_dir = &parent_dir.join("logs");
 
-    if !exists(&log_dir)
-    {
+    if !log_dir.exists() {
         fs::create_dir(log_dir)?;
     }
 
     fern::Dispatch::new()
-        .format(move |out, message, rec| 
-        {
+        .format(move |out, message, rec| {
             let time = OffsetDateTime::now_local().unwrap().format(&Rfc3339Format).unwrap();
-                out.finish(format_args!("{} [{}] {}", time, rec.level(), message));
+            out.finish(format_args!("{} [{}] {}", time, rec.level(), message));
         })
         .level(log::LevelFilter::Info)
         .chain(io::stdout())
-        .chain(fern::log_file(parent_dir.join("logs").join(log_name))?)
+        .chain(fern::log_file(log_dir.join(log_file_name))?)
         .apply()
         .expect("Failed to initialize the logger");
     Ok(())
@@ -186,7 +186,7 @@ impl CompileTimestamp {
 #[derive(Debug, Deserialize, Default)]
 struct ScriptManifest {
     exclusions: HashSet<String>,
-    append_date_to_logfiles: Option<bool>
+    append_date_to_logfiles: Option<bool>,
 }
 
 impl ScriptManifest {
