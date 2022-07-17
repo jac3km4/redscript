@@ -14,7 +14,7 @@ use redscript_compiler::source_map::{Files, SourceFilter};
 use redscript_compiler::unit::CompilationUnit;
 use serde::Deserialize;
 use time::format_description::well_known::Rfc3339 as Rfc3339Format;
-use time::OffsetDateTime;
+use time::{OffsetDateTime, UtcOffset};
 #[cfg(feature = "mmap")]
 use vmap::Map;
 
@@ -49,18 +49,27 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
-fn setup_logger(cache_dir: &Path) -> Result<(), Error> {
+fn setup_logger(cache_dir: &Path) -> Result<(), Error> 
+{
+    let time_create = OffsetDateTime::now_local().unwrap().format(&Rfc3339Format).unwrap();
+    let mut log_name : String = "redscript_".to_owned();
+    log_name.push_str(&time_create);
+
+    log_name = log_name.replace("-", ".").replace(":", "-")[..29].to_string();
+    log_name.push_str(".log");
+    log_name.replace_range(20..21, "_");
+    
     fern::Dispatch::new()
-        .format(move |out, message, rec| {
+        .format(move |out, message, rec| 
+        {
             let time = OffsetDateTime::now_local().unwrap().format(&Rfc3339Format).unwrap();
-            out.finish(format_args!("{} [{}] {}", time, rec.level(), message));
+                out.finish(format_args!("{} [{}] {}", time, rec.level(), message));
         })
         .level(log::LevelFilter::Info)
         .chain(io::stdout())
-        .chain(fern::log_file(cache_dir.join("redscript.log"))?)
+        .chain(fern::log_file(cache_dir.join(log_name))?)
         .apply()
         .expect("Failed to initialize the logger");
-
     Ok(())
 }
 
