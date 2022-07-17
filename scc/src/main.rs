@@ -20,13 +20,24 @@ use vmap::Map;
 
 fn main() -> Result<(), Error> {
     // the way cyberpunk passes CLI args is broken, this is a workaround
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let args: Vec<String> = std::env::args().skip(1).collect(); 
     match &args[..] {
         [cmd, path_str, ..] if cmd == "-compile" => {
             let script_dir = PathBuf::from(path_str.split('"').next().unwrap());
             let cache_dir = script_dir.parent().unwrap().join("cache");
-            setup_logger(&cache_dir)?;
-            let manifest = ScriptManifest::load_with_fallback(&script_dir);
+
+            // load manifest without fallback
+            let manifest = ScriptManifest::load(&script_dir);
+
+            // set up logger with an optional manifest
+            setup_logger(&cache_dir, manifest.as_ref().ok().unwrap().append_date_to_logfiles.unwrap())?;
+
+            // get manifest or fallback
+            let manifest = manifest.unwrap_or_else(|err| {
+                log::info!("Could not load the manifest, falling back to defaults (caused by {})", err);
+                ScriptManifest::default()
+            });
+
             let files = Files::from_dir(&script_dir, manifest.source_filter())?;
 
             match load_scripts(&cache_dir, &files) {
@@ -53,34 +64,12 @@ pub fn exists(file : &Path) -> bool {
     fs::metadata(file).is_ok()
 }
 
-fn check_dt_log(cache_dir: &Path)  -> Result<bool, Error> 
-{
-    let ini_path = cache_dir.join("config").join("redscript.ini");
-
-    if exists(&ini_path)
-    {
-        let data = fs::read_to_string(&ini_path)?;
-        let mut clean_data = data.trim();
-        let key_name : String = "dt_log".to_owned();
-
-        if clean_data[..key_name.len()].eq(&key_name)
-        {
-            let find_key_value = clean_data.find("=").unwrap();
-            clean_data = &clean_data[find_key_value..clean_data.len()];
-
-            let result = clean_data.ends_with("1");
-            return Ok(result);
-        }
-    }
-    return Ok(false);
-}
-
-fn setup_logger(cache_dir: &Path) -> Result<(), Error> 
+fn setup_logger(cache_dir: &Path, date_time_logger : bool) -> Result<(), Error> 
 {
     let parent_dir  = cache_dir.parent().unwrap();
     let mut log_name : String = "redscript".to_owned();
     
-    if check_dt_log(&parent_dir)?
+    if date_time_logger == true
     {
         log_name.push_str("_");
         let time_create = OffsetDateTime::now_local().unwrap().format(&Rfc3339Format).unwrap();
@@ -197,26 +186,16 @@ impl CompileTimestamp {
 #[derive(Debug, Deserialize, Default)]
 struct ScriptManifest {
     exclusions: HashSet<String>,
+    append_date_to_logfiles: Option<bool>
 }
 
 impl ScriptManifest {
     pub fn load(script_dir: &Path) -> Result<Self, Error> {
         let path = script_dir.join("redscript.toml");
         let contents = std::fs::read_to_string(&path)?;
-        log::info!("Loaded script manfiest from {}", path.display());
         let manifest =
             toml::from_str(&contents).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err.to_string()))?;
         Ok(manifest)
-    }
-
-    pub fn load_with_fallback(script_dir: &Path) -> Self {
-        Self::load(script_dir).unwrap_or_else(|err| {
-            log::info!(
-                "Could not load the manifest, falling back to defaults (caused by {})",
-                err
-            );
-            Self::default()
-        })
     }
 
     pub fn source_filter(self) -> SourceFilter {
