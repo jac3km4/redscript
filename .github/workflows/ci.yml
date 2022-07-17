@@ -12,9 +12,6 @@ jobs:
       - uses: actions/checkout@v2
       - name: Prepare toolchain
         uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly
-          override: true
       - uses: Swatinem/rust-cache@v1
       - name: copy cargo config
         run: xcopy /H /E /Y .\\.cargo C:\\Rust\\.cargo\
