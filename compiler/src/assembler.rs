@@ -466,7 +466,6 @@ impl Assembler {
         span: Span,
     ) -> Result<(), Error> {
         let mut get_arg_type =
-            #[inline]
             |i| type_of(&args[i], scope, pool).and_then(|typ| scope.get_type_index(&typ, pool).with_span(span));
 
         match intrinsic {

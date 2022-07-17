@@ -1,5 +1,3 @@
-#![feature(stmt_expr_attributes)]
-
 pub mod assembler;
 pub mod cte;
 pub mod diagnostics;
