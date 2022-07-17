@@ -14,7 +14,7 @@ use redscript_compiler::source_map::{Files, SourceFilter};
 use redscript_compiler::unit::CompilationUnit;
 use serde::Deserialize;
 use time::format_description::well_known::Rfc3339 as Rfc3339Format;
-use time::{OffsetDateTime, UtcOffset};
+use time::{OffsetDateTime};
 #[cfg(feature = "mmap")]
 use vmap::Map;
 
@@ -49,16 +49,57 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
+pub fn exists(file : &Path) -> bool {
+    fs::metadata(file).is_ok()
+}
+
+fn check_dt_log(cache_dir: &Path)  -> Result<bool, Error> 
+{
+    let ini_path = cache_dir.join("config").join("redscript.ini");
+
+    if exists(&ini_path)
+    {
+        let data = fs::read_to_string(&ini_path)?;
+        let mut clean_data = data.trim();
+        let key_name : String = "dt_log".to_owned();
+
+        if clean_data[..key_name.len()].eq(&key_name)
+        {
+            let find_key_value = clean_data.find("=").unwrap();
+            clean_data = &clean_data[find_key_value..clean_data.len()];
+
+            let result = clean_data.ends_with("1");
+            return Ok(result);
+        }
+    }
+    return Ok(false);
+}
+
 fn setup_logger(cache_dir: &Path) -> Result<(), Error> 
 {
-    let time_create = OffsetDateTime::now_local().unwrap().format(&Rfc3339Format).unwrap();
-    let mut log_name : String = "redscript_".to_owned();
-    log_name.push_str(&time_create);
-
-    log_name = log_name.replace("-", ".").replace(":", "-")[..29].to_string();
-    log_name.push_str(".log");
-    log_name.replace_range(20..21, "_");
+    let parent_dir  = cache_dir.parent().unwrap();
+    let mut log_name : String = "redscript".to_owned();
     
+    if check_dt_log(&parent_dir)?
+    {
+        log_name.push_str("_");
+        let time_create = OffsetDateTime::now_local().unwrap().format(&Rfc3339Format).unwrap();
+        log_name.push_str(&time_create);
+
+        log_name = log_name.replace("-", ".").replace(":", "-")[..29].to_string();
+        log_name.replace_range(20..21, "_");
+    }
+    
+    log_name.push_str(".log");
+
+    // Log directory make
+    let log_dir = parent_dir.join("logs");
+
+    if !exists(&log_dir)
+    {
+        fs::create_dir(log_dir)?;
+    }
+
     fern::Dispatch::new()
         .format(move |out, message, rec| 
         {
@@ -67,7 +108,7 @@ fn setup_logger(cache_dir: &Path) -> Result<(), Error>
         })
         .level(log::LevelFilter::Info)
         .chain(io::stdout())
-        .chain(fern::log_file(cache_dir.join(log_name))?)
+        .chain(fern::log_file(parent_dir.join("logs").join(log_name))?)
         .apply()
         .expect("Failed to initialize the logger");
     Ok(())
