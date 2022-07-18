@@ -14,6 +14,8 @@ use redscript_compiler::source_map::{Files, SourceFilter};
 use redscript_compiler::unit::CompilationUnit;
 use serde::Deserialize;
 use time::format_description::well_known::Rfc3339 as Rfc3339Format;
+use time::format_description::FormatItem;
+use time::macros::format_description;
 use time::OffsetDateTime;
 #[cfg(feature = "mmap")]
 use vmap::Map;
@@ -25,8 +27,29 @@ fn main() -> Result<(), Error> {
         [cmd, path_str, ..] if cmd == "-compile" => {
             let script_dir = PathBuf::from(path_str.split('"').next().unwrap());
             let cache_dir = script_dir.parent().unwrap().join("cache");
-            setup_logger(&cache_dir)?;
-            let manifest = ScriptManifest::load_with_fallback(&script_dir);
+
+            // load manifest without fallback
+            let manifest = ScriptManifest::load(&script_dir);
+
+            // set up logger with an optional manifest
+            setup_logger(
+                &cache_dir,
+                manifest
+                    .as_ref()
+                    .ok()
+                    .and_then(|m| m.append_date_to_logfiles)
+                    .unwrap_or(false),
+            )?;
+
+            // get manifest or fallback
+            let manifest = manifest.unwrap_or_else(|err| {
+                log::info!(
+                    "Could not load the manifest, falling back to defaults (caused by {})",
+                    err
+                );
+                ScriptManifest::default()
+            });
+
             let files = Files::from_dir(&script_dir, manifest.source_filter())?;
 
             match load_scripts(&cache_dir, &files) {
@@ -49,7 +72,24 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
-fn setup_logger(cache_dir: &Path) -> Result<(), Error> {
+fn setup_logger(cache_dir: &Path, include_date_in_filename: bool) -> Result<(), Error> {
+    let parent_dir = cache_dir.parent().unwrap();
+
+    let log_file_name = if include_date_in_filename == true {
+        const DATE_FORMAT: &[FormatItem] = format_description!("[year].[month].[day]_[hour]-[minute]-[second]");
+        let date = OffsetDateTime::now_utc().format(&DATE_FORMAT).unwrap();
+        format!("redscript-{date}.log")
+    } else {
+        "redscript.log".to_owned()
+    };
+
+    // Log directory make
+    let log_dir = &parent_dir.join("logs");
+
+    if !log_dir.exists() {
+        fs::create_dir(log_dir)?;
+    }
+
     fern::Dispatch::new()
         .format(move |out, message, rec| {
             let time = OffsetDateTime::now_local().unwrap().format(&Rfc3339Format).unwrap();
@@ -57,10 +97,9 @@ fn setup_logger(cache_dir: &Path) -> Result<(), Error> {
         })
         .level(log::LevelFilter::Info)
         .chain(io::stdout())
-        .chain(fern::log_file(cache_dir.join("redscript.log"))?)
+        .chain(fern::log_file(log_dir.join(log_file_name))?)
         .apply()
         .expect("Failed to initialize the logger");
-
     Ok(())
 }
 
@@ -147,26 +186,16 @@ impl CompileTimestamp {
 #[derive(Debug, Deserialize, Default)]
 struct ScriptManifest {
     exclusions: HashSet<String>,
+    append_date_to_logfiles: Option<bool>,
 }
 
 impl ScriptManifest {
     pub fn load(script_dir: &Path) -> Result<Self, Error> {
         let path = script_dir.join("redscript.toml");
         let contents = std::fs::read_to_string(&path)?;
-        log::info!("Loaded script manfiest from {}", path.display());
         let manifest =
             toml::from_str(&contents).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err.to_string()))?;
         Ok(manifest)
-    }
-
-    pub fn load_with_fallback(script_dir: &Path) -> Self {
-        Self::load(script_dir).unwrap_or_else(|err| {
-            log::info!(
-                "Could not load the manifest, falling back to defaults (caused by {})",
-                err
-            );
-            Self::default()
-        })
     }
 
     pub fn source_filter(self) -> SourceFilter {
