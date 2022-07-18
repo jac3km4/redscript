@@ -62,7 +62,10 @@ fn main() -> Result<(), Error> {
                     msgbox::create("Compilation error", &content, msgbox::IconType::Error).unwrap();
                 }
                 #[cfg(not(feature = "popup"))]
-                Err(_) => {}
+                Err(err) => {
+                    let content = error_message(err, &files, &script_dir);
+                    log::error!("Compilation Error: {}", content);
+                }
             }
         }
         _ => {
@@ -107,7 +110,6 @@ fn load_scripts(cache_dir: &Path, files: &Files) -> Result<(), Error> {
     let bundle_path = cache_dir.join("final.redscripts");
     let backup_path = cache_dir.join("final.redscripts.bk");
     let timestamp_path = cache_dir.join("redscript.ts");
-
     let mut ts_lock = RwLock::new(
         OpenOptions::new()
             .read(true)
@@ -131,6 +133,11 @@ fn load_scripts(cache_dir: &Path, files: &Files) -> Result<(), Error> {
             fs::copy(&bundle_path, &backup_path)?;
         }
         _ => {}
+    }
+    
+    if !backup_path.exists()
+    {
+        fs::copy(&bundle_path, &backup_path)?;
     }
 
     #[cfg(feature = "mmap")]
