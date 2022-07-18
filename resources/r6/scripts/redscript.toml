@@ -3,4 +3,4 @@ exclusions = [
   "youCANSaveRightNow"
 ]
 
-append_date_to_logfiles = true
+append_date_to_logfiles = false
