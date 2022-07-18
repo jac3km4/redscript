@@ -17,8 +17,6 @@ use time::format_description::well_known::Rfc3339 as Rfc3339Format;
 use time::format_description::FormatItem;
 use time::macros::format_description;
 use time::OffsetDateTime;
-#[cfg(feature = "mmap")]
-use vmap::Map;
 
 fn main() -> Result<(), Error> {
     // the way cyberpunk passes CLI args is broken, this is a workaround
@@ -61,7 +59,7 @@ fn main() -> Result<(), Error> {
                     #[cfg(feature = "popup")]
                     msgbox::create("Compilation error", &content, msgbox::IconType::Error).unwrap();
 
-                    log::error!("Compilation Error: {}", content);
+                    log::error!("Compilation error: {}", content);
                 }
             }
         }
@@ -75,7 +73,7 @@ fn main() -> Result<(), Error> {
 fn setup_logger(cache_dir: &Path, include_date_in_filename: bool) -> Result<(), Error> {
     let parent_dir = cache_dir.parent().unwrap();
 
-    let log_file_name = if include_date_in_filename == true {
+    let log_file_name = if include_date_in_filename {
         const DATE_FORMAT: &[FormatItem] = format_description!("[year].[month].[day]_[hour]-[minute]-[second]");
         let date = OffsetDateTime::now_utc().format(&DATE_FORMAT).unwrap();
         format!("redscript-{date}.log")
@@ -83,7 +81,6 @@ fn setup_logger(cache_dir: &Path, include_date_in_filename: bool) -> Result<(), 
         "redscript.log".to_owned()
     };
 
-    // Log directory make
     let log_dir = &parent_dir.join("logs");
 
     if !log_dir.exists() {
@@ -129,16 +126,15 @@ fn load_scripts(cache_dir: &Path, files: &Files) -> Result<(), Error> {
             );
             fs::copy(&bundle_path, &backup_path)?;
         }
+        Some(_) if !backup_path.exists() => {
+            log::warn!("A compiler timestamp was found but not the backup file, your installation might be corrupted, try removing redscript.ts and verifying game files");
+        }
         _ => {}
-    }
-
-    if !backup_path.exists() {
-        log::warn!("We found a compiler timestamp but no backup, your installation might be corrupted, try verifying games files and removing redscript.ts");
     }
 
     #[cfg(feature = "mmap")]
     let mut bundle = {
-        let (map, _) = Map::with_options()
+        let (map, _) = vmap::Map::with_options()
             .open(backup_path)
             .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
         ScriptBundle::load(&mut io::Cursor::new(map.as_ref()))?
