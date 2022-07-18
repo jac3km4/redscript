@@ -56,14 +56,11 @@ fn main() -> Result<(), Error> {
                 Ok(_) => {
                     log::info!("Output successfully saved in {}", cache_dir.display());
                 }
-                #[cfg(feature = "popup")]
                 Err(err) => {
                     let content = error_message(err, &files, &script_dir);
+                    #[cfg(feature = "popup")]
                     msgbox::create("Compilation error", &content, msgbox::IconType::Error).unwrap();
-                }
-                #[cfg(not(feature = "popup"))]
-                Err(err) => {
-                    let content = error_message(err, &files, &script_dir);
+
                     log::error!("Compilation Error: {}", content);
                 }
             }
@@ -134,10 +131,9 @@ fn load_scripts(cache_dir: &Path, files: &Files) -> Result<(), Error> {
         }
         _ => {}
     }
-    
-    if !backup_path.exists()
-    {
-        fs::copy(&bundle_path, &backup_path)?;
+
+    if !backup_path.exists() {
+        log::warn!("We found a compiler timestamp but no backup, your installation might be corrupted, try verifying games files and removing redscript.ts");
     }
 
     #[cfg(feature = "mmap")]
