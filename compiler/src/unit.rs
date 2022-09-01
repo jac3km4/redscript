@@ -1065,27 +1065,59 @@ impl<'a> CompilationUnit<'a> {
         Ok(())
     }
 
+    // this method is a workaround for a game crash which happens when the game loads
+    // a class which has a base class that is placed after the subclass in the pool
     fn cleanup_pool(pool: &mut ConstantPool) {
-        // this is a workaround for a game crash which happens when the game loads
-        // a class which has a base class that is placed after the subclass in the pool
-        let mut unsorted = BTreeSet::new();
-
-        // find any classes that appear before their base class in the pool
-        for (def_idx, def) in pool.definitions() {
-            if let AnyDefinition::Class(class) = &def.value {
-                let pos: u32 = def_idx.into();
-                if pos < class.base.into() {
-                    unsorted.insert(def_idx.cast());
-                    unsorted.insert(class.base);
-                }
+        fn collect_subtypes(
+            class_idx: PoolIndex<Class>,
+            hierarchy: &HashMap<PoolIndex<Class>, Vec<PoolIndex<Class>>>,
+            acc: &mut BTreeSet<PoolIndex<Class>>,
+        ) {
+            acc.insert(class_idx);
+            for sub in hierarchy.get(&class_idx).map(Vec::as_slice).unwrap_or(&[]) {
+                collect_subtypes(*sub, hierarchy, acc)
             }
         }
 
-        // additional iteration to find classes that extend the ones that need sorting
+        let mut hierarchy: HashMap<PoolIndex<Class>, Vec<PoolIndex<Class>>> = HashMap::new();
+
+        // build up a hierarchy pointing from base types to all subtypes
         for (def_idx, def) in pool.definitions() {
-            if let AnyDefinition::Class(class) = &def.value {
-                if unsorted.contains(&class.base) {
-                    unsorted.insert(def_idx.cast());
+            if let Some(class) = &def.value.as_class().filter(|cls| !cls.base.is_undefined()) {
+                hierarchy.entry(class.base).or_default().push(def_idx.cast());
+            }
+        }
+
+        let mut unsorted = BTreeSet::new();
+
+        // for each class that appears before one of it's subclasses, find the deepest superclass affected
+        for (def_idx, _) in pool.definitions() {
+            let mut cur = def_idx.cast();
+            loop {
+                match pool.class(cur) {
+                    Ok(cls) if u32::from(def_idx) < u32::from(cls.base) => cur = cls.base,
+                    _ => break,
+                }
+            }
+            if cur != def_idx.cast() {
+                collect_subtypes(cur, &hierarchy, &mut unsorted);
+            }
+        }
+
+        if let Some(&min_unsorted) = unsorted.iter().next() {
+            // for each class appearning out of order, capture any superclasses that could potentially break after sorting
+            for cls in unsorted.clone() {
+                let mut cur = cls;
+                loop {
+                    match pool.class(cur) {
+                        Ok(cls) if u32::from(min_unsorted) < u32::from(cls.base) && !unsorted.contains(&cls.base) => {
+                            cur = cls.base
+                        }
+                        _ => break,
+                    }
+                }
+                if cur != cls {
+                    collect_subtypes(cur, &hierarchy, &mut unsorted);
                 }
             }
         }
