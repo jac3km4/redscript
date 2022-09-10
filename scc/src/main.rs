@@ -25,17 +25,6 @@ fn main() -> Result<(), Error> {
         (Some("-compile"), Some(path_str)) => {
             let script_dir = PathBuf::from(path_str.split('"').next().unwrap());
             let r6_dir = script_dir.parent().unwrap();
-            let cache_dir = match (iter.next().as_deref(), iter.next()) {
-                (Some("-customCacheDir"), Some(custom_path)) => {
-                    log::info!("Custom cache directory provided: {}", custom_path);
-                    let path = PathBuf::from(custom_path);
-                    if !path.exists() {
-                        std::fs::create_dir_all(&path)?;
-                    }
-                    path
-                }
-                _ => r6_dir.join("cache"),
-            };
 
             // load manifest without fallback
             let manifest = ScriptManifest::load(&script_dir);
@@ -58,6 +47,18 @@ fn main() -> Result<(), Error> {
                 );
                 ScriptManifest::default()
             });
+
+            let cache_dir = match (iter.next().as_deref(), iter.next()) {
+                (Some("-customCacheDir"), Some(custom_path)) => {
+                    log::info!("Custom cache directory provided: {}", custom_path);
+                    let path = PathBuf::from(custom_path);
+                    if !path.exists() {
+                        std::fs::create_dir_all(&path)?;
+                    }
+                    path
+                }
+                _ => r6_dir.join("cache"),
+            };
 
             let files = Files::from_dir(&script_dir, manifest.source_filter())?;
 
