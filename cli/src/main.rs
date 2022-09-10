@@ -137,7 +137,7 @@ fn decompile(opts: DecompileOpts) -> Result<(), redscript_decompiler::error::Err
 
     if opts.dump_files {
         for entry in FileIndex::from_pool(pool).iter() {
-            let path = opts.output.as_path().join(&entry.path);
+            let path = opts.output.as_path().join(entry.path);
 
             std::fs::create_dir_all(path.parent().unwrap())?;
             let mut output = io::BufWriter::new(File::create(path)?);
