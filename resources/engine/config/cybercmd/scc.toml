@@ -1,0 +1,7 @@
+[args]
+scriptsBlobPath = "{game_dir}\\r6\\cache\\modded\\final.redscripts"
+
+[[tasks]]
+command = "InvokeScc"
+path = "{game_dir}\\r6\\scripts"
+custom_cache_dir = "{game_dir}\\r6\\cache\\modded"
