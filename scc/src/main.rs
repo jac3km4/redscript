@@ -167,7 +167,7 @@ where
 {
     #[cfg(feature = "mmap")]
     let mut bundle = {
-        let (map, _) = Map::with_options()
+        let (map, _) = vmap::Map::with_options()
             .open(input_path)
             .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
         ScriptBundle::load(&mut io::Cursor::new(map.as_ref()))?
