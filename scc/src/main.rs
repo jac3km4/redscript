@@ -113,10 +113,11 @@ fn setup_logger(r6_dir: &Path, include_date_in_filename: bool) -> Result<(), Err
 }
 
 fn load_scripts(cache_dir: &Path, bundle_dir_override: Option<&Path>, files: &Files) -> Result<(), Error> {
-    let bundle_input_path = bundle_dir_override.unwrap_or(cache_dir).join("final.redscripts");
+    let input_dir = bundle_dir_override.unwrap_or(cache_dir);
+    let bundle_input_path = input_dir.join("final.redscripts");
     let bundle_output_path = cache_dir.join("final.redscripts");
-    let backup_path = cache_dir.join("final.redscripts.bk");
-    let timestamp_path = cache_dir.join("redscript.ts");
+    let backup_path = input_dir.join("final.redscripts.bk");
+    let timestamp_path = input_dir.join("redscript.ts");
     let mut ts_lock = RwLock::new(
         OpenOptions::new()
             .read(true)
