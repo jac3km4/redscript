@@ -1,6 +1,6 @@
 name: CI
 
-on: [push, pull_request]
+on: [push]
 
 env:
   CARGO_TERM_COLOR: always
@@ -31,6 +31,7 @@ jobs:
         working-directory: staging
         run: |
           mkdir -p ./engine/config/base
+          mkdir -p ./engine/config/cybercmd
           mkdir -p ./engine/tools
           mkdir -p ./r6/scripts
           cp ../resources/engine/config/base/scripts.ini ./engine/config/base/
