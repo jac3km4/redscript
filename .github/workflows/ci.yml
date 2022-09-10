@@ -26,9 +26,21 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
+      - run: mkdir staging
+      - name: Create the mod archive
+        working-directory: staging
+        run: |
+          mkdir -p ./engine/config/base
+          mkdir -p ./engine/tools
+          mkdir -p ./r6/scripts
+          cp ../resources/engine/config/base/scripts.ini ./engine/config/base/
+          cp ../resources/engine/config/cybercmd/scc.toml ./engine/config/cybercmd/
+          cp ../target/release/scc.exe ./engine/tools/
+          cp ../resources/r6/scripts/redscript.toml ./r6/scripts/
+          7z a -mx=9 -r ./redscript.zip *
       - name: Archive artifacts
         uses: actions/upload-artifact@v2
         with:
           path: |
-            target/release/scc.exe
             target/release/redscript-cli.exe
+            ./staging/redscript.zip
