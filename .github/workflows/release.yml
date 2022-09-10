@@ -36,6 +36,7 @@ jobs:
           mkdir -p ./engine/tools
           mkdir -p ./r6/scripts
           cp ../resources/engine/config/base/scripts.ini ./engine/config/base/
+          cp ../resources/engine/config/cybercmd/cmd.toml ./engine/config/cybercmd/
           cp ../target/release/scc.exe ./engine/tools/
           cp ../resources/r6/scripts/redscript.toml ./r6/scripts/
           7z a -mx=9 -r ./redscript.zip *
