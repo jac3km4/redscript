@@ -35,15 +35,18 @@ cargo run --bin redscript-cli --release -- decompile -i '/mnt/d/games/Cyberpunk 
 
 ## language
 The scripts use a Swift-like language.
-
-You can find a brief overview of it's features in the [wiki](https://wiki.redmodding.org/redscript).
+You can find a brief overview of it's features in the [official wiki](https://wiki.redmodding.org/redscript).
 
 You can also try it out [in your browser](https://try-redscript.surge.sh).
 
-For examples, you can have a look at some projects using redscript:
+For more examples, you can have a look at some projects using redscript:
+- [jackhumbert/let_there_be_flight](https://github.com/jackhumbert/let_there_be_flight)
 - [pxiberx/cp2077-playground](https://github.com/psiberx/cp2077-playground)
 - [djkovrik/CP77Mods](https://github.com/djkovrik/CP77Mods)
-- [jackhumbert/flight_control](https://github.com/jackhumbert/flight_control)
+
+## editor support
+There's a dedicated [language server for redscript](https://github.com/jac3km4/redscript-ide), with support for code editors:
+- [Visual Studio Code plugin](https://github.com/jac3km4/redscript-ide-vscode)
 
 ## integrating with the game
 You can integrate this compiler with the game and make it compile your scripts on startup.
