@@ -1,8 +1,8 @@
 ## [0.5.6]
-- added support for running redscript along redmod scripts via [cybercmd](https://github.com/jac3km4/cybercmd) (6a9258fdcd8269b9b38bea84ee1d432939b902c6)
+- added support for running redscript along with redmod scripts via [cybercmd](https://github.com/jac3km4/cybercmd) (6a9258fdcd8269b9b38bea84ee1d432939b902c6)
 - moved logs to `r6/logs` and added a new flag for splitting logs files by date (cf1bbc22b41120acb2fcf34da98e66036779c876) (by @ForserX)
 - fixed some edge cases around class sorting (b623a189d75d44c65ce2aa9f961edf73c3ac73c7)
-- return an error status code from the scc process on failures (91ca225a8af5cc9a3c906a7b788962917069a1fa)
+- changed scc to return an error status code on failures (91ca225a8af5cc9a3c906a7b788962917069a1fa)
 
 ## [0.5.5]
 - support field defaults (2a15c1eb12a9523ba065accc1224bd1f477b4358)
