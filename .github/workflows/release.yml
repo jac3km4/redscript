@@ -33,7 +33,7 @@ jobs:
         working-directory: staging
         run: |
           mkdir -p ./engine/config/base
-          mkdir -p ./engine/r6/cybercmd
+          mkdir -p ./r6/config/cybercmd
           mkdir -p ./engine/tools
           cp ../resources/engine/config/base/scripts.ini ./engine/config/base/
           cp ../resources/r6/config/cybercmd/scc.toml ./r6/config/cybercmd/
