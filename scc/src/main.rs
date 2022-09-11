@@ -40,10 +40,7 @@ fn main() -> ExitCode {
 
             // get manifest or fallback
             let manifest = manifest.unwrap_or_else(|err| {
-                log::info!(
-                    "Could not load the manifest, falling back to defaults (caused by {})",
-                    err
-                );
+                log::info!("Could not load the manifest, using defaults ({})", err);
                 ScriptManifest::default()
             });
 

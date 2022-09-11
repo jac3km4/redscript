@@ -1,6 +1,0 @@
-exclusions = [
-  "BreachProtocol_Minigame",
-  "youCANSaveRightNow"
-]
-
-append_date_to_logfiles = false

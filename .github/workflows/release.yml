@@ -35,11 +35,9 @@ jobs:
           mkdir -p ./engine/config/base
           mkdir -p ./engine/r6/cybercmd
           mkdir -p ./engine/tools
-          mkdir -p ./r6/scripts
           cp ../resources/engine/config/base/scripts.ini ./engine/config/base/
           cp ../resources/r6/config/cybercmd/scc.toml ./r6/config/cybercmd/
           cp ../target/release/scc.exe ./engine/tools/
-          cp ../resources/r6/scripts/redscript.toml ./r6/scripts/
           7z a -mx=9 -r ./redscript.zip *
       - name: Upload the mod archive
         uses: actions/upload-release-asset@v1
