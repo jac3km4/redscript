@@ -3,6 +3,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::ops::DerefMut;
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 use std::time::SystemTime;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -18,7 +19,7 @@ use time::format_description::FormatItem;
 use time::macros::format_description;
 use time::OffsetDateTime;
 
-fn main() -> Result<(), Error> {
+fn main() -> ExitCode {
     // the way cyberpunk passes CLI args is broken, this is a workaround
     let mut iter = std::env::args().skip(1);
     match (iter.next().as_deref(), iter.next()) {
@@ -30,14 +31,12 @@ fn main() -> Result<(), Error> {
             let manifest = ScriptManifest::load(&script_dir);
 
             // set up logger with an optional manifest
-            setup_logger(
-                r6_dir,
-                manifest
-                    .as_ref()
-                    .ok()
-                    .and_then(|m| m.append_date_to_logfiles)
-                    .unwrap_or(false),
-            )?;
+            let append_date_to_logfiles = manifest
+                .as_ref()
+                .ok()
+                .and_then(|m| m.append_date_to_logfiles)
+                .unwrap_or(false);
+            setup_logger(r6_dir, append_date_to_logfiles).expect("Could not set up the logger");
 
             // get manifest or fallback
             let manifest = manifest.unwrap_or_else(|err| {
@@ -53,7 +52,7 @@ fn main() -> Result<(), Error> {
                     log::info!("Custom cache directory provided: {}", custom_path);
                     let cache_dir = PathBuf::from(custom_path);
                     if !cache_dir.exists() {
-                        std::fs::create_dir_all(&cache_dir)?;
+                        fs::create_dir_all(&cache_dir).expect("Could not create the custom cache directory");
                         (cache_dir, Some(r6_dir.join("cache")))
                     } else {
                         (cache_dir, None)
@@ -62,11 +61,12 @@ fn main() -> Result<(), Error> {
                 _ => (r6_dir.join("cache"), None),
             };
 
-            let files = Files::from_dir(&script_dir, manifest.source_filter())?;
+            let files = Files::from_dir(&script_dir, manifest.source_filter()).expect("Could not load script sources");
 
-            match load_scripts(&cache_dir, bundle_dir_override.as_deref(), &files) {
+            match compile_scripts(&cache_dir, bundle_dir_override.as_deref(), &files) {
                 Ok(_) => {
                     log::info!("Output successfully saved in {}", cache_dir.display());
+                    ExitCode::SUCCESS
                 }
                 Err(err) => {
                     let content = error_message(err, &files, &script_dir);
@@ -74,14 +74,15 @@ fn main() -> Result<(), Error> {
                     msgbox::create("Compilation error", &content, msgbox::IconType::Error).unwrap();
 
                     log::error!("Compilation error: {}", content);
+                    ExitCode::FAILURE
                 }
             }
         }
         _ => {
-            log::error!("Invalid arguments");
+            log::error!("Invalid command-line arguments");
+            ExitCode::FAILURE
         }
     }
-    Ok(())
 }
 
 fn setup_logger(r6_dir: &Path, include_date_in_filename: bool) -> Result<(), Error> {
@@ -112,7 +113,7 @@ fn setup_logger(r6_dir: &Path, include_date_in_filename: bool) -> Result<(), Err
     Ok(())
 }
 
-fn load_scripts(cache_dir: &Path, bundle_dir_override: Option<&Path>, files: &Files) -> Result<(), Error> {
+fn compile_scripts(cache_dir: &Path, bundle_dir_override: Option<&Path>, files: &Files) -> Result<(), Error> {
     let input_dir = bundle_dir_override.unwrap_or(cache_dir);
     let bundle_input_path = input_dir.join("final.redscripts");
     let bundle_output_path = cache_dir.join("final.redscripts");
