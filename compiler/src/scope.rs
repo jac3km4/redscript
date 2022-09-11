@@ -87,7 +87,6 @@ impl Scope {
     }
 
     pub fn resolve_field(
-        &self,
         ident: Ident,
         class_idx: PoolIndex<Class>,
         pool: &ConstantPool,
@@ -99,7 +98,7 @@ impl Scope {
             }
         }
         if class.base != PoolIndex::UNDEFINED {
-            self.resolve_field(ident.clone(), class.base, pool)
+            Self::resolve_field(ident.clone(), class.base, pool)
                 .map_err(|_| Cause::MemberNotFound(ident, Ident::from_heap(pool.def_name(class_idx).unwrap())))
         } else {
             Err(Cause::MemberNotFound(

@@ -67,7 +67,7 @@ impl Encode for u8 {
 impl Encode for bool {
     #[inline]
     fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
-        output.write_u8(if *self { 1 } else { 0 })
+        output.write_u8(u8::from(*self))
     }
 }
 

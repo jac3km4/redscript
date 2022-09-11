@@ -201,11 +201,11 @@ impl<'a> TypeChecker<'a> {
 
                 let member = match type_.unwrapped() {
                     TypeId::Class(class) => {
-                        let field = scope.resolve_field(name.clone(), *class, self.pool).with_span(*span)?;
+                        let field = Scope::resolve_field(name.clone(), *class, self.pool).with_span(*span)?;
                         Member::ClassField(field)
                     }
                     TypeId::Struct(class) => {
-                        let field = scope.resolve_field(name.clone(), *class, self.pool).with_span(*span)?;
+                        let field = Scope::resolve_field(name.clone(), *class, self.pool).with_span(*span)?;
                         Member::StructField(field)
                     }
                     TypeId::Enum(enum_) => {

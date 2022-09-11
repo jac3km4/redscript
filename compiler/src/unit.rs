@@ -713,7 +713,7 @@ impl<'a> CompilationUnit<'a> {
                     .and_then(Expr::as_ident)
                     .ok_or_else(|| Cause::InvalidAnnotationArgs.with_span(ann.span))?;
                 if let Symbol::Class(target_class, _) = scope.resolve_symbol(ident.clone()).with_span(ann.span)? {
-                    if scope.resolve_field(decl.name.clone(), target_class, self.pool).is_ok() {
+                    if Scope::resolve_field(decl.name.clone(), target_class, self.pool).is_ok() {
                         self.diagnostics
                             .push(Diagnostic::FieldConflict(source.declaration.span));
                         // we avoid redefining the field because it'd crash the game
