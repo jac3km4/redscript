@@ -19,13 +19,18 @@ use time::format_description::FormatItem;
 use time::macros::format_description;
 use time::OffsetDateTime;
 
+const BUNDLE_FILE_NAME: &str = "final.redscripts";
+const BACKUP_FILE_NAME: &str = "final.redscripts.bk";
+const TIMESTAMP_FILE_NAME: &str = "redscript.ts";
+
 fn main() -> ExitCode {
-    // the way cyberpunk passes CLI args is broken, this is a workaround
-    let mut iter = std::env::args().skip(1);
-    match (iter.next().as_deref(), iter.next()) {
+    let mut arg_iter = std::env::args().skip(1);
+    match (arg_iter.next().as_deref(), arg_iter.next()) {
         (Some("-compile"), Some(path_str)) => {
+            // the way cyberpunk passes CLI args is broken, this is a workaround
             let script_dir = PathBuf::from(path_str.split('"').next().unwrap());
             let r6_dir = script_dir.parent().unwrap();
+            let default_cache_dir = r6_dir.join("cache");
 
             // load manifest without fallback
             let manifest = ScriptManifest::load(&script_dir);
@@ -44,23 +49,23 @@ fn main() -> ExitCode {
                 ScriptManifest::default()
             });
 
-            let (cache_dir, bundle_dir_override) = match (iter.next().as_deref(), iter.next()) {
+            let cache_dir = match (arg_iter.next().as_deref(), arg_iter.next()) {
                 (Some("-customCacheDir"), Some(custom_path)) => {
                     log::info!("Custom cache directory provided: {}", custom_path);
                     let cache_dir = PathBuf::from(custom_path);
                     if !cache_dir.exists() {
+                        let base = get_base_bundle_path(&default_cache_dir);
                         fs::create_dir_all(&cache_dir).expect("Could not create the custom cache directory");
-                        (cache_dir, Some(r6_dir.join("cache")))
-                    } else {
-                        (cache_dir, None)
+                        fs::copy(&base, cache_dir.join(BUNDLE_FILE_NAME)).expect("Could not copy base bundle");
                     }
+                    cache_dir
                 }
-                _ => (r6_dir.join("cache"), None),
+                _ => default_cache_dir,
             };
 
             let files = Files::from_dir(&script_dir, manifest.source_filter()).expect("Could not load script sources");
 
-            match compile_scripts(&cache_dir, bundle_dir_override.as_deref(), &files) {
+            match compile_scripts(&cache_dir, &files) {
                 Ok(_) => {
                     log::info!("Output successfully saved in {}", cache_dir.display());
                     ExitCode::SUCCESS
@@ -79,6 +84,15 @@ fn main() -> ExitCode {
             log::error!("Invalid command-line arguments");
             ExitCode::FAILURE
         }
+    }
+}
+
+fn get_base_bundle_path(cache_dir: &Path) -> PathBuf {
+    let bk_path = cache_dir.join(BACKUP_FILE_NAME);
+    if bk_path.exists() {
+        bk_path
+    } else {
+        cache_dir.join(BUNDLE_FILE_NAME)
     }
 }
 
@@ -110,12 +124,10 @@ fn setup_logger(r6_dir: &Path, include_date_in_filename: bool) -> Result<(), Err
     Ok(())
 }
 
-fn compile_scripts(cache_dir: &Path, bundle_dir_override: Option<&Path>, files: &Files) -> Result<(), Error> {
-    let input_dir = bundle_dir_override.unwrap_or(cache_dir);
-    let bundle_input_path = input_dir.join("final.redscripts");
-    let bundle_output_path = cache_dir.join("final.redscripts");
-    let backup_path = input_dir.join("final.redscripts.bk");
-    let timestamp_path = input_dir.join("redscript.ts");
+fn compile_scripts(cache_dir: &Path, files: &Files) -> Result<(), Error> {
+    let bundle_path = cache_dir.join(BUNDLE_FILE_NAME);
+    let backup_path = cache_dir.join(BACKUP_FILE_NAME);
+    let timestamp_path = cache_dir.join(TIMESTAMP_FILE_NAME);
     let mut ts_lock = RwLock::new(
         OpenOptions::new()
             .read(true)
@@ -124,22 +136,25 @@ fn compile_scripts(cache_dir: &Path, bundle_dir_override: Option<&Path>, files: 
             .open(&timestamp_path)?,
     );
     let mut ts_file = ts_lock.write()?;
-    let write_timestamp = CompileTimestamp::of_cache_file(&File::open(&bundle_input_path)?)?;
+    let write_timestamp = CompileTimestamp::of_cache_file(&File::open(&bundle_path)?)?;
     let saved_timestamp = CompileTimestamp::read(ts_file.deref_mut()).ok();
 
     match saved_timestamp {
         None if backup_path.exists() => {
-            log::info!("Previous redscripts.bk file found")
+            log::info!("Previous cache backup file found")
         }
         saved_timestamp if saved_timestamp != Some(write_timestamp) => {
             log::info!(
                 "Redscript cache file is not ours, copying it to {}",
                 backup_path.display()
             );
-            fs::copy(&bundle_input_path, &backup_path)?;
+            fs::copy(&bundle_path, &backup_path)?;
         }
         Some(_) if !backup_path.exists() => {
-            log::warn!("A compiler timestamp was found but not the backup file, your installation might be corrupted, try removing redscript.ts and verifying game files");
+            log::warn!(
+                "A compiler timestamp was found but not the backup file, your installation might be corrupted, \
+                 try removing redscript.ts and verifying game files"
+            );
         }
         _ => {}
     }
@@ -156,7 +171,7 @@ fn compile_scripts(cache_dir: &Path, bundle_dir_override: Option<&Path>, files: 
 
     CompilationUnit::new(&mut bundle.pool, vec![])?.compile_and_report(files)?;
 
-    let mut file = File::create(&bundle_output_path)?;
+    let mut file = File::create(&bundle_path)?;
     bundle.save(&mut io::BufWriter::new(&mut file))?;
     file.sync_all()?;
 
@@ -214,13 +229,12 @@ impl ScriptManifest {
     }
 }
 
-#[allow(dead_code)]
 fn error_message(error: Error, files: &Files, scripts_dir: &Path) -> String {
-    fn detailed_message(spans: Vec<Span>, files: &Files, scripts_dir: &Path) -> Option<String> {
+    fn detailed_message(spans: &[Span], files: &Files, scripts_dir: &Path) -> Option<String> {
         let mut causes = HashSet::new();
 
-        for pos in spans {
-            let file = files.lookup_file(pos.low)?;
+        for span in spans {
+            let file = files.lookup_file(span.low)?;
             let cause = file
                 .path()
                 .strip_prefix(scripts_dir)
@@ -232,21 +246,20 @@ fn error_message(error: Error, files: &Files, scripts_dir: &Path) -> String {
             causes.insert(cause);
         }
 
-        let causes = causes
-            .iter()
-            .map(|file| format!("- {file}\n"))
-            .fold(String::new(), |acc, el| acc + &el);
+        let causes: String = causes.iter().flat_map(|file| ["- ", file, "\n"]).collect();
 
         let msg = format!(
-            "This is caused by errors in:\n{causes}You can try updating or removing these scripts to resolve the issue. If you need more information, consult the logs."
+            "This is caused by errors in:\n\
+            {causes}\
+            You can try updating or removing these scripts to resolve the issue. If you need more information, consult the logs."
         );
         Some(msg)
     }
 
     let str = match error {
-        Error::SyntaxError(_, pos) => detailed_message(vec![pos], files, scripts_dir).unwrap_or_default(),
-        Error::CompileError(_, pos) => detailed_message(vec![pos], files, scripts_dir).unwrap_or_default(),
-        Error::MultipleErrors(spans) => detailed_message(spans, files, scripts_dir).unwrap_or_default(),
+        Error::SyntaxError(_, span) => detailed_message(&[span], files, scripts_dir).unwrap_or_default(),
+        Error::CompileError(_, span) => detailed_message(&[span], files, scripts_dir).unwrap_or_default(),
+        Error::MultipleErrors(spans) => detailed_message(&spans, files, scripts_dir).unwrap_or_default(),
         Error::IoError(err) => format!("This is caused by an I/O error: {err}"),
         Error::PoolError(err) => format!("This is caused by a constant pool error: {err}"),
         _ => String::new(),
