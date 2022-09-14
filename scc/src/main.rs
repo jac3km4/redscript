@@ -45,7 +45,7 @@ fn main() -> ExitCode {
 
             // get manifest or fallback
             let manifest = manifest.unwrap_or_else(|err| {
-                log::info!("Could not load the manifest, using defaults ({})", err);
+                log::info!("Script manifest not loaded, using defaults ({err})");
                 ScriptManifest::default()
             });
 
@@ -217,11 +217,14 @@ struct ScriptManifest {
 }
 
 impl ScriptManifest {
-    pub fn load(script_dir: &Path) -> Result<Self, Error> {
+    pub fn load(script_dir: &Path) -> Result<Self, String> {
         let path = script_dir.join("redscript.toml");
-        let contents = std::fs::read_to_string(&path)?;
-        let manifest =
-            toml::from_str(&contents).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err.to_string()))?;
+        let contents = fs::read_to_string(&path).map_err(|err| match err.kind() {
+            io::ErrorKind::NotFound => "manifest not available".to_owned(),
+            _ => err.to_string(),
+        })?;
+
+        let manifest = toml::from_str(&contents).map_err(|err| format!("manifest parse error: {err}"))?;
         Ok(manifest)
     }
 
