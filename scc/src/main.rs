@@ -53,10 +53,11 @@ fn main() -> ExitCode {
                 (Some("-customCacheDir"), Some(custom_path)) => {
                     log::info!("Custom cache directory provided: {}", custom_path);
                     let cache_dir = PathBuf::from(custom_path);
-                    if !cache_dir.exists() {
+                    let expected_bundle_path = cache_dir.join(BUNDLE_FILE_NAME);
+                    if !expected_bundle_path.exists() {
                         let base = get_base_bundle_path(&default_cache_dir);
                         fs::create_dir_all(&cache_dir).expect("Could not create the custom cache directory");
-                        fs::copy(&base, cache_dir.join(BUNDLE_FILE_NAME)).expect("Could not copy base bundle");
+                        fs::copy(&base, expected_bundle_path).expect("Could not copy base bundle");
                     }
                     cache_dir
                 }
