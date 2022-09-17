@@ -775,7 +775,7 @@ impl<'a> CompilationUnit<'a> {
 
                     let name_idx = self.pool.names.add(Ref::from(format!("wrapper${wrapped_idx}")));
                     let wrapper_idx = self.pool.stub_definition(name_idx);
-                    let base = self.pool.function(fun_idx)?.base_method;
+                    let base = self.pool.function(fun_idx).ok().and_then(|fun| fun.base_method);
 
                     self.wrappers.insert(fun_idx, wrapper_idx);
                     self.pool.class_mut(target_class_idx)?.functions.push(wrapper_idx);
