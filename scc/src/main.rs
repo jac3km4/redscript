@@ -49,7 +49,7 @@ fn main() -> ExitCode {
                 ScriptManifest::default()
             });
 
-            let cache_dir = match (arg_iter.next().as_deref(), arg_iter.next()) {
+            let (cache_dir, fallback_dir) = match (arg_iter.next().as_deref(), arg_iter.next()) {
                 (Some("-customCacheDir"), Some(custom_path)) => {
                     log::info!("Custom cache directory provided: {}", custom_path);
                     let cache_dir = PathBuf::from(custom_path);
@@ -59,14 +59,14 @@ fn main() -> ExitCode {
                         fs::create_dir_all(&cache_dir).expect("Could not create the custom cache directory");
                         fs::copy(&base, expected_bundle_path).expect("Could not copy base bundle");
                     }
-                    cache_dir
+                    (cache_dir, Some(default_cache_dir))
                 }
-                _ => default_cache_dir,
+                _ => (default_cache_dir, None),
             };
 
             let files = Files::from_dir(&script_dir, manifest.source_filter()).expect("Could not load script sources");
 
-            match compile_scripts(&cache_dir, &files) {
+            match compile_scripts(&cache_dir, fallback_dir.as_deref(), &files) {
                 Ok(_) => {
                     log::info!("Output successfully saved in {}", cache_dir.display());
                     ExitCode::SUCCESS
@@ -125,9 +125,10 @@ fn setup_logger(r6_dir: &Path, include_date_in_filename: bool) -> Result<(), Err
     Ok(())
 }
 
-fn compile_scripts(cache_dir: &Path, files: &Files) -> Result<(), Error> {
+fn compile_scripts(cache_dir: &Path, fallback_cache_dir: Option<&Path>, files: &Files) -> Result<(), Error> {
     let bundle_path = cache_dir.join(BUNDLE_FILE_NAME);
     let backup_path = cache_dir.join(BACKUP_FILE_NAME);
+    let fallback_backup_path = fallback_cache_dir.map(|dir| dir.join(BACKUP_FILE_NAME));
     let timestamp_path = cache_dir.join(TIMESTAMP_FILE_NAME);
     let mut ts_lock = RwLock::new(
         OpenOptions::new()
@@ -137,6 +138,12 @@ fn compile_scripts(cache_dir: &Path, files: &Files) -> Result<(), Error> {
             .open(&timestamp_path)?,
     );
     let mut ts_file = ts_lock.write()?;
+
+    if let Some(fallback_path) = fallback_backup_path.filter(|fallback| fallback.exists() && !backup_path.exists()) {
+        log::info!("Re-initializing backup file from {}", fallback_path.display());
+        fs::copy(fallback_path, &backup_path)?;
+    }
+
     let write_timestamp = CompileTimestamp::of_cache_file(&File::open(&bundle_path)?)?;
     let saved_timestamp = CompileTimestamp::read(ts_file.deref_mut()).ok();
 
