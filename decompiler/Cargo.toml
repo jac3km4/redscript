@@ -1,18 +1,11 @@
 [package]
 name = "redscript-decompiler"
-version = "0.5.8"
-authors = ["jac3km4 <jac3km4@pm.me>"]
-edition = "2021"
-publish = false
-
-[lib]
-crate-type = ["cdylib", "rlib"]
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
 
 [dependencies]
 redscript = { path = "../core" }
-log = "0.4"
-thiserror = "1"
-itertools = "0.10"
-
-[package.metadata.release]
-tag = false
+log.workspace = true
+thiserror.workspace = true
+itertools.workspace = true

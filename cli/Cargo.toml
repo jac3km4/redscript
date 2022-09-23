@@ -1,18 +1,14 @@
 [package]
 name = "redscript-cli"
-version = "0.5.8"
-authors = ["jac3km4 <jac3km4@pm.me>"]
-edition = "2021"
-publish = false
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
 
 [dependencies]
 redscript = { path = "../core" }
 redscript-decompiler = { path = "../decompiler" }
 redscript-compiler = { path = "../compiler" }
+log.workspace = true
+fern = { workspace = true, features = ["colored"] }
 vmap = { version = "0.5", default-features = false }
 gumdrop = "0.8"
-log = "0.4"
-fern = { version = "0.6", features = ["colored"] }
-
-[package.metadata.release]
-tag = false

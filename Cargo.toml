@@ -7,5 +7,26 @@ members = [
   "scc"
 ]
 
+[workspace.package]
+version = "0.5.8"
+authors = ["jekky"]
+edition = "2021"
+
+[workspace.dependencies]
+log = "0.4"
+thiserror = "1"
+itertools = "0.10"
+strum = { version = "0.24", features = ["derive"] }
+enum-as-inner = "0.5"
+byteorder = "1.4"
+flexstr = "0.9"
+fern = "0.6"
+
+[workspace.metadata.release]
+shared-version = true
+consolidate-commits = true
+consolidate-pushes = true
+publish = false
+
 [profile.release]
 lto = "thin"

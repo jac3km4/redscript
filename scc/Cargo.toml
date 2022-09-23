@@ -1,26 +1,22 @@
 [package]
 name = "scc"
-version = "0.5.8"
-authors = ["jac3km4 <jac3km4@pm.me>"]
-edition = "2021"
-publish = false
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
 
 [dependencies]
 redscript = { path = "../core" }
 redscript-compiler = { path = "../compiler" }
-byteorder = "1.4"
-vmap = { version = "0.5", default-features = false, optional = true }
-log = "0.4"
-fern = "0.6"
+log.workspace = true
+byteorder.workspace = true
+fern.workspace = true
 time = { version = "0.3", features = ["local-offset", "formatting", "macros"] }
+serde = { version = "1", features = ["derive"] }
 toml = "0.5"
-serde = { version = "1.0", features = ["derive"] }
-fd-lock = "3.0"
+vmap = { version = "0.5", default-features = false, optional = true }
+fd-lock = "3"
 msgbox = { version = "0.7", optional = true }
 
 [features]
 popup = ["msgbox"]
 mmap = ["vmap"]
-
-[package.metadata.release]
-tag = false

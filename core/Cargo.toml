@@ -1,23 +1,19 @@
 [package]
 name = "redscript"
-version = "0.5.8"
-authors = ["jac3km4 <jac3km4@pm.me>"]
-edition = "2021"
-publish = false
-
-[lib]
-crate-type = ["cdylib", "rlib"]
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
 
 [dependencies]
-byteorder = "1.4"
-thiserror = "1.0"
-flexstr = "0.9"
-enum-as-inner = "0.5"
+log.workspace = true
+thiserror.workspace = true
+itertools.workspace = true
+strum.workspace = true
+enum-as-inner.workspace = true
+byteorder.workspace = true
+flexstr.workspace = true
 modular-bitfield = "0.11"
 crc32fast = "1.3"
-itertools = "0.10"
-strum = { version = "0.24", features = ["derive"] }
-log = "0.4"
 
 [features]
 arc = []
