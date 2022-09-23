@@ -1,0 +1,42 @@
+[changelog]
+header = """
+# Changelog
+"""
+# template for the changelog body
+# https://tera.netlify.app/docs/#introduction
+body = """
+{% if version %}\
+    ## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+    ## [unreleased]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+    ### {{ group | upper_first }}
+    {% for commit in commits %}\
+        - {% if commit.breaking %}[**breaking**] {% endif %}\
+            {{ commit.message | upper_first }} \
+            ([{{ commit.id | truncate(length=7, end="") }}]({{ commit.id }}))
+    {% endfor %}\
+{% endfor %}
+### Contributors
+{% for author in commits | map(attribute="author.name") | unique %}\
+    - {{ author }}
+{% endfor %}\n
+"""
+trim = true
+
+[git]
+# parse the commits based on https://www.conventionalcommits.org
+conventional_commits = true
+commit_parsers = [
+    { message = "^feat", group = "Features" },
+    { message = "^fix", group = "Bug Fixes" },
+    { message = "^doc", group = "Documentation" },
+    { message = "^perf", group = "Performance" },
+    { message = "^refactor", group = "Refactor" },
+    { message = "^style", group = "Styling" },
+    { message = "^test", group = "Testing" },
+    { message = "^chore", group = "Miscellaneous", skip = true },
+    { body = ".*security", group = "Security" },
+]
+skip_tags = "v0\\.2"
