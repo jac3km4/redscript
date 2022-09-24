@@ -522,7 +522,7 @@ impl<'a> CompilationUnit<'a> {
         if is_native && class_flags.map_or(false, |f| !f.is_native()) {
             self.report(Cause::UnexpectedNative.with_span(source.declaration.span))?;
         }
-        if !is_native && class_flags.map_or(true, |f| !f.is_abstract()) && source.body.is_none() && source.body.is_none() {
+        if !is_native && class_flags.map_or(true, |f| !f.is_abstract()) && source.body.is_none() {
             self.report(Cause::MissingBody.with_span(source.declaration.span))?;
         }
         if is_native && source.body.is_some() {
