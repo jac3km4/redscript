@@ -29,8 +29,8 @@ pub enum SourceEntry {
 impl SourceEntry {
     pub fn annotations(&self) -> &[Annotation] {
         match self {
-            SourceEntry::Function(fun) => &fun.declaration.annotations,
-            SourceEntry::GlobalLet(field) => &field.declaration.annotations,
+            Self::Function(fun) => &fun.declaration.annotations,
+            Self::GlobalLet(field) => &field.declaration.annotations,
             _ => &[],
         }
     }

@@ -15,8 +15,8 @@ pub struct Assembler {
 }
 
 impl Assembler {
-    fn new() -> Assembler {
-        Assembler {
+    fn new() -> Self {
+        Self {
             instructions: Vec::new(),
             labels: 0,
         }
@@ -593,7 +593,7 @@ impl Assembler {
     }
 
     pub fn from_body(seq: Seq<TypedAst>, scope: &mut Scope, pool: &mut ConstantPool) -> Result<Code<Offset>, Error> {
-        let mut assembler = Assembler::new();
+        let mut assembler = Self::new();
         assembler.assemble_seq(seq, scope, pool, None)?;
         assembler.emit(Instr::Nop);
         Ok(assembler.into_code())

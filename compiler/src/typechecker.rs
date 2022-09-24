@@ -977,7 +977,7 @@ impl FunctionMatch {
             .zip(conversions)
             .map(|(expr, conv)| insert_conversion(expr, &conv.target, conv.conversion))
             .collect();
-        FunctionMatch { index, args }
+        Self { index, args }
     }
 }
 

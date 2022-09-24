@@ -16,12 +16,12 @@ pub struct Files {
 
 impl Files {
     pub fn new() -> Self {
-        Files::default()
+        Self::default()
     }
 
     pub fn from_dir(path: &Path, filter: SourceFilter) -> Result<Self, Error> {
         if path.is_file() {
-            Files::from_files(iter::once(path.to_path_buf()))
+            Self::from_files(iter::once(path.to_path_buf()))
         } else {
             let iter = WalkDir::new(path)
                 .into_iter()
@@ -29,12 +29,12 @@ impl Files {
                 .map(|entry| entry.into_path())
                 .filter(|p| filter.apply(p.strip_prefix(path).unwrap()));
 
-            Files::from_files(iter)
+            Self::from_files(iter)
         }
     }
 
     pub fn from_files(paths: impl Iterator<Item = PathBuf>) -> Result<Self, Error> {
-        let mut files = Files::new();
+        let mut files = Self::new();
         for path in paths {
             let sources = std::fs::read_to_string(&path)?;
             files.add(path, sources);
@@ -105,7 +105,7 @@ impl File {
     }
 
     pub fn with_source(self, source: String) -> Self {
-        File { source, ..self }
+        Self { source, ..self }
     }
 
     fn lookup(&self, pos: Pos) -> Option<FilePos> {
@@ -148,7 +148,7 @@ impl File {
 
 impl Default for File {
     fn default() -> Self {
-        File {
+        Self {
             path: PathBuf::new(),
             lines: NonEmptyVec(Pos::ZERO, vec![]),
             high: Pos::ZERO,
@@ -206,8 +206,8 @@ impl SourceFilter {
     fn apply(&self, rel_path: &Path) -> bool {
         let is_correct_extension = rel_path.extension() == Some(OsStr::new("reds"));
         let is_matching = match self {
-            SourceFilter::None => true,
-            SourceFilter::Exclude(exclusions) => {
+            Self::None => true,
+            Self::Exclude(exclusions) => {
                 let without_ext = rel_path.with_extension("");
                 let top_level_name = without_ext
                     .components()

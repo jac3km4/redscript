@@ -159,7 +159,7 @@ impl<'a> Decompiler<'a> {
             labels.push((position, start_offset.absolute(position)));
             self.code.seek_rel(exit_offset)?;
         }
-        if let Some(Instr::SwitchDefault) = self.code.peek() {
+        if self.code.peek() == Some(Instr::SwitchDefault) {
             labels.push((self.code.pos(), self.code.pos()));
         };
         labels.sort_by_key(|(_, start)| *start);
@@ -367,7 +367,7 @@ impl<'a> Decompiler<'a> {
             }
             Instr::ParamEnd => return Err(Error::DecompileError("Unexpected ParamEnd")),
             Instr::Return => {
-                if let Some(Instr::Nop) = self.code.peek() {
+                if self.code.peek() == Some(Instr::Nop) {
                     self.code.pop()?;
                     Expr::Return(None, Span::ZERO)
                 } else {

@@ -42,7 +42,7 @@ impl TestContext {
 
     pub fn run<F>(&mut self, name: &str, check: F)
     where
-        F: Fn(Code<Offset>, &mut TestContext),
+        F: Fn(Code<Offset>, &mut Self),
     {
         let fun = self
             .pool
@@ -50,11 +50,7 @@ impl TestContext {
             .find_map(|(_, def)| match &def.value {
                 AnyDefinition::Function(fun) => {
                     let fun_name = self.pool.names.get(def.name).ok()?;
-                    if FunctionSignature::from_raw(&fun_name).name() == name {
-                        Some(fun)
-                    } else {
-                        None
-                    }
+                    (FunctionSignature::from_raw(&fun_name).name() == name).then_some(fun)
                 }
                 _ => None,
             })
@@ -117,7 +113,7 @@ macro_rules! check_code {
 pub fn compiled(sources: Vec<&str>) -> Result<(ConstantPool, Vec<Diagnostic>), Error> {
     let modules = sources
         .iter()
-        .map(|source| parser::parse_str(&source).unwrap())
+        .map(|source| parser::parse_str(source).unwrap())
         .collect();
     let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
     let res = CompilationUnit::new_with_defaults(&mut scripts.pool)?.compile(modules)?;

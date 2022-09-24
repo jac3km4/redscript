@@ -27,7 +27,7 @@ impl Scope {
             }
         }
 
-        let result = Scope {
+        let result = Self {
             symbols: Map::new(),
             references: Map::new(),
             types,
@@ -39,7 +39,7 @@ impl Scope {
     }
 
     pub fn with_context(&self, this: Option<PoolIndex<Class>>, function: PoolIndex<Function>) -> Self {
-        Scope {
+        Self {
             this,
             function: Some(function),
             ..self.clone()
@@ -272,7 +272,7 @@ pub enum TypeId {
     Class(PoolIndex<Class>),
     Struct(PoolIndex<Class>),
     Enum(PoolIndex<Enum>),
-    Ref(Box<TypeId>),
+    Ref(Box<Self>),
     WeakRef(Box<TypeId>),
     Array(Box<TypeId>),
     StaticArray(Box<TypeId>, u32),
@@ -283,46 +283,46 @@ pub enum TypeId {
 }
 
 impl TypeId {
-    pub fn unwrapped(&self) -> &TypeId {
+    pub fn unwrapped(&self) -> &Self {
         match self {
-            TypeId::Ref(inner) => inner.unwrapped(),
-            TypeId::WeakRef(inner) => inner.unwrapped(),
-            TypeId::ScriptRef(inner) => inner.unwrapped(),
+            Self::Ref(inner) => inner.unwrapped(),
+            Self::WeakRef(inner) => inner.unwrapped(),
+            Self::ScriptRef(inner) => inner.unwrapped(),
             other => other,
         }
     }
 
     fn repr(&self, pool: &ConstantPool) -> Result<Ident, PoolError> {
         match self {
-            TypeId::Prim(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
-            TypeId::Class(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
-            TypeId::Struct(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
-            TypeId::Enum(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
-            TypeId::Ref(idx) => Ok(str_fmt!("ref:{}", idx.repr(pool)?)),
-            TypeId::WeakRef(idx) => Ok(str_fmt!("wref:{}", idx.repr(pool)?)),
-            TypeId::Array(idx) => Ok(str_fmt!("array:{}", idx.repr(pool)?)),
-            TypeId::StaticArray(idx, size) => Ok(str_fmt!("{}[{}]", idx.repr(pool)?, size)),
-            TypeId::ScriptRef(idx) => Ok(str_fmt!("script_ref:{}", idx.repr(pool)?)),
-            TypeId::Variant => Ok(Ident::from_static("Variant")),
-            TypeId::Null => Ok(Ident::from_static("ref:IScriptable")),
-            TypeId::Void => Err(PoolError::UnexpectedEntry("void type")),
+            Self::Prim(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
+            Self::Class(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
+            Self::Struct(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
+            Self::Enum(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
+            Self::Ref(idx) => Ok(str_fmt!("ref:{}", idx.repr(pool)?)),
+            Self::WeakRef(idx) => Ok(str_fmt!("wref:{}", idx.repr(pool)?)),
+            Self::Array(idx) => Ok(str_fmt!("array:{}", idx.repr(pool)?)),
+            Self::StaticArray(idx, size) => Ok(str_fmt!("{}[{}]", idx.repr(pool)?, size)),
+            Self::ScriptRef(idx) => Ok(str_fmt!("script_ref:{}", idx.repr(pool)?)),
+            Self::Variant => Ok(Ident::from_static("Variant")),
+            Self::Null => Ok(Ident::from_static("ref:IScriptable")),
+            Self::Void => Err(PoolError::UnexpectedEntry("void type")),
         }
     }
 
     pub fn pretty(&self, pool: &ConstantPool) -> Result<Ident, PoolError> {
         match self {
-            TypeId::Prim(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
-            TypeId::Class(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
-            TypeId::Struct(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
-            TypeId::Enum(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
-            TypeId::Ref(idx) => Ok(str_fmt!("ref<{}>", idx.pretty(pool)?)),
-            TypeId::WeakRef(idx) => Ok(str_fmt!("wref<{}>", idx.pretty(pool)?)),
-            TypeId::Array(idx) => Ok(str_fmt!("array<{}>", idx.pretty(pool)?)),
-            TypeId::StaticArray(idx, size) => Ok(str_fmt!("array<{}, {}>", idx.pretty(pool)?, size)),
-            TypeId::ScriptRef(idx) => Ok(str_fmt!("script_ref<{}>", idx.pretty(pool)?)),
-            TypeId::Variant => Ok(Ident::from_static("Variant")),
-            TypeId::Null => Ok(Ident::from_static("Null")),
-            TypeId::Void => Ok(Ident::from_static("Void")),
+            Self::Prim(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
+            Self::Class(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
+            Self::Struct(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
+            Self::Enum(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
+            Self::Ref(idx) => Ok(str_fmt!("ref<{}>", idx.pretty(pool)?)),
+            Self::WeakRef(idx) => Ok(str_fmt!("wref<{}>", idx.pretty(pool)?)),
+            Self::Array(idx) => Ok(str_fmt!("array<{}>", idx.pretty(pool)?)),
+            Self::StaticArray(idx, size) => Ok(str_fmt!("array<{}, {}>", idx.pretty(pool)?, size)),
+            Self::ScriptRef(idx) => Ok(str_fmt!("script_ref<{}>", idx.pretty(pool)?)),
+            Self::Variant => Ok(Ident::from_static("Variant")),
+            Self::Null => Ok(Ident::from_static("Null")),
+            Self::Void => Ok(Ident::from_static("Void")),
         }
     }
 }

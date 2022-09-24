@@ -197,7 +197,7 @@ impl CompileTimestamp {
     fn read<R: io::Read + io::Seek>(input: &mut R) -> Result<Self, Error> {
         input.seek(io::SeekFrom::Start(0))?;
         let nanos = input.read_u128::<LittleEndian>()?;
-        Ok(CompileTimestamp { nanos })
+        Ok(Self { nanos })
     }
 
     fn write<W: io::Write + io::Seek>(&self, output: &mut W) -> Result<(), Error> {
@@ -213,7 +213,7 @@ impl CompileTimestamp {
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        Ok(CompileTimestamp { nanos })
+        Ok(Self { nanos })
     }
 }
 

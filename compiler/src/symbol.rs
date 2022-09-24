@@ -16,7 +16,7 @@ pub struct SymbolMap {
 }
 
 impl SymbolMap {
-    pub fn new(pool: &ConstantPool) -> Result<SymbolMap, Error> {
+    pub fn new(pool: &ConstantPool) -> Result<Self, Error> {
         let mut symbols: SequenceTrie<Ident, Symbol> = SequenceTrie::new();
 
         for (idx, def) in pool.roots() {
@@ -41,7 +41,7 @@ impl SymbolMap {
             }
         }
 
-        Ok(SymbolMap { symbols })
+        Ok(Self { symbols })
     }
 
     pub fn add_class(&mut self, path: &ModulePath, class: PoolIndex<Class>, visibility: Visibility) {
@@ -122,17 +122,17 @@ pub enum Symbol {
 }
 
 impl Symbol {
-    pub fn visible(self, visibility: Visibility) -> Option<Symbol> {
+    pub fn visible(self, visibility: Visibility) -> Option<Self> {
         match self {
-            Symbol::Class(_, v) if v <= visibility => Some(self),
-            Symbol::Struct(_, v) if v <= visibility => Some(self),
-            Symbol::Enum(_) => Some(self),
-            Symbol::Functions(funs) => {
+            Self::Class(_, v) if v <= visibility => Some(self),
+            Self::Struct(_, v) if v <= visibility => Some(self),
+            Self::Enum(_) => Some(self),
+            Self::Functions(funs) => {
                 let visible_funs: Vec<_> = funs.into_iter().filter(|(_, v)| *v <= visibility).collect();
                 if visible_funs.is_empty() {
                     None
                 } else {
-                    Some(Symbol::Functions(visible_funs))
+                    Some(Self::Functions(visible_funs))
                 }
             }
             _ => None,
@@ -150,9 +150,9 @@ pub enum Import {
 impl Import {
     pub fn annotations(&self) -> &[Annotation] {
         match self {
-            Import::Exact(anns, _, _) => anns,
-            Import::Selected(anns, _, _, _) => anns,
-            Import::All(anns, _, _) => anns,
+            Self::Exact(anns, _, _) => anns,
+            Self::Selected(anns, _, _, _) => anns,
+            Self::All(anns, _, _) => anns,
         }
     }
 }
@@ -163,31 +163,31 @@ pub struct ModulePath {
 }
 
 impl ModulePath {
-    pub const EMPTY: ModulePath = ModulePath { parts: vec![] };
+    pub const EMPTY: Self = Self { parts: vec![] };
 
-    pub fn new(parts: Vec<Ident>) -> ModulePath {
-        ModulePath { parts }
+    pub fn new(parts: Vec<Ident>) -> Self {
+        Self { parts }
     }
 
-    pub fn parse(str: &str) -> ModulePath {
+    pub fn parse(str: &str) -> Self {
         let parts = str
             .split('.')
             .map(|str| Ident::from_ref(str.split(';').next().unwrap()))
             .collect();
-        ModulePath { parts }
+        Self { parts }
     }
 
     pub fn is_empty(&self) -> bool {
         self.parts.is_empty()
     }
 
-    pub fn with_child(&self, child: Ident) -> ModulePath {
+    pub fn with_child(&self, child: Ident) -> Self {
         let mut copy = self.clone();
         copy.parts.push(child);
         copy
     }
 
-    pub fn with_function(&self, fun_sig: FunctionSignature) -> ModulePath {
+    pub fn with_function(&self, fun_sig: FunctionSignature) -> Self {
         let ident = Ident::from_ref(fun_sig);
         self.with_child(ident)
     }
@@ -265,17 +265,17 @@ pub struct FunctionSignatureBuilder {
 }
 
 impl FunctionSignatureBuilder {
-    pub fn new(name: String) -> FunctionSignatureBuilder {
-        FunctionSignatureBuilder { signature: name + ";" }
+    pub fn new(name: String) -> Self {
+        Self { signature: name + ";" }
     }
 
-    pub fn parameter(self, typ: &TypeName, is_out: bool) -> FunctionSignatureBuilder {
+    pub fn parameter(self, typ: &TypeName, is_out: bool) -> Self {
         let mut signature = self.signature;
         if is_out {
             signature.push_str("Out");
         }
         signature.push_str(typ.mangled().as_ref());
-        FunctionSignatureBuilder { signature }
+        Self { signature }
     }
 
     pub fn return_type<'a>(self, typ: &TypeName) -> FunctionSignature<'a> {

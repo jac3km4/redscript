@@ -55,11 +55,11 @@ impl Diagnostic {
         writeln!(out, "{self}")
     }
 
-    pub fn from_error(error: Error) -> Result<Diagnostic, Error> {
+    pub fn from_error(error: Error) -> Result<Self, Error> {
         match error {
-            Error::SyntaxError(set, pos) => Ok(Diagnostic::SyntaxError(set, pos)),
-            Error::CompileError(cause, pos) => Ok(Diagnostic::CompileError(cause, pos)),
-            Error::CteError(msg, pos) => Ok(Diagnostic::CteError(msg, pos)),
+            Error::SyntaxError(set, pos) => Ok(Self::SyntaxError(set, pos)),
+            Error::CompileError(cause, pos) => Ok(Self::CompileError(cause, pos)),
+            Error::CteError(msg, pos) => Ok(Self::CteError(msg, pos)),
             other => Err(other),
         }
     }
@@ -68,26 +68,26 @@ impl Diagnostic {
     pub fn is_fatal(&self) -> bool {
         !matches!(
             self,
-            Diagnostic::MethodConflict(_, _)
-                | Diagnostic::FieldConflict(_)
-                | Diagnostic::Deprecation(_, _)
-                | Diagnostic::UnusedLocal(_)
-                | Diagnostic::MissingReturn(_)
+            Self::MethodConflict(_, _)
+                | Self::FieldConflict(_)
+                | Self::Deprecation(_, _)
+                | Self::UnusedLocal(_)
+                | Self::MissingReturn(_)
         )
     }
 
     #[inline]
     pub fn span(&self) -> Span {
         match self {
-            Diagnostic::MethodConflict(_, span) => *span,
-            Diagnostic::FieldConflict(span) => *span,
-            Diagnostic::Deprecation(_, span) => *span,
-            Diagnostic::UnusedLocal(span) => *span,
-            Diagnostic::MissingReturn(span) => *span,
-            Diagnostic::CompileError(_, span) => *span,
-            Diagnostic::SyntaxError(_, span) => *span,
-            Diagnostic::CteError(_, span) => *span,
-            Diagnostic::ResolutionError(_, span) => *span,
+            Self::MethodConflict(_, span) => *span,
+            Self::FieldConflict(span) => *span,
+            Self::Deprecation(_, span) => *span,
+            Self::UnusedLocal(span) => *span,
+            Self::MissingReturn(span) => *span,
+            Self::CompileError(_, span) => *span,
+            Self::SyntaxError(_, span) => *span,
+            Self::CteError(_, span) => *span,
+            Self::ResolutionError(_, span) => *span,
         }
     }
 }
@@ -95,19 +95,19 @@ impl Diagnostic {
 impl fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Diagnostic::MethodConflict(_, _) => {
+            Self::MethodConflict(_, _) => {
                 f.write_str("this replacement overwrites a previous replacement of the same method")
             }
-            Diagnostic::FieldConflict(_) => {
+            Self::FieldConflict(_) => {
                 f.write_str("field with this name is already defined in the class, this will have no effect")
             }
-            Diagnostic::Deprecation(msg, _) => f.write_fmt(format_args!("{msg}")),
-            Diagnostic::UnusedLocal(_) => f.write_str("unused variable"),
-            Diagnostic::MissingReturn(_) => f.write_str("function might not return a value"),
-            Diagnostic::SyntaxError(set, _) => f.write_fmt(format_args!("syntax error, expected {set}")),
-            Diagnostic::CompileError(cause, _) => f.write_fmt(format_args!("{cause}")),
-            Diagnostic::CteError(msg, _) => f.write_fmt(format_args!("compile-time expression error: {msg}")),
-            Diagnostic::ResolutionError(msg, _) => f.write_fmt(format_args!("{msg}")),
+            Self::Deprecation(msg, _) => f.write_fmt(format_args!("{msg}")),
+            Self::UnusedLocal(_) => f.write_str("unused variable"),
+            Self::MissingReturn(_) => f.write_str("function might not return a value"),
+            Self::SyntaxError(set, _) => f.write_fmt(format_args!("syntax error, expected {set}")),
+            Self::CompileError(cause, _) => f.write_fmt(format_args!("{cause}")),
+            Self::CteError(msg, _) => f.write_fmt(format_args!("compile-time expression error: {msg}")),
+            Self::ResolutionError(msg, _) => f.write_fmt(format_args!("{msg}")),
         }
     }
 }
@@ -120,7 +120,7 @@ pub enum Deprecation {
 impl fmt::Display for Deprecation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Deprecation::UnrelatedTypeEquals => {
+            Self::UnrelatedTypeEquals => {
                 f.write_str("comparing unrelated types, this is will not be allowed in the future")
             }
         }
