@@ -808,7 +808,7 @@ impl<'a> CompilationUnit<'a> {
                         .with_span(ann.span)?
                         .by_id(&sig, self.pool)
                         .ok_or_else(|| Cause::FunctionNotFound(name).with_span(ann.span))?;
-                    let base = self.pool.function(fun_idx)?.base_method;
+                    let base = self.pool.function(fun_idx).ok().and_then(|fun| fun.base_method);
                     let slot = Slot::Function {
                         index: fun_idx,
                         parent: target_class_idx,
