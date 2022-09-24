@@ -5,7 +5,7 @@ on: push
 env:
   CARGO_TERM_COLOR: always
   STAGING_DIR: ${{ github.workspace }}-staging
-  ARCHIVE_NAME: redscript-${{ github.event.release.tag_name }}.zip
+  ARCHIVE_NAME: redscript-${{ github.ref_name }}.zip
   CHANGELOG_FILE: ${{ github.workspace }}-CHANGES.md
 
 jobs:
@@ -38,30 +38,30 @@ jobs:
 
       - name: Install git-cliff
         uses: baptiste0928/cargo-install@v1
-        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         with:
           crate: git-cliff
           version: "0.9"
 
       - name: Generate a changelog
-        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         run: git cliff --latest --strip header -o ${{ env.CHANGELOG_FILE }}
 
       - name: Release
         uses: softprops/action-gh-release@v1
-        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         with:
           body_path: ${{ env.CHANGELOG_FILE }}
           files: |
             ${{ env.STAGING_DIR }}/${{ env.ARCHIVE_NAME }}
             ./target/release/redscript-cli.exe
-          prerelease: ${{ contains(github.event.release.tag_name, '-RC') || contains(github.event.release.tag_name, '-M') }}
+          prerelease: ${{ contains(github.ref_name, '-RC') || contains(github.ref_name, '-M') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Archive artifacts
         uses: actions/upload-artifact@v2
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         with:
           path: |
             ${{ env.STAGING_DIR }}/${{ env.ARCHIVE_NAME }}
