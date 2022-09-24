@@ -5,6 +5,8 @@ on: push
 env:
   CARGO_TERM_COLOR: always
   STAGING_DIR: ${{ github.workspace }}-staging
+  ARCHIVE_NAME: redscript-${{ github.event.release.tag_name }}.zip
+  CHANGELOG: ${{ github.workspace }}-CHANGES.md
 
 jobs:
   build:
@@ -27,27 +29,27 @@ jobs:
           args: --release --features mmap,popup
       - name: Create the mod archive
         run: |
-          mkdir $STAGING_DIR
-          cp -r ./resources/mod/* $STAGING_DIR/
-          mkdir -p $STAGING_DIR/engine/tools
-          cp ./target/release/scc.exe $STAGING_DIR/engine/tools/
-          cd $STAGING_DIR
-          7z a -mx=9 -r ./redscript-${{ github.event.release.tag_name }}.zip *
+          mkdir $env:STAGING_DIR
+          cp -r ./resources/mod/* $env:STAGING_DIR/
+          mkdir -p $env:STAGING_DIR/engine/tools
+          cp ./target/release/scc.exe $env:STAGING_DIR/engine/tools/
+          cd $env:STAGING_DIR
+          7z a -mx=9 -r $env:ARCHIVE_NAME *
       - name: Generate a changelog
         uses: orhun/git-cliff-action@v1
         id: git-cliff
         with:
           args: --latest --strip header
         env:
-          OUTPUT: ${{ github.workspace }}-CHANGES.md
+          OUTPUT: $CHANGELOG
 
       - name: Release
         uses: softprops/action-gh-release@v1
         if: ${{ startsWith(github.ref, 'refs/tags/') }}
         with:
-          body_path: ${{ github.workspace }}-CHANGES.md
+          body_path: $CHANGELOG
           files: |
-            $STAGING_DIR/redscript-${{ github.event.release.tag_name }}.zip
+            $STAGING_DIR/$ARCHIVE_NAME
             ./target/release/redscript-cli.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -57,5 +59,5 @@ jobs:
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         with:
           path: |
-            $STAGING_DIR/redscript-${{ github.event.release.tag_name }}.zip
+            $STAGING_DIR/$ARCHIVE_NAME
             ./target/release/redscript-cli.exe

@@ -27,6 +27,7 @@ shared-version = true
 consolidate-commits = true
 consolidate-pushes = true
 publish = false
+tag-prefix = ""
 
 [profile.release]
 lto = "thin"
