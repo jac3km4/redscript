@@ -1,0 +1,21 @@
+[target.'cfg(all())']
+rustflags = [
+    "-Wclippy::all",
+    "-Wclippy::match_same_arms",
+    "-Wclippy::semicolon_if_nothing_returned",
+    "-Wclippy::single_match_else",
+    "-Wclippy::redundant_closure_for_method_calls",
+    "-Wclippy::cloned_instead_of_copied",
+    "-Wclippy::redundant_else",
+    "-Wclippy::unnested_or_patterns",
+    "-Wclippy::unreadable_literal",
+    "-Wclippy::type_repetition_in_bounds",
+    "-Wclippy::equatable_if_let",
+    "-Wclippy::implicit_clone",
+    "-Wclippy::default_trait_access",
+    "-Wclippy::explicit_deref_methods",
+    "-Wclippy::explicit_iter_loop",
+    "-Wclippy::inefficient_to_string",
+    "-Wclippy::match_bool",
+    "-D", "warnings"
+]
