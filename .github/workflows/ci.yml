@@ -6,7 +6,7 @@ env:
   CARGO_TERM_COLOR: always
   STAGING_DIR: ${{ github.workspace }}-staging
   ARCHIVE_NAME: redscript-${{ github.event.release.tag_name }}.zip
-  CHANGELOG: ${{ github.workspace }}-CHANGES.md
+  CHANGELOG_FILE: ${{ github.workspace }}-CHANGES.md
 
 jobs:
   build:
@@ -29,32 +29,33 @@ jobs:
           args: --release --features mmap,popup
       - name: Create the mod archive
         run: |
-          mkdir $env:STAGING_DIR
-          cp -r ./resources/mod/* $env:STAGING_DIR/
-          mkdir -p $env:STAGING_DIR/engine/tools
-          cp ./target/release/scc.exe $env:STAGING_DIR/engine/tools/
-          cd $env:STAGING_DIR
-          7z a -mx=9 -r $env:ARCHIVE_NAME *
+          mkdir ${{ env.STAGING_DIR }}
+          cp -r ./resources/mod/* ${{ env.STAGING_DIR }}/
+          mkdir -p ${{ env.STAGING_DIR }}/engine/tools
+          cp ./target/release/scc.exe ${{ env.STAGING_DIR }}/engine/tools/
+          cd ${{ env.STAGING_DIR }}
+          7z a -mx=9 -r ${{ env.ARCHIVE_NAME }} *
 
       - name: Install git-cliff
         uses: baptiste0928/cargo-install@v1
-        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        # if: ${{ startsWith(github.ref, 'refs/tags/') }}
         with:
           crate: git-cliff
           version: "0.9"
 
       - name: Generate a changelog
-        if: ${{ startsWith(github.ref, 'refs/tags/') }}
-        run: git cliff --latest --strip header -o $env:CHANGELOG
+        # if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        run: git cliff --latest --strip header -o ${{ env.CHANGELOG_FILE }}
 
       - name: Release
         uses: softprops/action-gh-release@v1
         if: ${{ startsWith(github.ref, 'refs/tags/') }}
         with:
-          body_path: $CHANGELOG
+          body_path: ${{ env.CHANGELOG_FILE }}
           files: |
-            $STAGING_DIR/$ARCHIVE_NAME
+            ${{ env.STAGING_DIR }}/${{ env.ARCHIVE_NAME }}
             ./target/release/redscript-cli.exe
+          prerelease: ${{ contains(github.event.release.tag_name, '-RC') || contains(github.event.release.tag_name, '-M') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -63,5 +64,5 @@ jobs:
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         with:
           path: |
-            $STAGING_DIR/$ARCHIVE_NAME
+            ${{ env.STAGING_DIR }}/${{ env.ARCHIVE_NAME }}
             ./target/release/redscript-cli.exe
