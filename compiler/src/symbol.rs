@@ -150,9 +150,7 @@ pub enum Import {
 impl Import {
     pub fn annotations(&self) -> &[Annotation] {
         match self {
-            Self::Exact(anns, _, _) => anns,
-            Self::Selected(anns, _, _, _) => anns,
-            Self::All(anns, _, _) => anns,
+            Self::Exact(anns, _, _) | Self::Selected(anns, _, _, _) | Self::All(anns, _, _) => anns,
         }
     }
 }

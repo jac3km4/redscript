@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
 use std::io;
-use std::ops::DerefMut;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::SystemTime;
@@ -25,66 +24,63 @@ const TIMESTAMP_FILE_NAME: &str = "redscript.ts";
 
 fn main() -> ExitCode {
     let mut arg_iter = std::env::args().skip(1);
-    match (arg_iter.next().as_deref(), arg_iter.next()) {
-        (Some("-compile"), Some(path_str)) => {
-            // the way cyberpunk passes CLI args is broken, this is a workaround
-            let script_dir = PathBuf::from(path_str.split('"').next().unwrap());
-            let r6_dir = script_dir.parent().unwrap();
-            let default_cache_dir = r6_dir.join("cache");
+    if let (Some("-compile"), Some(path_str)) = (arg_iter.next().as_deref(), arg_iter.next()) {
+        // the way cyberpunk passes CLI args is broken, this is a workaround
+        let script_dir = PathBuf::from(path_str.split('"').next().unwrap());
+        let r6_dir = script_dir.parent().unwrap();
+        let default_cache_dir = r6_dir.join("cache");
 
-            // load manifest without fallback
-            let manifest = ScriptManifest::load(&script_dir);
+        // load manifest without fallback
+        let manifest = ScriptManifest::load(&script_dir);
 
-            // set up logger with an optional manifest
-            let append_date_to_logfiles = manifest
-                .as_ref()
-                .ok()
-                .and_then(|m| m.append_date_to_logfiles)
-                .unwrap_or(false);
-            setup_logger(r6_dir, append_date_to_logfiles).expect("Could not set up the logger");
+        // set up logger with an optional manifest
+        let append_date_to_logfiles = manifest
+            .as_ref()
+            .ok()
+            .and_then(|m| m.append_date_to_logfiles)
+            .unwrap_or(false);
+        setup_logger(r6_dir, append_date_to_logfiles).expect("Could not set up the logger");
 
-            // get manifest or fallback
-            let manifest = manifest.unwrap_or_else(|err| {
-                log::info!("Script manifest not loaded, using defaults ({err})");
-                ScriptManifest::default()
-            });
+        // get manifest or fallback
+        let manifest = manifest.unwrap_or_else(|err| {
+            log::info!("Script manifest not loaded, using defaults ({err})");
+            ScriptManifest::default()
+        });
 
-            let (cache_dir, fallback_dir) = match (arg_iter.next().as_deref(), arg_iter.next()) {
-                (Some("-customCacheDir"), Some(custom_path)) => {
-                    log::info!("Custom cache directory provided: {}", custom_path);
-                    let cache_dir = PathBuf::from(custom_path);
-                    let expected_bundle_path = cache_dir.join(BUNDLE_FILE_NAME);
-                    if !expected_bundle_path.exists() {
-                        let base = get_base_bundle_path(&default_cache_dir);
-                        fs::create_dir_all(&cache_dir).expect("Could not create the custom cache directory");
-                        fs::copy(&base, expected_bundle_path).expect("Could not copy base bundle");
-                    }
-                    (cache_dir, Some(default_cache_dir))
+        let (cache_dir, fallback_dir) = match (arg_iter.next().as_deref(), arg_iter.next()) {
+            (Some("-customCacheDir"), Some(custom_path)) => {
+                log::info!("Custom cache directory provided: {}", custom_path);
+                let cache_dir = PathBuf::from(custom_path);
+                let expected_bundle_path = cache_dir.join(BUNDLE_FILE_NAME);
+                if !expected_bundle_path.exists() {
+                    let base = get_base_bundle_path(&default_cache_dir);
+                    fs::create_dir_all(&cache_dir).expect("Could not create the custom cache directory");
+                    fs::copy(&base, expected_bundle_path).expect("Could not copy base bundle");
                 }
-                _ => (default_cache_dir, None),
-            };
+                (cache_dir, Some(default_cache_dir))
+            }
+            _ => (default_cache_dir, None),
+        };
 
-            let files = Files::from_dir(&script_dir, manifest.source_filter()).expect("Could not load script sources");
+        let files = Files::from_dir(&script_dir, manifest.source_filter()).expect("Could not load script sources");
 
-            match compile_scripts(&cache_dir, fallback_dir.as_deref(), &files) {
-                Ok(_) => {
-                    log::info!("Output successfully saved in {}", cache_dir.display());
-                    ExitCode::SUCCESS
-                }
-                Err(err) => {
-                    let content = error_message(err, &files, &script_dir);
-                    #[cfg(feature = "popup")]
-                    msgbox::create("Compilation error", &content, msgbox::IconType::Error).unwrap();
+        match compile_scripts(&cache_dir, fallback_dir.as_deref(), &files) {
+            Ok(_) => {
+                log::info!("Output successfully saved in {}", cache_dir.display());
+                ExitCode::SUCCESS
+            }
+            Err(err) => {
+                let content = error_message(err, &files, &script_dir);
+                #[cfg(feature = "popup")]
+                msgbox::create("Compilation error", &content, msgbox::IconType::Error).unwrap();
 
-                    log::error!("Compilation error: {}", content);
-                    ExitCode::FAILURE
-                }
+                log::error!("Compilation error: {}", content);
+                ExitCode::FAILURE
             }
         }
-        _ => {
-            log::error!("Invalid command-line arguments");
-            ExitCode::FAILURE
-        }
+    } else {
+        log::error!("Invalid command-line arguments");
+        ExitCode::FAILURE
     }
 }
 
@@ -145,11 +141,11 @@ fn compile_scripts(cache_dir: &Path, fallback_cache_dir: Option<&Path>, files: &
     }
 
     let write_timestamp = CompileTimestamp::of_cache_file(&File::open(&bundle_path)?)?;
-    let saved_timestamp = CompileTimestamp::read(ts_file.deref_mut()).ok();
+    let saved_timestamp = CompileTimestamp::read(&mut *ts_file).ok();
 
     match saved_timestamp {
         None if backup_path.exists() => {
-            log::info!("Previous cache backup file found")
+            log::info!("Previous cache backup file found");
         }
         saved_timestamp if saved_timestamp != Some(write_timestamp) => {
             log::info!(
@@ -183,7 +179,7 @@ fn compile_scripts(cache_dir: &Path, fallback_cache_dir: Option<&Path>, files: &
     bundle.save(&mut io::BufWriter::new(&mut file))?;
     file.sync_all()?;
 
-    CompileTimestamp::of_cache_file(&file)?.write(ts_file.deref_mut())?;
+    CompileTimestamp::of_cache_file(&file)?.write(&mut *ts_file)?;
 
     Ok(())
 }
@@ -268,8 +264,9 @@ fn error_message(error: Error, files: &Files, scripts_dir: &Path) -> String {
     }
 
     let str = match error {
-        Error::SyntaxError(_, span) => detailed_message(&[span], files, scripts_dir).unwrap_or_default(),
-        Error::CompileError(_, span) => detailed_message(&[span], files, scripts_dir).unwrap_or_default(),
+        Error::CompileError(_, span) | Error::SyntaxError(_, span) => {
+            detailed_message(&[span], files, scripts_dir).unwrap_or_default()
+        }
         Error::MultipleErrors(spans) => detailed_message(&spans, files, scripts_dir).unwrap_or_default(),
         Error::IoError(err) => format!("This is caused by an I/O error: {err}"),
         Error::PoolError(err) => format!("This is caused by a constant pool error: {err}"),

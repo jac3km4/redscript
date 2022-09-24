@@ -51,38 +51,35 @@ where
     pub fn map(&self, pool: &mut ConstantPool) {
         for def in &mut pool.definitions {
             match &mut def.value {
-                AnyDefinition::Type(_) => {}
                 AnyDefinition::Class(class) => {
                     class.base = self.map_class.apply(class.base);
                 }
-                AnyDefinition::EnumValue(_) => {}
-                AnyDefinition::Enum(_) => {}
                 AnyDefinition::Function(fun) => {
                     def.parent = self.map_class.apply(def.parent.cast()).cast();
                     for instr in &mut fun.code.0 {
                         self.map_instr(instr);
                     }
                 }
-                AnyDefinition::Parameter(_) => {
-                    def.parent = self.map_function.apply(def.parent.cast()).cast();
-                }
-                AnyDefinition::Local(_) => {
+                AnyDefinition::Parameter(_) | AnyDefinition::Local(_) => {
                     def.parent = self.map_function.apply(def.parent.cast()).cast();
                 }
                 AnyDefinition::Field(_) => {
                     def.parent = self.map_class.apply(def.parent.cast()).cast();
                 }
-                AnyDefinition::SourceFile(_) => {}
+                AnyDefinition::Type(_)
+                | AnyDefinition::EnumValue(_)
+                | AnyDefinition::Enum(_)
+                | AnyDefinition::SourceFile(_) => {}
             }
         }
     }
 
     fn map_instr<L>(&self, instr: &mut Instr<L>) {
         match instr {
-            Instr::Construct(_, idx) => *idx = self.map_class.apply(*idx),
+            Instr::Construct(_, idx) | Instr::New(idx) | Instr::DynamicCast(idx, _) => {
+                *idx = self.map_class.apply(*idx);
+            }
             Instr::InvokeStatic(_, _, idx, _) => *idx = self.map_function.apply(*idx),
-            Instr::New(idx) => *idx = self.map_class.apply(*idx),
-            Instr::DynamicCast(idx, _) => *idx = self.map_class.apply(*idx),
             _ => {}
         }
     }

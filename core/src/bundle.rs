@@ -56,7 +56,7 @@ pub struct Header {
 
 impl Header {
     const SUPPORTED_VERSION: u32 = 14;
-    const MAGIC: u32 = 0x53444552;
+    const MAGIC: u32 = 0x5344_4552;
     const SIZE: usize = 104;
 }
 
@@ -74,7 +74,7 @@ impl Decode for Header {
             log::warn!(
                 "Loading an unsupported version of the script cache (v{version}) built at {timestamp}. \
                  You might be running the wrong version of redscript."
-            )
+            );
         }
         let unk3: u32 = input.decode()?;
         let hash: u32 = input.decode()?;
@@ -227,7 +227,7 @@ impl ConstantPool {
             resources,
             strings,
             definitions,
-            hash: 0xDEADBEEF,
+            hash: 0xDEAD_BEEF,
             ..header.clone()
         };
 
@@ -332,7 +332,7 @@ impl ConstantPool {
     }
 
     pub fn swap_definition<A>(&mut self, lhs: PoolIndex<A>, rhs: PoolIndex<A>) {
-        self.definitions.swap(lhs.value as usize, rhs.value as usize)
+        self.definitions.swap(lhs.value as usize, rhs.value as usize);
     }
 
     pub fn add_definition<A>(&mut self, definition: Definition) -> PoolIndex<A> {
@@ -399,7 +399,7 @@ impl<K: DefaultString> Strings<K> {
     }
 
     pub fn get_index(&self, name: &str) -> Option<PoolIndex<K>> {
-        self.mappings.get(name).cloned()
+        self.mappings.get(name).copied()
     }
 
     pub fn add(&mut self, str: Ref<str>) -> PoolIndex<K> {
@@ -699,7 +699,7 @@ impl<A> Ord for PoolIndex<A> {
 
 impl<A> Hash for PoolIndex<A> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        Hash::hash(&self.value, state)
+        self.value.hash(state);
     }
 }
 

@@ -519,10 +519,10 @@ impl<'a> CompilationUnit<'a> {
         let is_static = decl.qualifiers.contain(Qualifier::Static) || class_idx.is_undefined();
         let is_callback = decl.qualifiers.contain(Qualifier::Callback);
 
-        if is_native && class_flags.map(|f| !f.is_native()).unwrap_or(false) {
+        if is_native && class_flags.map_or(false, |f| !f.is_native()) {
             self.report(Cause::UnexpectedNative.with_span(source.declaration.span))?;
         }
-        if !is_native && class_flags.map(|f| !f.is_abstract()).unwrap_or(true) && source.body.is_none() {
+        if !is_native && class_flags.map_or(true, |f| !f.is_abstract()) && source.body.is_none() && source.body.is_none() {
             self.report(Cause::MissingBody.with_span(source.declaration.span))?;
         }
         if is_native && source.body.is_some() {
@@ -598,7 +598,7 @@ impl<'a> CompilationUnit<'a> {
                 was_callback: is_callback,
                 span: source.span,
             };
-            self.function_bodies.push(item)
+            self.function_bodies.push(item);
         }
 
         self.pool.put_definition(fun_idx, definition);
@@ -723,9 +723,8 @@ impl<'a> CompilationUnit<'a> {
                     self.define_field(index, target_class, flags, visibility, source, scope)?;
                     self.pool.class_mut(target_class)?.fields.push(index);
                     return Ok(());
-                } else {
-                    return Err(Cause::ClassNotFound(ident.clone()).with_span(ann.span));
-                }
+                };
+                return Err(Cause::ClassNotFound(ident.clone()).with_span(ann.span));
             }
         }
         Err(Cause::UnsupportedFeature("global let binding").with_span(decl.span))
@@ -753,8 +752,7 @@ impl<'a> CompilationUnit<'a> {
                         .ok_or_else(|| Cause::InvalidAnnotationArgs.with_span(ann.span))?;
 
                     let target_class_idx = match self.scope.resolve_symbol(class_name.clone()).with_span(ann.span)? {
-                        Symbol::Class(idx, _) => idx,
-                        Symbol::Struct(idx, _) => idx,
+                        Symbol::Struct(idx, _) | Symbol::Class(idx, _) => idx,
                         _ => return Err(Cause::ClassNotFound(class_name.clone()).with_span(ann.span)),
                     };
                     let fun_idx = self
@@ -764,13 +762,12 @@ impl<'a> CompilationUnit<'a> {
                         .by_id(&sig, self.pool)
                         .ok_or_else(|| Cause::FunctionNotFound(name).with_span(ann.span))?;
 
-                    let wrapped_idx = match self.wrappers.get(&fun_idx) {
-                        Some(wrapped) => *wrapped,
-                        None => {
-                            let proxy = self.pool.reserve();
-                            self.proxies.insert(fun_idx, proxy);
-                            proxy
-                        }
+                    let wrapped_idx = if let Some(wrapped) = self.wrappers.get(&fun_idx) {
+                        *wrapped
+                    } else {
+                        let proxy = self.pool.reserve();
+                        self.proxies.insert(fun_idx, proxy);
+                        proxy
                     };
 
                     let name_idx = self.pool.names.add(Ref::from(format!("wrapper${wrapped_idx}")));
@@ -798,8 +795,7 @@ impl<'a> CompilationUnit<'a> {
                         .and_then(Expr::as_ident)
                         .ok_or_else(|| Cause::InvalidAnnotationArgs.with_span(ann.span))?;
                     let target_class_idx = match self.scope.resolve_symbol(class_name.clone()).with_span(ann.span)? {
-                        Symbol::Class(idx, _) => idx,
-                        Symbol::Struct(idx, _) => idx,
+                        Symbol::Struct(idx, _) | Symbol::Class(idx, _) => idx,
                         _ => return Err(Cause::ClassNotFound(class_name.clone()).with_span(ann.span)),
                     };
                     let fun_idx = self
@@ -846,8 +842,7 @@ impl<'a> CompilationUnit<'a> {
                         .and_then(Expr::as_ident)
                         .ok_or_else(|| Cause::InvalidAnnotationArgs.with_span(ann.span))?;
                     let target_class_idx = match self.scope.resolve_symbol(class_name.clone()).with_span(ann.span)? {
-                        Symbol::Class(idx, _) => idx,
-                        Symbol::Struct(idx, _) => idx,
+                        Symbol::Struct(idx, _) | Symbol::Class(idx, _) => idx,
                         _ => return Err(Cause::ClassNotFound(class_name.clone()).with_span(ann.span)),
                     };
                     let class = self.pool.class(target_class_idx)?;
@@ -856,7 +851,7 @@ impl<'a> CompilationUnit<'a> {
                         base.functions
                             .iter()
                             .find(|fun| self.pool.def_name(**fun).unwrap().as_ref() == sig.as_ref())
-                            .cloned()
+                            .copied()
                     } else {
                         None
                     };
@@ -875,9 +870,7 @@ impl<'a> CompilationUnit<'a> {
                     };
                     return Ok(slot);
                 }
-                AnnotationKind::AddField => {}
-                AnnotationKind::If => {}
-                AnnotationKind::RuntimeProperty => {}
+                AnnotationKind::AddField | AnnotationKind::If | AnnotationKind::RuntimeProperty => {}
             }
         }
 
@@ -1057,9 +1050,9 @@ impl<'a> CompilationUnit<'a> {
         let fun = pool.function_mut(target)?;
         fun.locals = mapped_locals.values().copied().collect();
 
-        for instr in fun.code.0.iter_mut() {
+        for instr in &mut fun.code.0 {
             if let Instr::Local(local) = instr {
-                *instr = Instr::Local(*mapped_locals.get(local).unwrap())
+                *instr = Instr::Local(*mapped_locals.get(local).unwrap());
             }
         }
         Ok(())
@@ -1075,7 +1068,7 @@ impl<'a> CompilationUnit<'a> {
         ) {
             acc.insert(class_idx);
             for sub in hierarchy.get(&class_idx).map(Vec::as_slice).unwrap_or(&[]) {
-                collect_subtypes(*sub, hierarchy, acc)
+                collect_subtypes(*sub, hierarchy, acc);
             }
         }
 
@@ -1111,7 +1104,7 @@ impl<'a> CompilationUnit<'a> {
                 loop {
                     match pool.class(cur) {
                         Ok(cls) if u32::from(min_unsorted) < u32::from(cls.base) && !unsorted.contains(&cls.base) => {
-                            cur = cls.base
+                            cur = cls.base;
                         }
                         _ => break,
                     }

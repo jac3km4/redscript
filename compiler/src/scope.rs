@@ -285,9 +285,7 @@ pub enum TypeId {
 impl TypeId {
     pub fn unwrapped(&self) -> &Self {
         match self {
-            Self::Ref(inner) => inner.unwrapped(),
-            Self::WeakRef(inner) => inner.unwrapped(),
-            Self::ScriptRef(inner) => inner.unwrapped(),
+            Self::Ref(inner) | Self::WeakRef(inner) | Self::ScriptRef(inner) => inner.unwrapped(),
             other => other,
         }
     }
@@ -295,8 +293,7 @@ impl TypeId {
     fn repr(&self, pool: &ConstantPool) -> Result<Ident, PoolError> {
         match self {
             Self::Prim(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
-            Self::Class(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
-            Self::Struct(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
+            Self::Class(idx) | Self::Struct(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
             Self::Enum(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
             Self::Ref(idx) => Ok(str_fmt!("ref:{}", idx.repr(pool)?)),
             Self::WeakRef(idx) => Ok(str_fmt!("wref:{}", idx.repr(pool)?)),
@@ -312,8 +309,7 @@ impl TypeId {
     pub fn pretty(&self, pool: &ConstantPool) -> Result<Ident, PoolError> {
         match self {
             Self::Prim(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
-            Self::Class(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
-            Self::Struct(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
+            Self::Class(idx) | Self::Struct(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
             Self::Enum(idx) => Ok(Ident::from_heap(pool.def_name(*idx)?)),
             Self::Ref(idx) => Ok(str_fmt!("ref<{}>", idx.pretty(pool)?)),
             Self::WeakRef(idx) => Ok(str_fmt!("wref<{}>", idx.pretty(pool)?)),

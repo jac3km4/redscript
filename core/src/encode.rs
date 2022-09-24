@@ -108,7 +108,7 @@ pub trait EncodeExt: io::Write + Sized {
 
     fn encode_slice<A: Encode>(&mut self, value: &[A]) -> io::Result<()> {
         for elem in value {
-            self.encode(elem)?
+            self.encode(elem)?;
         }
         Ok(())
     }

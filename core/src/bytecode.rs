@@ -114,99 +114,101 @@ pub enum Instr<Loc> {
 impl<L> Instr<L> {
     pub fn size(&self) -> u16 {
         let op_size = match self {
-            Instr::Nop | Instr::Null | Instr::I32One | Instr::I32Zero | Instr::TrueConst | Instr::FalseConst => 0,
-            Instr::I8Const(_) => 1,
-            Instr::I16Const(_) => 2,
-            Instr::I32Const(_) => 4,
-            Instr::I64Const(_) => 8,
-            Instr::U8Const(_) => 1,
-            Instr::U16Const(_) => 2,
-            Instr::U32Const(_) => 4,
-            Instr::U64Const(_) => 8,
-            Instr::F32Const(_) => 4,
-            Instr::F64Const(_) => 8,
-            Instr::NameConst(_) => 8,
-            Instr::EnumConst(_, _) => 16,
-            Instr::StringConst(_) => 4,
-            Instr::TweakDbIdConst(_) => 8,
-            Instr::ResourceConst(_) => 8,
             Instr::Breakpoint(_) => 19,
-            Instr::Assign => 0,
-            Instr::Target(_) => return 0, // not present in bytecode
-            Instr::Local(_) => 8,
-            Instr::Param(_) => 8,
-            Instr::ObjectField(_) => 8,
-            Instr::ExternalVar => 0,
+            Instr::EnumConst(_, _) => 16,
+            Instr::InvokeStatic(_, _, _, _) | Instr::InvokeVirtual(_, _, _, _) => 14,
             Instr::Switch(_, _) => 10,
-            Instr::SwitchLabel(_, _) => 4,
-            Instr::SwitchDefault => 0,
-            Instr::Jump(_) => 2,
-            Instr::JumpIfFalse(_) => 2,
-            Instr::Skip(_) => 2,
-            Instr::Conditional(_, _) => 4,
-            Instr::Construct(_, _) => 9,
-            Instr::InvokeStatic(_, _, _, _) => 14,
-            Instr::InvokeVirtual(_, _, _, _) => 14,
-            Instr::ParamEnd => 0,
-            Instr::Return => 0,
-            Instr::StructField(_) => 8,
-            Instr::Context(_) => 2,
-            Instr::Equals(_) => 8,
-            Instr::NotEquals(_) => 8,
-            Instr::New(_) => 8,
-            Instr::Delete => 0,
-            Instr::This => 0,
+            Instr::Construct(_, _) | Instr::EnumToI32(_, _) | Instr::I32ToEnum(_, _) | Instr::DynamicCast(_, _) => 9,
+            Instr::I64Const(_)
+            | Instr::U64Const(_)
+            | Instr::F64Const(_)
+            | Instr::NameConst(_)
+            | Instr::TweakDbIdConst(_)
+            | Instr::ResourceConst(_)
+            | Instr::Local(_)
+            | Instr::Param(_)
+            | Instr::ObjectField(_)
+            | Instr::StructField(_)
+            | Instr::Equals(_)
+            | Instr::NotEquals(_)
+            | Instr::New(_)
+            | Instr::ToString(_)
+            | Instr::ToVariant(_)
+            | Instr::FromVariant(_)
+            | Instr::AsRef(_)
+            | Instr::Deref(_)
+            | Instr::ArrayClear(_)
+            | Instr::ArraySize(_)
+            | Instr::ArrayResize(_)
+            | Instr::ArrayFindFirst(_)
+            | Instr::ArrayFindFirstFast(_)
+            | Instr::ArrayFindLast(_)
+            | Instr::ArrayFindLastFast(_)
+            | Instr::ArrayContains(_)
+            | Instr::ArrayContainsFast(_)
+            | Instr::ArrayCount(_)
+            | Instr::ArrayCountFast(_)
+            | Instr::ArrayPush(_)
+            | Instr::ArrayPop(_)
+            | Instr::ArrayInsert(_)
+            | Instr::ArrayRemove(_)
+            | Instr::ArrayRemoveFast(_)
+            | Instr::ArrayGrow(_)
+            | Instr::ArrayErase(_)
+            | Instr::ArrayEraseFast(_)
+            | Instr::ArrayLast(_)
+            | Instr::ArrayElement(_)
+            | Instr::StaticArraySize(_)
+            | Instr::StaticArrayFindFirst(_)
+            | Instr::StaticArrayFindFirstFast(_)
+            | Instr::StaticArrayFindLast(_)
+            | Instr::StaticArrayFindLastFast(_)
+            | Instr::StaticArrayContains(_)
+            | Instr::StaticArrayContainsFast(_)
+            | Instr::StaticArrayCount(_)
+            | Instr::StaticArrayCountFast(_)
+            | Instr::StaticArrayLast(_)
+            | Instr::StaticArrayElement(_) => 8,
+            Instr::I32Const(_)
+            | Instr::U32Const(_)
+            | Instr::F32Const(_)
+            | Instr::StringConst(_)
+            | Instr::SwitchLabel(_, _)
+            | Instr::Conditional(_, _) => 4,
+            Instr::I16Const(_)
+            | Instr::U16Const(_)
+            | Instr::Jump(_)
+            | Instr::JumpIfFalse(_)
+            | Instr::Skip(_)
+            | Instr::Context(_) => 2,
+            Instr::I8Const(_) | Instr::U8Const(_) => 1,
+            Instr::Nop
+            | Instr::Null
+            | Instr::I32One
+            | Instr::I32Zero
+            | Instr::TrueConst
+            | Instr::FalseConst
+            | Instr::Assign
+            | Instr::ExternalVar
+            | Instr::SwitchDefault
+            | Instr::ParamEnd
+            | Instr::Return
+            | Instr::Delete
+            | Instr::This
+            | Instr::RefToBool
+            | Instr::WeakRefToBool
+            | Instr::VariantIsDefined
+            | Instr::VariantIsRef
+            | Instr::VariantIsArray
+            | Instr::VariantTypeName
+            | Instr::VariantToString
+            | Instr::WeakRefToRef
+            | Instr::RefToWeakRef
+            | Instr::WeakRefNull => 0,
+            // variable size
             Instr::StartProfiling(instr) => 5 + instr.0.len() as u16,
-            Instr::ArrayClear(_) => 8,
-            Instr::ArraySize(_) => 8,
-            Instr::ArrayResize(_) => 8,
-            Instr::ArrayFindFirst(_) => 8,
-            Instr::ArrayFindFirstFast(_) => 8,
-            Instr::ArrayFindLast(_) => 8,
-            Instr::ArrayFindLastFast(_) => 8,
-            Instr::ArrayContains(_) => 8,
-            Instr::ArrayContainsFast(_) => 8,
-            Instr::ArrayCount(_) => 8,
-            Instr::ArrayCountFast(_) => 8,
-            Instr::ArrayPush(_) => 8,
-            Instr::ArrayPop(_) => 8,
-            Instr::ArrayInsert(_) => 8,
-            Instr::ArrayRemove(_) => 8,
-            Instr::ArrayRemoveFast(_) => 8,
-            Instr::ArrayGrow(_) => 8,
-            Instr::ArrayErase(_) => 8,
-            Instr::ArrayEraseFast(_) => 8,
-            Instr::ArrayLast(_) => 8,
-            Instr::ArrayElement(_) => 8,
-            Instr::StaticArraySize(_) => 8,
-            Instr::StaticArrayFindFirst(_) => 8,
-            Instr::StaticArrayFindFirstFast(_) => 8,
-            Instr::StaticArrayFindLast(_) => 8,
-            Instr::StaticArrayFindLastFast(_) => 8,
-            Instr::StaticArrayContains(_) => 8,
-            Instr::StaticArrayContainsFast(_) => 8,
-            Instr::StaticArrayCount(_) => 8,
-            Instr::StaticArrayCountFast(_) => 8,
-            Instr::StaticArrayLast(_) => 8,
-            Instr::StaticArrayElement(_) => 8,
-            Instr::RefToBool => 0,
-            Instr::WeakRefToBool => 0,
-            Instr::EnumToI32(_, _) => 9,
-            Instr::I32ToEnum(_, _) => 9,
-            Instr::DynamicCast(_, _) => 9,
-            Instr::ToString(_) => 8,
-            Instr::ToVariant(_) => 8,
-            Instr::FromVariant(_) => 8,
-            Instr::VariantIsDefined => 0,
-            Instr::VariantIsRef => 0,
-            Instr::VariantIsArray => 0,
-            Instr::VariantTypeName => 0,
-            Instr::VariantToString => 0,
-            Instr::WeakRefToRef => 0,
-            Instr::RefToWeakRef => 0,
-            Instr::WeakRefNull => 0,
-            Instr::AsRef(_) => 8,
-            Instr::Deref(_) => 8,
+            // not present in bytecode
+            Instr::Target(_) => return 0,
         };
         1 + op_size
     }
@@ -945,7 +947,7 @@ impl Offset {
 
     #[inline]
     pub fn absolute(&self, position: Location) -> Location {
-        Location::new((position.value as i32 + self.value as i32) as u16)
+        Location::new((i32::from(position.value) + i32::from(self.value)) as u16)
     }
 }
 
@@ -994,7 +996,7 @@ impl Decode for Code<Offset> {
         let mut code = Vec::new();
         while offset < max_offset {
             let instr: Instr<Offset> = input.decode()?;
-            offset += instr.size() as u32;
+            offset += u32::from(instr.size());
             code.push(instr);
         }
         Ok(Code(code))
@@ -1003,7 +1005,7 @@ impl Decode for Code<Offset> {
 
 impl Encode for Code<Offset> {
     fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
-        let size: u32 = self.0.iter().map(|i| i.size() as u32).sum();
+        let size: u32 = self.0.iter().map(|i| u32::from(i.size())).sum();
         output.encode(&size)?;
         for instr in &self.0 {
             output.encode(instr)?;
@@ -1048,35 +1050,35 @@ pub enum IntrinsicOp {
 impl IntrinsicOp {
     pub fn arg_count(&self) -> u8 {
         match self {
-            IntrinsicOp::Equals => 2,
-            IntrinsicOp::NotEquals => 2,
-            IntrinsicOp::ArrayClear => 1,
-            IntrinsicOp::ArraySize => 1,
-            IntrinsicOp::ArrayResize => 2,
-            IntrinsicOp::ArrayFindFirst => 2,
-            IntrinsicOp::ArrayFindLast => 2,
-            IntrinsicOp::ArrayContains => 2,
-            IntrinsicOp::ArrayCount => 2,
-            IntrinsicOp::ArrayPush => 2,
-            IntrinsicOp::ArrayPop => 1,
             IntrinsicOp::ArrayInsert => 3,
-            IntrinsicOp::ArrayRemove => 2,
-            IntrinsicOp::ArrayGrow => 2,
-            IntrinsicOp::ArrayErase => 2,
-            IntrinsicOp::ArrayLast => 1,
-            IntrinsicOp::ToString => 1,
-            IntrinsicOp::EnumInt => 1,
-            IntrinsicOp::IntEnum => 1,
-            IntrinsicOp::ToVariant => 1,
-            IntrinsicOp::FromVariant => 1,
-            IntrinsicOp::VariantIsRef => 1,
-            IntrinsicOp::VariantIsArray => 1,
-            IntrinsicOp::VariantTypeName => 1,
-            IntrinsicOp::AsRef => 1,
-            IntrinsicOp::Deref => 1,
-            IntrinsicOp::RefToWeakRef => 1,
-            IntrinsicOp::WeakRefToRef => 1,
-            IntrinsicOp::IsDefined => 1,
+            IntrinsicOp::Equals
+            | IntrinsicOp::NotEquals
+            | IntrinsicOp::ArrayResize
+            | IntrinsicOp::ArrayFindFirst
+            | IntrinsicOp::ArrayFindLast
+            | IntrinsicOp::ArrayContains
+            | IntrinsicOp::ArrayCount
+            | IntrinsicOp::ArrayPush
+            | IntrinsicOp::ArrayRemove
+            | IntrinsicOp::ArrayGrow
+            | IntrinsicOp::ArrayErase => 2,
+            IntrinsicOp::ArrayPop
+            | IntrinsicOp::ArrayClear
+            | IntrinsicOp::ArraySize
+            | IntrinsicOp::ArrayLast
+            | IntrinsicOp::ToString
+            | IntrinsicOp::EnumInt
+            | IntrinsicOp::IntEnum
+            | IntrinsicOp::ToVariant
+            | IntrinsicOp::FromVariant
+            | IntrinsicOp::VariantIsRef
+            | IntrinsicOp::VariantIsArray
+            | IntrinsicOp::VariantTypeName
+            | IntrinsicOp::AsRef
+            | IntrinsicOp::Deref
+            | IntrinsicOp::RefToWeakRef
+            | IntrinsicOp::WeakRefToRef
+            | IntrinsicOp::IsDefined => 1,
         }
     }
 }

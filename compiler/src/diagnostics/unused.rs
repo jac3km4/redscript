@@ -18,7 +18,7 @@ impl DiagnosticPass for UnusedCheck {
 
         for (local, span) in names.declared {
             if !names.used_locals.contains(&local) {
-                diagnostics.push(Diagnostic::UnusedLocal(span))
+                diagnostics.push(Diagnostic::UnusedLocal(span));
             }
         }
 
@@ -44,10 +44,7 @@ impl UsedNames {
 
     fn on_expr(&mut self, expr: &Expr<TypedAst>) {
         match expr {
-            Expr::Declare(local, _, _, span) => {
-                self.declared.push((*local, *span));
-            }
-            Expr::ForIn(local, _, _, span) => {
+            Expr::Declare(local, _, _, span) | Expr::ForIn(local, _, _, span) => {
                 self.declared.push((*local, *span));
             }
             Expr::Ident(Reference::Value(Value::Local(local)), _) => {
@@ -58,6 +55,6 @@ impl UsedNames {
             }
             _ => {}
         };
-        visit_expr!(self, on_expr, expr)
+        visit_expr!(self, on_expr, expr);
     }
 }

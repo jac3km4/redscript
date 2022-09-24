@@ -52,7 +52,7 @@ impl<'a> TypeChecker<'a> {
                         let type_name = type_.pretty(self.pool)?;
                         match cons {
                             Constant::I32(i) if type_name == TypeName::FLOAT.name() => Constant::F32(*i as f32),
-                            Constant::I32(i) if type_name == TypeName::DOUBLE.name() => Constant::F64(*i as f64),
+                            Constant::I32(i) if type_name == TypeName::DOUBLE.name() => Constant::F64(f64::from(*i)),
                             Constant::I32(i) if type_name == TypeName::INT64.name() => Constant::I64((*i).into()),
                             Constant::U32(i) if type_name == TypeName::UINT64.name() => Constant::U64((*i).into()),
                             Constant::F32(i) if type_name == TypeName::DOUBLE.name() => Constant::F64((*i).into()),
@@ -157,8 +157,7 @@ impl<'a> TypeChecker<'a> {
                 let checked_context = self.check(context, None, scope)?;
                 let type_ = type_of(&checked_context, scope, self.pool)?;
                 let class = match type_.unwrapped() {
-                    TypeId::Class(class) => *class,
-                    TypeId::Struct(class) => *class,
+                    TypeId::Struct(class) | TypeId::Class(class) => *class,
                     type_ => return Err(Cause::InvalidMemberAccess(type_.pretty(self.pool)?).with_span(*span)),
                 };
                 let candidates = scope.resolve_method(name.clone(), class, self.pool).with_span(*span)?;
@@ -251,7 +250,7 @@ impl<'a> TypeChecker<'a> {
                             let field = self.pool.field(*field_idx)?;
                             let field_type = scope.resolve_type_from_pool(field.type_, self.pool).with_span(*span)?;
                             let checked_arg = self.check_and_convert(arg, &field_type, scope)?;
-                            checked_args.push(checked_arg)
+                            checked_args.push(checked_arg);
                         }
                         Expr::New(type_, checked_args.into_boxed_slice(), *span)
                     }
@@ -288,7 +287,7 @@ impl<'a> TypeChecker<'a> {
                 for case in cases {
                     let matcher = self.check(&case.matcher, matched_type.as_ref(), scope)?;
                     let body = self.check_seq(&case.body, &mut scope.clone())?;
-                    checked_cases.push(SwitchCase { matcher, body })
+                    checked_cases.push(SwitchCase { matcher, body });
                 }
                 let default = default
                     .as_ref()
@@ -362,6 +361,7 @@ impl<'a> TypeChecker<'a> {
         Ok(Seq { exprs })
     }
 
+    #[allow(clippy::match_same_arms)]
     fn check_intrinsic(
         &mut self,
         intrinsic: IntrinsicOp,
@@ -378,17 +378,7 @@ impl<'a> TypeChecker<'a> {
         let first_arg_type = type_of(&first_arg, scope, self.pool)?;
         let mut checked_args = vec![];
         let type_ = match (intrinsic, first_arg_type) {
-            (IntrinsicOp::Equals, arg_type) => {
-                let snd_arg = self.check(&args[1], Some(&arg_type), scope)?;
-                if lub(arg_type, type_of(&snd_arg, scope, self.pool)?, self.pool).is_err() {
-                    self.diagnostics
-                        .push(Diagnostic::Deprecation(Deprecation::UnrelatedTypeEquals, span));
-                };
-                checked_args.push(first_arg);
-                checked_args.push(snd_arg);
-                scope.resolve_type(&TypeName::BOOL, self.pool).with_span(span)?
-            }
-            (IntrinsicOp::NotEquals, arg_type) => {
+            (IntrinsicOp::Equals | IntrinsicOp::NotEquals, arg_type) => {
                 let snd_arg = self.check(&args[1], Some(&arg_type), scope)?;
                 if lub(arg_type, type_of(&snd_arg, scope, self.pool)?, self.pool).is_err() {
                     self.diagnostics
@@ -537,12 +527,11 @@ impl<'a> TypeChecker<'a> {
     ) -> Result<Expr<TypedAst>, Error> {
         let checked = self.check(expr, Some(to), scope)?;
         let from = type_of(&checked, scope, self.pool)?;
-        match find_conversion(&from, to, self.pool)? {
-            Some(conversion) => Ok(insert_conversion(checked, to, conversion)),
-            None => {
-                self.report(Cause::TypeError(from.pretty(self.pool)?, to.pretty(self.pool)?).with_span(expr.span()))?;
-                Ok(checked)
-            }
+        if let Some(conversion) = find_conversion(&from, to, self.pool)? {
+            Ok(insert_conversion(checked, to, conversion))
+        } else {
+            self.report(Cause::TypeError(from.pretty(self.pool)?, to.pretty(self.pool)?).with_span(expr.span()))?;
+            Ok(checked)
         }
     }
 
@@ -672,13 +661,12 @@ impl<'a> TypeChecker<'a> {
             .map(|(arg, param_typ, index)| {
                 let arg_typ = type_of(arg, scope, pool)?;
 
-                match find_conversion(&arg_typ, param_typ, pool)? {
-                    Some(conv) => Ok(ArgConversion::new(conv, param_typ.clone())),
-                    None => {
-                        let given = arg_typ.pretty(pool)?;
-                        let expected = param_typ.pretty(pool)?;
-                        Err(FunctionMatchError::ParameterMismatch { given, expected, index }.into())
-                    }
+                if let Some(conv) = find_conversion(&arg_typ, param_typ, pool)? {
+                    Ok(ArgConversion::new(conv, param_typ.clone()))
+                } else {
+                    let given = arg_typ.pretty(pool)?;
+                    let expected = param_typ.pretty(pool)?;
+                    Err(FunctionMatchError::ParameterMismatch { given, expected, index }.into())
                 }
             })
             .collect()
@@ -742,14 +730,11 @@ pub fn type_of(expr: &Expr<TypedAst>, scope: &Scope, pool: &ConstantPool) -> Res
         },
         Expr::ArrayLit(_, type_, _) => TypeId::Array(type_.clone().unwrap()),
         Expr::InterpolatedString(_, _, span) => scope.resolve_type(&TypeName::STRING, pool).with_span(*span)?,
-        Expr::Declare(_, _, _, _) => TypeId::Void,
         Expr::Cast(type_, expr, _) => match type_of(expr, scope, pool)? {
-            TypeId::Ref(_) => TypeId::Ref(Box::new(type_.clone())),
-            TypeId::WeakRef(_) => TypeId::Ref(Box::new(type_.clone())),
+            TypeId::WeakRef(_) | TypeId::Ref(_) => TypeId::Ref(Box::new(type_.clone())),
             TypeId::ScriptRef(_) => TypeId::ScriptRef(Box::new(type_.clone())),
             _ => type_.clone(),
         },
-        Expr::Assign(_, _, _) => TypeId::Void,
         Expr::Call(Callable::Function(index), _, _, span) => match pool.function(*index)?.return_type {
             None => TypeId::Void,
             Some(return_type) => scope.resolve_type_from_pool(return_type, pool).with_span(*span)?,
@@ -760,17 +745,13 @@ pub fn type_of(expr: &Expr<TypedAst>, scope: &Scope, pool: &ConstantPool) -> Res
             Some(return_type) => scope.resolve_type_from_pool(return_type, pool).with_span(*span)?,
         },
         Expr::Member(_, member, span) => match member {
-            Member::ClassField(field) => scope
-                .resolve_type_from_pool(pool.field(*field)?.type_, pool)
-                .with_span(*span)?,
-            Member::StructField(field) => scope
+            Member::StructField(field) | Member::ClassField(field) => scope
                 .resolve_type_from_pool(pool.field(*field)?.type_, pool)
                 .with_span(*span)?,
             Member::EnumMember(enum_, _) => TypeId::Enum(*enum_),
         },
         Expr::ArrayElem(expr, _, span) => match type_of(expr, scope, pool)? {
-            TypeId::Array(inner) => *inner,
-            TypeId::StaticArray(inner, _) => *inner,
+            TypeId::StaticArray(inner, _) | TypeId::Array(inner) => *inner,
             type_ => return Err(Cause::UnsupportedOperation("indexing", type_.pretty(pool)?).with_span(*span)),
         },
         Expr::New(type_, _, span) => match type_ {
@@ -778,18 +759,11 @@ pub fn type_of(expr: &Expr<TypedAst>, scope: &Scope, pool: &ConstantPool) -> Res
             TypeId::Class(s) => TypeId::Ref(Box::new(TypeId::Class(*s))),
             type_ => return Err(Cause::UnsupportedOperation("constructing", type_.pretty(pool)?).with_span(*span)),
         },
-        Expr::Return(_, _) => TypeId::Void,
-        Expr::Seq(_) => TypeId::Void,
-        Expr::Switch(_, _, _, _) => TypeId::Void,
-        Expr::Goto(_, _) => TypeId::Void,
-        Expr::If(_, _, _, _) => TypeId::Void,
         Expr::Conditional(_, lhs, rhs, span) => {
             let lt = type_of(lhs, scope, pool)?;
             let rt = type_of(rhs, scope, pool)?;
             return lub(lt, rt, pool).with_span(*span);
         }
-        Expr::While(_, _, _) => TypeId::Void,
-        Expr::ForIn(_, _, _, _) => TypeId::Void,
         Expr::This(span) => match scope.this {
             Some(class_idx) => TypeId::Ref(Box::new(TypeId::Class(class_idx))),
             None => return Err(Cause::UnexpectedThis.with_span(*span)),
@@ -801,10 +775,19 @@ pub fn type_of(expr: &Expr<TypedAst>, scope: &Scope, pool: &ConstantPool) -> Res
             }
             None => return Err(Cause::UnexpectedThis.with_span(*span)),
         },
-        Expr::Break(_) => TypeId::Void,
         Expr::Null(_) => TypeId::Null,
         Expr::BinOp(_, _, _, span) => return Err(Cause::UnsupportedFeature("BinOp").with_span(*span)),
         Expr::UnOp(_, _, span) => return Err(Cause::UnsupportedFeature("UnOp").with_span(*span)),
+        Expr::Declare(_, _, _, _)
+        | Expr::Assign(_, _, _)
+        | Expr::Seq(_)
+        | Expr::If(_, _, _, _)
+        | Expr::Switch(_, _, _, _)
+        | Expr::While(_, _, _)
+        | Expr::ForIn(_, _, _, _)
+        | Expr::Return(_, _)
+        | Expr::Goto(_, _)
+        | Expr::Break(_) => TypeId::Void,
     };
     Ok(res)
 }
@@ -841,12 +824,10 @@ pub fn lub(a: TypeId, b: TypeId, pool: &ConstantPool) -> Result<TypeId, Cause> {
         Ok(a)
     } else {
         match (a, b) {
+            (TypeId::Ref(a), TypeId::Null) | (TypeId::Null, TypeId::Ref(a)) => Ok(TypeId::Ref(a)),
+            (TypeId::WeakRef(a), TypeId::Null) | (TypeId::Null, TypeId::WeakRef(a)) => Ok(TypeId::WeakRef(a)),
             (TypeId::Ref(a), TypeId::Ref(b)) => Ok(TypeId::Ref(Box::new(lub(*a, *b, pool)?))),
-            (TypeId::Ref(a), TypeId::Null) => Ok(TypeId::Ref(a)),
-            (TypeId::Null, TypeId::Ref(a)) => Ok(TypeId::Ref(a)),
-            (TypeId::WeakRef(a), TypeId::WeakRef(b)) => Ok(TypeId::Ref(Box::new(lub(*a, *b, pool)?))),
-            (TypeId::WeakRef(a), TypeId::Null) => Ok(TypeId::WeakRef(a)),
-            (TypeId::Null, TypeId::WeakRef(a)) => Ok(TypeId::WeakRef(a)),
+            (TypeId::WeakRef(a), TypeId::WeakRef(b)) => Ok(TypeId::WeakRef(Box::new(lub(*a, *b, pool)?))),
             (TypeId::Class(a), TypeId::Class(b)) => Ok(TypeId::Class(lub_class(a, b, pool)?)),
             (TypeId::Struct(a), TypeId::Struct(b)) => Ok(TypeId::Struct(lub_class(a, b, pool)?)),
             (a, b) => Err(Cause::UnificationFailed(a.pretty(pool)?, b.pretty(pool)?)),

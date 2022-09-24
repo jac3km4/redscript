@@ -6,7 +6,7 @@ mod utils;
 
 use redscript_compiler::diagnostics::Diagnostic;
 use redscript_compiler::error::Cause;
-use utils::*;
+use utils::{check_class_flags, compiled};
 
 #[test]
 fn compile_simple_class() {

@@ -5,7 +5,7 @@ use std::{fmt, iter};
 
 use itertools::Itertools;
 use redscript::ast::{Pos, Span};
-use walkdir::WalkDir;
+use walkdir::{DirEntry, WalkDir};
 
 use crate::error::Error;
 
@@ -26,7 +26,7 @@ impl Files {
             let iter = WalkDir::new(path)
                 .into_iter()
                 .filter_map(Result::ok)
-                .map(|entry| entry.into_path())
+                .map(DirEntry::into_path)
                 .filter(|p| filter.apply(p.strip_prefix(path).unwrap()));
 
             Self::from_files(iter)
@@ -47,7 +47,7 @@ impl Files {
     }
 
     pub fn add(&mut self, path: PathBuf, source: String) {
-        let low = self.files.last().map(|f| f.high + 1).unwrap_or(Pos(0));
+        let low = self.files.last().map_or(Pos(0), |f| f.high + 1);
         let high = low + source.len();
         let mut lines = vec![];
         for (offset, _) in source.match_indices('\n') {
@@ -59,7 +59,7 @@ impl Files {
             high,
             source,
         };
-        self.files.push(file)
+        self.files.push(file);
     }
 
     pub fn lookup_file(&self, pos: Pos) -> Option<&File> {
@@ -130,7 +130,7 @@ impl File {
         } else {
             self.lines.1[line - 1]
         };
-        let high = self.lines.1.get(line).cloned().unwrap_or(self.high);
+        let high = self.lines.1.get(line).copied().unwrap_or(self.high);
         let span = Span { low, high };
         self.source_slice(span)
     }

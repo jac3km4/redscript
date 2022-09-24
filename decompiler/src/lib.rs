@@ -54,7 +54,7 @@ impl<'a> Decompiler<'a> {
     fn consume_n(&mut self, n: usize) -> Result<Vec<Expr<SourceAst>>, Error> {
         let mut body = Vec::new();
         for _ in 0..n {
-            body.push(self.consume()?)
+            body.push(self.consume()?);
         }
         Ok(body)
     }
@@ -195,9 +195,9 @@ impl<'a> Decompiler<'a> {
                 }
                 Instr::SwitchDefault => {
                     if let Some(BlockContext::Switch { epilogue }) = block {
-                        default = Some(self.consume_path(epilogue, block)?)
+                        default = Some(self.consume_path(epilogue, block)?);
                     } else {
-                        default = Some(Seq::new(vec![self.consume_with(None, block)?]))
+                        default = Some(Seq::new(vec![self.consume_with(None, block)?]));
                     }
                 }
                 _ => return Err(Error::DecompileError("Unexpected switch label instruction")),
@@ -218,8 +218,7 @@ impl<'a> Decompiler<'a> {
     ) -> Result<Expr<SourceAst>, Error> {
         let position = self.code.pos();
         let res = match self.code.pop()? {
-            Instr::Nop => Expr::EMPTY,
-            Instr::Null => Expr::Null(Span::ZERO),
+            Instr::Null | Instr::WeakRefNull => Expr::Null(Span::ZERO),
             Instr::I32One => Expr::Constant(Constant::I32(1), Span::ZERO),
             Instr::I32Zero => Expr::Constant(Constant::I32(0), Span::ZERO),
             Instr::I8Const(val) => Expr::Constant(Constant::I32(val.into()), Span::ZERO),
@@ -256,7 +255,6 @@ impl<'a> Decompiler<'a> {
                 let expr = Box::new(Expr::Ident(enum_ident, Span::ZERO));
                 Expr::Member(expr, member_ident, Span::ZERO)
             }
-            Instr::Breakpoint(_) => Expr::EMPTY,
             Instr::Assign => {
                 let lhs = self.consume()?;
                 let rhs = self.consume()?;
@@ -277,31 +275,6 @@ impl<'a> Decompiler<'a> {
             Instr::Switch(_, start) => self.consume_switch(start.absolute(position))?,
             Instr::SwitchLabel(_, _) => return Err(Error::DecompileError("Unexpected SwitchLabel")),
             Instr::SwitchDefault => return Err(Error::DecompileError("Unexpected SwitchDefault")),
-            Instr::Jump(Offset { value: 3 }) => Expr::EMPTY,
-            Instr::Jump(offset) => {
-                let jump_loc = offset.absolute(position);
-                match block {
-                    Some(BlockContext::Loop { epilogue, .. }) if jump_loc == epilogue => {
-                        // we're jumping out of the loop
-                        Expr::Break(Span::ZERO)
-                    }
-                    Some(BlockContext::Loop { prologue, epilogue })
-                        if jump_loc == prologue && self.code.pos() == epilogue =>
-                    {
-                        // we're jumping back to the beginning of the loop
-                        // while being at the tail of it - no control flow required
-                        Expr::EMPTY
-                    }
-                    Some(BlockContext::Switch { epilogue }) if jump_loc == epilogue => {
-                        // we're jumping out of the switch
-                        Expr::Break(Span::ZERO)
-                    }
-                    _ => {
-                        // unknown control flow construct
-                        Expr::Goto(Target::new(offset.absolute(position)), Span::ZERO)
-                    }
-                }
-            }
             Instr::JumpIfFalse(offset) => {
                 assert!(offset.value >= 0, "negative offset is not supported for JumpIfFalse");
                 self.consume_conditional_jump(position, offset, block)?
@@ -388,49 +361,40 @@ impl<'a> Decompiler<'a> {
             Instr::New(class) => Expr::New(TypeName::basic_owned(self.pool.def_name(class)?), [].into(), Span::ZERO),
             Instr::Delete => self.consume_call("Delete", 1)?,
             Instr::This => Expr::This(Span::ZERO),
-            Instr::StartProfiling(_) => Expr::EMPTY,
             Instr::ArrayClear(_) => self.consume_intrisnic(IntrinsicOp::ArrayClear)?,
-            Instr::ArraySize(_) => self.consume_intrisnic(IntrinsicOp::ArraySize)?,
+            Instr::ArraySize(_) | Instr::StaticArraySize(_) => self.consume_intrisnic(IntrinsicOp::ArraySize)?,
             Instr::ArrayResize(_) => self.consume_intrisnic(IntrinsicOp::ArrayResize)?,
-            Instr::ArrayFindFirst(_) => self.consume_intrisnic(IntrinsicOp::ArrayFindFirst)?,
-            Instr::ArrayFindFirstFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayFindFirst)?,
-            Instr::ArrayFindLast(_) => self.consume_intrisnic(IntrinsicOp::ArrayFindLast)?,
-            Instr::ArrayFindLastFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayFindLast)?,
-            Instr::ArrayContains(_) => self.consume_intrisnic(IntrinsicOp::ArrayContains)?,
-            Instr::ArrayContainsFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayContains)?,
-            Instr::ArrayCount(_) => self.consume_intrisnic(IntrinsicOp::ArrayCount)?,
-            Instr::ArrayCountFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayCount)?,
+            Instr::ArrayFindFirst(_)
+            | Instr::ArrayFindFirstFast(_)
+            | Instr::StaticArrayFindFirst(_)
+            | Instr::StaticArrayFindFirstFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayFindFirst)?,
+            Instr::ArrayFindLast(_)
+            | Instr::ArrayFindLastFast(_)
+            | Instr::StaticArrayFindLast(_)
+            | Instr::StaticArrayFindLastFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayFindLast)?,
+            Instr::ArrayContains(_)
+            | Instr::ArrayContainsFast(_)
+            | Instr::StaticArrayContains(_)
+            | Instr::StaticArrayContainsFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayContains)?,
+            Instr::ArrayCount(_)
+            | Instr::ArrayCountFast(_)
+            | Instr::StaticArrayCount(_)
+            | Instr::StaticArrayCountFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayCount)?,
             Instr::ArrayPush(_) => self.consume_intrisnic(IntrinsicOp::ArrayPush)?,
             Instr::ArrayPop(_) => self.consume_intrisnic(IntrinsicOp::ArrayPop)?,
             Instr::ArrayInsert(_) => self.consume_intrisnic(IntrinsicOp::ArrayInsert)?,
-            Instr::ArrayRemove(_) => self.consume_intrisnic(IntrinsicOp::ArrayRemove)?,
-            Instr::ArrayRemoveFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayRemove)?,
+            Instr::ArrayRemove(_) | Instr::ArrayRemoveFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayRemove)?,
             Instr::ArrayGrow(_) => self.consume_intrisnic(IntrinsicOp::ArrayGrow)?,
-            Instr::ArrayErase(_) => self.consume_intrisnic(IntrinsicOp::ArrayErase)?,
-            Instr::ArrayEraseFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayErase)?,
-            Instr::ArrayLast(_) => self.consume_intrisnic(IntrinsicOp::ArrayLast)?,
-            Instr::ArrayElement(_) => {
+            Instr::ArrayErase(_) | Instr::ArrayEraseFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayErase)?,
+            Instr::ArrayLast(_) | Instr::StaticArrayLast(_) => self.consume_intrisnic(IntrinsicOp::ArrayLast)?,
+            Instr::ArrayElement(_) | Instr::StaticArrayElement(_) => {
                 let arr = self.consume()?;
                 let idx = self.consume()?;
                 Expr::ArrayElem(Box::new(arr), Box::new(idx), Span::ZERO)
             }
-            Instr::StaticArraySize(_) => self.consume_intrisnic(IntrinsicOp::ArraySize)?,
-            Instr::StaticArrayFindFirst(_) => self.consume_intrisnic(IntrinsicOp::ArrayFindFirst)?,
-            Instr::StaticArrayFindFirstFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayFindFirst)?,
-            Instr::StaticArrayFindLast(_) => self.consume_intrisnic(IntrinsicOp::ArrayFindLast)?,
-            Instr::StaticArrayFindLastFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayFindLast)?,
-            Instr::StaticArrayContains(_) => self.consume_intrisnic(IntrinsicOp::ArrayContains)?,
-            Instr::StaticArrayContainsFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayContains)?,
-            Instr::StaticArrayCount(_) => self.consume_intrisnic(IntrinsicOp::ArrayCount)?,
-            Instr::StaticArrayCountFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayCount)?,
-            Instr::StaticArrayLast(_) => self.consume_intrisnic(IntrinsicOp::ArrayLast)?,
-            Instr::StaticArrayElement(_) => {
-                let arr = self.consume()?;
-                let idx = self.consume()?;
-                Expr::ArrayElem(Box::new(arr), Box::new(idx), Span::ZERO)
+            Instr::RefToBool | Instr::WeakRefToBool | Instr::VariantIsDefined => {
+                self.consume_intrisnic(IntrinsicOp::IsDefined)?
             }
-            Instr::RefToBool => self.consume_intrisnic(IntrinsicOp::IsDefined)?,
-            Instr::WeakRefToBool => self.consume_intrisnic(IntrinsicOp::IsDefined)?,
             Instr::EnumToI32(_, _) => self.consume_intrisnic(IntrinsicOp::EnumInt)?,
             Instr::I32ToEnum(typ, _) => {
                 let type_name = TypeName::from_repr(&self.pool.def_name(typ)?);
@@ -441,22 +405,47 @@ impl<'a> Decompiler<'a> {
                 let expr = self.consume()?;
                 Expr::Cast(type_name, Box::new(expr), Span::ZERO)
             }
-            Instr::ToString(_) => self.consume_intrisnic(IntrinsicOp::ToString)?,
+            Instr::ToString(_) | Instr::VariantToString => self.consume_intrisnic(IntrinsicOp::ToString)?,
             Instr::ToVariant(_) => self.consume_intrisnic(IntrinsicOp::ToVariant)?,
             Instr::FromVariant(typ) => {
                 let type_name = TypeName::from_repr(&self.pool.def_name(typ)?);
                 self.consume_intrisnic_typed(IntrinsicOp::FromVariant, vec![type_name])?
             }
-            Instr::VariantIsDefined => self.consume_intrisnic(IntrinsicOp::IsDefined)?,
             Instr::VariantIsRef => self.consume_intrisnic(IntrinsicOp::VariantIsRef)?,
             Instr::VariantIsArray => self.consume_intrisnic(IntrinsicOp::VariantIsArray)?,
             Instr::VariantTypeName => self.consume_intrisnic(IntrinsicOp::VariantTypeName)?,
-            Instr::VariantToString => self.consume_intrisnic(IntrinsicOp::ToString)?,
             Instr::WeakRefToRef => self.consume_intrisnic(IntrinsicOp::WeakRefToRef)?,
             Instr::RefToWeakRef => self.consume_intrisnic(IntrinsicOp::RefToWeakRef)?,
-            Instr::WeakRefNull => Expr::Null(Span::ZERO),
             Instr::AsRef(_) => self.consume_intrisnic(IntrinsicOp::AsRef)?,
             Instr::Deref(_) => self.consume_intrisnic(IntrinsicOp::Deref)?,
+            // jump to next instruction does nothing
+            Instr::Jump(Offset { value: 3 }) | Instr::Nop | Instr::Breakpoint(_) | Instr::StartProfiling(_) => {
+                Expr::EMPTY
+            }
+            Instr::Jump(offset) => {
+                let jump_loc = offset.absolute(position);
+                match block {
+                    Some(BlockContext::Loop { epilogue, .. }) if jump_loc == epilogue => {
+                        // we're jumping out of the loop
+                        Expr::Break(Span::ZERO)
+                    }
+                    Some(BlockContext::Loop { prologue, epilogue })
+                        if jump_loc == prologue && self.code.pos() == epilogue =>
+                    {
+                        // we're jumping back to the beginning of the loop
+                        // while being at the tail of it - no control flow required
+                        Expr::EMPTY
+                    }
+                    Some(BlockContext::Switch { epilogue }) if jump_loc == epilogue => {
+                        // we're jumping out of the switch
+                        Expr::Break(Span::ZERO)
+                    }
+                    _ => {
+                        // unknown control flow construct
+                        Expr::Goto(Target::new(offset.absolute(position)), Span::ZERO)
+                    }
+                }
+            }
         };
         Ok(res)
     }

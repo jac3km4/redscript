@@ -29,7 +29,7 @@ impl Assembler {
 
     #[inline]
     fn emit_label(&mut self, label: Label) {
-        self.instructions.push(Instr::Target(label))
+        self.instructions.push(Instr::Target(label));
     }
 
     #[inline]
@@ -175,7 +175,7 @@ impl Assembler {
                         self.emit(Instr::SwitchLabel(next_case_label, body_label));
                         self.assemble(case.matcher, scope, pool, None)?;
 
-                        if !case.body.exprs.iter().all(|expr| expr.is_empty()) {
+                        if !case.body.exprs.iter().all(Expr::is_empty) {
                             self.emit_label(body_label);
                             self.assemble_seq(case.body, scope, pool, Some(exit_label))?;
                             break;
@@ -252,12 +252,9 @@ impl Assembler {
             Expr::MethodCall(expr, fun_idx, args, span) => {
                 let fun = pool.function(fun_idx)?;
                 match *expr {
-                    Expr::Ident(
-                        Reference::Symbol(Symbol::Class(_, _)) | Reference::Symbol(Symbol::Struct(_, _)),
-                        span,
-                    ) => {
+                    Expr::Ident(Reference::Symbol(Symbol::Class(_, _) | Symbol::Struct(_, _)), span) => {
                         if fun.flags.is_static() {
-                            self.assemble_call(fun_idx, args, scope, pool, true)?
+                            self.assemble_call(fun_idx, args, scope, pool, true)?;
                         } else {
                             return Err(
                                 Cause::InvalidNonStaticMethodCall(Ident::from_heap(pool.def_name(fun_idx)?))
@@ -344,7 +341,7 @@ impl Assembler {
                 tp if tp == TypeName::DOUBLE.name() => emit_assignment(Instr::F64Const(0.0)),
                 tp if tp == TypeName::STRING.name() => {
                     let empty = pool.strings.add("".into());
-                    emit_assignment(Instr::StringConst(empty))
+                    emit_assignment(Instr::StringConst(empty));
                 }
                 tp if tp == TypeName::CNAME.name() => emit_assignment(Instr::NameConst(PoolIndex::UNDEFINED)),
                 tp if tp == TypeName::TWEAKDB_ID.name() => emit_assignment(Instr::TweakDbIdConst(PoolIndex::UNDEFINED)),
@@ -446,12 +443,8 @@ impl Assembler {
 
     fn is_rvalue(expr: &Expr<TypedAst>) -> bool {
         match expr {
-            Expr::Constant(_, _) => false,
-            Expr::Ident(_, _) => false,
-            Expr::This(_) => false,
-            Expr::Super(_) => false,
-            Expr::Member(inner, _, _) => Self::is_rvalue(inner),
-            Expr::ArrayElem(inner, _, _) => Self::is_rvalue(inner),
+            Expr::Constant(_, _) | Expr::Ident(_, _) | Expr::This(_) | Expr::Super(_) => false,
+            Expr::Member(inner, _, _) | Expr::ArrayElem(inner, _, _) => Self::is_rvalue(inner),
             _ => true,
         }
     }
@@ -523,7 +516,7 @@ impl Assembler {
                 TypeId::Variant => self.emit(Instr::VariantToString),
                 any => {
                     let type_idx = scope.get_type_index(&any, pool).with_span(span)?;
-                    self.emit(Instr::ToString(type_idx))
+                    self.emit(Instr::ToString(type_idx));
                 }
             },
             IntrinsicOp::EnumInt => {

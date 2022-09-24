@@ -68,15 +68,15 @@ pub fn write_definition<W: Write>(
             for method_index in &class.functions {
                 let method = pool.definition(*method_index)?;
                 if let Err(err) = write_definition(out, method, pool, depth + 1, mode) {
-                    log::error!("Method decompilation {} failed (caused by {})", method_index, err)
+                    log::error!("Method decompilation {} failed (caused by {})", method_index, err);
                 }
             }
-            writeln!(out, "}}")?
+            writeln!(out, "}}")?;
         }
         AnyDefinition::EnumValue(val) => {
             let name = pool.names.get(definition.name)?;
             write_indent(out, depth)?;
-            writeln!(out, "{} = {},", name, val)?
+            writeln!(out, "{} = {},", name, val)?;
         }
         AnyDefinition::Enum(enum_) => {
             writeln!(out)?;
@@ -86,13 +86,13 @@ pub fn write_definition<W: Write>(
                 write_definition(out, pool.definition(*member)?, pool, depth + 1, mode)?;
             }
 
-            writeln!(out, "}}")?
+            writeln!(out, "}}")?;
         }
         AnyDefinition::Function(fun) => {
-            let return_type = fun
-                .return_type
-                .map(|idx| format_type(pool.definition(idx).unwrap(), pool).unwrap())
-                .unwrap_or_else(|| "Void".to_owned());
+            let return_type = fun.return_type.map_or_else(
+                || "Void".to_owned(),
+                |idx| format_type(pool.definition(idx).unwrap(), pool).unwrap(),
+            );
 
             let name = pool.names.get(definition.name)?;
             let pretty_name = name.split(';').next().expect("Function with empty name");
@@ -146,7 +146,7 @@ pub fn write_definition<W: Write>(
             } else {
                 write!(out, "let ")?;
             }
-            write!(out, "{}: {};", name, type_name)?
+            write!(out, "{}: {};", name, type_name)?;
         }
         AnyDefinition::Field(field) => {
             let type_name = format_type(pool.definition(field.type_)?, pool)?;
@@ -183,7 +183,7 @@ pub fn write_definition<W: Write>(
             if field.flags.is_const() {
                 write!(out, "const ")?;
             }
-            writeln!(out, "let {}: {};", field_name, type_name)?
+            writeln!(out, "let {}: {};", field_name, type_name)?;
         }
         AnyDefinition::SourceFile(_) => panic!(),
     }
@@ -288,13 +288,13 @@ fn write_expr_nested<W: Write>(
         Expr::Assign(lhs, rhs, _) => {
             write_expr(out, lhs, verbose, 0)?;
             write!(out, " = ")?;
-            write_expr(out, rhs, verbose, 0)?
+            write_expr(out, rhs, verbose, 0)?;
         }
         Expr::Call(fun, type_args, params, _) => write_call(out, fun, type_args, params, parent_op, verbose)?,
         Expr::MethodCall(obj, fun, params, _) => {
             write_expr_nested(out, obj, Some(ParentOp::Dot), verbose, 0)?;
             write!(out, ".")?;
-            write_call(out, fun, &[], params, None, verbose)?
+            write_call(out, fun, &[], params, None, verbose)?;
         }
         Expr::ArrayElem(arr, idx, _) => {
             write_expr(out, arr, verbose, 0)?;
@@ -311,11 +311,11 @@ fn write_expr_nested<W: Write>(
                 }
                 write_expr(out, params.last().unwrap(), verbose, depth)?;
             }
-            write!(out, ")")?
+            write!(out, ")")?;
         }
         Expr::Return(Some(expr), _) => {
             write!(out, "return ")?;
-            write_expr(out, expr, verbose, depth)?
+            write_expr(out, expr, verbose, depth)?;
         }
         Expr::Return(None, _) => write!(out, "return")?,
         Expr::Seq(exprs) => write_seq(out, exprs, verbose, depth)?,
@@ -336,7 +336,7 @@ fn write_expr_nested<W: Write>(
                 write_seq(out, default_body, verbose, depth + 2)?;
             }
             write_indent(out, depth)?;
-            write!(out, "}}")?
+            write!(out, "}}")?;
         }
         Expr::Goto(jump, _) => write!(out, "goto {}", jump.position)?,
         Expr::If(condition, true_, false_, _) => {
@@ -350,7 +350,7 @@ fn write_expr_nested<W: Write>(
                 writeln!(out, " else {{")?;
                 write_seq(out, branch, verbose, depth + 1)?;
                 write_indent(out, depth)?;
-                write!(out, "}}")?
+                write!(out, "}}")?;
             }
         }
         Expr::Conditional(condition, true_, false_, _) => {
@@ -382,9 +382,7 @@ fn write_expr_nested<W: Write>(
         Expr::Null(_) => write!(out, "null")?,
         Expr::This(_) => write!(out, "this")?,
         Expr::Super(_) => write!(out, "super")?,
-        Expr::ArrayLit(_, _, _) => panic!("Shouldn't get here"),
-        Expr::InterpolatedString(_, _, _) => panic!("Shouldn't get here"),
-        Expr::ForIn(_, _, _, _) => panic!("Shouldn't get here"),
+        _ => panic!("Shouldn't get here"),
     };
     Ok(())
 }
@@ -402,9 +400,8 @@ fn write_call<W: Write>(
     if let Ok(binop) = BinOp::from_str(fun_name) {
         if parent_op
             .filter(|op| match op {
-                ParentOp::UnOp(_) => true,
+                ParentOp::UnOp(_) | ParentOp::Dot => true,
                 ParentOp::BinOp(op) => !binop.does_associate(*op),
-                ParentOp::Dot => true,
             })
             .is_some()
         {
@@ -467,8 +464,7 @@ fn format_param(def: &Definition, pool: &ConstantPool) -> Result<String, Error> 
 fn format_type(def: &Definition, pool: &ConstantPool) -> Result<String, Error> {
     let type_ = def.value.as_type().expect("Expected a type definition");
     let result = match type_ {
-        Type::Prim => pool.names.get(def.name)?.to_string(),
-        Type::Class => pool.names.get(def.name)?.to_string(),
+        Type::Prim | Type::Class => pool.names.get(def.name)?.to_string(),
         Type::Ref(nested) => format!("ref<{}>", format_type(pool.definition(*nested)?, pool)?),
         Type::WeakRef(nested) => format!("wref<{}>", format_type(pool.definition(*nested)?, pool)?),
         Type::Array(nested) => format!("array<{}>", format_type(pool.definition(*nested)?, pool)?),

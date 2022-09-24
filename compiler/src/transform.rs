@@ -6,7 +6,7 @@ use redscript::Ref;
 use crate::error::Error;
 use crate::typechecker::TypedAst;
 
-pub trait ExprTransformer<N: NameKind>
+pub trait ExprTransformer<N>
 where
     N: NameKind,
     N::Reference: Debug,
@@ -80,7 +80,7 @@ where
     ) -> Result<Expr<N>, Error> {
         let mut processed = Vec::with_capacity(args.len());
         for arg in args.into_vec() {
-            processed.push(self.on_expr(arg)?)
+            processed.push(self.on_expr(arg)?);
         }
         Ok(Expr::Call(callable, type_args, processed.into_boxed_slice(), pos))
     }
@@ -95,7 +95,7 @@ where
         let context = self.on_expr(context)?;
         let mut processed = Vec::with_capacity(args.len());
         for arg in args {
-            processed.push(self.on_expr(arg)?)
+            processed.push(self.on_expr(arg)?);
         }
         Ok(Expr::MethodCall(Box::new(context), name, processed, pos))
     }
@@ -114,7 +114,7 @@ where
     fn on_new(&mut self, name: N::Type, args: Box<[Expr<N>]>, pos: Span) -> Result<Expr<N>, Error> {
         let mut processed = Vec::with_capacity(args.len());
         for arg in args.into_vec() {
-            processed.push(self.on_expr(arg)?)
+            processed.push(self.on_expr(arg)?);
         }
         Ok(Expr::New(name, processed.into_boxed_slice(), pos))
     }
@@ -238,7 +238,7 @@ where
     fn on_seq(&mut self, seq: Seq<N>) -> Result<Seq<N>, Error> {
         let mut processed = Vec::with_capacity(seq.exprs.len());
         for expr in seq.exprs {
-            processed.push(self.on_expr(expr)?)
+            processed.push(self.on_expr(expr)?);
         }
         Ok(Seq::new(processed))
     }

@@ -20,9 +20,11 @@ pub struct TestContext {
 impl TestContext {
     pub fn compiled(sources: Vec<&str>) -> Result<Self, Error> {
         let (pool, diagnostics) = compiled(sources)?;
-        if diagnostics.iter().any(Diagnostic::is_fatal) {
-            panic!("Fatal errors: {:#?}", diagnostics);
-        }
+        assert!(
+            !diagnostics.iter().any(Diagnostic::is_fatal),
+            "Fatal errors: {:?}",
+            diagnostics
+        );
         let res = Self {
             pool,
             indexes: HashMap::new(),
@@ -130,7 +132,7 @@ pub fn check_class_flags(pool: &ConstantPool, name: &str, flags: ClassFlags) -> 
         .map(|(_, def)| &def.value);
 
     if let Some(AnyDefinition::Class(ref class)) = match_ {
-        assert_eq!(class.flags, flags)
+        assert_eq!(class.flags, flags);
     } else {
         panic!("Class definition {} not found in the pool", name)
     }

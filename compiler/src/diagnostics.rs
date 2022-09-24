@@ -79,15 +79,15 @@ impl Diagnostic {
     #[inline]
     pub fn span(&self) -> Span {
         match self {
-            Self::MethodConflict(_, span) => *span,
-            Self::FieldConflict(span) => *span,
-            Self::Deprecation(_, span) => *span,
-            Self::UnusedLocal(span) => *span,
-            Self::MissingReturn(span) => *span,
-            Self::CompileError(_, span) => *span,
-            Self::SyntaxError(_, span) => *span,
-            Self::CteError(_, span) => *span,
-            Self::ResolutionError(_, span) => *span,
+            Self::MethodConflict(_, span)
+            | Self::FieldConflict(span)
+            | Self::Deprecation(_, span)
+            | Self::UnusedLocal(span)
+            | Self::MissingReturn(span)
+            | Self::CompileError(_, span)
+            | Self::SyntaxError(_, span)
+            | Self::CteError(_, span)
+            | Self::ResolutionError(_, span) => *span,
         }
     }
 }

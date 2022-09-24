@@ -12,7 +12,7 @@ use crate::bytecode::Location;
 use crate::Ref;
 
 #[derive(Debug, EnumAsInner)]
-pub enum Expr<Name: NameKind>
+pub enum Expr<Name>
 where
     Name: NameKind,
     Name::Reference: Debug,
@@ -85,43 +85,43 @@ where
 
     pub fn is_empty(&self) -> bool {
         match self {
-            Expr::Seq(seq) => seq.exprs.iter().all(|expr| expr.is_empty()),
+            Expr::Seq(seq) => seq.exprs.iter().all(Expr::is_empty),
             _ => false,
         }
     }
 
     pub fn span(&self) -> Span {
         match self {
-            Expr::Ident(_, span) => *span,
-            Expr::Constant(_, span) => *span,
-            Expr::ArrayLit(_, _, span) => *span,
-            Expr::InterpolatedString(_, _, span) => *span,
-            Expr::Declare(_, _, _, span) => *span,
-            Expr::Cast(_, _, span) => *span,
-            Expr::Assign(_, _, span) => *span,
-            Expr::Call(_, _, _, span) => *span,
-            Expr::MethodCall(_, _, _, span) => *span,
-            Expr::Member(_, _, span) => *span,
-            Expr::ArrayElem(_, _, span) => *span,
-            Expr::New(_, _, span) => *span,
-            Expr::Return(_, span) => *span,
+            Expr::Ident(_, span)
+            | Expr::Constant(_, span)
+            | Expr::ArrayLit(_, _, span)
+            | Expr::InterpolatedString(_, _, span)
+            | Expr::Declare(_, _, _, span)
+            | Expr::Cast(_, _, span)
+            | Expr::Assign(_, _, span)
+            | Expr::Call(_, _, _, span)
+            | Expr::MethodCall(_, _, _, span)
+            | Expr::Member(_, _, span)
+            | Expr::ArrayElem(_, _, span)
+            | Expr::New(_, _, span)
+            | Expr::Return(_, span)
+            | Expr::Switch(_, _, _, span)
+            | Expr::Goto(_, span)
+            | Expr::If(_, _, _, span)
+            | Expr::Conditional(_, _, _, span)
+            | Expr::While(_, _, span)
+            | Expr::ForIn(_, _, _, span)
+            | Expr::BinOp(_, _, _, span)
+            | Expr::UnOp(_, _, span)
+            | Expr::This(span)
+            | Expr::Super(span)
+            | Expr::Break(span)
+            | Expr::Null(span) => *span,
             Expr::Seq(seq) => {
                 let start = seq.exprs.first().map(Self::span).unwrap_or_default();
                 let end = seq.exprs.last().map(Self::span).unwrap_or_default();
                 start.merge(end)
             }
-            Expr::Switch(_, _, _, span) => *span,
-            Expr::Goto(_, span) => *span,
-            Expr::If(_, _, _, span) => *span,
-            Expr::Conditional(_, _, _, span) => *span,
-            Expr::While(_, _, span) => *span,
-            Expr::ForIn(_, _, _, span) => *span,
-            Expr::BinOp(_, _, _, span) => *span,
-            Expr::UnOp(_, _, span) => *span,
-            Expr::This(span) => *span,
-            Expr::Super(span) => *span,
-            Expr::Break(span) => *span,
-            Expr::Null(span) => *span,
         }
     }
 }
@@ -191,55 +191,48 @@ pub enum BinOp {
 impl BinOp {
     pub fn precedence(self) -> usize {
         match self {
-            BinOp::AssignAdd => 10,
-            BinOp::AssignSubtract => 10,
-            BinOp::AssignMultiply => 10,
-            BinOp::AssignDivide => 10,
-            BinOp::AssignOr => 10,
-            BinOp::AssignAnd => 10,
+            BinOp::AssignAdd
+            | BinOp::AssignSubtract
+            | BinOp::AssignMultiply
+            | BinOp::AssignDivide
+            | BinOp::AssignOr
+            | BinOp::AssignAnd => 10,
             BinOp::LogicOr => 9,
             BinOp::LogicAnd => 8,
             BinOp::Or => 7,
             BinOp::Xor => 6,
             BinOp::And => 5,
-            BinOp::Equal => 4,
-            BinOp::NotEqual => 4,
-            BinOp::Less => 3,
-            BinOp::LessEqual => 3,
-            BinOp::Greater => 3,
-            BinOp::GreaterEqual => 3,
-            BinOp::Add => 2,
-            BinOp::Subtract => 2,
-            BinOp::Multiply => 1,
-            BinOp::Divide => 1,
-            BinOp::Modulo => 1,
+            BinOp::Equal | BinOp::NotEqual => 4,
+            BinOp::Less | BinOp::LessEqual | BinOp::Greater | BinOp::GreaterEqual => 3,
+            BinOp::Add | BinOp::Subtract => 2,
+            BinOp::Multiply | BinOp::Divide | BinOp::Modulo => 1,
         }
     }
 
     pub fn associative(self) -> bool {
         match self {
-            BinOp::AssignAdd => false,
-            BinOp::AssignSubtract => false,
-            BinOp::AssignMultiply => false,
-            BinOp::AssignDivide => false,
-            BinOp::AssignOr => false,
-            BinOp::AssignAnd => false,
-            BinOp::LogicOr => true,
-            BinOp::LogicAnd => true,
-            BinOp::Or => true,
-            BinOp::Xor => true,
-            BinOp::And => true,
-            BinOp::Equal => false,
-            BinOp::NotEqual => false,
-            BinOp::Less => false,
-            BinOp::LessEqual => false,
-            BinOp::Greater => false,
-            BinOp::GreaterEqual => false,
-            BinOp::Add => true,
-            BinOp::Subtract => true,
-            BinOp::Multiply => true,
-            BinOp::Divide => false,
-            BinOp::Modulo => false,
+            BinOp::AssignAdd
+            | BinOp::AssignSubtract
+            | BinOp::AssignMultiply
+            | BinOp::AssignDivide
+            | BinOp::AssignOr
+            | BinOp::AssignAnd
+            | BinOp::Divide
+            | BinOp::Modulo
+            | BinOp::Equal
+            | BinOp::NotEqual
+            | BinOp::Less
+            | BinOp::LessEqual
+            | BinOp::Greater
+            | BinOp::GreaterEqual => false,
+            BinOp::LogicOr
+            | BinOp::LogicAnd
+            | BinOp::Or
+            | BinOp::Xor
+            | BinOp::And
+            | BinOp::Add
+            | BinOp::Subtract
+            | BinOp::Multiply => true,
         }
     }
 
@@ -466,8 +459,7 @@ impl TypeName {
 
     fn unwrapped(&self) -> &Self {
         match (self.kind(), self.arguments()) {
-            (Kind::Ref, [arg]) => arg.unwrapped(),
-            (Kind::WRef, [arg]) => arg.unwrapped(),
+            (Kind::Ref | Kind::WRef, [arg]) => arg.unwrapped(),
             _ => self,
         }
     }

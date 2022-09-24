@@ -36,7 +36,7 @@ impl<'a> Desugar<'a> {
     }
 
     fn add_prefix(&mut self, expr: Expr<TypedAst>) {
-        self.prefix_exprs.push(expr)
+        self.prefix_exprs.push(expr);
     }
 
     fn get_function(&self, signature: FunctionSignature) -> Result<Callable, Cause> {
@@ -88,7 +88,7 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
                 Expr::ArrayElem(array_ref.into(), index.into(), pos).into(),
                 expr.into(),
                 pos,
-            ))
+            ));
         }
 
         Ok(Expr::Ident(local, pos))
