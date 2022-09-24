@@ -1,9 +1,10 @@
 name: CI
 
-on: [push]
+on: push
 
 env:
   CARGO_TERM_COLOR: always
+  STAGING_DIR: ${{ github.workspace }}-staging
 
 jobs:
   build:
@@ -15,29 +16,46 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@v1
+      - name: Test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
       - name: Build
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --release --features mmap,popup
-      - name: Test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-      - run: mkdir staging
       - name: Create the mod archive
-        working-directory: staging
         run: |
-          mkdir -p ./engine/config/base
-          mkdir -p ./r6/config/cybercmd
-          mkdir -p ./engine/tools
-          cp ../resources/engine/config/base/scripts.ini ./engine/config/base/
-          cp ../resources/r6/config/cybercmd/scc.toml ./r6/config/cybercmd/
-          cp ../target/release/scc.exe ./engine/tools/
-          7z a -mx=9 -r ./redscript.zip *
+          mkdir $STAGING_DIR
+          cp -r ./resources/mod/* $STAGING_DIR/
+          mkdir -p $STAGING_DIR/engine/tools
+          cp ./target/release/scc.exe $STAGING_DIR/engine/tools/
+          cd $STAGING_DIR
+          7z a -mx=9 -r ./redscript-${{ github.event.release.tag_name }}.zip *
+      - name: Generate a changelog
+        uses: orhun/git-cliff-action@v1
+        id: git-cliff
+        with:
+          args: --latest --strip header
+        env:
+          OUTPUT: ${{ github.workspace }}-CHANGES.md
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        with:
+          body_path: ${{ github.workspace }}-CHANGES.md
+          files: |
+            $STAGING_DIR/redscript-${{ github.event.release.tag_name }}.zip
+            ./target/release/redscript-cli.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Archive artifacts
         uses: actions/upload-artifact@v2
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         with:
           path: |
-            target/release/redscript-cli.exe
-            ./staging/redscript.zip
+            $STAGING_DIR/redscript-${{ github.event.release.tag_name }}.zip
+            ./target/release/redscript-cli.exe
