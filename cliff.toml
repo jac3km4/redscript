@@ -14,8 +14,7 @@ body = """
     ### {{ group | upper_first }}
     {% for commit in commits %}\
         - {% if commit.breaking %}[**breaking**] {% endif %}\
-            {{ commit.message | upper_first }} \
-            ([{{ commit.id | truncate(length=7, end="") }}]({{ commit.id }}))
+            {{ commit.message | upper_first }} ({{ commit.id }})
     {% endfor %}\
 {% endfor %}
 ### Contributors
