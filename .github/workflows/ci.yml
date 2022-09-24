@@ -15,8 +15,6 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@v1
-      - name: copy cargo config
-        run: xcopy /H /E /Y .\\.cargo C:\\Rust\\.cargo\
       - name: Build
         uses: actions-rs/cargo@v1
         with:
