@@ -472,10 +472,11 @@ impl<'a> CompilationUnit<'a> {
         let base_idx = if is_struct {
             PoolIndex::UNDEFINED
         } else if let Some(base_name) = source.base {
-            if let Symbol::Class(base_idx, _) = scope.resolve_symbol(base_name.clone()).with_span(source.span)? {
+            if let Ok(Symbol::Class(base_idx, _)) = scope.resolve_symbol(base_name.clone()) {
                 base_idx
             } else {
-                return Err(Cause::ClassNotFound(base_name).with_span(source.span));
+                self.report(Cause::ClassNotFound(base_name).with_span(source.span))?;
+                PoolIndex::UNDEFINED
             }
         } else if let Ok(Symbol::Class(class, _)) = scope
             .resolve_symbol(Ident::from_static("IScriptable"))
