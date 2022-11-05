@@ -25,7 +25,6 @@ fern = "0.6"
 [workspace.metadata.release]
 shared-version = true
 consolidate-commits = true
-consolidate-pushes = true
 publish = false
 tag-prefix = ""
 
