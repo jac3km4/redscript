@@ -4,6 +4,7 @@ on: push
 
 env:
   CARGO_TERM_COLOR: always
+  GIT_CLIFF_VERSION: 0.9.2
   STAGING_DIR: ${{ github.workspace }}-staging
   ARCHIVE_NAME: redscript-${{ github.ref_name }}.zip
   CHANGELOG_FILE: ${{ github.workspace }}-CHANGES.md
@@ -12,25 +13,13 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v2
-      - name: Prepare toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-      - uses: Swatinem/rust-cache@v1
-      - name: Test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-      - name: Run clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-      - name: Build
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release --features mmap,popup
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy
+      - run: cargo test
+      - name: Build release artifact
+        run: cargo build --release --features mmap,popup
       - name: Create the mod archive
         run: |
           mkdir ${{ env.STAGING_DIR }}
@@ -41,14 +30,15 @@ jobs:
           7z a -mx=9 -r ${{ env.ARCHIVE_NAME }} *
 
       - name: Install git-cliff
-        uses: baptiste0928/cargo-install@v1
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        # if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        uses: Alex079/setup-custom-tool@v1
         with:
-          crate: git-cliff
-          version: "0.9"
+          archiveUrl: https://github.com/orhun/git-cliff/releases/download/${{ env.GIT_CLIFF_VERSION }}/git-cliff-${{ env.GIT_CLIFF_VERSION }}-x86_64-pc-windows-msvc.zip
+          toolName: git-cliff
+          toolVersion: ${{ env.GIT_CLIFF_VERSION }}
 
       - name: Generate a changelog
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        # if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         run: git cliff --latest --strip header -o ${{ env.CHANGELOG_FILE }}
 
       - name: Release
@@ -64,7 +54,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Archive artifacts
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         with:
           path: |
