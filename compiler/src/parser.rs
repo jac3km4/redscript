@@ -566,6 +566,27 @@ mod tests {
     }
 
     #[test]
+    fn parse_else_ifs() {
+        let stmt = lang::stmt(
+            "if true {
+                return 0;
+             } else if false {
+                return 1;
+             } else if true {
+                return 2;
+             } else {
+                return 3;
+             }",
+            Pos::ZERO,
+        )
+        .unwrap();
+        assert_eq!(
+            format!("{:?}", stmt),
+            r#"If(Constant(Bool(true), Span { low: Pos(3), high: Pos(7) }), Seq { exprs: [Return(Some(Constant(I32(0), Span { low: Pos(33), high: Pos(34) })), Span { low: Pos(26), high: Pos(35) })] }, Some(Seq { exprs: [If(Constant(Bool(false), Span { low: Pos(59), high: Pos(64) }), Seq { exprs: [Return(Some(Constant(I32(1), Span { low: Pos(90), high: Pos(91) })), Span { low: Pos(83), high: Pos(92) })] }, Some(Seq { exprs: [If(Constant(Bool(true), Span { low: Pos(116), high: Pos(120) }), Seq { exprs: [Return(Some(Constant(I32(2), Span { low: Pos(146), high: Pos(147) })), Span { low: Pos(139), high: Pos(148) })] }, Some(Seq { exprs: [Return(Some(Constant(I32(3), Span { low: Pos(194), high: Pos(195) })), Span { low: Pos(187), high: Pos(196) })] }), Span { low: Pos(113), high: Pos(211) })] }), Span { low: Pos(56), high: Pos(211) })] }), Span { low: Pos(0), high: Pos(211) })"#
+        );
+    }
+
+    #[test]
     fn parse_switch_case() {
         let stmt = lang::stmt(
             r#"switch value {
