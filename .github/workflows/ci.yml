@@ -33,7 +33,7 @@ jobs:
         # if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         uses: Alex079/setup-custom-tool@v1
         with:
-          archiveUrl: https://github.com/orhun/git-cliff/releases/download/${{ env.GIT_CLIFF_VERSION }}/git-cliff-${{ env.GIT_CLIFF_VERSION }}-x86_64-pc-windows-msvc.zip
+          archiveUrl: https://github.com/orhun/git-cliff/releases/download/v${{ env.GIT_CLIFF_VERSION }}/git-cliff-${{ env.GIT_CLIFF_VERSION }}-x86_64-pc-windows-msvc.zip
           toolName: git-cliff
           toolVersion: ${{ env.GIT_CLIFF_VERSION }}
 
