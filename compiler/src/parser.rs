@@ -368,6 +368,7 @@ peg::parser! {
             { Expr::If(Box::new(cond), if_, else_, Span::new(pos, end)) }
         rule else_() -> Seq<SourceAst>
             = keyword("else") _ "{" _ body:seq() _ "}" { body }
+            / keyword("else") _ body:if_() { Seq::new(vec![body]) }
 
         pub rule stmt() -> Expr<SourceAst>
             = while_: while_() { while_ }
