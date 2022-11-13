@@ -65,7 +65,7 @@ pub fn write_definition<W: Write>(
                 write_definition(out, field, pool, depth + 1, mode)?;
             }
 
-            for method_index in &class.functions {
+            for method_index in &class.methods {
                 let method = pool.definition(*method_index)?;
                 if let Err(err) = write_definition(out, method, pool, depth + 1, mode) {
                     log::error!("Method decompilation {} failed (caused by {})", method_index, err);
@@ -264,39 +264,44 @@ fn write_expr_nested<W: Write>(
             Constant::Bool(true) => write!(out, "true")?,
             Constant::Bool(false) => write!(out, "false")?,
         },
-        Expr::Cast(type_, expr, _) => {
+        Expr::DynCast(type_, expr, _) => {
             if parent_op.is_some() {
                 write!(out, "(")?;
                 write_expr(out, expr, verbose, 0)?;
-                write!(out, " as {}", type_.pretty())?;
+                write!(out, " as {}", type_)?;
                 write!(out, ")")?;
             } else {
                 write_expr(out, expr, verbose, 0)?;
-                write!(out, " as {}", type_.pretty())?;
+                write!(out, " as {}", type_)?;
             }
         }
         Expr::Declare(name, type_, val, _) => {
             write!(out, "let {}", name)?;
             if let Some(type_) = type_ {
-                write!(out, ": {}", type_.pretty())?;
+                write!(out, ": {}", type_)?;
             }
             if let Some(val) = val {
                 write!(out, " = ")?;
                 write_expr(out, val, verbose, 0)?;
             }
         }
-        Expr::Assign(lhs, rhs, _) => {
+        Expr::Assign(lhs, rhs, _, _) => {
             write_expr(out, lhs, verbose, 0)?;
             write!(out, " = ")?;
             write_expr(out, rhs, verbose, 0)?;
         }
-        Expr::Call(fun, type_args, params, _) => write_call(out, fun, type_args, params, parent_op, verbose)?,
-        Expr::MethodCall(obj, fun, params, _) => {
-            write_expr_nested(out, obj, Some(ParentOp::Dot), verbose, 0)?;
-            write!(out, ".")?;
-            write_call(out, fun, &[], params, None, verbose)?;
-        }
-        Expr::ArrayElem(arr, idx, _) => {
+        Expr::Call(fun, _, type_args, params, _, _) => match &**fun {
+            Expr::Ident(name, _) => {
+                write_call(out, name, type_args, params, parent_op, verbose)?;
+            }
+            Expr::Member(expr, name, _) => {
+                write_expr_nested(out, expr, Some(ParentOp::Dot), verbose, 0)?;
+                write!(out, ".")?;
+                write_call(out, name, &[], params, None, verbose)?;
+            }
+            _ => {}
+        },
+        Expr::ArrayElem(arr, idx, _, _) => {
             write_expr(out, arr, verbose, 0)?;
             write!(out, "[")?;
             write_expr(out, idx, verbose, 0)?;
@@ -419,7 +424,7 @@ fn write_call<W: Write>(
     } else {
         write!(out, "{}", fun_name)?;
         if !type_params.is_empty() {
-            write!(out, "<{}>", type_params.iter().map(TypeName::pretty).format(", "))?;
+            write!(out, "<{}>", type_params.iter().format(", "))?;
         }
         write!(out, "(")?;
         if !params.is_empty() {

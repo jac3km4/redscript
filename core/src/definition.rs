@@ -1,5 +1,6 @@
 use std::fmt::Display;
 use std::io;
+use std::ops::Not;
 use std::path::PathBuf;
 
 use enum_as_inner::EnumAsInner;
@@ -35,15 +36,15 @@ impl Definition {
 
         let value = match header.type_ {
             DefinitionType::Type => AnyDefinition::Type(input.decode()?),
-            DefinitionType::Class => AnyDefinition::Class(input.decode()?),
+            DefinitionType::Class => AnyDefinition::Class(Box::new(input.decode()?)),
             DefinitionType::EnumValue => AnyDefinition::EnumValue(input.decode()?),
-            DefinitionType::Enum => AnyDefinition::Enum(input.decode()?),
+            DefinitionType::Enum => AnyDefinition::Enum(Box::new(input.decode()?)),
             DefinitionType::BitField => panic!("Bit field not supported"),
-            DefinitionType::Function => AnyDefinition::Function(input.decode()?),
+            DefinitionType::Function => AnyDefinition::Function(Box::new(input.decode()?)),
             DefinitionType::Parameter => AnyDefinition::Parameter(input.decode()?),
             DefinitionType::Local => AnyDefinition::Local(input.decode()?),
-            DefinitionType::Field => AnyDefinition::Field(input.decode()?),
-            DefinitionType::SourceFile => AnyDefinition::SourceFile(input.decode()?),
+            DefinitionType::Field => AnyDefinition::Field(Box::new(input.decode()?)),
+            DefinitionType::SourceFile => AnyDefinition::SourceFile(Box::new(input.decode()?)),
         };
         let definition = Definition {
             name: header.name,
@@ -67,7 +68,7 @@ impl Definition {
         match self.value {
             AnyDefinition::Function(ref fun) => fun.source.as_ref().map(|source| source.line),
             AnyDefinition::Class(ref class) => class
-                .functions
+                .methods
                 .iter()
                 .filter_map(|idx| {
                     pool.function(*idx)
@@ -100,7 +101,7 @@ impl Definition {
     }
 
     pub fn class(name: PoolIndex<CName>, class: Class) -> Definition {
-        Definition::default(name, PoolIndex::UNDEFINED, AnyDefinition::Class(class))
+        Definition::default(name, PoolIndex::UNDEFINED, AnyDefinition::Class(class.into()))
     }
 
     pub fn type_(name: PoolIndex<CName>, type_: Type) -> Definition {
@@ -108,15 +109,15 @@ impl Definition {
     }
 
     pub fn function(name: PoolIndex<CName>, parent: PoolIndex<Class>, fun: Function) -> Definition {
-        Definition::default(name, parent.cast(), AnyDefinition::Function(fun))
+        Definition::default(name, parent.cast(), AnyDefinition::Function(fun.into()))
     }
 
     pub fn field(name: PoolIndex<CName>, parent: PoolIndex<Class>, field: Field) -> Definition {
-        Definition::default(name, parent.cast(), AnyDefinition::Field(field))
+        Definition::default(name, parent.cast(), AnyDefinition::Field(field.into()))
     }
 
     pub fn enum_(name: PoolIndex<CName>, enum_: Enum) -> Definition {
-        Definition::default(name, PoolIndex::UNDEFINED, AnyDefinition::Enum(enum_))
+        Definition::default(name, PoolIndex::UNDEFINED, AnyDefinition::Enum(enum_.into()))
     }
 
     pub fn enum_value(name: PoolIndex<CName>, parent: PoolIndex<Enum>, value: i64) -> Definition {
@@ -127,14 +128,14 @@ impl Definition {
 #[derive(Debug, Clone, EnumAsInner)]
 pub enum AnyDefinition {
     Type(Type),
-    Class(Class),
+    Class(Box<Class>),
     EnumValue(i64),
-    Enum(Enum),
-    Function(Function),
+    Enum(Box<Enum>),
+    Function(Box<Function>),
     Parameter(Parameter),
     Local(Local),
-    Field(Field),
-    SourceFile(SourceFile),
+    Field(Box<Field>),
+    SourceFile(Box<SourceFile>),
 }
 
 impl AnyDefinition {
@@ -157,14 +158,14 @@ impl Encode for AnyDefinition {
     fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
         match &self {
             AnyDefinition::Type(type_) => output.encode(type_),
-            AnyDefinition::Class(class) => output.encode(class),
+            AnyDefinition::Class(class) => output.encode(&**class),
             AnyDefinition::EnumValue(value) => output.encode(value),
-            AnyDefinition::Enum(enum_) => output.encode(enum_),
-            AnyDefinition::Function(fun) => output.encode(fun),
+            AnyDefinition::Enum(enum_) => output.encode(&**enum_),
+            AnyDefinition::Function(fun) => output.encode(&**fun),
             AnyDefinition::Parameter(param) => output.encode(param),
             AnyDefinition::Local(local) => output.encode(local),
-            AnyDefinition::Field(field) => output.encode(field),
-            AnyDefinition::SourceFile(file) => output.encode(file),
+            AnyDefinition::Field(field) => output.encode(&**field),
+            AnyDefinition::SourceFile(file) => output.encode(&**file),
         }
     }
 }
@@ -174,7 +175,7 @@ pub struct Class {
     pub visibility: Visibility,
     pub flags: ClassFlags,
     pub base: PoolIndex<Class>,
-    pub functions: Vec<PoolIndex<Function>>,
+    pub methods: Vec<PoolIndex<Function>>,
     pub fields: Vec<PoolIndex<Field>>,
     pub overrides: Vec<PoolIndex<Field>>,
 }
@@ -184,7 +185,7 @@ impl Decode for Class {
         let visibility = input.decode()?;
         let flags: ClassFlags = input.decode()?;
         let base = input.decode()?;
-        let functions = if flags.has_functions() {
+        let methods = if flags.has_functions() {
             input.decode_vec_prefixed::<u32, PoolIndex<Function>>()?
         } else {
             vec![]
@@ -204,7 +205,7 @@ impl Decode for Class {
             visibility,
             flags,
             base,
-            functions,
+            methods,
             fields,
             overrides,
         };
@@ -217,7 +218,7 @@ impl Encode for Class {
     fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
         let flags = self
             .flags
-            .with_has_functions(!self.functions.is_empty())
+            .with_has_functions(!self.methods.is_empty())
             .with_has_fields(!self.fields.is_empty())
             .with_has_overrides(!self.overrides.is_empty());
 
@@ -225,7 +226,7 @@ impl Encode for Class {
         output.encode(&flags)?;
         output.encode(&self.base)?;
         if flags.has_functions() {
-            output.encode_slice_prefixed::<u32, PoolIndex<Function>>(&self.functions)?;
+            output.encode_slice_prefixed::<u32, PoolIndex<Function>>(&self.methods)?;
         }
         if flags.has_fields() {
             output.encode_slice_prefixed::<u32, PoolIndex<Field>>(&self.fields)?;
@@ -292,48 +293,28 @@ impl Decode for Function {
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
         let visibility = input.decode()?;
         let flags: FunctionFlags = input.decode()?;
-        let source = if flags.is_native() { None } else { Some(input.decode()?) };
-        let return_type = if flags.has_return_value() {
-            Some(input.decode()?)
-        } else {
-            None
-        };
-        let unk1 = if flags.has_return_value() {
-            input.decode()?
-        } else {
-            false
-        };
-        let base_method = if flags.has_base_method() {
-            Some(input.decode()?)
-        } else {
-            None
-        };
-        let parameters = if flags.has_parameters() {
-            input.decode_vec_prefixed::<u32, PoolIndex<Parameter>>()?
-        } else {
-            vec![]
-        };
-        let locals = if flags.has_locals() {
-            input.decode_vec_prefixed::<u32, PoolIndex<Local>>()?
-        } else {
-            vec![]
-        };
-        let operator = if flags.is_operator() {
-            Some(input.decode()?)
-        } else {
-            None
-        };
+        let source = flags.is_native().not().then(|| input.decode()).transpose()?;
+        let return_type = flags.has_return_value().then(|| input.decode()).transpose()?;
+        let unk1 = flags.has_return_value().then(|| input.decode()).unwrap_or(Ok(false))?;
+        let base_method = flags.has_base_method().then(|| input.decode()).transpose()?;
+        let parameters = flags
+            .has_parameters()
+            .then(|| input.decode_vec_prefixed::<u32, _>())
+            .unwrap_or(Ok(vec![]))?;
+        let locals = flags
+            .has_locals()
+            .then(|| input.decode_vec_prefixed::<u32, _>())
+            .unwrap_or(Ok(vec![]))?;
+        let operator = flags.is_operator().then(|| input.decode()).transpose()?;
         let cast = if flags.is_cast() { input.decode()? } else { 0u8 };
         let code = if flags.has_body() { input.decode()? } else { Code::EMPTY };
-
         let (unk2, unk3) = if flags.unk4() {
-            let params = input.decode_vec_prefixed::<u32, PoolIndex<Parameter>>()?;
+            let params = input.decode_vec_prefixed::<u32, _>()?;
             let typ = input.decode()?;
             (params, Some(typ))
         } else {
             (vec![], None)
         };
-
         let result = Function {
             visibility,
             flags,

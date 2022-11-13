@@ -9,3 +9,4 @@ redscript = { path = "../core" }
 log.workspace = true
 thiserror.workspace = true
 itertools.workspace = true
+hashbrown.workspace = true

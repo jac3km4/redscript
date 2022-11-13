@@ -1,150 +1,129 @@
-use std::fmt::Display;
-use std::{io, usize};
+use std::fmt;
 
 use itertools::Itertools;
 use peg::error::ExpectedSet;
-use redscript::ast::{Ident, Span};
-use redscript::bundle::PoolError;
-use redscript::bytecode::IntrinsicOp;
+use redscript::ast::Span;
+use redscript::{str_fmt, Str};
 use thiserror::Error;
+use yansi::Paint;
 
-const MAX_RESOLUTION_ERRORS: usize = 6;
+use crate::source_map::{Files, SourceLoc};
+use crate::type_repo::{OverloadEntry, TypeId};
+use crate::typer::{Data, Mono};
 
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error("I/O error")]
-    IoError(#[from] io::Error),
-    #[error("syntax error, expected {0}")]
-    SyntaxError(ExpectedSet, Span),
-    #[error("compilation error: {0}")]
-    CompileError(Cause, Span),
-    #[error("constant pool error: {0}")]
-    PoolError(#[from] PoolError),
-    #[error("multiple errors")]
-    MultipleErrors(Vec<Span>),
-    #[error("compile-time eval error: {0}")]
-    CteError(&'static str, Span),
-}
+pub type TyperResult<'id, A, E = TyperError<'id>> = Result<A, E>;
 
 #[derive(Debug, Error)]
-pub enum Cause {
-    #[error("pool error: {0}")]
-    PoolError(#[from] PoolError),
-    #[error("can't coerce {0} into {1}")]
-    TypeError(Ident, Ident),
+#[error("syntax error, expected {0}")]
+pub struct ParseError(pub ExpectedSet, pub Span);
+
+#[derive(Debug, Error)]
+pub enum TyperError<'id> {
+    #[error("{0}")]
+    TypeError(TypeError<'id>, Span),
+    #[error("{0} is not defined")]
+    UnresolvedVar(Str, Span),
+    #[error("member {1} not found in {0}")]
+    UnresolvedMember(TypeId<'id>, Str, Span),
     #[error("function {0} not found")]
-    FunctionNotFound(Ident),
-    #[error("member {0} not found on {1}")]
-    MemberNotFound(Ident, Ident),
-    #[error("class {0} not found")]
-    ClassNotFound(Ident),
-    #[error("cannot instantiate {0} because it's abstract")]
-    InstantiatingAbstract(Ident),
-    #[error("unresolved reference {0}")]
-    UnresolvedReference(Ident),
-    #[error("unresolved type {0}")]
-    UnresolvedType(Ident),
-    #[error("unresolved import {0}")]
-    UnresolvedImport(Ident),
-    #[error("module {0} has no members or does not exist")]
-    UnresolvedModule(Ident),
-    #[error("invalid arguments for annotation")]
-    InvalidAnnotationArgs,
-    #[error("type cannot be inferred here, try annotating the variable")]
-    TypeAnnotationRequired,
-    #[error("{0} has no members")]
-    InvalidMemberAccess(Ident),
-    #[error("{0} is not supported on {1}")]
-    UnsupportedOperation(&'static str, Ident),
-    #[error("expected {1} arguments for {0}")]
-    InvalidArgCount(Ident, usize),
-    #[error("void cannot be used as a value")]
-    VoidCannotBeUsed,
-    #[error("expected a value, found a {0}")]
-    UnexpectedToken(&'static str),
-    #[error("function should return {0}")]
-    UnexpectedVoidReturn(Ident),
-    #[error("function cannot return a value")]
-    UnexpectedValueReturn,
-    #[error("invalid use of {0}, unexpected {1}")]
-    InvalidIntrinsicUse(IntrinsicOp, Ident),
-    #[error("method {0} is static")]
-    InvalidStaticMethodCall(Ident),
-    #[error("method {0} is not static")]
-    InvalidNonStaticMethodCall(Ident),
-    #[error("no 'this' available in a static context")]
-    UnexpectedThis,
-    #[error("{0} is not supported")]
-    UnsupportedFeature(&'static str),
-    #[error("symbol with this name is already defined")]
-    SymbolRedefinition,
-    #[error("field with this name is already defined")]
-    FieldRedefinition,
-    #[error("this function must have a body")]
-    MissingBody,
-    #[error("this function can't have have a body")]
-    UnexpectedBody,
-    #[error("native member is not allowed in a non-native context")]
-    UnexpectedNative,
-    #[error("cannot unify {0} and {1}")]
-    UnificationFailed(Ident, Ident),
-    #[error("{0} cannot be made persistent")]
-    UnsupportedPersistent(Ident),
-    #[error(r#"this value must be a constant (e.g. 1, "string")"#)]
-    InvalidConstant,
-    #[error(
-        "arguments passed to {0} do not match any of the overloads:\n{}{}",
-        .1.iter().take(MAX_RESOLUTION_ERRORS).format("\n"),
-        if .1.len() > MAX_RESOLUTION_ERRORS {"\n...and more"} else {""}
-    )]
-    NoMatchingOverload(Ident, Box<[FunctionMatchError]>),
+    UnresolvedFunction(Str, Span),
+    #[error("method not found")]
+    UnresolvedMethod(Span),
+    #[error("no matching overload, available options are:\n{}", .0.iter().format("\n"))]
+    NoMatchingOverload(Box<[OverloadOption]>, Span),
+    #[error("more than one matching overload, available options are:\n{}", .0.iter().format("\n"))]
+    ManyMatchingOverloads(Box<[OverloadOption]>, Span),
+    #[error("insufficient type information available for member lookup")]
+    CannotLookupMember(Span),
+    #[error("import {} could not be resolved", .0.iter().format("."))]
+    UnresolvedImport(Box<[Str]>, Span),
 }
 
-impl Cause {
-    #[inline]
-    pub fn with_span(self, span: Span) -> Error {
-        Error::CompileError(self, span)
+impl<'id> TyperError<'id> {
+    pub fn span(&self) -> Span {
+        match self {
+            TyperError::TypeError(_, span)
+            | TyperError::UnresolvedVar(_, span)
+            | TyperError::UnresolvedMember(_, _, span)
+            | TyperError::UnresolvedFunction(_, span)
+            | TyperError::UnresolvedMethod(span)
+            | TyperError::NoMatchingOverload(_, span)
+            | TyperError::ManyMatchingOverloads(_, span)
+            | TyperError::CannotLookupMember(span)
+            | TyperError::UnresolvedImport(_, span) => *span,
+        }
     }
-}
 
-#[derive(Debug, Error)]
-pub enum FunctionMatchError {
-    #[error("{} argument: expected {expected}, given {given}", NthArg(*index))]
-    ParameterMismatch {
-        given: Ident,
-        expected: Ident,
-        index: usize,
-    },
-    #[error("return type {expected} does not match {given}")]
-    ReturnMismatch { given: Ident, expected: Ident },
-    #[error("expected {min}-{max} arguments, given {given}")]
-    ArgumentCountMismatch { given: usize, min: usize, max: usize },
-}
+    pub fn display(self, files: &Files) -> DisplayError<'_, 'id> {
+        let location = files.lookup(self.span()).expect("Unknown file");
+        DisplayError { location, error: self }
+    }
 
-struct NthArg(usize);
-
-impl Display for NthArg {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.0 {
-            0 => write!(f, "1st"),
-            1 => write!(f, "2nd"),
-            2 => write!(f, "3rd"),
-            n => write!(f, "{}th", n + 1),
+    pub(crate) fn for_overloads<'a>(
+        matches: usize,
+        candidates: impl IntoIterator<Item = &'a OverloadEntry<'a, 'id>>,
+        span: Span,
+    ) -> Self
+    where
+        'id: 'a,
+    {
+        let mut options = vec![];
+        for candidate in candidates.into_iter().take(8) {
+            let option = str_fmt!(
+                "({})",
+                candidate.function.typ.params.iter().map(|p| &p.typ).format(", ")
+            );
+            options.push(OverloadOption(option));
+        }
+        match (matches, options.len()) {
+            (_, 0) => Self::UnresolvedMethod(span),
+            (0, _) => Self::NoMatchingOverload(options.into(), span),
+            _ => Self::ManyMatchingOverloads(options.into(), span),
         }
     }
 }
 
-pub trait ResultSpan {
-    type Output;
+#[derive(Debug)]
+pub struct OverloadOption(Str);
 
-    fn with_span(self, span: Span) -> Self::Output;
+impl fmt::Display for OverloadOption {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
 }
 
-impl<A> ResultSpan for std::result::Result<A, Cause> {
-    type Output = std::result::Result<A, Error>;
+#[derive(Debug, Error)]
+pub enum TypeError<'id> {
+    #[error("found {0}, expected {1}")]
+    Mismatch(Mono<'id>, Mono<'id>),
+    #[error("{0} does not satisfy {1} subtype constraint")]
+    Unsatisfied(Data<'id>, Data<'id>),
+    #[error("cannot unify {0} and {1}")]
+    CannotUnify(Mono<'id>, Mono<'id>),
+    #[error("type {0} not found")]
+    UnresolvedType(Str),
+    #[error("expected {1} type arguments")]
+    InvalidNumberOfTypeArgs(usize, usize),
+}
 
-    #[inline]
-    fn with_span(self, span: Span) -> Self::Output {
-        self.map_err(|err| err.with_span(span))
+#[derive(Debug)]
+pub struct DisplayError<'file, 'id> {
+    location: SourceLoc<'file>,
+    error: TyperError<'id>,
+}
+
+impl fmt::Display for DisplayError<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let line = self.location.enclosing_line().trim_end().replace('\t', " ");
+        let underline_len = if self.location.start.line == self.location.end.line {
+            (self.location.end.col - self.location.start.col).max(1)
+        } else {
+            3
+        };
+        const EMPTY: &str = "";
+        writeln!(f, "At {}:", Paint::blue(&self.location).underline())?;
+        writeln!(f, "{line}")?;
+        writeln!(f, "{EMPTY:0$}{EMPTY:^<underline_len$}", self.location.start.col)?;
+        writeln!(f, "{}", Paint::red(&self.error).bold())
     }
 }

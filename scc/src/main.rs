@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -7,12 +6,14 @@ use std::time::SystemTime;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use fd_lock::RwLock;
+use hashbrown::HashSet;
 use redscript::ast::Span;
 use redscript::bundle::ScriptBundle;
-use redscript_compiler::error::Error;
+use redscript_compiler::compiler::{CompilationResources, Compiler};
 use redscript_compiler::source_map::{Files, SourceFilter};
-use redscript_compiler::unit::CompilationUnit;
+use redscript_compiler::StringInterner;
 use serde::Deserialize;
+use thiserror::Error;
 use time::format_description::well_known::Rfc3339 as Rfc3339Format;
 use time::format_description::FormatItem;
 use time::macros::format_description;
@@ -21,6 +22,14 @@ use time::OffsetDateTime;
 const BUNDLE_FILE_NAME: &str = "final.redscripts";
 const BACKUP_FILE_NAME: &str = "final.redscripts.bk";
 const TIMESTAMP_FILE_NAME: &str = "redscript.ts";
+
+#[derive(Debug, Error)]
+enum Error {
+    #[error("compilation errors")]
+    CompileErrors(Vec<Span>),
+    #[error("I/O error: {0}")]
+    IoError(#[from] io::Error),
+}
 
 fn main() -> ExitCode {
     let mut arg_iter = std::env::args().skip(1);
@@ -62,7 +71,8 @@ fn main() -> ExitCode {
             _ => (default_cache_dir, None),
         };
 
-        let files = Files::from_dir(&script_dir, manifest.source_filter()).expect("Could not load script sources");
+        let mut files = Files::from_dir(&script_dir, manifest.source_filter()).expect("Could not load script sources");
+        files.include_std();
 
         match compile_scripts(&cache_dir, fallback_dir.as_deref(), &files) {
             Ok(_) => {
@@ -173,15 +183,30 @@ fn compile_scripts(cache_dir: &Path, fallback_cache_dir: Option<&Path>, files: &
     #[cfg(not(feature = "mmap"))]
     let mut bundle = ScriptBundle::load(&mut io::BufReader::new(File::open(backup_path)?))?;
 
-    CompilationUnit::new(&mut bundle.pool, vec![])?.compile_and_report(files)?;
+    let interner: StringInterner = StringInterner::default();
+    let mut res = CompilationResources::load(&bundle.pool, &interner);
+    let output = Compiler::new(res.type_repo, &interner).run(files);
 
-    let mut file = File::create(&bundle_path)?;
-    bundle.save(&mut io::BufWriter::new(&mut file))?;
-    file.sync_all()?;
+    match output {
+        Ok(output) if !output.reporter().is_compilation_failed() => {
+            output.commit(&mut res.db, &mut res.type_cache, &mut bundle.pool);
+            let mut file = File::create(&bundle_path)?;
+            bundle.save(&mut io::BufWriter::new(&mut file))?;
+            file.sync_all()?;
 
-    CompileTimestamp::of_cache_file(&file)?.write(&mut *ts_file)?;
-
-    Ok(())
+            CompileTimestamp::of_cache_file(&file)?.write(&mut *ts_file)?;
+            Ok(())
+        }
+        Ok(failed) => {
+            let mut spans = vec![];
+            for error in failed.into_errors() {
+                spans.push(error.span());
+                log::error!("{}", error.display(files));
+            }
+            Err(Error::CompileErrors(spans))
+        }
+        Err(error) => Err(Error::CompileErrors(vec![error.1])),
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -264,13 +289,8 @@ fn error_message(error: Error, files: &Files, scripts_dir: &Path) -> String {
     }
 
     let str = match error {
-        Error::CompileError(_, span) | Error::SyntaxError(_, span) => {
-            detailed_message(&[span], files, scripts_dir).unwrap_or_default()
-        }
-        Error::MultipleErrors(spans) => detailed_message(&spans, files, scripts_dir).unwrap_or_default(),
+        Error::CompileErrors(spans) => detailed_message(&spans, files, scripts_dir).unwrap_or_default(),
         Error::IoError(err) => format!("This is caused by an I/O error: {err}"),
-        Error::PoolError(err) => format!("This is caused by a constant pool error: {err}"),
-        _ => String::new(),
     };
 
     format!("REDScript compilation failed. The game will start, but none of the scripts will take effect. {str}")

@@ -12,7 +12,14 @@ itertools.workspace = true
 strum.workspace = true
 flexstr.workspace = true
 enum-as-inner.workspace = true
-peg = "0.8"
-hamt-sync = { git = "https://github.com/jac3km4/hamt-sync", rev = "v0.2.6"}
-sequence_trie = "0.3"
+smallvec.workspace = true
+hashbrown.workspace = true
+ahash = "0.8"
+once_cell = "1"
+yansi = "0.5"
 walkdir = "2"
+typed-builder = "0.11"
+indexmap = "1"
+sequence_trie = { git = "https://github.com/jac3km4/rust_sequence_trie", rev = "a056b4c", features = ["hashbrown"] }
+simple-interner = { version = "0.3", features = ["hashbrown"] }
+peg = "0.8"

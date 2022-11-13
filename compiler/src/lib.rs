@@ -1,13 +1,16 @@
-pub mod assembler;
-pub mod cte;
-pub mod diagnostics;
+use simple_interner::Interner;
+
+pub mod autobox;
+pub mod codegen;
+pub mod compiler;
 pub mod error;
 #[allow(clippy::redundant_closure_call)]
 pub mod parser;
-pub mod scope;
+mod scoped_map;
 pub mod source_map;
-pub mod sugar;
-pub mod symbol;
-pub mod transform;
-pub mod typechecker;
-pub mod unit;
+pub mod type_repo;
+pub mod typer;
+pub mod visit;
+
+pub type StringInterner = Interner<str, ahash::RandomState>;
+type IndexMap<K, V> = indexmap::IndexMap<K, V, ahash::RandomState>;

@@ -1,13 +1,11 @@
-use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::{fmt, iter};
+use std::{fmt, io, iter};
 
+use hashbrown::HashSet;
 use itertools::Itertools;
 use redscript::ast::{Pos, Span};
 use walkdir::{DirEntry, WalkDir};
-
-use crate::error::Error;
 
 #[derive(Debug, Default)]
 pub struct Files {
@@ -19,7 +17,7 @@ impl Files {
         Self::default()
     }
 
-    pub fn from_dir(path: &Path, filter: SourceFilter) -> Result<Self, Error> {
+    pub fn from_dir(path: &Path, filter: SourceFilter) -> io::Result<Self> {
         if path.is_file() {
             Self::from_files(iter::once(path.to_path_buf()))
         } else {
@@ -33,8 +31,8 @@ impl Files {
         }
     }
 
-    pub fn from_files(paths: impl Iterator<Item = PathBuf>) -> Result<Self, Error> {
-        let mut files = Self::new();
+    pub fn from_files(paths: impl Iterator<Item = PathBuf>) -> io::Result<Self> {
+        let mut files = Self::default();
         for path in paths {
             let sources = std::fs::read_to_string(&path)?;
             files.add(path, sources);
@@ -42,7 +40,16 @@ impl Files {
         Ok(files)
     }
 
-    pub fn files(&self) -> impl Iterator<Item = &File> {
+    pub fn include_std(&mut self) {
+        macro_rules! include_libs {
+            ($($name:literal,)*) => {
+                $(self.add($name.into(), include_str!(concat!("../../lib/", $name)).to_owned());)*
+            };
+        }
+        include_libs!["Predef.reds", "Std.reds", "Std/Collection.reds", "Std/Iter.reds",];
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &File> {
         self.files.iter()
     }
 
@@ -159,7 +166,7 @@ impl Default for File {
 
 impl fmt::Display for File {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_fmt(format_args!("{}", self.path.display()))
+        write!(f, "{}", self.path.display())
     }
 }
 

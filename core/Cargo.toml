@@ -12,8 +12,11 @@ strum.workspace = true
 enum-as-inner.workspace = true
 byteorder.workspace = true
 flexstr.workspace = true
+derive-where.workspace = true
+smallvec.workspace = true
+hashbrown.workspace = true
 modular-bitfield = "0.11"
-crc32fast = "1.3"
+crc32fast = "1"
 
 [features]
 arc = []

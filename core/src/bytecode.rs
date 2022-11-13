@@ -216,37 +216,37 @@ impl<L> Instr<L> {
 
 impl Instr<Label> {
     #[allow(clippy::just_underscores_and_digits)]
-    pub fn resolve_labels(self, location: Location, targets: &[Location]) -> Instr<Offset> {
+    pub fn resolve_labels(&self, location: Location, targets: &[Location]) -> Instr<Offset> {
         match self {
             Instr::Nop => Instr::Nop,
             Instr::Null => Instr::Null,
             Instr::I32One => Instr::I32One,
             Instr::I32Zero => Instr::I32Zero,
-            Instr::I8Const(val) => Instr::I8Const(val),
-            Instr::I16Const(val) => Instr::I16Const(val),
-            Instr::I32Const(val) => Instr::I32Const(val),
-            Instr::I64Const(val) => Instr::I64Const(val),
-            Instr::U8Const(val) => Instr::U8Const(val),
-            Instr::U16Const(val) => Instr::U16Const(val),
-            Instr::U32Const(val) => Instr::U32Const(val),
-            Instr::U64Const(val) => Instr::U64Const(val),
-            Instr::F32Const(val) => Instr::F32Const(val),
-            Instr::F64Const(val) => Instr::F64Const(val),
-            Instr::NameConst(idx) => Instr::NameConst(idx),
-            Instr::EnumConst(enum_, member) => Instr::EnumConst(enum_, member),
-            Instr::StringConst(idx) => Instr::StringConst(idx),
-            Instr::TweakDbIdConst(idx) => Instr::TweakDbIdConst(idx),
-            Instr::ResourceConst(idx) => Instr::ResourceConst(idx),
+            &Instr::I8Const(val) => Instr::I8Const(val),
+            &Instr::I16Const(val) => Instr::I16Const(val),
+            &Instr::I32Const(val) => Instr::I32Const(val),
+            &Instr::I64Const(val) => Instr::I64Const(val),
+            &Instr::U8Const(val) => Instr::U8Const(val),
+            &Instr::U16Const(val) => Instr::U16Const(val),
+            &Instr::U32Const(val) => Instr::U32Const(val),
+            &Instr::U64Const(val) => Instr::U64Const(val),
+            &Instr::F32Const(val) => Instr::F32Const(val),
+            &Instr::F64Const(val) => Instr::F64Const(val),
+            &Instr::NameConst(idx) => Instr::NameConst(idx),
+            &Instr::EnumConst(enum_, member) => Instr::EnumConst(enum_, member),
+            &Instr::StringConst(idx) => Instr::StringConst(idx),
+            &Instr::TweakDbIdConst(idx) => Instr::TweakDbIdConst(idx),
+            &Instr::ResourceConst(idx) => Instr::ResourceConst(idx),
             Instr::TrueConst => Instr::TrueConst,
             Instr::FalseConst => Instr::FalseConst,
-            Instr::Breakpoint(_0) => Instr::Breakpoint(_0),
+            Instr::Breakpoint(_0) => Instr::Breakpoint(_0.clone()),
             Instr::Assign => Instr::Assign,
             Instr::Target(label) => Instr::Target(targets[label.index].relative(location)),
-            Instr::Local(idx) => Instr::Local(idx),
-            Instr::Param(idx) => Instr::Param(idx),
-            Instr::ObjectField(idx) => Instr::ObjectField(idx),
+            &Instr::Local(idx) => Instr::Local(idx),
+            &Instr::Param(idx) => Instr::Param(idx),
+            &Instr::ObjectField(idx) => Instr::ObjectField(idx),
             Instr::ExternalVar => Instr::ExternalVar,
-            Instr::Switch(idx, label) => Instr::Switch(idx, targets[label.index].relative(location)),
+            &Instr::Switch(idx, label) => Instr::Switch(idx, targets[label.index].relative(location)),
             Instr::SwitchLabel(first_case, exit) => Instr::SwitchLabel(
                 targets[first_case.index].relative(location),
                 targets[exit.index].relative(location),
@@ -259,63 +259,63 @@ impl Instr<Label> {
                 targets[false_.index].relative(location),
                 targets[exit.index].relative(location),
             ),
-            Instr::Construct(args, idx) => Instr::Construct(args, idx),
-            Instr::InvokeStatic(label, line, idx, u) => {
+            &Instr::Construct(args, idx) => Instr::Construct(args, idx),
+            &Instr::InvokeStatic(label, line, idx, u) => {
                 Instr::InvokeStatic(targets[label.index].relative(location), line, idx, u)
             }
-            Instr::InvokeVirtual(label, line, idx, u) => {
+            &Instr::InvokeVirtual(label, line, idx, u) => {
                 Instr::InvokeVirtual(targets[label.index].relative(location), line, idx, u)
             }
             Instr::ParamEnd => Instr::ParamEnd,
             Instr::Return => Instr::Return,
-            Instr::StructField(idx) => Instr::StructField(idx),
+            &Instr::StructField(idx) => Instr::StructField(idx),
             Instr::Context(label) => Instr::Context(targets[label.index].relative(location)),
-            Instr::Equals(idx) => Instr::Equals(idx),
-            Instr::NotEquals(idx) => Instr::NotEquals(idx),
-            Instr::New(idx) => Instr::New(idx),
+            &Instr::Equals(idx) => Instr::Equals(idx),
+            &Instr::NotEquals(idx) => Instr::NotEquals(idx),
+            &Instr::New(idx) => Instr::New(idx),
             Instr::Delete => Instr::Delete,
             Instr::This => Instr::This,
-            Instr::StartProfiling(_0) => Instr::StartProfiling(_0),
-            Instr::ArrayClear(idx) => Instr::ArrayClear(idx),
-            Instr::ArraySize(idx) => Instr::ArraySize(idx),
-            Instr::ArrayResize(idx) => Instr::ArrayResize(idx),
-            Instr::ArrayFindFirst(idx) => Instr::ArrayFindFirst(idx),
-            Instr::ArrayFindFirstFast(idx) => Instr::ArrayFindFirstFast(idx),
-            Instr::ArrayFindLast(idx) => Instr::ArrayFindLast(idx),
-            Instr::ArrayFindLastFast(idx) => Instr::ArrayFindLastFast(idx),
-            Instr::ArrayContains(idx) => Instr::ArrayContains(idx),
-            Instr::ArrayContainsFast(idx) => Instr::ArrayContainsFast(idx),
-            Instr::ArrayCount(idx) => Instr::ArrayCount(idx),
-            Instr::ArrayCountFast(idx) => Instr::ArrayCountFast(idx),
-            Instr::ArrayPush(idx) => Instr::ArrayPush(idx),
-            Instr::ArrayPop(idx) => Instr::ArrayPop(idx),
-            Instr::ArrayInsert(idx) => Instr::ArrayInsert(idx),
-            Instr::ArrayRemove(idx) => Instr::ArrayRemove(idx),
-            Instr::ArrayRemoveFast(idx) => Instr::ArrayRemoveFast(idx),
-            Instr::ArrayGrow(idx) => Instr::ArrayGrow(idx),
-            Instr::ArrayErase(idx) => Instr::ArrayErase(idx),
-            Instr::ArrayEraseFast(idx) => Instr::ArrayEraseFast(idx),
-            Instr::ArrayLast(idx) => Instr::ArrayLast(idx),
-            Instr::ArrayElement(idx) => Instr::ArrayElement(idx),
-            Instr::StaticArraySize(idx) => Instr::StaticArraySize(idx),
-            Instr::StaticArrayFindFirst(idx) => Instr::StaticArrayFindFirst(idx),
-            Instr::StaticArrayFindFirstFast(idx) => Instr::StaticArrayFindFirstFast(idx),
-            Instr::StaticArrayFindLast(idx) => Instr::StaticArrayFindLast(idx),
-            Instr::StaticArrayFindLastFast(idx) => Instr::StaticArrayFindLastFast(idx),
-            Instr::StaticArrayContains(idx) => Instr::StaticArrayContains(idx),
-            Instr::StaticArrayContainsFast(idx) => Instr::StaticArrayContainsFast(idx),
-            Instr::StaticArrayCount(idx) => Instr::StaticArrayCount(idx),
-            Instr::StaticArrayCountFast(idx) => Instr::StaticArrayCountFast(idx),
-            Instr::StaticArrayLast(idx) => Instr::StaticArrayLast(idx),
-            Instr::StaticArrayElement(idx) => Instr::StaticArrayElement(idx),
+            Instr::StartProfiling(_0) => Instr::StartProfiling(_0.clone()),
+            &Instr::ArrayClear(idx) => Instr::ArrayClear(idx),
+            &Instr::ArraySize(idx) => Instr::ArraySize(idx),
+            &Instr::ArrayResize(idx) => Instr::ArrayResize(idx),
+            &Instr::ArrayFindFirst(idx) => Instr::ArrayFindFirst(idx),
+            &Instr::ArrayFindFirstFast(idx) => Instr::ArrayFindFirstFast(idx),
+            &Instr::ArrayFindLast(idx) => Instr::ArrayFindLast(idx),
+            &Instr::ArrayFindLastFast(idx) => Instr::ArrayFindLastFast(idx),
+            &Instr::ArrayContains(idx) => Instr::ArrayContains(idx),
+            &Instr::ArrayContainsFast(idx) => Instr::ArrayContainsFast(idx),
+            &Instr::ArrayCount(idx) => Instr::ArrayCount(idx),
+            &Instr::ArrayCountFast(idx) => Instr::ArrayCountFast(idx),
+            &Instr::ArrayPush(idx) => Instr::ArrayPush(idx),
+            &Instr::ArrayPop(idx) => Instr::ArrayPop(idx),
+            &Instr::ArrayInsert(idx) => Instr::ArrayInsert(idx),
+            &Instr::ArrayRemove(idx) => Instr::ArrayRemove(idx),
+            &Instr::ArrayRemoveFast(idx) => Instr::ArrayRemoveFast(idx),
+            &Instr::ArrayGrow(idx) => Instr::ArrayGrow(idx),
+            &Instr::ArrayErase(idx) => Instr::ArrayErase(idx),
+            &Instr::ArrayEraseFast(idx) => Instr::ArrayEraseFast(idx),
+            &Instr::ArrayLast(idx) => Instr::ArrayLast(idx),
+            &Instr::ArrayElement(idx) => Instr::ArrayElement(idx),
+            &Instr::StaticArraySize(idx) => Instr::StaticArraySize(idx),
+            &Instr::StaticArrayFindFirst(idx) => Instr::StaticArrayFindFirst(idx),
+            &Instr::StaticArrayFindFirstFast(idx) => Instr::StaticArrayFindFirstFast(idx),
+            &Instr::StaticArrayFindLast(idx) => Instr::StaticArrayFindLast(idx),
+            &Instr::StaticArrayFindLastFast(idx) => Instr::StaticArrayFindLastFast(idx),
+            &Instr::StaticArrayContains(idx) => Instr::StaticArrayContains(idx),
+            &Instr::StaticArrayContainsFast(idx) => Instr::StaticArrayContainsFast(idx),
+            &Instr::StaticArrayCount(idx) => Instr::StaticArrayCount(idx),
+            &Instr::StaticArrayCountFast(idx) => Instr::StaticArrayCountFast(idx),
+            &Instr::StaticArrayLast(idx) => Instr::StaticArrayLast(idx),
+            &Instr::StaticArrayElement(idx) => Instr::StaticArrayElement(idx),
             Instr::RefToBool => Instr::RefToBool,
             Instr::WeakRefToBool => Instr::WeakRefToBool,
-            Instr::EnumToI32(idx, size) => Instr::EnumToI32(idx, size),
-            Instr::I32ToEnum(idx, size) => Instr::I32ToEnum(idx, size),
-            Instr::DynamicCast(idx, size) => Instr::DynamicCast(idx, size),
-            Instr::ToString(idx) => Instr::ToString(idx),
-            Instr::ToVariant(idx) => Instr::ToVariant(idx),
-            Instr::FromVariant(idx) => Instr::FromVariant(idx),
+            &Instr::EnumToI32(idx, size) => Instr::EnumToI32(idx, size),
+            &Instr::I32ToEnum(idx, size) => Instr::I32ToEnum(idx, size),
+            &Instr::DynamicCast(idx, size) => Instr::DynamicCast(idx, size),
+            &Instr::ToString(idx) => Instr::ToString(idx),
+            &Instr::ToVariant(idx) => Instr::ToVariant(idx),
+            &Instr::FromVariant(idx) => Instr::FromVariant(idx),
             Instr::VariantIsDefined => Instr::VariantIsDefined,
             Instr::VariantIsRef => Instr::VariantIsRef,
             Instr::VariantIsArray => Instr::VariantIsArray,
@@ -324,8 +324,8 @@ impl Instr<Label> {
             Instr::WeakRefToRef => Instr::WeakRefToRef,
             Instr::RefToWeakRef => Instr::RefToWeakRef,
             Instr::WeakRefNull => Instr::WeakRefNull,
-            Instr::AsRef(idx) => Instr::AsRef(idx),
-            Instr::Deref(idx) => Instr::Deref(idx),
+            &Instr::AsRef(idx) => Instr::AsRef(idx),
+            &Instr::Deref(idx) => Instr::Deref(idx),
         }
     }
 }
@@ -1014,8 +1014,8 @@ impl Encode for Code<Offset> {
     }
 }
 
-#[derive(Debug, Clone, Copy, EnumString, Display, IntoStaticStr)]
-pub enum IntrinsicOp {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, Display, IntoStaticStr)]
+pub enum Intrinsic {
     Equals,
     NotEquals,
     ArrayClear,
@@ -1047,38 +1047,38 @@ pub enum IntrinsicOp {
     IsDefined,
 }
 
-impl IntrinsicOp {
+impl Intrinsic {
     pub fn arg_count(&self) -> u8 {
         match self {
-            IntrinsicOp::ArrayInsert => 3,
-            IntrinsicOp::Equals
-            | IntrinsicOp::NotEquals
-            | IntrinsicOp::ArrayResize
-            | IntrinsicOp::ArrayFindFirst
-            | IntrinsicOp::ArrayFindLast
-            | IntrinsicOp::ArrayContains
-            | IntrinsicOp::ArrayCount
-            | IntrinsicOp::ArrayPush
-            | IntrinsicOp::ArrayRemove
-            | IntrinsicOp::ArrayGrow
-            | IntrinsicOp::ArrayErase => 2,
-            IntrinsicOp::ArrayPop
-            | IntrinsicOp::ArrayClear
-            | IntrinsicOp::ArraySize
-            | IntrinsicOp::ArrayLast
-            | IntrinsicOp::ToString
-            | IntrinsicOp::EnumInt
-            | IntrinsicOp::IntEnum
-            | IntrinsicOp::ToVariant
-            | IntrinsicOp::FromVariant
-            | IntrinsicOp::VariantIsRef
-            | IntrinsicOp::VariantIsArray
-            | IntrinsicOp::VariantTypeName
-            | IntrinsicOp::AsRef
-            | IntrinsicOp::Deref
-            | IntrinsicOp::RefToWeakRef
-            | IntrinsicOp::WeakRefToRef
-            | IntrinsicOp::IsDefined => 1,
+            Intrinsic::ArrayInsert => 3,
+            Intrinsic::Equals
+            | Intrinsic::NotEquals
+            | Intrinsic::ArrayResize
+            | Intrinsic::ArrayFindFirst
+            | Intrinsic::ArrayFindLast
+            | Intrinsic::ArrayContains
+            | Intrinsic::ArrayCount
+            | Intrinsic::ArrayPush
+            | Intrinsic::ArrayRemove
+            | Intrinsic::ArrayGrow
+            | Intrinsic::ArrayErase => 2,
+            Intrinsic::ArrayPop
+            | Intrinsic::ArrayClear
+            | Intrinsic::ArraySize
+            | Intrinsic::ArrayLast
+            | Intrinsic::ToString
+            | Intrinsic::EnumInt
+            | Intrinsic::IntEnum
+            | Intrinsic::ToVariant
+            | Intrinsic::FromVariant
+            | Intrinsic::VariantIsRef
+            | Intrinsic::VariantIsArray
+            | Intrinsic::VariantTypeName
+            | Intrinsic::AsRef
+            | Intrinsic::Deref
+            | Intrinsic::RefToWeakRef
+            | Intrinsic::WeakRefToRef
+            | Intrinsic::IsDefined => 1,
         }
     }
 }
@@ -1106,15 +1106,15 @@ impl<'a, Loc: Clone> CodeCursor<'a, Loc> {
         }
     }
 
-    pub fn pop(&mut self) -> Result<Instr<Loc>, CursorError> {
+    pub fn pop(&mut self) -> Result<&Instr<Loc>, CursorError> {
         let instr = self.code.get(self.index as usize).ok_or(CursorError::EndOfCode)?;
         self.index += 1;
-        Ok(instr.clone())
+        Ok(instr)
     }
 
     #[inline]
-    pub fn peek(&self) -> Option<Instr<Loc>> {
-        self.code.get(self.index as usize).cloned()
+    pub fn peek(&self) -> Option<&Instr<Loc>> {
+        self.code.get(self.index as usize)
     }
 
     pub fn pos(&self) -> Location {
@@ -1174,14 +1174,14 @@ impl<'a, Loc> CodeIter<'a, Loc> {
 }
 
 impl<'a, Loc: Clone> Iterator for CodeIter<'a, Loc> {
-    type Item = (Location, Instr<Loc>);
+    type Item = (Location, &'a Instr<Loc>);
 
     fn next(&mut self) -> Option<Self::Item> {
         if let [head, tail @ ..] = self.slice {
             let location = Location::new(self.offset);
             self.slice = tail;
             self.offset += head.size();
-            Some((location, head.clone()))
+            Some((location, head))
         } else {
             None
         }

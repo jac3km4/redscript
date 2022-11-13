@@ -1,297 +1,297 @@
-use itertools::Itertools;
-use redscript::definition::{ClassFlags, Property};
+// use itertools::Itertools;
+// use redscript::definition::{ClassFlags, Property};
 
-#[allow(unused)]
-mod utils;
+// #[allow(unused)]
+// mod utils;
 
-use redscript_compiler::diagnostics::Diagnostic;
-use redscript_compiler::error::Cause;
-use utils::{check_class_flags, compiled};
+// use redscript_compiler::diagnostics::Diagnostic;
+// use redscript_compiler::error::Cause;
+// use utils::{check_class_flags, compiled};
 
-#[test]
-fn compile_simple_class() {
-    let sources = "
-        public class A {
-            private const let m_field: Int32;
+// #[test]
+// fn compile_simple_class() {
+//     let sources = "
+//         public class A {
+//             private const let m_field: Int32;
 
-            public func DoStuff(fieldOrNot: Bool) -> Int32 {
-                return fieldOrNot ? this.m_field : A.Ten();
-            }
+//             public func DoStuff(fieldOrNot: Bool) -> Int32 {
+//                 return fieldOrNot ? this.m_field : A.Ten();
+//             }
 
-            public static func Ten() -> Int32 {
-                return 10;
-            }
-        }";
+//             public static func Ten() -> Int32 {
+//                 return 10;
+//             }
+//         }";
 
-    let (_, errs) = compiled(vec![sources]).unwrap();
-    assert!(matches!(&errs[..], &[]));
-}
+//     let (_, errs) = compiled(vec![sources]).unwrap();
+//     assert!(matches!(&errs[..], &[]));
+// }
 
-#[test]
-fn compile_ext_class() {
-    let sources = "
-        public class X {
-            private const let m_base_field: Int32;
+// #[test]
+// fn compile_ext_class() {
+//     let sources = "
+//         public class X {
+//             private const let m_base_field: Int32;
 
-            public func BaseMethod() -> Int32 {
-                return this.m_base_field;
-            }
-        }
+//             public func BaseMethod() -> Int32 {
+//                 return this.m_base_field;
+//             }
+//         }
 
-        public class Y extends X {
-            public func CallBase() -> Int32 {
-              return this.BaseMethod();
-            }
-        }";
+//         public class Y extends X {
+//             public func CallBase() -> Int32 {
+//               return this.BaseMethod();
+//             }
+//         }";
 
-    let (_, errs) = compiled(vec![sources]).unwrap();
-    assert!(matches!(&errs[..], &[]));
-}
+//     let (_, errs) = compiled(vec![sources]).unwrap();
+//     assert!(matches!(&errs[..], &[]));
+// }
 
-#[test]
-fn compile_class_with_forward_ref() {
-    let sources = "
-        public class MyTestClass456 {
-            public let myOtherTestClass: ref<MyTestClass123>;
+// #[test]
+// fn compile_class_with_forward_ref() {
+//     let sources = "
+//         public class MyTestClass456 {
+//             public let myOtherTestClass: ref<MyTestClass123>;
 
-            public func DoStuff() -> ref<MyTestClass123> {
-                return this.myOtherTestClass;
-            }
-        }
-        
-        public class MyTestClass123 {
-            public let myTestVar: String;
-        }";
+//             public func DoStuff() -> ref<MyTestClass123> {
+//                 return this.myOtherTestClass;
+//             }
+//         }
 
-    let (_, errs) = compiled(vec![sources]).unwrap();
-    assert!(matches!(&errs[..], &[]));
-}
+//         public class MyTestClass123 {
+//             public let myTestVar: String;
+//         }";
 
-#[test]
-fn compile_class_with_shorthand_funcs() {
-    let sources = "
-        public class ShorthandTest {
-            public func InstanceVal() -> String = ShorthandTest.StaticVal()
-            public static func StaticVal() -> String = \"static\"
-        }";
+//     let (_, errs) = compiled(vec![sources]).unwrap();
+//     assert!(matches!(&errs[..], &[]));
+// }
 
-    let (_, errs) = compiled(vec![sources]).unwrap();
-    assert!(matches!(&errs[..], &[]));
-}
+// #[test]
+// fn compile_class_with_shorthand_funcs() {
+//     let sources = "
+//         public class ShorthandTest {
+//             public func InstanceVal() -> String = ShorthandTest.StaticVal()
+//             public static func StaticVal() -> String = \"static\"
+//         }";
 
-#[test]
-fn compile_class_attributes() {
-    let source = r#"
-        public abstract class Base {}
+//     let (_, errs) = compiled(vec![sources]).unwrap();
+//     assert!(matches!(&errs[..], &[]));
+// }
 
-        public final class Derived extends Base {}
-    "#;
+// #[test]
+// fn compile_class_attributes() {
+//     let source = r#"
+//         public abstract class Base {}
 
-    let expected_base_flags = ClassFlags::new().with_is_abstract(true);
-    let expected_derived_flags = ClassFlags::new().with_is_final(true);
+//         public final class Derived extends Base {}
+//     "#;
 
-    let (pool, _) = compiled(vec![source]).unwrap();
-    check_class_flags(&pool, "Base", expected_base_flags).unwrap();
-    check_class_flags(&pool, "Derived", expected_derived_flags).unwrap();
-}
+//     let expected_base_flags = ClassFlags::new().with_is_abstract(true);
+//     let expected_derived_flags = ClassFlags::new().with_is_final(true);
 
-#[test]
-fn compile_mutually_dependent_modules() {
-    let sources1 = "
-        module MyModule.Module1
-        import MyModule.Module2.{B, Func2}
+//     let (pool, _) = compiled(vec![source]).unwrap();
+//     check_class_flags(&pool, "Base", expected_base_flags).unwrap();
+//     check_class_flags(&pool, "Derived", expected_derived_flags).unwrap();
+// }
 
-        public func Func1() -> Int32 = 2
+// #[test]
+// fn compile_mutually_dependent_modules() {
+//     let sources1 = "
+//         module MyModule.Module1
+//         import MyModule.Module2.{B, Func2}
 
-        class A {
-            func Thing() -> Int32 {
-                Func2();
-                return new B().Thing();
-            }
-        }";
+//         public func Func1() -> Int32 = 2
 
-    let sources2 = "
-        module MyModule.Module2
-        import MyModule.Module1.*
+//         class A {
+//             func Thing() -> Int32 {
+//                 Func2();
+//                 return new B().Thing();
+//             }
+//         }";
 
-        public func Func2() -> Int32 = 2
+//     let sources2 = "
+//         module MyModule.Module2
+//         import MyModule.Module1.*
 
-        public class B {
-            func Thing() -> Int32 = Func1()
-        }";
+//         public func Func2() -> Int32 = 2
 
-    let (_, errs) = compiled(vec![sources1, sources2]).unwrap();
-    assert!(matches!(&errs[..], &[]));
-}
+//         public class B {
+//             func Thing() -> Int32 = Func1()
+//         }";
 
-#[test]
-fn compile_lub_types() {
-    let sources = "
-        func Testing() {
-            let a: array<ref<A>> = [ new C(), new B(), new A() ];
-            let b: array<ref<A>> = [ new C(), new B(), new D() ];
-            let c: ref<B> = true ? new B() : new C();
-            let d: array<ref<A>> = [ true ? new B() :  new D() ];
-            let a: ref<A> = true ? new A() : null;
-        }
+//     let (_, errs) = compiled(vec![sources1, sources2]).unwrap();
+//     assert!(matches!(&errs[..], &[]));
+// }
 
-        class A {}
-        class B extends A {}
-        class C extends B {}
-        class D extends A {}
-    ";
+// #[test]
+// fn compile_lub_types() {
+//     let sources = "
+//         func Testing() {
+//             let a: array<ref<A>> = [ new C(), new B(), new A() ];
+//             let b: array<ref<A>> = [ new C(), new B(), new D() ];
+//             let c: ref<B> = true ? new B() : new C();
+//             let d: array<ref<A>> = [ true ? new B() :  new D() ];
+//             let a: ref<A> = true ? new A() : null;
+//         }
 
-    let (_, errs) = compiled(vec![sources]).unwrap();
-    let errs = errs.into_iter().filter(Diagnostic::is_fatal).collect_vec();
-    assert!(matches!(&errs[..], &[]));
-}
+//         class A {}
+//         class B extends A {}
+//         class C extends B {}
+//         class D extends A {}
+//     ";
 
-#[test]
-fn compile_casts() {
-    let sources = "
-        func Testing() {
-            let a = Cast<Float>(1);
-            let b: Int32 = Cast(a);
-            let c = Cast<Double>(b);
-        }
+//     let (_, errs) = compiled(vec![sources]).unwrap();
+//     let errs = errs.into_iter().filter(Diagnostic::is_fatal).collect_vec();
+//     assert!(matches!(&errs[..], &[]));
+// }
 
-        native func Cast(i: Int32) -> Float;
-        native func Cast(i: Int32) -> Double;
-        native func Cast(i: Float) -> Int32;
-        native func Cast(i: Float) -> Double;
-    ";
+// #[test]
+// fn compile_casts() {
+//     let sources = "
+//         func Testing() {
+//             let a = Cast<Float>(1);
+//             let b: Int32 = Cast(a);
+//             let c = Cast<Double>(b);
+//         }
 
-    let (_, errs) = compiled(vec![sources]).unwrap();
-    let errs = errs.into_iter().filter(Diagnostic::is_fatal).collect_vec();
-    assert!(matches!(&errs[..], &[]));
-}
+//         native func Cast(i: Int32) -> Float;
+//         native func Cast(i: Int32) -> Double;
+//         native func Cast(i: Float) -> Int32;
+//         native func Cast(i: Float) -> Double;
+//     ";
 
-#[test]
-fn compile_intrinsic_null_cases() {
-    let sources = "
-        func Testing() {
-            // Equals(null, new A()); // uncomment this after https://github.com/jac3km4/redscript/issues/69
-            Equals(new A(), null);
-            IsDefined(null);
-        }
+//     let (_, errs) = compiled(vec![sources]).unwrap();
+//     let errs = errs.into_iter().filter(Diagnostic::is_fatal).collect_vec();
+//     assert!(matches!(&errs[..], &[]));
+// }
 
-        class A {}
-    ";
+// #[test]
+// fn compile_intrinsic_null_cases() {
+//     let sources = "
+//         func Testing() {
+//             // Equals(null, new A()); // uncomment this after https://github.com/jac3km4/redscript/issues/69
+//             Equals(new A(), null);
+//             IsDefined(null);
+//         }
 
-    let (_, errs) = compiled(vec![sources]).unwrap();
-    assert!(matches!(&errs[..], &[]));
-}
+//         class A {}
+//     ";
 
-#[test]
-fn compile_structs() {
-    let sources = "
-        func Testing() {
-            let a: A = new A(1, 2);
-        }
+//     let (_, errs) = compiled(vec![sources]).unwrap();
+//     assert!(matches!(&errs[..], &[]));
+// }
 
-        struct A {
-            let x: Int32;
-            let y: Int32;
-        }
-    ";
+// #[test]
+// fn compile_structs() {
+//     let sources = "
+//         func Testing() {
+//             let a: A = new A(1, 2);
+//         }
 
-    let (_, errs) = compiled(vec![sources]).unwrap();
-    let errs = errs.into_iter().filter(Diagnostic::is_fatal).collect_vec();
-    assert!(matches!(&errs[..], &[]));
-}
+//         struct A {
+//             let x: Int32;
+//             let y: Int32;
+//         }
+//     ";
 
-#[test]
-fn fail_on_invalid_structs() {
-    let sources = "
-        struct A {
-            let x: Int32;
-            let y: Int32;
+//     let (_, errs) = compiled(vec![sources]).unwrap();
+//     let errs = errs.into_iter().filter(Diagnostic::is_fatal).collect_vec();
+//     assert!(matches!(&errs[..], &[]));
+// }
 
-            func Test() {}
-        }
-    ";
+// #[test]
+// fn fail_on_invalid_structs() {
+//     let sources = "
+//         struct A {
+//             let x: Int32;
+//             let y: Int32;
 
-    let (_, errs) = compiled(vec![sources]).unwrap();
-    assert!(matches!(&errs[..], &[Diagnostic::CompileError(
-        Cause::UnsupportedFeature(_),
-        _
-    )]));
-}
+//             func Test() {}
+//         }
+//     ";
 
-#[test]
-fn report_unused_variables() {
-    let sources = "
-        func Testing() {
-            let x = 100;
-            let y = x + 120;
-            let z = 130;
-            let w = y + 240; 
-        }
+//     let (_, errs) = compiled(vec![sources]).unwrap();
+//     assert!(matches!(&errs[..], &[Diagnostic::CompileError(
+//         Cause::UnsupportedFeature(_),
+//         _
+//     )]));
+// }
 
-        func OperatorAdd(x: Int32, y: Int32) -> Int32 = 0;
-    ";
+// #[test]
+// fn report_unused_variables() {
+//     let sources = "
+//         func Testing() {
+//             let x = 100;
+//             let y = x + 120;
+//             let z = 130;
+//             let w = y + 240;
+//         }
 
-    let (_, errs) = compiled(vec![sources]).unwrap();
-    assert!(matches!(&errs[..], &[
-        Diagnostic::UnusedLocal(_),
-        Diagnostic::UnusedLocal(_),
-    ]));
-}
+//         func OperatorAdd(x: Int32, y: Int32) -> Int32 = 0;
+//     ";
 
-#[test]
-fn report_missing_return() {
-    let sources = "
-        func Testing() -> Int32 {}
-    ";
+//     let (_, errs) = compiled(vec![sources]).unwrap();
+//     assert!(matches!(&errs[..], &[
+//         Diagnostic::UnusedLocal(_),
+//         Diagnostic::UnusedLocal(_),
+//     ]));
+// }
 
-    let (_, errs) = compiled(vec![sources]).unwrap();
-    assert!(matches!(&errs[..], &[Diagnostic::MissingReturn(_)]));
-}
+// #[test]
+// fn report_missing_return() {
+//     let sources = "
+//         func Testing() -> Int32 {}
+//     ";
 
-#[test]
-fn compile_defaults() {
-    let sources = r#"
-        func Testing() {
-            let class = new Class();
-        }
+//     let (_, errs) = compiled(vec![sources]).unwrap();
+//     assert!(matches!(&errs[..], &[Diagnostic::MissingReturn(_)]));
+// }
 
-        enum Enum {
-            Zero = 0
-        }
+// #[test]
+// fn compile_defaults() {
+//     let sources = r#"
+//         func Testing() {
+//             let class = new Class();
+//         }
 
-        class Class {
-            let a: Int32 = 10;
-            let b: Enum = Enum.Zero;
-            let b: String = "str";
-            let c: CName = n"name";
-        }
-    "#;
+//         enum Enum {
+//             Zero = 0
+//         }
 
-    let (pool, errs) = compiled(vec![sources]).unwrap();
-    let errs = errs.into_iter().filter(Diagnostic::is_fatal).collect_vec();
-    assert!(matches!(&errs[..], &[]));
+//         class Class {
+//             let a: Int32 = 10;
+//             let b: Enum = Enum.Zero;
+//             let b: String = "str";
+//             let c: CName = n"name";
+//         }
+//     "#;
 
-    let props: Vec<&Property> = pool
-        .definitions()
-        .filter_map(|(_, d)| d.value.as_field())
-        .flat_map(|f| &f.defaults)
-        .collect();
-    assert_eq!(props, vec![
-        &Property {
-            name: "Class".to_owned(),
-            value: "10".to_owned()
-        },
-        &Property {
-            name: "Class".to_owned(),
-            value: "Enum.Zero".to_owned()
-        },
-        &Property {
-            name: "Class".to_owned(),
-            value: "str".to_owned()
-        },
-        &Property {
-            name: "Class".to_owned(),
-            value: "name".to_owned()
-        }
-    ]);
-}
+//     let (pool, errs) = compiled(vec![sources]).unwrap();
+//     let errs = errs.into_iter().filter(Diagnostic::is_fatal).collect_vec();
+//     assert!(matches!(&errs[..], &[]));
+
+//     let props: Vec<&Property> = pool
+//         .definitions()
+//         .filter_map(|(_, d)| d.value.as_field())
+//         .flat_map(|f| &f.defaults)
+//         .collect();
+//     assert_eq!(props, vec![
+//         &Property {
+//             name: "Class".to_owned(),
+//             value: "10".to_owned()
+//         },
+//         &Property {
+//             name: "Class".to_owned(),
+//             value: "Enum.Zero".to_owned()
+//         },
+//         &Property {
+//             name: "Class".to_owned(),
+//             value: "str".to_owned()
+//         },
+//         &Property {
+//             name: "Class".to_owned(),
+//             value: "name".to_owned()
+//         }
+//     ]);
+// }

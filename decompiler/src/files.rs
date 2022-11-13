@@ -1,11 +1,12 @@
-use std::collections::{HashMap, HashSet};
 use std::iter;
 use std::path::Path;
 
+use hashbrown::{HashMap, HashSet};
 use itertools::Itertools;
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::definition::{AnyDefinition, Definition};
 
+#[derive(Debug)]
 pub struct FileIndex<'a> {
     file_map: HashMap<PoolIndex<Definition>, HashSet<PoolIndex<Definition>>>,
     pool: &'a ConstantPool,
@@ -13,17 +14,12 @@ pub struct FileIndex<'a> {
 
 impl<'a> FileIndex<'a> {
     pub fn from_pool(pool: &'a ConstantPool) -> FileIndex {
-        let mut file_map: HashMap<PoolIndex<Definition>, HashSet<PoolIndex<Definition>>> = HashMap::new();
+        let mut file_map: HashMap<_, HashSet<_>> = HashMap::new();
 
         for (idx, def) in pool.definitions() {
             if let Some(source) = def.source() {
                 let root_idx = if def.parent.is_undefined() { idx } else { def.parent };
-                file_map
-                    .entry(source.file)
-                    .and_modify(|vec| {
-                        vec.insert(root_idx);
-                    })
-                    .or_insert_with(|| iter::once(root_idx).collect());
+                file_map.entry(source.file).or_default().insert(root_idx);
             }
         }
 
@@ -58,7 +54,7 @@ impl<'a> FileIndex<'a> {
             .definitions()
             .filter(|(_, def)| match &def.value {
                 AnyDefinition::Class(class) => class
-                    .functions
+                    .methods
                     .iter()
                     .filter_map(|idx| self.pool.function(*idx).ok())
                     .all(|fun| fun.flags.is_native()),
@@ -75,6 +71,7 @@ impl<'a> FileIndex<'a> {
     }
 }
 
+#[derive(Debug)]
 pub struct FileEntry<'a> {
     pub path: &'a Path,
     pub definitions: Vec<&'a Definition>,

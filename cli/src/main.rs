@@ -1,13 +1,15 @@
 use std::fs::File;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 
 use fern::colors::ColoredLevelConfig;
 use gumdrop::Options;
 use redscript::bundle::ScriptBundle;
 use redscript::definition::AnyDefinition;
+use redscript_compiler::compiler::{CompilationResources, Compiler};
 use redscript_compiler::source_map::{Files, SourceFilter};
-use redscript_compiler::unit::CompilationUnit;
+use redscript_compiler::StringInterner;
 use redscript_decompiler::files::FileIndex;
 use redscript_decompiler::print::{write_definition, OutputMode};
 use vmap::Map;
@@ -54,13 +56,17 @@ struct LintOpts {
     bundle: Option<PathBuf>,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> ExitCode {
     setup_logger();
 
-    run().map_err(|err| {
-        log::error!("{}", err);
-        err
-    })
+    match run() {
+        Ok(true) => ExitCode::SUCCESS,
+        Ok(false) => ExitCode::FAILURE,
+        Err(err) => {
+            log::error!("{}", err);
+            ExitCode::FAILURE
+        }
+    }
 }
 
 fn setup_logger() {
@@ -75,7 +81,7 @@ fn setup_logger() {
         .expect("Failed to initialize the logger");
 }
 
-fn run() -> Result<(), Box<dyn std::error::Error>> {
+fn run() -> Result<bool, Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let command: Command = match Command::parse_args_default(&args) {
         Ok(res) => res,
@@ -96,36 +102,46 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 DecompileOpts::usage(),
                 LintOpts::usage()
             );
-            return Ok(());
+            return Ok(false);
         }
     };
 
     match command {
-        Command::Decompile(opts) => decompile(opts)?,
-        Command::Compile(opts) => compile(opts)?,
-        Command::Lint(opts) => lint(opts)?,
+        Command::Decompile(opts) => Ok(decompile(opts)?),
+        Command::Compile(opts) => Ok(compile(opts)?),
+        Command::Lint(opts) => Ok(lint(opts)?),
     }
-    Ok(())
 }
 
-fn compile(opts: CompileOpts) -> Result<(), redscript_compiler::error::Error> {
+fn compile(opts: CompileOpts) -> io::Result<bool> {
     let mut bundle = load_bundle(&opts.bundle)?;
+    let mut files = Files::from_dir(&opts.src, SourceFilter::None)?;
+    files.include_std();
+    let interner: StringInterner = StringInterner::default();
+    let mut res = CompilationResources::load(&bundle.pool, &interner);
+    let output = Compiler::new(res.type_repo, &interner).run(&files);
 
-    let files = Files::from_dir(&opts.src, SourceFilter::None)?;
-
-    match CompilationUnit::new_with_defaults(&mut bundle.pool)?.compile_and_report(&files) {
-        Ok(()) => {
+    match output {
+        Ok(output) if !output.reporter().is_compilation_failed() => {
+            output.commit(&mut res.db, &mut res.type_cache, &mut bundle.pool);
             bundle.save(&mut io::BufWriter::new(File::create(&opts.output)?))?;
             log::info!("Output successfully saved to {}", opts.output.display());
+            Ok(true)
         }
-        Err(_) => {
-            log::error!("Build failed");
+        Ok(failed) => {
+            for error in failed.into_errors() {
+                log::error!("{}", error.display(&files));
+            }
+            Ok(false)
+        }
+        Err(error) => {
+            log::error!("{}", error);
+            Ok(false)
         }
     }
-    Ok(())
 }
 
-fn decompile(opts: DecompileOpts) -> Result<(), redscript_decompiler::error::Error> {
+fn decompile(opts: DecompileOpts) -> Result<bool, redscript_decompiler::error::Error> {
     let bundle = load_bundle(&opts.input)?;
     let pool = &bundle.pool;
 
@@ -161,25 +177,37 @@ fn decompile(opts: DecompileOpts) -> Result<(), redscript_decompiler::error::Err
         }
     }
     log::info!("Output successfully saved to {}", opts.output.display());
-    Ok(())
+    Ok(true)
 }
 
-fn lint(opts: LintOpts) -> Result<(), redscript_compiler::error::Error> {
+fn lint(opts: LintOpts) -> io::Result<bool> {
     match opts.bundle {
         Some(bundle_path) => {
-            let mut bundle = load_bundle(&bundle_path)?;
+            let bundle = load_bundle(&bundle_path)?;
+            let mut files = Files::from_dir(&opts.src, SourceFilter::None)?;
+            files.include_std();
+            let interner: StringInterner = StringInterner::default();
+            let res = CompilationResources::load(&bundle.pool, &interner);
+            let output = Compiler::new(res.type_repo, &interner).run(&files);
 
-            let files = Files::from_dir(&opts.src, SourceFilter::None)?;
-
-            if CompilationUnit::new_with_defaults(&mut bundle.pool)?
-                .compile_and_report(&files)
-                .is_ok()
-            {
-                log::info!("Lint successful");
+            match output {
+                Ok(output) if !output.reporter().is_compilation_failed() => {
+                    log::info!("Lint successful");
+                    Ok(true)
+                }
+                Ok(failed) => {
+                    for error in failed.into_errors() {
+                        log::error!("{}", error.display(&files));
+                    }
+                    Ok(false)
+                }
+                Err(error) => {
+                    log::error!("{}", error);
+                    Ok(false)
+                }
             }
-            Ok(())
         }
-        None => Ok(()),
+        None => Ok(true),
     }
 }
 

@@ -15,10 +15,13 @@ edition = "2021"
 [workspace.dependencies]
 log = "0.4"
 thiserror = "1"
+derive-where = "1"
 itertools = "0.10"
 strum = { version = "0.24", features = ["derive"] }
+smallvec = { version = "1", features = ["union", "write"] }
+hashbrown = "0.13"
 enum-as-inner = "0.5"
-byteorder = "1.4"
+byteorder = "1"
 flexstr = "0.9"
 fern = "0.6"
 
