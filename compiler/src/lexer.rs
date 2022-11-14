@@ -13,6 +13,7 @@ use nom::AsChar;
 use redscript::Str;
 use strum::{Display, IntoStaticStr};
 
+use crate::nom::many_till_balanced1;
 use crate::validators::*;
 use crate::{diag_report, *};
 
@@ -123,13 +124,9 @@ pub enum Kw {
 // -----------------------------------------------------------------------------
 
 fn comment_multiline(i: Span) -> IResult<Span> {
-    recognize(delimited(
+    recognize(many_till_balanced1(
         tag("/*"),
-        recognize(many0_count(alt((
-            map(comment_multiline, |s| s),
-            map(take_until("*/"), |s| s),
-            map(take_while(|c| c != '*' && c != '/'), |s| s),
-        )))),
+        recognize(many0(not(alt((tag("*/"), tag("/*")))))),
         tag("*/"),
     ))(i)
 }
@@ -404,6 +401,17 @@ mod test {
     use super::*;
 
     #[test]
+    fn parse_invalid() {
+        let mut diag = RefCell::new(Vec::new());
+        let input = "02439853427592345284395923845320459823457324953247640359104519845834634538";
+        let result = parse(input, &mut diag);
+        assert!(result.is_ok());
+        for diag in diag.borrow().iter() {
+            println!("{}", diag);
+        }
+    }
+
+    #[test]
     fn parse_ternary_op() {
         let diag = RefCell::new(vec![]);
         let tokens = parse("3.0 ? 5.0 : 5 + 4", &diag).unwrap();
@@ -411,10 +419,9 @@ mod test {
     }
 
     fn parse<'a>(input: &'a str, diag: &'a RefCell<Vec<Diagnostic>>) -> Result<Vec<Token<'a>>, NomError<'a>> {
-        let input = Span::new_extra(input, State(diag, Str::default()));
+        let input = Span::new_extra(input, State(diag, "test.reds".into()));
         let (_, tokens) = tokens(input).unwrap();
-        let text = format!("{:?}", tokens);
-        assert!(!text.is_empty());
+        println!("{:?}", tokens);
         Ok(tokens)
     }
 }

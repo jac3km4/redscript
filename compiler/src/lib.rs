@@ -8,6 +8,7 @@ pub mod codegen;
 pub mod compiler;
 pub mod error;
 pub mod lexer;
+pub mod nom;
 #[allow(clippy::redundant_closure_call)]
 pub mod parser;
 mod scoped_map;
