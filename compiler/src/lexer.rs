@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_until, take_while, take_while_m_n};
 use nom::character::complete::{
-    alpha1, anychar, char, digit0, digit1, hex_digit0, line_ending, none_of, oct_digit0, one_of, satisfy
+    alpha1, anychar, char, digit0, digit1, hex_digit0, line_ending, multispace1, none_of, oct_digit0, one_of, satisfy
 };
 use nom::combinator::{consumed, map, not, opt, recognize};
 use nom::error::ParseError;
@@ -20,7 +20,7 @@ pub trait ParseErr<'a>: ParseError<Span<'a>> {}
 pub type IResult<'a, O> = nom::IResult<Span<'a>, O>;
 pub type NomError<'a> = nom::Err<Span<'a>>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Display)]
+#[derive(Debug, Clone, PartialEq, Display)]
 pub enum Token<'a> {
     Trivia(Span<'a>, Trivia),
     /// arbitrary numeric literal
@@ -41,7 +41,7 @@ pub enum Token<'a> {
     Bool(Span<'a>, bool),
     /// one of `+-*/!=<>&|~`
     Op(Span<'a>, Op),
-    /// one of `()[]{}:;,.`
+    /// one of `()[]{}:;,.?` and ->
     Ctrl(Span<'a>, Ctrl),
     Ident(Span<'a>),
     /// Language keywords
@@ -49,23 +49,20 @@ pub enum Token<'a> {
     Kw(Span<'a>, Kw),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display)]
+#[derive(Debug, Clone, Copy, PartialEq, Display)]
 pub enum Trivia {
     Comment,
     Whitespace,
     LineEnd,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, IntoStaticStr)]
+#[derive(Debug, Clone, Copy, PartialEq, Display, IntoStaticStr)]
 pub enum Num {
-    Float,
-    Int,
-    Hex,
-    Oct,
-    Bin,
+    Float(f64),
+    Int(u64),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, IntoStaticStr)]
+#[derive(Debug, Clone, Copy, PartialEq, Display, IntoStaticStr)]
 pub enum Op {
     Add,
     Sub,
@@ -80,7 +77,7 @@ pub enum Op {
     Tilde,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, IntoStaticStr)]
+#[derive(Debug, Clone, Copy, PartialEq, Display, IntoStaticStr)]
 pub enum Ctrl {
     LParen,
     RParen,
@@ -93,9 +90,11 @@ pub enum Ctrl {
     Comma,
     Period,
     Dot,
+    Quest,
+    LArrow,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, IntoStaticStr)]
+#[derive(Debug, Clone, Copy, PartialEq, Display, IntoStaticStr)]
 pub enum Kw {
     Module,
     Class,
@@ -135,16 +134,14 @@ fn comment_multiline(i: Span) -> IResult<Span> {
     ))(i)
 }
 
-pub fn trivia(i: Span) -> IResult<(Span, Trivia)> {
+pub fn trivia(i: Span) -> IResult<(Trivia, Span)> {
     alt((
-        map(comment_multiline, |s| (s, Trivia::Comment)),
+        map(comment_multiline, |s| (Trivia::Comment, s)),
         map(recognize(preceded(tag("//"), many0(not(line_ending)))), |s| {
-            (s, Trivia::Comment)
+            (Trivia::Comment, s)
         }),
-        map(recognize(line_ending), |s| (s, Trivia::LineEnd)),
-        map(recognize(take_while(|c: char| c.is_whitespace())), |s| {
-            (s, Trivia::Whitespace)
-        }),
+        map(recognize(line_ending), |s| (Trivia::LineEnd, s)),
+        map(recognize(multispace1), |s| (Trivia::Whitespace, s)),
     ))(i)
 }
 
@@ -157,19 +154,43 @@ fn float_literal(i: Span) -> IResult<Span> {
 }
 
 fn sciexp_literal(i: Span) -> IResult<Span> {
-    recognize(separated_pair(alt((float_literal, digit1)), one_of("eE"), digit1))(i)
+    recognize(separated_pair(
+        alt((float_literal, digit1)),
+        one_of("eE"),
+        pair(one_of("-+"), digit1),
+    ))(i)
 }
 
-pub fn number(i: Span) -> IResult<(Span, Num)> {
+fn parse_float(i: &Span) -> f64 {
+    match i.fragment().parse() {
+        Ok(value) => value,
+        Err(error) => {
+            diag_report!(i, ERR_PARSE_FLOAT, i.fragment(), error);
+            0.0
+        }
+    }
+}
+
+fn parse_int(i: &Span, radix: u32) -> u64 {
+    match u64::from_str_radix(i.fragment(), radix) {
+        Ok(value) => value,
+        Err(error) => {
+            diag_report!(i, ERR_PARSE_INT, i.fragment(), error);
+            0
+        }
+    }
+}
+
+pub fn number(i: Span) -> IResult<(Num, Span)> {
     alt((
-        map(sciexp_literal, |s| (s, Num::Float)),
-        map(float_literal, |s| (s, Num::Float)),
-        map(digit1, |s| (s, Num::Int)),
-        map(preceded(tag("0x"), hex_digit0), |s| (s, Num::Hex)),
-        map(preceded(tag("0o"), oct_digit0), |s| (s, Num::Oct)),
+        map(preceded(tag("0x"), hex_digit0), |s| (Num::Int(parse_int(&s, 16)), s)),
+        map(preceded(tag("0o"), oct_digit0), |s| (Num::Int(parse_int(&s, 8)), s)),
         map(preceded(tag("0b"), take_while(|c: char| c == '0' || c == '1')), |s| {
-            (s, Num::Bin)
+            (Num::Int(parse_int(&s, 2)), s)
         }),
+        map(sciexp_literal, |s| (Num::Float(parse_float(&s)), s)),
+        map(float_literal, |s| (Num::Float(parse_float(&s)), s)),
+        map(digit1, |s| (Num::Int(parse_int(&s, 10)), s)),
     ))(i)
 }
 
@@ -233,7 +254,7 @@ fn str_chars(mut i: Span) -> IResult<Str> {
 // a parser accepting a function and returning the result of the function, by consuming the input
 fn string(i: Span) -> IResult<(Span, Option<char>, Str)> {
     let (i, (o, (p, s))) = consumed(pair(
-        opt(satisfy(|c: char| c.is_alpha())),
+        opt(satisfy(nom::AsChar::is_alpha)),
         delimited(tag("\""), str_chars, tag("\"")),
     ))(i)?;
     Ok((i, (o, p, s)))
@@ -241,7 +262,7 @@ fn string(i: Span) -> IResult<(Span, Option<char>, Str)> {
 
 fn string_inter_start(i: Span) -> IResult<(Span, Option<char>, Str)> {
     let (i, (o, (p, s))) = consumed(pair(
-        opt(satisfy(|c: char| c.is_alpha())),
+        opt(satisfy(nom::AsChar::is_alpha)),
         delimited(tag("\""), str_chars, tag(r#"\("#)),
     ))(i)?;
     Ok((i, (o, p, s)))
@@ -279,7 +300,7 @@ fn operator(i: Span) -> IResult<(Span, Op)> {
 // -----------------------------------------------------------------------------
 // Control character
 // -----------------------------------------------------------------------------
-// one of `()[]{};,.`
+// one of `()[]{}:;,.?` and ->
 
 fn control(i: Span) -> IResult<(Span, Ctrl)> {
     alt((
@@ -293,6 +314,8 @@ fn control(i: Span) -> IResult<(Span, Ctrl)> {
         map(tag(";"), |s| (s, Ctrl::Semi)),
         map(tag(","), |s| (s, Ctrl::Comma)),
         map(tag("."), |s| (s, Ctrl::Dot)),
+        map(tag("?"), |s| (s, Ctrl::Quest)),
+        map(tag("->"), |s| (s, Ctrl::LArrow)),
     ))(i)
 }
 
@@ -346,8 +369,8 @@ fn boolean(i: Span) -> IResult<(Span, bool)> {
 
 pub fn token(i: Span) -> IResult<Token> {
     alt((
-        map(trivia, |(s, t)| Token::Trivia(s, t)),
-        map(number, |(s, n)| Token::Num(s, n)),
+        map(trivia, |(t, s)| Token::Trivia(s, t)),
+        map(number, |(n, s)| Token::Num(s, n)),
         map(string, |(s, t, n)| Token::Str(s, t, n)),
         map(string_inter_start, |(s, t, n)| Token::StrIs(s, t, n)),
         map(string_inter_end, |(s, n)| Token::StrIe(s, n)),
@@ -376,15 +399,22 @@ pub fn parse<'a>(input: &'a str, diag: &'a RefCell<Vec<Diagnostic>>) -> Result<V
 }
 
 #[cfg(test)]
+#[allow(unused_imports, dead_code)]
 mod test {
-    #[allow(unused_imports)]
     use super::*;
 
     #[test]
     fn parse_ternary_op() {
-        let diag = RefCell::new(Vec::new());
-        let expr = parse("3.0 ? 5.0 : 5 + 4", &diag).unwrap();
-        let text = format!("{:?}", expr);
-        println!("{}", text);
+        let diag = RefCell::new(vec![]);
+        let tokens = parse("3.0 ? 5.0 : 5 + 4", &diag).unwrap();
+        println!("{:?}", tokens);
+    }
+
+    fn parse<'a>(input: &'a str, diag: &'a RefCell<Vec<Diagnostic>>) -> Result<Vec<Token<'a>>, NomError<'a>> {
+        let input = Span::new_extra(input, State(diag, Str::default()));
+        let (_, tokens) = tokens(input).unwrap();
+        let text = format!("{:?}", tokens);
+        assert!(!text.is_empty());
+        Ok(tokens)
     }
 }
