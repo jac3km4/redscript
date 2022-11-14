@@ -151,6 +151,11 @@ impl<'a> ReportOrigin for Range<&Span<'a>> {
 /// A diagnostic message in the format `Severity, Code, Message format`.
 pub struct DiagnosticTemplate(Severity, &'static str, &'static str);
 
+/// Reports a diagnostic message.
+/// Requires the crate level imported, because format macros are defined there.
+/// ```ignore
+/// use crate::*;
+/// ```
 #[macro_export]
 macro_rules! diag_report {
     ($origin:expr, $name:ident, $($arg:tt)*) =>{
@@ -160,6 +165,19 @@ macro_rules! diag_report {
     };
 }
 
+/// A diagnostic message in the format `Severity, Code, Message format`.
+/// The code is a key constructed from the initials and a id.
+/// The message format is a `format!` string.
+///
+/// ## Error Code
+/// - The first char represents the severity: [E]rror, [W]arn, [I]nfo, [H]int.
+/// - The second char represents the source: [L]lexical, S[Y}ntax, [S]emantic, [T]ype, etc.
+/// - The third char represents a category. This can really be whatever. It is used to group similar errors.
+///
+/// ## Example
+/// ```ignore
+/// diag!(ERR_INVALID_UTF8, Error, "ELS0001", "Invalid UTF-8 sequence `{}`");
+/// ```
 macro_rules! diag {
     ($name:ident, $severity:ident, $code:tt, $msg:tt) => {
         paste::paste! {
@@ -178,13 +196,8 @@ macro_rules! diag {
     };
 }
 
-diag!(ERR_INVALID_UTF8, Error, "ERR_UTF8", "Invalid UTF-8 sequence `{}`");
-diag!(ERR_EXPECT_HEX_DIGIT, Error, "ERR_HEX_DIGIT", "Invalid hex digit `{}`");
-diag!(
-    ERR_INVALID_ESCAPE,
-    Error,
-    "ERR_INVALID_ESCAPE",
-    "Invalid escape sequence `{}`"
-);
-diag!(ERR_PARSE_INT, Error, "ERR_PARSE_INT", "Invalid integer `{}`, {}");
-diag!(ERR_PARSE_FLOAT, Error, "ERR_PARSE_FLOAT", "Invalid float `{}`, {}");
+diag!(ERR_INVALID_UTF8, Error, "ELS0001", "Invalid UTF-8 sequence `{}`");
+diag!(ERR_EXPECT_HEX_DIGIT, Error, "ELS0002", "Invalid hex digit `{}`");
+diag!(ERR_INVALID_ESCAPE, Error, "ELS0003", "Invalid escape sequence `{}`");
+diag!(ERR_PARSE_INT, Error, "ELN0001", "Invalid integer `{}`, {}");
+diag!(ERR_PARSE_FLOAT, Error, "ELN0002", "Invalid float `{}`, {}");
