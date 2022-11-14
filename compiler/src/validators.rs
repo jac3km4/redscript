@@ -102,7 +102,8 @@ pub trait ReportOrigin {
 }
 
 impl<'a> ReportOrigin for Span<'a> {
-    // reports the entire fragment as faulty
+    /// Reports the entire fragment as faulty.
+    /// Does not terminate the compilation.
     fn report(&self, diag: &'static DiagnosticTemplate, msg: String) {
         let bytes = std::str::from_utf8(&self.get_line_beginning()).unwrap_or_default();
         let line = self.location_line() as usize;
@@ -123,7 +124,9 @@ impl<'a> ReportOrigin for Span<'a> {
 }
 
 impl<'a> ReportOrigin for Range<&Span<'a>> {
-    // reports the range between the fragments as faulty
+    /// reports the range from the start of the first span to the end of the last span.
+    /// The first span must contain the last span.
+    /// This is archived, by cloning the first span, before consuming.
     fn report(&self, diag: &'static DiagnosticTemplate, msg: String) {
         let sl = self.start.location_line() as usize;
         let el = self.end.location_line() as usize;
