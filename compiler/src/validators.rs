@@ -102,13 +102,17 @@ pub trait ReportOrigin {
 }
 
 impl<'a> ReportOrigin for Span<'a> {
+    // reports the entire fragment as faulty
     fn report(&self, diag: &'static DiagnosticTemplate, msg: String) {
         let bytes = std::str::from_utf8(&self.get_line_beginning()).unwrap_or_default();
+        let line = self.location_line() as usize;
+        let sc = self.location_offset();
+        let ec = sc + self.fragment().len();
         self.extra.report_diagnostic(Diagnostic {
-            sl: self.location_line() as usize,
-            sc: self.get_column(),
-            el: self.location_line() as usize,
-            ec: self.get_column(),
+            sl: line,
+            sc,
+            el: line,
+            ec,
             file: self.extra.1.clone(),
             text: bytes.to_string(),
             severity: diag.0,
@@ -119,6 +123,7 @@ impl<'a> ReportOrigin for Span<'a> {
 }
 
 impl<'a> ReportOrigin for Range<&Span<'a>> {
+    // reports the range between the fragments as faulty
     fn report(&self, diag: &'static DiagnosticTemplate, msg: String) {
         let sl = self.start.location_line() as usize;
         let el = self.end.location_line() as usize;
@@ -178,3 +183,5 @@ diag!(
     "ERR_INVALID_ESCAPE",
     "Invalid escape sequence `{}`"
 );
+diag!(ERR_PARSE_INT, Error, "ERR_PARSE_INT", "Invalid integer `{}`, {}");
+diag!(ERR_PARSE_FLOAT, Error, "ERR_PARSE_FLOAT", "Invalid float `{}`, {}");
