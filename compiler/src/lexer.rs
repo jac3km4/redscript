@@ -1,54 +1,23 @@
-use std::cell::RefCell;
-
 use nom::branch::alt;
-use nom::bytes::complete::{tag, take_until, take_while, take_while_m_n};
+use nom::bytes::complete::{tag, take_while, take_while_m_n};
 use nom::character::complete::{
     alpha1, anychar, char, digit0, digit1, hex_digit0, line_ending, multispace1, none_of, oct_digit0, one_of, satisfy
 };
 use nom::combinator::{consumed, map, not, opt, recognize};
 use nom::error::ParseError;
-use nom::multi::{many0, many0_count};
+use nom::multi::many0;
 use nom::sequence::{delimited, pair, preceded, separated_pair, tuple};
 use nom::AsChar;
 use redscript::Str;
 use strum::{Display, IntoStaticStr};
 
-use crate::nom::many_till_balanced1;
+use crate::comb::many_till_balanced1;
 use crate::validators::*;
 use crate::{diag_report, *};
 
 pub trait ParseErr<'a>: ParseError<Span<'a>> {}
 pub type IResult<'a, O> = nom::IResult<Span<'a>, O>;
 pub type NomError<'a> = nom::Err<Span<'a>>;
-
-#[derive(Debug, Clone, PartialEq, Display)]
-pub enum Token<'a> {
-    Trivia(Span<'a>, Trivia),
-    /// arbitrary numeric literal
-    Num(Span<'a>, Num),
-    /// a string literal portion
-    /// the initial portion can have a type prefix
-    /// a interpolated string needs to be parsed recursively: literal + start + token... + end + literal
-    Str(Span<'a>, Option<char>, Str),
-    /// Start of a string interpolation
-    StrIs(Span<'a>, Option<char>, Str),
-    /// End of a string interpolation
-    StrIe(Span<'a>, Str),
-    /// Inbetween part of a string interpolation
-    StrIp(Span<'a>, Str),
-    /// null
-    Null(Span<'a>),
-    /// one of true | false
-    Bool(Span<'a>, bool),
-    /// one of `+-*/!=<>&|~`
-    Op(Span<'a>, Op),
-    /// one of `()[]{}:;,.?` and ->
-    Ctrl(Span<'a>, Ctrl),
-    Ident(Span<'a>),
-    /// Language keywords
-    /// one of module, class, struct, enum, func, let, new, if, else, switch, case, break, while, for, in, continue, return, try, catch, finally
-    Kw(Span<'a>, Kw),
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Display)]
 pub enum Trivia {
@@ -249,28 +218,31 @@ fn str_chars(mut i: Span) -> IResult<Str> {
 }
 
 // a parser accepting a function and returning the result of the function, by consuming the input
-fn string(i: Span) -> IResult<(Span, Option<char>, Str)> {
+pub fn string(i: Span) -> IResult<(Span, Option<char>, Str)> {
     let (i, (o, (p, s))) = consumed(pair(
-        opt(satisfy(nom::AsChar::is_alpha)),
+        opt(satisfy(AsChar::is_alpha)),
         delimited(tag("\""), str_chars, tag("\"")),
     ))(i)?;
     Ok((i, (o, p, s)))
 }
 
-fn string_inter_start(i: Span) -> IResult<(Span, Option<char>, Str)> {
+// matches a string literal until the first interpolation
+pub fn string_inter_start(i: Span) -> IResult<(Span, Option<char>, Str)> {
     let (i, (o, (p, s))) = consumed(pair(
-        opt(satisfy(nom::AsChar::is_alpha)),
+        opt(satisfy(AsChar::is_alpha)),
         delimited(tag("\""), str_chars, tag(r#"\("#)),
     ))(i)?;
     Ok((i, (o, p, s)))
 }
 
-fn string_inter_end(i: Span) -> IResult<(Span, Str)> {
+// matches a string literal from the end of the first interpolation until the end of the string
+pub fn string_inter_end(i: Span) -> IResult<(Span, Str)> {
     consumed(delimited(tag(r#")"#), str_chars, tag("\"")))(i)
 }
 
-fn string_inter_part(i: Span) -> IResult<(Span, Str)> {
-    consumed(delimited(tag(r#"\("#), str_chars, tag(r#")"#)))(i)
+// matches a string literal from the end of the first interpolation until the start of the next interpolation
+pub fn string_inter_part(i: Span) -> IResult<(Span, Str)> {
+    consumed(delimited(tag(r#")"#), str_chars, tag(r#"\("#)))(i)
 }
 
 // -----------------------------------------------------------------------------
@@ -278,7 +250,7 @@ fn string_inter_part(i: Span) -> IResult<(Span, Str)> {
 // -----------------------------------------------------------------------------
 // one of `+-*/!=<>&|~`
 
-fn operator(i: Span) -> IResult<(Span, Op)> {
+pub fn operator(i: Span) -> IResult<(Span, Op)> {
     alt((
         map(tag("="), |s| (s, Op::Add)),
         map(tag("-"), |s| (s, Op::Sub)),
@@ -299,7 +271,7 @@ fn operator(i: Span) -> IResult<(Span, Op)> {
 // -----------------------------------------------------------------------------
 // one of `()[]{}:;,.?` and ->
 
-fn control(i: Span) -> IResult<(Span, Ctrl)> {
+pub fn control(i: Span) -> IResult<(Span, Ctrl)> {
     alt((
         map(tag("("), |s| (s, Ctrl::LParen)),
         map(tag(")"), |s| (s, Ctrl::RParen)),
@@ -321,7 +293,7 @@ fn control(i: Span) -> IResult<(Span, Ctrl)> {
 // -----------------------------------------------------------------------------
 // An identifier is a sequence of letters, numbers, and underscores, starting with a letter or underscore
 
-fn identifier(i: Span) -> IResult<Span> {
+pub fn identifier(i: Span) -> IResult<Span> {
     recognize(tuple((alpha1, take_while(|c: char| c.is_alphanumeric() || c == '_'))))(i)
 }
 
@@ -331,7 +303,7 @@ fn identifier(i: Span) -> IResult<Span> {
 // A reserved langauge keyword
 // one of module, class, struct, enum, func, let, new, if, else, switch, case, break, while, for, in, continue, return, try, catch, finally
 
-fn keyword(i: Span) -> IResult<(Span, Kw)> {
+pub fn keyword(i: Span) -> IResult<(Span, Kw)> {
     alt((
         map(tag("module"), |s| (s, Kw::Module)),
         map(tag("class"), |s| (s, Kw::Class)),
@@ -356,72 +328,10 @@ fn keyword(i: Span) -> IResult<(Span, Kw)> {
     ))(i)
 }
 
-fn null(i: Span) -> IResult<Span> {
+pub fn null(i: Span) -> IResult<Span> {
     tag("null")(i)
 }
 
-fn boolean(i: Span) -> IResult<(Span, bool)> {
+pub fn boolean(i: Span) -> IResult<(Span, bool)> {
     alt((map(tag("true"), |s| (s, true)), map(tag("false"), |s| (s, false))))(i)
-}
-
-pub fn token(i: Span) -> IResult<Token> {
-    alt((
-        map(trivia, |(t, s)| Token::Trivia(s, t)),
-        map(number, |(n, s)| Token::Num(s, n)),
-        map(string, |(s, t, n)| Token::Str(s, t, n)),
-        map(string_inter_start, |(s, t, n)| Token::StrIs(s, t, n)),
-        map(string_inter_end, |(s, n)| Token::StrIe(s, n)),
-        map(string_inter_part, |(s, n)| Token::StrIp(s, n)),
-        map(null, |s| Token::Null(s)),
-        map(boolean, |(s, b)| Token::Bool(s, b)),
-        map(operator, |(s, o)| Token::Op(s, o)),
-        map(control, |(s, c)| Token::Ctrl(s, c)),
-        map(identifier, |s| Token::Ident(s)),
-        map(keyword, |(s, k)| Token::Kw(s, k)),
-    ))(i)
-}
-
-pub fn tokens(i: Span) -> IResult<Vec<Token>> {
-    many0(token)(i)
-}
-
-pub fn parse_file<'a>(input: &'a str, file: Str, diag: &'a RefCell<Vec<Diagnostic>>) -> Result<Vec<Token>, NomError> {
-    let input = Span::new_extra(input, State(diag, file));
-    let (_, tokens) = tokens(input).unwrap();
-    Ok(tokens)
-}
-
-pub fn parse<'a>(input: &'a str, diag: &'a RefCell<Vec<Diagnostic>>) -> Result<Vec<Token>, NomError> {
-    parse_file(input, Str::default(), diag)
-}
-
-#[cfg(test)]
-#[allow(unused_imports, dead_code)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn parse_invalid() {
-        let mut diag = RefCell::new(Vec::new());
-        let input = "02439853427592345284395923845320459823457324953247640359104519845834634538";
-        let result = parse(input, &mut diag);
-        assert!(result.is_ok());
-        for diag in diag.borrow().iter() {
-            println!("{}", diag);
-        }
-    }
-
-    #[test]
-    fn parse_ternary_op() {
-        let diag = RefCell::new(vec![]);
-        let tokens = parse("3.0 ? 5.0 : 5 + 4", &diag).unwrap();
-        println!("{:?}", tokens);
-    }
-
-    fn parse<'a>(input: &'a str, diag: &'a RefCell<Vec<Diagnostic>>) -> Result<Vec<Token<'a>>, NomError<'a>> {
-        let input = Span::new_extra(input, State(diag, "test.reds".into()));
-        let (_, tokens) = tokens(input).unwrap();
-        println!("{:?}", tokens);
-        Ok(tokens)
-    }
 }

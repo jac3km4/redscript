@@ -5,8 +5,6 @@ use std::ops::Range;
 use redscript::Str;
 use strum::{Display, IntoStaticStr};
 
-use crate::lexer::Token;
-
 pub type Span<'a> = nom_locate::LocatedSpan<&'a str, State<'a>>;
 
 pub trait ToRange {
@@ -18,25 +16,6 @@ impl<'a> ToRange for Span<'a> {
         let start = self.location_offset();
         let end = start + self.fragment().len();
         start..end
-    }
-}
-
-impl<'a> ToRange for Token<'a> {
-    fn to_range(&self) -> Range<usize> {
-        match self {
-            Token::Trivia(r, _) => r.to_range(),
-            Token::Num(r, _) => r.to_range(),
-            Token::Str(r, _, _) => r.to_range(),
-            Token::StrIs(r, _, _) => r.to_range(),
-            Token::StrIe(r, _) => r.to_range(),
-            Token::StrIp(r, _) => r.to_range(),
-            Token::Null(r) => r.to_range(),
-            Token::Bool(r, _) => r.to_range(),
-            Token::Op(r, _) => r.to_range(),
-            Token::Ctrl(r, _) => r.to_range(),
-            Token::Ident(r) => r.to_range(),
-            Token::Kw(r, _) => r.to_range(),
-        }
     }
 }
 
