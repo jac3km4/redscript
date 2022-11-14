@@ -123,7 +123,7 @@ pub enum Kw {
 // Trivia
 // -----------------------------------------------------------------------------
 
-fn comment_multiline<'a>(i: Span<'a>) -> IResult<'a, Span<'a>> {
+fn comment_multiline(i: Span) -> IResult<Span> {
     recognize(delimited(
         tag("/*"),
         recognize(many0_count(alt((
@@ -135,7 +135,7 @@ fn comment_multiline<'a>(i: Span<'a>) -> IResult<'a, Span<'a>> {
     ))(i)
 }
 
-pub fn trivia<'a>(i: Span<'a>) -> IResult<'a, (Span<'a>, Trivia)> {
+pub fn trivia(i: Span) -> IResult<(Span, Trivia)> {
     alt((
         map(comment_multiline, |s| (s, Trivia::Comment)),
         map(recognize(preceded(tag("//"), many0(not(line_ending)))), |s| {
@@ -152,15 +152,15 @@ pub fn trivia<'a>(i: Span<'a>) -> IResult<'a, (Span<'a>, Trivia)> {
 // Numeric
 // -----------------------------------------------------------------------------
 
-fn float_literal<'a>(i: Span<'a>) -> IResult<'a, Span<'a>> {
+fn float_literal(i: Span) -> IResult<Span> {
     recognize(separated_pair(digit0, tag("."), digit1))(i)
 }
 
-fn sciexp_literal<'a>(i: Span<'a>) -> IResult<'a, Span<'a>> {
+fn sciexp_literal(i: Span) -> IResult<Span> {
     recognize(separated_pair(alt((float_literal, digit1)), one_of("eE"), digit1))(i)
 }
 
-pub fn number<'a>(i: Span<'a>) -> IResult<'a, (Span<'a>, Num)> {
+pub fn number(i: Span) -> IResult<(Span, Num)> {
     alt((
         map(sciexp_literal, |s| (s, Num::Float)),
         map(float_literal, |s| (s, Num::Float)),
@@ -181,32 +181,30 @@ pub fn number<'a>(i: Span<'a>) -> IResult<'a, (Span<'a>, Num)> {
 // The literal portions are parsed as a single token
 // The entire string may be prefixed with a type specifier, a char.
 
-fn str_char_uni<'a>(is: Span<'a>) -> IResult<'a, Option<char>> {
+fn str_char_uni(is: Span) -> IResult<Option<char>> {
     let parse_hex = &take_while_m_n(1, 6, char::is_hex_digit);
     let parse_delimited_hex = delimited(char('{'), parse_hex, char('}'));
     let (i, digits) = alt((preceded(char('u'), parse_delimited_hex), preceded(char('u'), parse_hex)))(is.clone())?;
-    match u32::from_str_radix(digits.fragment(), 16) {
-        Ok(hex) => match char::from_u32(hex) {
-            Some(c) => Ok((i, Some(c))),
-            None => {
-                diag_report!((&is..&i), ERR_INVALID_UTF8, hex);
-                Ok((i, None))
-            }
-        },
-        Err(_) => {
-            diag_report!((&is..&i), ERR_INVALID_UTF8, digits.fragment());
+    if let Ok(hex) = u32::from_str_radix(digits.fragment(), 16) {
+        if let Some(c) = char::from_u32(hex) {
+            Ok((i, Some(c)))
+        } else {
+            diag_report!((&is..&i), ERR_INVALID_UTF8, hex);
             Ok((i, None))
         }
+    } else {
+        diag_report!((&is..&i), ERR_INVALID_UTF8, digits.fragment());
+        Ok((i, None))
     }
 }
 
-fn str_char_invalid<'a>(is: Span<'a>) -> IResult<'a, Option<char>> {
+fn str_char_invalid(is: Span) -> IResult<Option<char>> {
     let (i, c) = preceded(char('\\'), anychar)(is.clone())?;
     diag_report!((&is..&i), ERR_INVALID_ESCAPE, c);
     Ok((i, None))
 }
 
-fn str_char<'a>(i: Span<'a>) -> IResult<'a, Option<char>> {
+fn str_char(i: Span) -> IResult<Option<char>> {
     alt((
         map(tag(r#"\\"#), |_| Some('\\')),
         map(tag(r#"\/"#), |_| Some('/')),
@@ -216,12 +214,12 @@ fn str_char<'a>(i: Span<'a>) -> IResult<'a, Option<char>> {
         map(tag(r#"\r"#), |_| Some('\r')),
         map(tag(r#"\0"#), |_| Some('\0')),
         str_char_uni,
-        map(none_of("\\"), |c| Some(c)),
+        map(none_of("\\"), Some),
         str_char_invalid,
     ))(i)
 }
 
-fn str_chars<'a>(mut i: Span<'a>) -> IResult<'a, Str> {
+fn str_chars(mut i: Span) -> IResult<Str> {
     let mut s = String::default();
     while let Ok((i_remaining, c)) = str_char(i.clone()) {
         if let Some(c) = c {
@@ -233,7 +231,7 @@ fn str_chars<'a>(mut i: Span<'a>) -> IResult<'a, Str> {
 }
 
 // a parser accepting a function and returning the result of the function, by consuming the input
-fn string<'a>(i: Span<'a>) -> IResult<'a, (Span<'a>, Option<char>, Str)> {
+fn string(i: Span) -> IResult<(Span, Option<char>, Str)> {
     let (i, (o, (p, s))) = consumed(pair(
         opt(satisfy(|c: char| c.is_alpha())),
         delimited(tag("\""), str_chars, tag("\"")),
@@ -241,7 +239,7 @@ fn string<'a>(i: Span<'a>) -> IResult<'a, (Span<'a>, Option<char>, Str)> {
     Ok((i, (o, p, s)))
 }
 
-fn string_inter_start<'a>(i: Span<'a>) -> IResult<'a, (Span<'a>, Option<char>, Str)> {
+fn string_inter_start(i: Span) -> IResult<(Span, Option<char>, Str)> {
     let (i, (o, (p, s))) = consumed(pair(
         opt(satisfy(|c: char| c.is_alpha())),
         delimited(tag("\""), str_chars, tag(r#"\("#)),
@@ -249,11 +247,11 @@ fn string_inter_start<'a>(i: Span<'a>) -> IResult<'a, (Span<'a>, Option<char>, S
     Ok((i, (o, p, s)))
 }
 
-fn string_inter_end<'a>(i: Span<'a>) -> IResult<'a, (Span<'a>, Str)> {
+fn string_inter_end(i: Span) -> IResult<(Span, Str)> {
     consumed(delimited(tag(r#")"#), str_chars, tag("\"")))(i)
 }
 
-fn string_inter_part<'a>(i: Span<'a>) -> IResult<'a, (Span<'a>, Str)> {
+fn string_inter_part(i: Span) -> IResult<(Span, Str)> {
     consumed(delimited(tag(r#"\("#), str_chars, tag(r#")"#)))(i)
 }
 
@@ -262,7 +260,7 @@ fn string_inter_part<'a>(i: Span<'a>) -> IResult<'a, (Span<'a>, Str)> {
 // -----------------------------------------------------------------------------
 // one of `+-*/!=<>&|~`
 
-fn operator<'a>(i: Span<'a>) -> IResult<'a, (Span<'a>, Op)> {
+fn operator(i: Span) -> IResult<(Span, Op)> {
     alt((
         map(tag("="), |s| (s, Op::Add)),
         map(tag("-"), |s| (s, Op::Sub)),
@@ -283,7 +281,7 @@ fn operator<'a>(i: Span<'a>) -> IResult<'a, (Span<'a>, Op)> {
 // -----------------------------------------------------------------------------
 // one of `()[]{};,.`
 
-fn control<'a>(i: Span<'a>) -> IResult<'a, (Span<'a>, Ctrl)> {
+fn control(i: Span) -> IResult<(Span, Ctrl)> {
     alt((
         map(tag("("), |s| (s, Ctrl::LParen)),
         map(tag(")"), |s| (s, Ctrl::RParen)),
@@ -303,7 +301,7 @@ fn control<'a>(i: Span<'a>) -> IResult<'a, (Span<'a>, Ctrl)> {
 // -----------------------------------------------------------------------------
 // An identifier is a sequence of letters, numbers, and underscores, starting with a letter or underscore
 
-fn identifier<'a>(i: Span<'a>) -> IResult<'a, Span<'a>> {
+fn identifier(i: Span) -> IResult<Span> {
     recognize(tuple((alpha1, take_while(|c: char| c.is_alphanumeric() || c == '_'))))(i)
 }
 
@@ -313,7 +311,7 @@ fn identifier<'a>(i: Span<'a>) -> IResult<'a, Span<'a>> {
 // A reserved langauge keyword
 // one of module, class, struct, enum, func, let, new, if, else, switch, case, break, while, for, in, continue, return, try, catch, finally
 
-fn keyword<'a>(i: Span<'a>) -> IResult<'a, (Span<'a>, Kw)> {
+fn keyword(i: Span) -> IResult<(Span, Kw)> {
     alt((
         map(tag("module"), |s| (s, Kw::Module)),
         map(tag("class"), |s| (s, Kw::Class)),
@@ -338,15 +336,15 @@ fn keyword<'a>(i: Span<'a>) -> IResult<'a, (Span<'a>, Kw)> {
     ))(i)
 }
 
-fn null<'a>(i: Span<'a>) -> IResult<'a, Span<'a>> {
+fn null(i: Span) -> IResult<Span> {
     tag("null")(i)
 }
 
-fn boolean<'a>(i: Span<'a>) -> IResult<'a, (Span<'a>, bool)> {
+fn boolean(i: Span) -> IResult<(Span, bool)> {
     alt((map(tag("true"), |s| (s, true)), map(tag("false"), |s| (s, false))))(i)
 }
 
-pub fn token<'a>(i: Span<'a>) -> IResult<'a, Token> {
+pub fn token(i: Span) -> IResult<Token> {
     alt((
         map(trivia, |(s, t)| Token::Trivia(s, t)),
         map(number, |(s, n)| Token::Num(s, n)),
@@ -363,22 +361,18 @@ pub fn token<'a>(i: Span<'a>) -> IResult<'a, Token> {
     ))(i)
 }
 
-pub fn tokens<'a>(i: Span<'a>) -> IResult<'a, Vec<Token>> {
+pub fn tokens(i: Span) -> IResult<Vec<Token>> {
     many0(token)(i)
 }
 
-pub fn parse_file<'a>(
-    input: &'a str,
-    file: Str,
-    diag: &'a RefCell<Vec<Diagnostic>>,
-) -> Result<Vec<Token<'a>>, NomError<'a>> {
+pub fn parse_file<'a>(input: &'a str, file: Str, diag: &'a RefCell<Vec<Diagnostic>>) -> Result<Vec<Token>, NomError> {
     let input = Span::new_extra(input, State(diag, file));
     let (_, tokens) = tokens(input).unwrap();
     Ok(tokens)
 }
 
-pub fn parse<'a>(input: &'a str, diag: &'a RefCell<Vec<Diagnostic>>) -> Result<Vec<Token<'a>>, NomError<'a>> {
-    parse_file(input, Default::default(), diag)
+pub fn parse<'a>(input: &'a str, diag: &'a RefCell<Vec<Diagnostic>>) -> Result<Vec<Token>, NomError> {
+    parse_file(input, Str::default(), diag)
 }
 
 #[cfg(test)]
