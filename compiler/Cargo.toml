@@ -27,5 +27,4 @@ simple-interner = { version = "0.3", features = ["hashbrown"] }
 peg = "0.8"
 nom = "7.1"
 nom_locate = "4.0"
-cps = "0.2.1"
 paste = "1"

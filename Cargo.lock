@@ -220,18 +220,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cps"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "abb470cedd77f02572699b885e6ef5baacd1adc78017427611dd045e9c1c4ca7"
-dependencies = [
- "litrs",
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "crc32fast"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -712,15 +700,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bb68f22743a3fb35785f1e7f844ca5a3de2dde5bd0c0ef5b372065814699b121"
 
 [[package]]
-name = "litrs"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9275e0933cf8bb20f008924c0cb07a0692fe54d8064996520bf998de9eb79aa"
-dependencies = [
- "proc-macro2",
-]
-
-[[package]]
 name = "log"
 version = "0.4.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1014,7 +993,6 @@ name = "redscript-compiler"
 version = "0.5.9"
 dependencies = [
  "ahash",
- "cps",
  "enum-as-inner",
  "flexstr",
  "hashbrown 0.13.1",
