@@ -17,7 +17,6 @@ smallvec.workspace = true
 hashbrown.workspace = true
 modular-bitfield = "0.11"
 crc32fast = "1"
-bumpalo = { version = "3.11", features = ["collections"] }
 
 [features]
 arc = []

@@ -2,8 +2,6 @@ use std::cell::RefCell;
 use std::fmt::Display;
 use std::ops::Range;
 
-use bumpalo::collections::Vec;
-use bumpalo::Bump;
 use redscript::Str;
 use strum::{Display, IntoStaticStr};
 
@@ -68,17 +66,13 @@ impl Severity {
 /// Carried around in the `LocatedSpan::extra` field in
 /// between `nom` parsers.
 #[derive(Clone, Debug)]
-pub struct State<'a>(pub &'a RefCell<Vec<'a, Diagnostic>>, pub &'a Bump, pub Str);
+pub struct State<'a>(pub &'a RefCell<Vec<Diagnostic>>, pub Str);
 
 impl<'a> State<'a> {
     /// Something not allowed by the rules of the language or other authority.
     #[allow(dead_code)]
     fn report_diagnostic(&self, error: Diagnostic) {
         self.0.borrow_mut().push(error);
-    }
-
-    pub fn create_vec<T: 'a>(&self) -> Vec<'a, T> {
-        Vec::new_in(&self.1)
     }
 }
 
@@ -99,7 +93,7 @@ impl<'a> ReportOrigin for Span<'a> {
             sc,
             el: line,
             ec,
-            file: self.extra.2.clone(),
+            file: self.extra.1.clone(),
             text: bytes.to_string(),
             severity: diag.0,
             code: diag.1,
@@ -124,7 +118,7 @@ impl<'a> ReportOrigin for Range<&Span<'a>> {
             sc: self.start.get_column(),
             el,
             ec: self.end.get_column(),
-            file: self.start.extra.2.clone(),
+            file: self.start.extra.1.clone(),
             text: bytes.to_string(),
             severity: diag.0,
             code: diag.1,

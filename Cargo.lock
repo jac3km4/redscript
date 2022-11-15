@@ -967,7 +967,6 @@ dependencies = [
 name = "redscript"
 version = "0.5.9"
 dependencies = [
- "bumpalo",
  "byteorder",
  "crc32fast",
  "derive-where",
