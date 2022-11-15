@@ -2,7 +2,8 @@ use std::cell::RefCell;
 use std::fmt::Display;
 use std::ops::Range;
 
-use redscript::slab::Hunk;
+use bumpalo::collections::Vec;
+use bumpalo::Bump;
 use redscript::Str;
 use strum::{Display, IntoStaticStr};
 
@@ -67,13 +68,17 @@ impl Severity {
 /// Carried around in the `LocatedSpan::extra` field in
 /// between `nom` parsers.
 #[derive(Clone, Debug)]
-pub struct State<'a>(pub &'a RefCell<Vec<Diagnostic>>, pub &'a RefCell<Hunk<'a>>, pub Str);
+pub struct State<'a>(pub &'a RefCell<Vec<'a, Diagnostic>>, pub &'a Bump, pub Str);
 
 impl<'a> State<'a> {
     /// Something not allowed by the rules of the language or other authority.
     #[allow(dead_code)]
     fn report_diagnostic(&self, error: Diagnostic) {
         self.0.borrow_mut().push(error);
+    }
+
+    pub fn create_vec<T: 'a>(&self) -> Vec<'a, T> {
+        Vec::new_in(&self.1)
     }
 }
 

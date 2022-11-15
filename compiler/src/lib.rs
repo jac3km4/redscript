@@ -1,4 +1,5 @@
 #![feature(macro_metavar_expr)]
+#![feature(let_chains)]
 #![macro_use]
 extern crate paste;
 use simple_interner::Interner;

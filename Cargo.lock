@@ -1000,6 +1000,7 @@ name = "redscript-compiler"
 version = "0.5.9"
 dependencies = [
  "ahash",
+ "bumpalo",
  "enum-as-inner",
  "flexstr",
  "hashbrown 0.13.1",
