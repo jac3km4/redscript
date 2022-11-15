@@ -5,6 +5,7 @@ pub mod decode;
 pub mod definition;
 pub mod encode;
 pub mod io;
+pub mod slab;
 
 #[cfg(not(feature = "arc"))]
 pub type Str = flexstr::LocalStr;
