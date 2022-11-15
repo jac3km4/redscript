@@ -13,7 +13,7 @@ use strum::{Display, IntoStaticStr};
 
 use crate::comb::many_till_balanced1;
 use crate::validators::*;
-use crate::{diag_report, *};
+use crate::*;
 
 pub trait ParseErr<'a>: ParseError<Span<'a>> {}
 pub type IResult<'a, O> = nom::IResult<Span<'a>, O>;

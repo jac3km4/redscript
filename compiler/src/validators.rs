@@ -175,8 +175,14 @@ macro_rules! diag {
     };
 }
 
-diag!(ERR_INVALID_UTF8, Error, "ELS0001", "Invalid UTF-8 sequence `{}`");
-diag!(ERR_EXPECT_HEX_DIGIT, Error, "ELS0002", "Invalid hex digit `{}`");
-diag!(ERR_INVALID_ESCAPE, Error, "ELS0003", "Invalid escape sequence `{}`");
-diag!(ERR_PARSE_INT, Error, "ELN0001", "Invalid integer `{}`, {}");
-diag!(ERR_PARSE_FLOAT, Error, "ELN0002", "Invalid float `{}`, {}");
+diag!(ERR_INVALID_UTF8, Error, "ELS0001", "invalid UTF-8 sequence `{}`");
+diag!(ERR_EXPECT_HEX_DIGIT, Error, "ELS0002", "invalid hex digit `{}`");
+diag!(ERR_INVALID_ESCAPE, Error, "ELS0003", "invalid escape sequence `{}`");
+diag!(ERR_PARSE_INT, Error, "ELN0001", "invalid integer `{}`, {}");
+diag!(ERR_PARSE_FLOAT, Error, "ELN0002", "invalid float `{}`, {}");
+diag!(
+    ERR_INTERPOL_NOT_CONST,
+    Error,
+    "ESS0005",
+    "a interpolated string cannot be a constant value"
+);
