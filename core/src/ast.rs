@@ -292,14 +292,14 @@ pub enum Literal {
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Pos(pub u32);
+pub struct Pos(pub usize);
 
 impl Pos {
     pub const ZERO: Pos = Pos(0);
 
     #[inline]
     pub fn new(n: usize) -> Self {
-        Pos(n as u32)
+        Pos(n)
     }
 }
 
@@ -314,7 +314,7 @@ impl Add<usize> for Pos {
 
     #[inline]
     fn add(self, rhs: usize) -> Pos {
-        Pos(self.0 + rhs as u32)
+        Pos(self.0 + rhs)
     }
 }
 
@@ -323,7 +323,7 @@ impl Sub<usize> for Pos {
 
     #[inline]
     fn sub(self, rhs: usize) -> Pos {
-        Pos(self.0 - rhs as u32)
+        Pos(self.0 - rhs)
     }
 }
 
@@ -349,8 +349,8 @@ impl Span {
 
     pub fn with_len(low: usize, len: usize) -> Self {
         Self {
-            low: Pos(u32::try_from(low).unwrap_or_default()),
-            high: Pos(u32::try_from(low + len).unwrap_or_default()),
+            low: Pos(low),
+            high: Pos(low + len),
         }
     }
 
