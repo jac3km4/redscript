@@ -23,14 +23,7 @@ where
     Declare(N::Local, Option<Box<N::Type>>, Option<Box<Self>>, Span),
     DynCast(N::Class, Box<Self>, Span),
     Assign(Box<Self>, Box<Self>, N::Inferred, Span),
-    Call(
-        Box<Self>,
-        N::Callable,
-        Box<[N::Type]>,
-        Box<[Self]>,
-        N::CallMeta,
-        Span,
-    ),
+    Call(Box<Self>, N::Callable, Box<[N::Type]>, Box<[Self]>, N::CallMeta, Span),
     Lambda(N::Closure, Box<Self>, Span),
     Member(Box<Self>, N::Member, Span),
     ArrayElem(Box<Self>, Box<Self>, N::Inferred, Span),
@@ -352,6 +345,13 @@ impl Span {
 
     pub const fn new(low: Pos, high: Pos) -> Self {
         Self { low, high }
+    }
+
+    pub fn with_len(low: usize, len: usize) -> Self {
+        Self {
+            low: Pos(u32::try_from(low).unwrap_or_default()),
+            high: Pos(u32::try_from(low + len).unwrap_or_default()),
+        }
     }
 
     pub fn merge(&self, other: Span) -> Span {

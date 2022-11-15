@@ -332,6 +332,14 @@ pub fn null(i: Span) -> IResult<Span> {
     tag("null")(i)
 }
 
+pub fn this(i: Span) -> IResult<Span> {
+    tag("this")(i)
+}
+
+pub fn super_(i: Span) -> IResult<Span> {
+    tag("super")(i)
+}
+
 pub fn boolean(i: Span) -> IResult<(Span, bool)> {
     alt((map(tag("true"), |s| (s, true)), map(tag("false"), |s| (s, false))))(i)
 }
