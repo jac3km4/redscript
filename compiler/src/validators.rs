@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::fmt::Display;
 use std::ops::Range;
 
+use redscript::slab::Hunk;
 use redscript::Str;
 use strum::{Display, IntoStaticStr};
 
@@ -66,7 +67,7 @@ impl Severity {
 /// Carried around in the `LocatedSpan::extra` field in
 /// between `nom` parsers.
 #[derive(Clone, Debug)]
-pub struct State<'a>(pub &'a RefCell<Vec<Diagnostic>>, pub Str);
+pub struct State<'a>(pub &'a RefCell<Vec<Diagnostic>>, pub &'a RefCell<Hunk<'a>>, pub Str);
 
 impl<'a> State<'a> {
     /// Something not allowed by the rules of the language or other authority.
@@ -93,12 +94,12 @@ impl<'a> ReportOrigin for Span<'a> {
             sc,
             el: line,
             ec,
-            file: self.extra.1.clone(),
+            file: self.extra.2.clone(),
             text: bytes.to_string(),
             severity: diag.0,
             code: diag.1,
             msg,
-        })
+        });
     }
 }
 
@@ -118,12 +119,12 @@ impl<'a> ReportOrigin for Range<&Span<'a>> {
             sc: self.start.get_column(),
             el,
             ec: self.end.get_column(),
-            file: self.start.extra.1.clone(),
+            file: self.start.extra.2.clone(),
             text: bytes.to_string(),
             severity: diag.0,
             code: diag.1,
             msg,
-        })
+        });
     }
 }
 

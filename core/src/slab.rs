@@ -2,6 +2,8 @@ use std::any::TypeId;
 use std::ffi::c_void;
 use std::ops::Range;
 
+use bumpalo::collections::Vec;
+use bumpalo::Bump;
 use hashbrown::HashMap;
 
 pub trait Shatter: Sized {
@@ -35,7 +37,7 @@ impl Shatter for Range<usize> {
     }
 }
 #[derive(Debug)]
-pub struct Cut<'a, T>(Range<usize>, &'a Slab<T>);
+pub struct Cut<'a, T>(Range<usize>, &'a Slab<'a, T>);
 
 impl<'a, T> Cut<'a, T> {
     pub fn len(&self) -> usize {
@@ -97,7 +99,7 @@ impl<'a, T> Shatter for Cut<'a, T> {
 }
 
 #[derive(Debug)]
-pub struct Cut1<'a, T>(usize, &'a Slab<T>);
+pub struct Cut1<'a, T>(usize, &'a Slab<'a, T>);
 
 impl<'a, T> Cut1<'a, T> {
     pub fn as_t(&self) -> &'a T {
@@ -124,22 +126,14 @@ impl<'a, T> From<Cut1<'a, T>> for Cut<'a, T> {
 }
 
 #[derive(Debug)]
-pub struct Slab<T> {
-    data: Vec<T>,
+pub struct Slab<'a, T> {
+    tid: TypeId,
+    data: Vec<'a, T>,
     start: usize,
 }
 
-impl<T> Default for Slab<T> {
-    fn default() -> Self {
-        Self {
-            data: Default::default(),
-            start: Default::default(),
-        }
-    }
-}
-
 #[allow(clippy::mut_from_ref, clippy::cast_ref_to_mut)]
-impl<T> Slab<T> {
+impl<'a, T> Slab<'a, T> {
     #[inline]
     unsafe fn slice_unchecked(&self, range: Range<usize>) -> &[T] {
         std::slice::from_raw_parts(self.data.as_ptr().add(range.start), range.end - range.start)
@@ -192,6 +186,12 @@ impl<T> Slab<T> {
         self.data.push(value);
     }
 
+    pub fn reserve(&mut self, additional: usize) {
+        if let Some(additional) = additional.checked_sub(self.len()) {
+            self.data.reserve(additional);
+        }
+    }
+
     #[inline]
     pub fn len(&self) -> usize {
         self.data.len() - self.start
@@ -200,39 +200,55 @@ impl<T> Slab<T> {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
-
-    pub fn reserve(&mut self, additional: usize) {
-        if let Some(additional) = additional.checked_sub(self.len()) {
-            self.data.reserve(additional);
-        }
-    }
 }
 
-trait IntoSlab {
-    fn type_id(&self) -> TypeId;
+trait IntoSlab<'a> {
+    fn type_id(&'a self) -> &'a TypeId;
 
-    fn slab_ptr(&self) -> *const c_void {
+    fn slab_ptr(&'a self) -> *const c_void {
         self as *const _ as *const c_void
     }
-}
 
-impl<U: 'static> IntoSlab for Slab<U> {
-    fn type_id(&self) -> TypeId {
-        TypeId::of::<U>()
+    fn len(&'a self) -> usize;
+
+    fn is_empty(&'a self) -> bool {
+        self.len() == 0
     }
 }
 
-pub struct Hunk {
-    slabs: HashMap<TypeId, Box<dyn IntoSlab>>,
+impl<'a, U: 'a> IntoSlab<'a> for Slab<'a, U> {
+    fn type_id(&'a self) -> &'a TypeId {
+        &self.tid
+    }
+
+    #[inline]
+    fn len(&'a self) -> usize {
+        self.data.len() - self.start
+    }
 }
 
-impl Hunk {
-    fn get_slab<T: 'static>(&mut self) -> &mut Slab<T> {
+#[derive(Default)]
+pub struct Hunk<'a> {
+    alloc: Bump,
+    slabs: HashMap<TypeId, Box<dyn IntoSlab<'a> + 'a>>,
+}
+
+impl<'a> std::fmt::Debug for Hunk<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Hunk").field("slabs", &self.slabs.len()).finish()
+    }
+}
+
+impl<'a> Hunk<'a> {
+    fn get_slab<T: 'static>(&'a mut self) -> &mut Slab<T> {
         let type_id = TypeId::of::<T>();
-        let slab = self
-            .slabs
-            .entry(type_id)
-            .or_insert_with(|| Box::new(Slab::<T>::default()));
+        let slab = self.slabs.entry(type_id).or_insert_with(|| {
+            Box::new(Slab {
+                tid: type_id,
+                data: Vec::<'a, T>::new_in(&self.alloc),
+                start: 0,
+            })
+        });
         unsafe { &mut *(slab.slab_ptr() as *mut Slab<T>) }
     }
 }
