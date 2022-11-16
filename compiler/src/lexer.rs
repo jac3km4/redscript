@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_while, take_while_m_n};
 use nom::character::complete::{
@@ -6,8 +8,9 @@ use nom::character::complete::{
 use nom::combinator::{consumed, map, not, opt, recognize};
 use nom::error::ParseError;
 use nom::multi::many0;
-use nom::sequence::{delimited, pair, preceded, separated_pair, tuple};
+use nom::sequence::{delimited, pair, preceded, separated_pair};
 use nom::AsChar;
+use redscript::ast::{Constant, Literal};
 use redscript::Str;
 use strum::{Display, IntoStaticStr};
 
@@ -17,7 +20,7 @@ use crate::*;
 
 pub trait ParseErr<'a>: ParseError<Span<'a>> {}
 pub type IResult<'a, O> = nom::IResult<Span<'a>, O>;
-pub type NomError<'a> = nom::Err<Span<'a>>;
+pub type NomError<'a> = nom::Err<nom::error::Error<Span<'a>>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Display)]
 pub enum Trivia {
@@ -28,8 +31,25 @@ pub enum Trivia {
 
 #[derive(Debug, Clone, Copy, PartialEq, Display, IntoStaticStr)]
 pub enum Num {
-    Float(f64),
-    Int(u64),
+    F32(f32),
+    F64(f64),
+    I32(i32),
+    I64(i64),
+    U32(u32),
+    U64(u64),
+}
+
+impl From<Num> for Constant {
+    fn from(value: Num) -> Self {
+        match value {
+            Num::F32(f) => Constant::F32(f),
+            Num::F64(f) => Constant::F64(f),
+            Num::I32(f) => Constant::I32(f),
+            Num::I64(f) => Constant::I64(f),
+            Num::U32(f) => Constant::U32(f),
+            Num::U64(f) => Constant::U64(f),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Display, IntoStaticStr)]
@@ -127,37 +147,96 @@ fn sciexp_literal(i: Span) -> IResult<Span> {
     ))(i)
 }
 
-fn parse_float(i: &Span) -> f64 {
-    match i.fragment().parse() {
+fn parse_num<T: num::Num + Default>(i: &Span, radix: u32) -> T
+where
+    T::FromStrRadixErr: std::fmt::Display,
+{
+    match T::from_str_radix(i.fragment(), radix) {
         Ok(value) => value,
         Err(error) => {
-            diag_report!(i, ERR_PARSE_FLOAT, i.fragment(), error);
-            0.0
+            diag_report!(i, ERR_NUM_PARSE, i.fragment(), error);
+            T::default()
         }
     }
 }
 
-fn parse_int(i: &Span, radix: u32) -> u64 {
-    match u64::from_str_radix(i.fragment(), radix) {
-        Ok(value) => value,
-        Err(error) => {
-            diag_report!(i, ERR_PARSE_INT, i.fragment(), error);
-            0
-        }
+fn int_width(suffix: Option<Span>) -> u32 {
+    match suffix {
+        Some(suffix) => match alt((
+            map(tag("i32"), |_: Span| 32),
+            map(tag("i64"), |_| 64),
+            map(tag("u32"), |_| 32),
+            map(tag("u64"), |_| 64),
+            map(tag("l"), |_| 64),
+        ))(suffix.clone())
+        {
+            Ok((_, width)) => width,
+            Err(err) => {
+                let _: NomError = err; // needed for type inference
+                diag_report!(suffix, ERR_NUM_SUFFIX, suffix.fragment());
+                32
+            }
+        },
+        None => 32,
     }
 }
 
-pub fn number(i: Span) -> IResult<(Num, Span)> {
-    alt((
-        map(preceded(tag("0x"), hex_digit0), |s| (Num::Int(parse_int(&s, 16)), s)),
-        map(preceded(tag("0o"), oct_digit0), |s| (Num::Int(parse_int(&s, 8)), s)),
-        map(preceded(tag("0b"), take_while(|c: char| c == '0' || c == '1')), |s| {
-            (Num::Int(parse_int(&s, 2)), s)
-        }),
-        map(sciexp_literal, |s| (Num::Float(parse_float(&s)), s)),
-        map(float_literal, |s| (Num::Float(parse_float(&s)), s)),
-        map(digit1, |s| (Num::Int(parse_int(&s, 10)), s)),
-    ))(i)
+fn integer(is: Span) -> IResult<Num> {
+    match pair(
+        alt((
+            map(preceded(tag("0x"), hex_digit0), |s| (16, s)),
+            map(preceded(tag("0o"), oct_digit0), |s| (8, s)),
+            map(
+                preceded(tag("0b"), take_while_m_n(1, 64, |c: char| c == '0' || c == '1')),
+                |s| (2, s),
+            ),
+            map(digit0, |s| (10, s)),
+        )),
+        opt(identifier),
+    )(is)
+    {
+        Ok((rem, ((radix, value), suffix))) => {
+            let num = match int_width(suffix) {
+                64 => Num::I64(parse_num(&value, radix)),
+                _ => Num::I32(parse_num(&value, radix)),
+            };
+            Ok((rem, num))
+        }
+        Err(err) => Err(err),
+    }
+}
+
+fn float_width(suffix: Option<Span>) -> u32 {
+    match suffix {
+        Some(suffix) => {
+            match alt((map(tag("f32"), |_| 32), map(tag("f64"), |_| 64), map(tag("d"), |_| 64)))(suffix.clone()) {
+                Ok((_, width)) => width,
+                Err(err) => {
+                    let err: NomError = err; // needed for type inference
+                    diag_report!(suffix, ERR_NUM_SUFFIX, suffix.fragment());
+                    64
+                }
+            }
+        }
+        None => 64,
+    }
+}
+
+fn float(is: Span) -> IResult<Num> {
+    match pair(alt((sciexp_literal, float_literal)), opt(identifier))(is) {
+        Ok((rem, (value, suffix))) => {
+            let num = match float_width(suffix) {
+                64 => Num::F64(parse_num(&value, 10)),
+                _ => Num::F32(parse_num(&value, 10)),
+            };
+            Ok((rem, num))
+        }
+        Err(err) => Err(err),
+    }
+}
+
+pub fn number(is: Span) -> IResult<(Span, Num)> {
+    consumed(alt((float, integer)))(is)
 }
 
 // -----------------------------------------------------------------------------
@@ -176,18 +255,18 @@ fn str_char_uni(is: Span) -> IResult<Option<char>> {
         if let Some(c) = char::from_u32(hex) {
             Ok((i, Some(c)))
         } else {
-            diag_report!((&is..&i), ERR_INVALID_UTF8, hex);
+            diag_report!((&is..&i), ERR_CHAR_UTF8, hex);
             Ok((i, None))
         }
     } else {
-        diag_report!((&is..&i), ERR_INVALID_UTF8, digits.fragment());
+        diag_report!((&is..&i), ERR_CHAR_UTF8, digits.fragment());
         Ok((i, None))
     }
 }
 
 fn str_char_invalid(is: Span) -> IResult<Option<char>> {
     let (i, c) = preceded(char('\\'), anychar)(is.clone())?;
-    diag_report!((&is..&i), ERR_INVALID_ESCAPE, c);
+    diag_report!((&is..&i), ERR_CHAR_ESCAPE, c);
     Ok((i, None))
 }
 
@@ -217,21 +296,39 @@ fn str_chars(mut i: Span) -> IResult<Str> {
     Ok((i, Str::from_ref(s)))
 }
 
+fn string_type(i: &Span, c: Option<char>) -> Literal {
+    match c {
+        Some(c) => match c {
+            'n' => Literal::Name,
+            'r' => Literal::Resource,
+            't' => Literal::TweakDbId,
+            's' => Literal::String,
+            _ => {
+                diag_report!(i, ERR_LITERAL_TYPE_INVALID, c);
+                Literal::String
+            }
+        },
+        None => Literal::String,
+    }
+}
+
 // a parser accepting a function and returning the result of the function, by consuming the input
-pub fn string(i: Span) -> IResult<(Span, Option<char>, Str)> {
+pub fn string(i: Span) -> IResult<(Span, Literal, Str)> {
     let (i, (o, (p, s))) = consumed(pair(
         opt(satisfy(AsChar::is_alpha)),
         delimited(tag("\""), str_chars, tag("\"")),
     ))(i)?;
+    let p = string_type(&o, p);
     Ok((i, (o, p, s)))
 }
 
 // matches a string literal until the first interpolation
-pub fn string_inter_start(i: Span) -> IResult<(Span, Option<char>, Str)> {
+pub fn string_inter_start(i: Span) -> IResult<(Span, Literal, Str)> {
     let (i, (o, (p, s))) = consumed(pair(
         opt(satisfy(AsChar::is_alpha)),
         delimited(tag("\""), str_chars, tag(r#"\("#)),
     ))(i)?;
+    let p = string_type(&o, p);
     Ok((i, (o, p, s)))
 }
 
@@ -294,7 +391,7 @@ pub fn control(i: Span) -> IResult<(Span, Ctrl)> {
 // An identifier is a sequence of letters, numbers, and underscores, starting with a letter or underscore
 
 pub fn identifier(i: Span) -> IResult<Span> {
-    recognize(tuple((alpha1, take_while(|c: char| c.is_alphanumeric() || c == '_'))))(i)
+    recognize(pair(alpha1, take_while(|c: char| c.is_alphanumeric() || c == '_')))(i)
 }
 
 // -----------------------------------------------------------------------------

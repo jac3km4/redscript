@@ -7,6 +7,16 @@ use strum::{Display, IntoStaticStr};
 
 pub type Span<'a> = nom_locate::LocatedSpan<&'a str, State<'a>>;
 
+pub trait AsFlexStr {
+    fn to_flex(&self) -> Str;
+}
+
+impl<'a> AsFlexStr for Span<'a> {
+    fn to_flex(&self) -> Str {
+        Str::from_ref(self.fragment())
+    }
+}
+
 pub trait ToRange {
     fn to_range(&self) -> Range<usize>;
 }
@@ -134,6 +144,7 @@ pub struct DiagnosticTemplate(Severity, &'static str, &'static str);
 /// Requires the crate level imported, because format macros are defined there.
 /// ```ignore
 /// use crate::*;
+/// use crate::validators::ReportOrigin;
 /// ```
 #[macro_export]
 macro_rules! diag_report {
@@ -175,14 +186,26 @@ macro_rules! diag {
     };
 }
 
-diag!(ERR_INVALID_UTF8, Error, "ELS0001", "invalid UTF-8 sequence `{}`");
+diag!(ERR_CHAR_UTF8, Error, "ELS0001", "invalid UTF-8 sequence `{}`");
 diag!(ERR_EXPECT_HEX_DIGIT, Error, "ELS0002", "invalid hex digit `{}`");
-diag!(ERR_INVALID_ESCAPE, Error, "ELS0003", "invalid escape sequence `{}`");
-diag!(ERR_PARSE_INT, Error, "ELN0001", "invalid integer `{}`, {}");
-diag!(ERR_PARSE_FLOAT, Error, "ELN0002", "invalid float `{}`, {}");
+diag!(ERR_CHAR_ESCAPE, Error, "ELS0003", "invalid escape sequence `{}`");
+diag!(ERR_NUM_PARSE, Error, "ELN0001", "invalid number `{}`, {}");
+diag!(
+    ERR_NUM_OVERFLOW,
+    Error,
+    "ELN0003",
+    "the number `{}` exceeds the maximum value of the type {}"
+);
+diag!(ERR_NUM_SUFFIX, Error, "ELN0004", "invalid suffix `{}` for number");
 diag!(
     ERR_INTERPOL_NOT_CONST,
     Error,
     "ESS0005",
-    "a interpolated string cannot be a constant value"
+    "a interpolated string cannot be a constant value, `{}` was specified"
+);
+diag!(
+    ERR_LITERAL_TYPE_INVALID,
+    Error,
+    "ESS0006",
+    "invalid literal type `{}` expected one of [n]ame, [r]resource, [t]weakDBId or none"
 );

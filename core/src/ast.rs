@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 use std::fmt::{self, Debug, Display};
-use std::ops::{Add, Sub};
+use std::ops::{Add, Range, Sub};
 
 use derive_where::derive_where;
 use enum_as_inner::EnumAsInner;
@@ -283,7 +283,7 @@ where
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Display)]
 pub enum Literal {
     String,
     Name,
@@ -293,6 +293,12 @@ pub enum Literal {
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Pos(pub usize);
+
+impl From<usize> for Pos {
+    fn from(value: usize) -> Self {
+        Pos(value)
+    }
+}
 
 impl Pos {
     pub const ZERO: Pos = Pos(0);
@@ -330,7 +336,7 @@ impl Sub<usize> for Pos {
 impl From<Pos> for usize {
     #[inline]
     fn from(pos: Pos) -> Self {
-        pos.0 as usize
+        pos.0
     }
 }
 
@@ -338,6 +344,15 @@ impl From<Pos> for usize {
 pub struct Span {
     pub low: Pos,
     pub high: Pos,
+}
+
+impl From<Range<usize>> for Span {
+    fn from(value: Range<usize>) -> Self {
+        Span {
+            low: value.start.into(),
+            high: value.end.into(),
+        }
+    }
 }
 
 impl Span {
