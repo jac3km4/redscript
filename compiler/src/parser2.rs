@@ -6,6 +6,7 @@ use nom::{Offset, Slice};
 use redscript::ast::{Constant, Ident, Literal, SourceAst};
 use redscript::Str;
 
+use crate::comb::delimited_list0;
 use crate::lexer::*;
 use crate::validators::*;
 use crate::*;
@@ -42,24 +43,15 @@ fn string_literal(is: Span) -> IResult<(Literal, Str)> {
 }
 
 pub fn string_interpolation(is: Span) -> IResult<(Str, Vec<(Expr, Str)>, Range)> {
-    let (mut i, (_, st, ss)) = string_inter_start(is.clone())?;
-
-    let mut parts = vec![];
-    while let Ok((ip, ep)) = expr(i.clone()) {
-        if let Ok((ip, (_, sp))) = string_inter_part(ip.clone()) {
-            parts.push((ep, sp));
-            i = ip;
-            continue;
-        } else if let Ok((ip, (_, se))) = string_inter_end(ip) {
-            parts.push((ep, se));
-            i = ip;
-            break;
-        }
-        // the string interpolation is not terminated
-        return Err(nom_error(i, NomErrorKind::TagClosure));
-    }
-    let r = to_ok!(is, i, ss, parts);
-    Ok((i, r))
+    map(
+        consumed(delimited_list0(
+            map(string_inter_start, |(_, _, s)| s),
+            map(string_inter_part, |(_, s)| s),
+            expr,
+            map(string_inter_end, |(_, s)| s),
+        )),
+        |(r, (ss, sp))| (ss, sp, r.to_range().into()),
+    )(is)
 }
 
 fn constant(is: Span) -> IResult<Constant> {
