@@ -78,3 +78,27 @@ where
         return Ok((i, (ss, parts)));
     }
 }
+
+pub fn variant<I, T, E>(expected: T) -> impl FnMut(I) -> IResult<I, I, E>
+where
+    I: Clone,
+    T: Parsable<I, E> + PartialEq,
+    E: ParseError<I>,
+{
+    move |i| {
+        let (i, (o, value)) = T::parse(i)?;
+        if value == expected {
+            Ok((i, o))
+        } else {
+            Err(nom::Err::Error(E::from_error_kind(i, nom::error::ErrorKind::Verify)))
+        }
+    }
+}
+
+pub trait Parsable<I, E>: Sized
+where
+    I: Clone,
+    E: ParseError<I>,
+{
+    fn parse(i: I) -> IResult<I, (I, Self), E>;
+}

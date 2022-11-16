@@ -12,7 +12,7 @@ use redscript::ast::{Constant, Literal};
 use redscript::Str;
 use strum::{Display, IntoStaticStr};
 
-use crate::comb::many_till_balanced1;
+use crate::comb::{many_till_balanced1, Parsable};
 use crate::validators::*;
 use crate::*;
 
@@ -362,6 +362,12 @@ pub fn operator(i: Span) -> IResult<(Span, Op)> {
     ))(i)
 }
 
+impl<'a> Parsable<Span<'a>, nom::error::Error<Span<'a>>> for Op {
+    fn parse(i: Span<'_>) -> IResult<(Span, Self)> {
+        operator(i)
+    }
+}
+
 // -----------------------------------------------------------------------------
 // Control character
 // -----------------------------------------------------------------------------
@@ -384,6 +390,11 @@ pub fn control(i: Span) -> IResult<(Span, Ctrl)> {
     ))(i)
 }
 
+impl<'a> Parsable<Span<'a>, nom::error::Error<Span<'a>>> for Ctrl {
+    fn parse(i: Span<'_>) -> IResult<(Span, Self)> {
+        control(i)
+    }
+}
 // -----------------------------------------------------------------------------
 // Identifier
 // -----------------------------------------------------------------------------
@@ -422,6 +433,12 @@ pub fn keyword(i: Span) -> IResult<(Span, Kw)> {
         map(tag("catch"), |s| (s, Kw::Catch)),
         map(tag("finally"), |s| (s, Kw::Finally)),
     ))(i)
+}
+
+impl<'a> Parsable<Span<'a>, nom::error::Error<Span<'a>>> for Kw {
+    fn parse(i: Span<'_>) -> IResult<(Span, Self)> {
+        keyword(i)
+    }
 }
 
 pub fn null(i: Span) -> IResult<Span> {
