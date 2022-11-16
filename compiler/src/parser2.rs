@@ -1,8 +1,7 @@
-use std::str::FromStr;
-
 use nom::branch::alt;
 use nom::combinator::{consumed, map, verify};
 use nom::multi::separated_list1;
+use nom::sequence::delimited;
 use nom::{Offset, Slice};
 use redscript::ast::{Constant, Ident, Literal, SourceAst};
 use redscript::Str;
@@ -56,8 +55,8 @@ pub fn string_interpolation(is: Span) -> IResult<(Str, Vec<(Expr, Str)>, Range)>
             i = ip;
             break;
         }
-        // fallback must be implemented in the subordinate parsers.
-        return Err(nom::Err::Error(nom::error::Error::new(i, nom::error::ErrorKind::Tag)));
+        // the string interpolation is not terminated
+        return Err(nom_error(i, NomErrorKind::TagClosure));
     }
     let r = to_ok!(is, i, ss, parts);
     Ok((i, r))
@@ -66,9 +65,17 @@ pub fn string_interpolation(is: Span) -> IResult<(Str, Vec<(Expr, Str)>, Range)>
 fn constant(is: Span) -> IResult<Constant> {
     alt((
         map(string_literal, |(t, s)| Constant::String(t, s)),
-        map(number, |(_, n)| n.into()),
+        map(consumed(alt((float, integer))), |(_, n)| n.into()),
         map(boolean, |(_, b)| Constant::Bool(b)),
     ))(is)
+}
+
+fn type_args(is: Span) -> IResult<Vec<Expr>> {
+    delimited(
+        verify(operator, |(_, op)| op == &Op::Lt),
+        separated_list1(verify(control, |(_, c)| c == &Ctrl::Comma), expr),
+        verify(operator, |(_, op)| op == &Op::Gt),
+    )(is)
 }
 
 fn expr(is: Span) -> IResult<Expr> {

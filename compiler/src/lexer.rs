@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_while, take_while_m_n};
 use nom::character::complete::{
@@ -21,6 +19,11 @@ use crate::*;
 pub trait ParseErr<'a>: ParseError<Span<'a>> {}
 pub type IResult<'a, O> = nom::IResult<Span<'a>, O>;
 pub type NomError<'a> = nom::Err<nom::error::Error<Span<'a>>>;
+pub type NomErrorKind = nom::error::ErrorKind;
+
+pub fn nom_error(input: Span, kind: NomErrorKind) -> NomError {
+    NomError::Error(nom::error::Error::new(input, kind))
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Display)]
 pub enum Trivia {
@@ -181,7 +184,7 @@ fn int_width(suffix: Option<Span>) -> u32 {
     }
 }
 
-fn integer(is: Span) -> IResult<Num> {
+pub fn integer(is: Span) -> IResult<Num> {
     match pair(
         alt((
             map(preceded(tag("0x"), hex_digit0), |s| (16, s)),
@@ -222,7 +225,7 @@ fn float_width(suffix: Option<Span>) -> u32 {
     }
 }
 
-fn float(is: Span) -> IResult<Num> {
+pub fn float(is: Span) -> IResult<Num> {
     match pair(alt((sciexp_literal, float_literal)), opt(identifier))(is) {
         Ok((rem, (value, suffix))) => {
             let num = match float_width(suffix) {
@@ -233,10 +236,6 @@ fn float(is: Span) -> IResult<Num> {
         }
         Err(err) => Err(err),
     }
-}
-
-pub fn number(is: Span) -> IResult<(Span, Num)> {
-    consumed(alt((float, integer)))(is)
 }
 
 // -----------------------------------------------------------------------------
