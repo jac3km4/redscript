@@ -8,11 +8,12 @@ use nom::error::ParseError;
 use nom::multi::many0;
 use nom::sequence::{delimited, pair, preceded, separated_pair};
 use nom::AsChar;
-use redscript::ast::{Constant, Literal};
+use redscript::ast::{Constant, Literal, Variance};
 use redscript::Str;
 use strum::{Display, IntoStaticStr};
 
 use crate::comb::{many_till_balanced1, Parsable};
+use crate::parser::Qualifier;
 use crate::validators::*;
 use crate::*;
 
@@ -85,6 +86,7 @@ pub enum Ctrl {
     Dot,
     Quest,
     LArrow,
+    At,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Display, IntoStaticStr)]
@@ -109,6 +111,7 @@ pub enum Kw {
     Try,
     Catch,
     Finally,
+    Extends,
 }
 
 // -----------------------------------------------------------------------------
@@ -387,6 +390,7 @@ pub fn control(i: Span) -> IResult<(Span, Ctrl)> {
         map(tag("."), |s| (s, Ctrl::Dot)),
         map(tag("?"), |s| (s, Ctrl::Quest)),
         map(tag("->"), |s| (s, Ctrl::LArrow)),
+        map(tag("@"), |s| (s, Ctrl::At)),
     ))(i)
 }
 
@@ -432,6 +436,7 @@ pub fn keyword(i: Span) -> IResult<(Span, Kw)> {
         map(tag("try"), |s| (s, Kw::Try)),
         map(tag("catch"), |s| (s, Kw::Catch)),
         map(tag("finally"), |s| (s, Kw::Finally)),
+        map(tag("extends"), |s| (s, Kw::Extends)),
     ))(i)
 }
 
@@ -455,4 +460,28 @@ pub fn super_(i: Span) -> IResult<Span> {
 
 pub fn boolean(i: Span) -> IResult<(Span, bool)> {
     alt((map(tag("true"), |s| (s, true)), map(tag("false"), |s| (s, false))))(i)
+}
+
+pub fn qualifier(i: Span) -> IResult<Qualifier> {
+    alt((
+        map(tag("public"), |_| Qualifier::Public),
+        map(tag("protected"), |_| Qualifier::Protected),
+        map(tag("private"), |_| Qualifier::Private),
+        map(tag("abstract"), |_| Qualifier::Abstract),
+        map(tag("static"), |_| Qualifier::Static),
+        map(tag("final"), |_| Qualifier::Final),
+        map(tag("const"), |_| Qualifier::Const),
+        map(tag("native"), |_| Qualifier::Native),
+        map(tag("exec"), |_| Qualifier::Exec),
+        map(tag("callback"), |_| Qualifier::Callback),
+        map(tag("out"), |_| Qualifier::Out),
+        map(tag("opt"), |_| Qualifier::Optional),
+        map(tag("quest"), |_| Qualifier::Quest),
+        map(tag("importOnly"), |_| Qualifier::ImportOnly),
+        map(tag("persistent"), |_| Qualifier::Persistent),
+    ))(i)
+}
+
+pub fn variance(i: Span) -> IResult<Variance> {
+    alt((map(tag("+"), |_| Variance::Co), map(tag("-"), |_| Variance::Contra)))(i)
 }
