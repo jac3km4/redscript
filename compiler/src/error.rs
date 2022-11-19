@@ -11,14 +11,10 @@ use crate::source_map::{Files, SourceLoc};
 use crate::type_repo::{OverloadEntry, TypeId};
 use crate::typer::{Data, Mono};
 
-pub type TyperResult<'id, A, E = TyperError<'id>> = Result<A, E>;
+pub type CompileResult<'id, A, E = CompileError<'id>> = Result<A, E>;
 
 #[derive(Debug, Error)]
-#[error("syntax error, expected {0}")]
-pub struct ParseError(pub ExpectedSet, pub Span);
-
-#[derive(Debug, Error)]
-pub enum TyperError<'id> {
+pub enum CompileError<'id> {
     #[error("{0}")]
     TypeError(TypeError<'id>, Span),
     #[error("{0} is not defined")]
@@ -39,18 +35,18 @@ pub enum TyperError<'id> {
     UnresolvedImport(Box<[Str]>, Span),
 }
 
-impl<'id> TyperError<'id> {
+impl<'id> CompileError<'id> {
     pub fn span(&self) -> Span {
         match self {
-            TyperError::TypeError(_, span)
-            | TyperError::UnresolvedVar(_, span)
-            | TyperError::UnresolvedMember(_, _, span)
-            | TyperError::UnresolvedFunction(_, span)
-            | TyperError::UnresolvedMethod(span)
-            | TyperError::NoMatchingOverload(_, span)
-            | TyperError::ManyMatchingOverloads(_, span)
-            | TyperError::CannotLookupMember(span)
-            | TyperError::UnresolvedImport(_, span) => *span,
+            Self::TypeError(_, span)
+            | Self::UnresolvedVar(_, span)
+            | Self::UnresolvedMember(_, _, span)
+            | Self::UnresolvedFunction(_, span)
+            | Self::UnresolvedMethod(span)
+            | Self::NoMatchingOverload(_, span)
+            | Self::ManyMatchingOverloads(_, span)
+            | Self::CannotLookupMember(span)
+            | Self::UnresolvedImport(_, span) => *span,
         }
     }
 
@@ -109,7 +105,7 @@ pub enum TypeError<'id> {
 #[derive(Debug)]
 pub struct DisplayError<'file, 'id> {
     location: SourceLoc<'file>,
-    error: TyperError<'id>,
+    error: CompileError<'id>,
 }
 
 impl fmt::Display for DisplayError<'_, '_> {
@@ -127,3 +123,7 @@ impl fmt::Display for DisplayError<'_, '_> {
         writeln!(f, "{}", Paint::red(&self.error).bold())
     }
 }
+
+#[derive(Debug, Error)]
+#[error("syntax error, expected {0}")]
+pub struct ParseError(pub ExpectedSet, pub Span);

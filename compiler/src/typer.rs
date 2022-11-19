@@ -15,7 +15,7 @@ use redscript::bytecode::Intrinsic;
 use redscript::Str;
 
 use crate::codegen::names;
-use crate::error::{TypeError, TyperError, TyperResult};
+use crate::error::{CompileError, CompileResult, TypeError};
 use crate::scoped_map::ScopedMap;
 use crate::type_repo::*;
 use crate::{visit_expr, IndexMap};
@@ -78,7 +78,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
         Seq::new(exprs)
     }
 
-    fn typeck(&mut self, expr: &Expr<SourceAst>, locals: &mut LocalMap<'_, 'id>) -> TyperResult<'id, Inferred<'id>> {
+    fn typeck(&mut self, expr: &Expr<SourceAst>, locals: &mut LocalMap<'_, 'id>) -> CompileResult<'id, Inferred<'id>> {
         self.typeck_with(expr, locals, false)
     }
 
@@ -87,12 +87,12 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
         expr: &Expr<SourceAst>,
         locals: &mut LocalMap<'_, 'id>,
         is_out: bool,
-    ) -> TyperResult<'id, Inferred<'id>> {
+    ) -> CompileResult<'id, Inferred<'id>> {
         match expr {
             Expr::Ident(id, span) => {
                 let info = locals
                     .get(id)
-                    .ok_or_else(|| TyperError::UnresolvedVar(id.clone(), *span))?;
+                    .ok_or_else(|| CompileError::UnresolvedVar(id.clone(), *span))?;
                 let typ = match info.local {
                     Local::Var(_)
                         if !is_out
@@ -152,7 +152,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                     .env
                     .types
                     .get(target.name())
-                    .ok_or_else(|| TyperError::UnresolvedVar(target.name().clone(), *span))?;
+                    .ok_or_else(|| CompileError::UnresolvedVar(target.name().clone(), *span))?;
                 let data_type = self.repo.get_type(id).unwrap();
                 let type_args: Rc<[_]> = data_type
                     .type_vars()
@@ -176,7 +176,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                     if let Some(matches) = self.names.get(name) {
                         return self.check_global(matches, &args[..], locals, *span);
                     }
-                    return Err(TyperError::UnresolvedVar(name.clone(), *span));
+                    return Err(CompileError::UnresolvedVar(name.clone(), *span));
                 }
                 _ => {
                     let mut checked_args = Vec::with_capacity(args.len());
@@ -208,7 +208,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 let (expr, expr_ty) = self.typeck(expr, locals)?;
                 let upper_bound = expr_ty
                     .known_upper_bound(self.repo)
-                    .ok_or(TyperError::CannotLookupMember(*span))?;
+                    .ok_or(CompileError::CannotLookupMember(*span))?;
                 let (id, fty) = self
                     .repo
                     .upper_iter(upper_bound.id)
@@ -216,7 +216,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                         let (idx, typ) = cls.fields.by_name(member)?;
                         Some((FieldId::new(type_id, idx), typ))
                     })
-                    .ok_or_else(|| TyperError::UnresolvedMember(upper_bound.id, member.clone(), *span))?;
+                    .ok_or_else(|| CompileError::UnresolvedMember(upper_bound.id, member.clone(), *span))?;
                 let spec = upper_bound.instantiate_as(id.owner(), self.repo).unwrap();
                 let data_type = self.repo.get_type(spec.id).unwrap();
                 let type_vars = data_type.type_var_names().zip(spec.args.iter().cloned()).collect();
@@ -315,7 +315,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 let matches = self
                     .names
                     .get(name)
-                    .ok_or_else(|| TyperError::UnresolvedFunction(Str::from_static(name), *span))?;
+                    .ok_or_else(|| CompileError::UnresolvedFunction(Str::from_static(name), *span))?;
                 self.check_global(matches, [&**lhs, &**rhs], locals, *span)
             }
             Expr::UnOp(expr, op, span) => {
@@ -323,14 +323,14 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 let matches = self
                     .names
                     .get(name)
-                    .ok_or_else(|| TyperError::UnresolvedFunction(Str::from_static(name), *span))?;
+                    .ok_or_else(|| CompileError::UnresolvedFunction(Str::from_static(name), *span))?;
                 self.check_global(matches, Some(&**expr), locals, *span)
             }
             &Expr::Break(span) => Ok((Expr::Break(span), InferType::UNIT)),
             Expr::This(span) => {
                 let loc = locals
                     .get("this")
-                    .ok_or_else(|| TyperError::UnresolvedVar(Str::from_static("this"), *span))?;
+                    .ok_or_else(|| CompileError::UnresolvedVar(Str::from_static("this"), *span))?;
                 Ok((Expr::Ident(loc.local, *span), loc.typ.clone()))
             }
             Expr::Super(_) => unimplemented!(),
@@ -345,7 +345,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
         args: impl IntoIterator<IntoIter = impl ExactSizeIterator<Item = &'a Expr<SourceAst>>>,
         locals: &mut LocalMap<'_, 'id>,
         span: Span,
-    ) -> TyperResult<'id, Inferred<'id>> {
+    ) -> CompileResult<'id, Inferred<'id>> {
         let mut type_vars = ScopedMap::default();
 
         let args = args.into_iter();
@@ -387,7 +387,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                             .all(|(it, par)| it.is_same_shape(&par.typ))
                     })
                     .exactly_one()
-                    .map_err(|m| TyperError::for_overloads(m.count(), candidates.iter().map(|(_, e)| e), span))?;
+                    .map_err(|m| CompileError::for_overloads(m.count(), candidates.iter().map(|(_, e)| e), span))?;
                 for var in entry.function.typ.type_vars.iter() {
                     let typ = InferType::from_var_poly(var, &type_vars, &mut self.id_alloc);
                     type_vars.insert(var.name.clone(), typ);
@@ -423,7 +423,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
         args: &[Expr<SourceAst>],
         locals: &mut LocalMap<'_, 'id>,
         span: Span,
-    ) -> TyperResult<'id, Inferred<'id>> {
+    ) -> CompileResult<'id, Inferred<'id>> {
         let (expr, upper_bound) = if let Some(Type::Data(data)) = expr
             .as_ident()
             .and_then(|(name, _)| self.env.resolve_type(&TypeName::without_args(name.clone())).ok())
@@ -435,7 +435,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 Some(expr),
                 expr_type
                     .known_upper_bound(self.repo)
-                    .ok_or(TyperError::CannotLookupMember(span))?,
+                    .ok_or(CompileError::CannotLookupMember(span))?,
             )
         };
 
@@ -502,7 +502,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                     })
                     .exactly_one()
                     .map_err(|matches| {
-                        TyperError::for_overloads(matches.count(), candidates.iter().map(|(_, e)| e), span)
+                        CompileError::for_overloads(matches.count(), candidates.iter().map(|(_, e)| e), span)
                     })?;
                 let data_type = self.repo.get_type(*owner).unwrap();
                 if expr.is_none() && upper_bound.args.is_empty() {
@@ -551,7 +551,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
         expr: &mut Expr<CheckedAst<'id>>,
         lhs: &InferType<'id>,
         rhs: &InferType<'id>,
-    ) -> TyperResult<'id, ()> {
+    ) -> CompileResult<'id, ()> {
         let span = expr.span();
         let op = match lhs.constrain_top(rhs, self.repo).with_span(span)? {
             Some(Convert::From(RefType::Weak)) => Intrinsic::WeakRefToRef,
@@ -578,7 +578,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
         expected_params: Option<impl IntoIterator<Item = InferType<'id>>>,
         body: &Expr<SourceAst>,
         span: Span,
-    ) -> TyperResult<'id, Inferred<'id>> {
+    ) -> CompileResult<'id, Inferred<'id>> {
         let mut fn_type_args = expected_params
             .into_iter()
             .flatten()
@@ -634,7 +634,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
         data: &Parameterized<'id>,
         type_vars: &Vars<'_, 'id>,
         span: Span,
-    ) -> TyperResult<'id, Inferred<'id>> {
+    ) -> CompileResult<'id, Inferred<'id>> {
         let expected = data
             .args
             .iter()
@@ -649,14 +649,14 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
         targs: &[TypeName],
         locals: &mut LocalMap<'_, 'id>,
         span: Span,
-    ) -> TyperResult<'id, Inferred<'id>> {
+    ) -> CompileResult<'id, Inferred<'id>> {
         let target = match targs {
             [name] => self.env.resolve_infer_type(name).with_span(span)?,
             [] => self.id_alloc.allocate_free_type(),
             _ => return Err(TypeError::InvalidNumberOfTypeArgs(targs.len(), 1)).with_span(span),
         };
         let [arg] = args else {
-            return Err(TyperError::UnresolvedFunction(Str::from_static("Cast"), span));
+            return Err(CompileError::UnresolvedFunction(Str::from_static("Cast"), span));
         };
         let (arg, arg_type) = self.typeck(arg, locals)?;
         let expr = Expr::Call(
@@ -781,16 +781,6 @@ impl<'id> InferType<'id> {
     #[inline]
     pub fn from_var_mono(var: &TypeVar<'id>, ctx: &Vars<'_, 'id>) -> Self {
         Self::Mono(Mono::from_type_var(var, ctx))
-    }
-
-    pub fn into_prim(&self) -> Option<Prim> {
-        match self {
-            InferType::Mono(mono) => mono.as_prim().copied(),
-            InferType::Poly(poly) => {
-                let var = poly.borrow();
-                var.upper.as_prim().or(var.lower.as_prim()).copied()
-            }
-        }
     }
 
     #[inline]
@@ -1104,6 +1094,11 @@ impl<'id> Data<'id> {
         Self { id, args }
     }
 
+    #[inline]
+    pub fn without_args(id: TypeId<'id>) -> Self {
+        Self { id, args: Rc::new([]) }
+    }
+
     pub fn array(elem: InferType<'id>) -> Self {
         Self::new(predef::ARRAY, Rc::new([elem]))
     }
@@ -1208,6 +1203,16 @@ impl<'id> Var<'id> {
     #[inline]
     fn only_lower_bounded(&self) -> Option<Mono<'id>> {
         (self.upper.is_top() && !self.lower.is_bottom()).then(|| self.lower.clone())
+    }
+
+    pub fn either_bound(&self) -> Option<&Mono<'id>> {
+        if !self.lower.is_bottom() {
+            Some(&self.lower)
+        } else if !self.upper.is_top() {
+            Some(&self.upper)
+        } else {
+            None
+        }
     }
 }
 
@@ -1554,11 +1559,11 @@ impl<'ctx, 'id> CaptureCollector<'ctx, 'id> {
 
 #[derive(Debug, Default)]
 pub struct ErrorReporter<'id> {
-    errors: Vec<TyperError<'id>>,
+    errors: Vec<CompileError<'id>>,
 }
 
 impl<'id> ErrorReporter<'id> {
-    pub fn unwrap_err<A>(&mut self, res: TyperResult<'id, A>) -> Option<A> {
+    pub fn unwrap_err<A>(&mut self, res: CompileResult<'id, A>) -> Option<A> {
         match res {
             Ok(res) => Some(res),
             Err(err) => {
@@ -1569,7 +1574,7 @@ impl<'id> ErrorReporter<'id> {
     }
 
     #[inline]
-    pub fn report(&mut self, error: TyperError<'id>) {
+    pub fn report(&mut self, error: CompileError<'id>) {
         self.errors.push(error);
     }
 
@@ -1577,7 +1582,7 @@ impl<'id> ErrorReporter<'id> {
         !self.errors.is_empty()
     }
 
-    pub fn into_errors(self) -> Vec<TyperError<'id>> {
+    pub fn into_errors(self) -> Vec<CompileError<'id>> {
         self.errors
     }
 }
@@ -1588,10 +1593,10 @@ pub trait IntoTypeError {
 }
 
 impl<'id, A> IntoTypeError for Result<A, TypeError<'id>> {
-    type Result = TyperResult<'id, A>;
+    type Result = CompileResult<'id, A>;
 
     #[inline]
     fn with_span(self, span: Span) -> Self::Result {
-        self.map_err(|e| TyperError::TypeError(e, span))
+        self.map_err(|e| CompileError::TypeError(e, span))
     }
 }

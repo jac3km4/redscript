@@ -18,7 +18,7 @@ use sequence_trie::SequenceTrie;
 use crate::autobox::Autobox;
 use crate::codegen::builders::{ClassBuilder, FieldBuilder, FunctionBuilder, ParamBuilder, TypeCache};
 use crate::codegen::{names, CodeGen, LocalIndices};
-use crate::error::{ParseError, TyperError, TyperResult};
+use crate::error::{CompileError, CompileResult, ParseError};
 use crate::parser::{
     self, FunctionSource, Import, MemberSource, ModulePath, ParameterSource, Qualifier, SourceEntry, SourceModule
 };
@@ -143,22 +143,22 @@ impl<'id> Compiler<'id> {
         import: Import,
         types: &mut TypeScope<'_, 'id>,
         names: &mut NameScope<'_, 'id>,
-    ) -> TyperResult<'id, ()> {
+    ) -> CompileResult<'id, ()> {
         match import {
             Import::Exact(_, path, span) => {
                 let import = self
                     .modules
                     .get(path.iter())
-                    .ok_or_else(|| TyperError::UnresolvedImport(path.into_iter().collect(), span))?;
+                    .ok_or_else(|| CompileError::UnresolvedImport(path.into_iter().collect(), span))?;
                 Self::populate_import_item(&import, &self.type_repo, types, names);
             }
             Import::Selected(_, path, selected, span) => {
                 for name in selected {
-                    let aa = path.iter().chain(Some(&name));
+                    let path = path.iter().chain(Some(&name));
                     let import = self
                         .modules
-                        .get(aa.clone())
-                        .ok_or_else(|| TyperError::UnresolvedImport(aa.cloned().collect(), span))?;
+                        .get(path.clone())
+                        .ok_or_else(|| CompileError::UnresolvedImport(path.cloned().collect(), span))?;
                     Self::populate_import_item(&import, &self.type_repo, types, names);
                 }
             }
@@ -166,7 +166,7 @@ impl<'id> Compiler<'id> {
                 for descendant in self
                     .modules
                     .get_direct_descendants(path.iter())
-                    .ok_or_else(|| TyperError::UnresolvedImport(path.iter().cloned().collect(), span))?
+                    .ok_or_else(|| CompileError::UnresolvedImport(path.iter().cloned().collect(), span))?
                 {
                     Self::populate_import_item(&descendant, &self.type_repo, types, names);
                 }
@@ -202,7 +202,7 @@ impl<'id> Compiler<'id> {
         entry: SourceEntry,
         types: &TypeScope<'_, 'id>,
         names: &mut NameScope<'_, 'id>,
-    ) -> TyperResult<'id, Option<ModuleItem<'id>>> {
+    ) -> CompileResult<'id, Option<ModuleItem<'id>>> {
         match entry {
             SourceEntry::Class(class) => {
                 let type_id = generate_type_id(&class.name, path, self.interner);
@@ -212,7 +212,7 @@ impl<'id> Compiler<'id> {
                     .tparams
                     .iter()
                     .map(|typ| env.instantiate_var(typ))
-                    .collect::<TyperResult<Box<[_]>, _>>()
+                    .collect::<CompileResult<Box<[_]>, _>>()
                     .with_span(class.span)?;
                 for var in class_type_vars.iter() {
                     type_vars.insert(var.name.clone(), InferType::from_var_mono(var, &type_vars));
@@ -229,6 +229,8 @@ impl<'id> Compiler<'id> {
                     methods: FuncMap::default(),
                     statics: FuncMap::default(),
                     is_abstract: class.qualifiers.contain(Qualifier::Abstract),
+                    is_struct: false,
+                    is_enum: false,
                 };
                 let mut methods = vec![];
 
@@ -370,13 +372,13 @@ impl<'id> Compiler<'id> {
         func: &FunctionSource,
         types: &TypeScope<'_, 'id>,
         vars: &Vars<'_, 'id>,
-    ) -> TyperResult<'id, (HashMap<Str, InferType<'id>>, FuncType<'id>)> {
+    ) -> CompileResult<'id, (HashMap<Str, InferType<'id>>, FuncType<'id>)> {
         let env = TypeEnv::new(types, vars);
         let method_type_vars = func
             .tparams
             .iter()
             .map(|ty| env.instantiate_var(ty))
-            .collect::<TyperResult<Box<[_]>, _>>()
+            .collect::<CompileResult<Box<[_]>, _>>()
             .with_span(func.declaration.span)?;
         let mut local_vars = vars.introduce_scope();
         for var in method_type_vars.iter() {
@@ -553,7 +555,7 @@ impl<'id> CompilationOutputs<'id> {
         &self.reporter
     }
 
-    pub fn into_errors(self) -> Vec<TyperError<'id>> {
+    pub fn into_errors(self) -> Vec<CompileError<'id>> {
         self.reporter.into_errors()
     }
 }
@@ -607,6 +609,8 @@ impl<'id> CompilationDb<'id> {
             methods,
             statics,
             is_abstract: class.flags.is_abstract(),
+            is_struct: class.flags.is_struct(),
+            is_enum: false,
         }
     }
 

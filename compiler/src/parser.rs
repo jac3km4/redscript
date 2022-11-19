@@ -252,6 +252,11 @@ peg::parser! {
             / keyword("importonly") { Qualifier::ImportOnly }
             / keyword("persistent") { Qualifier::Persistent }
 
+        rule type_arg_ident() -> &'static str
+            = keyword("Cast")
+            / keyword("FromVariant")
+            / keyword("IntEnum")
+
         rule literal_type() -> Literal
             = "n" { Literal::Name }
             / "r" { Literal::Resource }
@@ -272,8 +277,8 @@ peg::parser! {
                 { Ident::from(x) + xs }
             } / expected!("identifier")
 
-        rule keyword(id: &'static str) -> () =
-            ##parse_string_literal(id) !['0'..='9' | 'a'..='z' | 'A'..='Z' | '_']
+        rule keyword(id: &'static str) -> &'static str =
+            ##parse_string_literal(id) !['0'..='9' | 'a'..='z' | 'A'..='Z' | '_'] { id }
 
         rule number() -> Constant
             = str:$(['-']? ['0'..='9' | '.']+) unsigned: $(['u'])? postfix:$(['l' | 'd'])?
@@ -336,7 +341,7 @@ peg::parser! {
             = pos:pos() keyword("let") _ name:ident() _ type_:let_type()? _ val:initializer()? _ ";" end:pos()
             { Expr::Declare(name, type_.map(Box::new), val.map(Box::new), Span::new(pos, end)) }
 
-        rule decl(inner: rule<()>) -> Declaration
+        rule decl<A>(inner: rule<A>) -> Declaration
             = pos:pos() annotations:(annotation() ** _) _ qualifiers:qualifiers() _ inner() _ name:ident() end:pos()
             { Declaration { annotations, qualifiers, name, span: Span::new(pos, end) } }
 
@@ -457,6 +462,10 @@ peg::parser! {
             { Param { name, typ } }
 
         pub rule expr() -> Expr<SourceAst> = precedence!{
+            pos:pos() ident:type_arg_ident() _ type_args:type_args()? _ "(" _ params:commasep(<expr()>) _ ")" end:pos() {
+                Expr::Call(Expr::Ident(Ident::from_static(ident), Span::new(pos, end)).into(), (), type_args.unwrap_or_default().into(), params.into(), (), Span::new(pos, end))
+            }
+            --
             x:@ _ "?" _ y:expr() _ ":" _ z:expr() {
                 let span = x.span().merge(z.span());
                 Expr::Conditional(Box::new(x), Box::new(y), Box::new(z), span)

@@ -255,6 +255,8 @@ pub struct ClassType<'id> {
     pub methods: FuncMap<'id>,
     pub statics: FuncMap<'id>,
     pub is_abstract: bool,
+    pub is_struct: bool,
+    pub is_enum: bool,
 }
 
 #[derive(Debug, Default)]
@@ -886,7 +888,9 @@ pub mod predef {
         BOXED_STRING => BoxedString,
         BOXED_CNAME => BoxedCName,
         BOXED_TWEAKDB_ID => BoxedTweakDBID,
-        BOXED_VARIANT => BoxedVariant
+        BOXED_VARIANT => BoxedVariant,
+        BOXED_ENUM => BoxedEnum,
+        BOXED_STRUCT => BoxedStuct
     );
 
     pub(super) static FUNCTION_BY_ARITY: &[TypeId] = function_type_by_arity!(TypeId::new);

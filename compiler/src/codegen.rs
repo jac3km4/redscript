@@ -237,7 +237,7 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
                     captures,
                     pool.class(parent_class).unwrap().fields.iter().copied().collect(),
                 );
-                let body = if env.ret_type.into_prim() == Some(Prim::Unit) {
+                let body = if env.ret_type.simplify(self.repo) == Type::Prim(Prim::Unit) {
                     *body
                 } else {
                     Expr::Return(Some(body), Span::ZERO)
