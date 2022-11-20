@@ -6,7 +6,7 @@ use std::str::FromStr;
 use ahash::RandomState;
 use hashbrown::HashMap;
 use itertools::{chain, Itertools};
-use redscript::ast::{Seq, SourceAst, Span};
+use redscript::ast::{Expr, Seq, SourceAst, Span};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::Intrinsic;
 use redscript::definition::{
@@ -18,9 +18,9 @@ use sequence_trie::SequenceTrie;
 use crate::autobox::{Autobox, Boxable};
 use crate::codegen::builders::{ClassBuilder, EnumBuilder, FieldBuilder, FunctionBuilder, ParamBuilder, TypeCache};
 use crate::codegen::{names, CodeGen, LocalIndices};
-use crate::error::{CompileError, CompileResult, ParseError, Unsupported};
+use crate::error::{CompileError, CompileResult, ParseError, TypeError, Unsupported};
 use crate::parser::{
-    self, ClassSource, EnumSource, FunctionSource, Import, MemberSource, ModulePath, ParameterSource, Qualifier, SourceEntry, SourceModule
+    self, AnnotationKind, ClassSource, EnumSource, FunctionSource, Import, MemberSource, ModulePath, ParameterSource, Qualifier, SourceEntry, SourceModule
 };
 use crate::scoped_map::ScopedMap;
 use crate::source_map::Files;
@@ -295,6 +295,16 @@ impl<'id> Compiler<'id> {
             SourceEntry::Function(func) => {
                 let (env, typ) = self.preprocess_function(&func, types, &ScopedMap::default())?;
                 let name = ScopedName::new(func.decl.name.clone(), path.clone());
+                for ann in &func.decl.annotations {
+                    #[allow(clippy::single_match)]
+                    match (&ann.kind, &ann.args[..]) {
+                        (AnnotationKind::ReplaceMethod, [Expr::Ident(ident, span)]) => {
+                            let span = *span;
+                            return Ok(Some(self.process_replacement(ident.clone(), func, types, env, span)?));
+                        }
+                        _ => {}
+                    }
+                }
                 let index = self.repo.globals_mut().add(name, typ, true);
                 let global = if let Ok(intrinsic) = Intrinsic::from_str(&func.decl.name) {
                     Global::Intrinsic(index.overload(), intrinsic)
@@ -310,7 +320,7 @@ impl<'id> Compiler<'id> {
                         body,
                         is_static: true,
                     };
-                    Some(ModuleItem::Global(body))
+                    Some(ModuleItem::Global(body, None))
                 } else {
                     None
                 };
@@ -322,6 +332,42 @@ impl<'id> Compiler<'id> {
             }
             SourceEntry::GlobalLet(_) => todo!(),
         }
+    }
+
+    fn process_replacement(
+        &self,
+        replace: Str,
+        func: FunctionSource,
+        types: &TypeScope<'_, 'id>,
+        env: HashMap<Str, InferType<'id>>,
+        span: Span,
+    ) -> CompileResult<'id, ModuleItem<'id>> {
+        let &id = types
+            .get(&replace)
+            .ok_or_else(|| TypeError::UnresolvedType(replace.clone()))
+            .with_span(span)?;
+        let typ = self
+            .repo
+            .get_type(id)
+            .and_then(DataType::as_class)
+            .ok_or_else(|| TypeError::UnresolvedType(replace.clone()))
+            .with_span(span)?;
+        let res = typ
+            .methods
+            .by_name(&func.decl.name)
+            .exactly_one()
+            .map_err(|_| CompileError::UnresolvedFunction(func.decl.name.clone(), span))?;
+        let body = CompileBody {
+            name: func.decl.name.clone(),
+            index: res.index,
+            env,
+            parameters: func.parameters,
+            body: func
+                .body
+                .ok_or(CompileError::Unsupported(Unsupported::ReplacementWithoutBody, span))?,
+            is_static: func.decl.qualifiers.contain(Qualifier::Static),
+        };
+        return Ok(ModuleItem::Global(body, Some(id)));
     }
 
     fn process_inheritance(&mut self) {
@@ -398,7 +444,7 @@ impl<'id> Compiler<'id> {
                             items.push(CodeGenItem::AssembleMethod(mid, params, body, is_static));
                         }
                     }
-                    ModuleItem::Global(body) => {
+                    ModuleItem::Global(body, None) => {
                         let idx = body.index;
                         let func = self.repo.get_global(&GlobalId::new(body.index)).unwrap();
                         let type_vars = ScopedMap::default();
@@ -413,6 +459,29 @@ impl<'id> Compiler<'id> {
                             &mut self.reporter,
                         );
                         items.push(CodeGenItem::AssembleGlobal(GlobalId::new(idx), params, body));
+                    }
+                    ModuleItem::Global(body, Some(this)) => {
+                        let CompileBody { index, is_static, .. } = body;
+                        let mid = MethodId::new(this, index);
+                        let method = if is_static {
+                            self.repo.get_static(&mid).unwrap()
+                        } else {
+                            self.repo.get_method(&mid).unwrap()
+                        };
+                        let this = is_static
+                            .not()
+                            .then(|| InferType::data(Data::without_args(this).clone()));
+                        let (body, params) = Self::compile_function(
+                            body,
+                            &method.typ,
+                            &self.repo,
+                            &types,
+                            &names,
+                            &ScopedMap::default(),
+                            this,
+                            &mut self.reporter,
+                        );
+                        items.push(CodeGenItem::AssembleMethod(mid, params, body, is_static));
                     }
                 }
             }
@@ -888,7 +957,7 @@ enum ModuleItem<'id> {
         HashMap<Str, InferType<'id>>,
         Vec<CompileBody<'id>>,
     ),
-    Global(CompileBody<'id>),
+    Global(CompileBody<'id>, Option<TypeId<'id>>),
 }
 
 #[derive(Debug)]

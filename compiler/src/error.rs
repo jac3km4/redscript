@@ -137,4 +137,6 @@ pub enum Unsupported {
     CustomClassConstructor,
     #[error("defining a non-static member on a struct")]
     NonStaticStructMember,
+    #[error("method replacement without a body")]
+    ReplacementWithoutBody,
 }

@@ -704,7 +704,7 @@ impl FuncSignature {
         Self(str)
     }
 
-    pub fn from_name_and_type(name: impl fmt::Display, typ: &FuncType) -> Self {
+    pub fn from_name_and_type(name: impl fmt::Display, typ: &FuncType<'_>) -> Self {
         use std::io::Write;
 
         let mut buf: StrBuf = StrBuf::new();
