@@ -10,17 +10,17 @@ use redscript::ast::{Seq, SourceAst, Span};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::Intrinsic;
 use redscript::definition::{
-    AnyDefinition, Class as PoolClass, ClassFlags, Field as PoolField, Function as PoolFunction, FunctionFlags, ParameterFlags, Type as PoolType, Visibility
+    AnyDefinition, Class as PoolClass, ClassFlags, Enum as PoolEnum, Field as PoolField, Function as PoolFunction, FunctionFlags, ParameterFlags, Type as PoolType, Visibility
 };
 use redscript::Str;
 use sequence_trie::SequenceTrie;
 
 use crate::autobox::Autobox;
-use crate::codegen::builders::{ClassBuilder, FieldBuilder, FunctionBuilder, ParamBuilder, TypeCache};
+use crate::codegen::builders::{ClassBuilder, EnumBuilder, FieldBuilder, FunctionBuilder, ParamBuilder, TypeCache};
 use crate::codegen::{names, CodeGen, LocalIndices};
 use crate::error::{CompileError, CompileResult, ParseError};
 use crate::parser::{
-    self, FunctionSource, Import, MemberSource, ModulePath, ParameterSource, Qualifier, SourceEntry, SourceModule
+    self, ClassSource, EnumSource, FunctionSource, Import, MemberSource, ModulePath, ParameterSource, Qualifier, SourceEntry, SourceModule
 };
 use crate::scoped_map::ScopedMap;
 use crate::source_map::Files;
@@ -122,13 +122,13 @@ impl<'id> Compiler<'id> {
 
     fn populate_entry(&mut self, path: &ModulePath, entry: &SourceEntry, types: &mut TypeScope<'_, 'id>) {
         match entry {
-            SourceEntry::Class(class) => {
-                let type_id = generate_type_id(&class.name, path, self.interner);
+            SourceEntry::Class(ClassSource { name, .. })
+            | SourceEntry::Struct(ClassSource { name, .. })
+            | SourceEntry::Enum(EnumSource { name, .. }) => {
+                let type_id = generate_type_id(&name, path, self.interner);
                 self.modules.add_type(type_id);
-                types.insert(class.name.clone(), type_id);
+                types.insert(name.clone(), type_id);
             }
-            SourceEntry::Struct(_) => todo!(),
-            SourceEntry::Enum(_) => todo!(),
             SourceEntry::Function(func) => {
                 let name = ScopedName::new(func.declaration.name.clone(), path.clone());
                 let idx = self.type_repo.globals_mut().reserve_name(name.clone());
@@ -203,8 +203,9 @@ impl<'id> Compiler<'id> {
         types: &TypeScope<'_, 'id>,
         names: &mut NameScope<'_, 'id>,
     ) -> CompileResult<'id, Option<ModuleItem<'id>>> {
+        let is_struct = matches!(entry, SourceEntry::Struct(_));
         match entry {
-            SourceEntry::Class(class) => {
+            SourceEntry::Class(class) | SourceEntry::Struct(class) => {
                 let type_id = generate_type_id(&class.name, path, self.interner);
                 let mut type_vars = ScopedMap::default();
                 let env = TypeEnv::new(types, &type_vars);
@@ -229,8 +230,7 @@ impl<'id> Compiler<'id> {
                     methods: FuncMap::default(),
                     statics: FuncMap::default(),
                     is_abstract: class.qualifiers.contain(Qualifier::Abstract),
-                    is_struct: false,
-                    is_enum: false,
+                    is_struct,
                 };
                 let mut methods = vec![];
 
@@ -268,8 +268,13 @@ impl<'id> Compiler<'id> {
                 self.defined_types.push(type_id);
                 Ok(Some(ModuleItem::Class(type_id, type_vars.pop_scope(), methods)))
             }
-            SourceEntry::Struct(_) => todo!(),
-            SourceEntry::Enum(_) => todo!(),
+            SourceEntry::Enum(enum_) => {
+                let type_id = generate_type_id(&enum_.name, path, self.interner);
+                let members = enum_.members.iter().map(|m| (m.name.clone(), m.value)).collect();
+                self.type_repo.add_type(type_id, DataType::Enum(EnumType { members }));
+                self.defined_types.push(type_id);
+                Ok(None)
+            }
             SourceEntry::Function(func) => {
                 let (env, typ) = self.preprocess_function(&func, types, &ScopedMap::default())?;
                 let name = ScopedName::new(func.declaration.name.clone(), path.clone());
@@ -450,55 +455,19 @@ impl<'id> CompilationOutputs<'id> {
             .sort_by_key(|typ| self.type_repo.upper_iter(*typ).count());
 
         for &item in &self.defined_types {
-            db.classes.insert(item, pool.reserve());
+            match self.type_repo.get_type(item).unwrap() {
+                DataType::Class(_) => {
+                    db.classes.insert(item, pool.reserve());
+                }
+                DataType::Enum(_) => {
+                    db.enums.insert(item, pool.reserve());
+                }
+                _ => {}
+            }
         }
 
         for item in self.defined_types {
-            let &class_idx = db.classes.get(&item).unwrap();
-            let class_type = self.type_repo.get_type(item).unwrap().as_class().unwrap();
-            let base = class_type.extends.as_ref().and_then(|c| db.classes.get(&c.id)).copied();
-            let fields = class_type.fields.iter().map(|entry| {
-                FieldBuilder::builder()
-                    .name(entry.name.clone())
-                    .typ(entry.typ.clone())
-                    .build()
-            });
-            let methods = chain!(
-                class_type
-                    .statics
-                    .iter()
-                    .map(|e| Self::build_function(e.signature.clone(), &e.function.typ, true)),
-                class_type
-                    .methods
-                    .iter()
-                    .map(|e| Self::build_function(e.signature.clone(), &e.function.typ, false))
-            );
-            let idx = ClassBuilder::builder()
-                .name(item.as_str())
-                .fields(fields)
-                .methods(methods)
-                .flags(ClassFlags::new().with_is_abstract(class_type.is_abstract))
-                .build()
-                .commit_as(
-                    class_idx,
-                    base.unwrap_or_else(|| *db.classes.get(&predef::ISCRIPTABLE).unwrap()),
-                    &self.type_repo,
-                    pool,
-                    cache,
-                );
-            db.classes.insert(item, class_idx);
-
-            let class = pool.class(idx).unwrap();
-            for (entry, &idx) in class_type.fields.iter().zip(&class.fields) {
-                db.fields.insert(FieldId::new(item, entry.index), idx);
-            }
-            let mut ms = class.methods.iter();
-            for (entry, &idx) in class_type.statics.iter().zip(ms.by_ref()) {
-                db.statics.insert(MethodId::new(item, entry.index), idx);
-            }
-            for (entry, &idx) in class_type.methods.iter().zip(ms.by_ref()) {
-                db.methods.insert(MethodId::new(item, entry.index), idx);
-            }
+            Self::build_type(item, &self.type_repo, db, cache, pool);
         }
 
         for item in &self.codegen_queue {
@@ -521,16 +490,90 @@ impl<'id> CompilationOutputs<'id> {
                     let param_indices =
                         LocalIndices::new(params, pool.function(idx).unwrap().parameters.iter().copied().collect());
                     let (locals, code) = CodeGen::build_function(body, param_indices, &self.type_repo, db, pool, cache);
-                    pool.complete_function(idx, locals.to_vec(), code).unwrap();
+                    pool.complete_function(idx, locals.into_vec(), code).unwrap();
                 }
                 CodeGenItem::AssembleGlobal(gid, params, body) => {
                     let &idx = db.globals.get(&gid).unwrap();
                     let param_indices =
                         LocalIndices::new(params, pool.function(idx).unwrap().parameters.iter().copied().collect());
                     let (locals, code) = CodeGen::build_function(body, param_indices, &self.type_repo, db, pool, cache);
-                    pool.complete_function(idx, locals.to_vec(), code).unwrap();
+                    pool.complete_function(idx, locals.into_vec(), code).unwrap();
                 }
             }
+        }
+    }
+
+    fn build_type(
+        id: TypeId<'id>,
+        repo: &TypeRepo<'id>,
+        db: &mut CompilationDb<'id>,
+        cache: &mut TypeCache,
+        pool: &mut ConstantPool,
+    ) {
+        let item = repo.get_type(id).unwrap();
+        match item {
+            DataType::Class(class_type) => {
+                let &class_idx = db.classes.get(&id).unwrap();
+                let base = class_type.extends.as_ref().and_then(|c| db.classes.get(&c.id)).copied();
+                let fields = class_type.fields.iter().map(|entry| {
+                    FieldBuilder::builder()
+                        .name(entry.name.clone())
+                        .typ(entry.typ.clone())
+                        .build()
+                });
+                let methods = chain!(
+                    class_type
+                        .statics
+                        .iter()
+                        .map(|e| Self::build_function(e.signature.clone(), &e.function.typ, true)),
+                    class_type.methods.iter().map(|e| Self::build_function(
+                        e.signature.clone(),
+                        &e.function.typ,
+                        false
+                    ))
+                );
+                let idx = ClassBuilder::builder()
+                    .name(id.as_str())
+                    .fields(fields)
+                    .methods(methods)
+                    .flags(
+                        ClassFlags::new()
+                            .with_is_abstract(class_type.is_abstract)
+                            .with_is_struct(class_type.is_struct),
+                    )
+                    .build()
+                    .commit_as(
+                        class_idx,
+                        base.unwrap_or_else(|| *db.classes.get(&predef::ISCRIPTABLE).unwrap()),
+                        repo,
+                        pool,
+                        cache,
+                    );
+
+                let class = pool.class(idx).unwrap();
+                for (entry, &idx) in class_type.fields.iter().zip(&class.fields) {
+                    db.fields.insert(FieldId::new(id, entry.index), idx);
+                }
+                let mut ms = class.methods.iter();
+                for (entry, &idx) in class_type.statics.iter().zip(ms.by_ref()) {
+                    db.statics.insert(MethodId::new(id, entry.index), idx);
+                }
+                for (entry, &idx) in class_type.methods.iter().zip(ms.by_ref()) {
+                    db.methods.insert(MethodId::new(id, entry.index), idx);
+                }
+            }
+            DataType::Enum(enum_) => {
+                let idx = EnumBuilder::builder()
+                    .name(id.as_str())
+                    .members(enum_.iter().map(|e| (e.name.clone(), e.value)))
+                    .build()
+                    .commit(pool);
+                let class = pool.enum_(idx).unwrap();
+                for (entry, &member) in enum_.iter().zip(&class.members) {
+                    db.enum_members.insert(FieldId::new(id, entry.index), member);
+                }
+            }
+            DataType::Builtin { .. } => {}
         }
     }
 
@@ -567,6 +610,8 @@ pub struct CompilationDb<'id> {
     pub(crate) methods: HashMap<MethodId<'id>, PoolIndex<PoolFunction>>,
     pub(crate) statics: HashMap<MethodId<'id>, PoolIndex<PoolFunction>>,
     pub(crate) globals: HashMap<GlobalId, PoolIndex<PoolFunction>>,
+    pub(crate) enums: HashMap<TypeId<'id>, PoolIndex<PoolEnum>>,
+    pub(crate) enum_members: HashMap<FieldId<'id>, PoolIndex<i64>>,
 }
 
 impl<'id> CompilationDb<'id> {
@@ -610,8 +655,20 @@ impl<'id> CompilationDb<'id> {
             statics,
             is_abstract: class.flags.is_abstract(),
             is_struct: class.flags.is_struct(),
-            is_enum: false,
         }
+    }
+
+    fn load_enum(&mut self, owner: TypeId<'id>, idx: PoolIndex<PoolEnum>, pool: &ConstantPool) -> EnumType {
+        self.enums.insert(owner, idx);
+        let enum_ = pool.enum_(idx).unwrap();
+        let mut typ = EnumType::default();
+        for &idx in &enum_.members {
+            let name = pool.def_name(idx).unwrap();
+            let value = pool.enum_value(idx).unwrap();
+            let i = typ.add_member(name, value);
+            self.enum_members.insert(FieldId::new(owner, i), idx);
+        }
+        typ
     }
 
     fn load_function(
@@ -697,6 +754,12 @@ impl<'id> CompilationResources<'id> {
                         .globals_mut()
                         .add_with_signature(ScopedName::top_level(name), sig, ftyp, true);
                     db.globals.insert(GlobalId::new(id), idx.cast());
+                }
+                AnyDefinition::Enum(_) => {
+                    let name = pool.names.get(def.name).unwrap();
+                    let owner = get_type_id(&name, interner);
+                    let enum_ = db.load_enum(owner, idx.cast(), pool);
+                    type_repo.add_type(owner, DataType::Enum(enum_));
                 }
                 _ => {}
             }

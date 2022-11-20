@@ -222,14 +222,16 @@ pub enum DataType<'id> {
         type_vars: Box<[TypeVar<'id>]>,
         is_unboxed: bool,
     },
+    Enum(EnumType),
 }
 
 impl<'id> DataType<'id> {
     #[inline]
     pub fn type_vars(&self) -> &[TypeVar<'id>] {
         match self {
-            DataType::Class(ct) => &ct.type_vars,
-            DataType::Builtin { type_vars, .. } => type_vars,
+            Self::Class(ct) => &ct.type_vars,
+            Self::Builtin { type_vars, .. } => type_vars,
+            _ => &[],
         }
     }
 
@@ -241,8 +243,8 @@ impl<'id> DataType<'id> {
     #[inline]
     pub fn base(&self) -> Option<&Parameterized<'id>> {
         match self {
-            DataType::Class(ct) => ct.extends.as_ref(),
-            DataType::Builtin { .. } => None,
+            Self::Class(ct) => ct.extends.as_ref(),
+            _ => None,
         }
     }
 }
@@ -256,7 +258,6 @@ pub struct ClassType<'id> {
     pub statics: FuncMap<'id>,
     pub is_abstract: bool,
     pub is_struct: bool,
-    pub is_enum: bool,
 }
 
 #[derive(Debug, Default)]
@@ -348,6 +349,32 @@ impl<'id, K: Eq + Hash> FuncMap<'id, K> {
         let res = e.index();
         e.or_default();
         FuncIndex(res)
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct EnumType {
+    pub members: IndexMap<Str, i64>,
+}
+
+impl EnumType {
+    #[inline]
+    pub fn get_member(&self, name: &str) -> Option<FieldIndex> {
+        self.members.get_index_of(name).map(FieldIndex)
+    }
+
+    #[inline]
+    pub fn add_member(&mut self, name: Str, value: i64) -> FieldIndex {
+        let (k, _) = self.members.insert_full(name, value);
+        FieldIndex(k)
+    }
+
+    #[inline]
+    pub fn iter(&self) -> impl Iterator<Item = EnumEntry<'_>> + '_ {
+        self.members
+            .iter()
+            .enumerate()
+            .map(|(i, (name, val))| EnumEntry::new(FieldIndex(i), name, *val))
     }
 }
 
@@ -444,6 +471,20 @@ impl<'repo, 'id> FieldEntry<'repo, 'id> {
     #[inline]
     fn new(index: FieldIndex, name: &'repo Str, typ: &'repo Type<'id>) -> Self {
         Self { index, name, typ }
+    }
+}
+
+#[derive(Debug)]
+pub struct EnumEntry<'repo> {
+    pub index: FieldIndex,
+    pub name: &'repo Str,
+    pub value: i64,
+}
+
+impl<'repo> EnumEntry<'repo> {
+    #[inline]
+    fn new(index: FieldIndex, name: &'repo Str, value: i64) -> Self {
+        Self { index, name, value }
     }
 }
 
@@ -633,6 +674,12 @@ impl FuncSignature {
     pub fn into_str(self) -> Str {
         self.0
     }
+}
+
+#[derive(Debug)]
+pub struct EnumMember {
+    pub name: Str,
+    pub value: i64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, IntoStaticStr)]

@@ -33,6 +33,8 @@ pub enum CompileError<'id> {
     CannotLookupMember(Span),
     #[error("import {} could not be resolved", .0.iter().format("."))]
     UnresolvedImport(Box<[Str]>, Span),
+    #[error("unsupported operation")]
+    UnsupportedOperation(Span),
 }
 
 impl<'id> CompileError<'id> {
@@ -46,7 +48,8 @@ impl<'id> CompileError<'id> {
             | Self::NoMatchingOverload(_, span)
             | Self::ManyMatchingOverloads(_, span)
             | Self::CannotLookupMember(span)
-            | Self::UnresolvedImport(_, span) => *span,
+            | Self::UnresolvedImport(_, span)
+            | Self::UnsupportedOperation(span) => *span,
         }
     }
 

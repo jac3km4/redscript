@@ -244,21 +244,26 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
                 };
                 let (locals, code) =
                     Self::build_expr(body, param_indices, capture_indices, self.repo, self.db, pool, cache);
-                pool.complete_function(apply, locals.to_vec(), code).unwrap();
+                pool.complete_function(apply, locals.into_vec(), code).unwrap();
             }
             Expr::Member(expr, member, _) => match member {
-                Member::ClassField(field) => {
-                    let exit_label = self.new_label();
-                    self.emit(Instr::Context(exit_label));
-                    self.assemble(*expr, pool, cache);
-                    self.emit(Instr::ObjectField(*self.db.fields.get(&field).unwrap()));
-                    self.emit_label(exit_label);
+                Member::Field(field) => {
+                    let dt = self.repo.get_type(field.owner()).unwrap().as_class().unwrap();
+                    if dt.is_struct {
+                        self.emit(Instr::StructField(*self.db.fields.get(&field).unwrap()));
+                        self.assemble(*expr, pool, cache);
+                    } else {
+                        let exit_label = self.new_label();
+                        self.emit(Instr::Context(exit_label));
+                        self.assemble(*expr, pool, cache);
+                        self.emit(Instr::ObjectField(*self.db.fields.get(&field).unwrap()));
+                        self.emit_label(exit_label);
+                    }
                 }
-                Member::StructField(field) => {
-                    self.emit(Instr::StructField(*self.db.fields.get(&field).unwrap()));
-                    self.assemble(*expr, pool, cache);
-                }
-                Member::EnumMember(_, _) => todo!(),
+                Member::EnumMember(member) => self.emit(Instr::EnumConst(
+                    *self.db.enums.get(&member.owner()).unwrap(),
+                    *self.db.enum_members.get(&member).unwrap(),
+                )),
             },
             Expr::ArrayElem(arr, idx, typ, _) => {
                 let arr_type = Type::Data(Parameterized::new(predef::ARRAY, Rc::new([typ.simplify(self.repo)])));

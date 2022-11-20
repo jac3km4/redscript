@@ -2,11 +2,11 @@ use std::ops::{Deref, Not};
 use std::rc::Rc;
 
 use hashbrown::HashMap;
-use itertools::Either;
+use itertools::{Either, Itertools};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Offset};
 use redscript::definition::{
-    Class, ClassFlags, Definition, Field, FieldFlags, Function, FunctionFlags, Local, LocalFlags, Parameter, ParameterFlags, SourceReference, Type as PoolType, Visibility
+    Class, ClassFlags, Definition, Enum, Field, FieldFlags, Function, FunctionFlags, Local, LocalFlags, Parameter, ParameterFlags, SourceReference, Type as PoolType, Visibility
 };
 use redscript::{str_fmt, Str};
 use typed_builder::TypedBuilder;
@@ -72,6 +72,37 @@ impl<'id> ClassBuilder<'id> {
             overrides: vec![],
         };
         pool.put_definition(id, Definition::class(name, def));
+        id
+    }
+}
+
+#[derive(Debug, TypedBuilder)]
+pub struct EnumBuilder {
+    #[builder(setter(into))]
+    name: Str,
+    #[builder(default, setter(transform = |it: impl IntoIterator<Item=(Str, i64)>| it.into_iter().collect()))]
+    members: Vec<(Str, i64)>,
+}
+
+impl EnumBuilder {
+    pub fn commit(self, pool: &mut ConstantPool) -> PoolIndex<Enum> {
+        let id = pool.reserve();
+        let name = pool.names.add(self.name);
+        let members = self
+            .members
+            .into_iter()
+            .map(|(name, val)| {
+                let name = pool.names.add(name);
+                pool.add_definition(Definition::enum_value(name, id, val))
+            })
+            .collect_vec();
+        let def = Enum {
+            flags: 0,
+            size: members.len() as u8,
+            members,
+            unk1: false,
+        };
+        pool.put_definition(id, Definition::enum_(name, def));
         id
     }
 }
@@ -306,9 +337,8 @@ fn serialize_type<'id>(typ: &Type<'id>, repo: &TypeRepo<'id>, unwrapped: bool) -
             DataType::Builtin { .. } if !typ.args.is_empty() => {
                 Either::Right(str_fmt!("{}:{}", typ.id, serialize_type(&typ.args[0], repo, false)))
             }
-            DataType::Builtin { .. } => Either::Left(typ.id.as_str()),
-            DataType::Class(_) if unwrapped => Either::Left(typ.id.as_str()),
-            DataType::Class(_) => Either::Right(str_fmt!("ref:{}", typ.id)),
+            DataType::Class(class) if !class.is_struct && !unwrapped => Either::Right(str_fmt!("ref:{}", typ.id)),
+            _ => Either::Left(typ.id.as_str()),
         },
         Type::Prim(prim) => Either::Left(prim.into()),
         Type::Bottom | Type::Top | Type::Var(_) => Either::Left("IScriptable"),

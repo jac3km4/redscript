@@ -205,6 +205,18 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 }
             },
             Expr::Member(expr, member, span) => {
+                if let Some((id, members)) = expr.as_ident().and_then(|(n, _)| {
+                    let &id = self.env.types.get(n)?;
+                    Some((id, self.repo.get_type(id)?.as_enum()?))
+                }) {
+                    let member = members
+                        .get_member(member)
+                        .ok_or_else(|| CompileError::UnresolvedMember(id, member.clone(), *span))?;
+                    return Ok((
+                        Expr::Member(Expr::EMPTY.into(), Member::EnumMember(FieldId::new(id, member)), *span),
+                        InferType::data(Data::without_args(id)),
+                    ));
+                }
                 let (expr, expr_ty) = self.typeck(expr, locals)?;
                 let upper_bound = expr_ty
                     .known_upper_bound(self.repo)
@@ -221,7 +233,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 let data_type = self.repo.get_type(spec.id).unwrap();
                 let type_vars = data_type.type_var_names().zip(spec.args.iter().cloned()).collect();
                 Ok((
-                    Expr::Member(expr.into(), Member::ClassField(id), *span),
+                    Expr::Member(expr.into(), Member::Field(id), *span),
                     InferType::from_type(fty, &type_vars),
                 ))
             }
@@ -237,7 +249,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                     .with_span(*span)?;
                 Ok((Expr::ArrayElem(arr.into(), idx.into(), elem.clone(), *span), elem))
             }
-            Expr::New(typ, _, span) => {
+            Expr::New(typ, args, span) => {
                 let &id = self
                     .env
                     .types
@@ -250,10 +262,24 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                     .iter()
                     .map(|var| InferType::from_var_poly(var, self.env.vars, &mut self.id_alloc))
                     .collect();
-                // TODO args
+                let mut checked_args = vec![];
+                let mut arg_types = vec![];
+                match (&args[..], data_type) {
+                    (args, DataType::Class(class)) if class.is_struct => {
+                        for (arg, field) in args.iter().zip(class.fields.iter()) {
+                            let (arg, typ) = self.typeck(arg, locals)?;
+                            typ.constrain(&InferType::from_type(field.typ, self.env.vars), self.repo)
+                                .with_span(*span)?;
+                            checked_args.push(arg);
+                            arg_types.push(typ);
+                        }
+                    }
+                    ([], DataType::Class(_)) => {}
+                    _ => return Err(CompileError::UnsupportedOperation(*span)),
+                };
                 let data = Data::new(id, type_args);
                 let typ = InferType::Mono(Mono::Data(data.clone()));
-                Ok((Expr::New(data, [].into(), *span), typ))
+                Ok((Expr::New(data, checked_args.into(), *span), typ))
             }
             Expr::Lambda(params, body, span) => {
                 let locals = locals.push_scope(CaptureCollector::run(expr, locals.top()));
@@ -1459,9 +1485,8 @@ pub enum Callable<'id> {
 
 #[derive(Debug)]
 pub enum Member<'id> {
-    ClassField(FieldId<'id>),
-    StructField(FieldId<'id>),
-    EnumMember(TypeId<'id>, usize),
+    Field(FieldId<'id>),
+    EnumMember(FieldId<'id>),
 }
 
 #[derive(Debug, Clone)]
