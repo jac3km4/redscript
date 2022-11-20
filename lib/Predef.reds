@@ -432,10 +432,10 @@ class BoxedVariant {
   }
 }
 
-class BoxedEnum {
-  let value: Int64;
+class BoxedEnum extends Hashable {
+  let value: Int32;
 
-  public static func FromIntRepr(value: Int64) -> BoxedEnum {
+  public static func FromIntRepr(value: Int32) -> BoxedEnum {
     let self: BoxedEnum = new BoxedEnum();
     self.value = value;
     return self;

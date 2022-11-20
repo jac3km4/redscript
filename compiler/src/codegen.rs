@@ -271,9 +271,17 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
                 self.assemble(*arr, pool, cache);
                 self.assemble(*idx, pool, cache);
             }
-            Expr::New(typ, _, _) => {
+            Expr::New(typ, args, _) => {
+                let class = self.repo.get_type(typ.id).unwrap().as_class().unwrap();
                 let &tt = self.db.classes.get(&typ.id).unwrap();
-                self.emit(Instr::New(tt));
+                if class.is_struct {
+                    self.emit(Instr::Construct(args.len() as u8, tt));
+                    for arg in args.into_vec() {
+                        self.assemble(arg, pool, cache);
+                    }
+                } else {
+                    self.emit(Instr::New(tt));
+                }
             }
             Expr::Return(Some(expr), _) => {
                 self.emit(Instr::Return);

@@ -41,7 +41,7 @@ impl<'id> TypeRepo<'id> {
         });
         this.add_type(predef::SCRIPT_REF, DataType::Builtin {
             type_vars: [TypeVar::unconstrained(Str::from_static("A"), Variance::In)].into(),
-            is_unboxed: false,
+            is_unboxed: true,
         });
 
         this
@@ -65,6 +65,14 @@ impl<'id> TypeRepo<'id> {
     pub fn get_method(&self, id: &MethodId<'id>) -> Option<&Func<'id>> {
         let (_, res) = self.types.get(&id.owner)?.as_class()?.methods.get_overload(id.index)?;
         Some(res)
+    }
+
+    pub fn get_method_mut(&mut self, id: &MethodId<'id>) -> Option<&mut Func<'id>> {
+        self.types
+            .get_mut(&id.owner)?
+            .as_class_mut()?
+            .methods
+            .get_overload_mut(id.index)
     }
 
     pub fn get_static(&self, id: &MethodId<'id>) -> Option<&Func<'id>> {
@@ -281,6 +289,12 @@ impl<'id, K: Eq + Hash> FuncMap<'id, K> {
     pub fn get_overload(&self, idx: OverloadIndex) -> Option<(&FuncSignature, &Func<'id>)> {
         let (_, map) = self.map.get_index(idx.0 .0)?;
         map.get_index(idx.1)
+    }
+
+    #[inline]
+    pub fn get_overload_mut(&mut self, idx: OverloadIndex) -> Option<&mut Func<'id>> {
+        let (_, map) = self.map.get_index_mut(idx.0 .0)?;
+        Some(map.get_index_mut(idx.1)?.1)
     }
 
     pub fn get_overloads(&self, idx: FuncIndex) -> impl Iterator<Item = OverloadEntry<'_, 'id>> {
@@ -535,6 +549,11 @@ impl<'id> Parameterized<'id> {
     pub fn new(id: TypeId<'id>, args: Rc<[Type<'id>]>) -> Self {
         Self { id, args }
     }
+
+    #[inline]
+    pub fn without_args(id: TypeId<'id>) -> Self {
+        Self { id, args: Rc::new([]) }
+    }
 }
 
 impl fmt::Display for Parameterized<'_> {
@@ -565,12 +584,18 @@ pub struct FuncType<'id> {
     pub type_vars: Box<[TypeVar<'id>]>,
     pub params: Box<[FuncParam<'id>]>,
     pub ret: Type<'id>,
+    pub is_ret_poly: bool,
 }
 
 impl<'id> FuncType<'id> {
     #[inline]
     pub fn new(type_vars: Box<[TypeVar<'id>]>, params: Box<[FuncParam<'id>]>, ret: Type<'id>) -> Self {
-        Self { type_vars, params, ret }
+        Self {
+            type_vars,
+            params,
+            ret,
+            is_ret_poly: false,
+        }
     }
 }
 
@@ -578,15 +603,24 @@ impl<'id> FuncType<'id> {
 pub struct FuncParam<'id> {
     pub typ: Type<'id>,
     pub is_out: bool,
+    pub is_poly: bool,
 }
 
 impl<'id> FuncParam<'id> {
     pub fn new(typ: Type<'id>) -> Self {
-        Self { typ, is_out: false }
+        Self {
+            typ,
+            is_out: false,
+            is_poly: false,
+        }
     }
 
     pub fn custom(typ: Type<'id>, is_out: bool) -> Self {
-        Self { typ, is_out }
+        Self {
+            typ,
+            is_out,
+            is_poly: false,
+        }
     }
 }
 
@@ -937,7 +971,7 @@ pub mod predef {
         BOXED_TWEAKDB_ID => BoxedTweakDBID,
         BOXED_VARIANT => BoxedVariant,
         BOXED_ENUM => BoxedEnum,
-        BOXED_STRUCT => BoxedStuct
+        BOXED_STRUCT => BoxedStruct
     );
 
     pub(super) static FUNCTION_BY_ARITY: &[TypeId] = function_type_by_arity!(TypeId::new);

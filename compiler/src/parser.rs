@@ -30,7 +30,7 @@ pub enum SourceEntry {
 impl SourceEntry {
     pub fn annotations(&self) -> &[Annotation] {
         match self {
-            Self::Function(fun) => &fun.declaration.annotations,
+            Self::Function(fun) => &fun.decl.annotations,
             Self::GlobalLet(field) => &field.declaration.annotations,
             _ => &[],
         }
@@ -63,7 +63,7 @@ pub struct FieldSource {
 #[derive(Debug)]
 pub struct FunctionSource {
     pub tparams: Vec<TypeParam>,
-    pub declaration: Declaration,
+    pub decl: Declaration,
     pub type_: Option<TypeName>,
     pub parameters: Vec<ParameterSource>,
     pub body: Option<Seq<SourceAst>>,
@@ -350,8 +350,8 @@ peg::parser! {
             { FieldSource { declaration, type_, default }}
 
         pub rule function() -> FunctionSource
-            = pos:pos() declaration:decl(<keyword("func")>) _ tparams:tparams()? _ "(" _ parameters:commasep(<param()>) _ ")" _ type_:func_type()? _ body:function_body()? ";"? end:pos()
-            { FunctionSource { tparams: tparams.unwrap_or_default(), declaration, type_, parameters, body, span: Span::new(pos, end) } }
+            = pos:pos() decl:decl(<keyword("func")>) _ tparams:tparams()? _ "(" _ parameters:commasep(<param()>) _ ")" _ type_:func_type()? _ body:function_body()? ";"? end:pos()
+            { FunctionSource { tparams: tparams.unwrap_or_default(), decl, type_, parameters, body, span: Span::new(pos, end) } }
         rule function_body() -> Seq<SourceAst>
             = "{" _ body:seq() _ "}" { body }
             / pos:pos() "=" _ expr:expr() _ end:pos() { Seq::new(vec![Expr::Return(Some(Box::new(expr)), Span::new(pos, end))]) }
@@ -462,6 +462,7 @@ peg::parser! {
             { Param { name, typ } }
 
         pub rule expr() -> Expr<SourceAst> = precedence!{
+            // TODO: added due to syntactic ambiguity with <> operators, revise later
             pos:pos() ident:type_arg_ident() _ type_args:type_args()? _ "(" _ params:commasep(<expr()>) _ ")" end:pos() {
                 Expr::Call(Expr::Ident(Ident::from_static(ident), Span::new(pos, end)).into(), (), type_args.unwrap_or_default().into(), params.into(), (), Span::new(pos, end))
             }

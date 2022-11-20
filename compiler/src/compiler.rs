@@ -15,10 +15,10 @@ use redscript::definition::{
 use redscript::Str;
 use sequence_trie::SequenceTrie;
 
-use crate::autobox::Autobox;
+use crate::autobox::{Autobox, Boxable};
 use crate::codegen::builders::{ClassBuilder, EnumBuilder, FieldBuilder, FunctionBuilder, ParamBuilder, TypeCache};
 use crate::codegen::{names, CodeGen, LocalIndices};
-use crate::error::{CompileError, CompileResult, ParseError};
+use crate::error::{CompileError, CompileResult, ParseError, Unsupported};
 use crate::parser::{
     self, ClassSource, EnumSource, FunctionSource, Import, MemberSource, ModulePath, ParameterSource, Qualifier, SourceEntry, SourceModule
 };
@@ -30,7 +30,7 @@ use crate::{IndexMap, StringInterner};
 
 #[derive(Debug)]
 pub struct Compiler<'id> {
-    type_repo: TypeRepo<'id>,
+    repo: TypeRepo<'id>,
     interner: &'id StringInterner,
     defined_types: Vec<TypeId<'id>>,
     modules: ModuleMap<'id>,
@@ -39,9 +39,9 @@ pub struct Compiler<'id> {
 }
 
 impl<'id> Compiler<'id> {
-    pub fn new(type_repo: TypeRepo<'id>, interner: &'id StringInterner) -> Self {
+    pub fn new(repo: TypeRepo<'id>, interner: &'id StringInterner) -> Self {
         Self {
-            type_repo,
+            repo,
             interner,
             defined_types: vec![],
             modules: ModuleMap::default(),
@@ -51,10 +51,10 @@ impl<'id> Compiler<'id> {
     }
 
     pub fn run(mut self, files: &Files) -> Result<CompilationOutputs<'id>, ParseError> {
-        let mut types: TypeScope = self.type_repo.type_iter().map(|id| (id.as_str().into(), id)).collect();
+        let mut types: TypeScope = self.repo.type_iter().map(|id| (id.as_str().into(), id)).collect();
 
         let mut names = NameScope::default();
-        for (name, idx) in self.type_repo.globals().iter_by_name() {
+        for (name, idx) in self.repo.globals().iter_by_name() {
             names
                 .top_mut()
                 .entry_ref(name.name())
@@ -83,6 +83,7 @@ impl<'id> Compiler<'id> {
             let res = self.compile_module(module, types.push_scope(scope), &mut names);
             self.compile_queue.push(res);
         }
+        self.process_inheritance();
         Ok(self.process_queue(&types, &names))
     }
 
@@ -125,13 +126,13 @@ impl<'id> Compiler<'id> {
             SourceEntry::Class(ClassSource { name, .. })
             | SourceEntry::Struct(ClassSource { name, .. })
             | SourceEntry::Enum(EnumSource { name, .. }) => {
-                let type_id = generate_type_id(&name, path, self.interner);
+                let type_id = generate_type_id(name, path, self.interner);
                 self.modules.add_type(type_id);
                 types.insert(name.clone(), type_id);
             }
             SourceEntry::Function(func) => {
-                let name = ScopedName::new(func.declaration.name.clone(), path.clone());
-                let idx = self.type_repo.globals_mut().reserve_name(name.clone());
+                let name = ScopedName::new(func.decl.name.clone(), path.clone());
+                let idx = self.repo.globals_mut().reserve_name(name.clone());
                 self.modules.add_function(&name, idx);
             }
             SourceEntry::GlobalLet(_) => {}
@@ -150,7 +151,7 @@ impl<'id> Compiler<'id> {
                     .modules
                     .get(path.iter())
                     .ok_or_else(|| CompileError::UnresolvedImport(path.into_iter().collect(), span))?;
-                Self::populate_import_item(&import, &self.type_repo, types, names);
+                Self::populate_import_item(&import, &self.repo, types, names);
             }
             Import::Selected(_, path, selected, span) => {
                 for name in selected {
@@ -159,7 +160,7 @@ impl<'id> Compiler<'id> {
                         .modules
                         .get(path.clone())
                         .ok_or_else(|| CompileError::UnresolvedImport(path.cloned().collect(), span))?;
-                    Self::populate_import_item(&import, &self.type_repo, types, names);
+                    Self::populate_import_item(&import, &self.repo, types, names);
                 }
             }
             Import::All(_, path, span) => {
@@ -168,7 +169,7 @@ impl<'id> Compiler<'id> {
                     .get_direct_descendants(path.iter())
                     .ok_or_else(|| CompileError::UnresolvedImport(path.iter().cloned().collect(), span))?
                 {
-                    Self::populate_import_item(&descendant, &self.type_repo, types, names);
+                    Self::populate_import_item(&descendant, &self.repo, types, names);
                 }
             }
         };
@@ -209,20 +210,28 @@ impl<'id> Compiler<'id> {
                 let type_id = generate_type_id(&class.name, path, self.interner);
                 let mut type_vars = ScopedMap::default();
                 let env = TypeEnv::new(types, &type_vars);
-                let class_type_vars = class
+                let class_type_vars: Box<_> = class
                     .tparams
                     .iter()
                     .map(|typ| env.instantiate_var(typ))
-                    .collect::<CompileResult<Box<[_]>, _>>()
+                    .try_collect()
                     .with_span(class.span)?;
+                let mut this_args = Vec::with_capacity(class_type_vars.len());
                 for var in class_type_vars.iter() {
-                    type_vars.insert(var.name.clone(), InferType::from_var_mono(var, &type_vars));
+                    let typ = InferType::from_var_mono(var, &type_vars);
+                    type_vars.insert(var.name.clone(), typ.clone());
+                    this_args.push(typ);
                 }
                 let extends = class
                     .base
                     .map(|base| TypeEnv::new(types, &type_vars).resolve_param_type(&base))
                     .transpose()
-                    .with_span(class.span)?;
+                    .with_span(class.span)?
+                    .or_else(|| {
+                        is_struct
+                            .not()
+                            .then(|| Parameterized::without_args(predef::ISCRIPTABLE))
+                    });
                 let mut data_type = ClassType {
                     type_vars: class_type_vars,
                     extends,
@@ -233,22 +242,30 @@ impl<'id> Compiler<'id> {
                     is_struct,
                 };
                 let mut methods = vec![];
+                let this = Data::new(type_id, this_args.into());
 
                 for member in class.members {
                     match member {
                         MemberSource::Method(method) => {
-                            let is_static = method.declaration.qualifiers.contain(Qualifier::Static);
-                            let is_final = is_static || method.declaration.qualifiers.contain(Qualifier::Final);
+                            let is_static = method.decl.qualifiers.contain(Qualifier::Static);
+                            if !is_static && is_struct {
+                                self.reporter.report(CompileError::Unsupported(
+                                    Unsupported::NonStaticStructMember,
+                                    method.decl.span,
+                                ));
+                            }
+                            let is_final = is_static || method.decl.qualifiers.contain(Qualifier::Final);
                             let res = self.preprocess_function(&method, types, &type_vars);
                             let Some((env, typ)) = self.reporter.unwrap_err(res) else { continue };
-                            let idx = if is_static {
-                                data_type.statics.add(method.declaration.name, typ, is_final)
+                            let index = if is_static {
+                                data_type.statics.add(method.decl.name.clone(), typ, is_final)
                             } else {
-                                data_type.methods.add(method.declaration.name, typ, is_final)
+                                data_type.methods.add(method.decl.name.clone(), typ, is_final)
                             };
                             if let Some(body) = method.body {
                                 methods.push(CompileBody {
-                                    index: idx,
+                                    name: method.decl.name,
+                                    index,
                                     env,
                                     parameters: method.parameters,
                                     body,
@@ -264,28 +281,29 @@ impl<'id> Compiler<'id> {
                         }
                     }
                 }
-                self.type_repo.add_type(type_id, DataType::Class(data_type));
+                self.repo.add_type(type_id, DataType::Class(data_type));
                 self.defined_types.push(type_id);
-                Ok(Some(ModuleItem::Class(type_id, type_vars.pop_scope(), methods)))
+                Ok(Some(ModuleItem::Class(type_id, this, type_vars.pop_scope(), methods)))
             }
             SourceEntry::Enum(enum_) => {
                 let type_id = generate_type_id(&enum_.name, path, self.interner);
                 let members = enum_.members.iter().map(|m| (m.name.clone(), m.value)).collect();
-                self.type_repo.add_type(type_id, DataType::Enum(EnumType { members }));
+                self.repo.add_type(type_id, DataType::Enum(EnumType { members }));
                 self.defined_types.push(type_id);
                 Ok(None)
             }
             SourceEntry::Function(func) => {
                 let (env, typ) = self.preprocess_function(&func, types, &ScopedMap::default())?;
-                let name = ScopedName::new(func.declaration.name.clone(), path.clone());
-                let index = self.type_repo.globals_mut().add(name, typ, true);
-                let global = if let Ok(intrinsic) = Intrinsic::from_str(&func.declaration.name) {
+                let name = ScopedName::new(func.decl.name.clone(), path.clone());
+                let index = self.repo.globals_mut().add(name, typ, true);
+                let global = if let Ok(intrinsic) = Intrinsic::from_str(&func.decl.name) {
                     Global::Intrinsic(index.overload(), intrinsic)
                 } else {
                     Global::Func(index.overload())
                 };
                 let res = if let Some(body) = func.body {
                     let body = CompileBody {
+                        name: func.decl.name.clone(),
                         index,
                         env,
                         parameters: func.parameters,
@@ -296,13 +314,55 @@ impl<'id> Compiler<'id> {
                 } else {
                     None
                 };
-                let overloads = names.top_mut().entry(func.declaration.name).or_default();
+                let overloads = names.top_mut().entry(func.decl.name).or_default();
                 if !overloads.contains(&global) {
                     overloads.push(global);
                 }
                 Ok(res)
             }
             SourceEntry::GlobalLet(_) => todo!(),
+        }
+    }
+
+    fn process_inheritance(&mut self) {
+        // resolve base methods, and promote overriden generic parameters into polymorphic ones
+        let mut base_found = HashMap::new();
+        for module in &self.compile_queue {
+            for item in &module.items {
+                let ModuleItem::Class(owner, this, _, funcs) = item else { continue };
+                for func in funcs {
+                    let &CompileBody { index, is_static, .. } = func;
+                    if is_static {
+                        continue;
+                    }
+                    let mid = MethodId::new(*owner, index);
+                    let method = self.repo.get_method(&mid).unwrap();
+                    let Some(base) = Self::get_base_method(*owner, &func.name, this, &method.typ, &self.repo) else { continue };
+                    base_found.insert(mid, base);
+                }
+            }
+        }
+
+        for (mid, base_id) in &base_found {
+            let mut to_box = vec![];
+            let method = self.repo.get_method(mid).unwrap();
+            let mut root = base_id;
+            while let Some(id) = base_found.get(root) {
+                root = id;
+            }
+            let base = self.repo.get_method(root).unwrap();
+            let ret_boxed = matches!(base.typ.ret, Type::Var(_)) && !matches!(method.typ.ret, Type::Var(_));
+            for (i, (l, r)) in base.typ.params.iter().zip(method.typ.params.iter()).enumerate() {
+                if matches!(l.typ, Type::Var(_)) && !matches!(r.typ, Type::Var(_)) {
+                    to_box.push(i);
+                }
+            }
+
+            let method = self.repo.get_method_mut(mid).unwrap();
+            method.typ.is_ret_poly = ret_boxed;
+            for i in to_box {
+                method.typ.params[i].is_poly = true;
+            }
         }
     }
 
@@ -314,28 +374,21 @@ impl<'id> Compiler<'id> {
             let names = names.push_scope(module.names);
             for item in module.items {
                 match item {
-                    ModuleItem::Class(owner, env, funcs) => {
-                        let class = self.type_repo.get_type(owner).unwrap().as_class().unwrap();
+                    ModuleItem::Class(owner, this, env, funcs) => {
                         let type_vars = ScopedMap::Tail(env);
-                        let this_args = class
-                            .type_vars
-                            .iter()
-                            .map(|var| InferType::from_var_mono(var, &type_vars))
-                            .collect();
-                        let this = InferType::data(Data::new(owner, this_args));
                         for func in funcs {
-                            let is_static = func.is_static;
-                            let (_, method) = if is_static {
-                                class.statics.get_overload(func.index).unwrap()
+                            let CompileBody { index, is_static, .. } = func;
+                            let mid = MethodId::new(owner, index);
+                            let method = if is_static {
+                                self.repo.get_static(&mid).unwrap()
                             } else {
-                                class.methods.get_overload(func.index).unwrap()
+                                self.repo.get_method(&mid).unwrap()
                             };
-                            let this = func.is_static.not().then(|| this.clone());
-                            let mid = MethodId::new(owner, func.index);
+                            let this = is_static.not().then(|| InferType::data(this.clone()));
                             let (body, params) = Self::compile_function(
                                 func,
                                 &method.typ,
-                                &self.type_repo,
+                                &self.repo,
                                 &types,
                                 &names,
                                 &type_vars,
@@ -347,12 +400,12 @@ impl<'id> Compiler<'id> {
                     }
                     ModuleItem::Global(body) => {
                         let idx = body.index;
-                        let func = self.type_repo.get_global(&GlobalId::new(body.index)).unwrap();
+                        let func = self.repo.get_global(&GlobalId::new(body.index)).unwrap();
                         let type_vars = ScopedMap::default();
                         let (body, params) = Self::compile_function(
                             body,
                             &func.typ,
-                            &self.type_repo,
+                            &self.repo,
                             &types,
                             &names,
                             &type_vars,
@@ -365,7 +418,7 @@ impl<'id> Compiler<'id> {
             }
         }
         CompilationOutputs {
-            type_repo: self.type_repo,
+            type_repo: self.repo,
             defined_types: self.defined_types,
             codegen_queue: items,
             reporter: self.reporter,
@@ -384,7 +437,7 @@ impl<'id> Compiler<'id> {
             .iter()
             .map(|ty| env.instantiate_var(ty))
             .collect::<CompileResult<Box<[_]>, _>>()
-            .with_span(func.declaration.span)?;
+            .with_span(func.decl.span)?;
         let mut local_vars = vars.introduce_scope();
         for var in method_type_vars.iter() {
             local_vars.insert(var.name.clone(), InferType::from_var_mono(var, &local_vars));
@@ -398,20 +451,20 @@ impl<'id> Compiler<'id> {
                 Ok(FuncParam::custom(typ, param.qualifiers.contain(Qualifier::Out)))
             })
             .try_collect()
-            .with_span(func.declaration.span)?;
+            .with_span(func.decl.span)?;
         let ret = func
             .type_
             .as_ref()
             .map(|typ| env.resolve_type(typ))
             .unwrap_or(Ok(Type::Prim(Prim::Unit)))
-            .with_span(func.declaration.span)?;
+            .with_span(func.decl.span)?;
         let func_type = FuncType::new(method_type_vars, params, ret.clone());
         Ok((local_vars.pop_scope(), func_type))
     }
 
     #[allow(clippy::too_many_arguments)]
     fn compile_function(
-        func: CompileBody<'id>,
+        body: CompileBody<'id>,
         typ: &FuncType<'id>,
         repo: &TypeRepo<'id>,
         types: &TypeScope<'_, 'id>,
@@ -420,13 +473,19 @@ impl<'id> Compiler<'id> {
         this: Option<InferType<'id>>,
         reporter: &mut ErrorReporter<'id>,
     ) -> (Seq<CheckedAst<'id>>, IndexMap<Local, Type<'id>>) {
-        let local_vars = vars.push_scope(func.env);
+        let local_vars = vars.push_scope(body.env);
         let mut id_alloc = IdAlloc::default();
         let mut locals = ScopedMap::default();
         let mut params = IndexMap::default();
+        let mut boxed = HashMap::default();
 
-        for (lhs, rhs) in func.parameters.iter().zip(typ.params.iter()) {
+        for (lhs, rhs) in body.parameters.iter().zip(typ.params.iter()) {
             let info = id_alloc.allocate_param(InferType::from_type(&rhs.typ, &local_vars));
+            if rhs.is_poly {
+                if let Some(boxable) = Boxable::from_infer_type(&info.typ, repo) {
+                    boxed.insert(info.local, boxable);
+                }
+            }
             params.insert(info.local, rhs.typ.clone());
             locals.insert(lhs.name.clone(), info);
         }
@@ -434,10 +493,44 @@ impl<'id> Compiler<'id> {
             locals.insert(Str::from_static("this"), LocalInfo::new(Local::This, this));
         }
         let ret = InferType::from_type(&typ.ret, &local_vars);
+        let poly_ret = typ.is_ret_poly.then(|| Boxable::from_infer_type(&ret, repo)).flatten();
         let env = TypeEnv::new(types, &local_vars);
-        let mut seq = Typer::run(repo, names, env, &func.body, &mut locals, ret, reporter);
-        Autobox::run(&mut seq, repo);
+        let mut seq = Typer::run(repo, names, env, &body.body, &mut locals, ret, reporter);
+        Autobox::run(&mut seq, repo, boxed, poly_ret);
         (seq, params)
+    }
+
+    fn get_base_method(
+        owner: TypeId<'id>,
+        name: &str,
+        this: &Data<'id>,
+        typ: &FuncType<'id>,
+        repo: &TypeRepo<'id>,
+    ) -> Option<MethodId<'id>> {
+        let (id, entry) = repo
+            .upper_iter(owner)
+            .skip(1)
+            .flat_map(|(type_id, class)| class.methods.by_name(name).map(move |res| (type_id, res)))
+            .filter(|(_, e)| e.function.typ.params.len() == typ.params.len())
+            .filter(|(id, e)| {
+                let base = this.clone().instantiate_as(*id, repo).unwrap();
+                let vars = repo
+                    .get_type(*id)
+                    .unwrap()
+                    .type_var_names()
+                    .zip(base.args.iter().cloned())
+                    .collect();
+                e.function
+                    .typ
+                    .params
+                    .iter()
+                    .map(|param| InferType::from_type_with(&param.typ, &vars, true))
+                    .zip(typ.params.iter())
+                    .all(|(l, r)| l.is_same_shape(&r.typ))
+            })
+            .at_most_one()
+            .unwrap_or_else(|_| todo!())?;
+        Some(MethodId::new(id, entry.index))
     }
 }
 
@@ -542,13 +635,7 @@ impl<'id> CompilationOutputs<'id> {
                             .with_is_struct(class_type.is_struct),
                     )
                     .build()
-                    .commit_as(
-                        class_idx,
-                        base.unwrap_or_else(|| *db.classes.get(&predef::ISCRIPTABLE).unwrap()),
-                        repo,
-                        pool,
-                        cache,
-                    );
+                    .commit_as(class_idx, base.unwrap_or(PoolIndex::UNDEFINED), repo, pool, cache);
 
                 let class = pool.class(idx).unwrap();
                 for (entry, &idx) in class_type.fields.iter().zip(&class.fields) {
@@ -562,14 +649,15 @@ impl<'id> CompilationOutputs<'id> {
                     db.methods.insert(MethodId::new(id, entry.index), idx);
                 }
             }
-            DataType::Enum(enum_) => {
+            DataType::Enum(typ) => {
+                let &enum_idx = db.enums.get(&id).unwrap();
                 let idx = EnumBuilder::builder()
                     .name(id.as_str())
-                    .members(enum_.iter().map(|e| (e.name.clone(), e.value)))
+                    .members(typ.iter().map(|e| (e.name.clone(), e.value)))
                     .build()
-                    .commit(pool);
-                let class = pool.enum_(idx).unwrap();
-                for (entry, &member) in enum_.iter().zip(&class.members) {
+                    .commit_as(pool, enum_idx);
+                let enum_ = pool.enum_(idx).unwrap();
+                for (entry, &member) in typ.iter().zip(&enum_.members) {
                     db.enum_members.insert(FieldId::new(id, entry.index), member);
                 }
             }
@@ -581,7 +669,7 @@ impl<'id> CompilationOutputs<'id> {
         let params = typ.params.iter().enumerate().map(|(i, param)| {
             ParamBuilder::builder()
                 .name(names::param(i))
-                .typ(param.typ.clone())
+                .typ(if param.is_poly { Type::Top } else { param.typ.clone() })
                 .flags(ParameterFlags::new().with_is_out(param.is_out))
                 .build()
         });
@@ -589,7 +677,7 @@ impl<'id> CompilationOutputs<'id> {
             .flags(FunctionFlags::new().with_is_static(is_static).with_is_final(is_static))
             .visibility(Visibility::Public)
             .name(signature.into_str())
-            .return_type(typ.ret.clone())
+            .return_type(if typ.is_ret_poly { Type::Top } else { typ.ret.clone() })
             .params(params)
             .build()
     }
@@ -793,12 +881,18 @@ struct Module<'id> {
 
 #[derive(Debug)]
 enum ModuleItem<'id> {
-    Class(TypeId<'id>, HashMap<Str, InferType<'id>>, Vec<CompileBody<'id>>),
+    Class(
+        TypeId<'id>,
+        Data<'id>,
+        HashMap<Str, InferType<'id>>,
+        Vec<CompileBody<'id>>,
+    ),
     Global(CompileBody<'id>),
 }
 
 #[derive(Debug)]
 struct CompileBody<'id> {
+    name: Str,
     index: OverloadIndex,
     env: HashMap<Str, InferType<'id>>,
     parameters: Vec<ParameterSource>,

@@ -85,15 +85,14 @@ pub struct EnumBuilder {
 }
 
 impl EnumBuilder {
-    pub fn commit(self, pool: &mut ConstantPool) -> PoolIndex<Enum> {
-        let id = pool.reserve();
+    pub fn commit_as(self, pool: &mut ConstantPool, idx: PoolIndex<Enum>) -> PoolIndex<Enum> {
         let name = pool.names.add(self.name);
         let members = self
             .members
             .into_iter()
             .map(|(name, val)| {
                 let name = pool.names.add(name);
-                pool.add_definition(Definition::enum_value(name, id, val))
+                pool.add_definition(Definition::enum_value(name, idx, val))
             })
             .collect_vec();
         let def = Enum {
@@ -102,8 +101,8 @@ impl EnumBuilder {
             members,
             unk1: false,
         };
-        pool.put_definition(id, Definition::enum_(name, def));
-        id
+        pool.put_definition(idx, Definition::enum_(name, def));
+        idx
     }
 }
 
@@ -278,7 +277,7 @@ impl TypeCache {
         pool: &mut ConstantPool,
     ) -> PoolIndex<PoolType> {
         if matches!(typ, Type::Var(_) | Type::Bottom | Type::Top)
-            || matches!(typ, Type::Data(data) if repo.get_type(data.id).and_then(DataType::as_class).is_some())
+            || matches!(typ, Type::Data(data) if matches!(repo.get_type(data.id), Some(DataType::Class(class)) if !class.is_struct))
         {
             let data = Type::Data(Parameterized::new(predef::REF, Rc::new([typ.clone()])));
             self.alloc_type_unwrapped(&data, repo, pool)

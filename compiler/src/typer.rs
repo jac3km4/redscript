@@ -15,7 +15,7 @@ use redscript::bytecode::Intrinsic;
 use redscript::Str;
 
 use crate::codegen::names;
-use crate::error::{CompileError, CompileResult, TypeError};
+use crate::error::{CompileError, CompileResult, TypeError, Unsupported};
 use crate::scoped_map::ScopedMap;
 use crate::type_repo::*;
 use crate::{visit_expr, IndexMap};
@@ -275,7 +275,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                         }
                     }
                     ([], DataType::Class(_)) => {}
-                    _ => return Err(CompileError::UnsupportedOperation(*span)),
+                    _ => return Err(CompileError::Unsupported(Unsupported::CustomClassConstructor, *span)),
                 };
                 let data = Data::new(id, type_args);
                 let typ = InferType::Mono(Mono::Data(data.clone()));
@@ -788,13 +788,22 @@ impl<'id> InferType<'id> {
     pub const fn data(data: Data<'id>) -> Self {
         Self::Mono(Mono::Data(data))
     }
+
     pub fn from_type(typ: &Type<'id>, vars: &Vars<'_, 'id>) -> Self {
+        Self::from_type_with(typ, vars, false)
+    }
+
+    pub fn from_type_with(typ: &Type<'id>, vars: &Vars<'_, 'id>, allow_undefined: bool) -> Self {
         match typ {
             Type::Bottom => Self::Mono(Mono::Bottom),
             Type::Top => Self::Mono(Mono::Top),
-            Type::Data(typ) => Self::Mono(Mono::Data(Data::from_type(typ, vars))),
+            Type::Data(typ) => Self::Mono(Mono::Data(Data::from_type_with(typ, vars, allow_undefined))),
             Type::Prim(prim) => Self::Mono(Mono::Prim(*prim)),
-            Type::Var(VarName::Named(var)) => vars.get(var).expect("unresolved var").clone(),
+            Type::Var(VarName::Named(var)) => vars
+                .get(var)
+                .cloned()
+                .or_else(|| allow_undefined.then(|| Self::Mono(Mono::Var(MonoVar::with_name(var.clone()).into()))))
+                .expect("unresolved var"),
             Type::Var(_) => unreachable!(),
         }
     }
@@ -905,7 +914,7 @@ impl<'id> InferType<'id> {
         rhs.constrain(self, type_repo)
     }
 
-    fn is_same_shape(&self, typ: &Type<'id>) -> bool {
+    pub fn is_same_shape(&self, typ: &Type<'id>) -> bool {
         match self {
             InferType::Mono(mono) => mono.is_same_shape(typ),
             InferType::Poly(poly) => {
@@ -1129,20 +1138,28 @@ impl<'id> Data<'id> {
         Self::new(predef::ARRAY, Rc::new([elem]))
     }
 
+    #[inline]
     fn from_type(typ: &Parameterized<'id>, vars: &Vars<'_, 'id>) -> Self {
+        Self::from_type_with(typ, vars, false)
+    }
+
+    fn from_type_with(typ: &Parameterized<'id>, vars: &Vars<'_, 'id>, allow_undefined: bool) -> Self {
         Self {
             id: typ.id,
-            args: typ.args.iter().map(|arg| InferType::from_type(arg, vars)).collect(),
+            args: typ
+                .args
+                .iter()
+                .map(|arg| InferType::from_type_with(arg, vars, allow_undefined))
+                .collect(),
         }
     }
 
-    fn instantiate_as(self, target: TypeId<'id>, type_repo: &TypeRepo<'id>) -> Option<Self> {
+    pub fn instantiate_as(self, target: TypeId<'id>, type_repo: &TypeRepo<'id>) -> Option<Self> {
         let mut cur = self;
         while cur.id != target {
             let class = type_repo.get_type(cur.id).expect("undefined type");
-            let base = class.base()?;
             let map = class.type_var_names().zip(cur.args.iter().cloned()).collect();
-            cur = Self::from_type(base, &map);
+            cur = Self::from_type(class.base()?, &map);
         }
         Some(cur)
     }
@@ -1250,6 +1267,15 @@ pub struct MonoVar<'id> {
 }
 
 impl<'id> MonoVar<'id> {
+    #[inline]
+    fn with_name(name: Str) -> Self {
+        Self {
+            name,
+            lower: Mono::Bottom,
+            upper: Mono::Top,
+        }
+    }
+
     fn from_type_var(var: &TypeVar<'id>, ctx: &Vars<'_, 'id>) -> Self {
         Self {
             name: var.name.clone(),

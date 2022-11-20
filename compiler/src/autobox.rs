@@ -13,19 +13,30 @@ use crate::visit_expr;
 pub struct Autobox<'ctx, 'id> {
     type_repo: &'ctx TypeRepo<'id>,
     boxed_locals: HashMap<Local, Boxable<'id>>,
+    poly_ret: Option<Boxable<'id>>,
 }
 
 impl<'ctx, 'id> Autobox<'ctx, 'id> {
     #[inline]
-    fn new(type_repo: &'ctx TypeRepo<'id>) -> Self {
+    fn new(
+        type_repo: &'ctx TypeRepo<'id>,
+        boxed_locals: HashMap<Local, Boxable<'id>>,
+        poly_ret: Option<Boxable<'id>>,
+    ) -> Self {
         Self {
             type_repo,
-            boxed_locals: HashMap::default(),
+            boxed_locals,
+            poly_ret,
         }
     }
 
-    pub fn run(seq: &mut Seq<CheckedAst<'id>>, type_repo: &'ctx TypeRepo<'id>) {
-        let mut this = Self::new(type_repo);
+    pub fn run(
+        seq: &mut Seq<CheckedAst<'id>>,
+        type_repo: &'ctx TypeRepo<'id>,
+        boxed_locals: HashMap<Local, Boxable<'id>>,
+        poly_ret: Option<Boxable<'id>>,
+    ) {
+        let mut this = Self::new(type_repo, boxed_locals, poly_ret);
         for expr in &mut seq.exprs {
             this.apply(expr);
         }
@@ -60,19 +71,23 @@ impl<'ctx, 'id> Autobox<'ctx, 'id> {
                     Callable::Global(gid) => &self.type_repo.get_global(gid).unwrap().typ,
                     Callable::Lambda => {
                         for (arg, typ) in args.iter_mut().zip(meta.arg_types.iter()) {
-                            self.try_box_expr(arg, typ, &Type::Top);
+                            self.try_box_expr(arg, typ);
                         }
                         let ret = meta.ret_type.clone();
-                        self.try_unbox_expr(expr, &Type::Top, &ret);
+                        self.try_unbox_expr(expr, &ret);
                         return;
                     }
                     Callable::Intrinsic(_) | Callable::Cast => return,
                 };
                 for (arg, param, typ) in izip!(args.iter_mut(), fn_type.params.iter(), meta.arg_types.iter()) {
-                    self.try_box_expr(arg, typ, &param.typ);
+                    if param.is_poly || requires_boxing(&param.typ, self.type_repo) {
+                        self.try_box_expr(arg, typ);
+                    }
                 }
-                let ret = meta.ret_type.clone();
-                self.try_unbox_expr(expr, &fn_type.ret, &ret);
+                if fn_type.is_ret_poly || requires_boxing(&fn_type.ret, self.type_repo) {
+                    let ret = meta.ret_type.clone();
+                    self.try_unbox_expr(expr, &ret);
+                }
             }
             Expr::Lambda(env, body, _) => {
                 for (&loc, typ) in &env.params {
@@ -86,25 +101,27 @@ impl<'ctx, 'id> Autobox<'ctx, 'id> {
                     }
                 }
                 self.apply(body);
-                self.try_box_expr(body, &env.ret_type, &Type::Top);
+                self.try_box_expr(body, &env.ret_type);
+            }
+            Expr::Return(Some(expr), _) => {
+                self.apply(expr);
+                if let Some(boxed) = &self.poly_ret {
+                    **expr = self.box_primitive(boxed, mem::take(expr));
+                }
             }
             _ => visit_expr!(self, apply, expr, mut),
         }
     }
 
-    fn try_box_expr(&self, expr: &mut Expr<CheckedAst<'id>>, from: &InferType<'id>, to: &Type<'id>) {
-        if requires_boxing(to, self.type_repo) {
-            if let Some(ty) = Boxable::from_infer_type(from, self.type_repo) {
-                *expr = self.box_primitive(&ty, mem::take(expr));
-            }
+    fn try_box_expr(&self, expr: &mut Expr<CheckedAst<'id>>, from: &InferType<'id>) {
+        if let Some(ty) = Boxable::from_infer_type(from, self.type_repo) {
+            *expr = self.box_primitive(&ty, mem::take(expr));
         }
     }
 
-    fn try_unbox_expr(&self, expr: &mut Expr<CheckedAst<'id>>, from: &Type<'id>, to: &InferType<'id>) {
-        if requires_boxing(from, self.type_repo) {
-            if let Some(ty) = Boxable::from_infer_type(to, self.type_repo) {
-                *expr = self.unbox_primitive(&ty, mem::take(expr));
-            }
+    fn try_unbox_expr(&self, expr: &mut Expr<CheckedAst<'id>>, to: &InferType<'id>) {
+        if let Some(ty) = Boxable::from_infer_type(to, self.type_repo) {
+            *expr = self.unbox_primitive(&ty, mem::take(expr));
         }
     }
 
@@ -198,7 +215,7 @@ impl<'ctx, 'id> Autobox<'ctx, 'id> {
 }
 
 #[derive(Debug, Clone)]
-enum Boxable<'id> {
+pub enum Boxable<'id> {
     Prim(Prim),
     Struct(TypeId<'id>),
     Enum(TypeId<'id>),
@@ -229,7 +246,7 @@ impl<'id> Boxable<'id> {
         }
     }
 
-    fn from_infer_type(typ: &InferType<'id>, repo: &TypeRepo<'id>) -> Option<Boxable<'id>> {
+    pub fn from_infer_type(typ: &InferType<'id>, repo: &TypeRepo<'id>) -> Option<Boxable<'id>> {
         match typ {
             InferType::Mono(mono) => Self::from_mono(mono, repo),
             InferType::Poly(poly) => Self::from_mono(poly.borrow().either_bound()?, repo),

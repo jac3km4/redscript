@@ -33,8 +33,8 @@ pub enum CompileError<'id> {
     CannotLookupMember(Span),
     #[error("import {} could not be resolved", .0.iter().format("."))]
     UnresolvedImport(Box<[Str]>, Span),
-    #[error("unsupported operation")]
-    UnsupportedOperation(Span),
+    #[error("unsupported operation: {0}")]
+    Unsupported(Unsupported, Span),
 }
 
 impl<'id> CompileError<'id> {
@@ -49,7 +49,7 @@ impl<'id> CompileError<'id> {
             | Self::ManyMatchingOverloads(_, span)
             | Self::CannotLookupMember(span)
             | Self::UnresolvedImport(_, span)
-            | Self::UnsupportedOperation(span) => *span,
+            | Self::Unsupported(_, span) => *span,
         }
     }
 
@@ -130,3 +130,11 @@ impl fmt::Display for DisplayError<'_, '_> {
 #[derive(Debug, Error)]
 #[error("syntax error, expected {0}")]
 pub struct ParseError(pub ExpectedSet, pub Span);
+
+#[derive(Debug, Error)]
+pub enum Unsupported {
+    #[error("calling a custom class constructor")]
+    CustomClassConstructor,
+    #[error("defining a non-static member on a struct")]
+    NonStaticStructMember,
+}

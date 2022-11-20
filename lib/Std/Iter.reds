@@ -52,7 +52,7 @@ class Range<A extends Integral> extends Iter<A> {
     let self = new Range();
     self.current = min;
     self.max = max;
-    // hacky solution, change this once overrides work correctly
+    // FIXME: hacky solution
     self.current.Decrement();
     return self;
   }
