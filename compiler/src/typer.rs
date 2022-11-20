@@ -127,7 +127,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
             Expr::Declare(name, typ, expr, span) => {
                 let (expr, typ) = match (typ, expr) {
                     (Some(ty), Some(expr)) => {
-                        let local_ty = self.env.resolve_infer_type(ty).with_span(*span)?;
+                        let local_ty = self.env.resolve_infer_type(ty, self.repo).with_span(*span)?;
                         let (mut expr, expr_ty) = self.typeck(expr, locals)?;
                         self.constrain(&mut expr, &expr_ty, &local_ty)?;
                         (Some(expr.into()), local_ty)
@@ -136,7 +136,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                         let (expr, expr_ty) = self.typeck(expr, locals)?;
                         (Some(expr.into()), expr_ty)
                     }
-                    (Some(ty), None) => (None, self.env.resolve_infer_type(ty).with_span(*span)?),
+                    (Some(ty), None) => (None, self.env.resolve_infer_type(ty, self.repo).with_span(*span)?),
                     (None, None) => (None, self.id_alloc.allocate_free_type()),
                 };
                 let info = self.id_alloc.allocate_local(typ.clone());
@@ -612,7 +612,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
             .chain(iter::repeat(None))
             .zip(lambda_params)
             .map(|(expected, param)| match (&param.typ, expected) {
-                (Some(typ), _) => self.env.resolve_infer_type(typ),
+                (Some(typ), _) => self.env.resolve_infer_type(typ, self.repo),
                 (_, Some(expected)) => Ok(expected.clone()),
                 (None, None) => Ok(self.id_alloc.allocate_free_type()),
             })
@@ -677,7 +677,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
         span: Span,
     ) -> CompileResult<'id, Inferred<'id>> {
         let target = match targs {
-            [name] => self.env.resolve_infer_type(name).with_span(span)?,
+            [name] => self.env.resolve_infer_type(name, self.repo).with_span(span)?,
             [] => self.id_alloc.allocate_free_type(),
             _ => return Err(TypeError::InvalidNumberOfTypeArgs(targs.len(), 1)).with_span(span),
         };
@@ -717,8 +717,10 @@ impl<'ctx, 'scope, 'id> TypeEnv<'ctx, 'scope, 'id> {
         }
     }
 
-    fn resolve_infer_type(&self, name: &TypeName) -> Result<InferType<'id>, TypeError<'id>> {
-        Ok(InferType::from_type(&self.resolve_type(name)?, self.vars))
+    fn resolve_infer_type(&self, name: &TypeName, repo: &TypeRepo<'id>) -> Result<InferType<'id>, TypeError<'id>> {
+        let ty = self.resolve_type(name)?;
+        ty.check_well_formed(repo)?;
+        Ok(InferType::from_type(&ty, self.vars))
     }
 
     pub fn resolve_type(&self, name: &TypeName) -> Result<Type<'id>, TypeError<'id>> {

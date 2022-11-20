@@ -165,7 +165,8 @@ impl<'ctx, 'id> Autobox<'ctx, 'id> {
             .statics
             .by_name(method)
             .exactly_one()
-            .unwrap_or_else(|_| todo!());
+            .ok()
+            .unwrap();
         Expr::Call(
             Expr::EMPTY.into(),
             Callable::Static(MethodId::new(boxed, method.index)).into(),

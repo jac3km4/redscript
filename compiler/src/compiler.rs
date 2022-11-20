@@ -529,7 +529,8 @@ impl<'id> Compiler<'id> {
                     .all(|(l, r)| l.is_same_shape(&r.typ))
             })
             .at_most_one()
-            .unwrap_or_else(|_| todo!())?;
+            .ok()
+            .unwrap()?;
         Some(MethodId::new(id, entry.index))
     }
 }

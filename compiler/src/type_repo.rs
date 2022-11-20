@@ -13,6 +13,7 @@ use simple_interner::Interned;
 use smallvec::SmallVec;
 use strum::{EnumString, IntoStaticStr};
 
+use crate::error::TypeError;
 use crate::IndexMap;
 
 #[derive(Debug)]
@@ -184,6 +185,15 @@ pub enum Type<'id> {
     Data(Parameterized<'id>),
     Prim(Prim),
     Var(VarName),
+}
+
+impl<'id> Type<'id> {
+    pub fn check_well_formed(&self, repo: &TypeRepo<'id>) -> Result<(), TypeError<'id>> {
+        match self {
+            Type::Data(data) => data.check_well_formed(repo),
+            _ => Ok(()),
+        }
+    }
 }
 
 impl fmt::Display for Type<'_> {
@@ -553,6 +563,15 @@ impl<'id> Parameterized<'id> {
     #[inline]
     pub fn without_args(id: TypeId<'id>) -> Self {
         Self { id, args: Rc::new([]) }
+    }
+
+    pub fn check_well_formed(&self, repo: &TypeRepo<'id>) -> Result<(), TypeError<'id>> {
+        let expected = repo.get_type(self.id).unwrap().type_vars();
+        if expected.len() == self.args.len() {
+            Ok(())
+        } else {
+            Err(TypeError::InvalidNumberOfTypeArgs(self.args.len(), expected.len()))
+        }
     }
 }
 
