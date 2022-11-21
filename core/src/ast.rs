@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 use std::fmt::{self, Debug, Display};
-use std::ops::{Add, Sub};
+use std::ops::{Add, Range, Sub};
 
 use derive_where::derive_where;
 use enum_as_inner::EnumAsInner;
@@ -283,7 +283,7 @@ where
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Display)]
 pub enum Literal {
     String,
     Name,
@@ -292,14 +292,20 @@ pub enum Literal {
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Pos(pub u32);
+pub struct Pos(pub usize);
+
+impl From<usize> for Pos {
+    fn from(value: usize) -> Self {
+        Pos(value)
+    }
+}
 
 impl Pos {
     pub const ZERO: Pos = Pos(0);
 
     #[inline]
     pub fn new(n: usize) -> Self {
-        Pos(n as u32)
+        Pos(n)
     }
 }
 
@@ -314,7 +320,7 @@ impl Add<usize> for Pos {
 
     #[inline]
     fn add(self, rhs: usize) -> Pos {
-        Pos(self.0 + rhs as u32)
+        Pos(self.0 + rhs)
     }
 }
 
@@ -323,14 +329,14 @@ impl Sub<usize> for Pos {
 
     #[inline]
     fn sub(self, rhs: usize) -> Pos {
-        Pos(self.0 - rhs as u32)
+        Pos(self.0 - rhs)
     }
 }
 
 impl From<Pos> for usize {
     #[inline]
     fn from(pos: Pos) -> Self {
-        pos.0 as usize
+        pos.0
     }
 }
 
@@ -340,11 +346,27 @@ pub struct Span {
     pub high: Pos,
 }
 
+impl From<Range<usize>> for Span {
+    fn from(value: Range<usize>) -> Self {
+        Span {
+            low: value.start.into(),
+            high: value.end.into(),
+        }
+    }
+}
+
 impl Span {
     pub const ZERO: Span = Span::new(Pos::ZERO, Pos::ZERO);
 
     pub const fn new(low: Pos, high: Pos) -> Self {
         Self { low, high }
+    }
+
+    pub fn with_len(low: usize, len: usize) -> Self {
+        Self {
+            low: Pos(low),
+            high: Pos(low + len),
+        }
     }
 
     pub fn merge(&self, other: Span) -> Span {

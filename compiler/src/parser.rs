@@ -110,7 +110,7 @@ pub enum Qualifier {
 }
 
 #[derive(Debug)]
-pub struct Qualifiers(Vec<Qualifier>);
+pub struct Qualifiers(pub Vec<Qualifier>);
 
 impl Qualifiers {
     pub fn visibility(&self) -> Option<Visibility> {
