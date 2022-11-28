@@ -36,7 +36,7 @@ abstract class Iter<A> {
     return state;
   }
 
-  final func Into<C extends Extendable<A>>(out sink: C) -> C {
+  final func Into<C extends Extendable<A>>(sink: C) -> C {
     while this.HasNext() {
       sink.Extend(this.Next());
     }

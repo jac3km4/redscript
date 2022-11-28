@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::rc::Rc;
 
 use itertools::Itertools;
@@ -10,9 +11,9 @@ use redscript::definition::{
 use redscript::Str;
 use smallvec::SmallVec;
 
-use self::builders::{ClassBuilder, FieldBuilder, FunctionBuilder, LocalBuilder, ParamBuilder, TypeCache};
+use crate::codegen::builders::{ClassBuilder, FieldBuilder, FunctionBuilder, LocalBuilder, ParamBuilder, TypeCache};
 use crate::compiler::CompilationDb;
-use crate::type_repo::{predef, GlobalId, Parameterized, Prim, ScopedName, Type, TypeId, TypeRepo};
+use crate::type_repo::{predef, GlobalId, Parameterized, Prim, RefType, ScopedName, Type, TypeId, TypeRepo};
 use crate::typer::{Callable, CheckedAst, Data, InferType, Local, Member};
 use crate::IndexMap;
 
@@ -146,7 +147,7 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
             Expr::Call(expr, cb, targs, args, meta, _) => match &*cb {
                 Callable::Static(mid) => {
                     let &idx = self.db.statics.get(mid).unwrap();
-                    self.emit_static_call(idx, args.into_vec(), pool, cache);
+                    self.emit_static_call(idx, args.into_vec(), &meta.arg_types, pool, cache);
                 }
                 Callable::Instance(mid) => {
                     let &idx = self.db.methods.get(mid).unwrap();
@@ -156,7 +157,7 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
                     self.emit(Instr::Context(exit_label));
                     self.assemble(*expr, pool, cache);
                     if flags.is_final() {
-                        self.emit_static_call(idx, args.into_vec(), pool, cache);
+                        self.emit_static_call(idx, args.into_vec(), &meta.arg_types, pool, cache);
                     } else {
                         self.emit_virtual_call(name, args.into_vec(), pool, cache);
                     }
@@ -171,7 +172,7 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
                 }
                 Callable::Global(gid) => {
                     let &idx = self.db.globals.get(gid).unwrap();
-                    self.emit_static_call(idx, args.into_vec(), pool, cache);
+                    self.emit_static_call(idx, args.into_vec(), &meta.arg_types, pool, cache);
                 }
                 &Callable::Intrinsic(op) => {
                     self.emit_intrinsic(op, &targs, pool, cache);
@@ -192,7 +193,7 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
                         })
                         .expect("cast not found");
                     let &idx = self.db.globals.get(&GlobalId::new(entry.index)).unwrap();
-                    self.emit_static_call(idx, args.into_vec(), pool, cache);
+                    self.emit_static_call(idx, args.into_vec(), &meta.arg_types, pool, cache);
                 }
             },
             Expr::Lambda(env, body, _) => {
@@ -226,7 +227,7 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
                     Self::closure(&params, &captures, idx).commit_with_base(base, self.repo, pool, cache);
                 let summoner = pool.class(parent_class).unwrap().methods[0];
                 Self::impl_summoner(parent_class, summoner, pool);
-                self.emit_static_call(summoner, args, pool, cache);
+                self.emit_static_call(summoner, args, &[], pool, cache);
 
                 let apply = pool.class(parent_class).unwrap().methods[1];
                 let param_indices = LocalIndices::new(
@@ -378,21 +379,33 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
         }
     }
 
-    fn emit_static_call<A: Assemble<'id>>(
+    fn emit_static_call<I, A>(
         &mut self,
         idx: PoolIndex<Function>,
-        args: impl IntoIterator<Item = A>,
+        args: I,
+        arg_types: &[InferType<'id>],
         pool: &mut ConstantPool,
         cache: &mut TypeCache,
-    ) {
+    ) where
+        I: IntoIterator<Item = A>,
+        for<'a> &'a I: IntoIterator<Item = &'a A>,
+        A: Assemble<'id>,
+    {
         let exit_label = self.new_label();
-        let invoke_flags = 0u16;
         let func = pool.function(idx).unwrap();
         let flags = func
             .parameters
             .iter()
             .map(|&p| pool.parameter(p).unwrap().flags)
             .collect_vec();
+
+        let mut invoke_flags = 0u16;
+        for (n, (arg, typ)) in args.borrow().into_iter().zip(arg_types).enumerate() {
+            let is_rvalue_ref = A::is_rvalue_ref(arg, typ);
+            if is_rvalue_ref {
+                invoke_flags |= 1 << n;
+            }
+        }
 
         self.emit(Instr::InvokeStatic(exit_label, 0, idx, invoke_flags));
         for (arg, flags) in args.into_iter().zip(flags) {
@@ -620,6 +633,7 @@ impl<'id, A> Default for LocalIndices<'id, A> {
 
 trait Assemble<'id> {
     fn assemble(self, gen: &mut CodeGen<'_, 'id>, pool: &mut ConstantPool, cache: &mut TypeCache);
+    fn is_rvalue_ref(&self, typ: &InferType<'id>) -> bool;
 }
 
 impl<'id> Assemble<'id> for Instr<Label> {
@@ -627,11 +641,35 @@ impl<'id> Assemble<'id> for Instr<Label> {
     fn assemble(self, gen: &mut CodeGen<'_, 'id>, _pool: &mut ConstantPool, _cache: &mut TypeCache) {
         gen.emit(self);
     }
+
+    fn is_rvalue_ref(&self, _typ: &InferType<'id>) -> bool {
+        false
+    }
 }
 
 impl<'id> Assemble<'id> for Expr<CheckedAst<'id>> {
     #[inline]
     fn assemble(self, gen: &mut CodeGen<'_, 'id>, pool: &mut ConstantPool, cache: &mut TypeCache) {
         gen.assemble(self, pool, cache);
+    }
+
+    fn is_rvalue_ref(&self, typ: &InferType<'id>) -> bool {
+        match (self, typ) {
+            (Expr::Call(_, intrinsic, _, args, _, _), _)
+                if matches!(**intrinsic, Callable::Intrinsic(Intrinsic::AsRef)) =>
+            {
+                is_rvalue(&args[0])
+            }
+            (_, typ) if matches!(typ.ref_type(), Some((RefType::Script, _))) => true,
+            _ => false,
+        }
+    }
+}
+
+fn is_rvalue(expr: &Expr<CheckedAst<'_>>) -> bool {
+    match expr {
+        Expr::Constant(_, _) | Expr::Ident(_, _) | Expr::This(_) | Expr::Super(_) => false,
+        Expr::Member(inner, _, _) | Expr::ArrayElem(inner, _, _, _) => is_rvalue(inner),
+        _ => true,
     }
 }

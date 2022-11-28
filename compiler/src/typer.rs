@@ -122,8 +122,6 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 };
                 Ok((Expr::Constant(val.clone(), *span), InferType::prim(prim)))
             }
-            Expr::ArrayLit(_, _, _) => todo!(),
-            Expr::InterpolatedString(_, _, _) => todo!(),
             Expr::Declare(name, typ, expr, span) => {
                 let (expr, typ) = match (typ, expr) {
                     (Some(ty), Some(expr)) => {
@@ -316,7 +314,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                     .try_collect()?;
                 let default = default
                     .as_ref()
-                    .map(|body| self.typeck_seq(&body, &mut locals.introduce_scope()));
+                    .map(|body| self.typeck_seq(body, &mut locals.introduce_scope()));
                 Ok((
                     Expr::Switch(scrutinee.into(), cases, default, scrutinee_type, *span),
                     InferType::UNIT,
@@ -378,9 +376,9 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                     .ok_or_else(|| CompileError::UnresolvedVar(Str::from_static("this"), *span))?;
                 Ok((Expr::Ident(loc.local, *span), loc.typ.clone()))
             }
-            Expr::Super(_) => unimplemented!(),
             Expr::Null(span) => Ok((Expr::Null(*span), self.id_alloc.allocate_free_type())),
-            Expr::Goto(_, _) => unreachable!(),
+            Expr::Super(_) => unimplemented!(),
+            Expr::Goto(_, _) | Expr::ArrayLit(_, _, _) | Expr::InterpolatedString(_, _, _) => unreachable!(),
         }
     }
 
@@ -1389,6 +1387,7 @@ impl<'ctx, 'id> Simplifier<'ctx, 'id> {
         match typ {
             InferType::Mono(mono) => self.simplify_mono(mono, variance),
             InferType::Poly(var) => {
+                let var = Var::rep(var.clone());
                 let var = var.borrow();
                 if let Some(res) = self.resolved.get(&var.id) {
                     res.clone()

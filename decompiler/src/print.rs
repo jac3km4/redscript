@@ -324,7 +324,7 @@ fn write_expr_nested<W: Write>(
         }
         Expr::Return(None, _) => write!(out, "return")?,
         Expr::Seq(exprs) => write_seq(out, exprs, verbose, depth)?,
-        Expr::Switch(expr, cases, default, _) => {
+        Expr::Switch(expr, cases, default, _, _) => {
             write!(out, "switch ")?;
             write_expr(out, expr, verbose, 0)?;
             writeln!(out, " {{")?;

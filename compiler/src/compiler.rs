@@ -24,6 +24,7 @@ use crate::parser::{
 };
 use crate::scoped_map::ScopedMap;
 use crate::source_map::Files;
+use crate::sugar::Desugar;
 use crate::type_repo::*;
 use crate::typer::*;
 use crate::{IndexMap, StringInterner};
@@ -502,7 +503,7 @@ impl<'id> Compiler<'id> {
 
     #[allow(clippy::too_many_arguments)]
     fn compile_function(
-        body: CompileBody<'id>,
+        mut body: CompileBody<'id>,
         typ: &FuncType<'id>,
         repo: &TypeRepo<'id>,
         types: &TypeScope<'_, 'id>,
@@ -533,6 +534,8 @@ impl<'id> Compiler<'id> {
         let ret = InferType::from_type(&typ.ret, &local_vars);
         let poly_ret = typ.is_ret_poly.then(|| Boxable::from_infer_type(&ret, repo)).flatten();
         let env = TypeEnv::new(types, &local_vars);
+
+        Desugar::run(&mut body.body);
         let mut seq = Typer::run(repo, names, env, &body.body, &mut locals, ret, reporter);
         Autobox::run(&mut seq, repo, boxed, poly_ret);
         (seq, params)

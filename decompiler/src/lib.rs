@@ -208,7 +208,7 @@ impl<'a> Decompiler<'a> {
             }
         }
 
-        Ok(Expr::Switch(Box::new(subject), cases, default, Span::ZERO))
+        Ok(Expr::Switch(Box::new(subject), cases, default, (), Span::ZERO))
     }
 
     fn consume(&mut self) -> Result<Expr<SourceAst>, Error> {

@@ -283,6 +283,13 @@ where
     }
 }
 
+impl<N: ExprKind> Default for Seq<N> {
+    #[inline]
+    fn default() -> Self {
+        Self::new(vec![])
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Literal {
     String,

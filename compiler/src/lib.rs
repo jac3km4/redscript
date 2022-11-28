@@ -8,6 +8,7 @@ pub mod error;
 pub mod parser;
 mod scoped_map;
 pub mod source_map;
+pub mod sugar;
 pub mod type_repo;
 pub mod typer;
 pub mod visit;
