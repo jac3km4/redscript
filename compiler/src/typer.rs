@@ -1083,11 +1083,11 @@ impl<'id> Mono<'id> {
             (Self::Bottom, _) | (_, Type::Top | Type::Var(_)) => true,
             (Self::Prim(lhs), Type::Prim(rhs)) => lhs == rhs,
             (Self::Data(lhs), Type::Data(rhs)) if lhs.id == rhs.id => true,
-            (Self::Data(lhs), Type::Data(rhs)) => {
-                match (lhs.id.ref_type(), &lhs.args[..], rhs.id.ref_type(), &rhs.args[..]) {
-                    (Some(_), [lhs], Some(_), [rhs]) => lhs.is_same_shape(rhs),
-                    (Some(_), [lhs], None, _) => lhs.is_same_shape(typ),
-                    (None, _, Some(_), [rhs]) => self.is_same_shape(rhs),
+            (lhs, Type::Data(rhs)) => {
+                match (lhs.ref_type(), rhs.id.ref_type(), &rhs.args[..]) {
+                    (Some((_, lhs)), Some(_), [rhs]) => lhs.is_same_shape(rhs),
+                    (Some((_, lhs)), None, _) => lhs.is_same_shape(typ),
+                    (None, Some(_), [rhs]) => self.is_same_shape(rhs),
                     _ => false,
                 }
             }
