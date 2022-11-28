@@ -6,6 +6,9 @@ class MapEntry<K, V> {
   let key: K;
   let value: V;
   let occupied: Bool;
+
+  public func ToTuple() -> Tuple<K, V> =
+    Tuple.New(this.key, this.value)
 }
 
 public class Map<K extends Hashable, V>
@@ -54,7 +57,44 @@ public class Map<K extends Hashable, V>
     this.Insert(k, f(this.Get(k)));
   }
 
-  final func Extend(elem: Tuple<K, V>) {
+  func Iter() -> Iter<Tuple<K, V>> =
+    MapIter.New(this)
+
+  func Extend(elem: Tuple<K, V>) {
     this.Insert(elem.first, elem.second);
+  }
+}
+
+public class MapIter<K, V> extends Iter<Tuple<K, V>> {
+  let map: Map<K, V>;
+  let bucket: Int32;
+  let item: Int32;
+
+  static func New(map: Map<K, V>) -> MapIter<K, V> {
+    let self = new MapIter();
+    self.map = map;
+    self.bucket = 0;
+    self.item = 0;
+    return self;
+  }
+
+  func HasNext() -> Bool {
+    while this.bucket < ArraySize(this.map.buckets) {
+        while this.item < ArraySize(this.map.buckets[this.bucket]) {
+            if this.map.buckets[this.bucket][this.item].occupied {
+                return true;
+            }
+            this.item += 1;
+        }
+        this.item = 0;
+        this.bucket += 1;
+    }
+    return false;
+  }
+
+  func Next() -> Tuple<K, V> {
+    let current = this.map.buckets[this.bucket][this.item].ToTuple();
+    this.item += 1;
+    return current;
   }
 }

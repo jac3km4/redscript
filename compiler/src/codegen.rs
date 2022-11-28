@@ -247,7 +247,7 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
                 pool.complete_function(apply, locals.into_vec(), code).unwrap();
             }
             Expr::Member(expr, member, _) => match member {
-                Member::Field(field) => {
+                Member::Field(field, _) => {
                     let dt = self.repo.get_type(field.owner()).unwrap().as_class().unwrap();
                     if dt.is_struct {
                         self.emit(Instr::StructField(*self.db.fields.get(&field).unwrap()));

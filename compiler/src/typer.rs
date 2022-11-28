@@ -232,9 +232,10 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 let spec = upper_bound.instantiate_as(id.owner(), self.repo).unwrap();
                 let data_type = self.repo.get_type(spec.id).unwrap();
                 let type_vars = data_type.type_var_names().zip(spec.args.iter().cloned()).collect();
+                let inferred = InferType::from_type(fty, &type_vars);
                 Ok((
-                    Expr::Member(expr.into(), Member::Field(id), *span),
-                    InferType::from_type(fty, &type_vars),
+                    Expr::Member(expr.into(), Member::Field(id, inferred.clone()), *span),
+                    inferred,
                 ))
             }
             Expr::ArrayElem(arr, idx, _, span) => {
@@ -779,7 +780,8 @@ pub enum InferType<'id> {
 }
 
 impl<'id> InferType<'id> {
-    const UNIT: Self = Self::prim(Prim::Unit);
+    pub const TOP: Self = Self::Mono(Mono::Top);
+    pub const UNIT: Self = Self::prim(Prim::Unit);
 
     #[inline]
     pub const fn prim(prim: Prim) -> Self {
@@ -1513,7 +1515,7 @@ pub enum Callable<'id> {
 
 #[derive(Debug)]
 pub enum Member<'id> {
-    Field(FieldId<'id>),
+    Field(FieldId<'id>, InferType<'id>),
     EnumMember(FieldId<'id>),
 }
 

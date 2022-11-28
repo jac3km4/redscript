@@ -6,7 +6,7 @@ use std::{fmt, iter};
 use enum_as_inner::EnumAsInner;
 use hashbrown::{HashMap, HashSet};
 use itertools::{Either, Itertools};
-use redscript::ast::Variance;
+use redscript::ast::{Span, Variance};
 use redscript::bytecode::Intrinsic;
 use redscript::{function_arity_from_str, str_fmt, Str, StrBuf};
 use simple_interner::Interned;
@@ -84,6 +84,10 @@ impl<'id> TypeRepo<'id> {
     pub fn get_global(&self, id: &GlobalId) -> Option<&Func<'id>> {
         let (_, res) = self.globals.get_overload(id.index)?;
         Some(res)
+    }
+
+    pub fn get_method_name(&self, id: &MethodId<'id>) -> Option<&Str> {
+        self.types.get(&id.owner)?.as_class()?.methods.get_name(id.index.0)
     }
 
     #[inline]
@@ -276,6 +280,7 @@ pub struct ClassType<'id> {
     pub statics: FuncMap<'id>,
     pub is_abstract: bool,
     pub is_struct: bool,
+    pub span: Option<Span>,
 }
 
 #[derive(Debug, Default)]
@@ -331,16 +336,16 @@ impl<'id, K: Eq + Hash> FuncMap<'id, K> {
         self.map.iter().enumerate().map(|(i, (k, _))| (k, FuncIndex(i)))
     }
 
-    pub fn add(&mut self, name: K, typ: FuncType<'id>, is_final: bool) -> OverloadIndex
+    pub fn add(&mut self, name: K, typ: FuncType<'id>, is_final: bool, is_implemented: bool) -> OverloadIndex
     where
         K: fmt::Display,
     {
         if is_final {
             let sig = FuncSignature::from_name_and_type(&name, &typ);
-            self.add_with_signature(name, sig, typ, is_final)
+            self.add_with_signature(name, sig, typ, is_final, is_implemented)
         } else {
             let sig = FuncSignature::new(str_fmt!("{}", name));
-            self.add_with_signature(name, sig, typ, is_final)
+            self.add_with_signature(name, sig, typ, is_final, is_implemented)
         }
     }
 
@@ -350,10 +355,13 @@ impl<'id, K: Eq + Hash> FuncMap<'id, K> {
         signature: FuncSignature,
         typ: FuncType<'id>,
         is_final: bool,
+        is_implemented: bool,
     ) -> OverloadIndex {
         let entry = self.map.entry(name);
         let x = FuncIndex(entry.index());
-        let (y, _) = entry.or_default().insert_full(signature, Func::new(typ, is_final));
+        let (y, _) = entry
+            .or_default()
+            .insert_full(signature, Func::new(typ, is_final, is_implemented));
         OverloadIndex(x, y)
     }
 
@@ -589,12 +597,17 @@ impl fmt::Display for Parameterized<'_> {
 pub struct Func<'id> {
     pub typ: FuncType<'id>,
     pub is_final: bool,
+    pub is_implemented: bool,
 }
 
 impl<'id> Func<'id> {
     #[inline]
-    pub fn new(typ: FuncType<'id>, is_final: bool) -> Self {
-        Self { typ, is_final }
+    pub fn new(typ: FuncType<'id>, is_final: bool, is_implemented: bool) -> Self {
+        Self {
+            typ,
+            is_final,
+            is_implemented,
+        }
     }
 }
 

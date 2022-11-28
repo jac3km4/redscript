@@ -4,7 +4,7 @@ use std::rc::Rc;
 use std::str::FromStr;
 
 use ahash::RandomState;
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 use itertools::{chain, Itertools};
 use redscript::ast::{Expr, Seq, SourceAst, Span};
 use redscript::bundle::{ConstantPool, PoolIndex};
@@ -240,6 +240,7 @@ impl<'id> Compiler<'id> {
                     statics: FuncMap::default(),
                     is_abstract: class.qualifiers.contain(Qualifier::Abstract),
                     is_struct,
+                    span: Some(class.span),
                 };
                 let mut methods = vec![];
                 let this = Data::new(type_id, this_args.into());
@@ -255,12 +256,18 @@ impl<'id> Compiler<'id> {
                                 ));
                             }
                             let is_final = is_static || method.decl.qualifiers.contain(Qualifier::Final);
+                            let is_native = method.decl.qualifiers.contain(Qualifier::Native);
                             let res = self.preprocess_function(&method, types, &type_vars);
                             let Some((env, typ)) = self.reporter.unwrap_err(res) else { continue };
                             let index = if is_static {
-                                data_type.statics.add(method.decl.name.clone(), typ, is_final)
+                                data_type.statics.add(method.decl.name.clone(), typ, is_final, true)
                             } else {
-                                data_type.methods.add(method.decl.name.clone(), typ, is_final)
+                                data_type.methods.add(
+                                    method.decl.name.clone(),
+                                    typ,
+                                    is_final,
+                                    method.body.is_some() || is_native,
+                                )
                             };
                             if let Some(body) = method.body {
                                 methods.push(CompileBody {
@@ -305,7 +312,11 @@ impl<'id> Compiler<'id> {
                         _ => {}
                     }
                 }
-                let index = self.repo.globals_mut().add(name, typ, true);
+                let is_native = func.decl.qualifiers.contain(Qualifier::Native);
+                let index = self
+                    .repo
+                    .globals_mut()
+                    .add(name, typ, true, func.body.is_some() || is_native);
                 let global = if let Ok(intrinsic) = Intrinsic::from_str(&func.decl.name) {
                     Global::Intrinsic(index.overload(), intrinsic)
                 } else {
@@ -368,48 +379,6 @@ impl<'id> Compiler<'id> {
             is_static: func.decl.qualifiers.contain(Qualifier::Static),
         };
         return Ok(ModuleItem::Global(body, Some(id)));
-    }
-
-    fn process_inheritance(&mut self) {
-        // resolve base methods, and promote overriden generic parameters into polymorphic ones
-        let mut base_found = HashMap::new();
-        for module in &self.compile_queue {
-            for item in &module.items {
-                let ModuleItem::Class(owner, this, _, funcs) = item else { continue };
-                for func in funcs {
-                    let &CompileBody { index, is_static, .. } = func;
-                    if is_static {
-                        continue;
-                    }
-                    let mid = MethodId::new(*owner, index);
-                    let method = self.repo.get_method(&mid).unwrap();
-                    let Some(base) = Self::get_base_method(*owner, &func.name, this, &method.typ, &self.repo) else { continue };
-                    base_found.insert(mid, base);
-                }
-            }
-        }
-
-        for (mid, base_id) in &base_found {
-            let mut to_box = vec![];
-            let method = self.repo.get_method(mid).unwrap();
-            let mut root = base_id;
-            while let Some(id) = base_found.get(root) {
-                root = id;
-            }
-            let base = self.repo.get_method(root).unwrap();
-            let ret_boxed = matches!(base.typ.ret, Type::Var(_)) && !matches!(method.typ.ret, Type::Var(_));
-            for (i, (l, r)) in base.typ.params.iter().zip(method.typ.params.iter()).enumerate() {
-                if matches!(l.typ, Type::Var(_)) && !matches!(r.typ, Type::Var(_)) {
-                    to_box.push(i);
-                }
-            }
-
-            let method = self.repo.get_method_mut(mid).unwrap();
-            method.typ.is_ret_poly = ret_boxed;
-            for i in to_box {
-                method.typ.params[i].is_poly = true;
-            }
-        }
     }
 
     fn process_queue(mut self, types: &TypeScope<'_, 'id>, names: &NameScope<'_, 'id>) -> CompilationOutputs<'id> {
@@ -569,6 +538,85 @@ impl<'id> Compiler<'id> {
         (seq, params)
     }
 
+    fn process_inheritance(&mut self) {
+        // resolve all base methods by type signatures
+        let mut method_to_base = HashMap::new();
+
+        for module in &self.compile_queue {
+            for item in &module.items {
+                let ModuleItem::Class(owner, this, _, funcs) = item else { continue };
+                for func in funcs {
+                    let &CompileBody { index, is_static, .. } = func;
+                    if is_static {
+                        continue;
+                    }
+                    let mid = MethodId::new(*owner, index);
+                    let method = self.repo.get_method(&mid).unwrap();
+                    let Some(base) = Self::get_base_method(*owner, &func.name, this, &method.typ, &self.repo) else { continue };
+                    method_to_base.insert(mid, base);
+                }
+            }
+        }
+
+        // sort classes by the number of types they extend
+        self.defined_types.sort_by_key(|typ| self.repo.upper_iter(*typ).count());
+
+        let mut unimplemented: HashMap<TypeId<'id>, HashSet<MethodId<'id>>> = HashMap::new();
+
+        // resolve all unimplemented virtual methods
+        for &typ in &self.defined_types {
+            let DataType::Class(class) = self.repo.get_type(typ).unwrap() else { continue };
+            let mut this_unimplemented = class
+                .extends
+                .as_ref()
+                .and_then(|base| unimplemented.get(&base.id))
+                .cloned()
+                .unwrap_or_default();
+
+            for entry in class.methods.iter() {
+                let mid = MethodId::new(typ, entry.index);
+                if !entry.function.is_implemented {
+                    this_unimplemented.insert(mid);
+                } else if let Some(base) = method_to_base.get(&mid) {
+                    this_unimplemented.remove(base);
+                }
+            }
+
+            if !class.is_abstract && !this_unimplemented.is_empty() {
+                for method in &this_unimplemented {
+                    let name = self.repo.get_method_name(method).unwrap();
+                    self.reporter
+                        .report(CompileError::UnimplementedMethod(name.clone(), class.span.unwrap()));
+                }
+            }
+
+            unimplemented.insert(typ, this_unimplemented);
+        }
+
+        // promote parameters with overriden generic parameters into polymorphic ones
+        for (mid, base_id) in &method_to_base {
+            let mut to_box = vec![];
+            let method = self.repo.get_method(mid).unwrap();
+            let mut root = base_id;
+            while let Some(id) = method_to_base.get(root) {
+                root = id;
+            }
+            let base = self.repo.get_method(root).unwrap();
+            let ret_boxed = matches!(base.typ.ret, Type::Var(_)) && !matches!(method.typ.ret, Type::Var(_));
+            for (i, (l, r)) in base.typ.params.iter().zip(method.typ.params.iter()).enumerate() {
+                if matches!(l.typ, Type::Var(_)) && !matches!(r.typ, Type::Var(_)) {
+                    to_box.push(i);
+                }
+            }
+
+            let method = self.repo.get_method_mut(mid).unwrap();
+            method.typ.is_ret_poly = ret_boxed;
+            for i in to_box {
+                method.typ.params[i].is_poly = true;
+            }
+        }
+    }
+
     fn get_base_method(
         owner: TypeId<'id>,
         name: &str,
@@ -613,10 +661,7 @@ pub struct CompilationOutputs<'id> {
 }
 
 impl<'id> CompilationOutputs<'id> {
-    pub fn commit(mut self, db: &mut CompilationDb<'id>, cache: &mut TypeCache, pool: &mut ConstantPool) {
-        self.defined_types
-            .sort_by_key(|typ| self.type_repo.upper_iter(*typ).count());
-
+    pub fn commit(self, db: &mut CompilationDb<'id>, cache: &mut TypeCache, pool: &mut ConstantPool) {
         for &item in &self.defined_types {
             match self.type_repo.get_type(item).unwrap() {
                 DataType::Class(_) => {
@@ -797,10 +842,16 @@ impl<'id> CompilationDb<'id> {
             let method = pool.function(pool_idx).unwrap();
             let (short_name, signature, ftyp) = CompilationDb::load_function(pool_idx, pool, interner);
             if method.flags.is_static() {
-                let index = statics.add_with_signature(short_name, signature, ftyp, true);
+                let index = statics.add_with_signature(short_name, signature, ftyp, true, true);
                 self.statics.insert(MethodId::new(owner, index), pool_idx);
             } else {
-                let index = methods.add_with_signature(short_name, signature, ftyp, method.flags.is_final());
+                let index = methods.add_with_signature(
+                    short_name,
+                    signature,
+                    ftyp,
+                    method.flags.is_final(),
+                    method.flags.has_body() || method.flags.is_native(),
+                );
                 self.methods.insert(MethodId::new(owner, index), pool_idx);
             }
         }
@@ -813,6 +864,7 @@ impl<'id> CompilationDb<'id> {
             statics,
             is_abstract: class.flags.is_abstract(),
             is_struct: class.flags.is_struct(),
+            span: None,
         }
     }
 
@@ -895,7 +947,7 @@ impl<'id> CompilationResources<'id> {
         let mut db = CompilationDb::default();
 
         for (idx, def) in pool.definitions() {
-            match def.value {
+            match &def.value {
                 AnyDefinition::Type(_) => {
                     let mangled = pool.names.get(def.name).unwrap();
                     type_cache.add(mangled, idx.cast());
@@ -906,11 +958,15 @@ impl<'id> CompilationResources<'id> {
                     let class = db.load_class(owner, idx.cast(), pool, interner);
                     type_repo.add_type(owner, DataType::Class(class));
                 }
-                AnyDefinition::Function(_) if def.parent.is_undefined() => {
+                AnyDefinition::Function(fun) if def.parent.is_undefined() => {
                     let (name, sig, ftyp) = CompilationDb::load_function(idx.cast(), pool, interner);
-                    let id = type_repo
-                        .globals_mut()
-                        .add_with_signature(ScopedName::top_level(name), sig, ftyp, true);
+                    let id = type_repo.globals_mut().add_with_signature(
+                        ScopedName::top_level(name),
+                        sig,
+                        ftyp,
+                        true,
+                        fun.flags.has_body() || fun.flags.is_native(),
+                    );
                     db.globals.insert(GlobalId::new(id), idx.cast());
                 }
                 AnyDefinition::Enum(_) => {

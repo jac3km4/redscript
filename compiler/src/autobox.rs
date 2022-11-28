@@ -52,12 +52,19 @@ impl<'ctx, 'id> Autobox<'ctx, 'id> {
             Expr::Assign(lhs, rhs, typ, _) => {
                 self.apply(rhs);
                 match (&**lhs, Boxable::from_infer_type(typ, self.type_repo)) {
-                    (Expr::Member(_, Member::Field(field), _), Some(prim))
+                    (Expr::Member(_, Member::Field(field, _), _), Some(prim))
                         if requires_boxing(self.type_repo.get_field(field).unwrap(), self.type_repo) =>
                     {
                         **rhs = self.box_primitive(&prim, mem::take(rhs));
                     }
                     _ => {}
+                }
+            }
+            Expr::Member(obj, Member::Field(field, typ), _) => {
+                self.apply(obj);
+                if requires_boxing(self.type_repo.get_field(field).unwrap(), self.type_repo) {
+                    let typ = typ.clone();
+                    self.try_unbox_expr(expr, &typ);
                 }
             }
             Expr::Call(called, cb, _, args, meta, _) => {
@@ -192,7 +199,11 @@ impl<'ctx, 'id> Autobox<'ctx, 'id> {
             .by_name("value")
             .unwrap();
         let span = expr.span();
-        let get_field = Expr::Member(expr.into(), Member::Field(FieldId::new(boxed, index)), span);
+        let get_field = Expr::Member(
+            expr.into(),
+            Member::Field(FieldId::new(boxed, index), InferType::TOP),
+            span,
+        );
         match boxable {
             Boxable::Prim(_) => get_field,
             &Boxable::Struct(typ) => Expr::Call(
