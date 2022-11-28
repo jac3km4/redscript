@@ -423,7 +423,7 @@ peg::parser! {
 
         rule switch() -> Expr<SourceAst>
             = pos:pos() keyword("switch") _ matcher:expr() _ "{" _ cases:(case() ** _) _ default:default()? _ "}" _ ";"? end:pos()
-            { Expr::Switch(Box::new(matcher), cases, default, Span::new(pos, end)) }
+            { Expr::Switch(Box::new(matcher), cases, default, (), Span::new(pos, end)) }
 
         rule case() -> SwitchCase<SourceAst>
             = keyword("case") _ matcher:expr() _ ":" _ body:seq()

@@ -30,7 +30,7 @@ where
     New(N::Class, Box<[Self]>, Span),
     Return(Option<Box<Self>>, Span),
     Seq(Seq<N>),
-    Switch(Box<Self>, Vec<SwitchCase<N>>, Option<Seq<N>>, Span),
+    Switch(Box<Self>, Vec<SwitchCase<N>>, Option<Seq<N>>, N::Inferred, Span),
     Goto(Target, Span),
     If(Box<Self>, Seq<N>, Option<Seq<N>>, Span),
     Conditional(Box<Self>, Box<Self>, Box<Self>, Span),
@@ -72,7 +72,7 @@ where
             | Expr::ArrayElem(_, _, _, span)
             | Expr::New(_, _, span)
             | Expr::Return(_, span)
-            | Expr::Switch(_, _, _, span)
+            | Expr::Switch(_, _, _, _, span)
             | Expr::Goto(_, span)
             | Expr::If(_, _, _, span)
             | Expr::Conditional(_, _, _, span)

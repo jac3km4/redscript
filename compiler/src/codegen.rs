@@ -294,7 +294,41 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
             Expr::Seq(seq) => {
                 self.assemble_seq(seq, pool, cache, exit);
             }
-            Expr::Switch(_, _, _, _) => todo!(),
+            Expr::Switch(scrutinee, cases, default, scrutinee_type, _) => {
+                let first_case_label = self.new_label();
+                let mut next_case_label = self.new_label();
+                let exit_label = self.new_label();
+
+                let scrutinee_type = cache.alloc_type(&scrutinee_type.simplify(self.repo), self.repo, pool);
+                self.emit(Instr::Switch(scrutinee_type, first_case_label));
+                self.assemble(*scrutinee, pool, cache);
+                self.emit_label(first_case_label);
+
+                let mut case_iter = cases.into_iter().peekable();
+                while case_iter.peek().is_some() {
+                    let body_label = self.new_label();
+
+                    for case in &mut case_iter {
+                        self.emit_label(next_case_label);
+                        next_case_label = self.new_label();
+                        self.emit(Instr::SwitchLabel(next_case_label, body_label));
+                        self.assemble(case.matcher, pool, cache);
+
+                        if !case.body.exprs.iter().all(Expr::is_empty) {
+                            self.emit_label(body_label);
+                            self.assemble_seq(case.body, pool, cache, Some(exit_label));
+                            break;
+                        }
+                    }
+                }
+                self.emit_label(next_case_label);
+
+                if let Some(body) = default {
+                    self.emit(Instr::SwitchDefault);
+                    self.assemble_seq(body, pool, cache, Some(exit_label));
+                }
+                self.emit_label(exit_label);
+            }
             Expr::If(condition, if_, else_, _) => {
                 let else_label = self.new_label();
                 self.emit(Instr::JumpIfFalse(else_label));

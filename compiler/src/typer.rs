@@ -9,7 +9,7 @@ use enum_as_inner::EnumAsInner;
 use hashbrown::{hash_map, HashMap, HashSet};
 use itertools::{izip, Itertools};
 use redscript::ast::{
-    Constant, Expr, ExprKind, Ident, Literal, Param, Seq, SourceAst, Span, TypeName, TypeParam, Variance
+    Constant, Expr, ExprKind, Ident, Literal, Param, Seq, SourceAst, Span, SwitchCase, TypeName, TypeParam, Variance
 };
 use redscript::bytecode::Intrinsic;
 use redscript::Str;
@@ -303,7 +303,25 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 Ok((Expr::Return(expr, *span), InferType::UNIT))
             }
             Expr::Seq(seq) => Ok((Expr::Seq(self.typeck_seq(seq, locals)), InferType::UNIT)),
-            Expr::Switch(_, _, _, _) => todo!(),
+            Expr::Switch(scrutinee, cases, default, _, span) => {
+                let (scrutinee, scrutinee_type) = self.typeck(scrutinee, locals)?;
+                let cases = cases
+                    .iter()
+                    .map(|case| {
+                        let (matcher, typ) = self.typeck(&case.matcher, locals)?;
+                        typ.constrain(&scrutinee_type, self.repo).with_span(*span)?;
+                        let body = self.typeck_seq(&case.body, &mut locals.introduce_scope());
+                        Ok(SwitchCase { matcher, body })
+                    })
+                    .try_collect()?;
+                let default = default
+                    .as_ref()
+                    .map(|body| self.typeck_seq(&body, &mut locals.introduce_scope()));
+                Ok((
+                    Expr::Switch(scrutinee.into(), cases, default, scrutinee_type, *span),
+                    InferType::UNIT,
+                ))
+            }
             Expr::If(cond, if_, else_, span) => {
                 let (cond, cond_type) = self.typeck(cond, locals)?;
                 cond_type
@@ -1083,14 +1101,12 @@ impl<'id> Mono<'id> {
             (Self::Bottom, _) | (_, Type::Top | Type::Var(_)) => true,
             (Self::Prim(lhs), Type::Prim(rhs)) => lhs == rhs,
             (Self::Data(lhs), Type::Data(rhs)) if lhs.id == rhs.id => true,
-            (lhs, Type::Data(rhs)) => {
-                match (lhs.ref_type(), rhs.id.ref_type(), &rhs.args[..]) {
-                    (Some((_, lhs)), Some(_), [rhs]) => lhs.is_same_shape(rhs),
-                    (Some((_, lhs)), None, _) => lhs.is_same_shape(typ),
-                    (None, Some(_), [rhs]) => self.is_same_shape(rhs),
-                    _ => false,
-                }
-            }
+            (lhs, Type::Data(rhs)) => match (lhs.ref_type(), rhs.id.ref_type(), &rhs.args[..]) {
+                (Some((_, lhs)), Some(_), [rhs]) => lhs.is_same_shape(rhs),
+                (Some((_, lhs)), None, _) => lhs.is_same_shape(typ),
+                (None, Some(_), [rhs]) => self.is_same_shape(rhs),
+                _ => false,
+            },
             _ => false,
         }
     }

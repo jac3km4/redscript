@@ -49,7 +49,7 @@ macro_rules! visit_expr {
             Expr::Seq(seq) => {
                 (&$($mut)? seq.exprs).into_iter().for_each(|e| $self.$fun(e));
             }
-            Expr::Switch(matched, cases, default, _) => {
+            Expr::Switch(matched, cases, default, _, _) => {
                 $self.$fun(matched);
                 for case in &$($mut)? cases[..] {
                     $self.$fun(&$($mut)? case.matcher);
