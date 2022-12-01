@@ -81,7 +81,11 @@ impl<'id> Compiler<'id> {
         }
 
         for (module, scope) in modules.into_iter().zip(scopes) {
-            let res = self.compile_module(module, types.push_scope(scope), &mut names);
+            let res = if module.path.is_empty() {
+                self.compile_module(module, types.push_scope(scope), &mut names)
+            } else {
+                self.compile_module(module, types.push_scope(scope), &mut names.introduce_scope())
+            };
             self.compile_queue.push(res);
         }
         self.process_inheritance();
