@@ -1,4 +1,4 @@
-import Std.{Hashable, Integral}
+import Std.{Integral, Primitive}
 
 // intrinsics
 public func Equals<A>(lhs: A, rhs: A) -> Bool;
@@ -97,6 +97,9 @@ public class BoxedInt8 extends Integral {
   public func Hash() -> Uint64 =
     TDBID.ToNumber(TDBID.Create(ToString(this.value)))
 
+  public func ToString() -> String =
+    ToString(this.value)
+
   public func Decrement() {
     this.value -= Cast<Int8>(1);
   }
@@ -124,6 +127,9 @@ public class BoxedInt16 extends Integral {
 
   public func Hash() -> Uint64 =
     TDBID.ToNumber(TDBID.Create(ToString(this.value)))
+
+  public func ToString() -> String =
+    ToString(this.value)
 
   public func Decrement() {
     this.value -= Cast<Int16>(1);
@@ -153,6 +159,9 @@ public class BoxedInt32 extends Integral {
   public func Hash() -> Uint64 =
     TDBID.ToNumber(TDBID.Create(ToString(this.value)))
 
+  public func ToString() -> String =
+    ToString(this.value)
+
   public func Decrement() {
     this.value -= 1;
   }
@@ -181,6 +190,9 @@ public class BoxedInt64 extends Integral {
   public func Hash() -> Uint64 =
     TDBID.ToNumber(TDBID.Create(ToString(this.value)))
 
+  public func ToString() -> String =
+    ToString(this.value)
+
   public func Decrement() {
     this.value -= Cast<Int64>(1);
   }
@@ -190,7 +202,7 @@ public class BoxedInt64 extends Integral {
   }
 }
 
-public class BoxedFloat {
+public class BoxedFloat extends Primitive {
   let value: Float;
 
   public static func New(value: Float) -> BoxedFloat {
@@ -208,9 +220,12 @@ public class BoxedFloat {
 
   public func Hash() -> Uint64 =
     TDBID.ToNumber(TDBID.Create(ToString(this.value)))
+
+  public func ToString() -> String =
+    ToString(this.value)
 }
 
-public class BoxedDouble {
+public class BoxedDouble extends Primitive {
   let value: Double;
 
   public static func New(value: Double) -> BoxedDouble {
@@ -228,6 +243,9 @@ public class BoxedDouble {
 
   public func Hash() -> Uint64 =
     TDBID.ToNumber(TDBID.Create(ToString(this.value)))
+
+  public func ToString() -> String =
+    ToString(this.value)
 }
 
 public class BoxedUint8 extends Integral {
@@ -248,6 +266,9 @@ public class BoxedUint8 extends Integral {
 
   public func Hash() -> Uint64 =
     TDBID.ToNumber(TDBID.Create(ToString(this.value)))
+
+  public func ToString() -> String =
+    ToString(this.value)
 
   public func Decrement() {
     this.value -= Cast<Uint8>(1);
@@ -277,6 +298,9 @@ public class BoxedUint16 extends Integral {
   public func Hash() -> Uint64 =
     TDBID.ToNumber(TDBID.Create(ToString(this.value)))
 
+  public func ToString() -> String =
+    ToString(this.value)
+
   public func Decrement() {
     this.value -= Cast<Uint16>(1);
   }
@@ -304,6 +328,9 @@ public class BoxedUint32 extends Integral {
 
   public func Hash() -> Uint64 =
     TDBID.ToNumber(TDBID.Create(ToString(this.value)))
+
+  public func ToString() -> String =
+    ToString(this.value)
 
   public func Decrement() {
     this.value -= Cast<Uint32>(1);
@@ -333,6 +360,9 @@ public class BoxedUint64 extends Integral {
   public func Hash() -> Uint64 =
     TDBID.ToNumber(TDBID.Create(ToString(this.value)))
 
+  public func ToString() -> String =
+    ToString(this.value)
+
   public func Decrement() {
     this.value -= Cast<Uint64>(1);
   }
@@ -342,7 +372,7 @@ public class BoxedUint64 extends Integral {
   }
 }
 
-class BoxedBool extends Hashable {
+class BoxedBool extends Primitive {
   private let value: Bool;
 
   public static func New(value: Bool) -> BoxedBool {
@@ -360,9 +390,12 @@ class BoxedBool extends Hashable {
 
   public func Hash() -> Uint64 =
     TDBID.ToNumber(TDBID.Create(ToString(this.value)))
+
+  public func ToString() -> String =
+    ToString(this.value)
 }
 
-class BoxedString extends Hashable {
+class BoxedString extends Primitive {
   let value: String;
 
   public static func New(value: String) -> BoxedString {
@@ -380,9 +413,12 @@ class BoxedString extends Hashable {
 
   public func Hash() -> Uint64 =
     TDBID.ToNumber(TDBID.Create(this.value))
+
+  public func ToString() -> String =
+    this.value
 }
 
-class BoxedCName extends Hashable {
+class BoxedCName extends Primitive {
   let value: CName;
 
   public static func New(value: CName) -> BoxedCName {
@@ -400,9 +436,12 @@ class BoxedCName extends Hashable {
 
   public func Hash() -> Uint64 =
     TDBID.ToNumber(TDBID.Create(NameToString(this.value)))
+
+  public func ToString() -> String =
+    ToString(this.value)
 }
 
-class BoxedTweakDBID extends Hashable {
+class BoxedTweakDBID extends Primitive {
   let value: TweakDBID;
 
   public static func New(value: TweakDBID) -> BoxedTweakDBID {
@@ -420,6 +459,9 @@ class BoxedTweakDBID extends Hashable {
 
   public func Hash() -> Uint64 =
     TDBID.ToNumber(this.value)
+
+  public func ToString() -> String =
+    ToString(this.value)
 }
 
 class BoxedVariant {
@@ -432,7 +474,7 @@ class BoxedVariant {
   }
 }
 
-class BoxedEnum extends Hashable {
+class BoxedEnum extends Primitive {
   let value: Int32;
 
   public static func FromIntRepr(value: Int32) -> BoxedEnum {
@@ -450,6 +492,9 @@ class BoxedEnum extends Hashable {
 
   public func Hash() -> Uint64 =
     TDBID.ToNumber(TDBID.Create(ToString(this.value)))
+
+  public func ToString() -> String =
+    ToString(this.value)
 }
 
 class BoxedStruct {
