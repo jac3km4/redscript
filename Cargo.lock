@@ -914,7 +914,7 @@ dependencies = [
 
 [[package]]
 name = "redscript"
-version = "0.6.0-M1"
+version = "0.6.0-M2"
 dependencies = [
  "byteorder",
  "crc32fast",
@@ -932,7 +932,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-cli"
-version = "0.6.0-M1"
+version = "0.6.0-M2"
 dependencies = [
  "fern",
  "gumdrop",
@@ -945,7 +945,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-compiler"
-version = "0.6.0-M1"
+version = "0.6.0-M2"
 dependencies = [
  "ahash",
  "enum-as-inner",
@@ -969,7 +969,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-decompiler"
-version = "0.6.0-M1"
+version = "0.6.0-M2"
 dependencies = [
  "hashbrown 0.13.1",
  "itertools",
@@ -1018,7 +1018,7 @@ dependencies = [
 
 [[package]]
 name = "scc"
-version = "0.6.0-M1"
+version = "0.6.0-M2"
 dependencies = [
  "byteorder",
  "fd-lock",
