@@ -230,7 +230,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 let spec = upper_bound.instantiate_as(id.owner(), self.repo).unwrap();
                 let data_type = self.repo.get_type(spec.id).unwrap();
                 let type_vars = data_type.type_var_names().zip(spec.args.iter().cloned()).collect();
-                let inferred = InferType::from_type(fty, &type_vars);
+                let inferred = InferType::from_type(&fty.typ, &type_vars);
                 Ok((
                     Expr::Member(expr.into(), Member::Field(id, inferred.clone()), *span),
                     inferred,
@@ -264,10 +264,10 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 let mut checked_args = vec![];
                 let mut arg_types = vec![];
                 match (&args[..], data_type) {
-                    (args, DataType::Class(class)) if class.is_struct => {
+                    (args, DataType::Class(class)) if class.flags.is_struct() => {
                         for (arg, field) in args.iter().zip(class.fields.iter()) {
                             let (mut arg, typ) = self.typeck(arg, locals)?;
-                            self.constrain(&mut arg, &typ, &InferType::from_type(field.typ, self.env.vars))?;
+                            self.constrain(&mut arg, &typ, &InferType::from_type(&field.field.typ, self.env.vars))?;
                             checked_args.push(arg);
                             arg_types.push(typ);
                         }

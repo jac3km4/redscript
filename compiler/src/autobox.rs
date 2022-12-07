@@ -53,7 +53,7 @@ impl<'ctx, 'id> Autobox<'ctx, 'id> {
                 self.apply(rhs);
                 match (&**lhs, Boxable::from_infer_type(typ, self.type_repo)) {
                     (Expr::Member(_, Member::Field(field, _), _), Some(prim))
-                        if requires_boxing(self.type_repo.get_field(field).unwrap(), self.type_repo) =>
+                        if requires_boxing(&self.type_repo.get_field(field).unwrap().typ, self.type_repo) =>
                     {
                         **rhs = self.box_primitive(&prim, mem::take(rhs));
                     }
@@ -62,7 +62,7 @@ impl<'ctx, 'id> Autobox<'ctx, 'id> {
             }
             Expr::Member(obj, Member::Field(field, typ), _) => {
                 self.apply(obj);
-                if requires_boxing(self.type_repo.get_field(field).unwrap(), self.type_repo) {
+                if requires_boxing(&self.type_repo.get_field(field).unwrap().typ, self.type_repo) {
                     let typ = typ.clone();
                     self.try_unbox_expr(expr, &typ);
                 }
@@ -244,7 +244,7 @@ impl<'id> Boxable<'id> {
 
     fn from_type_id(id: TypeId<'id>, repo: &TypeRepo<'id>) -> Option<Boxable<'id>> {
         match repo.get_type(id)? {
-            DataType::Class(class) if class.is_struct => Some(Boxable::Struct(id)),
+            DataType::Class(class) if class.flags.is_struct() => Some(Boxable::Struct(id)),
             DataType::Enum(_) => Some(Boxable::Enum(id)),
             _ => None,
         }
@@ -270,7 +270,7 @@ fn requires_boxing<'id>(typ: &Type<'id>, repo: &TypeRepo<'id>) -> bool {
     match typ {
         Type::Top | Type::Var(_) => true,
         Type::Data(data) => match repo.get_type(data.id).unwrap() {
-            DataType::Class(c) => !c.is_struct,
+            DataType::Class(c) => !c.flags.is_struct(),
             &DataType::Builtin { is_unboxed, .. } => !is_unboxed,
             &DataType::Enum(_) => false,
         },

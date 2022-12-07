@@ -640,7 +640,7 @@ impl Encode for ParameterFlags {
 }
 
 #[bitfield(bits = 16)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct ClassFlags {
     pub is_native: bool,
     pub is_abstract: bool,

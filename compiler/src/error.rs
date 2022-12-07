@@ -35,7 +35,7 @@ pub enum CompileError<'id> {
     UnresolvedImport(Box<[Str]>, Span),
     #[error("virtual method {0} must be implemented")]
     UnimplementedMethod(Str, Span),
-    #[error("unsupported operation: {0}")]
+    #[error("{0} is not supported")]
     Unsupported(Unsupported, Span),
 }
 
@@ -141,6 +141,14 @@ pub enum Unsupported {
     CustomClassConstructor,
     #[error("defining a non-static member on a struct")]
     NonStaticStructMember,
-    #[error("method replacement without a body")]
+    #[error("defining a method replacement without a body")]
     ReplacementWithoutBody,
+    #[error("defining a final method without a body")]
+    FinalWithoutBody,
+    #[error("defining a native method with a body")]
+    NativeWithBody,
+    #[error("extending a final class")]
+    ExtendingFinalClass,
+    #[error("defining a native member in a non-native type")]
+    NativeInNonNative,
 }

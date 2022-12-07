@@ -257,7 +257,7 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
             Expr::Member(expr, member, _) => match member {
                 Member::Field(field, _) => {
                     let dt = self.repo.get_type(field.owner()).unwrap().as_class().unwrap();
-                    if dt.is_struct {
+                    if dt.flags.is_struct() {
                         self.emit(Instr::StructField(*self.db.fields.get(&field).unwrap()));
                         self.assemble(*expr, pool, cache);
                     } else {
@@ -282,7 +282,7 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
             Expr::New(typ, args, _) => {
                 let class = self.repo.get_type(typ.id).unwrap().as_class().unwrap();
                 let &tt = self.db.classes.get(&typ.id).unwrap();
-                if class.is_struct {
+                if class.flags.is_struct() {
                     self.emit(Instr::Construct(args.len() as u8, tt));
                     for arg in args.into_vec() {
                         self.assemble(arg, pool, cache);

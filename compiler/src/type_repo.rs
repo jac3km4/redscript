@@ -8,6 +8,7 @@ use hashbrown::{HashMap, HashSet};
 use itertools::{Either, Itertools};
 use redscript::ast::{Span, Variance};
 use redscript::bytecode::Intrinsic;
+use redscript::definition::{ClassFlags, FieldFlags, FunctionFlags};
 use redscript::{function_arity_from_str, str_fmt, Str, StrBuf};
 use simple_interner::Interned;
 use smallvec::SmallVec;
@@ -58,7 +59,7 @@ impl<'id> TypeRepo<'id> {
         self.types.get(&id)
     }
 
-    pub fn get_field(&self, id: &FieldId<'id>) -> Option<&Type<'id>> {
+    pub fn get_field(&self, id: &FieldId<'id>) -> Option<&Field<'id>> {
         let (_, res) = self.types.get(&id.owner)?.as_class()?.fields.get(id.index)?;
         Some(res)
     }
@@ -284,13 +285,12 @@ impl<'id> DataType<'id> {
 
 #[derive(Debug, Default)]
 pub struct ClassType<'id> {
+    pub flags: ClassFlags,
     pub type_vars: Box<[TypeVar<'id>]>,
     pub extends: Option<Parameterized<'id>>,
     pub fields: FieldMap<'id>,
     pub methods: FuncMap<'id>,
     pub statics: FuncMap<'id>,
-    pub is_abstract: bool,
-    pub is_struct: bool,
     pub span: Option<Span>,
 }
 
@@ -347,16 +347,16 @@ impl<'id, K: Eq + Hash> FuncMap<'id, K> {
         self.map.iter().enumerate().map(|(i, (k, _))| (k, FuncIndex(i)))
     }
 
-    pub fn add(&mut self, name: K, typ: FuncType<'id>, is_final: bool, is_implemented: bool) -> OverloadIndex
+    pub fn add(&mut self, name: K, typ: FuncType<'id>, flags: FunctionFlags) -> OverloadIndex
     where
         K: fmt::Display,
     {
-        if is_final || self.map.contains_key(&name) {
+        if flags.is_final() || self.map.contains_key(&name) {
             let sig = FuncSignature::from_name_and_type(&name, &typ);
-            self.add_with_signature(name, sig, typ, is_final, is_implemented)
+            self.add_with_signature(name, sig, typ, flags)
         } else {
             let sig = FuncSignature::new(str_fmt!("{}", name));
-            self.add_with_signature(name, sig, typ, is_final, is_implemented)
+            self.add_with_signature(name, sig, typ, flags)
         }
     }
 
@@ -365,14 +365,11 @@ impl<'id, K: Eq + Hash> FuncMap<'id, K> {
         name: K,
         signature: FuncSignature,
         typ: FuncType<'id>,
-        is_final: bool,
-        is_implemented: bool,
+        flags: FunctionFlags,
     ) -> OverloadIndex {
         let entry = self.map.entry(name);
         let x = FuncIndex(entry.index());
-        let (y, _) = entry
-            .or_default()
-            .insert_full(signature, Func::new(typ, is_final, is_implemented));
+        let (y, _) = entry.or_default().insert_full(signature, Func::new(typ, flags));
         OverloadIndex(x, y)
     }
 
@@ -423,20 +420,20 @@ impl EnumType {
 
 #[derive(Debug, Default)]
 pub struct FieldMap<'id> {
-    map: IndexMap<Str, Type<'id>>,
+    map: IndexMap<Str, Field<'id>>,
 }
 
 impl<'id> FieldMap<'id> {
     #[inline]
-    pub fn by_name(&self, name: &str) -> Option<(FieldIndex, &Type<'id>)> {
-        let (index, _, typ) = self.map.get_full(name)?;
-        Some((FieldIndex(index), typ))
+    pub fn by_name(&self, name: &str) -> Option<(FieldIndex, &Field<'id>)> {
+        let (index, _, field) = self.map.get_full(name)?;
+        Some((FieldIndex(index), field))
     }
 
     #[inline]
-    pub fn get(&self, idx: FieldIndex) -> Option<(&str, &Type<'id>)> {
-        let (name, typ) = self.map.get_index(idx.0)?;
-        Some((name, typ))
+    pub fn get(&self, idx: FieldIndex) -> Option<(&str, &Field<'id>)> {
+        let (name, field) = self.map.get_index(idx.0)?;
+        Some((name, field))
     }
 
     #[inline]
@@ -448,8 +445,8 @@ impl<'id> FieldMap<'id> {
     }
 
     #[inline]
-    pub fn add(&mut self, name: Str, typ: Type<'id>) -> FieldIndex {
-        let (k, _) = self.map.insert_full(name, typ);
+    pub fn add(&mut self, name: Str, field: Field<'id>) -> FieldIndex {
+        let (k, _) = self.map.insert_full(name, field);
         FieldIndex(k)
     }
 }
@@ -507,13 +504,13 @@ impl<'repo, 'id> OverloadEntry<'repo, 'id> {
 pub struct FieldEntry<'repo, 'id> {
     pub index: FieldIndex,
     pub name: &'repo Str,
-    pub typ: &'repo Type<'id>,
+    pub field: &'repo Field<'id>,
 }
 
 impl<'repo, 'id> FieldEntry<'repo, 'id> {
     #[inline]
-    fn new(index: FieldIndex, name: &'repo Str, typ: &'repo Type<'id>) -> Self {
-        Self { index, name, typ }
+    fn new(index: FieldIndex, name: &'repo Str, field: &'repo Field<'id>) -> Self {
+        Self { index, name, field }
     }
 }
 
@@ -606,19 +603,18 @@ impl fmt::Display for Parameterized<'_> {
 
 #[derive(Debug)]
 pub struct Func<'id> {
+    pub flags: FunctionFlags,
     pub typ: FuncType<'id>,
-    pub is_final: bool,
-    pub is_implemented: bool,
 }
 
 impl<'id> Func<'id> {
     #[inline]
-    pub fn new(typ: FuncType<'id>, is_final: bool, is_implemented: bool) -> Self {
-        Self {
-            typ,
-            is_final,
-            is_implemented,
-        }
+    pub fn new(typ: FuncType<'id>, flags: FunctionFlags) -> Self {
+        Self { typ, flags }
+    }
+
+    pub fn is_implemented(&self) -> bool {
+        self.flags.has_body() || self.flags.is_native()
     }
 }
 
@@ -664,6 +660,19 @@ impl<'id> FuncParam<'id> {
             is_out,
             is_poly: false,
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct Field<'id> {
+    pub flags: FieldFlags,
+    pub typ: Type<'id>,
+}
+
+impl<'id> Field<'id> {
+    #[inline]
+    pub fn new(typ: Type<'id>, flags: FieldFlags) -> Self {
+        Self { typ, flags }
     }
 }
 

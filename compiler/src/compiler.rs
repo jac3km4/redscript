@@ -10,7 +10,7 @@ use redscript::ast::{Expr, Seq, SourceAst, Span};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::Intrinsic;
 use redscript::definition::{
-    AnyDefinition, Class as PoolClass, ClassFlags, Enum as PoolEnum, Field as PoolField, Function as PoolFunction, FunctionFlags, ParameterFlags, Type as PoolType, Visibility
+    AnyDefinition, Class as PoolClass, ClassFlags, Enum as PoolEnum, Field as PoolField, FieldFlags, Function as PoolFunction, FunctionFlags, ParameterFlags, Type as PoolType, Visibility
 };
 use redscript::Str;
 use sequence_trie::SequenceTrie;
@@ -20,7 +20,7 @@ use crate::codegen::builders::{ClassBuilder, EnumBuilder, FieldBuilder, Function
 use crate::codegen::{names, CodeGen, LocalIndices};
 use crate::error::{CompileError, CompileResult, ParseError, TypeError, Unsupported};
 use crate::parser::{
-    self, AnnotationKind, ClassSource, EnumSource, FunctionSource, Import, MemberSource, ModulePath, ParameterSource, Qualifier, SourceEntry, SourceModule
+    self, AnnotationKind, ClassSource, EnumSource, FunctionSource, Import, MemberSource, ModulePath, ParameterSource, Qualifier, Qualifiers, SourceEntry, SourceModule
 };
 use crate::scoped_map::ScopedMap;
 use crate::source_map::Files;
@@ -243,8 +243,7 @@ impl<'id> Compiler<'id> {
                     fields: FieldMap::default(),
                     methods: FuncMap::default(),
                     statics: FuncMap::default(),
-                    is_abstract: class.qualifiers.contain(Qualifier::Abstract),
-                    is_struct,
+                    flags: get_class_flags(&class.qualifiers).with_is_struct(is_struct),
                     span: Some(class.span),
                 };
                 let mut methods = vec![];
@@ -253,26 +252,16 @@ impl<'id> Compiler<'id> {
                 for member in class.members {
                     match member {
                         MemberSource::Method(method) => {
-                            let is_static = method.decl.qualifiers.contain(Qualifier::Static);
-                            if !is_static && is_struct {
-                                self.reporter.report(CompileError::Unsupported(
-                                    Unsupported::NonStaticStructMember,
-                                    method.decl.span,
-                                ));
-                            }
-                            let is_final = is_static || method.decl.qualifiers.contain(Qualifier::Final);
-                            let is_native = method.decl.qualifiers.contain(Qualifier::Native);
+                            let flags =
+                                get_function_flags(&method.decl.qualifiers).with_has_body(method.body.is_some());
+                            self.validate_method(data_type.flags, flags, method.decl.span);
+
                             let res = self.preprocess_function(&method, types, &type_vars);
                             let Some((env, typ)) = self.reporter.unwrap_err(res) else { continue };
-                            let index = if is_static {
-                                data_type.statics.add(method.decl.name.clone(), typ, is_final, true)
+                            let index = if flags.is_static() {
+                                data_type.statics.add(method.decl.name.clone(), typ, flags)
                             } else {
-                                data_type.methods.add(
-                                    method.decl.name.clone(),
-                                    typ,
-                                    is_final,
-                                    method.body.is_some() || is_native,
-                                )
+                                data_type.methods.add(method.decl.name.clone(), typ, flags)
                             };
                             if let Some(body) = method.body {
                                 methods.push(CompileBody {
@@ -281,15 +270,17 @@ impl<'id> Compiler<'id> {
                                     env,
                                     parameters: method.parameters,
                                     body,
-                                    is_static,
+                                    is_static: flags.is_static(),
                                 });
                             }
                         }
                         MemberSource::Field(field) => {
+                            let flags = get_field_flags(&field.declaration.qualifiers);
+                            self.validate_field(data_type.flags, flags, field.declaration.span);
                             let env = TypeEnv::new(types, &type_vars);
                             let res = env.resolve_type(&field.type_).with_span(field.declaration.span);
                             let Some(typ) = self.reporter.unwrap_err(res) else { continue };
-                            data_type.fields.add(field.declaration.name, typ);
+                            data_type.fields.add(field.declaration.name, Field::new(typ, flags));
                         }
                     }
                 }
@@ -305,6 +296,7 @@ impl<'id> Compiler<'id> {
                 Ok(None)
             }
             SourceEntry::Function(func) => {
+                let flags = get_function_flags(&func.decl.qualifiers);
                 let (env, typ) = self.preprocess_function(&func, types, &ScopedMap::default())?;
                 let name = ScopedName::new(func.decl.name.clone(), path.clone());
                 for ann in &func.decl.annotations {
@@ -317,11 +309,7 @@ impl<'id> Compiler<'id> {
                         _ => {}
                     }
                 }
-                let is_native = func.decl.qualifiers.contain(Qualifier::Native);
-                let index = self
-                    .repo
-                    .globals_mut()
-                    .add(name, typ, true, func.body.is_some() || is_native);
+                let index = self.repo.globals_mut().add(name, typ, flags);
                 let global = if let Ok(intrinsic) = Intrinsic::from_str(&func.decl.name) {
                     Global::Intrinsic(index.overload(), intrinsic)
                 } else {
@@ -347,6 +335,32 @@ impl<'id> Compiler<'id> {
                 Ok(res)
             }
             SourceEntry::GlobalLet(_) => todo!(),
+        }
+    }
+
+    fn validate_method(&mut self, type_flags: ClassFlags, method_flags: FunctionFlags, span: Span) {
+        if method_flags.is_native() && !type_flags.is_native() {
+            self.reporter
+                .report(CompileError::Unsupported(Unsupported::NativeInNonNative, span));
+        }
+        if !method_flags.is_static() && type_flags.is_struct() {
+            self.reporter
+                .report(CompileError::Unsupported(Unsupported::NonStaticStructMember, span));
+        }
+        if method_flags.is_final() && !method_flags.has_body() && !method_flags.is_native() {
+            self.reporter
+                .report(CompileError::Unsupported(Unsupported::FinalWithoutBody, span));
+        }
+        if method_flags.has_body() && method_flags.is_native() {
+            self.reporter
+                .report(CompileError::Unsupported(Unsupported::NativeWithBody, span));
+        }
+    }
+
+    fn validate_field(&mut self, type_flags: ClassFlags, field_flags: FieldFlags, span: Span) {
+        if field_flags.is_native() && !type_flags.is_native() {
+            self.reporter
+                .report(CompileError::Unsupported(Unsupported::NativeInNonNative, span));
         }
     }
 
@@ -552,6 +566,18 @@ impl<'id> Compiler<'id> {
         for module in &self.compile_queue {
             for item in &module.items {
                 let ModuleItem::Class(owner, this, _, funcs) = item else { continue };
+                let Some(base) = self
+                    .repo
+                    .get_type(*owner)
+                    .and_then(DataType::as_class)
+                    .and_then(|class| class.extends.as_ref())
+                    .and_then(|typ| self.repo.get_type(typ.id))
+                    .and_then(DataType::as_class) else { continue };
+                if let Some(span) = base.span.filter(|_| base.flags.is_final()) {
+                    self.reporter
+                        .report(CompileError::Unsupported(Unsupported::ExtendingFinalClass, span));
+                }
+
                 for func in funcs {
                     let &CompileBody { index, is_static, .. } = func;
                     if is_static {
@@ -582,14 +608,14 @@ impl<'id> Compiler<'id> {
 
             for entry in class.methods.iter() {
                 let mid = MethodId::new(typ, entry.index);
-                if !entry.function.is_implemented {
+                if !entry.function.is_implemented() {
                     this_unimplemented.insert(mid);
                 } else if let Some(base) = method_to_base.get(&mid) {
                     this_unimplemented.remove(base);
                 }
             }
 
-            if !class.is_abstract && !this_unimplemented.is_empty() {
+            if !class.flags.is_abstract() && !this_unimplemented.is_empty() {
                 for method in &this_unimplemented {
                     let name = self.repo.get_method_name(method).unwrap();
                     self.reporter
@@ -628,7 +654,7 @@ impl<'id> Compiler<'id> {
             .upper_iter(owner)
             .skip(1)
             .flat_map(|(type_id, class)| class.methods.by_name(name).map(move |res| (type_id, res)))
-            .filter(|(_, e)| e.function.typ.params.len() == typ.params.len())
+            .filter(|(_, e)| e.function.typ.params.len() == typ.params.len() && !e.function.flags.is_final())
             .filter(|(id, e)| {
                 let base = this.clone().instantiate_as(*id, repo).unwrap();
                 let vars = repo
@@ -726,7 +752,8 @@ impl<'id> CompilationOutputs<'id> {
                 let fields = class_type.fields.iter().map(|entry| {
                     FieldBuilder::builder()
                         .name(entry.name.clone())
-                        .typ(entry.typ.clone())
+                        .typ(entry.field.typ.clone())
+                        .flags(entry.field.flags)
                         .build()
                 });
                 let methods = chain!(
@@ -744,11 +771,7 @@ impl<'id> CompilationOutputs<'id> {
                     .name(id.as_str())
                     .fields(fields)
                     .methods(methods)
-                    .flags(
-                        ClassFlags::new()
-                            .with_is_abstract(class_type.is_abstract)
-                            .with_is_struct(class_type.is_struct),
-                    )
+                    .flags(class_type.flags)
                     .build()
                     .commit_as(class_idx, base.unwrap_or(PoolIndex::UNDEFINED), repo, pool, cache);
 
@@ -832,7 +855,7 @@ impl<'id> CompilationDb<'id> {
             let name = pool.def_name(idx).unwrap();
             let field = pool.field(idx).unwrap();
             let typ = CompilationDb::load_type(field.type_, pool, interner);
-            let index = fields.add(name.clone(), typ);
+            let index = fields.add(name.clone(), Field::new(typ, field.flags));
             self.fields.insert(FieldId::new(owner, index), idx);
         }
 
@@ -842,16 +865,10 @@ impl<'id> CompilationDb<'id> {
             let method = pool.function(pool_idx).unwrap();
             let (short_name, signature, ftyp) = CompilationDb::load_function(pool_idx, pool, interner);
             if method.flags.is_static() {
-                let index = statics.add_with_signature(short_name, signature, ftyp, true, true);
+                let index = statics.add_with_signature(short_name, signature, ftyp, method.flags);
                 self.statics.insert(MethodId::new(owner, index), pool_idx);
             } else {
-                let index = methods.add_with_signature(
-                    short_name,
-                    signature,
-                    ftyp,
-                    method.flags.is_final(),
-                    method.flags.has_body() || method.flags.is_native(),
-                );
+                let index = methods.add_with_signature(short_name, signature, ftyp, method.flags);
                 self.methods.insert(MethodId::new(owner, index), pool_idx);
             }
         }
@@ -867,8 +884,7 @@ impl<'id> CompilationDb<'id> {
             fields,
             methods,
             statics,
-            is_abstract: class.flags.is_abstract(),
-            is_struct: class.flags.is_struct(),
+            flags: class.flags,
             span: None,
         }
     }
@@ -965,13 +981,10 @@ impl<'id> CompilationResources<'id> {
                 }
                 AnyDefinition::Function(fun) if def.parent.is_undefined() => {
                     let (name, sig, ftyp) = CompilationDb::load_function(idx.cast(), pool, interner);
-                    let id = type_repo.globals_mut().add_with_signature(
-                        ScopedName::top_level(name),
-                        sig,
-                        ftyp,
-                        true,
-                        fun.flags.has_body() || fun.flags.is_native(),
-                    );
+                    let id =
+                        type_repo
+                            .globals_mut()
+                            .add_with_signature(ScopedName::top_level(name), sig, ftyp, fun.flags);
                     db.globals.insert(GlobalId::new(id), idx.cast());
                 }
                 AnyDefinition::Enum(_) => {
@@ -1070,4 +1083,29 @@ impl<'id> ModuleMap<'id> {
         self.map
             .insert_owned(typ.as_parts().map(Str::from), ImportItem::Type(typ));
     }
+}
+
+fn get_function_flags(qualifiers: &Qualifiers) -> FunctionFlags {
+    let is_static = qualifiers.contain(Qualifier::Static);
+    FunctionFlags::new()
+        .with_is_native(qualifiers.contain(Qualifier::Native))
+        .with_is_callback(qualifiers.contain(Qualifier::Callback))
+        .with_is_final(is_static || qualifiers.contain(Qualifier::Final))
+        .with_is_quest(qualifiers.contain(Qualifier::Quest))
+        .with_is_static(is_static)
+}
+
+fn get_class_flags(qualifiers: &Qualifiers) -> ClassFlags {
+    let is_import_only = qualifiers.contain(Qualifier::ImportOnly);
+    ClassFlags::new()
+        .with_is_native(is_import_only || qualifiers.contain(Qualifier::Native))
+        .with_is_import_only(is_import_only)
+        .with_is_abstract(qualifiers.contain(Qualifier::Abstract))
+        .with_is_final(qualifiers.contain(Qualifier::Final))
+}
+
+fn get_field_flags(qualifiers: &Qualifiers) -> FieldFlags {
+    FieldFlags::new()
+        .with_is_native(qualifiers.contain(Qualifier::Native))
+        .with_is_persistent(qualifiers.contain(Qualifier::Persistent))
 }

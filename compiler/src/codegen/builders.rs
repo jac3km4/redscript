@@ -277,7 +277,7 @@ impl TypeCache {
         pool: &mut ConstantPool,
     ) -> PoolIndex<PoolType> {
         if matches!(typ, Type::Var(_) | Type::Bottom | Type::Top)
-            || matches!(typ, Type::Data(data) if matches!(repo.get_type(data.id), Some(DataType::Class(class)) if !class.is_struct))
+            || matches!(typ, Type::Data(data) if matches!(repo.get_type(data.id), Some(DataType::Class(class)) if !class.flags.is_struct()))
         {
             let data = Type::Data(Parameterized::new(predef::REF, Rc::new([typ.clone()])));
             self.alloc_type_unwrapped(&data, repo, pool)
@@ -336,7 +336,9 @@ fn serialize_type<'id>(typ: &Type<'id>, repo: &TypeRepo<'id>, unwrapped: bool) -
             DataType::Builtin { .. } if !typ.args.is_empty() => {
                 Either::Right(str_fmt!("{}:{}", typ.id, serialize_type(&typ.args[0], repo, false)))
             }
-            DataType::Class(class) if !class.is_struct && !unwrapped => Either::Right(str_fmt!("ref:{}", typ.id)),
+            DataType::Class(class) if !class.flags.is_struct() && !unwrapped => {
+                Either::Right(str_fmt!("ref:{}", typ.id))
+            }
             _ => Either::Left(typ.id.as_str()),
         },
         Type::Prim(prim) => Either::Left(prim.into()),
