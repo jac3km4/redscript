@@ -4,8 +4,7 @@ on: push
 
 env:
   CARGO_TERM_COLOR: always
-  GIT_CLIFF_VERSION: 0.9.2
-  STAGING_DIR: ${{ github.workspace }}-staging
+  GIT_CLIFF_VERSION: 0.10.0
   ARCHIVE_NAME: redscript-${{ github.ref_name }}.zip
   CHANGELOG_FILE: ${{ github.workspace }}-CHANGES.md
 
@@ -18,19 +17,12 @@ jobs:
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+
       - run: cargo clippy
       - run: cargo test
-      - name: Build release artifact
-        run: cargo build --release --features mmap,popup
 
-      - name: Create the mod archive
-        run: |
-          mkdir ${{ env.STAGING_DIR }}
-          cp -r ./resources/mod/* ${{ env.STAGING_DIR }}/
-          mkdir -p ${{ env.STAGING_DIR }}/engine/tools
-          cp ./target/release/scc.exe ${{ env.STAGING_DIR }}/engine/tools/
-          cd ${{ env.STAGING_DIR }}
-          7z a -mx=9 -r ${{ env.ARCHIVE_NAME }} *
+      - name: Build and package the mod archive
+        run: .\resources\package.ps1 -stagingDir ${{ runner.temp }}/redscript-staging -archiveName ${{ env.ARCHIVE_NAME }}
 
       - name: Install git-cliff
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
@@ -51,7 +43,7 @@ jobs:
         with:
           body_path: ${{ env.CHANGELOG_FILE }}
           files: |
-            ${{ env.STAGING_DIR }}/${{ env.ARCHIVE_NAME }}
+            ${{ env.MOD_ARTIFACT_PATH }}
             ./target/release/redscript-cli.exe
           prerelease: ${{ contains(github.ref_name, '-RC') || contains(github.ref_name, '-M') }}
         env:
@@ -62,5 +54,5 @@ jobs:
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         with:
           path: |
-            ${{ env.STAGING_DIR }}/${{ env.ARCHIVE_NAME }}
+            ${{ env.MOD_ARTIFACT_PATH }}
             ./target/release/redscript-cli.exe
