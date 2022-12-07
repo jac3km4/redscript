@@ -155,6 +155,13 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
                     let flags = pool.function(idx).unwrap().flags;
                     let exit_label = self.new_label();
                     self.emit(Instr::Context(exit_label));
+
+                    if matches!(
+                        meta.this_type.as_ref().and_then(InferType::ref_type),
+                        Some((RefType::Weak, _))
+                    ) {
+                        self.emit(Instr::WeakRefToRef);
+                    }
                     self.assemble(*expr, pool, cache);
                     if flags.is_final() {
                         self.emit_static_call(idx, args.into_vec(), &meta.arg_types, pool, cache);

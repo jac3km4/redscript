@@ -68,12 +68,20 @@ impl<'id> TypeRepo<'id> {
         Some(res)
     }
 
-    pub fn get_method_mut(&mut self, id: &MethodId<'id>) -> Option<&mut Func<'id>> {
-        self.types
-            .get_mut(&id.owner)?
-            .as_class_mut()?
-            .methods
-            .get_overload_mut(id.index)
+    pub fn get_many_method_mut<const N: usize>(&mut self, ids: [&MethodId<'id>; N]) -> Option<[&mut Func<'id>; N]> {
+        let methods = self.types.get_many_mut(ids.map(|id| &id.owner))?;
+        let mut i = 0;
+        let res = methods.map(|el| {
+            let res = el
+                .as_class_mut()
+                .unwrap()
+                .methods
+                .get_overload_mut(ids[i].index)
+                .unwrap();
+            i += 1;
+            res
+        });
+        Some(res)
     }
 
     pub fn get_static(&self, id: &MethodId<'id>) -> Option<&Func<'id>> {
@@ -114,7 +122,10 @@ impl<'id> TypeRepo<'id> {
     }
 
     #[inline]
-    pub fn get_upper_types<A: FromIterator<TypeId<'id>>>(&self, id: TypeId<'id>) -> A {
+    pub fn get_upper_types<A>(&self, id: TypeId<'id>) -> A
+    where
+        A: FromIterator<TypeId<'id>>,
+    {
         self.upper_iter(id).map(|(id, _)| id).collect()
     }
 
@@ -340,7 +351,7 @@ impl<'id, K: Eq + Hash> FuncMap<'id, K> {
     where
         K: fmt::Display,
     {
-        if is_final {
+        if is_final || self.map.contains_key(&name) {
             let sig = FuncSignature::from_name_and_type(&name, &typ);
             self.add_with_signature(name, sig, typ, is_final, is_implemented)
         } else {

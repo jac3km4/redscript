@@ -602,24 +602,17 @@ impl<'id> Compiler<'id> {
 
         // promote parameters with overriden generic parameters into polymorphic ones
         for (mid, base_id) in &method_to_base {
-            let mut to_box = vec![];
-            let method = self.repo.get_method(mid).unwrap();
             let mut root = base_id;
             while let Some(id) = method_to_base.get(root) {
                 root = id;
             }
-            let base = self.repo.get_method(root).unwrap();
-            let ret_boxed = matches!(base.typ.ret, Type::Var(_)) && !matches!(method.typ.ret, Type::Var(_));
-            for (i, (l, r)) in base.typ.params.iter().zip(method.typ.params.iter()).enumerate() {
-                if matches!(l.typ, Type::Var(_)) && !matches!(r.typ, Type::Var(_)) {
-                    to_box.push(i);
-                }
-            }
+            let [method, base] = self.repo.get_many_method_mut([mid, root]).unwrap();
+            base.typ.is_ret_poly = matches!(base.typ.ret, Type::Var(_)) && !matches!(method.typ.ret, Type::Var(_));
 
-            let method = self.repo.get_method_mut(mid).unwrap();
-            method.typ.is_ret_poly = ret_boxed;
-            for i in to_box {
-                method.typ.params[i].is_poly = true;
+            for (l, r) in base.typ.params.iter().zip(method.typ.params.iter_mut()) {
+                if matches!(l.typ, Type::Var(_)) && !matches!(r.typ, Type::Var(_)) {
+                    r.is_poly = true;
+                }
             }
         }
     }
@@ -863,9 +856,14 @@ impl<'id> CompilationDb<'id> {
             }
         }
 
+        let base = class.base.is_undefined().not().then(|| {
+            let name = pool.def_name(class.base).unwrap();
+            Parameterized::without_args(get_type_id(&name, interner))
+        });
+
         ClassType {
             type_vars: [].into(),
-            extends: None,
+            extends: base,
             fields,
             methods,
             statics,

@@ -23,12 +23,12 @@ pub enum CompileError<'id> {
     UnresolvedMember(TypeId<'id>, Str, Span),
     #[error("function {0} not found")]
     UnresolvedFunction(Str, Span),
-    #[error("method not found")]
-    UnresolvedMethod(Span),
-    #[error("no matching overload, available options are:\n{}", .0.iter().format("\n"))]
-    NoMatchingOverload(Box<[OverloadOption]>, Span),
-    #[error("more than one matching overload, available options are:\n{}", .0.iter().format("\n"))]
-    ManyMatchingOverloads(Box<[OverloadOption]>, Span),
+    #[error("method {0} not found")]
+    UnresolvedMethod(Str, Span),
+    #[error("no matching overload for {0}, available options are:\n{}", .1.iter().format("\n"))]
+    NoMatchingOverload(Str, Box<[OverloadOption]>, Span),
+    #[error("more than one matching overload for {0}, available options are:\n{}", .1.iter().format("\n"))]
+    ManyMatchingOverloads(Str, Box<[OverloadOption]>, Span),
     #[error("insufficient type information available for member lookup")]
     CannotLookupMember(Span),
     #[error("import {} could not be resolved", .0.iter().format("."))]
@@ -46,9 +46,9 @@ impl<'id> CompileError<'id> {
             | Self::UnresolvedVar(_, span)
             | Self::UnresolvedMember(_, _, span)
             | Self::UnresolvedFunction(_, span)
-            | Self::UnresolvedMethod(span)
-            | Self::NoMatchingOverload(_, span)
-            | Self::ManyMatchingOverloads(_, span)
+            | Self::UnresolvedMethod(_, span)
+            | Self::NoMatchingOverload(_, _, span)
+            | Self::ManyMatchingOverloads(_, _, span)
             | Self::CannotLookupMember(span)
             | Self::UnresolvedImport(_, span)
             | Self::UnimplementedMethod(_, span)
@@ -62,6 +62,7 @@ impl<'id> CompileError<'id> {
     }
 
     pub(crate) fn for_overloads<'a>(
+        name: Str,
         matches: usize,
         candidates: impl IntoIterator<Item = &'a OverloadEntry<'a, 'id>>,
         span: Span,
@@ -78,9 +79,9 @@ impl<'id> CompileError<'id> {
             options.push(OverloadOption(option));
         }
         match (matches, options.len()) {
-            (_, 0) => Self::UnresolvedMethod(span),
-            (0, _) => Self::NoMatchingOverload(options.into(), span),
-            _ => Self::ManyMatchingOverloads(options.into(), span),
+            (_, 0) => Self::UnresolvedMethod(name, span),
+            (0, _) => Self::NoMatchingOverload(name, options.into(), span),
+            _ => Self::ManyMatchingOverloads(name, options.into(), span),
         }
     }
 }

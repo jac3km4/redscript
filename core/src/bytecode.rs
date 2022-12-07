@@ -916,15 +916,15 @@ pub struct Location {
 }
 
 impl Location {
-    pub const MAX: Location = Location::new(u16::MAX);
-    pub const ZERO: Location = Location::new(0);
+    pub const MAX: Self = Self::new(u16::MAX);
+    pub const ZERO: Self = Self::new(0);
 
-    pub const fn new(value: u16) -> Location {
-        Location { value }
+    pub const fn new(value: u16) -> Self {
+        Self { value }
     }
 
     #[inline]
-    pub fn relative(&self, base: Location) -> Offset {
+    pub fn relative(&self, base: Self) -> Offset {
         Offset::new(self.value as i16 - base.value as i16)
     }
 }
@@ -941,8 +941,8 @@ pub struct Offset {
 }
 
 impl Offset {
-    pub fn new(value: i16) -> Offset {
-        Offset { value }
+    pub fn new(value: i16) -> Self {
+        Self { value }
     }
 
     #[inline]
@@ -954,7 +954,7 @@ impl Offset {
 impl Decode for Offset {
     #[inline]
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
-        Ok(Offset::new(input.decode()?))
+        Ok(Self::new(input.decode()?))
     }
 }
 

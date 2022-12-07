@@ -168,11 +168,11 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 Ok((Expr::Assign(place.into(), expr.into(), expr_ty, *span), InferType::UNIT))
             }
             Expr::Call(expr, _, targs, args, _, span) => match &**expr {
-                Expr::Member(expr, name, span) => self.check_overload(expr, name, args, locals, *span),
+                Expr::Member(expr, name, span) => self.check_overload(expr, name.clone(), args, locals, *span),
                 Expr::Ident(name, span) if name.as_str() == "Cast" => self.check_cast(args, targs, locals, *span),
                 Expr::Ident(name, span) if locals.get(name).is_none() => {
                     if let Some(matches) = self.names.get(name) {
-                        return self.check_global(matches, &args[..], locals, *span);
+                        return self.check_global(name.clone(), matches, &args[..], locals, *span);
                     }
                     return Err(CompileError::UnresolvedVar(name.clone(), *span));
                 }
@@ -266,9 +266,8 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 match (&args[..], data_type) {
                     (args, DataType::Class(class)) if class.is_struct => {
                         for (arg, field) in args.iter().zip(class.fields.iter()) {
-                            let (arg, typ) = self.typeck(arg, locals)?;
-                            typ.constrain(&InferType::from_type(field.typ, self.env.vars), self.repo)
-                                .with_span(*span)?;
+                            let (mut arg, typ) = self.typeck(arg, locals)?;
+                            self.constrain(&mut arg, &typ, &InferType::from_type(field.typ, self.env.vars))?;
                             checked_args.push(arg);
                             arg_types.push(typ);
                         }
@@ -354,20 +353,20 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
             }
             Expr::ForIn(_, _, _, _) => todo!(),
             Expr::BinOp(lhs, rhs, op, span) => {
-                let name = <&str>::from(op);
+                let name = Str::from_static(<&str>::from(op));
                 let matches = self
                     .names
-                    .get(name)
-                    .ok_or_else(|| CompileError::UnresolvedFunction(Str::from_static(name), *span))?;
-                self.check_global(matches, [&**lhs, &**rhs], locals, *span)
+                    .get(&name)
+                    .ok_or_else(|| CompileError::UnresolvedFunction(name.clone(), *span))?;
+                self.check_global(name, matches, [&**lhs, &**rhs], locals, *span)
             }
             Expr::UnOp(expr, op, span) => {
-                let name = <&str>::from(op);
+                let name = Str::from_static(<&str>::from(op));
                 let matches = self
                     .names
-                    .get(name)
-                    .ok_or_else(|| CompileError::UnresolvedFunction(Str::from_static(name), *span))?;
-                self.check_global(matches, Some(&**expr), locals, *span)
+                    .get(&name)
+                    .ok_or_else(|| CompileError::UnresolvedFunction(name.clone(), *span))?;
+                self.check_global(name, matches, Some(&**expr), locals, *span)
             }
             &Expr::Break(span) => Ok((Expr::Break(span), InferType::UNIT)),
             Expr::This(span) => {
@@ -384,6 +383,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
 
     fn check_global<'a>(
         &mut self,
+        name: Str,
         overloads: &[Global],
         args: impl IntoIterator<IntoIter = impl ExactSizeIterator<Item = &'a Expr<SourceAst>>>,
         locals: &mut LocalMap<'_, 'id>,
@@ -430,7 +430,9 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                             .all(|(it, par)| it.is_same_shape(&par.typ))
                     })
                     .exactly_one()
-                    .map_err(|m| CompileError::for_overloads(m.count(), candidates.iter().map(|(_, e)| e), span))?;
+                    .map_err(|m| {
+                        CompileError::for_overloads(name, m.count(), candidates.iter().map(|(_, e)| e), span)
+                    })?;
                 for var in entry.function.typ.type_vars.iter() {
                     let typ = InferType::from_var_poly(var, &type_vars, &mut self.id_alloc);
                     type_vars.insert(var.name.clone(), typ);
@@ -462,16 +464,16 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
     fn check_overload(
         &mut self,
         expr: &Expr<SourceAst>,
-        member_name: &str,
+        name: Str,
         args: &[Expr<SourceAst>],
         locals: &mut LocalMap<'_, 'id>,
         span: Span,
     ) -> CompileResult<'id, Inferred<'id>> {
-        let (expr, upper_bound) = if let Some(Type::Data(data)) = expr
+        let (expr, upper_bound, this) = if let Some(Type::Data(data)) = expr
             .as_ident()
             .and_then(|(name, _)| self.env.resolve_type(&TypeName::without_args(name.clone())).ok())
         {
-            (None, Data::from_type(&data, self.env.vars))
+            (None, Data::from_type(&data, self.env.vars), None)
         } else {
             let (expr, expr_type) = self.typeck(expr, locals)?;
             (
@@ -479,13 +481,14 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 expr_type
                     .known_upper_bound(self.repo)
                     .ok_or(CompileError::CannotLookupMember(span))?,
+                Some(expr_type),
             )
         };
 
         let candidates = if expr.is_some() {
-            self.repo.resolve_methods(upper_bound.id, member_name).collect_vec()
+            self.repo.resolve_methods(upper_bound.id, &name).collect_vec()
         } else {
-            self.repo.resolve_statics(upper_bound.id, member_name).collect_vec()
+            self.repo.resolve_statics(upper_bound.id, &name).collect_vec()
         };
 
         let mut checked_args = Vec::with_capacity(args.len());
@@ -545,7 +548,12 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                     })
                     .exactly_one()
                     .map_err(|matches| {
-                        CompileError::for_overloads(matches.count(), candidates.iter().map(|(_, e)| e), span)
+                        CompileError::for_overloads(
+                            name.clone(),
+                            matches.count(),
+                            candidates.iter().map(|(_, e)| e),
+                            span,
+                        )
                     })?;
                 let data_type = self.repo.get_type(*owner).unwrap();
                 if expr.is_none() && upper_bound.args.is_empty() {
@@ -572,7 +580,12 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
             }
         }
         let ret = InferType::from_type(&entry.function.typ.ret, &type_vars);
-        let meta = CallMetadata::new(arg_types, ret.clone()).into();
+        let meta = CallMetadata {
+            arg_types: arg_types.into(),
+            ret_type: ret.clone(),
+            this_type: this,
+        }
+        .into();
         let expr = if let Some(expr) = expr {
             let call = Callable::Instance(MethodId::new(*owner, entry.index));
             Expr::Call(expr.into(), call.into(), [].into(), checked_args.into(), meta, span)
@@ -596,6 +609,14 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
         rhs: &InferType<'id>,
     ) -> CompileResult<'id, ()> {
         let span = expr.span();
+        if let (Some((cons, span)), &InferType::Mono(Mono::Prim(from)), &InferType::Mono(Mono::Prim(to))) =
+            (expr.as_constant_mut(), lhs, rhs)
+        {
+            if from == to || Self::adapt_constant(cons, to) {
+                return Ok(());
+            }
+            return Err(TypeError::Mismatch(Mono::Prim(from), Mono::Prim(to))).with_span(*span);
+        }
         let op = match lhs.constrain_top(rhs, self.repo).with_span(span)? {
             Some(Convert::From(RefType::Weak)) => Intrinsic::WeakRefToRef,
             Some(Convert::Into(RefType::Weak)) => Intrinsic::RefToWeakRef,
@@ -612,6 +633,22 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
             span,
         );
         Ok(())
+    }
+
+    fn adapt_constant(val: &mut Constant, to: Prim) -> bool {
+        let replacement = match (&*val, to) {
+            (&Constant::I32(i), Prim::Float) => Constant::F32(i as f32),
+            (&Constant::I64(i), Prim::Float) => Constant::F32(i as f32),
+            (&Constant::U32(i), Prim::Float) => Constant::F32(i as f32),
+            (&Constant::U64(i), Prim::Float) => Constant::F32(i as f32),
+            (&Constant::I32(i), Prim::Double) => Constant::F64(i as f64),
+            (&Constant::I64(i), Prim::Double) => Constant::F64(i as f64),
+            (&Constant::U32(i), Prim::Double) => Constant::F64(i as f64),
+            (&Constant::U64(i), Prim::Double) => Constant::F64(i as f64),
+            _ => return false,
+        };
+        *val = replacement;
+        true
     }
 
     fn check_lambda(
@@ -1182,7 +1219,7 @@ impl<'id> Data<'id> {
         Some(cur)
     }
 
-    fn ref_type(&self) -> Option<(RefType, InferType<'id>)> {
+    pub fn ref_type(&self) -> Option<(RefType, InferType<'id>)> {
         let tp = self.id.ref_type()?;
         Some((tp, self.args.first()?.clone()))
     }
@@ -1480,6 +1517,7 @@ pub struct ClosureEnv<'id> {
 pub struct CallMetadata<'id> {
     pub arg_types: Box<[InferType<'id>]>,
     pub ret_type: InferType<'id>,
+    pub this_type: Option<InferType<'id>>,
 }
 
 impl<'id> CallMetadata<'id> {
@@ -1488,6 +1526,7 @@ impl<'id> CallMetadata<'id> {
         Self {
             arg_types: arg_types.into(),
             ret_type,
+            this_type: None,
         }
     }
 
@@ -1495,6 +1534,7 @@ impl<'id> CallMetadata<'id> {
         Self {
             arg_types: [].into(),
             ret_type: InferType::UNIT,
+            this_type: None,
         }
     }
 }
