@@ -64,7 +64,7 @@ fn main() -> ExitCode {
                 if !expected_bundle_path.exists() {
                     let base = get_base_bundle_path(&default_cache_dir);
                     fs::create_dir_all(&cache_dir).expect("Could not create the custom cache directory");
-                    fs::copy(&base, expected_bundle_path).expect("Could not copy base bundle");
+                    fs::copy(base, expected_bundle_path).expect("Could not copy base bundle");
                 }
                 (cache_dir, Some(default_cache_dir))
             }
@@ -141,7 +141,7 @@ fn compile_scripts(cache_dir: &Path, fallback_cache_dir: Option<&Path>, files: &
             .read(true)
             .write(true)
             .create(true)
-            .open(&timestamp_path)?,
+            .open(timestamp_path)?,
     );
     let mut ts_file = ts_lock.write()?;
 
@@ -247,7 +247,7 @@ struct ScriptManifest {
 impl ScriptManifest {
     pub fn load(script_dir: &Path) -> Result<Self, String> {
         let path = script_dir.join("redscript.toml");
-        let contents = fs::read_to_string(&path).map_err(|err| match err.kind() {
+        let contents = fs::read_to_string(path).map_err(|err| match err.kind() {
             io::ErrorKind::NotFound => "manifest not available".to_owned(),
             _ => err.to_string(),
         })?;
