@@ -286,7 +286,7 @@ impl<'id> Compiler<'id> {
                 }
                 self.repo.add_type(type_id, DataType::Class(data_type));
                 self.defined_types.push(type_id);
-                Ok(Some(ModuleItem::Class(type_id, this, type_vars.pop_scope(), methods)))
+                Ok(Some(ModuleItem::Class(this, type_vars.pop_scope(), methods)))
             }
             SourceEntry::Enum(enum_) => {
                 let type_id = generate_type_id(&enum_.name, path, self.interner);
@@ -299,6 +299,7 @@ impl<'id> Compiler<'id> {
                 let flags = get_function_flags(&func.decl.qualifiers);
                 let (env, typ) = self.preprocess_function(&func, types, &ScopedMap::default())?;
                 let name = ScopedName::new(func.decl.name.clone(), path.clone());
+
                 for ann in &func.decl.annotations {
                     #[allow(clippy::single_match)]
                     match (&ann.kind, &ann.args[..]) {
@@ -408,11 +409,11 @@ impl<'id> Compiler<'id> {
             let names = names.push_scope(module.names);
             for item in module.items {
                 match item {
-                    ModuleItem::Class(owner, this, env, funcs) => {
+                    ModuleItem::Class(this, env, funcs) => {
                         let type_vars = ScopedMap::Tail(env);
                         for func in funcs {
                             let CompileBody { index, is_static, .. } = func;
-                            let mid = MethodId::new(owner, index);
+                            let mid = MethodId::new(this.id, index);
                             let method = if is_static {
                                 self.repo.get_static(&mid).unwrap()
                             } else {
@@ -565,10 +566,10 @@ impl<'id> Compiler<'id> {
 
         for module in &self.compile_queue {
             for item in &module.items {
-                let ModuleItem::Class(owner, this, _, funcs) = item else { continue };
+                let ModuleItem::Class(this, _, funcs) = item else { continue };
                 let Some(base) = self
                     .repo
-                    .get_type(*owner)
+                    .get_type(this.id)
                     .and_then(DataType::as_class)
                     .and_then(|class| class.extends.as_ref())
                     .and_then(|typ| self.repo.get_type(typ.id))
@@ -583,9 +584,9 @@ impl<'id> Compiler<'id> {
                     if is_static {
                         continue;
                     }
-                    let mid = MethodId::new(*owner, index);
+                    let mid = MethodId::new(this.id, index);
                     let method = self.repo.get_method(&mid).unwrap();
-                    let Some(base) = Self::get_base_method(*owner, &func.name, this, &method.typ, &self.repo) else { continue };
+                    let Some(base) = Self::get_base_method(this.id, &func.name, this, &method.typ, &self.repo) else { continue };
                     method_to_base.insert(mid, base);
                 }
             }
@@ -1025,12 +1026,7 @@ struct Module<'id> {
 
 #[derive(Debug)]
 enum ModuleItem<'id> {
-    Class(
-        TypeId<'id>,
-        Data<'id>,
-        HashMap<Str, InferType<'id>>,
-        Vec<CompileBody<'id>>,
-    ),
+    Class(Data<'id>, HashMap<Str, InferType<'id>>, Vec<CompileBody<'id>>),
     Global(CompileBody<'id>, Option<TypeId<'id>>),
 }
 
