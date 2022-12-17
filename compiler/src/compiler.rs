@@ -325,7 +325,7 @@ impl<'id> Compiler<'id> {
                         body,
                         is_static: true,
                     };
-                    Some(ModuleItem::Global(body, None))
+                    Some(ModuleItem::Global(body))
                 } else {
                     None
                 };
@@ -398,7 +398,7 @@ impl<'id> Compiler<'id> {
                 .ok_or(CompileError::Unsupported(Unsupported::ReplacementWithoutBody, span))?,
             is_static: func.decl.qualifiers.contain(Qualifier::Static),
         };
-        return Ok(ModuleItem::Global(body, Some(id)));
+        return Ok(ModuleItem::MethodReplacement(Data::without_args(id), body));
     }
 
     fn process_queue(mut self, types: &TypeScope<'_, 'id>, names: &NameScope<'_, 'id>) -> CompilationOutputs<'id> {
@@ -433,7 +433,7 @@ impl<'id> Compiler<'id> {
                             items.push(CodeGenItem::AssembleMethod(mid, params, body, is_static));
                         }
                     }
-                    ModuleItem::Global(body, None) => {
+                    ModuleItem::Global(body) => {
                         let idx = body.index;
                         let func = self.repo.get_global(&GlobalId::new(body.index)).unwrap();
                         let type_vars = ScopedMap::default();
@@ -449,17 +449,15 @@ impl<'id> Compiler<'id> {
                         );
                         items.push(CodeGenItem::AssembleGlobal(GlobalId::new(idx), params, body));
                     }
-                    ModuleItem::Global(body, Some(this)) => {
+                    ModuleItem::MethodReplacement(this, body) => {
                         let CompileBody { index, is_static, .. } = body;
-                        let mid = MethodId::new(this, index);
+                        let mid = MethodId::new(this.id, index);
                         let method = if is_static {
                             self.repo.get_static(&mid).unwrap()
                         } else {
                             self.repo.get_method(&mid).unwrap()
                         };
-                        let this = is_static
-                            .not()
-                            .then(|| InferType::data(Data::without_args(this).clone()));
+                        let this = is_static.not().then(|| InferType::data(this.clone()));
                         let (body, params) = Self::compile_function(
                             body,
                             &method.typ,
@@ -634,7 +632,7 @@ impl<'id> Compiler<'id> {
                 root = id;
             }
             let [method, base] = self.repo.get_many_method_mut([mid, root]).unwrap();
-            base.typ.is_ret_poly = matches!(base.typ.ret, Type::Var(_)) && !matches!(method.typ.ret, Type::Var(_));
+            method.typ.is_ret_poly = matches!(base.typ.ret, Type::Var(_)) && !matches!(method.typ.ret, Type::Var(_));
 
             for (l, r) in base.typ.params.iter().zip(method.typ.params.iter_mut()) {
                 if matches!(l.typ, Type::Var(_)) && !matches!(r.typ, Type::Var(_)) {
@@ -1027,7 +1025,8 @@ struct Module<'id> {
 #[derive(Debug)]
 enum ModuleItem<'id> {
     Class(Data<'id>, HashMap<Str, InferType<'id>>, Vec<CompileBody<'id>>),
-    Global(CompileBody<'id>, Option<TypeId<'id>>),
+    Global(CompileBody<'id>),
+    MethodReplacement(Data<'id>, CompileBody<'id>),
 }
 
 #[derive(Debug)]

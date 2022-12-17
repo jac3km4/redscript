@@ -342,6 +342,7 @@ fn serialize_type<'id>(typ: &Type<'id>, repo: &TypeRepo<'id>, unwrapped: bool) -
             _ => Either::Left(typ.id.as_str()),
         },
         Type::Prim(prim) => Either::Left(prim.into()),
-        Type::Bottom | Type::Top | Type::Var(_) => Either::Left("IScriptable"),
+        Type::Bottom | Type::Top | Type::Var(_) if unwrapped => Either::Left("IScriptable"),
+        Type::Bottom | Type::Top | Type::Var(_) => Either::Left("ref:IScriptable"),
     }
 }

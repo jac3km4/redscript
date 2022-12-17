@@ -1,31 +1,37 @@
 module Std.Iter
-import Std.{Hashable, Integral}
+import Std.Hashable
 
-abstract class Iterable<A> {
-  func Iter() -> Iter<A>;
+public abstract class Iterable<A> {
+  public func Iter() -> Iter<A>;
 }
 
-abstract class Extendable<A> extends Iterable<A> {
-  func Extend(elem: A);
+public abstract class Extendable<A> extends Iterable<A> {
+  public func Extend(elem: A);
 }
 
-abstract class Iter<A> {
-  func HasNext() -> Bool;
-  func Next() -> A;
+public abstract class Iter<A> {
+  public func HasNext() -> Bool;
+  public func Next() -> A;
 
-  static func Repeat(value: A) -> Iter<A> = Repeat.New(value)
+  public static func Repeat(value: A) -> Iter<A> =
+    Repeat.New(value)
 
-  final func Map<B>(f: (A) -> B) -> Iter<B> = Mapped.New(this, f)
-  final func Take(n: Int32) -> Iter<A> = Take.New(this, n)
-  final func Filter(pred: (A) -> Bool) -> Iter<A> = Filtered.New(this, pred)
+  public final func Map<B>(f: (A) -> B) -> Iter<B> =
+    Mapped.New(this, f)
+  
+  public final func Take(n: Int32) -> Iter<A> =
+    Take.New(this, n)
+  
+  public final func Filter(pred: (A) -> Bool) -> Iter<A> =
+    Filtered.New(this, pred)
 
-  final func ForEach(f: (A) -> Unit) {
+  public final func ForEach(f: (A) -> Unit) {
     while this.HasNext() {
       f(this.Next());
     }
   }
 
-  final func Reduce(f: (A, A) -> A) -> A {
+  public final func Reduce(f: (A, A) -> A) -> A {
     if !this.HasNext() {
       return null;
     }
@@ -36,7 +42,7 @@ abstract class Iter<A> {
     return state;
   }
 
-  final func Into<C extends Extendable<A>>(sink: C) -> C {
+  public final func Into<C extends Extendable<A>>(out sink: C) -> C {
     while this.HasNext() {
       sink.Extend(this.Next());
     }
@@ -44,24 +50,24 @@ abstract class Iter<A> {
   }
 }
 
-class Range<A extends Integral> extends Iter<A> {
-  let current: A;
-  let max: A;
+public class Range extends Iter<Int32> {
+  let current: Int32;
+  let max: Int32;
 
-  static func New(min: A, max: A) -> Range<A> {
+  public static func New(min: Int32, max: Int32) -> Range {
     let self = new Range();
     self.current = min;
     self.max = max;
-    // FIXME: hacky solution
-    self.current.Decrement();
     return self;
   }
 
-  func HasNext() -> Bool = !this.current.Equals(this.max) 
+  public func HasNext() -> Bool =
+    this.current < this.max
 
-  func Next() -> A {
-    this.current.Increment();
-    return this.current;
+  public func Next() -> Int32 {
+    let cur = this.current;
+    this.current += 1;
+    return cur;
   }
 }
 
@@ -74,8 +80,8 @@ class Repeat<A> extends Iter<A> {
     return self;
   }
 
-  func HasNext() -> Bool = true
-  func Next() -> A = this.value;
+  public func HasNext() -> Bool = true
+  public func Next() -> A = this.value;
 }
 
 class Mapped<A, B> extends Iter<B> {
@@ -89,8 +95,8 @@ class Mapped<A, B> extends Iter<B> {
     return self;
   }
 
-  func HasNext() -> Bool = this.base.HasNext()
-  func Next() -> B = this.map.Apply(this.base.Next())
+  public func HasNext() -> Bool = this.base.HasNext()
+  public func Next() -> B = this.map.Apply(this.base.Next())
 }
 
 class Take<A> extends Iter<A> {
@@ -104,10 +110,10 @@ class Take<A> extends Iter<A> {
     return self;
   }
 
-  func HasNext() -> Bool =
+  public func HasNext() -> Bool =
     this.base.HasNext() && this.remaining > 0
 
-  func Next() -> A {
+  public func Next() -> A {
     this.remaining -= 1;
     return this.base.Next();
   }
@@ -125,7 +131,7 @@ class Filtered<A> extends Iter<A> {
     return self;
   }
 
-  func HasNext() -> Bool {
+  public func HasNext() -> Bool {
     while this.base.HasNext() {
       let el = this.base.Next();
       if this.predicate.Apply(el) {
@@ -136,5 +142,5 @@ class Filtered<A> extends Iter<A> {
     return false;
   }
 
-  func Next() -> A = this.current
+  public func Next() -> A = this.current
 }

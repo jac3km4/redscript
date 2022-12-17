@@ -1,4 +1,4 @@
-import Std.{Integral, Primitive}
+import Std.{Primitive, Primitive}
 
 // intrinsics
 public func Equals<A>(lhs: A, rhs: A) -> Bool;
@@ -78,7 +78,7 @@ public abstract class Function8<-A0, -A1, -A2, -A3, -A4, -A5, -A6, -A7, +R> {
 
 // boxed types
 
-public class BoxedInt8 extends Integral {
+public class BoxedInt8 extends Primitive {
   let value: Int8;
 
   public static func New(value: Int8) -> BoxedInt8 {
@@ -99,17 +99,9 @@ public class BoxedInt8 extends Integral {
 
   public func ToString() -> String =
     ToString(this.value)
-
-  public func Decrement() {
-    this.value -= Cast<Int8>(1);
-  }
-
-  public func Increment() {
-    this.value += Cast<Int8>(1);
-  }
 }
 
-public class BoxedInt16 extends Integral {
+public class BoxedInt16 extends Primitive {
   let value: Int16;
 
   public static func New(value: Int16) -> BoxedInt16 {
@@ -130,17 +122,9 @@ public class BoxedInt16 extends Integral {
 
   public func ToString() -> String =
     ToString(this.value)
-
-  public func Decrement() {
-    this.value -= Cast<Int16>(1);
-  }
-
-  public func Increment() {
-    this.value += Cast<Int16>(1);
-  }
 }
 
-public class BoxedInt32 extends Integral {
+public class BoxedInt32 extends Primitive {
   let value: Int32;
 
   public static func New(value: Int32) -> BoxedInt32 {
@@ -161,17 +145,9 @@ public class BoxedInt32 extends Integral {
 
   public func ToString() -> String =
     ToString(this.value)
-
-  public func Decrement() {
-    this.value -= 1;
-  }
-
-  public func Increment() {
-    this.value += 1;
-  }
 }
 
-public class BoxedInt64 extends Integral {
+public class BoxedInt64 extends Primitive {
   let value: Int64;
 
   public static func New(value: Int64) -> BoxedInt64 {
@@ -192,14 +168,6 @@ public class BoxedInt64 extends Integral {
 
   public func ToString() -> String =
     ToString(this.value)
-
-  public func Decrement() {
-    this.value -= Cast<Int64>(1);
-  }
-
-  public func Increment() {
-    this.value += Cast<Int64>(1);
-  }
 }
 
 public class BoxedFloat extends Primitive {
@@ -248,7 +216,7 @@ public class BoxedDouble extends Primitive {
     ToString(this.value)
 }
 
-public class BoxedUint8 extends Integral {
+public class BoxedUint8 extends Primitive {
   let value: Uint8;
 
   public static func New(value: Uint8) -> BoxedUint8 {
@@ -269,17 +237,9 @@ public class BoxedUint8 extends Integral {
 
   public func ToString() -> String =
     ToString(this.value)
-
-  public func Decrement() {
-    this.value -= Cast<Uint8>(1);
-  }
-
-  public func Increment() {
-    this.value += Cast<Uint8>(1);
-  }
 }
 
-public class BoxedUint16 extends Integral {
+public class BoxedUint16 extends Primitive {
   let value: Uint16;
 
   public static func New(value: Uint16) -> BoxedUint16 {
@@ -300,17 +260,9 @@ public class BoxedUint16 extends Integral {
 
   public func ToString() -> String =
     ToString(this.value)
-
-  public func Decrement() {
-    this.value -= Cast<Uint16>(1);
-  }
-
-  public func Increment() {
-    this.value += Cast<Uint16>(1);
-  }
 }
 
-public class BoxedUint32 extends Integral {
+public class BoxedUint32 extends Primitive {
   let value: Uint32;
 
   public static func New(value: Uint32) -> BoxedUint32 {
@@ -331,17 +283,9 @@ public class BoxedUint32 extends Integral {
 
   public func ToString() -> String =
     ToString(this.value)
-
-  public func Decrement() {
-    this.value -= Cast<Uint32>(1);
-  }
-
-  public func Increment() {
-    this.value += Cast<Uint32>(1);
-  }
 }
 
-public class BoxedUint64 extends Integral {
+public class BoxedUint64 extends Primitive {
   let value: Uint64;
 
   public static func New(value: Uint64) -> BoxedUint64 {
@@ -362,18 +306,10 @@ public class BoxedUint64 extends Integral {
 
   public func ToString() -> String =
     ToString(this.value)
-
-  public func Decrement() {
-    this.value -= Cast<Uint64>(1);
-  }
-
-  public func Increment() {
-    this.value += Cast<Uint64>(1);
-  }
 }
 
-class BoxedBool extends Primitive {
-  private let value: Bool;
+public class BoxedBool extends Primitive {
+  let value: Bool;
 
   public static func New(value: Bool) -> BoxedBool {
     let self: BoxedBool = new BoxedBool();
@@ -395,7 +331,7 @@ class BoxedBool extends Primitive {
     ToString(this.value)
 }
 
-class BoxedString extends Primitive {
+public class BoxedString extends Primitive {
   let value: String;
 
   public static func New(value: String) -> BoxedString {
@@ -418,7 +354,7 @@ class BoxedString extends Primitive {
     this.value
 }
 
-class BoxedCName extends Primitive {
+public class BoxedCName extends Primitive {
   let value: CName;
 
   public static func New(value: CName) -> BoxedCName {
@@ -441,7 +377,7 @@ class BoxedCName extends Primitive {
     ToString(this.value)
 }
 
-class BoxedTweakDBID extends Primitive {
+public class BoxedTweakDBID extends Primitive {
   let value: TweakDBID;
 
   public static func New(value: TweakDBID) -> BoxedTweakDBID {
@@ -464,7 +400,7 @@ class BoxedTweakDBID extends Primitive {
     ToString(this.value)
 }
 
-class BoxedVariant {
+public class BoxedVariant {
   let value: Variant;
 
   public static func New(value: Variant) -> BoxedVariant {
@@ -474,7 +410,7 @@ class BoxedVariant {
   }
 }
 
-class BoxedEnum extends Primitive {
+public class BoxedEnum extends Primitive {
   let value: Int32;
 
   public static func FromIntRepr(value: Int32) -> BoxedEnum {
@@ -497,7 +433,7 @@ class BoxedEnum extends Primitive {
     ToString(this.value)
 }
 
-class BoxedStruct {
+public class BoxedStruct {
   let value: Variant;
 
   public static func FromVariant(value: Variant) -> BoxedStruct {

@@ -2,15 +2,6 @@ module Std.Collection
 import Std.{Hashable, Tuple}
 import Std.Iter.{Iter, Extendable}
 
-class MapEntry<K, V> {
-  let key: K;
-  let value: V;
-  let occupied: Bool;
-
-  public func ToTuple() -> Tuple<K, V> =
-    Tuple.New(this.key, this.value)
-}
-
 public class Map<K extends Hashable, V>
   extends Extendable<Tuple<K, V>> {
   
@@ -57,12 +48,21 @@ public class Map<K extends Hashable, V>
     this.Insert(k, f(this.Get(k)));
   }
 
-  func Iter() -> Iter<Tuple<K, V>> =
+  public func Iter() -> Iter<Tuple<K, V>> =
     MapIter.New(this)
 
-  func Extend(elem: Tuple<K, V>) {
+  public func Extend(elem: Tuple<K, V>) {
     this.Insert(elem.first, elem.second);
   }
+}
+
+public class MapEntry<K, V> {
+  let key: K;
+  let value: V;
+  let occupied: Bool;
+
+  public func ToTuple() -> Tuple<K, V> =
+    Tuple.New(this.key, this.value)
 }
 
 public class MapIter<K, V> extends Iter<Tuple<K, V>> {
@@ -78,23 +78,70 @@ public class MapIter<K, V> extends Iter<Tuple<K, V>> {
     return self;
   }
 
-  func HasNext() -> Bool {
+  public func HasNext() -> Bool {
     while this.bucket < ArraySize(this.map.buckets) {
-        while this.item < ArraySize(this.map.buckets[this.bucket]) {
-            if this.map.buckets[this.bucket][this.item].occupied {
-                return true;
-            }
-            this.item += 1;
+      while this.item < ArraySize(this.map.buckets[this.bucket]) {
+        if this.map.buckets[this.bucket][this.item].occupied {
+          return true;
         }
-        this.item = 0;
-        this.bucket += 1;
+        this.item += 1;
+      }
+      this.item = 0;
+      this.bucket += 1;
     }
     return false;
   }
 
-  func Next() -> Tuple<K, V> {
+  public func Next() -> Tuple<K, V> {
     let current = this.map.buckets[this.bucket][this.item].ToTuple();
     this.item += 1;
+    return current;
+  }
+}
+
+public class Array<A>
+  extends Extendable<A> {
+  
+  let buffer: array<A>;
+
+  public static func New() -> Array<A> =
+    new Array()
+
+  public func Push(a: A) {
+    ArrayPush(this.buffer, a);
+  }
+
+  public func Get(i: Int32) -> A =
+    this.buffer[i]
+
+  public func Size() -> Int32 =
+    ArraySize(this.buffer)
+
+  public func Iter() -> Iter<A> =
+    ArrayIter.New(this)
+
+  public func Extend(elem: A) {
+    this.Push(elem);
+  }
+}
+
+public class ArrayIter<A> extends Iter<A> {
+  let array: Array<A>;
+  let index: Int32;
+
+  static func New(array: Array<A>) -> ArrayIter<A> {
+    let self = new ArrayIter();
+    self.array = array;
+    self.index = 0;
+    return self;
+  }
+
+  public func HasNext() -> Bool =
+    this.index < this.array.Size()
+
+  public func Next() -> A {
+    let current = this.array.Get(this.index);
+    this.index += 1;
     return current;
   }
 }

@@ -13,11 +13,6 @@ public abstract class Primitive extends Hashable {
   public func ToString() -> String;
 }
 
-public abstract class Integral extends Primitive {
-  public func Increment();
-  public func Decrement();
-}
-
 public class Tuple<A, B> {
   let first: A;
   let second: B;
@@ -35,14 +30,6 @@ public class Tuple<A, B> {
     self.second = this.first;
     return self;
   }
-}
-
-public func LogDbg(str: script_ref<String>) {
-  LogChannel(n"DEBUG", str);
-}
-
-public func Dump(val: Any) {
-  LogDbg(Stringify(val));
 }
 
 public func Stringify(val: Any) -> String {
