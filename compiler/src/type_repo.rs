@@ -59,14 +59,23 @@ impl<'id> TypeRepo<'id> {
         self.types.get(&id)
     }
 
+    #[inline]
+    pub fn get_type_mut(&mut self, id: TypeId<'id>) -> Option<&mut DataType<'id>> {
+        self.types.get_mut(&id)
+    }
+
     pub fn get_field(&self, id: &FieldId<'id>) -> Option<&Field<'id>> {
         let (_, res) = self.types.get(&id.owner)?.as_class()?.fields.get(id.index)?;
         Some(res)
     }
 
     pub fn get_method(&self, id: &MethodId<'id>) -> Option<&Func<'id>> {
-        let (_, res) = self.types.get(&id.owner)?.as_class()?.methods.get_overload(id.index)?;
+        let (_, res) = self.get_method_with_signature(id)?;
         Some(res)
+    }
+
+    pub fn get_method_with_signature(&self, id: &MethodId<'id>) -> Option<(&FuncSignature, &Func<'id>)> {
+        self.types.get(&id.owner)?.as_class()?.methods.get_overload(id.index)
     }
 
     pub fn get_many_method_mut<const N: usize>(&mut self, ids: [&MethodId<'id>; N]) -> Option<[&mut Func<'id>; N]> {
@@ -86,8 +95,12 @@ impl<'id> TypeRepo<'id> {
     }
 
     pub fn get_static(&self, id: &MethodId<'id>) -> Option<&Func<'id>> {
-        let (_, res) = self.types.get(&id.owner)?.as_class()?.statics.get_overload(id.index)?;
+        let (_, res) = self.get_static_with_signature(id)?;
         Some(res)
+    }
+
+    pub fn get_static_with_signature(&self, id: &MethodId<'id>) -> Option<(&FuncSignature, &Func<'id>)> {
+        self.types.get(&id.owner)?.as_class()?.statics.get_overload(id.index)
     }
 
     pub fn get_global(&self, id: &GlobalId) -> Option<&Func<'id>> {

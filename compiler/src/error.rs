@@ -141,8 +141,8 @@ pub enum Unsupported {
     CustomClassConstructor,
     #[error("defining a non-static member on a struct")]
     NonStaticStructMember,
-    #[error("defining an injected method without a body")]
-    InjectedMethodWithoutBody,
+    #[error("defining an annotated method without a body")]
+    AnnotatedFuncWithNoBody,
     #[error("defining a final method without a body")]
     FinalWithoutBody,
     #[error("defining a native method with a body")]

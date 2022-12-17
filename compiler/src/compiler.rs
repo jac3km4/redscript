@@ -299,48 +299,65 @@ impl<'id> Compiler<'id> {
             SourceEntry::Function(func) => {
                 let flags = get_function_flags(&func.decl.qualifiers);
                 let (env, typ) = self.preprocess_function(&func, types, &ScopedMap::default())?;
-                let name = ScopedName::new(func.decl.name.clone(), path.clone());
 
                 for ann in &func.decl.annotations {
-                    #[allow(clippy::single_match)]
                     match (&ann.kind, &ann.args[..]) {
                         (AnnotationKind::ReplaceMethod, [Expr::Ident(ident, span)]) => {
                             let span = *span;
-                            let (this, body) = self.locate_annotation_target(ident.clone(), func, types, env, span)?;
+                            let (this, entry) = self.locate_annotation_method(ident, &func.decl.name, types, span)?;
+                            let body = CompileBody::new(func, entry.index, env, false)
+                                .ok_or(CompileError::Unsupported(Unsupported::AnnotatedFuncWithNoBody, span))?;
                             return Ok(Some(ModuleItem::AnnotatedMethod(this, body, MethodInjection::Replace)));
                         }
                         (AnnotationKind::WrapMethod, [Expr::Ident(ident, span)]) => {
                             let span = *span;
-                            let (this, body) = self.locate_annotation_target(ident.clone(), func, types, env, span)?;
+                            let (this, entry) = self.locate_annotation_method(ident, &func.decl.name, types, span)?;
+                            let body = CompileBody::new(func, entry.index, env, false)
+                                .ok_or(CompileError::Unsupported(Unsupported::AnnotatedFuncWithNoBody, span))?;
                             return Ok(Some(ModuleItem::AnnotatedMethod(this, body, MethodInjection::Wrap)));
+                        }
+                        (AnnotationKind::AddMethod, [Expr::Ident(ident, span)]) => {
+                            let span = *span;
+                            let &id = types
+                                .get(ident)
+                                .ok_or_else(|| TypeError::UnresolvedType(ident.clone()))
+                                .with_span(span)?;
+                            let ct = self
+                                .repo
+                                .get_type_mut(id)
+                                .and_then(DataType::as_class_mut)
+                                .ok_or_else(|| TypeError::UnresolvedType(ident.clone()))
+                                .with_span(span)?;
+                            let index = if flags.is_static() {
+                                ct.statics.add(func.decl.name.clone(), typ, flags)
+                            } else {
+                                ct.methods.add(func.decl.name.clone(), typ, flags)
+                            };
+                            let body = CompileBody::new(func, index, env, false)
+                                .ok_or(CompileError::Unsupported(Unsupported::AnnotatedFuncWithNoBody, span))?;
+                            let data = Data::without_args(id);
+                            return Ok(Some(ModuleItem::AnnotatedMethod(data, body, MethodInjection::Add)));
                         }
                         _ => {}
                     }
                 }
+                let name = ScopedName::new(func.decl.name.clone(), path.clone());
                 let index = self.repo.globals_mut().add(name, typ, flags);
                 let global = if let Ok(intrinsic) = Intrinsic::from_str(&func.decl.name) {
                     Global::Intrinsic(index.overload(), intrinsic)
                 } else {
                     Global::Func(index.overload())
                 };
-                let res = if let Some(body) = func.body {
-                    let body = CompileBody {
-                        name: func.decl.name.clone(),
-                        index,
-                        env,
-                        parameters: func.parameters,
-                        body,
-                        is_static: true,
-                    };
-                    Some(ModuleItem::Global(body))
-                } else {
-                    None
-                };
-                let overloads = names.top_mut().entry(func.decl.name).or_default();
+                let overloads = names.top_mut().entry(func.decl.name.clone()).or_default();
                 if !overloads.contains(&global) {
                     overloads.push(global);
                 }
-                Ok(res)
+
+                if let Some(body) = CompileBody::new(func, index, env, true) {
+                    Ok(Some(ModuleItem::Global(body)))
+                } else {
+                    Ok(None)
+                }
             }
             SourceEntry::GlobalLet(_) => todo!(),
         }
@@ -374,14 +391,12 @@ impl<'id> Compiler<'id> {
 
     fn locate_annotation_target(
         &self,
-        replace: Str,
-        func: FunctionSource,
+        replace: &Str,
         types: &TypeScope<'_, 'id>,
-        env: HashMap<Str, InferType<'id>>,
         span: Span,
-    ) -> CompileResult<'id, (Data<'id>, CompileBody<'id>)> {
+    ) -> CompileResult<'id, (Data<'id>, &ClassType<'id>)> {
         let &id = types
-            .get(&replace)
+            .get(replace)
             .ok_or_else(|| TypeError::UnresolvedType(replace.clone()))
             .with_span(span)?;
         let res = self
@@ -389,22 +404,24 @@ impl<'id> Compiler<'id> {
             .get_type(id)
             .and_then(DataType::as_class)
             .ok_or_else(|| TypeError::UnresolvedType(replace.clone()))
-            .with_span(span)?
+            .with_span(span)?;
+        Ok((Data::without_args(id), res))
+    }
+
+    fn locate_annotation_method(
+        &self,
+        replace: &Str,
+        name: &Str,
+        types: &TypeScope<'_, 'id>,
+        span: Span,
+    ) -> CompileResult<'id, (Data<'id>, OverloadEntry<'_, 'id>)> {
+        let (data, res) = self.locate_annotation_target(replace, types, span)?;
+        let entry = res
             .methods
-            .by_name(&func.decl.name)
+            .by_name(name)
             .exactly_one()
-            .map_err(|_| CompileError::UnresolvedFunction(func.decl.name.clone(), span))?;
-        let body = CompileBody {
-            name: func.decl.name.clone(),
-            index: res.index,
-            env,
-            parameters: func.parameters,
-            body: func
-                .body
-                .ok_or(CompileError::Unsupported(Unsupported::InjectedMethodWithoutBody, span))?,
-            is_static: func.decl.qualifiers.contain(Qualifier::Static),
-        };
-        return Ok((Data::without_args(id), body));
+            .map_err(|_| CompileError::UnresolvedFunction(name.clone(), span))?;
+        Ok((data, entry))
     }
 
     fn process_queue(mut self, types: &TypeScope<'_, 'id>, names: &NameScope<'_, 'id>) -> CompilationOutputs<'id> {
@@ -484,6 +501,9 @@ impl<'id> Compiler<'id> {
                             &mut self.reporter,
                         );
                         match kind {
+                            MethodInjection::Add => {
+                                items.push(CodeGenItem::AddMethod(mid, params, body, is_static));
+                            }
                             MethodInjection::Replace => {
                                 items.push(CodeGenItem::AssembleMethod(mid, params, body, is_static));
                             }
@@ -735,13 +755,29 @@ impl<'id> CompilationOutputs<'id> {
                         .commit_global(&self.repo, pool, cache);
                     db.globals.insert(id, idx);
                 }
-                CodeGenItem::WrapMethod(mid, _, _, _) => {
-                    let method = self.repo.get_method(mid).unwrap();
-                    let name = self.repo.get_method_name(mid).unwrap();
+                CodeGenItem::AddMethod(mid, _, _, is_static) => {
+                    let (sig, method) = if *is_static {
+                        self.repo.get_static_with_signature(mid).unwrap()
+                    } else {
+                        self.repo.get_method_with_signature(mid).unwrap()
+                    };
                     let &parent = db.classes.get(&mid.owner()).unwrap();
-                    let sig = FuncSignature::new(names::wrapper(i, name));
-                    let idx =
-                        Self::build_function(sig, &method.typ, method.flags).commit(parent, &self.repo, pool, cache);
+                    let idx = Self::build_function(sig.clone(), &method.typ, method.flags)
+                        .commit(parent, &self.repo, pool, cache);
+
+                    pool.class_mut(parent).unwrap().methods.push(idx);
+                    db.methods.insert(mid.clone(), idx);
+                }
+                CodeGenItem::WrapMethod(mid, _, _, is_static) => {
+                    let (sig, method) = if *is_static {
+                        self.repo.get_static_with_signature(mid).unwrap()
+                    } else {
+                        self.repo.get_method_with_signature(mid).unwrap()
+                    };
+                    let &parent = db.classes.get(&mid.owner()).unwrap();
+                    let wrapper_sig = FuncSignature::new(names::wrapper(i, sig.clone().into_str()));
+                    let idx = Self::build_function(wrapper_sig, &method.typ, method.flags)
+                        .commit(parent, &self.repo, pool, cache);
 
                     pool.class_mut(parent).unwrap().methods.push(idx);
                     wrappers.entry(mid.clone()).or_default().push_back(idx);
@@ -767,7 +803,8 @@ impl<'id> CompilationOutputs<'id> {
 
         for item in self.codegen_queue {
             match item {
-                CodeGenItem::AssembleMethod(mid, params, body, is_static) => {
+                CodeGenItem::AssembleMethod(mid, params, body, is_static)
+                | CodeGenItem::AddMethod(mid, params, body, is_static) => {
                     let &idx = if is_static {
                         db.statics.get(&mid).unwrap()
                     } else {
@@ -1101,6 +1138,7 @@ enum ModuleItem<'id> {
 #[derive(Debug, PartialEq, Eq)]
 enum MethodInjection {
     Replace,
+    Add,
     Wrap,
 }
 
@@ -1114,8 +1152,28 @@ struct CompileBody<'id> {
     is_static: bool,
 }
 
+impl<'id> CompileBody<'id> {
+    pub fn new(
+        func: FunctionSource,
+        index: OverloadIndex,
+        env: HashMap<Str, InferType<'id>>,
+        is_global: bool,
+    ) -> Option<Self> {
+        let res = CompileBody {
+            name: func.decl.name.clone(),
+            index,
+            env,
+            parameters: func.parameters,
+            body: func.body?,
+            is_static: is_global || func.decl.qualifiers.contain(Qualifier::Static),
+        };
+        Some(res)
+    }
+}
+
 #[derive(Debug)]
 enum CodeGenItem<'id> {
+    AddMethod(MethodId<'id>, IndexMap<Local, Type<'id>>, Seq<CheckedAst<'id>>, bool),
     WrapMethod(MethodId<'id>, IndexMap<Local, Type<'id>>, Seq<CheckedAst<'id>>, bool),
     AssembleMethod(MethodId<'id>, IndexMap<Local, Type<'id>>, Seq<CheckedAst<'id>>, bool),
     AssembleGlobal(GlobalId, IndexMap<Local, Type<'id>>, Seq<CheckedAst<'id>>),
