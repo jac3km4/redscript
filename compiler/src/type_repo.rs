@@ -99,6 +99,10 @@ impl<'id> TypeRepo<'id> {
         self.types.get(&id.owner)?.as_class()?.methods.get_name(id.index.0)
     }
 
+    pub fn get_static_name(&self, id: &MethodId<'id>) -> Option<&Str> {
+        self.types.get(&id.owner)?.as_class()?.statics.get_name(id.index.0)
+    }
+
     #[inline]
     pub fn globals(&self) -> &FuncMap<'id, ScopedName> {
         &self.globals
@@ -468,16 +472,19 @@ pub struct FuncIndex(usize);
 pub struct FieldIndex(usize);
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Global {
+pub enum Global<'id> {
     Func(FuncIndex),
     Intrinsic(FuncIndex, Intrinsic),
+    MethodAlias(MethodId<'id>),
+    StaticAlias(MethodId<'id>),
 }
 
-impl Global {
+impl<'id> Global<'id> {
     #[inline]
-    pub fn index(&self) -> FuncIndex {
+    pub fn index(&self) -> Option<FuncIndex> {
         match *self {
-            Self::Func(i) | Self::Intrinsic(i, _) => i,
+            Self::Func(i) | Self::Intrinsic(i, _) => Some(i),
+            _ => None,
         }
     }
 }
@@ -686,6 +693,10 @@ impl<'id> MethodId<'id> {
     #[inline]
     pub fn new(owner: TypeId<'id>, index: OverloadIndex) -> Self {
         Self { owner, index }
+    }
+
+    pub fn owner(&self) -> TypeId<'id> {
+        self.owner
     }
 }
 

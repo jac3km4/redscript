@@ -21,7 +21,7 @@ use crate::type_repo::*;
 use crate::{visit_expr, IndexMap};
 
 pub type TypeScope<'scope, 'id> = ScopedMap<'scope, Str, TypeId<'id>>;
-pub type NameScope<'scope, 'id> = ScopedMap<'scope, Str, Vec<Global>>;
+pub type NameScope<'scope, 'id> = ScopedMap<'scope, Str, Vec<Global<'id>>>;
 pub type Vars<'scope, 'id> = ScopedMap<'scope, Str, InferType<'id>>;
 type LocalMap<'scope, 'id> = ScopedMap<'scope, Str, LocalInfo<'id>>;
 type RcVar<'id> = Rc<RefCell<Var<'id>>>;
@@ -171,10 +171,26 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 Expr::Member(expr, name, span) => self.check_overload(expr, name.clone(), args, locals, *span),
                 Expr::Ident(name, span) if name.as_str() == "Cast" => self.check_cast(args, targs, locals, *span),
                 Expr::Ident(name, span) if locals.get(name).is_none() => {
-                    if let Some(matches) = self.names.get(name) {
-                        return self.check_global(name.clone(), matches, &args[..], locals, *span);
+                    match self.names.get(name).map(Vec::as_slice) {
+                        Some([Global::MethodAlias(mid)]) => self.check_wrapper(
+                            &Expr::This(*span),
+                            self.repo.get_method_name(mid).unwrap().clone(),
+                            args,
+                            locals,
+                            Callable::WrappedMethod(mid.clone()),
+                            *span,
+                        ),
+                        Some([Global::StaticAlias(mid)]) => self.check_wrapper(
+                            &Expr::Ident(mid.owner().name().into(), *span),
+                            self.repo.get_static_name(mid).unwrap().clone(),
+                            args,
+                            locals,
+                            Callable::WrappedStatic(mid.clone()),
+                            *span,
+                        ),
+                        Some(matches) => self.check_global(name.clone(), matches, &args[..], locals, *span),
+                        _ => Err(CompileError::UnresolvedVar(name.clone(), *span)),
                     }
-                    return Err(CompileError::UnresolvedVar(name.clone(), *span));
                 }
                 _ => {
                     let mut checked_args = Vec::with_capacity(args.len());
@@ -397,7 +413,12 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
         let mut arg_types = Vec::with_capacity(arg_count);
         let candidates = overloads
             .iter()
-            .flat_map(|id| self.repo.globals().get_overloads(id.index()).map(move |e| (id, e)))
+            .flat_map(|id| {
+                self.repo
+                    .globals()
+                    .get_overloads(id.index().unwrap())
+                    .map(move |e| (id, e))
+            })
             .collect_vec();
         let (id, entry) = match candidates
             .iter()
@@ -600,6 +621,22 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
             )
         };
         Ok((expr, ret))
+    }
+
+    fn check_wrapper(
+        &mut self,
+        expr: &Expr<SourceAst>,
+        name: Str,
+        args: &[Expr<SourceAst>],
+        locals: &mut LocalMap<'_, 'id>,
+        wrapped: Callable<'id>,
+        span: Span,
+    ) -> CompileResult<'id, Inferred<'id>> {
+        let (mut expr, typ) = self.check_overload(expr, name, args, locals, span)?;
+        if let Expr::Call(_, callable, _, _, _, _) = &mut expr {
+            *callable.as_mut() = wrapped;
+        }
+        Ok((expr, typ))
     }
 
     fn constrain(
@@ -1566,6 +1603,8 @@ pub enum Callable<'id> {
     Global(GlobalId),
     Intrinsic(Intrinsic),
     Cast,
+    WrappedMethod(MethodId<'id>),
+    WrappedStatic(MethodId<'id>),
 }
 
 #[derive(Debug)]

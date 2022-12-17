@@ -14,7 +14,7 @@ use smallvec::SmallVec;
 use crate::codegen::builders::{ClassBuilder, FieldBuilder, FunctionBuilder, LocalBuilder, ParamBuilder, TypeCache};
 use crate::compiler::CompilationDb;
 use crate::type_repo::{predef, GlobalId, Parameterized, Prim, RefType, ScopedName, Type, TypeId, TypeRepo};
-use crate::typer::{Callable, CheckedAst, Data, InferType, Local, Member};
+use crate::typer::{CallMetadata, Callable, CheckedAst, Data, InferType, Local, Member};
 use crate::IndexMap;
 
 pub mod builders;
@@ -29,6 +29,7 @@ pub struct CodeGen<'ctx, 'id> {
     captures: LocalIndices<'id, PoolField>,
     params: LocalIndices<'id, PoolParam>,
     locals: LocalIndices<'id, PoolLocal>,
+    wrapped: Option<PoolIndex<Function>>,
     instructions: Vec<Instr<Label>>,
     labels: usize,
 }
@@ -39,12 +40,14 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
         captures: LocalIndices<'id, PoolField>,
         type_repo: &'ctx TypeRepo<'id>,
         db: &'ctx CompilationDb<'id>,
+        wrapped: Option<PoolIndex<Function>>,
     ) -> Self {
         Self {
             repo: type_repo,
             db,
             params,
             captures,
+            wrapped,
             locals: LocalIndices::default(),
             instructions: vec![],
             labels: 0,
@@ -149,26 +152,17 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
                     let &idx = self.db.statics.get(mid).unwrap();
                     self.emit_static_call(idx, args.into_vec(), &meta.arg_types, pool, cache);
                 }
+                Callable::WrappedStatic(_) => {
+                    let wrapped = self.wrapped.expect("unexpected WrappedStatic");
+                    self.emit_static_call(wrapped, args.into_vec(), &meta.arg_types, pool, cache);
+                }
                 Callable::Instance(mid) => {
                     let &idx = self.db.methods.get(mid).unwrap();
-                    let name = pool.definition(idx).unwrap().name;
-                    let flags = pool.function(idx).unwrap().flags;
-                    let exit_label = self.new_label();
-                    self.emit(Instr::Context(exit_label));
-
-                    if matches!(
-                        meta.this_type.as_ref().and_then(InferType::ref_type),
-                        Some((RefType::Weak, _))
-                    ) {
-                        self.emit(Instr::WeakRefToRef);
-                    }
-                    self.assemble(*expr, pool, cache);
-                    if flags.is_final() {
-                        self.emit_static_call(idx, args.into_vec(), &meta.arg_types, pool, cache);
-                    } else {
-                        self.emit_virtual_call(name, args.into_vec(), pool, cache);
-                    }
-                    self.emit_label(exit_label);
+                    self.emit_instance_call(*expr, args, &meta, idx, pool, cache, false);
+                }
+                Callable::WrappedMethod(_) => {
+                    let wrapped = self.wrapped.expect("unexpected WrappedStatic");
+                    self.emit_instance_call(*expr, args, &meta, wrapped, pool, cache, true);
                 }
                 Callable::Lambda => {
                     let exit_label = self.new_label();
@@ -250,8 +244,16 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
                 } else {
                     Expr::Return(Some(body), Span::ZERO)
                 };
-                let (locals, code) =
-                    Self::build_expr(body, param_indices, capture_indices, self.repo, self.db, pool, cache);
+                let (locals, code) = Self::build_expr(
+                    body,
+                    param_indices,
+                    capture_indices,
+                    self.repo,
+                    self.db,
+                    None,
+                    pool,
+                    cache,
+                );
                 pool.complete_function(apply, locals.into_vec(), code).unwrap();
             }
             Expr::Member(expr, member, _) => match member {
@@ -384,6 +386,37 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
             }
             Expr::BinOp(_, _, _, _) | Expr::UnOp(_, _, _) | Expr::Goto(_, _) => unreachable!(),
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn emit_instance_call(
+        &mut self,
+        expr: Expr<CheckedAst<'id>>,
+        args: Box<[Expr<CheckedAst<'id>>]>,
+        meta: &CallMetadata<'id>,
+        idx: PoolIndex<Function>,
+        pool: &mut ConstantPool,
+        cache: &mut TypeCache,
+        force_static: bool,
+    ) {
+        let name = pool.definition(idx).unwrap().name;
+        let flags = pool.function(idx).unwrap().flags;
+        let exit_label = self.new_label();
+        self.emit(Instr::Context(exit_label));
+
+        if matches!(
+            meta.this_type.as_ref().and_then(InferType::ref_type),
+            Some((RefType::Weak, _))
+        ) {
+            self.emit(Instr::WeakRefToRef);
+        }
+        self.assemble(expr, pool, cache);
+        if force_static || flags.is_final() {
+            self.emit_static_call(idx, args.into_vec(), &meta.arg_types, pool, cache);
+        } else {
+            self.emit_virtual_call(name, args.into_vec(), pool, cache);
+        }
+        self.emit_label(exit_label);
     }
 
     fn emit_static_call<I, A>(
@@ -572,16 +605,18 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
         (self.locals.indices, Code(resolved))
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn build_expr(
         expr: Expr<CheckedAst<'id>>,
         params: LocalIndices<'id, PoolParam>,
         captures: LocalIndices<'id, PoolField>,
         type_repo: &'ctx TypeRepo<'id>,
         db: &'ctx CompilationDb<'id>,
+        wrapped: Option<PoolIndex<Function>>,
         pool: &mut ConstantPool,
         cache: &mut TypeCache,
     ) -> (IndexVec<PoolLocal>, Code<Offset>) {
-        let mut assembler = Self::new(params, captures, type_repo, db);
+        let mut assembler = Self::new(params, captures, type_repo, db, wrapped);
         assembler.assemble(expr, pool, cache);
         assembler.emit(Instr::Nop);
         assembler.into_code()
@@ -593,6 +628,7 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
         params: LocalIndices<'id, PoolParam>,
         type_repo: &'ctx TypeRepo<'id>,
         db: &'ctx CompilationDb<'id>,
+        wrapped: Option<PoolIndex<Function>>,
         pool: &mut ConstantPool,
         cache: &mut TypeCache,
     ) -> (IndexVec<PoolLocal>, Code<Offset>) {
@@ -602,6 +638,7 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
             LocalIndices::default(),
             type_repo,
             db,
+            wrapped,
             pool,
             cache,
         )

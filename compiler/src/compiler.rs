@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::mem;
 use std::ops::Not;
 use std::rc::Rc;
@@ -305,7 +306,13 @@ impl<'id> Compiler<'id> {
                     match (&ann.kind, &ann.args[..]) {
                         (AnnotationKind::ReplaceMethod, [Expr::Ident(ident, span)]) => {
                             let span = *span;
-                            return Ok(Some(self.process_replacement(ident.clone(), func, types, env, span)?));
+                            let (this, body) = self.locate_annotation_target(ident.clone(), func, types, env, span)?;
+                            return Ok(Some(ModuleItem::AnnotatedMethod(this, body, MethodInjection::Replace)));
+                        }
+                        (AnnotationKind::WrapMethod, [Expr::Ident(ident, span)]) => {
+                            let span = *span;
+                            let (this, body) = self.locate_annotation_target(ident.clone(), func, types, env, span)?;
+                            return Ok(Some(ModuleItem::AnnotatedMethod(this, body, MethodInjection::Wrap)));
                         }
                         _ => {}
                     }
@@ -365,25 +372,24 @@ impl<'id> Compiler<'id> {
         }
     }
 
-    fn process_replacement(
+    fn locate_annotation_target(
         &self,
         replace: Str,
         func: FunctionSource,
         types: &TypeScope<'_, 'id>,
         env: HashMap<Str, InferType<'id>>,
         span: Span,
-    ) -> CompileResult<'id, ModuleItem<'id>> {
+    ) -> CompileResult<'id, (Data<'id>, CompileBody<'id>)> {
         let &id = types
             .get(&replace)
             .ok_or_else(|| TypeError::UnresolvedType(replace.clone()))
             .with_span(span)?;
-        let typ = self
+        let res = self
             .repo
             .get_type(id)
             .and_then(DataType::as_class)
             .ok_or_else(|| TypeError::UnresolvedType(replace.clone()))
-            .with_span(span)?;
-        let res = typ
+            .with_span(span)?
             .methods
             .by_name(&func.decl.name)
             .exactly_one()
@@ -395,10 +401,10 @@ impl<'id> Compiler<'id> {
             parameters: func.parameters,
             body: func
                 .body
-                .ok_or(CompileError::Unsupported(Unsupported::ReplacementWithoutBody, span))?,
+                .ok_or(CompileError::Unsupported(Unsupported::InjectedMethodWithoutBody, span))?,
             is_static: func.decl.qualifiers.contain(Qualifier::Static),
         };
-        return Ok(ModuleItem::MethodReplacement(Data::without_args(id), body));
+        return Ok((Data::without_args(id), body));
     }
 
     fn process_queue(mut self, types: &TypeScope<'_, 'id>, names: &NameScope<'_, 'id>) -> CompilationOutputs<'id> {
@@ -449,7 +455,7 @@ impl<'id> Compiler<'id> {
                         );
                         items.push(CodeGenItem::AssembleGlobal(GlobalId::new(idx), params, body));
                     }
-                    ModuleItem::MethodReplacement(this, body) => {
+                    ModuleItem::AnnotatedMethod(this, body, kind) => {
                         let CompileBody { index, is_static, .. } = body;
                         let mid = MethodId::new(this.id, index);
                         let method = if is_static {
@@ -458,6 +464,15 @@ impl<'id> Compiler<'id> {
                             self.repo.get_method(&mid).unwrap()
                         };
                         let this = is_static.not().then(|| InferType::data(this.clone()));
+                        let mut names = names.introduce_scope();
+                        if kind == MethodInjection::Wrap {
+                            let alias = if is_static {
+                                Global::StaticAlias(mid.clone())
+                            } else {
+                                Global::MethodAlias(mid.clone())
+                            };
+                            names.insert(Str::from_static("wrappedMethod"), vec![alias]);
+                        }
                         let (body, params) = Self::compile_function(
                             body,
                             &method.typ,
@@ -468,13 +483,20 @@ impl<'id> Compiler<'id> {
                             this,
                             &mut self.reporter,
                         );
-                        items.push(CodeGenItem::AssembleMethod(mid, params, body, is_static));
+                        match kind {
+                            MethodInjection::Replace => {
+                                items.push(CodeGenItem::AssembleMethod(mid, params, body, is_static));
+                            }
+                            MethodInjection::Wrap => {
+                                items.push(CodeGenItem::WrapMethod(mid, params, body, is_static));
+                            }
+                        }
                     }
                 }
             }
         }
         CompilationOutputs {
-            type_repo: self.repo,
+            repo: self.repo,
             defined_types: self.defined_types,
             codegen_queue: items,
             reporter: self.reporter,
@@ -679,7 +701,7 @@ impl<'id> Compiler<'id> {
 
 #[derive(Debug)]
 pub struct CompilationOutputs<'id> {
-    type_repo: TypeRepo<'id>,
+    repo: TypeRepo<'id>,
     defined_types: Vec<TypeId<'id>>,
     codegen_queue: Vec<CodeGenItem<'id>>,
     reporter: ErrorReporter<'id>,
@@ -688,7 +710,7 @@ pub struct CompilationOutputs<'id> {
 impl<'id> CompilationOutputs<'id> {
     pub fn commit(self, db: &mut CompilationDb<'id>, cache: &mut TypeCache, pool: &mut ConstantPool) {
         for &item in &self.defined_types {
-            match self.type_repo.get_type(item).unwrap() {
+            match self.repo.get_type(item).unwrap() {
                 DataType::Class(_) => {
                     db.classes.insert(item, pool.reserve());
                 }
@@ -700,16 +722,47 @@ impl<'id> CompilationOutputs<'id> {
         }
 
         for item in self.defined_types {
-            Self::build_type(item, &self.type_repo, db, cache, pool);
+            Self::build_type(item, &self.repo, db, cache, pool);
         }
 
-        for item in &self.codegen_queue {
-            if let &CodeGenItem::AssembleGlobal(id, _, _) = item {
-                let (sig, method) = self.type_repo.globals().get_overload(id.into()).unwrap();
-                let idx =
-                    Self::build_function(sig.clone(), &method.typ, true).commit_global(&self.type_repo, pool, cache);
-                db.globals.insert(id, idx);
+        let mut wrappers: HashMap<MethodId, VecDeque<PoolIndex<PoolFunction>>> = HashMap::new();
+
+        for (i, item) in self.codegen_queue.iter().enumerate() {
+            match item {
+                &CodeGenItem::AssembleGlobal(id, _, _) => {
+                    let (sig, method) = self.repo.globals().get_overload(id.into()).unwrap();
+                    let idx = Self::build_function(sig.clone(), &method.typ, method.flags)
+                        .commit_global(&self.repo, pool, cache);
+                    db.globals.insert(id, idx);
+                }
+                CodeGenItem::WrapMethod(mid, _, _, _) => {
+                    let method = self.repo.get_method(mid).unwrap();
+                    let name = self.repo.get_method_name(mid).unwrap();
+                    let &parent = db.classes.get(&mid.owner()).unwrap();
+                    let sig = FuncSignature::new(names::wrapper(i, name));
+                    let idx =
+                        Self::build_function(sig, &method.typ, method.flags).commit(parent, &self.repo, pool, cache);
+
+                    pool.class_mut(parent).unwrap().methods.push(idx);
+                    wrappers.entry(mid.clone()).or_default().push_back(idx);
+                }
+                _ => {}
             }
+        }
+
+        for (mid, indexes) in &mut wrappers {
+            let last_wrapper = *indexes.back().unwrap();
+            let wrapped_idx = *db.methods.get(mid).unwrap();
+
+            let wrapped_name = pool.definition(wrapped_idx).unwrap().name;
+            let wrapper_name = pool.definition(last_wrapper).unwrap().name;
+            pool.rename(last_wrapper, wrapped_name);
+            pool.rename(wrapped_idx, wrapper_name);
+            pool.swap_definition(wrapped_idx, last_wrapper);
+
+            indexes.pop_back();
+            indexes.push_front(last_wrapper);
+            indexes.push_back(wrapped_idx);
         }
 
         for item in self.codegen_queue {
@@ -722,15 +775,30 @@ impl<'id> CompilationOutputs<'id> {
                     };
                     let param_indices =
                         LocalIndices::new(params, pool.function(idx).unwrap().parameters.iter().copied().collect());
-                    let (locals, code) = CodeGen::build_function(body, param_indices, &self.type_repo, db, pool, cache);
+                    let (locals, code) =
+                        CodeGen::build_function(body, param_indices, &self.repo, db, None, pool, cache);
                     pool.complete_function(idx, locals.into_vec(), code).unwrap();
                 }
                 CodeGenItem::AssembleGlobal(gid, params, body) => {
                     let &idx = db.globals.get(&gid).unwrap();
                     let param_indices =
                         LocalIndices::new(params, pool.function(idx).unwrap().parameters.iter().copied().collect());
-                    let (locals, code) = CodeGen::build_function(body, param_indices, &self.type_repo, db, pool, cache);
+                    let (locals, code) =
+                        CodeGen::build_function(body, param_indices, &self.repo, db, None, pool, cache);
                     pool.complete_function(idx, locals.into_vec(), code).unwrap();
+                }
+                CodeGenItem::WrapMethod(mid, params, body, _) => {
+                    let indexes = wrappers.get_mut(&mid).unwrap();
+                    let wrapped = indexes.pop_front();
+                    let index = indexes.front().copied().unwrap();
+
+                    let param_indices = LocalIndices::new(
+                        params,
+                        pool.function(index).unwrap().parameters.iter().copied().collect(),
+                    );
+                    let (locals, code) =
+                        CodeGen::build_function(body, param_indices, &self.repo, db, wrapped, pool, cache);
+                    pool.complete_function(index, locals.into_vec(), code).unwrap();
                 }
             }
         }
@@ -756,14 +824,15 @@ impl<'id> CompilationOutputs<'id> {
                         .build()
                 });
                 let methods = chain!(
-                    class_type
-                        .statics
-                        .iter()
-                        .map(|e| Self::build_function(e.signature.clone(), &e.function.typ, true)),
+                    class_type.statics.iter().map(|e| Self::build_function(
+                        e.signature.clone(),
+                        &e.function.typ,
+                        e.function.flags
+                    )),
                     class_type.methods.iter().map(|e| Self::build_function(
                         e.signature.clone(),
                         &e.function.typ,
-                        false
+                        e.function.flags
                     ))
                 );
                 let idx = ClassBuilder::builder()
@@ -802,7 +871,7 @@ impl<'id> CompilationOutputs<'id> {
         }
     }
 
-    fn build_function(signature: FuncSignature, typ: &FuncType<'id>, is_static: bool) -> FunctionBuilder<'id> {
+    fn build_function(signature: FuncSignature, typ: &FuncType<'id>, flags: FunctionFlags) -> FunctionBuilder<'id> {
         let params = typ.params.iter().enumerate().map(|(i, param)| {
             ParamBuilder::builder()
                 .name(names::param(i))
@@ -811,7 +880,7 @@ impl<'id> CompilationOutputs<'id> {
                 .build()
         });
         FunctionBuilder::builder()
-            .flags(FunctionFlags::new().with_is_static(is_static).with_is_final(is_static))
+            .flags(flags)
             .visibility(Visibility::Public)
             .name(signature.into_str())
             .return_type(if typ.is_ret_poly { Type::Top } else { typ.ret.clone() })
@@ -1017,7 +1086,7 @@ fn get_type_id<'id>(name: &str, interner: &'id StringInterner) -> TypeId<'id> {
 
 #[derive(Debug)]
 struct Module<'id> {
-    names: HashMap<Str, Vec<Global>>,
+    names: HashMap<Str, Vec<Global<'id>>>,
     types: HashMap<Str, TypeId<'id>>,
     items: Vec<ModuleItem<'id>>,
 }
@@ -1026,7 +1095,13 @@ struct Module<'id> {
 enum ModuleItem<'id> {
     Class(Data<'id>, HashMap<Str, InferType<'id>>, Vec<CompileBody<'id>>),
     Global(CompileBody<'id>),
-    MethodReplacement(Data<'id>, CompileBody<'id>),
+    AnnotatedMethod(Data<'id>, CompileBody<'id>, MethodInjection),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum MethodInjection {
+    Replace,
+    Wrap,
 }
 
 #[derive(Debug)]
@@ -1041,6 +1116,7 @@ struct CompileBody<'id> {
 
 #[derive(Debug)]
 enum CodeGenItem<'id> {
+    WrapMethod(MethodId<'id>, IndexMap<Local, Type<'id>>, Seq<CheckedAst<'id>>, bool),
     AssembleMethod(MethodId<'id>, IndexMap<Local, Type<'id>>, Seq<CheckedAst<'id>>, bool),
     AssembleGlobal(GlobalId, IndexMap<Local, Type<'id>>, Seq<CheckedAst<'id>>),
 }

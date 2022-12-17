@@ -21,3 +21,7 @@ pub fn param(id: impl Display) -> Str {
 pub fn field(id: impl Display) -> Str {
     str_fmt!("field${id}")
 }
+
+pub fn wrapper(i: usize, id: impl Display) -> Str {
+    str_fmt!("wrapper${i}${id}")
+}

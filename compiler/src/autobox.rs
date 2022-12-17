@@ -73,8 +73,12 @@ impl<'ctx, 'id> Autobox<'ctx, 'id> {
                     self.apply(arg);
                 }
                 let fn_type = match &**cb {
-                    Callable::Static(mid) => &self.type_repo.get_static(mid).unwrap().typ,
-                    Callable::Instance(mid) => &self.type_repo.get_method(mid).unwrap().typ,
+                    Callable::Static(mid) | Callable::WrappedStatic(mid) => {
+                        &self.type_repo.get_static(mid).unwrap().typ
+                    }
+                    Callable::Instance(mid) | Callable::WrappedMethod(mid) => {
+                        &self.type_repo.get_method(mid).unwrap().typ
+                    }
                     Callable::Global(gid) => &self.type_repo.get_global(gid).unwrap().typ,
                     Callable::Lambda => {
                         for (arg, typ) in args.iter_mut().zip(meta.arg_types.iter()) {
