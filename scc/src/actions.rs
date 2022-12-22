@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::ffi::OsStr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
@@ -9,6 +9,7 @@ use serde::Deserialize;
 pub struct UserAction {
     pub id: String,
     pub message: String,
+    pub file: Option<PathBuf>,
     pub span_starts_with: Option<String>,
     pub line_contains: Option<String>,
 }
@@ -36,10 +37,11 @@ impl UserActions {
         Ok(Self { actions })
     }
 
-    pub fn get_by_error(&self, error_code: &str, source: &str, source_line: &str) -> Option<&UserAction> {
+    pub fn get_by_error(&self, error_code: &str, path: &Path, source: &str, source_line: &str) -> Option<&UserAction> {
         self.actions.get(error_code)?.iter().find(|a| {
-            matches!(&a.span_starts_with, Some(str) if source.starts_with(str))
-                || matches!(&a.line_contains, Some(str) if source_line.contains(str))
+            a.file.as_ref().map_or(true, |p| p == path)
+                && (matches!(&a.span_starts_with, Some(str) if source.starts_with(str))
+                    || matches!(&a.line_contains, Some(str) if source_line.contains(str)))
         })
     }
 }
