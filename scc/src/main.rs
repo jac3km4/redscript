@@ -1,12 +1,13 @@
 use std::fs::{self, File, OpenOptions};
 use std::io;
+use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::SystemTime;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use fd_lock::RwLock;
-use hashbrown::HashSet;
+use hashbrown::{HashMap, HashSet};
 use redscript::ast::Span;
 use redscript::bundle::ScriptBundle;
 use redscript_compiler::compiler::{CompilationResources, Compiler};
@@ -19,6 +20,10 @@ use time::format_description::FormatItem;
 use time::macros::format_description;
 use time::OffsetDateTime;
 
+use crate::actions::UserActions;
+
+mod actions;
+
 const BUNDLE_FILE_NAME: &str = "final.redscripts";
 const BACKUP_FILE_NAME: &str = "final.redscripts.bk";
 const TIMESTAMP_FILE_NAME: &str = "redscript.ts";
@@ -26,7 +31,7 @@ const TIMESTAMP_FILE_NAME: &str = "redscript.ts";
 #[derive(Debug, Error)]
 enum Error {
     #[error("compilation errors")]
-    CompileErrors(Vec<Span>),
+    CompileErrors(Vec<(&'static str, Span)>),
     #[error("I/O error: {0}")]
     IoError(#[from] io::Error),
 }
@@ -200,12 +205,12 @@ fn compile_scripts(cache_dir: &Path, fallback_cache_dir: Option<&Path>, files: &
         Ok(failed) => {
             let mut spans = vec![];
             for error in failed.into_errors() {
-                spans.push(error.span());
+                spans.push((error.code(), error.span()));
                 log::error!("{}", error.display(files));
             }
             Err(Error::CompileErrors(spans))
         }
-        Err(error) => Err(Error::CompileErrors(vec![error.1])),
+        Err(error) => Err(Error::CompileErrors(vec![("SYNTAX_ERR", error.1)])),
     }
 }
 
@@ -262,30 +267,51 @@ impl ScriptManifest {
 }
 
 fn error_message(error: Error, files: &Files, scripts_dir: &Path) -> String {
-    fn detailed_message(spans: &[Span], files: &Files, scripts_dir: &Path) -> Option<String> {
+    fn detailed_message(spans: &[(&'static str, Span)], files: &Files, scripts_dir: &Path) -> Option<String> {
+        let actions = UserActions::load(scripts_dir.join("userActions")).ok()?;
         let mut causes = HashSet::new();
+        let mut actions_found = HashMap::new();
 
-        for span in spans {
-            let file = files.lookup_file(span.low)?;
-            let cause = file
+        for &(code, span) in spans {
+            let loc = files.lookup(span)?;
+            let cause = loc
+                .file
                 .path()
                 .strip_prefix(scripts_dir)
                 .ok()
                 .and_then(|p| p.iter().next())
-                .unwrap_or_else(|| file.path().as_os_str())
+                .unwrap_or_else(|| loc.file.path().as_os_str())
                 .to_string_lossy();
 
             causes.insert(cause);
+
+            if let Some(act) = actions.get_by_error(code, loc.file.source_slice(span), loc.enclosing_line()) {
+                actions_found.entry(&act.id).or_insert(act);
+            }
         }
 
         let causes: String = causes.iter().flat_map(|file| ["- ", file, "\n"]).collect();
+        let actions: Option<String> = actions_found
+            .is_empty()
+            .not()
+            .then(|| actions_found.values().flat_map(|a| ["- ", &a.message, "\n"]).collect());
 
-        let msg = format!(
-            "This is caused by errors in:\n\
-            {causes}\
-            You can try updating or removing these scripts to resolve the issue. If you need more information, consult the logs."
-        );
-        Some(msg)
+        let res = if let Some(actions) = actions {
+            format!(
+                "This is caused by errors in:\n\
+                {causes}\
+                Based on the errors found, the suggested actions are:\n\
+                {actions}\
+                If you need more information, consult the logs."
+            )
+        } else {
+            format!(
+                "This is caused by errors in:\n\
+                {causes}\
+                You can try updating or removing these scripts to resolve the issue. If you need more information, consult the logs."
+            )
+        };
+        Some(res)
     }
 
     let str = match error {

@@ -56,6 +56,28 @@ impl<'id> CompileError<'id> {
         }
     }
 
+    #[inline]
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::TypeError(TypeError::UnresolvedType(_), _) => "UNRESOLVED_TYPE",
+            Self::TypeError(_, _) => "TYPE_ERR",
+            Self::UnresolvedFunction(_, _) => "UNRESOLVED_FN",
+            Self::UnresolvedMethod(_, _) => "UNRESOLVED_METHOD",
+            Self::UnresolvedMember(_, _, _) => "UNRESOLVED_MEMBER",
+            Self::CannotLookupMember(_) => "TYPE_ANN_REQUIRED",
+            Self::UnresolvedVar(_, _) => "UNRESOLVED_REF",
+            Self::UnresolvedImport(_, _) => "UNRESOLVED_IMPORT",
+            Self::NoMatchingOverload(_, _, _) | Self::ManyMatchingOverloads(_, _, _) => "NO_MATCHING_OVERLOAD",
+            Self::UnimplementedMethod(_, _) => "UNIMPLEMENTED_METHOD",
+            Self::Unsupported(feat, _) => match feat {
+                Unsupported::AnnotatedFuncWithNoBody | Unsupported::FinalWithoutBody => "MISSING_BODY",
+                Unsupported::NativeWithBody => "UNEXPECTED_BODY",
+                Unsupported::NativeInNonNative => "UNEXPECTED_NATIVE",
+                _ => "UNSUPPORTED",
+            },
+        }
+    }
+
     pub fn display(self, files: &Files) -> DisplayError<'_, 'id> {
         let location = files.lookup(self.span()).expect("Unknown file");
         DisplayError { location, error: self }
