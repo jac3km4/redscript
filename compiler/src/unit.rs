@@ -107,7 +107,7 @@ impl<'a> CompilationUnit<'a> {
                     let spans = diagnostics
                         .iter()
                         .filter(|d| d.is_fatal())
-                        .map(Diagnostic::span)
+                        .map(|d| (d.code(), d.span()))
                         .collect();
                     Err(Error::MultipleErrors(spans))
                 } else {
@@ -120,7 +120,7 @@ impl<'a> CompilationUnit<'a> {
                     diagnostic.log(files);
 
                     if diagnostic.is_fatal() {
-                        Err(Error::MultipleErrors(vec![diagnostic.span()]))
+                        Err(Error::MultipleErrors(vec![(diagnostic.code(), diagnostic.span())]))
                     } else {
                         Ok(())
                     }
@@ -761,7 +761,7 @@ impl<'a> CompilationUnit<'a> {
                         .resolve_method(name.clone(), target_class_idx, self.pool)
                         .with_span(ann.span)?
                         .by_id(&sig, self.pool)
-                        .ok_or_else(|| Cause::FunctionNotFound(name).with_span(ann.span))?;
+                        .ok_or_else(|| Cause::MethodNotFound(name, class_name.clone()).with_span(ann.span))?;
 
                     let wrapped_idx = if let Some(wrapped) = self.wrappers.get(&fun_idx) {
                         *wrapped
@@ -804,7 +804,7 @@ impl<'a> CompilationUnit<'a> {
                         .resolve_method(name.clone(), target_class_idx, self.pool)
                         .with_span(ann.span)?
                         .by_id(&sig, self.pool)
-                        .ok_or_else(|| Cause::FunctionNotFound(name).with_span(ann.span))?;
+                        .ok_or_else(|| Cause::MethodNotFound(name, class_name.clone()).with_span(ann.span))?;
                     let base = self.pool.function(fun_idx).ok().and_then(|fun| fun.base_method);
                     let slot = Slot::Function {
                         index: fun_idx,

@@ -124,7 +124,7 @@ impl File {
         Some(loc)
     }
 
-    fn enclosing_line(&self, line: usize) -> &str {
+    pub fn enclosing_line(&self, line: usize) -> &str {
         let low = if line == 0 {
             self.lines.0
         } else {
@@ -135,7 +135,7 @@ impl File {
         self.source_slice(span)
     }
 
-    fn source_slice(&self, span: Span) -> &str {
+    pub fn source_slice(&self, span: Span) -> &str {
         let start = span.low.0 - self.byte_offset().0;
         let end = span.high.0 - self.byte_offset().0;
         &self.source[start as usize..end as usize]

@@ -659,7 +659,7 @@ impl<A> Decode for PoolIndex<A> {
 impl<A> Encode for PoolIndex<A> {
     #[inline]
     fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
-        output.encode(&(self.value as u32))
+        output.encode(&(self.value))
     }
 }
 

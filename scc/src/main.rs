@@ -1,6 +1,7 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
 use std::io;
+use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::SystemTime;
@@ -17,6 +18,10 @@ use time::format_description::well_known::Rfc3339 as Rfc3339Format;
 use time::format_description::FormatItem;
 use time::macros::format_description;
 use time::OffsetDateTime;
+
+use crate::actions::UserActions;
+
+mod actions;
 
 const BUNDLE_FILE_NAME: &str = "final.redscripts";
 const BACKUP_FILE_NAME: &str = "final.redscripts.bk";
@@ -55,7 +60,7 @@ fn main() -> ExitCode {
                 if !expected_bundle_path.exists() {
                     let base = get_base_bundle_path(&default_cache_dir);
                     fs::create_dir_all(&cache_dir).expect("Could not create the custom cache directory");
-                    fs::copy(&base, expected_bundle_path).expect("Could not copy base bundle");
+                    fs::copy(base, expected_bundle_path).expect("Could not copy base bundle");
                 }
                 (cache_dir, Some(default_cache_dir))
             }
@@ -131,7 +136,7 @@ fn compile_scripts(cache_dir: &Path, fallback_cache_dir: Option<&Path>, files: &
             .read(true)
             .write(true)
             .create(true)
-            .open(&timestamp_path)?,
+            .open(timestamp_path)?,
     );
     let mut ts_file = ts_lock.write()?;
 
@@ -222,7 +227,7 @@ struct ScriptManifest {
 impl ScriptManifest {
     pub fn load(script_dir: &Path) -> Result<Self, String> {
         let path = script_dir.join("redscript.toml");
-        let contents = fs::read_to_string(&path).map_err(|err| match err.kind() {
+        let contents = fs::read_to_string(path).map_err(|err| match err.kind() {
             io::ErrorKind::NotFound => "manifest not available".to_owned(),
             _ => err.to_string(),
         })?;
@@ -237,35 +242,59 @@ impl ScriptManifest {
 }
 
 fn error_message(error: Error, files: &Files, scripts_dir: &Path) -> String {
-    fn detailed_message(spans: &[Span], files: &Files, scripts_dir: &Path) -> Option<String> {
+    fn detailed_message(spans: &[(&'static str, Span)], files: &Files, scripts_dir: &Path) -> Option<String> {
+        let actions = UserActions::load(scripts_dir.join("userActions")).ok()?;
         let mut causes = HashSet::new();
+        let mut actions_found = HashMap::new();
 
-        for span in spans {
-            let file = files.lookup_file(span.low)?;
-            let cause = file
+        for &(code, span) in spans {
+            let loc = files.lookup(span)?;
+            let cause = loc
+                .file
                 .path()
                 .strip_prefix(scripts_dir)
                 .ok()
                 .and_then(|p| p.iter().next())
-                .unwrap_or_else(|| file.path().as_os_str())
+                .unwrap_or_else(|| loc.file.path().as_os_str())
                 .to_string_lossy();
 
             causes.insert(cause);
+
+            if let Some(act) = actions.get_by_error(code, loc.file.source_slice(span), loc.enclosing_line()) {
+                actions_found.entry(&act.id).or_insert(act);
+            }
         }
 
         let causes: String = causes.iter().flat_map(|file| ["- ", file, "\n"]).collect();
+        let actions: Option<String> = actions_found
+            .is_empty()
+            .not()
+            .then(|| actions_found.values().flat_map(|a| ["- ", &a.message, "\n"]).collect());
 
-        let msg = format!(
-            "This is caused by errors in:\n\
-            {causes}\
-            You can try updating or removing these scripts to resolve the issue. If you need more information, consult the logs."
-        );
-        Some(msg)
+        let res = if let Some(actions) = actions {
+            format!(
+                "This is caused by errors in:\n\
+                {causes}\
+                Based on the errors found, the suggested actions are:\n\
+                {actions}\
+                If you need more information, consult the logs."
+            )
+        } else {
+            format!(
+                "This is caused by errors in:\n\
+                {causes}\
+                You can try updating or removing these scripts to resolve the issue. If you need more information, consult the logs."
+            )
+        };
+        Some(res)
     }
 
     let str = match error {
-        Error::CompileError(_, span) | Error::SyntaxError(_, span) => {
-            detailed_message(&[span], files, scripts_dir).unwrap_or_default()
+        Error::CompileError(code, span) => {
+            detailed_message(&[(code.code(), span)], files, scripts_dir).unwrap_or_default()
+        }
+        Error::SyntaxError(_, span) => {
+            detailed_message(&[("SYNTAX_ERR", span)], files, scripts_dir).unwrap_or_default()
         }
         Error::MultipleErrors(spans) => detailed_message(&spans, files, scripts_dir).unwrap_or_default(),
         Error::IoError(err) => format!("This is caused by an I/O error: {err}"),

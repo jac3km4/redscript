@@ -21,7 +21,7 @@ pub enum Error {
     #[error("constant pool error: {0}")]
     PoolError(#[from] PoolError),
     #[error("multiple errors")]
-    MultipleErrors(Vec<Span>),
+    MultipleErrors(Vec<(&'static str, Span)>),
     #[error("compile-time eval error: {0}")]
     CteError(&'static str, Span),
 }
@@ -36,6 +36,8 @@ pub enum Cause {
     FunctionNotFound(Ident),
     #[error("member {0} not found on {1}")]
     MemberNotFound(Ident, Ident),
+    #[error("method {0} not found on {1}")]
+    MethodNotFound(Ident, Ident),
     #[error("class {0} not found")]
     ClassNotFound(Ident),
     #[error("cannot instantiate {0} because it's abstract")]
@@ -104,6 +106,43 @@ impl Cause {
     #[inline]
     pub fn with_span(self, span: Span) -> Error {
         Error::CompileError(self, span)
+    }
+
+    #[inline]
+    pub fn code(&self) -> &'static str {
+        match self {
+            Cause::PoolError(_) => "POOL_ERR",
+            Cause::TypeError(_, _)
+            | Cause::UnexpectedValueReturn
+            | Cause::UnexpectedVoidReturn(_)
+            | Cause::InvalidIntrinsicUse(_, _)
+            | Cause::UnificationFailed(_, _) => "TYPE_ERR",
+            Cause::FunctionNotFound(_) => "UNRESOLVED_FN",
+            Cause::MethodNotFound(_, _) => "UNRESOLVED_METHOD",
+            Cause::MemberNotFound(_, _) => "UNRESOLVED_MEMBER",
+            Cause::ClassNotFound(_) | Cause::UnresolvedType(_) => "UNRESOLVED_TYPE",
+            Cause::UnresolvedReference(_) => "UNRESOLVED_REF",
+            Cause::UnresolvedImport(_) | Cause::UnresolvedModule(_) => "UNRESOLVED_IMPORT",
+            Cause::InvalidArgCount(_, _) | Cause::NoMatchingOverload(_, _) => "NO_MATCHING_OVERLOAD",
+            Cause::InstantiatingAbstract(_) => "NEW_ABSTRACT",
+            Cause::TypeAnnotationRequired => "TYPE_ANN_REQUIRED",
+            Cause::InvalidAnnotationArgs => "INVALID_ANN_USE",
+            Cause::InvalidMemberAccess(_) => "INVALID_MEMBER_ACCESS",
+            Cause::VoidCannotBeUsed => "INVALID_VOID_USE",
+            Cause::InvalidStaticMethodCall(_) => "INVALID_STATIC_USE",
+            Cause::InvalidNonStaticMethodCall(_) => "INVALID_NONSTATIC_USE",
+            Cause::UnexpectedThis => "UNEXPECTED_THIS",
+            Cause::SymbolRedefinition => "SYM_REDEFINITION",
+            Cause::FieldRedefinition => "FIELD_REDEFINITION",
+            Cause::MissingBody => "MISSING_BODY",
+            Cause::UnexpectedBody => "UNEXPECTED_BODY",
+            Cause::UnexpectedNative => "UNEXPECTED_NATIVE",
+            Cause::UnsupportedPersistent(_) => "INVALID_PERSISTENT",
+            Cause::InvalidConstant => "INVALID_CONSTANT",
+            Cause::UnsupportedFeature(_) | Cause::UnsupportedOperation(_, _) | Cause::UnexpectedToken(_) => {
+                "UNSUPPORTED"
+            }
+        }
     }
 }
 

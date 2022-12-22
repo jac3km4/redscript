@@ -1107,21 +1107,21 @@ impl<'a, Loc: Clone> CodeCursor<'a, Loc> {
     }
 
     pub fn pop(&mut self) -> Result<Instr<Loc>, CursorError> {
-        let instr = self.code.get(self.index as usize).ok_or(CursorError::EndOfCode)?;
+        let instr = self.code.get(self.index).ok_or(CursorError::EndOfCode)?;
         self.index += 1;
         Ok(instr.clone())
     }
 
     #[inline]
     pub fn peek(&self) -> Option<Instr<Loc>> {
-        self.code.get(self.index as usize).cloned()
+        self.code.get(self.index).cloned()
     }
 
     pub fn pos(&self) -> Location {
         if self.index == 0 {
             Location::ZERO
         } else {
-            Location::new(self.offsets[self.index as usize - 1])
+            Location::new(self.offsets[self.index - 1])
         }
     }
 

@@ -22,7 +22,6 @@ pub enum Diagnostic {
     SyntaxError(ExpectedSet, Span),
     CompileError(Cause, Span),
     CteError(&'static str, Span),
-    ResolutionError(String, Span),
 }
 
 impl Diagnostic {
@@ -49,7 +48,11 @@ impl Diagnostic {
         };
         let underline = "^".repeat(underline_len);
 
-        writeln!(out, "At {loc}:")?;
+        if let Self::CompileError(cause, _) = self {
+            write!(out, "[{}] ", cause.code())?;
+        }
+
+        writeln!(out, "At {loc}:",)?;
         writeln!(out, "{line}")?;
         writeln!(out, "{padding}{underline}")?;
         writeln!(out, "{self}")
@@ -86,8 +89,14 @@ impl Diagnostic {
             | Self::MissingReturn(span)
             | Self::CompileError(_, span)
             | Self::SyntaxError(_, span)
-            | Self::CteError(_, span)
-            | Self::ResolutionError(_, span) => *span,
+            | Self::CteError(_, span) => *span,
+        }
+    }
+
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::CompileError(cause, _) => cause.code(),
+            _ => "OTHER",
         }
     }
 }
@@ -107,7 +116,6 @@ impl fmt::Display for Diagnostic {
             Self::SyntaxError(set, _) => f.write_fmt(format_args!("syntax error, expected {set}")),
             Self::CompileError(cause, _) => f.write_fmt(format_args!("{cause}")),
             Self::CteError(msg, _) => f.write_fmt(format_args!("compile-time expression error: {msg}")),
-            Self::ResolutionError(msg, _) => f.write_fmt(format_args!("{msg}")),
         }
     }
 }

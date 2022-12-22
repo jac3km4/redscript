@@ -142,7 +142,7 @@ impl Scope {
             current_idx = class.base;
         }
         if functions.is_empty() {
-            Err(Cause::MemberNotFound(
+            Err(Cause::MethodNotFound(
                 ident,
                 Ident::from_heap(pool.def_name(class_idx)?),
             ))
