@@ -268,24 +268,27 @@ impl ScriptManifest {
 
 fn error_message(error: Error, files: &Files, scripts_dir: &Path) -> String {
     fn detailed_message(spans: &[(&'static str, Span)], files: &Files, scripts_dir: &Path) -> Option<String> {
-        let actions = UserActions::load(scripts_dir.join("userActions")).ok()?;
+        let actions = match UserActions::load(scripts_dir.join("userActions")) {
+            Ok(res) => res,
+            Err(err) => {
+                log::error!("Failed to parse one of the user actions TOML files: {}", err);
+                return None;
+            }
+        };
         let mut causes = HashSet::new();
         let mut actions_found = HashMap::new();
 
         for &(code, span) in spans {
             let loc = files.lookup(span)?;
-            let cause = loc
-                .file
-                .path()
-                .strip_prefix(scripts_dir)
-                .ok()
-                .and_then(|p| p.iter().next())
+            let Ok(rel_path) = loc.file.path().strip_prefix(scripts_dir) else { continue };
+            let cause = rel_path
+                .iter()
+                .next()
                 .unwrap_or_else(|| loc.file.path().as_os_str())
                 .to_string_lossy();
 
             causes.insert(cause);
-
-            if let Some(act) = actions.get_by_error(code, loc.file.source_slice(span), loc.enclosing_line()) {
+            if let Some(act) = actions.get_by_error(code, rel_path, loc.file.source_slice(span), loc.enclosing_line()) {
                 actions_found.entry(&act.id).or_insert(act);
             }
         }
