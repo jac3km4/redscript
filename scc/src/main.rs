@@ -8,16 +8,13 @@ use std::time::SystemTime;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use fd_lock::RwLock;
+use flexi_logger::{Age, Cleanup, Criterion, FileSpec, LevelFilter, LogSpecBuilder, Logger, Naming};
 use redscript::ast::Span;
 use redscript::bundle::ScriptBundle;
 use redscript_compiler::error::Error;
 use redscript_compiler::source_map::{Files, SourceFilter};
 use redscript_compiler::unit::CompilationUnit;
 use serde::Deserialize;
-use time::format_description::well_known::Rfc3339 as Rfc3339Format;
-use time::format_description::FormatItem;
-use time::macros::format_description;
-use time::OffsetDateTime;
 
 use crate::actions::UserActions;
 
@@ -35,20 +32,10 @@ fn main() -> ExitCode {
         let r6_dir = script_dir.parent().unwrap();
         let default_cache_dir = r6_dir.join("cache");
 
-        // load manifest without fallback
-        let manifest = ScriptManifest::load(&script_dir);
+        setup_logger(r6_dir);
 
-        // set up logger with an optional manifest
-        let append_date_to_logfiles = manifest
-            .as_ref()
-            .ok()
-            .and_then(|m| m.append_date_to_logfiles)
-            .unwrap_or(false);
-        setup_logger(r6_dir, append_date_to_logfiles).expect("Could not set up the logger");
-
-        // get manifest or fallback
-        let manifest = manifest.unwrap_or_else(|err| {
-            log::info!("Script manifest not loaded, using defaults ({err})");
+        let manifest = ScriptManifest::load(&script_dir).unwrap_or_else(|err| {
+            log::info!("Using defaults for the script manifest ({err})");
             ScriptManifest::default()
         });
 
@@ -75,7 +62,7 @@ fn main() -> ExitCode {
                 ExitCode::SUCCESS
             }
             Err(err) => {
-                let content = error_message(err, &files, &r6_dir);
+                let content = error_message(err, &files, r6_dir);
                 #[cfg(feature = "popup")]
                 msgbox::create("Compilation error", &content, msgbox::IconType::Error).unwrap();
 
@@ -98,32 +85,15 @@ fn get_base_bundle_path(cache_dir: &Path) -> PathBuf {
     }
 }
 
-fn setup_logger(r6_dir: &Path, include_date_in_filename: bool) -> Result<(), Error> {
-    let log_file_name = if include_date_in_filename {
-        const DATE_FORMAT: &[FormatItem] = format_description!("[year].[month].[day]_[hour]-[minute]-[second]");
-        let date = OffsetDateTime::now_utc().format(&DATE_FORMAT).unwrap();
-        format!("redscript-{date}.log")
-    } else {
-        "redscript.log".to_owned()
-    };
-
-    let log_dir = &r6_dir.join("logs");
-
-    if !log_dir.exists() {
-        fs::create_dir(log_dir)?;
-    }
-
-    fern::Dispatch::new()
-        .format(move |out, message, rec| {
-            let time = OffsetDateTime::now_local().unwrap().format(&Rfc3339Format).unwrap();
-            out.finish(format_args!("{} [{}] {}", time, rec.level(), message));
-        })
-        .level(log::LevelFilter::Info)
-        .chain(io::stdout())
-        .chain(fern::log_file(log_dir.join(log_file_name))?)
-        .apply()
+fn setup_logger(r6_dir: &Path) {
+    let file = FileSpec::default().directory(r6_dir.join("logs")).basename("redscript");
+    Logger::with(LogSpecBuilder::new().default(LevelFilter::Info).build())
+        .log_to_stdout()
+        .log_to_file(file)
+        .rotate(Criterion::Age(Age::Day), Naming::Timestamps, Cleanup::KeepLogFiles(4))
+        .format(|out, time, msg| write!(out, "[{} - {}] {}", msg.level(), time.now().to_rfc2822(), msg.args()))
+        .start()
         .expect("Failed to initialize the logger");
-    Ok(())
 }
 
 fn compile_scripts(cache_dir: &Path, fallback_cache_dir: Option<&Path>, files: &Files) -> Result<(), Error> {
@@ -221,14 +191,13 @@ impl CompileTimestamp {
 #[derive(Debug, Deserialize, Default)]
 struct ScriptManifest {
     exclusions: HashSet<String>,
-    append_date_to_logfiles: Option<bool>,
 }
 
 impl ScriptManifest {
     pub fn load(script_dir: &Path) -> Result<Self, String> {
         let path = script_dir.join("redscript.toml");
         let contents = fs::read_to_string(path).map_err(|err| match err.kind() {
-            io::ErrorKind::NotFound => "manifest not available".to_owned(),
+            io::ErrorKind::NotFound => "manifest not present".to_owned(),
             _ => err.to_string(),
         })?;
 

@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use fern::colors::ColoredLevelConfig;
+use flexi_logger::{LevelFilter, LogSpecBuilder, Logger};
 use gumdrop::Options;
 use redscript::bundle::ScriptBundle;
 use redscript::definition::AnyDefinition;
@@ -64,14 +64,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn setup_logger() {
-    let colors = ColoredLevelConfig::new();
-    fern::Dispatch::new()
-        .format(move |out, message, rec| {
-            out.finish(format_args!("[{}] {}", colors.color(rec.level()), message));
-        })
-        .level(log::LevelFilter::Info)
-        .chain(io::stdout())
-        .apply()
+    Logger::with(LogSpecBuilder::new().default(LevelFilter::Info).build())
+        .log_to_stdout()
+        .start()
         .expect("Failed to initialize the logger");
 }
 

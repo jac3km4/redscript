@@ -1,11 +1,5 @@
 [workspace]
-members = [
-  "core",
-  "compiler",
-  "decompiler",
-  "cli",
-  "scc"
-]
+members = ["core", "compiler", "decompiler", "cli", "scc"]
 
 [workspace.package]
 version = "0.5.9"
@@ -20,7 +14,7 @@ strum = { version = "0.24", features = ["derive"] }
 enum-as-inner = "0.5"
 byteorder = "1.4"
 flexstr = "0.9"
-fern = "0.6"
+flexi_logger = { version = "0.24", default-features = false }
 
 [workspace.metadata.release]
 shared-version = true
