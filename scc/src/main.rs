@@ -8,7 +8,7 @@ use std::time::SystemTime;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use fd_lock::RwLock;
-use flexi_logger::{Age, Cleanup, Criterion, FileSpec, LevelFilter, LogSpecBuilder, Logger, Naming};
+use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, LevelFilter, LogSpecBuilder, Logger, Naming};
 use redscript::ast::Span;
 use redscript::bundle::ScriptBundle;
 use redscript_compiler::error::Error;
@@ -16,13 +16,15 @@ use redscript_compiler::source_map::{Files, SourceFilter};
 use redscript_compiler::unit::CompilationUnit;
 use serde::Deserialize;
 
-use crate::actions::UserActions;
+use crate::hints::UserHints;
 
-mod actions;
+mod hints;
 
 const BUNDLE_FILE_NAME: &str = "final.redscripts";
 const BACKUP_FILE_NAME: &str = "final.redscripts.bk";
 const TIMESTAMP_FILE_NAME: &str = "redscript.ts";
+
+const USER_HINTS_DIR: &str = "redsUserHints";
 
 fn main() -> ExitCode {
     let mut arg_iter = std::env::args().skip(1);
@@ -88,8 +90,8 @@ fn get_base_bundle_path(cache_dir: &Path) -> PathBuf {
 fn setup_logger(r6_dir: &Path) {
     let file = FileSpec::default().directory(r6_dir.join("logs")).basename("redscript");
     Logger::with(LogSpecBuilder::new().default(LevelFilter::Info).build())
-        .log_to_stdout()
         .log_to_file(file)
+        .duplicate_to_stdout(Duplicate::All)
         .rotate(Criterion::Age(Age::Day), Naming::Timestamps, Cleanup::KeepLogFiles(4))
         .format(|out, time, msg| write!(out, "[{} - {}] {}", msg.level(), time.now().to_rfc2822(), msg.args()))
         .start()
@@ -213,12 +215,12 @@ impl ScriptManifest {
 fn error_message(error: Error, files: &Files, r6_dir: &Path) -> String {
     fn detailed_message(spans: &[(&'static str, Span)], files: &Files, r6_dir: &Path) -> Option<String> {
         let scripts_dir = r6_dir.join("scripts");
-        let actions = UserActions::load(r6_dir.join("config").join("userActions")).unwrap_or_else(|err| {
+        let hints = UserHints::load(r6_dir.join("config").join(USER_HINTS_DIR)).unwrap_or_else(|err| {
             log::error!("Failed to parse one of the user actions TOML files: {}", err);
-            UserActions::default()
+            UserHints::default()
         });
-        let mut causes = HashSet::new();
-        let mut actions_found = HashMap::new();
+        let mut offending_mods = HashSet::new();
+        let mut hints_matched = HashMap::new();
 
         for &(code, span) in spans {
             let loc = files.lookup(span)?;
@@ -229,30 +231,30 @@ fn error_message(error: Error, files: &Files, r6_dir: &Path) -> String {
                 .unwrap_or_else(|| loc.file.path().as_os_str())
                 .to_string_lossy();
 
-            causes.insert(cause);
-            if let Some(act) = actions.get_by_error(code, rel_path, loc.file.source_slice(span), loc.enclosing_line()) {
-                actions_found.entry(&act.id).or_insert(act);
+            offending_mods.insert(cause);
+            if let Some(act) = hints.get_by_error(code, rel_path, loc.file.source_slice(span), loc.enclosing_line()) {
+                hints_matched.entry(&act.id).or_insert(act);
             }
         }
 
-        let causes: String = causes.iter().flat_map(|file| ["- ", file, "\n"]).collect();
-        let actions: Option<String> = actions_found
+        let offending_mods_msg: String = offending_mods.iter().flat_map(|file| ["- ", file, "\n"]).collect();
+        let hints_msg: Option<String> = hints_matched
             .is_empty()
             .not()
-            .then(|| actions_found.values().flat_map(|a| ["- ", &a.message, "\n"]).collect());
+            .then(|| hints_matched.values().flat_map(|a| ["- ", &a.message, "\n"]).collect());
 
-        let res = if let Some(actions) = actions {
+        let res = if let Some(hints_msg) = hints_msg {
             format!(
                 "This is caused by errors in:\n\
-                {causes}\
+                {offending_mods_msg}\
                 Based on the errors found, the suggested actions are:\n\
-                {actions}\
+                {hints_msg}\
                 If you need more information, consult the logs."
             )
         } else {
             format!(
                 "This is caused by errors in:\n\
-                {causes}\
+                {offending_mods_msg}\
                 You can try updating or removing these scripts to resolve the issue. If you need more information, consult the logs."
             )
         };
