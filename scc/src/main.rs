@@ -85,7 +85,7 @@ fn main() -> ExitCode {
                 ExitCode::SUCCESS
             }
             Err(err) => {
-                let content = error_message(err, &files, &script_dir);
+                let content = error_message(err, &files, &r6_dir);
                 #[cfg(feature = "popup")]
                 msgbox::create("Compilation error", &content, msgbox::IconType::Error).unwrap();
 
@@ -266,21 +266,19 @@ impl ScriptManifest {
     }
 }
 
-fn error_message(error: Error, files: &Files, scripts_dir: &Path) -> String {
-    fn detailed_message(spans: &[(&'static str, Span)], files: &Files, scripts_dir: &Path) -> Option<String> {
-        let actions = match UserActions::load(scripts_dir.join("userActions")) {
-            Ok(res) => res,
-            Err(err) => {
-                log::error!("Failed to parse one of the user actions TOML files: {}", err);
-                return None;
-            }
-        };
+fn error_message(error: Error, files: &Files, r6_dir: &Path) -> String {
+    fn detailed_message(spans: &[(&'static str, Span)], files: &Files, r6_dir: &Path) -> Option<String> {
+        let scripts_dir = r6_dir.join("scripts");
+        let actions = UserActions::load(r6_dir.join("config").join("userActions")).unwrap_or_else(|err| {
+            log::error!("Failed to parse one of the user actions TOML files: {}", err);
+            UserActions::default()
+        });
         let mut causes = HashSet::new();
         let mut actions_found = HashMap::new();
 
         for &(code, span) in spans {
             let loc = files.lookup(span)?;
-            let Ok(rel_path) = loc.file.path().strip_prefix(scripts_dir) else { continue };
+            let Ok(rel_path) = loc.file.path().strip_prefix(&scripts_dir) else { continue };
             let cause = rel_path
                 .iter()
                 .next()
@@ -318,7 +316,7 @@ fn error_message(error: Error, files: &Files, scripts_dir: &Path) -> String {
     }
 
     let str = match error {
-        Error::CompileErrors(spans) => detailed_message(&spans, files, scripts_dir).unwrap_or_default(),
+        Error::CompileErrors(spans) => detailed_message(&spans, files, r6_dir).unwrap_or_default(),
         Error::IoError(err) => format!("This is caused by an I/O error: {err}"),
     };
 
