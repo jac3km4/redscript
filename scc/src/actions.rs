@@ -14,7 +14,7 @@ pub struct UserAction {
     pub line_contains: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct UserActions {
     pub actions: HashMap<String, Vec<UserAction>>,
 }
