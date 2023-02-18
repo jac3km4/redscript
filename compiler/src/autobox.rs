@@ -137,7 +137,7 @@ impl<'ctx, 'id> Autobox<'ctx, 'id> {
     }
 
     fn box_primitive(&self, boxable: &Boxable<'id>, expr: Expr<CheckedAst<'id>>) -> Expr<CheckedAst<'id>> {
-        if let Boxable::Prim(Prim::Unit) = boxable {
+        if matches!(boxable, Boxable::Prim(Prim::Unit)) {
             return expr;
         }
         let boxed = boxable.boxed_type().unwrap();
@@ -189,7 +189,7 @@ impl<'ctx, 'id> Autobox<'ctx, 'id> {
     }
 
     fn unbox_primitive(&self, boxable: &Boxable<'id>, expr: Expr<CheckedAst<'id>>) -> Expr<CheckedAst<'id>> {
-        if let Boxable::Prim(Prim::Unit) = boxable {
+        if matches!(boxable, Boxable::Prim(Prim::Unit)) {
             return expr;
         }
         let boxed = boxable.boxed_type().unwrap();

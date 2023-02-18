@@ -192,13 +192,13 @@ struct CompileTimestamp {
 
 impl CompileTimestamp {
     fn read<R: io::Read + io::Seek>(input: &mut R) -> Result<Self, Error> {
-        input.seek(io::SeekFrom::Start(0))?;
+        input.rewind()?;
         let nanos = input.read_u128::<LittleEndian>()?;
         Ok(Self { nanos })
     }
 
     fn write<W: io::Write + io::Seek>(&self, output: &mut W) -> Result<(), Error> {
-        output.seek(io::SeekFrom::Start(0))?;
+        output.rewind()?;
         output.write_u128::<LittleEndian>(self.nanos)?;
         Ok(())
     }
