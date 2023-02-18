@@ -53,7 +53,7 @@ impl<'id> Compiler<'id> {
     }
 
     pub fn run(mut self, files: &Files) -> Result<CompilationOutputs<'id>, ParseError> {
-        let mut types: TypeScope = self.repo.type_iter().map(|id| (id.as_str().into(), id)).collect();
+        let mut types = self.repo.type_iter().map(|id| (id.as_str().into(), id)).collect();
 
         let mut names = NameScope::default();
         for (name, idx) in self.repo.globals().iter_by_name() {
@@ -534,7 +534,7 @@ impl<'id> Compiler<'id> {
             .tparams
             .iter()
             .map(|ty| env.instantiate_var(ty))
-            .collect::<CompileResult<Box<[_]>, _>>()
+            .collect::<CompileResult<'_, Box<[_]>, _>>()
             .with_span(func.decl.span)?;
         let mut local_vars = vars.introduce_scope();
         for var in method_type_vars.iter() {
@@ -745,7 +745,7 @@ impl<'id> CompilationOutputs<'id> {
             Self::build_type(item, &self.repo, db, cache, pool);
         }
 
-        let mut wrappers: HashMap<MethodId, VecDeque<PoolIndex<PoolFunction>>> = HashMap::new();
+        let mut wrappers: HashMap<MethodId<'id>, VecDeque<_>> = HashMap::new();
 
         for (i, item) in self.codegen_queue.iter().enumerate() {
             match item {

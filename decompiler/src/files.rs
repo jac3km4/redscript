@@ -13,7 +13,7 @@ pub struct FileIndex<'a> {
 }
 
 impl<'a> FileIndex<'a> {
-    pub fn from_pool(pool: &'a ConstantPool) -> FileIndex {
+    pub fn from_pool(pool: &'a ConstantPool) -> Self {
         let mut file_map: HashMap<_, HashSet<_>> = HashMap::new();
 
         for (idx, def) in pool.definitions() {

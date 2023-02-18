@@ -995,9 +995,9 @@ pub mod predef {
 
     macro_rules! setup {
         ($($id:ident => $name:ident),*) => {
-            $(pub static $id: TypeId  = TypeId::new(stringify!($name));)*
+            $(pub static $id: TypeId<'static>  = TypeId::new(stringify!($name));)*
 
-            pub(super) static BY_NAME: Lazy<HashMap<&str, TypeId>> = Lazy::new(||
+            pub(super) static BY_NAME: Lazy<HashMap<&str, TypeId<'static>>> = Lazy::new(||
                 [$((stringify!($name), $id)),*]
                     .into_iter().collect()
             );
@@ -1050,5 +1050,5 @@ pub mod predef {
         BOXED_STRUCT => BoxedStruct
     );
 
-    pub(super) static FUNCTION_BY_ARITY: &[TypeId] = function_type_by_arity!(TypeId::new);
+    pub(super) static FUNCTION_BY_ARITY: &[TypeId<'static>] = function_type_by_arity!(TypeId::new);
 }

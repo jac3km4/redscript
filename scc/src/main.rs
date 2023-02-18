@@ -105,7 +105,7 @@ fn get_base_bundle_path(cache_dir: &Path) -> PathBuf {
 
 fn setup_logger(r6_dir: &Path, include_date_in_filename: bool) -> Result<(), Error> {
     let log_file_name = if include_date_in_filename {
-        const DATE_FORMAT: &[FormatItem] = format_description!("[year].[month].[day]_[hour]-[minute]-[second]");
+        const DATE_FORMAT: &[FormatItem<'_>] = format_description!("[year].[month].[day]_[hour]-[minute]-[second]");
         let date = OffsetDateTime::now_utc().format(&DATE_FORMAT).unwrap();
         format!("redscript-{date}.log")
     } else {

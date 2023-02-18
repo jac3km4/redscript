@@ -400,7 +400,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
     fn check_global<'a>(
         &mut self,
         name: Str,
-        overloads: &[Global],
+        overloads: &[Global<'id>],
         args: impl IntoIterator<IntoIter = impl ExactSizeIterator<Item = &'a Expr<SourceAst>>>,
         locals: &mut LocalMap<'_, 'id>,
         span: Span,

@@ -80,7 +80,7 @@ impl Files {
         self.files.get(index)
     }
 
-    pub fn lookup(&self, span: Span) -> Option<SourceLoc> {
+    pub fn lookup(&self, span: Span) -> Option<SourceLoc<'_>> {
         let file = self.lookup_file(span.low)?;
         let start = file.lookup(span.low)?;
         let end = file.lookup(span.high)?;
