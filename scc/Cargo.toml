@@ -14,7 +14,7 @@ thiserror.workspace = true
 hashbrown = { workspace = true, features = ["serde"] }
 time = { version = "0.3", features = ["local-offset", "formatting", "macros"] }
 serde = { version = "1", features = ["derive"] }
-toml = "0.5"
+toml = "0.7"
 vmap = { version = "0.5", default-features = false, optional = true }
 fd-lock = "3"
 msgbox = { version = "0.7", optional = true }
