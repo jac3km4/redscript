@@ -34,7 +34,7 @@ impl ScriptBundle {
         output.seek(io::SeekFrom::Start(Header::SIZE as u64))?;
         let header = self.pool.encode(output, &self.header)?;
 
-        output.seek(io::SeekFrom::Start(0))?;
+        output.rewind()?;
         output.encode(&header)?;
         Ok(())
     }
