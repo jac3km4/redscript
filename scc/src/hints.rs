@@ -31,7 +31,9 @@ impl UserHints {
             if entry.path().extension() == Some(OsStr::new("toml")) {
                 let contents = std::fs::read_to_string(entry.path())?;
                 let contents: HashMap<String, Vec<UserHint>> = toml::from_str(&contents)?;
-                hints.extend(contents);
+                for (key, val) in contents {
+                    hints.entry(key).or_default().extend(val);
+                }
             }
         }
         Ok(Self { hints })
