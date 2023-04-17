@@ -58,7 +58,7 @@ fn main() -> ExitCode {
 
         let files = Files::from_dir(&script_dir, manifest.source_filter()).expect("Could not load script sources");
 
-        match compile_scripts(&cache_dir, fallback_dir.as_deref(), &files) {
+        match compile_scripts(&script_dir, &cache_dir, fallback_dir.as_deref(), &files) {
             Ok(_) => {
                 log::info!("Output successfully saved in {}", cache_dir.display());
                 ExitCode::SUCCESS
@@ -98,7 +98,12 @@ fn setup_logger(r6_dir: &Path) {
         .expect("Failed to initialize the logger");
 }
 
-fn compile_scripts(cache_dir: &Path, fallback_cache_dir: Option<&Path>, files: &Files) -> Result<(), Error> {
+fn compile_scripts(
+    script_dir: &Path,
+    cache_dir: &Path,
+    fallback_cache_dir: Option<&Path>,
+    files: &Files,
+) -> Result<(), Error> {
     let bundle_path = cache_dir.join(BUNDLE_FILE_NAME);
     let backup_path = cache_dir.join(BACKUP_FILE_NAME);
     let fallback_backup_path = fallback_cache_dir.map(|dir| dir.join(BACKUP_FILE_NAME));
@@ -150,7 +155,15 @@ fn compile_scripts(cache_dir: &Path, fallback_cache_dir: Option<&Path>, files: &
     #[cfg(not(feature = "mmap"))]
     let mut bundle = ScriptBundle::load(&mut io::BufReader::new(File::open(backup_path)?))?;
 
+    if !files.is_empty() {
+        log::info!(
+            "Compiling files in {}:\n{}",
+            script_dir.display(),
+            files.display(script_dir)
+        );
+    }
     CompilationUnit::new(&mut bundle.pool, vec![])?.compile_and_report(files)?;
+    log::info!("Compilation complete");
 
     let mut file = File::create(&bundle_path)?;
     bundle.save(&mut io::BufWriter::new(&mut file))?;

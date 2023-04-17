@@ -93,8 +93,6 @@ impl<'a> CompilationUnit<'a> {
     }
 
     pub fn compile_and_report(self, files: &Files) -> Result<(), Error> {
-        log::info!("Compiling files: {}", files);
-
         match self.compile_files(files) {
             Ok(mut diagnostics) => {
                 diagnostics.sort_by_key(Diagnostic::is_fatal);
@@ -111,7 +109,6 @@ impl<'a> CompilationUnit<'a> {
                         .collect();
                     Err(Error::MultipleErrors(spans))
                 } else {
-                    log::info!("Compilation complete");
                     Ok(())
                 }
             }

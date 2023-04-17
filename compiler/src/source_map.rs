@@ -11,7 +11,7 @@ use crate::error::Error;
 
 #[derive(Debug, Default)]
 pub struct Files {
-    files: Vec<File>,
+    entries: Vec<File>,
 }
 
 impl Files {
@@ -43,11 +43,11 @@ impl Files {
     }
 
     pub fn files(&self) -> impl Iterator<Item = &File> {
-        self.files.iter()
+        self.entries.iter()
     }
 
     pub fn add(&mut self, path: PathBuf, source: String) {
-        let low = self.files.last().map_or(Pos(0), |f| f.high + 1);
+        let low = self.entries.last().map_or(Pos(0), |f| f.high + 1);
         let high = low + source.len();
         let mut lines = vec![];
         for (offset, _) in source.match_indices('\n') {
@@ -59,12 +59,15 @@ impl Files {
             high,
             source,
         };
-        self.files.push(file);
+        self.entries.push(file);
     }
 
     pub fn lookup_file(&self, pos: Pos) -> Option<&File> {
-        let index = self.files.binary_search_by(|file| file.span().compare_pos(pos)).ok()?;
-        self.files.get(index)
+        let index = self
+            .entries
+            .binary_search_by(|file| file.span().compare_pos(pos))
+            .ok()?;
+        self.entries.get(index)
     }
 
     pub fn lookup(&self, span: Span) -> Option<SourceLoc> {
@@ -74,11 +77,30 @@ impl Files {
         let result = SourceLoc { file, start, end };
         Some(result)
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    pub fn display<'p>(&self, root: &'p Path) -> FilesDispay<'_, 'p> {
+        FilesDispay { files: self, root }
+    }
 }
 
-impl fmt::Display for Files {
+#[derive(Debug)]
+pub struct FilesDispay<'a, 'p> {
+    files: &'a Files,
+    root: &'p Path,
+}
+
+impl<'a, 'p> fmt::Display for FilesDispay<'a, 'p> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.files.iter().format(", ").fmt(f)
+        self.files
+            .entries
+            .iter()
+            .map(|entry| entry.path.strip_prefix(self.root).unwrap_or(&entry.path).display())
+            .format("\n")
+            .fmt(f)
     }
 }
 
