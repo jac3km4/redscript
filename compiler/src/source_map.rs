@@ -3,7 +3,7 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::{fmt, iter};
 
-use itertools::Itertools;
+use itertools::{Either, Itertools};
 use redscript::ast::{Pos, Span};
 use walkdir::{DirEntry, WalkDir};
 
@@ -19,18 +19,13 @@ impl Files {
         Self::default()
     }
 
-    pub fn from_dir(path: &Path, filter: SourceFilter) -> Result<Self, Error> {
-        if path.is_file() {
-            Self::from_files(iter::once(path.to_path_buf()))
-        } else {
-            let iter = WalkDir::new(path)
-                .into_iter()
-                .filter_map(Result::ok)
-                .map(DirEntry::into_path)
-                .filter(|p| filter.apply(p.strip_prefix(path).unwrap()));
+    pub fn from_dirs(paths: &[PathBuf], filter: &SourceFilter) -> Result<Self, Error> {
+        let files = paths.iter().flat_map(|path| filtered_file_iter(path, filter));
+        Self::from_files(files)
+    }
 
-            Self::from_files(iter)
-        }
+    pub fn from_dir(path: &Path, filter: &SourceFilter) -> Result<Self, Error> {
+        Self::from_files(filtered_file_iter(path, filter))
     }
 
     pub fn from_files(paths: impl Iterator<Item = PathBuf>) -> Result<Self, Error> {
@@ -84,6 +79,19 @@ impl Files {
 
     pub fn display<'p>(&self, root: &'p Path) -> FilesDispay<'_, 'p> {
         FilesDispay { files: self, root }
+    }
+}
+
+fn filtered_file_iter<'a>(path: &'a Path, filter: &'a SourceFilter) -> impl Iterator<Item = PathBuf> + 'a {
+    if path.is_file() {
+        Either::Left(iter::once(path.to_path_buf()))
+    } else {
+        let iter = WalkDir::new(path)
+            .into_iter()
+            .filter_map(Result::ok)
+            .map(DirEntry::into_path)
+            .filter(move |p| filter.apply(p.strip_prefix(path).unwrap()));
+        Either::Right(iter)
     }
 }
 

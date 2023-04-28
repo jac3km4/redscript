@@ -106,7 +106,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 fn compile(opts: CompileOpts) -> Result<(), redscript_compiler::error::Error> {
     let mut bundle = load_bundle(&opts.bundle)?;
 
-    let files = Files::from_dir(&opts.src, SourceFilter::None)?;
+    let files = Files::from_dir(&opts.src, &SourceFilter::None)?;
 
     match CompilationUnit::new_with_defaults(&mut bundle.pool)?.compile_and_report(&files) {
         Ok(()) => {
@@ -164,7 +164,7 @@ fn lint(opts: LintOpts) -> Result<(), redscript_compiler::error::Error> {
         Some(bundle_path) => {
             let mut bundle = load_bundle(&bundle_path)?;
 
-            let files = Files::from_dir(&opts.src, SourceFilter::None)?;
+            let files = Files::from_dir(&opts.src, &SourceFilter::None)?;
 
             if CompilationUnit::new_with_defaults(&mut bundle.pool)?
                 .compile_and_report(&files)
