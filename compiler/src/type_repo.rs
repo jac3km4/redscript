@@ -29,22 +29,34 @@ impl<'id> TypeRepo<'id> {
         let globals = FuncMap::default();
         let mut this = Self { types, globals };
 
-        this.add_type(predef::ARRAY, DataType::Builtin {
-            type_vars: [TypeVar::unconstrained(Str::from_static("A"), Variance::In)].into(),
-            is_unboxed: true,
-        });
-        this.add_type(predef::WREF, DataType::Builtin {
-            type_vars: [TypeVar::unconstrained(Str::from_static("A"), Variance::Co)].into(),
-            is_unboxed: false,
-        });
-        this.add_type(predef::REF, DataType::Builtin {
-            type_vars: [TypeVar::unconstrained(Str::from_static("A"), Variance::Co)].into(),
-            is_unboxed: false,
-        });
-        this.add_type(predef::SCRIPT_REF, DataType::Builtin {
-            type_vars: [TypeVar::unconstrained(Str::from_static("A"), Variance::In)].into(),
-            is_unboxed: true,
-        });
+        this.add_type(
+            predef::ARRAY,
+            DataType::Builtin {
+                type_vars: [TypeVar::unconstrained(Str::from_static("A"), Variance::In)].into(),
+                is_unboxed: true,
+            },
+        );
+        this.add_type(
+            predef::WREF,
+            DataType::Builtin {
+                type_vars: [TypeVar::unconstrained(Str::from_static("A"), Variance::Co)].into(),
+                is_unboxed: false,
+            },
+        );
+        this.add_type(
+            predef::REF,
+            DataType::Builtin {
+                type_vars: [TypeVar::unconstrained(Str::from_static("A"), Variance::Co)].into(),
+                is_unboxed: false,
+            },
+        );
+        this.add_type(
+            predef::SCRIPT_REF,
+            DataType::Builtin {
+                type_vars: [TypeVar::unconstrained(Str::from_static("A"), Variance::In)].into(),
+                is_unboxed: true,
+            },
+        );
 
         this
     }

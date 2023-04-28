@@ -3,7 +3,8 @@ use std::str::FromStr;
 use peg::error::ParseError;
 use peg::str::LineCol;
 use redscript::ast::{
-    BinOp, Constant, Expr, Ident, Literal, Param, Pos, Seq, SourceAst, Span, SwitchCase, TypeName, TypeParam, UnOp, Variance
+    BinOp, Constant, Expr, Ident, Literal, Param, Pos, Seq, SourceAst, Span, SwitchCase, TypeName, TypeParam, UnOp,
+    Variance,
 };
 use redscript::definition::Visibility;
 use redscript::Str;
@@ -199,9 +200,8 @@ impl AsRef<[Ident]> for ModulePath {
 }
 
 impl IntoIterator for ModulePath {
-    type Item = Ident;
-
     type IntoIter = std::vec::IntoIter<Ident>;
+    type Item = Ident;
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {

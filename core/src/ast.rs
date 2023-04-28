@@ -115,14 +115,14 @@ pub trait ExprKind {
 pub struct SourceAst;
 
 impl ExprKind for SourceAst {
+    type CallMeta = ();
+    type Callable = ();
+    type Class = TypeName;
+    type Closure = Box<[Param]>;
+    type Inferred = ();
     type Local = Ident;
     type Member = Ident;
-    type Class = TypeName;
     type Type = TypeName;
-    type Closure = Box<[Param]>;
-    type Callable = ();
-    type CallMeta = ();
-    type Inferred = ();
 }
 
 #[derive(Debug, Clone)]

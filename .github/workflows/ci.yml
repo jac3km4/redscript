@@ -2,27 +2,64 @@ name: CI
 
 on:
   push:
-    branches: [ "0.*.*" ]
+    branches: [ "*.*.*" ]
   pull_request:
 
 env:
+  CARGO_INCREMENTAL: 0
   CARGO_TERM_COLOR: always
-  GIT_CLIFF_VERSION: 0.10.0
-  ARCHIVE_NAME: redscript-${{ github.ref_name }}.zip
-  CHANGELOG_FILE: ${{ github.workspace }}-CHANGES.md
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
 
 jobs:
-  build:
+  lint:
+    name: Lint & test
     runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run cargo fmt
+        shell: pwsh
+        run: |
+          $rustfmt_output = cargo fmt --all --check -- --color always 2> $null
+          $rustfmt_exit_code = $LASTEXITCODE
+          if ($rustfmt_exit_code -ne 0 ) {
+            Write-Output "::error title=Rustfmt code formatting check failed::$(@(
+                "Code formatting error.",
+                " ",
+                "This project requires code to conform to the rustfmt style.",
+                "Please run ``cargo +nightly fmt --all`` before commiting."
+              ) -join '%0A')"
+
+            Write-Output ""
+            Write-Output "Expand for details:"
+            Write-Output "::group::Detailed rustfmt error messages"
+            Write-Output $rustfmt_output
+            Write-Output "::endgroup::"
+            Write-Output ""
+          }
+          exit $rustfmt_exit_code
+
+      - run: cargo clippy -- -Dwarnings
+      - run: cargo test
+  
+  build:
+    name: Build & upload an artifact
+    runs-on: windows-latest
+    env:
+      ARCHIVE_NAME: redscript-${{ github.ref_name }}.zip
+      GIT_CLIFF_VERSION: 0.10.0
+      CHANGELOG_FILE: ${{ github.workspace }}-CHANGES.md
+
     steps:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-
-      - run: cargo clippy
-      - run: cargo test
 
       - name: Build and package the mod archive
         run: .\resources\package.ps1 -stagingDir ${{ runner.temp }}/redscript-staging -archiveName ${{ env.ARCHIVE_NAME }}

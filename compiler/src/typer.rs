@@ -9,7 +9,7 @@ use enum_as_inner::EnumAsInner;
 use hashbrown::{hash_map, HashMap, HashSet};
 use itertools::{izip, Itertools};
 use redscript::ast::{
-    Constant, Expr, ExprKind, Ident, Literal, Param, Seq, SourceAst, Span, SwitchCase, TypeName, TypeParam, Variance
+    Constant, Expr, ExprKind, Ident, Literal, Param, Seq, SourceAst, Span, SwitchCase, TypeName, TypeParam, Variance,
 };
 use redscript::bytecode::Intrinsic;
 use redscript::Str;
@@ -1533,14 +1533,14 @@ impl IdAlloc {
 pub struct CheckedAst<'id>(PhantomData<&'id ()>);
 
 impl<'id> ExprKind for CheckedAst<'id> {
-    type Callable = Box<Callable<'id>>;
     type CallMeta = Box<CallMetadata<'id>>;
+    type Callable = Box<Callable<'id>>;
+    type Class = Data<'id>;
+    type Closure = Box<ClosureEnv<'id>>;
     type Inferred = InferType<'id>;
     type Local = Local;
     type Member = Member<'id>;
-    type Class = Data<'id>;
     type Type = InferType<'id>;
-    type Closure = Box<ClosureEnv<'id>>;
 }
 
 #[derive(Debug)]

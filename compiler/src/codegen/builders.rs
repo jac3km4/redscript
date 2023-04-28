@@ -6,7 +6,8 @@ use itertools::{Either, Itertools};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Offset};
 use redscript::definition::{
-    Class, ClassFlags, Definition, Enum, Field, FieldFlags, Function, FunctionFlags, Local, LocalFlags, Parameter, ParameterFlags, SourceReference, Type as PoolType, Visibility
+    Class, ClassFlags, Definition, Enum, Field, FieldFlags, Function, FunctionFlags, Local, LocalFlags, Parameter,
+    ParameterFlags, SourceReference, Type as PoolType, Visibility,
 };
 use redscript::{str_fmt, Str};
 use typed_builder::TypedBuilder;

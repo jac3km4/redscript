@@ -6,7 +6,8 @@ use redscript::ast::{Constant, Expr, Literal, Seq, Span};
 use redscript::bundle::{CName, ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Instr, Intrinsic, Label, Location, Offset};
 use redscript::definition::{
-    Class as PoolClass, Definition, Field as PoolField, Function, FunctionFlags, Local as PoolLocal, LocalFlags, Parameter as PoolParam, Type as PoolType
+    Class as PoolClass, Definition, Field as PoolField, Function, FunctionFlags, Local as PoolLocal, LocalFlags,
+    Parameter as PoolParam, Type as PoolType,
 };
 use redscript::Str;
 use smallvec::SmallVec;

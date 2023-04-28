@@ -11,7 +11,8 @@ use redscript::ast::{Expr, Seq, SourceAst, Span};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::Intrinsic;
 use redscript::definition::{
-    AnyDefinition, Class as PoolClass, ClassFlags, Enum as PoolEnum, Field as PoolField, FieldFlags, Function as PoolFunction, FunctionFlags, ParameterFlags, Type as PoolType, Visibility
+    AnyDefinition, Class as PoolClass, ClassFlags, Enum as PoolEnum, Field as PoolField, FieldFlags,
+    Function as PoolFunction, FunctionFlags, ParameterFlags, Type as PoolType, Visibility,
 };
 use redscript::Str;
 use sequence_trie::SequenceTrie;
@@ -21,7 +22,8 @@ use crate::codegen::builders::{ClassBuilder, EnumBuilder, FieldBuilder, Function
 use crate::codegen::{names, CodeGen, LocalIndices};
 use crate::error::{CompileError, CompileResult, ParseError, TypeError, Unsupported};
 use crate::parser::{
-    self, AnnotationKind, ClassSource, EnumSource, FunctionSource, Import, MemberSource, ModulePath, ParameterSource, Qualifier, Qualifiers, SourceEntry, SourceModule
+    self, AnnotationKind, ClassSource, EnumSource, FunctionSource, Import, MemberSource, ModulePath, ParameterSource,
+    Qualifier, Qualifiers, SourceEntry, SourceModule,
 };
 use crate::scoped_map::ScopedMap;
 use crate::source_map::Files;
