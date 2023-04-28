@@ -135,6 +135,7 @@ fn decompile(opts: DecompileOpts) -> Result<(), redscript_decompiler::error::Err
             let path = opts.output.as_path().join(entry.path);
 
             std::fs::create_dir_all(path.parent().unwrap())?;
+
             let mut output = io::BufWriter::new(File::create(path)?);
             for def in entry.definitions {
                 if let Err(err) = write_definition(&mut output, def, pool, 0, mode) {
