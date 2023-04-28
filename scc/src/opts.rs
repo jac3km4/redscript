@@ -1,16 +1,11 @@
 use std::collections::VecDeque;
 use std::path::PathBuf;
-#[cfg(test)]
-use std::println;
 
 use bpaf::*;
 
 pub fn fix_args(args: Vec<String>) -> Vec<String> {
     let mut fixed_args: Vec<String> = vec![];
     let mut broken = false;
-
-    // #[cfg(test)]
-    println!("Raw args: {:#?}", args);
 
     // when cyberpunk's args are processed, the \" messes up the grouping, so we need to fix the args that have quotes & spaces in them
     for arg in args {
@@ -49,23 +44,20 @@ pub fn fix_args(args: Vec<String>) -> Vec<String> {
         }
     }
 
-    // #[cfg(test)]
-    println!("Fixed args: {:#?}", fixed_args);
-
     fixed_args
 }
 
 #[derive(Clone, Debug)]
 pub struct Opts {
     pub script_paths: Vec<PathBuf>,
-    pub cache_file: PathBuf,
     pub cache_dir: Option<PathBuf>,
     pub optimize: bool,
-    pub threads: Option<u8>,
+    pub threads: u8,
     pub no_warnings: bool,
     pub no_testonly: bool,
     pub no_breakpoint: bool,
     pub profile_off: bool,
+    pub cache_file: Option<PathBuf>,
 }
 
 fn toggle_options(name: &'static str, help: &'static str) -> impl Parser<bool> {
@@ -83,6 +75,7 @@ fn toggle_options(name: &'static str, help: &'static str) -> impl Parser<bool> {
             }
         })
         .anywhere()
+        .fallback(false)
 }
 
 fn slong(tag_str: &'static str, arg_str: &'static str) -> impl Parser<String> {
@@ -105,26 +98,26 @@ fn cache_dir() -> impl Parser<Option<PathBuf>> {
 
 impl Opts {
     pub fn load(args: &[&str]) -> Self {
-        let cache_file = any::<PathBuf>("CACHE_FILE").anywhere();
         let optimize = toggle_options("optimize", "Optimize the redscripts");
         let threads = slong("-threads", "Number of theads to script_paths on")
             .parse(|s| s.parse::<u8>())
-            .optional();
+            .fallback(1);
         let no_warnings = toggle_options("Wnone", "No warnings");
         let no_testonly = toggle_options("no-testonly", "No testonly classes");
         let no_breakpoint = toggle_options("no-breakpoint", "No breakpoints");
         let profile_off = toggle_options("profile=off", "Profile off");
+        let cache_file = any::<PathBuf>("CACHE_FILE").optional();
 
         let parser = construct!(Opts {
             script_paths(),
-            cache_file,
             cache_dir(),
             optimize,
             threads,
             no_warnings,
             no_testonly,
             no_breakpoint,
-            profile_off
+            profile_off,
+            cache_file,
         });
         parser.to_options().run_inner(bpaf::Args::from(args)).unwrap()
     }
