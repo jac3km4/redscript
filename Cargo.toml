@@ -17,10 +17,10 @@ flexstr = "0.9"
 flexi_logger = { version = "0.25", default-features = false }
 
 [workspace.metadata.release]
-shared-version = true
-consolidate-commits = true
-publish = false
+pre-release-commit-message = "chore: release {{version}}"
 tag-prefix = ""
+shared-version = true
+publish = false
 
 [profile.release]
 lto = "thin"
