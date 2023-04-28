@@ -9,6 +9,7 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use fd_lock::RwLock;
 use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, LevelFilter, LogSpecBuilder, Logger, Naming};
 use hashbrown::{HashMap, HashSet};
+use opts::{fix_args, Opts};
 use redscript::ast::Span;
 use redscript::bundle::ScriptBundle;
 use redscript_compiler::compiler::{CompilationResources, Compiler};
@@ -20,6 +21,7 @@ use thiserror::Error;
 use crate::hints::UserHints;
 
 mod hints;
+mod opts;
 
 const BUNDLE_FILE_NAME: &str = "final.redscripts";
 const BACKUP_FILE_NAME: &str = "final.redscripts.bk";
@@ -35,55 +37,57 @@ enum Error {
 }
 
 fn main() -> ExitCode {
-    let mut arg_iter = std::env::args().skip(1);
-    if let (Some("-compile"), Some(path_str)) = (arg_iter.next().as_deref(), arg_iter.next()) {
-        // the way cyberpunk passes CLI args is broken, this is a workaround
-        let script_dir = PathBuf::from(path_str.split('"').next().unwrap());
-        let r6_dir = script_dir.parent().unwrap();
-        let default_cache_dir = r6_dir.join("cache");
+    let opts = Opts::load(
+        fix_args(std::env::args().skip(1).collect())
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<&str>>()
+            .as_slice(),
+    );
 
-        setup_logger(r6_dir);
+    #[cfg(test)]
+    log::info!("{:#?}", opts);
 
-        let manifest = ScriptManifest::load(&script_dir).unwrap_or_else(|err| {
-            log::info!("Using defaults for the script manifest ({err})");
-            ScriptManifest::default()
-        });
+    let script_dir = PathBuf::from(opts.script_paths.first().unwrap());
+    let r6_dir = script_dir.parent().unwrap();
+    let default_cache_dir = r6_dir.join("cache");
 
-        let (cache_dir, fallback_dir) = match (arg_iter.next().as_deref(), arg_iter.next()) {
-            (Some("-customCacheDir"), Some(custom_path)) => {
-                log::info!("Custom cache directory provided: {}", custom_path);
-                let cache_dir = PathBuf::from(custom_path);
-                let expected_bundle_path = cache_dir.join(BUNDLE_FILE_NAME);
-                if !expected_bundle_path.exists() {
-                    let base = get_base_bundle_path(&default_cache_dir);
-                    fs::create_dir_all(&cache_dir).expect("Could not create the custom cache directory");
-                    fs::copy(base, expected_bundle_path).expect("Could not copy base bundle");
-                }
-                (cache_dir, Some(default_cache_dir))
+    setup_logger(r6_dir);
+
+    let manifest = ScriptManifest::load(&script_dir).unwrap_or_else(|err| {
+        log::info!("Using defaults for the script manifest ({err})");
+        ScriptManifest::default()
+    });
+
+    let (cache_dir, fallback_dir) = match opts.cache_dir {
+        Some(cache_dir) => {
+            log::info!("Custom cache directory provided: {}", cache_dir.to_str().unwrap());
+            let expected_bundle_path = cache_dir.join(BUNDLE_FILE_NAME);
+            if !expected_bundle_path.exists() {
+                let base = get_base_bundle_path(&default_cache_dir);
+                fs::create_dir_all(&cache_dir).expect("Could not create the custom cache directory");
+                fs::copy(base, expected_bundle_path).expect("Could not copy base bundle");
             }
-            _ => (default_cache_dir, None),
-        };
-
-        let mut files = Files::from_dir(&script_dir, manifest.source_filter()).expect("Could not load script sources");
-        files.include_std();
-
-        match compile_scripts(&script_dir, &cache_dir, fallback_dir.as_deref(), &files) {
-            Ok(_) => {
-                log::info!("Output successfully saved in {}", cache_dir.display());
-                ExitCode::SUCCESS
-            }
-            Err(err) => {
-                let content = error_message(err, &files, r6_dir);
-                #[cfg(feature = "popup")]
-                msgbox::create("Compilation error", &content, msgbox::IconType::Error).unwrap();
-
-                log::error!("Compilation error: {}", content);
-                ExitCode::FAILURE
-            }
+            (cache_dir, Some(default_cache_dir))
         }
-    } else {
-        log::error!("Invalid command-line arguments");
-        ExitCode::FAILURE
+        _ => (default_cache_dir, None),
+    };
+
+    let files = Files::from_dirs(&opts.script_paths, &manifest.source_filter()).expect("Could not load script sources");
+
+    match compile_scripts(&script_dir, &cache_dir, fallback_dir.as_deref(), &files) {
+        Ok(_) => {
+            log::info!("Output successfully saved in {}", cache_dir.display());
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            let content = error_message(err, &files, r6_dir);
+            #[cfg(feature = "popup")]
+            msgbox::create("Compilation error", &content, msgbox::IconType::Error).unwrap();
+
+            log::error!("Compilation error: {}", content);
+            ExitCode::FAILURE
+        }
     }
 }
 

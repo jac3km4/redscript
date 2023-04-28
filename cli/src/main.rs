@@ -110,7 +110,7 @@ fn run() -> Result<bool, Box<dyn std::error::Error>> {
 
 fn compile(opts: CompileOpts) -> io::Result<bool> {
     let mut bundle = load_bundle(&opts.bundle)?;
-    let mut files = Files::from_dir(&opts.src, SourceFilter::None)?;
+    let mut files = Files::from_dir(&opts.src, &SourceFilter::None)?;
     files.include_std();
     let interner: StringInterner = StringInterner::default();
     let mut res = CompilationResources::load(&bundle.pool, &interner);
@@ -179,7 +179,7 @@ fn lint(opts: LintOpts) -> io::Result<bool> {
     match opts.bundle {
         Some(bundle_path) => {
             let bundle = load_bundle(&bundle_path)?;
-            let mut files = Files::from_dir(&opts.src, SourceFilter::None)?;
+            let mut files = Files::from_dir(&opts.src, &SourceFilter::None)?;
             files.include_std();
             let interner: StringInterner = StringInterner::default();
             let res = CompilationResources::load(&bundle.pool, &interner);
