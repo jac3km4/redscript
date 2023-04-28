@@ -36,6 +36,7 @@ commit_parsers = [
     { message = "^style", group = "Styling" },
     { message = "^test", group = "Testing" },
     { message = "^chore", group = "Miscellaneous", skip = true },
+    { message = "^ci", group = "CI", skip = true },
     { body = ".*security", group = "Security" },
 ]
 skip_tags = "v0\\.2"
