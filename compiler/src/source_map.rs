@@ -19,7 +19,7 @@ impl Files {
         Self::default()
     }
 
-    pub fn from_dirs(paths: &Vec<PathBuf>, filter: SourceFilter) -> Result<Self, Error> {
+    pub fn from_dirs(paths: &[PathBuf], filter: SourceFilter) -> Result<Self, Error> {
         let mut files = Self::new();
         for path in paths {
             if path.is_file() {
