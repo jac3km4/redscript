@@ -19,6 +19,27 @@ impl Files {
         Self::default()
     }
 
+    pub fn from_dirs(paths: &Vec<PathBuf>, filter: SourceFilter) -> Result<Self, Error> {
+        let mut files = Self::new();
+        for path in paths {
+            if path.is_file() {
+                let sources = std::fs::read_to_string(&path)?;
+                files.add(path.to_path_buf(), sources);
+            } else {
+                let iter = WalkDir::new(path)
+                .into_iter()
+                .filter_map(Result::ok)
+                .map(DirEntry::into_path)
+                .filter(|p| filter.apply(p.strip_prefix(path).unwrap()));
+                for file_path in iter {
+                    let sources = std::fs::read_to_string(&file_path)?;
+                    files.add(file_path.to_path_buf(), sources);
+                }
+            }
+        }
+        Ok(files)
+    }
+
     pub fn from_dir(path: &Path, filter: SourceFilter) -> Result<Self, Error> {
         if path.is_file() {
             Self::from_files(iter::once(path.to_path_buf()))
