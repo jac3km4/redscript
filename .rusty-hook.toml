@@ -1,0 +1,7 @@
+[hooks]
+pre-commit = "cargo +nightly fmt -- --check"
+pre-push = "cargo +nightly fmt -- --check && cargo clippy -- -Dwarnings && cargo test"
+post-commit = ""
+
+[logging]
+verbose = true
