@@ -1,9 +1,9 @@
-use bpaf::*;
-use std::path::PathBuf;
 use std::collections::VecDeque;
-
+use std::path::PathBuf;
 #[cfg(test)]
 use std::println;
+
+use bpaf::*;
 
 pub fn fix_args(args: Vec<String>) -> Vec<String> {
     let mut fixed_args: Vec<String> = vec![];
@@ -31,11 +31,7 @@ pub fn fix_args(args: Vec<String>) -> Vec<String> {
             }
         } else {
             // fixes args that come after the first
-            let broken_arg = if contains_quote {
-                arg.replace('"', "\\")
-            } else {
-                arg
-            };
+            let broken_arg = if contains_quote { arg.replace('"', "\\") } else { arg };
             if broken_arg.contains(' ') {
                 let mut parts = broken_arg.split(' ').collect::<VecDeque<&str>>();
                 let last = fixed_args.last_mut().unwrap();
@@ -69,7 +65,7 @@ pub struct Opts {
     pub no_warnings: bool,
     pub no_testonly: bool,
     pub no_breakpoint: bool,
-    pub profile_off: bool
+    pub profile_off: bool,
 }
 
 fn toggle_options(name: &'static str, help: &'static str) -> impl Parser<bool> {
@@ -90,41 +86,30 @@ fn toggle_options(name: &'static str, help: &'static str) -> impl Parser<bool> {
 }
 
 fn slong(tag_str: &'static str, arg_str: &'static str) -> impl Parser<String> {
-    let tag = any::<String>(tag_str)
-        .guard(move |s| s.as_str() == tag_str, "not arg name");
+    let tag = any::<String>(tag_str).guard(move |s| s.as_str() == tag_str, "not arg name");
     let value = positional::<String>(arg_str);
-    construct!(tag, value)
-        .anywhere()
-        .map(|pair| pair.1)
+    construct!(tag, value).anywhere().map(|pair| pair.1)
 }
 
 fn script_paths() -> impl Parser<Vec<PathBuf>> {
-    let tag = any::<String>("-compile")
-        .guard(|s| s == "-compile", "not compile");
+    let tag = any::<String>("-compile").guard(|s| s == "-compile", "not compile");
     let value = positional::<PathBuf>("SCRIPT_PATH");
-    construct!(tag, value)
-        .anywhere()
-        .map(|pair| pair.1)
-        .many()
-        .catch()
+    construct!(tag, value).anywhere().map(|pair| pair.1).many().catch()
 }
 
 fn cache_dir() -> impl Parser<Option<PathBuf>> {
-    let tag = any::<String>("-customCacheDir")
-        .guard(|s| s == "-customCacheDir", "not customCacheDir");
+    let tag = any::<String>("-customCacheDir").guard(|s| s == "-customCacheDir", "not customCacheDir");
     let value = positional::<PathBuf>("CACHE_DIR");
-    construct!(tag, value)
-        .map(|pair| pair.1)
-        .optional()
-        .catch()
+    construct!(tag, value).map(|pair| pair.1).optional().catch()
 }
 
 impl Opts {
     pub fn load(args: &[&str]) -> Self {
-        let cache_file = any::<PathBuf>("CACHE_FILE")
-            .anywhere();
+        let cache_file = any::<PathBuf>("CACHE_FILE").anywhere();
         let optimize = toggle_options("optimize", "Optimize the redscripts");
-        let threads = slong("-threads", "Number of theads to script_paths on").parse(|s| s.parse::<u8>()).optional();
+        let threads = slong("-threads", "Number of theads to script_paths on")
+            .parse(|s| s.parse::<u8>())
+            .optional();
         let no_warnings = toggle_options("Wnone", "No warnings");
         let no_testonly = toggle_options("no-testonly", "No testonly classes");
         let no_breakpoint = toggle_options("no-breakpoint", "No breakpoints");
