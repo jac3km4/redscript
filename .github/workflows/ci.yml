@@ -12,7 +12,7 @@ env:
 
 jobs:
   lint:
-    name: Lint
+    name: Lint & test
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v3
@@ -21,7 +21,7 @@ jobs:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
 
-      - name: cargo fmt
+      - name: Run cargo fmt
         shell: pwsh
         run: |
           $rustfmt_output = cargo fmt --all --check -- --color always 2> $null
