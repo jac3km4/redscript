@@ -19,13 +19,13 @@ pub fn fix_args(args: Vec<String>) -> Vec<String> {
             fixed_args.push(arg);
         } else if !broken {
             let slashful = arg.replace('"', "\\\"").replace("\" ", "\"");
-            let mut parts = slashful.split("\"").collect::<VecDeque<&str>>();
+            let mut parts = slashful.split('"').collect::<VecDeque<&str>>();
             fixed_args.push(parts.pop_front().unwrap().to_string());
             for part in parts {
                 if part.is_empty() {
                     continue;
                 }
-                for p in part.split(" ") {
+                for p in part.split(' ') {
                     fixed_args.push(p.to_string());
                 }
             }
