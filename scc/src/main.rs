@@ -9,12 +9,12 @@ use std::time::SystemTime;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use fd_lock::RwLock;
 use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, LevelFilter, LogSpecBuilder, Logger, Naming};
-use opts::Opts;
 use redscript::ast::Span;
 use redscript::bundle::ScriptBundle;
 use redscript_compiler::error::Error;
 use redscript_compiler::source_map::{Files, SourceFilter};
 use redscript_compiler::unit::CompilationUnit;
+use opts::{fix_args, Opts};
 use serde::Deserialize;
 
 use crate::hints::UserHints;
@@ -30,9 +30,10 @@ const USER_HINTS_DIR: &str = "redsUserHints";
 
 fn main() -> ExitCode {
 
-    let opts = Opts::load(std::env::args().skip(1).collect::<Vec<String>>());
+    let opts = Opts::load(fix_args(std::env::args().skip(1).collect::<Vec<String>>()));
 
-    log::debug!("{:#?}", opts);
+    #[cfg(test)]
+    log::info!("{:#?}", opts);
 
     let script_dir = PathBuf::from(opts.script_paths.first().unwrap());
     let r6_dir = script_dir.parent().unwrap();

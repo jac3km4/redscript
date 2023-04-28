@@ -3,46 +3,52 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use std::collections::VecDeque;
 
+#[cfg(test)]
+use std::{println as info};
+
 pub fn fix_args(args: Vec<String>) -> Vec<String> {
     let mut fixed_args: Vec<String> = vec![];
     let mut broken = false;
 
-    log::debug!("{:#?}", args);
+    #[cfg(test)]
+    info!("Raw args: {:#?}", args);
 
     // when cyberpunk's args are processed, the \" messes up the grouping, so we need to fix the args that have quotes & spaces in them
     for arg in args {
-        if !arg.contains("\"") && !broken {
-            fixed_args.push(arg.to_owned());
+        let contains_quote = arg.contains('"');
+        if !contains_quote && !broken {
+            fixed_args.push(arg.clone());
+        } else if !broken {
+            let slashful = arg.replace('"', "\\\"");
+            for part in slashful.split("\" ") {
+                fixed_args.push(part.to_string());
+            }
         } else {
-            if !broken {
-                broken = true;
-                let spaceless = arg.replace("\"", "\\\"");
-                for part in spaceless.split("\"") {
+            // fixes args that come after the first
+            let broken_arg = if contains_quote {
+                arg.replace('"', "\\")
+            } else {
+                arg
+            };
+            if broken_arg.contains(' ') {
+                let mut parts = broken_arg.split(' ').collect::<VecDeque<&str>>();
+                let last = fixed_args.last().unwrap();
+                *fixed_args.last_mut().unwrap() = format!("{} {}", last, &parts.pop_front().unwrap());
+                for part in parts {
                     fixed_args.push(part.to_string());
                 }
             } else {
-                // fixes args that come after the first
-                let broken_arg = if arg.contains("\"") {
-                    arg.replace("\"", "\\")
-                } else {
-                    arg
-                };
-                if broken_arg.contains(" ") {
-                    let mut parts = broken_arg.split(' ').collect::<VecDeque<&str>>();
-                    let last = fixed_args.last().unwrap();
-                    *fixed_args.last_mut().unwrap() = format!("{} {}", last, &parts.pop_front().unwrap());
-                    for part in parts {
-                        fixed_args.push(part.to_string());
-                    }
-                } else {
-                    let last = fixed_args.last().unwrap();
-                    *fixed_args.last_mut().unwrap() = format!("{} {}", last, broken_arg);
-                }
+                let last = fixed_args.last().unwrap();
+                *fixed_args.last_mut().unwrap() = format!("{} {}", last, broken_arg);
             }
+        }
+        if contains_quote {
+            broken = !broken;
         }
     }
 
-    log::debug!("{:#?}", fixed_args);
+    #[cfg(test)]
+    info!("Fixed args: {:#?}", fixed_args);
 
     fixed_args
 }
@@ -63,7 +69,7 @@ pub struct Opts {
 fn toggle_options(name: &'static str, help: &'static str) -> impl Parser<bool> {
     any::<String>(name)
         .help(help)
-        .guard(|s| s.starts_with("-"), "doesn't start with -")
+        .guard(|s| s.starts_with('-'), "doesn't start with -")
         .parse(move |s| {
             let (state, cur_name) = if let Some(rest) = s.strip_prefix('-') {
                 (true, rest)
@@ -81,7 +87,7 @@ fn toggle_options(name: &'static str, help: &'static str) -> impl Parser<bool> {
 
 fn slong(tag_str: &'static str, arg_str: &'static str) -> impl Parser<String> {
     let tag = any::<String>(tag_str)
-        .guard(|s| s.as_str() == tag_str.to_owned(), "not arg name");
+        .guard(move |s| s.as_str() == tag_str, "not arg name");
     let value = positional::<String>(arg_str);
     construct!(tag, value)
         .anywhere()
@@ -135,8 +141,7 @@ impl Opts {
             no_breakpoint,
             profile_off
         });
-        let fixed_args = fix_args(args);
-        let bpaf_args = fixed_args.iter().map(|s| s.as_str()).collect::<Vec<&str>>();
+        let bpaf_args = args.iter().map(String::as_str).collect::<Vec<&str>>();
         parser.to_options().run_inner(bpaf::Args::from(bpaf_args.as_slice())).unwrap()
     }
 }

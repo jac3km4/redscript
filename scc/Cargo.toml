@@ -16,6 +16,7 @@ vmap = { version = "0.5", default-features = false, optional = true }
 fd-lock = "3"
 msgbox = { version = "0.7", optional = true }
 bpaf = "0.7.10"
+winsplit = "0.1"
 
 [features]
 popup = ["msgbox"]
