@@ -45,7 +45,7 @@ jobs:
       - run: cargo test
   
   build:
-    name: Build an artifact
+    name: Build & upload an artifact
     runs-on: windows-latest
     env:
       ARCHIVE_NAME: redscript-${{ github.ref_name }}.zip
