@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use std::println;
 
 use scc::opts::*;
 use winsplit;
@@ -59,27 +58,19 @@ fn test_order(f_args: &[TestArg]) {
         .concat(),
     )
     .unwrap();
-    let opts = Opts::load(args.iter().map(String::as_str).collect::<Vec<&str>>().as_slice());
-    println!("{:#?}", opts);
+    let opts = Opts::load(&args.iter().map(String::as_str).collect::<Vec<&str>>());
 
-    assert!(
-        opts.script_paths
-            == [
-                vec![PathBuf::from(
-                    "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\scripts\\"
-                )],
-                f_args.iter().map(|a| PathBuf::from(a.parsed)).collect()
-            ]
-            .concat()
+    assert_eq!(
+        opts.script_paths,
+        [PathBuf::from(
+            "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\scripts\\"
+        )]
+        .into_iter()
+        .chain(f_args.iter().map(|a| PathBuf::from(a.parsed)))
+        .collect::<Vec<_>>()
     );
-    assert!(
-        opts.cache_file
-            == PathBuf::from(
-                "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\cache\\final.redscripts"
-            )
-    );
-    assert!(opts.cache_dir == None);
-    assert!(opts.threads == Some(4));
+    assert_eq!(opts.cache_dir, None);
+    assert_eq!(opts.threads, 4);
 }
 
 mod tests {
@@ -144,5 +135,26 @@ mod tests {
     #[test]
     fn test_dffdf() {
         test_order(&[TEST_DIRECTORY, TEST_FILE, TEST_FILE, TEST_DIRECTORY, TEST_FILE]);
+    }
+
+    #[test]
+    fn test_cybercmd() {
+        let opts = Opts::load(&[
+            "-compile",
+            "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\scripts",
+            "-customCacheDir",
+            "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\cache\\modded",
+        ]);
+        assert_eq!(
+            opts.script_paths,
+            &[PathBuf::from(
+                "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\scripts"
+            )]
+        );
+        assert_eq!(
+            opts.cache_dir,
+            Some("C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\cache\\modded".into())
+        );
+        assert_eq!(opts.cache_file, None);
     }
 }
