@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ "*.*.*" ]
+    branches: [ "*.*.x" ]
   pull_request:
 
 env:
@@ -47,47 +47,18 @@ jobs:
       - run: cargo test
   
   build:
-    name: Build & upload an artifact
+    name: Build & upload artifacts
     runs-on: windows-latest
     env:
       ARCHIVE_NAME: redscript-${{ github.ref_name }}.zip
-      GIT_CLIFF_VERSION: 0.10.0
-      CHANGELOG_FILE: ${{ github.workspace }}-CHANGES.md
 
     steps:
       - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
       - name: Build and package the mod archive
         run: .\resources\package.ps1 -stagingDir ${{ runner.temp }}/redscript-staging -archiveName ${{ env.ARCHIVE_NAME }}
-
-      - name: Install git-cliff
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-        uses: Alex079/setup-custom-tool@v1
-        with:
-          archiveUrl: https://github.com/orhun/git-cliff/releases/download/v${{ env.GIT_CLIFF_VERSION }}/git-cliff-${{ env.GIT_CLIFF_VERSION }}-x86_64-pc-windows-msvc.zip
-          archiveGlob: '*'
-          toolName: git-cliff
-          toolVersion: ${{ env.GIT_CLIFF_VERSION }}
-
-      - name: Generate a changelog
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-        run: git cliff --current --strip header -o ${{ env.CHANGELOG_FILE }}
-
-      - name: Release
-        uses: softprops/action-gh-release@v1
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-        with:
-          body_path: ${{ env.CHANGELOG_FILE }}
-          files: |
-            ${{ env.MOD_ARTIFACT_PATH }}
-            ./target/release/redscript-cli.exe
-          prerelease: ${{ contains(github.ref_name, '-RC') || contains(github.ref_name, '-M') }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Archive artifacts
         uses: actions/upload-artifact@v3
