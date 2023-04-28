@@ -23,8 +23,8 @@ impl Files {
         let mut files = Self::new();
         for path in paths {
             if path.is_file() {
-                let sources = std::fs::read_to_string(&path)?;
-                files.add(path.to_path_buf(), sources);
+                let sources = std::fs::read_to_string(path)?;
+                files.add(path.clone(), sources);
             } else {
                 let iter = WalkDir::new(path)
                 .into_iter()
@@ -33,7 +33,7 @@ impl Files {
                 .filter(|p| filter.apply(p.strip_prefix(path).unwrap()));
                 for file_path in iter {
                     let sources = std::fs::read_to_string(&file_path)?;
-                    files.add(file_path.to_path_buf(), sources);
+                    files.add(file_path.clone(), sources);
                 }
             }
         }
