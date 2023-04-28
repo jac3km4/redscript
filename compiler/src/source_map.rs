@@ -100,6 +100,7 @@ fn filtered_file_iter<'a>(path: &'a Path, filter: &'a SourceFilter) -> impl Iter
         Either::Left(iter::once(path.to_path_buf()))
     } else {
         let iter = WalkDir::new(path)
+            .follow_links(true)
             .into_iter()
             .filter_map(Result::ok)
             .map(DirEntry::into_path)
