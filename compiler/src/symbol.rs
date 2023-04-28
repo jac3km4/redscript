@@ -185,7 +185,7 @@ impl ModulePath {
         copy
     }
 
-    pub fn with_function(&self, fun_sig: FunctionSignature) -> Self {
+    pub fn with_function(&self, fun_sig: FunctionSignature<'_>) -> Self {
         let ident = Ident::from_ref(fun_sig);
         self.with_child(ident)
     }

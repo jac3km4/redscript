@@ -980,11 +980,11 @@ impl<Loc: Clone> Code<Loc> {
         self.0.is_empty()
     }
 
-    pub fn cursor(&self) -> CodeCursor<Loc> {
+    pub fn cursor(&self) -> CodeCursor<'_, Loc> {
         CodeCursor::new(&self.0)
     }
 
-    pub fn iter(&self) -> CodeIter<Loc> {
+    pub fn iter(&self) -> CodeIter<'_, Loc> {
         CodeIter::new(&self.0)
     }
 }
@@ -1125,7 +1125,7 @@ impl<'a, Loc: Clone> CodeCursor<'a, Loc> {
         }
     }
 
-    pub fn range(&self, from: Location, to: Location) -> Result<CodeIter<Loc>, CursorError> {
+    pub fn range(&self, from: Location, to: Location) -> Result<CodeIter<'_, Loc>, CursorError> {
         let start = self.get_index(from)?;
         let end = self.get_index(to)?;
         let slice = &self.code[start..end];

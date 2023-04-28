@@ -39,7 +39,7 @@ impl<'a> Desugar<'a> {
         self.prefix_exprs.push(expr);
     }
 
-    fn get_function(&self, signature: FunctionSignature) -> Result<Callable, Cause> {
+    fn get_function(&self, signature: FunctionSignature<'_>) -> Result<Callable, Cause> {
         let fun_idx = self
             .scope
             .resolve_function(Ident::from_ref(signature.name()))?

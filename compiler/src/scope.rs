@@ -329,7 +329,7 @@ pub struct FunctionCandidates {
 }
 
 impl FunctionCandidates {
-    pub fn by_id(&self, fun_sig: &FunctionSignature, pool: &ConstantPool) -> Option<PoolIndex<Function>> {
+    pub fn by_id(&self, fun_sig: &FunctionSignature<'_>, pool: &ConstantPool) -> Option<PoolIndex<Function>> {
         self.functions.iter().copied().find_map(|idx| {
             pool.def_name(idx)
                 .ok()

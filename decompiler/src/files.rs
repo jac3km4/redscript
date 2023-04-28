@@ -12,7 +12,7 @@ pub struct FileIndex<'a> {
 }
 
 impl<'a> FileIndex<'a> {
-    pub fn from_pool(pool: &'a ConstantPool) -> FileIndex {
+    pub fn from_pool(pool: &'a ConstantPool) -> FileIndex<'a> {
         let mut file_map: HashMap<PoolIndex<Definition>, HashSet<PoolIndex<Definition>>> = HashMap::new();
 
         for (idx, def) in pool.definitions() {
