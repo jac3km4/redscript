@@ -1,27 +1,33 @@
 use bpaf::*;
-use std::ffi::OsString;
 use std::path::PathBuf;
 use std::collections::VecDeque;
 
 #[cfg(test)]
-use std::{println as info};
+use std::println;
 
 pub fn fix_args(args: Vec<String>) -> Vec<String> {
     let mut fixed_args: Vec<String> = vec![];
     let mut broken = false;
 
-    #[cfg(test)]
-    info!("Raw args: {:#?}", args);
+    // #[cfg(test)]
+    println!("Raw args: {:#?}", args);
 
     // when cyberpunk's args are processed, the \" messes up the grouping, so we need to fix the args that have quotes & spaces in them
     for arg in args {
         let contains_quote = arg.contains('"');
         if !contains_quote && !broken {
-            fixed_args.push(arg.clone());
+            fixed_args.push(arg);
         } else if !broken {
-            let slashful = arg.replace('"', "\\\"");
-            for part in slashful.split("\" ") {
-                fixed_args.push(part.to_string());
+            let slashful = arg.replace('"', "\\\"").replace("\" ", "\"");
+            let mut parts = slashful.split("\"").collect::<VecDeque<&str>>();
+            fixed_args.push(parts.pop_front().unwrap().to_string());
+            for part in parts {
+                if part.is_empty() {
+                    continue;
+                }
+                for p in part.split(" ") {
+                    fixed_args.push(p.to_string());
+                }
             }
         } else {
             // fixes args that come after the first
@@ -32,14 +38,14 @@ pub fn fix_args(args: Vec<String>) -> Vec<String> {
             };
             if broken_arg.contains(' ') {
                 let mut parts = broken_arg.split(' ').collect::<VecDeque<&str>>();
-                let last = fixed_args.last().unwrap();
-                *fixed_args.last_mut().unwrap() = format!("{} {}", last, &parts.pop_front().unwrap());
+                let last = fixed_args.last_mut().unwrap();
+                *last = format!("{} {}", last, &parts.pop_front().unwrap());
                 for part in parts {
                     fixed_args.push(part.to_string());
                 }
             } else {
-                let last = fixed_args.last().unwrap();
-                *fixed_args.last_mut().unwrap() = format!("{} {}", last, broken_arg);
+                let last = fixed_args.last_mut().unwrap();
+                *last = format!("{} {}", last, broken_arg);
             }
         }
         if contains_quote {
@@ -47,8 +53,8 @@ pub fn fix_args(args: Vec<String>) -> Vec<String> {
         }
     }
 
-    #[cfg(test)]
-    info!("Fixed args: {:#?}", fixed_args);
+    // #[cfg(test)]
+    println!("Fixed args: {:#?}", fixed_args);
 
     fixed_args
 }
@@ -71,15 +77,13 @@ fn toggle_options(name: &'static str, help: &'static str) -> impl Parser<bool> {
         .help(help)
         .guard(|s| s.starts_with('-'), "doesn't start with -")
         .parse(move |s| {
-            let (state, cur_name) = if let Some(rest) = s.strip_prefix('-') {
-                (true, rest)
-            } else {
+            let Some(cur_name) = s.strip_prefix('-') else {
                 return Err(format!("{} is not a toggle option", s));
             };
             if cur_name != name {
                 Err(format!("{} is not a known toggle option name", cur_name))
             } else {
-                Ok(state)
+                Ok(true)
             }
         })
         .anywhere()
@@ -97,11 +101,10 @@ fn slong(tag_str: &'static str, arg_str: &'static str) -> impl Parser<String> {
 fn script_paths() -> impl Parser<Vec<PathBuf>> {
     let tag = any::<String>("-compile")
         .guard(|s| s == "-compile", "not compile");
-    let value = positional::<OsString>("SCRIPT_PATH");
+    let value = positional::<PathBuf>("SCRIPT_PATH");
     construct!(tag, value)
         .anywhere()
         .map(|pair| pair.1)
-        .map(PathBuf::from)
         .many()
         .catch()
 }
@@ -109,22 +112,19 @@ fn script_paths() -> impl Parser<Vec<PathBuf>> {
 fn cache_dir() -> impl Parser<Option<PathBuf>> {
     let tag = any::<String>("-customCacheDir")
         .guard(|s| s == "-customCacheDir", "not customCacheDir");
-    let value = positional::<OsString>("CACHE_DIR");
+    let value = positional::<PathBuf>("CACHE_DIR");
     construct!(tag, value)
-        .anywhere()
         .map(|pair| pair.1)
-        .map(PathBuf::from)
         .optional()
         .catch()
 }
 
 impl Opts {
-    pub fn load(args: Vec<String>) -> Self {
-        let cache_file = any::<OsString>("CACHE_FILE")
-            .anywhere()
-            .map(PathBuf::from);
+    pub fn load(args: &[&str]) -> Self {
+        let cache_file = any::<PathBuf>("CACHE_FILE")
+            .anywhere();
         let optimize = toggle_options("optimize", "Optimize the redscripts");
-        let threads = slong("-threads", "Number of theads to script_paths on").map(|s| s.parse::<u8>().unwrap()).optional();
+        let threads = slong("-threads", "Number of theads to script_paths on").parse(|s| s.parse::<u8>()).optional();
         let no_warnings = toggle_options("Wnone", "No warnings");
         let no_testonly = toggle_options("no-testonly", "No testonly classes");
         let no_breakpoint = toggle_options("no-breakpoint", "No breakpoints");
@@ -141,7 +141,6 @@ impl Opts {
             no_breakpoint,
             profile_off
         });
-        let bpaf_args = args.iter().map(String::as_str).collect::<Vec<&str>>();
-        parser.to_options().run_inner(bpaf::Args::from(bpaf_args.as_slice())).unwrap()
+        parser.to_options().run_inner(bpaf::Args::from(args)).unwrap()
     }
 }

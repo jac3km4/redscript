@@ -29,7 +29,7 @@ const TIMESTAMP_FILE_NAME: &str = "redscript.ts";
 const USER_HINTS_DIR: &str = "redsUserHints";
 
 fn main() -> ExitCode {
-    let opts = Opts::load(fix_args(std::env::args().skip(1).collect::<Vec<String>>()));
+    let opts = Opts::load(fix_args(std::env::args().skip(1).collect()).iter().map(String::as_str).collect::<Vec<&str>>().as_slice());
 
     #[cfg(test)]
     log::info!("{:#?}", opts);
