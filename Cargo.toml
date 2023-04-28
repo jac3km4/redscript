@@ -14,7 +14,7 @@ strum = { version = "0.24", features = ["derive"] }
 enum-as-inner = "0.5"
 byteorder = "1.4"
 flexstr = "0.9"
-flexi_logger = { version = "0.24", default-features = false }
+flexi_logger = { version = "0.25", default-features = false }
 
 [workspace.metadata.release]
 shared-version = true
