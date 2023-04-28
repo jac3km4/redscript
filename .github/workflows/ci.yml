@@ -22,7 +22,7 @@ jobs:
       - name: cargo fmt
         shell: pwsh
         run: |
-          $rustfmt_output = cargo fmt --all --check -- --color always 2> $null
+          $rustfmt_output = cargo +nightly fmt --all --check -- --color always 2> $null
           $rustfmt_exit_code = $LASTEXITCODE
           if ($rustfmt_exit_code -ne 0 ) {
             Write-Output "::error title=Rustfmt code formatting check failed::$(@(
