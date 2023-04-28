@@ -20,3 +20,6 @@ crc32fast = "1"
 
 [features]
 arc = []
+
+[dev-dependencies]
+rusty-hook = "0.11"
