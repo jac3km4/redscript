@@ -17,12 +17,14 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
 
       - name: cargo fmt
         shell: pwsh
         run: |
-          $rustfmt_output = cargo +nightly fmt --all --check -- --color always 2> $null
+          $rustfmt_output = cargo fmt --all --check -- --color always 2> $null
           $rustfmt_exit_code = $LASTEXITCODE
           if ($rustfmt_exit_code -ne 0 ) {
             Write-Output "::error title=Rustfmt code formatting check failed::$(@(
