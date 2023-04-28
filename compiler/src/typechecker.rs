@@ -966,11 +966,11 @@ impl FunctionMatch {
 pub struct TypedAst;
 
 impl NameKind for TypedAst {
-    type Reference = Reference;
     type Callable = Callable;
-    type Local = PoolIndex<Local>;
     type Function = PoolIndex<Function>;
+    type Local = PoolIndex<Local>;
     type Member = Member;
+    type Reference = Reference;
     type Type = TypeId;
 }
 

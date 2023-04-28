@@ -63,11 +63,11 @@ pub trait NameKind {
 pub struct SourceAst;
 
 impl NameKind for SourceAst {
-    type Reference = Ident;
     type Callable = Ident;
-    type Local = Ident;
     type Function = Ident;
+    type Local = Ident;
     type Member = Ident;
+    type Reference = Ident;
     type Type = TypeName;
 }
 
@@ -396,21 +396,21 @@ pub struct TypeName {
 
 impl TypeName {
     pub const BOOL: Self = TypeName::basic("Bool");
-    pub const INT8: Self = TypeName::basic("Int8");
+    pub const CNAME: Self = TypeName::basic("CName");
+    pub const DOUBLE: Self = TypeName::basic("Double");
+    pub const FLOAT: Self = TypeName::basic("Float");
     pub const INT16: Self = TypeName::basic("Int16");
     pub const INT32: Self = TypeName::basic("Int32");
     pub const INT64: Self = TypeName::basic("Int64");
-    pub const UINT8: Self = TypeName::basic("Uint8");
+    pub const INT8: Self = TypeName::basic("Int8");
+    pub const RESOURCE: Self = TypeName::basic("ResRef");
+    pub const STRING: Self = TypeName::basic("String");
+    pub const TWEAKDB_ID: Self = TypeName::basic("TweakDBID");
     pub const UINT16: Self = TypeName::basic("Uint16");
     pub const UINT32: Self = TypeName::basic("Uint32");
     pub const UINT64: Self = TypeName::basic("Uint64");
-    pub const FLOAT: Self = TypeName::basic("Float");
-    pub const DOUBLE: Self = TypeName::basic("Double");
-    pub const STRING: Self = TypeName::basic("String");
+    pub const UINT8: Self = TypeName::basic("Uint8");
     pub const VARIANT: Self = TypeName::basic("Variant");
-    pub const CNAME: Self = TypeName::basic("CName");
-    pub const RESOURCE: Self = TypeName::basic("ResRef");
-    pub const TWEAKDB_ID: Self = TypeName::basic("TweakDBID");
     pub const VOID: Self = TypeName::basic("Void");
 
     #[inline]

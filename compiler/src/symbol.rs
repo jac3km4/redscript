@@ -201,9 +201,8 @@ impl ModulePath {
 }
 
 impl<'a> IntoIterator for &'a ModulePath {
-    type Item = &'a Ident;
-
     type IntoIter = std::slice::Iter<'a, Ident>;
+    type Item = &'a Ident;
 
     fn into_iter(self) -> Self::IntoIter {
         self.parts.iter()

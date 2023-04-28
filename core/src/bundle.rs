@@ -55,9 +55,9 @@ pub struct Header {
 }
 
 impl Header {
-    const SUPPORTED_VERSION: u32 = 14;
     const MAGIC: u32 = 0x5344_4552;
     const SIZE: usize = 104;
+    const SUPPORTED_VERSION: u32 = 14;
 }
 
 impl Decode for Header {
@@ -476,8 +476,6 @@ pub struct DefinitionHeader {
 }
 
 impl DefinitionHeader {
-    const SIZE: usize = 20;
-
     const DEFAULT: DefinitionHeader = DefinitionHeader {
         name: PoolIndex::UNDEFINED,
         parent: PoolIndex::UNDEFINED,
@@ -488,6 +486,7 @@ impl DefinitionHeader {
         unk2: 0,
         unk3: 0,
     };
+    const SIZE: usize = 20;
 
     fn encode_definition<O: io::Write + io::Seek>(
         output: &mut StreamOffset<O>,
@@ -622,15 +621,15 @@ pub struct PoolIndex<A> {
 }
 
 impl<A> PoolIndex<A> {
+    pub const DEFAULT_SOURCE: PoolIndex<A> = PoolIndex::new(1);
+    pub const UNDEFINED: PoolIndex<A> = PoolIndex::new(0);
+
     pub const fn new(index: u32) -> PoolIndex<A> {
         PoolIndex {
             value: index,
             phantom: PhantomData,
         }
     }
-
-    pub const UNDEFINED: PoolIndex<A> = PoolIndex::new(0);
-    pub const DEFAULT_SOURCE: PoolIndex<A> = PoolIndex::new(1);
 
     pub fn is_undefined(&self) -> bool {
         self.value == 0

@@ -212,10 +212,10 @@ fn fail_on_invalid_structs() {
     ";
 
     let (_, errs) = compiled(vec![sources]).unwrap();
-    assert!(matches!(&errs[..], &[Diagnostic::CompileError(
-        Cause::UnsupportedFeature(_),
-        _
-    )]));
+    assert!(matches!(
+        &errs[..],
+        &[Diagnostic::CompileError(Cause::UnsupportedFeature(_), _)]
+    ));
 }
 
 #[test]
@@ -232,10 +232,10 @@ fn report_unused_variables() {
     ";
 
     let (_, errs) = compiled(vec![sources]).unwrap();
-    assert!(matches!(&errs[..], &[
-        Diagnostic::UnusedLocal(_),
-        Diagnostic::UnusedLocal(_),
-    ]));
+    assert!(matches!(
+        &errs[..],
+        &[Diagnostic::UnusedLocal(_), Diagnostic::UnusedLocal(_),]
+    ));
 }
 
 #[test]
@@ -276,22 +276,25 @@ fn compile_defaults() {
         .filter_map(|(_, d)| d.value.as_field())
         .flat_map(|f| &f.defaults)
         .collect();
-    assert_eq!(props, vec![
-        &Property {
-            name: "Class".to_owned(),
-            value: "10".to_owned()
-        },
-        &Property {
-            name: "Class".to_owned(),
-            value: "Enum.Zero".to_owned()
-        },
-        &Property {
-            name: "Class".to_owned(),
-            value: "str".to_owned()
-        },
-        &Property {
-            name: "Class".to_owned(),
-            value: "name".to_owned()
-        }
-    ]);
+    assert_eq!(
+        props,
+        vec![
+            &Property {
+                name: "Class".to_owned(),
+                value: "10".to_owned()
+            },
+            &Property {
+                name: "Class".to_owned(),
+                value: "Enum.Zero".to_owned()
+            },
+            &Property {
+                name: "Class".to_owned(),
+                value: "str".to_owned()
+            },
+            &Property {
+                name: "Class".to_owned(),
+                value: "name".to_owned()
+            }
+        ]
+    );
 }
