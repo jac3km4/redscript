@@ -2,7 +2,7 @@
 members = ["core", "compiler", "decompiler", "cli", "scc"]
 
 [workspace.package]
-version = "0.5.12"
+version = "0.5.13"
 authors = ["jekky"]
 edition = "2021"
 

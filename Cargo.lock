@@ -1109,7 +1109,7 @@ dependencies = [
 
 [[package]]
 name = "redscript"
-version = "0.5.12"
+version = "0.5.13"
 dependencies = [
  "byteorder",
  "crc32fast",
@@ -1125,7 +1125,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-cli"
-version = "0.5.12"
+version = "0.5.13"
 dependencies = [
  "flexi_logger",
  "gumdrop",
@@ -1138,7 +1138,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-compiler"
-version = "0.5.12"
+version = "0.5.13"
 dependencies = [
  "enum-as-inner",
  "flexstr",
@@ -1155,7 +1155,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-decompiler"
-version = "0.5.12"
+version = "0.5.13"
 dependencies = [
  "itertools",
  "log",
@@ -1215,7 +1215,7 @@ dependencies = [
 
 [[package]]
 name = "scc"
-version = "0.5.12"
+version = "0.5.13"
 dependencies = [
  "bpaf",
  "byteorder",
