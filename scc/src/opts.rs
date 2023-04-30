@@ -50,6 +50,7 @@ pub fn fix_args(args: Vec<String>) -> Vec<String> {
 #[derive(Clone, Debug)]
 pub struct Opts {
     pub script_paths: Vec<PathBuf>,
+    pub script_paths_file: Option<PathBuf>,
     pub cache_dir: Option<PathBuf>,
     pub optimize: bool,
     pub threads: u8,
@@ -90,6 +91,14 @@ fn script_paths() -> impl Parser<Vec<PathBuf>> {
     construct!(tag, value).anywhere().map(|pair| pair.1).many().catch()
 }
 
+fn script_paths_file() -> impl Parser<Option<PathBuf>> {
+    let tag = any::<String>("-compilePathsFile")
+        .help("File listing all of the script paths")
+        .guard(|s| s == "-compilePathsFile", "not compilePathsFile");
+    let value = positional::<PathBuf>("FILE");
+    construct!(tag, value).anywhere().map(|pair| pair.1).optional().catch()
+}
+
 fn cache_dir() -> impl Parser<Option<PathBuf>> {
     let tag = any::<String>("-customCacheDir").guard(|s| s == "-customCacheDir", "not customCacheDir");
     let value = positional::<PathBuf>("CACHE_DIR");
@@ -110,6 +119,7 @@ impl Opts {
 
         let parser = construct!(Opts {
             script_paths(),
+            script_paths_file(),
             cache_dir(),
             optimize,
             threads,

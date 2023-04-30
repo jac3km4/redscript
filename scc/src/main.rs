@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
-use std::io;
+use std::io::{self, BufRead};
 use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -65,7 +65,20 @@ fn main() -> ExitCode {
         _ => (default_cache_dir, None),
     };
 
-    let files = Files::from_dirs(&opts.script_paths, &manifest.source_filter()).expect("Could not load script sources");
+    let script_paths = if let Some(script_paths_file) = opts.script_paths_file {
+        [
+            opts.script_paths,
+            std::io::BufReader::new(File::open(script_paths_file).unwrap())
+                .lines()
+                .map(|f| PathBuf::from(f.unwrap()))
+                .collect(),
+        ]
+        .concat()
+    } else {
+        opts.script_paths
+    };
+
+    let files = Files::from_dirs(&script_paths, &manifest.source_filter()).expect("Could not load script sources");
 
     match compile_scripts(&script_dir, &cache_dir, fallback_dir.as_deref(), &files) {
         Ok(_) => {
