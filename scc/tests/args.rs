@@ -79,7 +79,7 @@ fn test_order_cyber(f_args: &[TestArg]) {
             concat!(
                 r#"-compile "C:\Program Files (x86)\Steam\steamapps\common\Cyberpunk 2077\r6\scripts""#,
                 r#" -customCacheDir "C:\Program Files (x86)\Steam\steamapps\common\Cyberpunk 2077\r6\cache\modded""#,
-            ), 
+            ),
             &f_args.iter().map(|a| a.raw).collect::<Vec<_>>().join(""),
         ]
         .join(""),
@@ -101,7 +101,8 @@ fn test_order_cyber(f_args: &[TestArg]) {
     .unwrap();
     let opts = Opts::load(args.iter().map(String::as_str).collect::<Vec<&str>>().as_slice());
 
-    assert_eq!(opts.script_paths,
+    assert_eq!(
+        opts.script_paths,
         [PathBuf::from(
             "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\scripts"
         )]
@@ -112,7 +113,7 @@ fn test_order_cyber(f_args: &[TestArg]) {
     );
     assert_eq!(opts.cache_file, None, "Testings cache_file");
     assert_eq!(
-        opts.cache_dir, 
+        opts.cache_dir,
         Some("C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\cache\\modded".into()),
         "Testing cache_dir"
     );
