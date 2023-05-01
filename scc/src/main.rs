@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
-use std::io;
+use std::io::{self, BufRead};
 use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -51,6 +51,12 @@ fn main() -> ExitCode {
         ScriptManifest::default()
     });
 
+    let mut script_paths = opts.script_paths;
+    match opts.script_paths_file.as_deref().map(load_script_paths).transpose() {
+        Ok(loaded_paths) => script_paths.extend(loaded_paths.unwrap_or_default()),
+        Err(err) => log::warn!("An invalid script paths file was provided: {err}, it will be ignored"),
+    };
+
     let (cache_dir, fallback_dir) = match opts.cache_dir {
         Some(cache_dir) => {
             log::info!("Custom cache directory provided: {}", cache_dir.to_str().unwrap());
@@ -65,7 +71,7 @@ fn main() -> ExitCode {
         _ => (default_cache_dir, None),
     };
 
-    let files = Files::from_dirs(&opts.script_paths, &manifest.source_filter()).expect("Could not load script sources");
+    let files = Files::from_dirs(&script_paths, &manifest.source_filter()).expect("Could not load script sources");
 
     match compile_scripts(&script_dir, &cache_dir, fallback_dir.as_deref(), &files) {
         Ok(_) => {
@@ -81,6 +87,13 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+fn load_script_paths(script_paths_file: &Path) -> io::Result<Vec<PathBuf>> {
+    io::BufReader::new(File::open(script_paths_file)?)
+        .lines()
+        .map(|line| line.map(PathBuf::from))
+        .collect()
 }
 
 fn get_base_bundle_path(cache_dir: &Path) -> PathBuf {
