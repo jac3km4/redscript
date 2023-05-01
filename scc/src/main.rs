@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::fmt::Display;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead};
 use std::ops::Not;
@@ -29,29 +28,6 @@ const TIMESTAMP_FILE_NAME: &str = "redscript.ts";
 
 const USER_HINTS_DIR: &str = "redsUserHints";
 
-#[derive(Debug)]
-pub enum ScriptPathsError {
-    IoError(io::Error),
-    FileNotProvided,
-}
-
-impl Display for ScriptPathsError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ScriptPathsError::FileNotProvided => write!(f, "File Not Provided"),
-            ScriptPathsError::IoError(io_error) => write!(f, "{}", io_error),
-        }
-    }
-}
-
-impl std::error::Error for ScriptPathsError {}
-
-impl From<std::io::Error> for ScriptPathsError {
-    fn from(err: std::io::Error) -> Self {
-        ScriptPathsError::IoError(err)
-    }
-}
-
 fn main() -> ExitCode {
     let opts = Opts::load(
         fix_args(std::env::args().skip(1).collect())
@@ -75,13 +51,10 @@ fn main() -> ExitCode {
         ScriptManifest::default()
     });
 
-    let script_paths = match load_script_paths(&opts) {
-        Ok(paths) => opts.script_paths.into_iter().chain(paths.into_iter()).collect(),
-        Err(ScriptPathsError::FileNotProvided) => opts.script_paths,
-        Err(ScriptPathsError::IoError(err)) => {
-            log::warn!("Could not load the script paths file: {err}");
-            opts.script_paths
-        }
+    let mut script_paths = opts.script_paths;
+    match opts.script_paths_file.as_deref().map(load_script_paths).transpose() {
+        Ok(loaded_paths) => script_paths.extend(loaded_paths.unwrap_or_default()),
+        Err(err) => log::warn!("An invalid script paths file was provided: {err}, it will be ignored"),
     };
 
     let (cache_dir, fallback_dir) = match opts.cache_dir {
@@ -116,15 +89,11 @@ fn main() -> ExitCode {
     }
 }
 
-fn load_script_paths(opts: &Opts) -> Result<Vec<PathBuf>, ScriptPathsError> {
-    match opts.script_paths_file.as_ref() {
-        Some(path) => io::BufReader::new(File::open(path)?)
-            .lines()
-            .map(|line| line.map(PathBuf::from))
-            .collect::<Result<Vec<PathBuf>, io::Error>>()
-            .map_err(ScriptPathsError::from),
-        None => Err(ScriptPathsError::FileNotProvided),
-    }
+fn load_script_paths(script_paths_file: &Path) -> io::Result<Vec<PathBuf>> {
+    io::BufReader::new(File::open(script_paths_file)?)
+        .lines()
+        .map(|line| line.map(PathBuf::from))
+        .collect()
 }
 
 fn get_base_bundle_path(cache_dir: &Path) -> PathBuf {
