@@ -19,6 +19,8 @@ bpaf = "0.7"
 
 [dev-dependencies]
 winsplit = "0.1"
+rstest = "0.17"
+rstest_reuse = "0.5"
 
 [features]
 popup = ["msgbox"]

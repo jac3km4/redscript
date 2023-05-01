@@ -50,85 +50,189 @@ pub fn fix_args(args: Vec<String>) -> Vec<String> {
 #[derive(Clone, Debug)]
 pub struct Opts {
     pub script_paths: Vec<PathBuf>,
-    pub script_paths_file: Option<PathBuf>,
     pub cache_dir: Option<PathBuf>,
     pub optimize: bool,
     pub threads: u8,
-    pub no_warnings: bool,
+    pub warnings: Option<String>,
     pub no_testonly: bool,
     pub no_breakpoint: bool,
-    pub profile_off: bool,
+    pub profile: bool,
+    pub script_paths_file: Option<PathBuf>,
     pub cache_file: Option<PathBuf>,
 }
 
-fn toggle_options(name: &'static str, help: &'static str) -> impl Parser<bool> {
+impl Default for Opts {
+    fn default() -> Self {
+        Self {
+            script_paths: vec![],
+            cache_dir: None,
+            optimize: false,
+            threads: 1,
+            warnings: None,
+            no_testonly: false,
+            no_breakpoint: false,
+            profile: false,
+            script_paths_file: None,
+            cache_file: None,
+        }
+    }
+}
+
+fn no_space(name: &'static str, help: &'static str) -> impl Parser<Option<String>> {
     any::<String>(name)
         .help(help)
-        .guard(|s| s.starts_with('-'), "doesn't start with -")
+        .guard(
+            |s| s.starts_with(name.to_owned().as_str()),
+            "no_space doesn't start with -<name>",
+        )
         .parse(move |s| {
-            let Some(cur_name) = s.strip_prefix('-') else {
-                return Err(format!("{} is not a toggle option", s));
-            };
-            if cur_name != name {
-                Err(format!("{} is not a known toggle option name", cur_name))
+            // println!("no_space: {}", s);
+            s.strip_prefix(name.to_owned().as_str())
+                .ok_or(Err::<String, &str>("IDK1"))
+                .map_or(Err("IDK2"), |s| Ok(s.to_string()))
+        })
+        .anywhere()
+        .optional()
+        .catch()
+}
+
+fn toggle_options(name: &'static str, help: &'static str) -> impl Parser<Option<bool>> {
+    any::<String>(name)
+        .help(help)
+        .guard(|s| s.eq(name.to_owned().as_str()), "toggle_option isn't -<name>")
+        .parse(move |s| {
+            // println!("toggle_options: {}", s);
+            if s != name {
+                Err(format!("{} is not a known toggle option name", s))
             } else {
                 Ok(true)
             }
         })
+        .adjacent()
         .anywhere()
-        .fallback(false)
+        .optional()
+        .catch()
 }
 
-fn slong(tag_str: &'static str, arg_str: &'static str) -> impl Parser<String> {
-    let tag = any::<String>(tag_str).guard(move |s| s.as_str() == tag_str, "not arg name");
-    let value = positional::<String>(arg_str);
-    construct!(tag, value).anywhere().map(|pair| pair.1)
+fn equals_sign(name: &'static str, help: &'static str) -> impl Parser<Option<String>> {
+    any::<String>(name)
+        .help(help)
+        .guard(
+            |s| s.starts_with(format!("{}=", name.to_owned()).as_str()),
+            "equals_sign doesn't start with -<name>=",
+        )
+        .parse(move |s| {
+            // println!("equals_sign: {}", s);
+            let arg = s.split('=').collect::<Vec<_>>();
+            let cur_name = arg.first().unwrap().to_owned();
+            if cur_name != name {
+                Err(format!("{} is not a known option name", cur_name))
+            } else {
+                Ok((*arg.last().unwrap()).to_string())
+            }
+        })
+        .anywhere()
+        .optional()
+        .catch()
+}
+
+fn slong(name: &'static str, arg_name: &'static str, help: &'static str) -> impl Parser<Option<String>> {
+    let tag = any::<String>(name)
+        .help(help)
+        .guard(|s| s.eq(name.to_owned().as_str()), "slong isn't -<name>");
+    let value = positional::<String>(arg_name).guard(|s| !s.starts_with('-'), "starts with -");
+    construct!(tag, value)
+        .adjacent()
+        .anywhere()
+        .map(|pair| pair.1)
+        .optional()
+        .catch()
 }
 
 fn script_paths() -> impl Parser<Vec<PathBuf>> {
     let tag = any::<String>("-compile").guard(|s| s == "-compile", "not compile");
-    let value = positional::<PathBuf>("SCRIPT_PATH");
-    construct!(tag, value).anywhere().map(|pair| pair.1).many().catch()
+    let value = positional::<PathBuf>("SCRIPT_PATH")
+        .guard(|s| !s.to_str().unwrap().to_string().starts_with('-'), "starts with -");
+    construct!(tag, value)
+        .adjacent()
+        .anywhere()
+        .map(|pair| pair.1)
+        .many()
+        .catch()
 }
 
 fn script_paths_file() -> impl Parser<Option<PathBuf>> {
     let tag = any::<String>("-compilePathsFile")
-        .help("File listing all of the script paths")
+        .help("File containing a newline-delimiter list of redscript paths to compile")
         .guard(|s| s == "-compilePathsFile", "not compilePathsFile");
-    let value = positional::<PathBuf>("FILE");
-    construct!(tag, value).anywhere().map(|pair| pair.1).optional().catch()
+    let value = positional::<PathBuf>("SCRIPTS_PATHS_FILE")
+        .guard(|s| !s.to_str().unwrap().to_string().starts_with('-'), "starts with -");
+    construct!(tag, value)
+        .adjacent()
+        .anywhere()
+        .map(|pair| pair.1)
+        .optional()
+        .catch()
 }
 
 fn cache_dir() -> impl Parser<Option<PathBuf>> {
-    let tag = any::<String>("-customCacheDir").guard(|s| s == "-customCacheDir", "not customCacheDir");
-    let value = positional::<PathBuf>("CACHE_DIR");
-    construct!(tag, value).map(|pair| pair.1).optional().catch()
+    let tag = any::<String>("-customCacheDir")
+        .help("A custom cache dir to write the final.redscripts to")
+        .guard(|s| s == "-customCacheDir", "not customCacheDir");
+    let value = positional::<PathBuf>("CACHE_DIR")
+        .guard(|s| !s.to_str().unwrap().to_string().starts_with('-'), "starts with -");
+    construct!(tag, value)
+        .adjacent()
+        .anywhere()
+        .map(|pair| pair.1)
+        .optional()
+        .catch()
 }
 
 impl Opts {
-    pub fn load(args: &[&str]) -> Self {
-        let optimize = toggle_options("optimize", "Optimize the redscripts");
-        let threads = slong("-threads", "Number of theads to script_paths on")
-            .parse(|s| s.parse::<u8>())
-            .fallback(1);
-        let no_warnings = toggle_options("Wnone", "No warnings");
-        let no_testonly = toggle_options("no-testonly", "No testonly classes");
-        let no_breakpoint = toggle_options("no-breakpoint", "No breakpoints");
-        let profile_off = toggle_options("profile=off", "Profile off");
-        let cache_file = any::<PathBuf>("CACHE_FILE").optional();
+    pub fn get_parser() -> OptionParser<Opts> {
+        let optimize = toggle_options("-optimize", "Optimize")
+            .parse(|s| Ok::<bool, String>(s.unwrap_or(Opts::default().optimize)));
+        let threads = slong("-threads", "THREADS", "Number of threads to compile on")
+            .parse(|s| s.map(|s| s.parse::<u8>()).unwrap_or(Ok(Opts::default().threads)));
+        let no_testonly = toggle_options("-no-testonly", "Exclude testonly classes")
+            .parse(|s| Ok::<bool, String>(s.unwrap_or(Opts::default().no_testonly)));
+        let no_breakpoint = toggle_options("-no-breakpoint", "Remove breakpoints")
+            .parse(|s| Ok::<bool, String>(s.unwrap_or(Opts::default().no_breakpoint)));
+        let warnings = no_space("-W", "Warning setting <none>");
+        let profile = equals_sign("-profile", "Profiling <yes|no>").parse(|s| {
+            if let Some(str) = s {
+                match str.as_str() {
+                    "on" => Ok(true),
+                    "off" => Ok(false),
+                    _ => Err("Profile option parse error"),
+                }
+            } else {
+                Ok(Opts::default().profile)
+            }
+        });
+        let cache_file = positional::<PathBuf>("CACHE_FILE")
+            .guard(|s| !s.to_str().unwrap().to_string().starts_with('-'), "starts with -")
+            .anywhere()
+            .optional()
+            .catch();
 
         let parser = construct!(Opts {
             script_paths(),
-            script_paths_file(),
             cache_dir(),
             optimize,
             threads,
-            no_warnings,
+            warnings,
             no_testonly,
             no_breakpoint,
-            profile_off,
+            profile,
+            script_paths_file(),
             cache_file,
         });
-        parser.to_options().run_inner(bpaf::Args::from(args)).unwrap()
+        parser.to_options()
+    }
+
+    pub fn load(args: &[&str]) -> Self {
+        Self::get_parser().run_inner(bpaf::Args::from(args)).unwrap()
     }
 }
