@@ -93,7 +93,7 @@ mod tests {
                 .unwrap_stdout()
         );
     }
-    
+
     #[test]
     fn check_options() {
         Opts::get_parser().check_invariants(false)
