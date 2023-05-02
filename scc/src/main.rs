@@ -5,6 +5,7 @@ use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use bpaf::ParseFailure;
 use fd_lock::RwLock;
 use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, LevelFilter, LogSpecBuilder, Logger, Naming};
 use opts::{fix_args, Opts};
@@ -23,26 +24,36 @@ mod opts;
 
 const BUNDLE_FILE_NAME: &str = "final.redscripts";
 const BACKUP_FILE_NAME: &str = "final.redscripts.bk";
-const OLD_TIMESTAMP_FILE_NAME: &str = "redscript.ts";
+const LEGACY_TIMESTAMP_FILE_NAME: &str = "redscript.ts";
 
-const BACKUP_FILE_EXT: &str = ".bk";
-const TIMESTAMP_FILE_EXT: &str = ".ts";
+const BACKUP_FILE_EXT: &str = "redscripts.bk";
+const TIMESTAMP_FILE_EXT: &str = "redscripts.ts";
 
 const USER_HINTS_DIR: &str = "redsUserHints";
 
 fn main() -> ExitCode {
-    let opts = Opts::load(
+    let opts = match Opts::load(
         fix_args(std::env::args().skip(1).collect())
             .iter()
             .map(String::as_str)
             .collect::<Vec<&str>>()
             .as_slice(),
-    );
+    ) {
+        Ok(opts) => opts,
+        Err(ParseFailure::Stdout(out)) => {
+            println!("{}", out);
+            return ExitCode::SUCCESS;
+        },
+        Err(ParseFailure::Stderr(out)) => {
+            eprintln!("{}", out);
+            return ExitCode::FAILURE;
+        }
+    };
 
     let scripts_dir = if let Some(dir) = opts.scripts_dir {
         dir
     } else {
-        println!("Error: r6/scripts directory is required");
+        eprintln!("Error: r6/scripts directory is required");
         return ExitCode::FAILURE;
     };
 
@@ -62,8 +73,8 @@ fn main() -> ExitCode {
         Err(err) => log::warn!("An invalid script paths file was provided: {err}, it will be ignored"),
     };
 
-    let (bundle_path, cache_dir, fallback_dir) = match opts.cache_file.as_deref() {
-        Some(file) => {
+    let (bundle_path, cache_dir, fallback_dir) = match (opts.cache_file.as_deref(), opts.cache_dir.as_deref()) {
+        (Some(file), _) => {
             log::info!("Bundle path provided: {}", file.to_str().unwrap());
             if opts.cache_dir.is_some() {
                 log::warn!("Custom cache directory also provided - ignoring");
@@ -74,21 +85,19 @@ fn main() -> ExitCode {
                 Some(default_cache_dir.clone()),
             )
         }
-        _ => match opts.cache_dir.as_deref() {
-            Some(dir) => {
-                log::info!("Custom cache directory provided: {}", dir.to_str().unwrap());
-                (
-                    dir.join(BUNDLE_FILE_NAME),
-                    dir.to_path_buf(),
-                    Some(default_cache_dir.clone()),
-                )
-            }
-            _ => (
-                default_cache_dir.join(BUNDLE_FILE_NAME),
-                default_cache_dir.clone(),
-                None,
-            ),
-        },
+        (None, Some(dir)) => {
+            log::info!("Custom cache directory provided: {}", dir.to_str().unwrap());
+            (
+                dir.join(BUNDLE_FILE_NAME),
+                dir.to_path_buf(),
+                Some(default_cache_dir.clone()),
+            )
+        }
+        (None, None) => (
+            default_cache_dir.join(BUNDLE_FILE_NAME),
+            default_cache_dir.clone(),
+            None,
+        ),
     };
 
     if !bundle_path.exists() {
@@ -99,7 +108,7 @@ fn main() -> ExitCode {
 
     let files = Files::from_dirs(&script_paths, &manifest.source_filter()).expect("Could not load script sources");
 
-    match compile_scripts(scripts_dir.as_path(), &bundle_path, fallback_dir.as_deref(), &files) {
+    match compile_scripts(&scripts_dir, &bundle_path, fallback_dir.as_deref(), &files) {
         Ok(_) => {
             log::info!("Output successfully saved to {}", bundle_path.display());
             ExitCode::SUCCESS
@@ -148,10 +157,10 @@ fn compile_scripts(
     fallback_cache_dir: Option<&Path>,
     files: &Files,
 ) -> Result<(), Error> {
-    let backup_path = PathBuf::from(format!("{}{}", bundle_path.to_str().unwrap(), BACKUP_FILE_EXT));
+    let backup_path = bundle_path.with_extension(BACKUP_FILE_EXT);
     let fallback_backup_path = fallback_cache_dir.map(|dir| dir.join(BACKUP_FILE_NAME));
-    let timestamp_path = PathBuf::from(format!("{}{}", bundle_path.to_str().unwrap(), TIMESTAMP_FILE_EXT));
-    let fallback_timestamp_path = bundle_path.parent().unwrap().join(OLD_TIMESTAMP_FILE_NAME);
+    let timestamp_path = bundle_path.with_extension(TIMESTAMP_FILE_EXT);
+    let fallback_timestamp_path = bundle_path.parent().unwrap().join(LEGACY_TIMESTAMP_FILE_NAME);
 
     if !timestamp_path.exists() && fallback_timestamp_path.exists() {
         fs::rename(&fallback_timestamp_path, &timestamp_path).expect("Error renaming timestamp");

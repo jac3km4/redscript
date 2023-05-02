@@ -100,7 +100,7 @@ fn file_directory_orders(
 }
 
 #[cfg(test)]
-mod tests {
+mod args {
     use super::*;
 
     #[test]
@@ -177,20 +177,17 @@ mod tests {
             expected_args.iter().map(|a| a.as_str()).collect::<Vec<_>>().as_slice(),
         )
         .unwrap();
-        let opts = Opts::load(&fixed_args.iter().map(String::as_str).collect::<Vec<&str>>());
+        let opts = Opts::load(&fixed_args.iter().map(String::as_str).collect::<Vec<&str>>()).unwrap();
 
         self::assert_eq!(opts.scripts_dir, Some(PathBuf::from(scripts_dir)));
         self::assert_eq!(opts.cache_file, cache_file.map(|s| PathBuf::from(s)));
         self::assert_eq!(opts.cache_dir, cache_dir.map(|s| PathBuf::from(s)));
         self::assert_eq!(opts.script_paths_file, script_paths_file.map(|s| PathBuf::from(s)));
         self::assert_eq!(opts.warnings, warnings);
-        self::assert_eq!(opts.threads, threads.unwrap_or(Opts::default().threads));
-        self::assert_eq!(opts.no_testonly, no_testonly.unwrap_or(Opts::default().no_testonly));
-        self::assert_eq!(
-            opts.no_breakpoint,
-            no_breakpoint.unwrap_or(Opts::default().no_breakpoint)
-        );
-        self::assert_eq!(opts.profile, profile.unwrap_or(Opts::default().profile));
-        self::assert_eq!(opts.optimize, optimize.unwrap_or(Opts::default().optimize));
+        self::assert_eq!(opts.threads, threads.unwrap_or(Opts::DEFAULT_THREADS));
+        self::assert_eq!(opts.no_testonly, no_testonly.unwrap_or(Opts::DEFAULT_NO_TESTONLY));
+        self::assert_eq!(opts.no_breakpoint, no_breakpoint.unwrap_or(Opts::DEFAULT_NO_BREAKPOINT));
+        self::assert_eq!(opts.profile, profile.unwrap_or(Opts::DEFAULT_NO_PROFILE));
+        self::assert_eq!(opts.optimize, optimize.unwrap_or(Opts::DEFAULT_OPTIMIZE));
     }
 }

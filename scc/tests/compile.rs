@@ -7,7 +7,7 @@ use assert_fs::prelude::*;
 use predicates::prelude::*;
 use scc::timestamp::*;
 
-mod tests {
+mod compile {
 
     use super::*;
 
@@ -16,7 +16,17 @@ mod tests {
         let mut cmd = Command::cargo_bin("scc")?;
         cmd.assert()
             .failure()
-            .stdout(predicate::str::contains("r6/scripts directory is required"));
+            .stderr(predicate::str::contains("r6/scripts directory is required"));
+        Ok(())
+    }
+
+    #[test]
+    fn help() -> Result<(), Box<dyn std::error::Error>> {
+        let mut cmd = Command::cargo_bin("scc")?;
+        cmd.arg("--help");
+        cmd.assert()
+            .success()
+            .stdout(predicate::str::contains("Available positional items"));
         Ok(())
     }
 
