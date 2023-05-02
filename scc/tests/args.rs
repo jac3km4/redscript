@@ -1,13 +1,71 @@
 use std::path::PathBuf;
 
+use pretty_assertions::assert_eq;
+use rstest::rstest;
+use rstest_reuse::{self, *};
 use scc::opts::*;
 use winsplit;
 
 pub fn test_fix_args(arg_str: &str, expected_args: &[&str]) -> Result<Vec<String>, String> {
     let args = fix_args(winsplit::split(arg_str));
     (args == expected_args.iter().map(|&s| s.into()).collect::<Vec<String>>())
-        .then_some(args)
+        .then_some(args.clone())
         .ok_or("Does not match expected output".to_owned())
+}
+
+#[derive(Debug, Clone)]
+pub enum Arg {
+    Path(PathBuf),
+    String(String),
+    Number(u8),
+}
+
+impl Arg {
+    pub fn to_command_str(&self) -> String {
+        match self {
+            Self::Path(p) => format!("\"{}\"", p.as_path().to_str().unwrap_or_default()),
+            Self::String(s) => s.clone(),
+            Self::Number(n) => n.to_string(),
+        }
+    }
+
+    pub fn to_arg_str(&self) -> String {
+        match self {
+            Self::Path(p) => p.as_path().to_str().unwrap_or_default().to_string(),
+            Self::String(s) => s.clone(),
+            Self::Number(n) => n.to_string(),
+        }
+    }
+}
+
+impl From<String> for Arg {
+    fn from(item: String) -> Self {
+        Self::String(item)
+    }
+}
+
+impl From<PathBuf> for Arg {
+    fn from(item: PathBuf) -> Self {
+        Self::Path(item)
+    }
+}
+
+impl From<&PathBuf> for Arg {
+    fn from(item: &PathBuf) -> Self {
+        Self::Path(item.clone())
+    }
+}
+
+impl From<u8> for Arg {
+    fn from(item: u8) -> Self {
+        Self::Number(item)
+    }
+}
+
+impl From<&str> for Arg {
+    fn from(item: &str) -> Self {
+        Self::String(item.to_owned())
+    }
 }
 
 pub struct TestArg {
@@ -15,236 +73,116 @@ pub struct TestArg {
     pub parsed: &'static str,
 }
 
-const TEST_FILE: TestArg = TestArg {
-    raw: r#" -compile "C:\Program Files (x86)\Steam\steamapps\common\Cyberpunk 2077\red4ext\plugins\my_mod\packed.reds""#,
-    parsed: "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\red4ext\\plugins\\my_mod\\packed.reds",
-};
+const SCRIPTS_DIR: &str = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\scripts\\";
 
-const TEST_DIRECTORY: TestArg = TestArg {
-    raw: r#" -compile "C:\Program Files (x86)\Steam\steamapps\common\Cyberpunk 2077\red4ext\plugins\my_mod\extra\""#,
-    parsed: "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\red4ext\\plugins\\my_mod\\extra\\",
-};
+const PATHS_FILE: &str =
+    "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\red4ext\\redscript_paths.txt";
 
-fn test_order(f_args: &[TestArg]) {
-    let args = test_fix_args(
-        &[
-            concat!(
-                r#"-compile "C:\Program Files (x86)\Steam\steamapps\common\Cyberpunk 2077\r6\scripts\""#,
-                r#" "C:\Program Files (x86)\Steam\steamapps\common\Cyberpunk 2077\r6\cache\final.redscripts""#,
-                r#" -Wnone -threads 4 -no-testonly -no-breakpoint -profile=off -optimize"#
-            ),
-            &f_args.iter().map(|a| a.raw).collect::<Vec<_>>().join(""),
-        ]
-        .join(""),
-        &[
-            &[
-                "-compile",
-                "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\scripts\\",
-                "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\cache\\final.redscripts",
-                "-Wnone",
-                "-threads",
-                "4",
-                "-no-testonly",
-                "-no-breakpoint",
-                "-profile=off",
-                "-optimize",
-            ],
-            f_args
-                .iter()
-                .flat_map(|a| ["-compile", a.parsed])
-                .collect::<Vec<_>>()
-                .as_slice(),
-        ]
-        .concat(),
+const CACHE_FILE: &str =
+    "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\cache\\final.redscripts";
+
+const CACHE_DIR: &str = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\cache\\modded";
+
+#[template]
+#[rstest]
+fn file_directory_orders(
+    #[values(SCRIPTS_DIR)] scripts_dir: &str,
+    #[values(Some(CACHE_FILE), None)] cache_file: Option<&str>,
+    #[values(Some(CACHE_DIR), None)] cache_dir: Option<&str>,
+    #[values(Some(PATHS_FILE), None)] script_paths_file: Option<&str>,
+    #[values(&["none"], &[])] warnings: &[&str],
+    #[values(Some(true), None)] optimize: Option<bool>,
+    #[values(Some(4), None)] threads: Option<u8>,
+    #[values(Some(false), None)] no_testonly: Option<bool>,
+    #[values(Some(false), None)] no_breakpoint: Option<bool>,
+    #[values(Some(true), Some(false), None)] profile: Option<bool>,
+) {
+}
+
+#[test]
+fn get_help() {
+    println!(
+        "{}",
+        Opts::get_parser()
+            .run_inner(bpaf::Args::from(&["--help"]))
+            .unwrap_err()
+            .unwrap_stdout()
+    );
+}
+
+#[test]
+fn check_options() {
+    Opts::get_parser().check_invariants(false)
+}
+
+#[apply(file_directory_orders)]
+fn standard(
+    scripts_dir: &str,
+    cache_file: Option<&str>,
+    cache_dir: Option<&str>,
+    script_paths_file: Option<&str>,
+    warnings: &[&str],
+    optimize: Option<bool>,
+    threads: Option<u8>,
+    no_testonly: Option<bool>,
+    no_breakpoint: Option<bool>,
+    profile: Option<bool>,
+) {
+    let mut args = Vec::<Arg>::new();
+    args.push("-compile".into());
+    args.push(PathBuf::from(scripts_dir).into());
+    if let Some(value) = cache_file {
+        args.push(PathBuf::from(value).into());
+    }
+    if let Some(value) = cache_dir {
+        args.push("-customCacheDir".into());
+        args.push(PathBuf::from(value).into());
+    }
+    if let Some(value) = script_paths_file {
+        args.push("-compilePathsFile".into());
+        args.push(PathBuf::from(value).into());
+    }
+    for warning in warnings.iter() {
+        args.push(["-W", warning].join("").into());
+    }
+    if let Some(n) = threads {
+        args.push("-threads".into());
+        args.push(n.to_string().into());
+    }
+    if no_testonly == Some(true) {
+        args.push("-no-testonly".into());
+    }
+    if no_breakpoint == Some(true) {
+        args.push("-no-breakpoint".into());
+    }
+    match profile {
+        Some(false) => args.push("-profile=off".into()),
+        Some(true) => args.push("-profile=on".into()),
+        None => {}
+    };
+    if optimize == Some(true) {
+        args.push("-optimize".to_owned().into());
+    }
+    let expected_args = args.iter().map(|a| a.to_arg_str()).collect::<Vec<_>>();
+    let fixed_args = test_fix_args(
+        args.iter()
+            .map(Arg::to_command_str)
+            .collect::<Vec<_>>()
+            .join(" ")
+            .as_str(),
+        expected_args.iter().map(|a| a.as_str()).collect::<Vec<_>>().as_slice(),
     )
     .unwrap();
-    let opts = Opts::load(&args.iter().map(String::as_str).collect::<Vec<&str>>());
+    let opts = Opts::load(&fixed_args.iter().map(String::as_str).collect::<Vec<&str>>()).unwrap();
 
-    assert_eq!(
-        opts.script_paths,
-        [PathBuf::from(
-            "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\scripts\\"
-        )]
-        .into_iter()
-        .chain(f_args.iter().map(|a| PathBuf::from(a.parsed)))
-        .collect::<Vec<_>>()
-    );
-    assert_eq!(opts.cache_dir, None);
-    assert_eq!(opts.threads, 4);
-}
-
-fn test_order_cyber(f_args: &[TestArg]) {
-    let args = test_fix_args(
-        &[
-            concat!(
-                r#"-compile "C:\Program Files (x86)\Steam\steamapps\common\Cyberpunk 2077\r6\scripts""#,
-                r#" -customCacheDir "C:\Program Files (x86)\Steam\steamapps\common\Cyberpunk 2077\r6\cache\modded""#,
-            ),
-            &f_args.iter().map(|a| a.raw).collect::<Vec<_>>().join(""),
-        ]
-        .join(""),
-        &[
-            &[
-                "-compile",
-                "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\scripts",
-                "-customCacheDir",
-                "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\cache\\modded",
-            ],
-            f_args
-                .iter()
-                .flat_map(|a| ["-compile", a.parsed])
-                .collect::<Vec<_>>()
-                .as_slice(),
-        ]
-        .concat(),
-    )
-    .unwrap();
-    let opts = Opts::load(args.iter().map(String::as_str).collect::<Vec<&str>>().as_slice());
-
-    assert_eq!(
-        opts.script_paths,
-        [PathBuf::from(
-            "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\scripts"
-        )]
-        .into_iter()
-        .chain(f_args.iter().map(|a| PathBuf::from(a.parsed)))
-        .collect::<Vec<_>>(),
-        "Testing script_paths"
-    );
-    assert_eq!(opts.cache_file, None, "Testings cache_file");
-    assert_eq!(
-        opts.cache_dir,
-        Some("C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\cache\\modded".into()),
-        "Testing cache_dir"
-    );
-}
-
-mod standard {
-    use super::*;
-
-    #[test]
-    fn test_empty() {
-        test_order(&[]);
-    }
-    #[test]
-    fn test_fd() {
-        test_order(&[TEST_FILE, TEST_DIRECTORY]);
-    }
-    #[test]
-    fn test_fdf() {
-        test_order(&[TEST_FILE, TEST_FILE, TEST_FILE]);
-    }
-    #[test]
-    fn test_ffd() {
-        test_order(&[TEST_FILE, TEST_FILE, TEST_DIRECTORY]);
-    }
-    #[test]
-    fn test_fdd() {
-        test_order(&[TEST_FILE, TEST_DIRECTORY, TEST_DIRECTORY]);
-    }
-    #[test]
-    fn test_fddf() {
-        test_order(&[TEST_FILE, TEST_DIRECTORY, TEST_DIRECTORY, TEST_FILE]);
-    }
-    #[test]
-    fn test_fdfd() {
-        test_order(&[TEST_FILE, TEST_DIRECTORY, TEST_DIRECTORY, TEST_FILE]);
-    }
-    #[test]
-    fn test_fddfd() {
-        test_order(&[TEST_FILE, TEST_DIRECTORY, TEST_DIRECTORY, TEST_FILE, TEST_DIRECTORY]);
-    }
-    #[test]
-    fn test_df() {
-        test_order(&[TEST_DIRECTORY, TEST_FILE]);
-    }
-    #[test]
-    fn test_dfd() {
-        test_order(&[TEST_DIRECTORY, TEST_FILE, TEST_DIRECTORY]);
-    }
-    #[test]
-    fn test_ddf() {
-        test_order(&[TEST_DIRECTORY, TEST_DIRECTORY, TEST_FILE]);
-    }
-    #[test]
-    fn test_dff() {
-        test_order(&[TEST_DIRECTORY, TEST_FILE, TEST_FILE]);
-    }
-    #[test]
-    fn test_dffd() {
-        test_order(&[TEST_DIRECTORY, TEST_FILE, TEST_FILE, TEST_DIRECTORY]);
-    }
-    #[test]
-    fn test_dfdf() {
-        test_order(&[TEST_DIRECTORY, TEST_FILE, TEST_FILE, TEST_DIRECTORY]);
-    }
-    #[test]
-    fn test_dffdf() {
-        test_order(&[TEST_DIRECTORY, TEST_FILE, TEST_FILE, TEST_DIRECTORY, TEST_FILE]);
-    }
-}
-
-mod cybercmd {
-    use super::*;
-
-    #[test]
-    fn test_empty() {
-        test_order_cyber(&[]);
-    }
-    #[test]
-    fn test_fd() {
-        test_order_cyber(&[TEST_FILE, TEST_DIRECTORY]);
-    }
-    #[test]
-    fn test_fdf() {
-        test_order_cyber(&[TEST_FILE, TEST_FILE, TEST_FILE]);
-    }
-    #[test]
-    fn test_ffd() {
-        test_order_cyber(&[TEST_FILE, TEST_FILE, TEST_DIRECTORY]);
-    }
-    #[test]
-    fn test_fdd() {
-        test_order_cyber(&[TEST_FILE, TEST_DIRECTORY, TEST_DIRECTORY]);
-    }
-    #[test]
-    fn test_fddf() {
-        test_order_cyber(&[TEST_FILE, TEST_DIRECTORY, TEST_DIRECTORY, TEST_FILE]);
-    }
-    #[test]
-    fn test_fdfd() {
-        test_order_cyber(&[TEST_FILE, TEST_DIRECTORY, TEST_DIRECTORY, TEST_FILE]);
-    }
-    #[test]
-    fn test_fddfd() {
-        test_order_cyber(&[TEST_FILE, TEST_DIRECTORY, TEST_DIRECTORY, TEST_FILE, TEST_DIRECTORY]);
-    }
-    #[test]
-    fn test_df() {
-        test_order_cyber(&[TEST_DIRECTORY, TEST_FILE]);
-    }
-    #[test]
-    fn test_dfd() {
-        test_order_cyber(&[TEST_DIRECTORY, TEST_FILE, TEST_DIRECTORY]);
-    }
-    #[test]
-    fn test_ddf() {
-        test_order_cyber(&[TEST_DIRECTORY, TEST_DIRECTORY, TEST_FILE]);
-    }
-    #[test]
-    fn test_dff() {
-        test_order_cyber(&[TEST_DIRECTORY, TEST_FILE, TEST_FILE]);
-    }
-    #[test]
-    fn test_dffd() {
-        test_order_cyber(&[TEST_DIRECTORY, TEST_FILE, TEST_FILE, TEST_DIRECTORY]);
-    }
-    #[test]
-    fn test_dfdf() {
-        test_order_cyber(&[TEST_DIRECTORY, TEST_FILE, TEST_FILE, TEST_DIRECTORY]);
-    }
-    #[test]
-    fn test_dffdf() {
-        test_order_cyber(&[TEST_DIRECTORY, TEST_FILE, TEST_FILE, TEST_DIRECTORY, TEST_FILE]);
-    }
+    self::assert_eq!(opts.scripts_dir, Some(PathBuf::from(scripts_dir)));
+    self::assert_eq!(opts.cache_file, cache_file.map(|s| PathBuf::from(s)));
+    self::assert_eq!(opts.cache_dir, cache_dir.map(|s| PathBuf::from(s)));
+    self::assert_eq!(opts.script_paths_file, script_paths_file.map(|s| PathBuf::from(s)));
+    self::assert_eq!(opts.warnings, warnings);
+    self::assert_eq!(opts.threads, threads.unwrap_or(Opts::DEFAULT_THREADS));
+    self::assert_eq!(opts.no_testonly, no_testonly.unwrap_or(Opts::DEFAULT_NO_TESTONLY));
+    self::assert_eq!(opts.no_breakpoint, no_breakpoint.unwrap_or(Opts::DEFAULT_NO_BREAKPOINT));
+    self::assert_eq!(opts.profile, profile.unwrap_or(Opts::DEFAULT_NO_PROFILE));
+    self::assert_eq!(opts.optimize, optimize.unwrap_or(Opts::DEFAULT_OPTIMIZE));
 }
