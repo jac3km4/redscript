@@ -61,8 +61,8 @@ pub struct Opts {
     pub cache_file: Option<PathBuf>,
 }
 
-impl Default for Opts {
-    fn default() -> Self {
+impl Opts {
+    pub const fn default() -> Self {
         Self {
             script_paths: vec![],
             cache_dir: None,
@@ -78,6 +78,10 @@ impl Default for Opts {
     }
 }
 
+fn is_not_slong(s: &PathBuf) -> bool {
+    matches!((*s).to_str(), Some(str) if !str.starts_with('-'))
+}
+
 fn no_space(name: &'static str, help: &'static str) -> impl Parser<Option<String>> {
     any::<String>(name)
         .help(help)
@@ -85,12 +89,7 @@ fn no_space(name: &'static str, help: &'static str) -> impl Parser<Option<String
             |s| s.starts_with(name.to_owned().as_str()),
             "no_space doesn't start with -<name>",
         )
-        .parse(move |s| {
-            // println!("no_space: {}", s);
-            s.strip_prefix(name.to_owned().as_str())
-                .ok_or(Err::<String, &str>("IDK1"))
-                .map_or(Err("IDK2"), |s| Ok(s.to_string()))
-        })
+        .parse(move |s| s.strip_prefix(name).map(str::to_owned).ok_or("could not extract name"))
         .anywhere()
         .optional()
         .catch()
@@ -99,15 +98,8 @@ fn no_space(name: &'static str, help: &'static str) -> impl Parser<Option<String
 fn toggle_options(name: &'static str, help: &'static str) -> impl Parser<Option<bool>> {
     any::<String>(name)
         .help(help)
-        .guard(|s| s.eq(name.to_owned().as_str()), "toggle_option isn't -<name>")
-        .parse(move |s| {
-            // println!("toggle_options: {}", s);
-            if s != name {
-                Err(format!("{} is not a known toggle option name", s))
-            } else {
-                Ok(true)
-            }
-        })
+        .guard(move |s| s.as_str() == name, "toggle_option isn't -<name>")
+        .map(|_| true)
         .adjacent()
         .anywhere()
         .optional()
@@ -118,18 +110,12 @@ fn equals_sign(name: &'static str, help: &'static str) -> impl Parser<Option<Str
     any::<String>(name)
         .help(help)
         .guard(
-            |s| s.starts_with(format!("{}=", name.to_owned()).as_str()),
+            move |s| s.strip_prefix(name).and_then(|s| s.strip_prefix('=')).is_some(),
             "equals_sign doesn't start with -<name>=",
         )
         .parse(move |s| {
-            // println!("equals_sign: {}", s);
-            let arg = s.split('=').collect::<Vec<_>>();
-            let cur_name = arg.first().unwrap().to_owned();
-            if cur_name != name {
-                Err(format!("{} is not a known option name", cur_name))
-            } else {
-                Ok((*arg.last().unwrap()).to_string())
-            }
+            let (_, val) = s.split_once('=').ok_or("equals_sign does not contain =")?;
+            Ok::<_, &str>(val.to_owned())
         })
         .anywhere()
         .optional()
@@ -139,7 +125,7 @@ fn equals_sign(name: &'static str, help: &'static str) -> impl Parser<Option<Str
 fn slong(name: &'static str, arg_name: &'static str, help: &'static str) -> impl Parser<Option<String>> {
     let tag = any::<String>(name)
         .help(help)
-        .guard(|s| s.eq(name.to_owned().as_str()), "slong isn't -<name>");
+        .guard(move |s| s.as_str() == name, "slong isn't -<name>");
     let value = positional::<String>(arg_name).guard(|s| !s.starts_with('-'), "starts with -");
     construct!(tag, value)
         .adjacent()
@@ -151,8 +137,7 @@ fn slong(name: &'static str, arg_name: &'static str, help: &'static str) -> impl
 
 fn script_paths() -> impl Parser<Vec<PathBuf>> {
     let tag = any::<String>("-compile").guard(|s| s == "-compile", "not compile");
-    let value = positional::<PathBuf>("SCRIPT_PATH")
-        .guard(|s| !s.to_str().unwrap().to_string().starts_with('-'), "starts with -");
+    let value = positional::<PathBuf>("SCRIPT_PATH").guard(is_not_slong, "starts with -");
     construct!(tag, value)
         .adjacent()
         .anywhere()
@@ -165,8 +150,7 @@ fn script_paths_file() -> impl Parser<Option<PathBuf>> {
     let tag = any::<String>("-compilePathsFile")
         .help("File containing a newline-delimiter list of redscript paths to compile")
         .guard(|s| s == "-compilePathsFile", "not compilePathsFile");
-    let value = positional::<PathBuf>("SCRIPTS_PATHS_FILE")
-        .guard(|s| !s.to_str().unwrap().to_string().starts_with('-'), "starts with -");
+    let value = positional::<PathBuf>("SCRIPTS_PATHS_FILE").guard(is_not_slong, "starts with -");
     construct!(tag, value)
         .adjacent()
         .anywhere()
@@ -179,8 +163,7 @@ fn cache_dir() -> impl Parser<Option<PathBuf>> {
     let tag = any::<String>("-customCacheDir")
         .help("A custom cache dir to write the final.redscripts to")
         .guard(|s| s == "-customCacheDir", "not customCacheDir");
-    let value = positional::<PathBuf>("CACHE_DIR")
-        .guard(|s| !s.to_str().unwrap().to_string().starts_with('-'), "starts with -");
+    let value = positional::<PathBuf>("CACHE_DIR").guard(is_not_slong, "starts with -");
     construct!(tag, value)
         .adjacent()
         .anywhere()
@@ -191,14 +174,13 @@ fn cache_dir() -> impl Parser<Option<PathBuf>> {
 
 impl Opts {
     pub fn get_parser() -> OptionParser<Opts> {
-        let optimize = toggle_options("-optimize", "Optimize")
-            .parse(|s| Ok::<bool, String>(s.unwrap_or(Opts::default().optimize)));
+        let optimize = toggle_options("-optimize", "Optimize").map(|s| s.unwrap_or(Opts::default().optimize));
         let threads = slong("-threads", "THREADS", "Number of threads to compile on")
             .parse(|s| s.map(|s| s.parse::<u8>()).unwrap_or(Ok(Opts::default().threads)));
         let no_testonly = toggle_options("-no-testonly", "Exclude testonly classes")
-            .parse(|s| Ok::<bool, String>(s.unwrap_or(Opts::default().no_testonly)));
-        let no_breakpoint = toggle_options("-no-breakpoint", "Remove breakpoints")
-            .parse(|s| Ok::<bool, String>(s.unwrap_or(Opts::default().no_breakpoint)));
+            .map(|s| s.unwrap_or(Opts::default().no_testonly));
+        let no_breakpoint =
+            toggle_options("-no-breakpoint", "Remove breakpoints").map(|s| s.unwrap_or(Opts::default().no_breakpoint));
         let warnings = no_space("-W", "Warning setting <none>");
         let profile = equals_sign("-profile", "Profiling <yes|no>").parse(|s| {
             if let Some(str) = s {
@@ -212,7 +194,7 @@ impl Opts {
             }
         });
         let cache_file = positional::<PathBuf>("CACHE_FILE")
-            .guard(|s| !s.to_str().unwrap().to_string().starts_with('-'), "starts with -")
+            .guard(is_not_slong, "starts with -")
             .anywhere()
             .optional()
             .catch();

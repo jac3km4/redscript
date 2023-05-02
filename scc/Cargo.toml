@@ -21,6 +21,7 @@ bpaf = "0.7"
 winsplit = "0.1"
 rstest = "0.17"
 rstest_reuse = "0.5"
+pretty_assertions = "1.3"
 
 [features]
 popup = ["msgbox"]
