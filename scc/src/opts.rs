@@ -49,11 +49,11 @@ pub fn fix_args(args: Vec<String>) -> Vec<String> {
 
 #[derive(Clone, Debug)]
 pub struct Opts {
-    pub script_paths: Vec<PathBuf>,
+    pub scripts_dir: Option<PathBuf>,
     pub cache_dir: Option<PathBuf>,
     pub optimize: bool,
     pub threads: u8,
-    pub warnings: Option<String>,
+    pub warnings: Vec<String>,
     pub no_testonly: bool,
     pub no_breakpoint: bool,
     pub profile: bool,
@@ -64,25 +64,31 @@ pub struct Opts {
 impl Opts {
     pub const fn default() -> Self {
         Self {
-            script_paths: vec![],
+            scripts_dir: None,
             cache_dir: None,
             optimize: false,
             threads: 1,
-            warnings: None,
+            warnings: vec![],
             no_testonly: false,
             no_breakpoint: false,
-            profile: false,
+            profile: true,
             script_paths_file: None,
             cache_file: None,
         }
     }
 }
 
-fn is_not_slong(s: &PathBuf) -> bool {
-    matches!((*s).to_str(), Some(str) if !str.starts_with('-'))
+trait SlongArg {
+    fn is_not_slong(&self) -> bool;
 }
 
-fn no_space(name: &'static str, help: &'static str) -> impl Parser<Option<String>> {
+impl SlongArg for PathBuf {
+    fn is_not_slong(&self) -> bool {
+        matches!((*self).to_str(), Some(str) if !str.starts_with('-'))
+    }
+}
+
+fn no_space(name: &'static str, help: &'static str) -> impl Parser<String> {
     any::<String>(name)
         .help(help)
         .guard(
@@ -91,8 +97,6 @@ fn no_space(name: &'static str, help: &'static str) -> impl Parser<Option<String
         )
         .parse(move |s| s.strip_prefix(name).map(str::to_owned).ok_or("could not extract name"))
         .anywhere()
-        .optional()
-        .catch()
 }
 
 fn toggle_options(name: &'static str, help: &'static str) -> impl Parser<Option<bool>> {
@@ -135,22 +139,19 @@ fn slong(name: &'static str, arg_name: &'static str, help: &'static str) -> impl
         .catch()
 }
 
-fn script_paths() -> impl Parser<Vec<PathBuf>> {
-    let tag = any::<String>("-compile").guard(|s| s == "-compile", "not compile");
-    let value = positional::<PathBuf>("SCRIPT_PATH").guard(is_not_slong, "starts with -");
-    construct!(tag, value)
-        .adjacent()
-        .anywhere()
-        .map(|pair| pair.1)
-        .many()
-        .catch()
+fn scripts_dir() -> impl Parser<Option<PathBuf>> {
+    let tag = any::<String>("-compile")
+        .help("Compile scripts to blob")
+        .guard(|s| s == "-compile", "not compile");
+    let value = positional::<PathBuf>("SCRIPT_PATH").guard(SlongArg::is_not_slong, "starts with -");
+    construct!(tag, value).adjacent().map(|pair| pair.1).optional().catch()
 }
 
 fn script_paths_file() -> impl Parser<Option<PathBuf>> {
     let tag = any::<String>("-compilePathsFile")
-        .help("File containing a newline-delimiter list of redscript paths to compile")
+        .help("File containing a newline-delimited list of redscript paths to compile")
         .guard(|s| s == "-compilePathsFile", "not compilePathsFile");
-    let value = positional::<PathBuf>("SCRIPTS_PATHS_FILE").guard(is_not_slong, "starts with -");
+    let value = positional::<PathBuf>("SCRIPT_PATHS_FILE").guard(SlongArg::is_not_slong, "starts with -");
     construct!(tag, value)
         .adjacent()
         .anywhere()
@@ -163,7 +164,7 @@ fn cache_dir() -> impl Parser<Option<PathBuf>> {
     let tag = any::<String>("-customCacheDir")
         .help("A custom cache dir to write the final.redscripts to")
         .guard(|s| s == "-customCacheDir", "not customCacheDir");
-    let value = positional::<PathBuf>("CACHE_DIR").guard(is_not_slong, "starts with -");
+    let value = positional::<PathBuf>("CACHE_DIR").guard(SlongArg::is_not_slong, "starts with -");
     construct!(tag, value)
         .adjacent()
         .anywhere()
@@ -174,15 +175,19 @@ fn cache_dir() -> impl Parser<Option<PathBuf>> {
 
 impl Opts {
     pub fn get_parser() -> OptionParser<Opts> {
-        let optimize = toggle_options("-optimize", "Optimize").map(|s| s.unwrap_or(Opts::default().optimize));
-        let threads = slong("-threads", "THREADS", "Number of threads to compile on")
+        let optimize = toggle_options("-optimize", "Enable optimiziations. Off by default")
+            .map(|s| s.unwrap_or(Opts::default().optimize));
+        let threads = slong("-threads", "THREADS", "Set number of internal compilation threads")
             .parse(|s| s.map(|s| s.parse::<u8>()).unwrap_or(Ok(Opts::default().threads)));
-        let no_testonly = toggle_options("-no-testonly", "Exclude testonly classes")
+        let no_testonly = toggle_options("-no-testonly", "Skips testonly code. Off by default")
             .map(|s| s.unwrap_or(Opts::default().no_testonly));
-        let no_breakpoint =
-            toggle_options("-no-breakpoint", "Remove breakpoints").map(|s| s.unwrap_or(Opts::default().no_breakpoint));
-        let warnings = no_space("-W", "Warning setting <none>");
-        let profile = equals_sign("-profile", "Profiling <yes|no>").parse(|s| {
+        let no_breakpoint = toggle_options(
+            "-no-breakpoint",
+            "Skips generation of breakpoint opcoes. Off by default",
+        )
+        .map(|s| s.unwrap_or(Opts::default().no_breakpoint));
+        let warnings = no_space("-W", "Warnings enabled").many();
+        let profile = equals_sign("-profile", "Introduces profiling opcodes. On by default").parse(|s| {
             if let Some(str) = s {
                 match str.as_str() {
                     "on" => Ok(true),
@@ -194,13 +199,13 @@ impl Opts {
             }
         });
         let cache_file = positional::<PathBuf>("CACHE_FILE")
-            .guard(is_not_slong, "starts with -")
+            .guard(SlongArg::is_not_slong, "starts with -")
             .anywhere()
             .optional()
             .catch();
 
         let parser = construct!(Opts {
-            script_paths(),
+            scripts_dir(),
             cache_dir(),
             optimize,
             threads,

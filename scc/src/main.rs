@@ -4,9 +4,7 @@ use std::io::{self, BufRead};
 use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::time::SystemTime;
 
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use fd_lock::RwLock;
 use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, LevelFilter, LogSpecBuilder, Logger, Naming};
 use opts::{fix_args, Opts};
@@ -15,6 +13,7 @@ use redscript::bundle::ScriptBundle;
 use redscript_compiler::error::Error;
 use redscript_compiler::source_map::{Files, SourceFilter};
 use redscript_compiler::unit::CompilationUnit;
+use scc::timestamp::CompileTimestamp;
 use serde::Deserialize;
 
 use crate::hints::UserHints;
@@ -24,7 +23,10 @@ mod opts;
 
 const BUNDLE_FILE_NAME: &str = "final.redscripts";
 const BACKUP_FILE_NAME: &str = "final.redscripts.bk";
-const TIMESTAMP_FILE_NAME: &str = "redscript.ts";
+const OLD_TIMESTAMP_FILE_NAME: &str = "redscript.ts";
+
+const BACKUP_FILE_EXT: &str = ".bk";
+const TIMESTAMP_FILE_EXT: &str = ".ts";
 
 const USER_HINTS_DIR: &str = "redsUserHints";
 
@@ -37,45 +39,69 @@ fn main() -> ExitCode {
             .as_slice(),
     );
 
-    #[cfg(test)]
-    log::info!("{:#?}", opts);
+    let scripts_dir = if let Some(dir) = opts.scripts_dir {
+        dir
+    } else {
+        println!("Error: r6/scripts directory is required");
+        return ExitCode::FAILURE;
+    };
 
-    let script_dir = PathBuf::from(opts.script_paths.first().unwrap());
-    let r6_dir = script_dir.parent().unwrap();
+    let r6_dir = scripts_dir.parent().unwrap();
     let default_cache_dir = r6_dir.join("cache");
 
     setup_logger(r6_dir);
 
-    let manifest = ScriptManifest::load(&script_dir).unwrap_or_else(|err| {
+    let manifest = ScriptManifest::load(&scripts_dir).unwrap_or_else(|err| {
         log::info!("Using defaults for the script manifest ({err})");
         ScriptManifest::default()
     });
 
-    let mut script_paths = opts.script_paths;
+    let mut script_paths = vec![scripts_dir.clone()];
     match opts.script_paths_file.as_deref().map(load_script_paths).transpose() {
         Ok(loaded_paths) => script_paths.extend(loaded_paths.unwrap_or_default()),
         Err(err) => log::warn!("An invalid script paths file was provided: {err}, it will be ignored"),
     };
 
-    let (cache_dir, fallback_dir) = match opts.cache_dir {
-        Some(cache_dir) => {
-            log::info!("Custom cache directory provided: {}", cache_dir.to_str().unwrap());
-            let expected_bundle_path = cache_dir.join(BUNDLE_FILE_NAME);
-            if !expected_bundle_path.exists() {
-                let base = get_base_bundle_path(&default_cache_dir);
-                fs::create_dir_all(&cache_dir).expect("Could not create the custom cache directory");
-                fs::copy(base, expected_bundle_path).expect("Could not copy base bundle");
+    let (bundle_path, cache_dir, fallback_dir) = match opts.cache_file.as_deref() {
+        Some(file) => {
+            log::info!("Bundle path provided: {}", file.to_str().unwrap());
+            if opts.cache_dir.is_some() {
+                log::warn!("Custom cache directory also provided - ignoring");
             }
-            (cache_dir, Some(default_cache_dir))
+            (
+                file.to_path_buf(),
+                file.parent().unwrap().to_path_buf(),
+                Some(default_cache_dir.clone()),
+            )
         }
-        _ => (default_cache_dir, None),
+        _ => match opts.cache_dir.as_deref() {
+            Some(dir) => {
+                log::info!("Custom cache directory provided: {}", dir.to_str().unwrap());
+                (
+                    dir.join(BUNDLE_FILE_NAME),
+                    dir.to_path_buf(),
+                    Some(default_cache_dir.clone()),
+                )
+            }
+            _ => (
+                default_cache_dir.join(BUNDLE_FILE_NAME),
+                default_cache_dir.clone(),
+                None,
+            ),
+        },
     };
+
+    if !bundle_path.exists() {
+        let base = get_base_bundle_path(&default_cache_dir);
+        fs::create_dir_all(cache_dir).expect("Could not create the custom cache directory");
+        fs::copy(base, &bundle_path).expect("Could not copy base bundle");
+    }
 
     let files = Files::from_dirs(&script_paths, &manifest.source_filter()).expect("Could not load script sources");
 
-    match compile_scripts(&script_dir, &cache_dir, fallback_dir.as_deref(), &files) {
+    match compile_scripts(scripts_dir.as_path(), &bundle_path, fallback_dir.as_deref(), &files) {
         Ok(_) => {
-            log::info!("Output successfully saved in {}", cache_dir.display());
+            log::info!("Output successfully saved to {}", bundle_path.display());
             ExitCode::SUCCESS
         }
         Err(err) => {
@@ -118,20 +144,25 @@ fn setup_logger(r6_dir: &Path) {
 
 fn compile_scripts(
     script_dir: &Path,
-    cache_dir: &Path,
+    bundle_path: &Path,
     fallback_cache_dir: Option<&Path>,
     files: &Files,
 ) -> Result<(), Error> {
-    let bundle_path = cache_dir.join(BUNDLE_FILE_NAME);
-    let backup_path = cache_dir.join(BACKUP_FILE_NAME);
+    let backup_path = PathBuf::from(format!("{}{}", bundle_path.to_str().unwrap(), BACKUP_FILE_EXT));
     let fallback_backup_path = fallback_cache_dir.map(|dir| dir.join(BACKUP_FILE_NAME));
-    let timestamp_path = cache_dir.join(TIMESTAMP_FILE_NAME);
+    let timestamp_path = PathBuf::from(format!("{}{}", bundle_path.to_str().unwrap(), TIMESTAMP_FILE_EXT));
+    let fallback_timestamp_path = bundle_path.parent().unwrap().join(OLD_TIMESTAMP_FILE_NAME);
+
+    if !timestamp_path.exists() && fallback_timestamp_path.exists() {
+        fs::rename(&fallback_timestamp_path, &timestamp_path).expect("Error renaming timestamp");
+    }
+
     let mut ts_lock = RwLock::new(
         OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
-            .open(timestamp_path)?,
+            .open(&timestamp_path)?,
     );
     let mut ts_file = ts_lock.write()?;
 
@@ -140,7 +171,7 @@ fn compile_scripts(
         fs::copy(fallback_path, &backup_path)?;
     }
 
-    let write_timestamp = CompileTimestamp::of_cache_file(&File::open(&bundle_path)?)?;
+    let write_timestamp = CompileTimestamp::of_cache_file(&File::open(bundle_path)?)?;
     let saved_timestamp = CompileTimestamp::read(&mut *ts_file).ok();
 
     match saved_timestamp {
@@ -152,7 +183,7 @@ fn compile_scripts(
                 "Redscript cache file is not ours, copying it to {}",
                 backup_path.display()
             );
-            fs::copy(&bundle_path, &backup_path)?;
+            fs::copy(bundle_path, &backup_path)?;
         }
         Some(_) if !backup_path.exists() => {
             log::warn!(
@@ -183,42 +214,13 @@ fn compile_scripts(
     CompilationUnit::new(&mut bundle.pool, vec![])?.compile_and_report(files)?;
     log::info!("Compilation complete");
 
-    let mut file = File::create(&bundle_path)?;
+    let mut file = File::create(bundle_path)?;
     bundle.save(&mut io::BufWriter::new(&mut file))?;
     file.sync_all()?;
 
     CompileTimestamp::of_cache_file(&file)?.write(&mut *ts_file)?;
 
     Ok(())
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct CompileTimestamp {
-    nanos: u128,
-}
-
-impl CompileTimestamp {
-    fn read<R: io::Read + io::Seek>(input: &mut R) -> Result<Self, Error> {
-        input.seek(io::SeekFrom::Start(0))?;
-        let nanos = input.read_u128::<LittleEndian>()?;
-        Ok(Self { nanos })
-    }
-
-    fn write<W: io::Write + io::Seek>(&self, output: &mut W) -> Result<(), Error> {
-        output.seek(io::SeekFrom::Start(0))?;
-        output.write_u128::<LittleEndian>(self.nanos)?;
-        Ok(())
-    }
-
-    fn of_cache_file(file: &File) -> Result<Self, Error> {
-        let nanos = file
-            .metadata()?
-            .modified()?
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        Ok(Self { nanos })
-    }
 }
 
 #[derive(Debug, Deserialize, Default)]

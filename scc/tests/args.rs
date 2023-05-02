@@ -73,45 +73,24 @@ pub struct TestArg {
     pub parsed: &'static str,
 }
 
-const TEST_SCRIPT_PATHS: &str =
+const SCRIPTS_DIR: &str = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\scripts\\";
+
+const PATHS_FILE: &str =
     "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\red4ext\\redscript_paths.txt";
 
-const TEST_FILE: &str =
-    "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\red4ext\\plugins\\my_mod\\packed.reds";
-
-const TEST_DIRECTORY: &str =
-    "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\red4ext\\plugins\\my_mod\\extra\\";
-
-const TEST_CACHE_FILE: &str =
+const CACHE_FILE: &str =
     "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\cache\\final.redscripts";
 
-const TEST_CACHE_DIR: &str = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\cache\\modded";
+const CACHE_DIR: &str = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\cache\\modded";
 
 #[template]
 #[rstest]
-#[case(&[])]
-// #[case(&[TEST_FILE])]
-// #[case(&[TEST_DIRECTORY])]
-#[case(&[TEST_FILE, TEST_DIRECTORY])]
-// #[case(&[TEST_FILE, TEST_FILE, TEST_FILE])]
-// #[case(&[TEST_FILE, TEST_FILE, TEST_DIRECTORY])]
-// #[case(&[TEST_FILE, TEST_DIRECTORY, TEST_DIRECTORY])]
-// #[case(&[TEST_FILE, TEST_DIRECTORY, TEST_DIRECTORY, TEST_FILE])]
-// #[case(&[TEST_FILE, TEST_DIRECTORY, TEST_DIRECTORY, TEST_FILE])]
-// #[case(&[TEST_FILE, TEST_DIRECTORY, TEST_DIRECTORY, TEST_FILE, TEST_DIRECTORY])]
-// #[case(&[TEST_DIRECTORY, TEST_FILE])]
-// #[case(&[TEST_DIRECTORY, TEST_FILE, TEST_DIRECTORY])]
-// #[case(&[TEST_DIRECTORY, TEST_DIRECTORY, TEST_FILE])]
-// #[case(&[TEST_DIRECTORY, TEST_FILE, TEST_FILE])]
-// #[case(&[TEST_DIRECTORY, TEST_FILE, TEST_FILE, TEST_DIRECTORY])]
-// #[case(&[TEST_DIRECTORY, TEST_FILE, TEST_FILE, TEST_DIRECTORY])]
-// #[case(&[TEST_DIRECTORY, TEST_FILE, TEST_FILE, TEST_DIRECTORY, TEST_FILE])]
 fn file_directory_orders(
-    #[case] f_args: &[&str],
-    #[values(Some(TEST_CACHE_FILE), None)] cache_file: Option<&str>,
-    #[values(Some(TEST_CACHE_DIR), None)] cache_dir: Option<&str>,
-    #[values(Some(TEST_SCRIPT_PATHS), None)] script_paths_file: Option<&str>,
-    #[values(Some("none"), None)] warnings: Option<&str>,
+    #[values(SCRIPTS_DIR)] scripts_dir: &str,
+    #[values(Some(CACHE_FILE), None)] cache_file: Option<&str>,
+    #[values(Some(CACHE_DIR), None)] cache_dir: Option<&str>,
+    #[values(Some(PATHS_FILE), None)] script_paths_file: Option<&str>,
+    #[values(&["none"], &[])] warnings: &[&str],
     #[values(Some(true), None)] optimize: Option<bool>,
     #[values(Some(4), None)] threads: Option<u8>,
     #[values(Some(false), None)] no_testonly: Option<bool>,
@@ -142,11 +121,11 @@ mod tests {
 
     #[apply(file_directory_orders)]
     fn standard(
-        f_args: &[&str],
+        scripts_dir: &str,
         cache_file: Option<&str>,
         cache_dir: Option<&str>,
         script_paths_file: Option<&str>,
-        warnings: Option<&str>,
+        warnings: &[&str],
         optimize: Option<bool>,
         threads: Option<u8>,
         no_testonly: Option<bool>,
@@ -155,9 +134,7 @@ mod tests {
     ) {
         let mut args = Vec::<Arg>::new();
         args.push("-compile".into());
-        args.push(
-            PathBuf::from("C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\scripts\\").into(),
-        );
+        args.push(PathBuf::from(scripts_dir).into());
         if let Some(value) = cache_file {
             args.push(PathBuf::from(value).into());
         }
@@ -169,8 +146,8 @@ mod tests {
             args.push("-compilePathsFile".into());
             args.push(PathBuf::from(value).into());
         }
-        if let Some(value) = warnings {
-            args.push(["-W", value].join("").into());
+        for warning in warnings.iter() {
+            args.push(["-W", warning].join("").into());
         }
         if let Some(n) = threads {
             args.push("-threads".into());
@@ -190,7 +167,6 @@ mod tests {
         if optimize == Some(true) {
             args.push("-optimize".to_owned().into());
         }
-        args.extend(f_args.iter().flat_map(|a| ["-compile".into(), PathBuf::from(a).into()]));
         let expected_args = args.iter().map(|a| a.to_arg_str()).collect::<Vec<_>>();
         let fixed_args = test_fix_args(
             args.iter()
@@ -203,19 +179,11 @@ mod tests {
         .unwrap();
         let opts = Opts::load(&fixed_args.iter().map(String::as_str).collect::<Vec<&str>>());
 
-        self::assert_eq!(
-            opts.script_paths,
-            [PathBuf::from(
-                "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\scripts\\"
-            )]
-            .into_iter()
-            .chain(f_args.iter().map(|s| PathBuf::from(s)))
-            .collect::<Vec<_>>()
-        );
+        self::assert_eq!(opts.scripts_dir, Some(PathBuf::from(scripts_dir)));
         self::assert_eq!(opts.cache_file, cache_file.map(|s| PathBuf::from(s)));
         self::assert_eq!(opts.cache_dir, cache_dir.map(|s| PathBuf::from(s)));
         self::assert_eq!(opts.script_paths_file, script_paths_file.map(|s| PathBuf::from(s)));
-        self::assert_eq!(opts.warnings.as_deref(), warnings.as_deref());
+        self::assert_eq!(opts.warnings, warnings);
         self::assert_eq!(opts.threads, threads.unwrap_or(Opts::default().threads));
         self::assert_eq!(opts.no_testonly, no_testonly.unwrap_or(Opts::default().no_testonly));
         self::assert_eq!(
