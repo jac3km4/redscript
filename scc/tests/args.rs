@@ -99,95 +99,90 @@ fn file_directory_orders(
 ) {
 }
 
-#[cfg(test)]
-mod args {
-    use super::*;
+#[test]
+fn get_help() {
+    println!(
+        "{}",
+        Opts::get_parser()
+            .run_inner(bpaf::Args::from(&["--help"]))
+            .unwrap_err()
+            .unwrap_stdout()
+    );
+}
 
-    #[test]
-    fn get_help() {
-        println!(
-            "{}",
-            Opts::get_parser()
-                .run_inner(bpaf::Args::from(&["--help"]))
-                .unwrap_err()
-                .unwrap_stdout()
-        );
+#[test]
+fn check_options() {
+    Opts::get_parser().check_invariants(false)
+}
+
+#[apply(file_directory_orders)]
+fn standard(
+    scripts_dir: &str,
+    cache_file: Option<&str>,
+    cache_dir: Option<&str>,
+    script_paths_file: Option<&str>,
+    warnings: &[&str],
+    optimize: Option<bool>,
+    threads: Option<u8>,
+    no_testonly: Option<bool>,
+    no_breakpoint: Option<bool>,
+    profile: Option<bool>,
+) {
+    let mut args = Vec::<Arg>::new();
+    args.push("-compile".into());
+    args.push(PathBuf::from(scripts_dir).into());
+    if let Some(value) = cache_file {
+        args.push(PathBuf::from(value).into());
     }
-
-    #[test]
-    fn check_options() {
-        Opts::get_parser().check_invariants(false)
+    if let Some(value) = cache_dir {
+        args.push("-customCacheDir".into());
+        args.push(PathBuf::from(value).into());
     }
-
-    #[apply(file_directory_orders)]
-    fn standard(
-        scripts_dir: &str,
-        cache_file: Option<&str>,
-        cache_dir: Option<&str>,
-        script_paths_file: Option<&str>,
-        warnings: &[&str],
-        optimize: Option<bool>,
-        threads: Option<u8>,
-        no_testonly: Option<bool>,
-        no_breakpoint: Option<bool>,
-        profile: Option<bool>,
-    ) {
-        let mut args = Vec::<Arg>::new();
-        args.push("-compile".into());
-        args.push(PathBuf::from(scripts_dir).into());
-        if let Some(value) = cache_file {
-            args.push(PathBuf::from(value).into());
-        }
-        if let Some(value) = cache_dir {
-            args.push("-customCacheDir".into());
-            args.push(PathBuf::from(value).into());
-        }
-        if let Some(value) = script_paths_file {
-            args.push("-compilePathsFile".into());
-            args.push(PathBuf::from(value).into());
-        }
-        for warning in warnings.iter() {
-            args.push(["-W", warning].join("").into());
-        }
-        if let Some(n) = threads {
-            args.push("-threads".into());
-            args.push(n.to_string().into());
-        }
-        if no_testonly == Some(true) {
-            args.push("-no-testonly".into());
-        }
-        if no_breakpoint == Some(true) {
-            args.push("-no-breakpoint".into());
-        }
-        match profile {
-            Some(false) => args.push("-profile=off".into()),
-            Some(true) => args.push("-profile=on".into()),
-            None => {}
-        };
-        if optimize == Some(true) {
-            args.push("-optimize".to_owned().into());
-        }
-        let expected_args = args.iter().map(|a| a.to_arg_str()).collect::<Vec<_>>();
-        let fixed_args = test_fix_args(
-            args.iter()
-                .map(Arg::to_command_str)
-                .collect::<Vec<_>>()
-                .join(" ")
-                .as_str(),
-            expected_args.iter().map(|a| a.as_str()).collect::<Vec<_>>().as_slice(),
-        )
-        .unwrap();
-        let opts = Opts::load(&fixed_args.iter().map(String::as_str).collect::<Vec<&str>>()).unwrap();
-
-        self::assert_eq!(opts.scripts_dir, Some(PathBuf::from(scripts_dir)));
-        self::assert_eq!(opts.cache_file, cache_file.map(|s| PathBuf::from(s)));
-        self::assert_eq!(opts.cache_dir, cache_dir.map(|s| PathBuf::from(s)));
-        self::assert_eq!(opts.script_paths_file, script_paths_file.map(|s| PathBuf::from(s)));
-        self::assert_eq!(opts.warnings, warnings);
-        self::assert_eq!(opts.threads, threads.unwrap_or(Opts::DEFAULT_THREADS));
-        self::assert_eq!(opts.no_testonly, no_testonly.unwrap_or(Opts::DEFAULT_NO_TESTONLY));
-        self::assert_eq!(opts.no_breakpoint, no_breakpoint.unwrap_or(Opts::DEFAULT_NO_BREAKPOINT));
-        self::assert_eq!(opts.profile, profile.unwrap_or(Opts::DEFAULT_NO_PROFILE));
-        self::assert_eq!(opts.optimize, optimize.unwrap_or(Opts::DEFAULT_OPTIMIZE));
+    if let Some(value) = script_paths_file {
+        args.push("-compilePathsFile".into());
+        args.push(PathBuf::from(value).into());
     }
+    for warning in warnings.iter() {
+        args.push(["-W", warning].join("").into());
+    }
+    if let Some(n) = threads {
+        args.push("-threads".into());
+        args.push(n.to_string().into());
+    }
+    if no_testonly == Some(true) {
+        args.push("-no-testonly".into());
+    }
+    if no_breakpoint == Some(true) {
+        args.push("-no-breakpoint".into());
+    }
+    match profile {
+        Some(false) => args.push("-profile=off".into()),
+        Some(true) => args.push("-profile=on".into()),
+        None => {}
+    };
+    if optimize == Some(true) {
+        args.push("-optimize".to_owned().into());
+    }
+    let expected_args = args.iter().map(|a| a.to_arg_str()).collect::<Vec<_>>();
+    let fixed_args = test_fix_args(
+        args.iter()
+            .map(Arg::to_command_str)
+            .collect::<Vec<_>>()
+            .join(" ")
+            .as_str(),
+        expected_args.iter().map(|a| a.as_str()).collect::<Vec<_>>().as_slice(),
+    )
+    .unwrap();
+    let opts = Opts::load(&fixed_args.iter().map(String::as_str).collect::<Vec<&str>>()).unwrap();
+
+    self::assert_eq!(opts.scripts_dir, Some(PathBuf::from(scripts_dir)));
+    self::assert_eq!(opts.cache_file, cache_file.map(|s| PathBuf::from(s)));
+    self::assert_eq!(opts.cache_dir, cache_dir.map(|s| PathBuf::from(s)));
+    self::assert_eq!(opts.script_paths_file, script_paths_file.map(|s| PathBuf::from(s)));
+    self::assert_eq!(opts.warnings, warnings);
+    self::assert_eq!(opts.threads, threads.unwrap_or(Opts::DEFAULT_THREADS));
+    self::assert_eq!(opts.no_testonly, no_testonly.unwrap_or(Opts::DEFAULT_NO_TESTONLY));
+    self::assert_eq!(opts.no_breakpoint, no_breakpoint.unwrap_or(Opts::DEFAULT_NO_BREAKPOINT));
+    self::assert_eq!(opts.profile, profile.unwrap_or(Opts::DEFAULT_NO_PROFILE));
+    self::assert_eq!(opts.optimize, optimize.unwrap_or(Opts::DEFAULT_OPTIMIZE));
 }

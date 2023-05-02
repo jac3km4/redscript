@@ -7,88 +7,83 @@ use assert_fs::prelude::*;
 use predicates::prelude::*;
 use scc::timestamp::*;
 
-mod compile {
+#[test]
+fn no_args() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("scc")?;
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("r6/scripts directory is required"));
+    Ok(())
+}
 
-    use super::*;
+#[test]
+fn help() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("scc")?;
+    cmd.arg("--help");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Available positional items"));
+    Ok(())
+}
 
-    #[test]
-    fn no_args() -> Result<(), Box<dyn std::error::Error>> {
-        let mut cmd = Command::cargo_bin("scc")?;
-        cmd.assert()
-            .failure()
-            .stderr(predicate::str::contains("r6/scripts directory is required"));
-        Ok(())
-    }
+#[test]
+fn bundle_result() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = assert_fs::TempDir::new().unwrap();
+    let scc_dir = std::env::current_dir().unwrap();
+    let project_dir = scc_dir.parent().unwrap();
 
-    #[test]
-    fn help() -> Result<(), Box<dyn std::error::Error>> {
-        let mut cmd = Command::cargo_bin("scc")?;
-        cmd.arg("--help");
-        cmd.assert()
-            .success()
-            .stdout(predicate::str::contains("Available positional items"));
-        Ok(())
-    }
+    let predef = project_dir.join("resources/predef.redscripts");
+    let predef_cmp = project_dir.join("resources/predef.redscripts.cmp");
+    let bundle_path = temp.child("final.redscripts");
+    fs::copy(predef, &bundle_path).expect("Could not copy predef.redscripts");
 
-    #[test]
-    fn bundle_result() -> Result<(), Box<dyn std::error::Error>> {
-        let temp = assert_fs::TempDir::new().unwrap();
-        let scc_dir = std::env::current_dir().unwrap();
-        let project_dir = scc_dir.parent().unwrap();
+    let script_file = temp.child("test.reds");
+    script_file.write_str("class TestClass {}")?;
 
-        let predef = project_dir.join("resources/predef.redscripts");
-        let predef_cmp = project_dir.join("resources/predef.redscripts.cmp");
-        let bundle_path = temp.child("final.redscripts");
-        fs::copy(predef, &bundle_path).expect("Could not copy predef.redscripts");
+    let mut cmd = Command::cargo_bin("scc")?;
+    cmd.arg("-compile").arg(script_file.path()).arg(bundle_path.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Output successfully saved"));
 
-        let script_file = temp.child("test.reds");
-        script_file.write_str("class TestClass {}")?;
+    bundle_path.assert(predicate::path::eq_file(predef_cmp.as_path()));
+    temp.close().unwrap();
+    Ok(())
+}
 
-        let mut cmd = Command::cargo_bin("scc")?;
-        cmd.arg("-compile").arg(script_file.path()).arg(bundle_path.path());
-        cmd.assert()
-            .success()
-            .stdout(predicate::str::contains("Output successfully saved"));
+#[test]
+fn timestamp_migration() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = assert_fs::TempDir::new().unwrap();
+    let scc_dir = std::env::current_dir().unwrap();
+    let project_dir = scc_dir.parent().unwrap();
 
-        bundle_path.assert(predicate::path::eq_file(predef_cmp.as_path()));
-        temp.close().unwrap();
-        Ok(())
-    }
+    let predef = project_dir.join("resources/predef.redscripts");
+    let bundle_path = temp.child("final.redscripts");
+    let backup_path = temp.child("final.redscripts.bk");
+    let new_ts_path = temp.child("final.redscripts.ts");
+    fs::copy(&predef, &bundle_path).expect("Could not copy predef.redscripts to bundle path");
+    fs::copy(&predef, &backup_path).expect("Could not copy predef.redscripts to backup path");
 
-    #[test]
-    fn timestamp_migration() -> Result<(), Box<dyn std::error::Error>> {
-        let temp = assert_fs::TempDir::new().unwrap();
-        let scc_dir = std::env::current_dir().unwrap();
-        let project_dir = scc_dir.parent().unwrap();
+    let ts_path = temp.child("redscript.ts");
+    let bundle_file = File::open(&bundle_path)?;
+    let mut ts_file = OpenOptions::new().read(true).write(true).create(true).open(&ts_path)?;
+    CompileTimestamp::of_cache_file(&bundle_file)?.write(&mut ts_file)?;
 
-        let predef = project_dir.join("resources/predef.redscripts");
-        let bundle_path = temp.child("final.redscripts");
-        let backup_path = temp.child("final.redscripts.bk");
-        let new_ts_path = temp.child("final.redscripts.ts");
-        fs::copy(&predef, &bundle_path).expect("Could not copy predef.redscripts to bundle path");
-        fs::copy(&predef, &backup_path).expect("Could not copy predef.redscripts to backup path");
+    let script_path = temp.child("test.reds");
+    script_path.write_str("class TestClass {}")?;
 
-        let ts_path = temp.child("redscript.ts");
-        let bundle_file = File::open(&bundle_path)?;
-        let mut ts_file = OpenOptions::new().read(true).write(true).create(true).open(&ts_path)?;
-        CompileTimestamp::of_cache_file(&bundle_file)?.write(&mut ts_file)?;
+    assert!(ts_path.exists(), "Old timestamp file doesn't exist");
+    assert!(!new_ts_path.exists(), "New timestamp file already exists");
 
-        let script_path = temp.child("test.reds");
-        script_path.write_str("class TestClass {}")?;
+    let mut cmd = Command::cargo_bin("scc")?;
+    cmd.arg("-compile").arg(script_path.path()).arg(bundle_path.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Output successfully saved"));
 
-        assert!(ts_path.exists(), "Old timestamp file doesn't exist");
-        assert!(!new_ts_path.exists(), "New timestamp file already exists");
+    assert!(!ts_path.exists(), "Old timestamp file still exists");
+    assert!(new_ts_path.exists(), "New timestamp file doesn't exist");
 
-        let mut cmd = Command::cargo_bin("scc")?;
-        cmd.arg("-compile").arg(script_path.path()).arg(bundle_path.path());
-        cmd.assert()
-            .success()
-            .stdout(predicate::str::contains("Output successfully saved"));
-
-        assert!(!ts_path.exists(), "Old timestamp file still exists");
-        assert!(new_ts_path.exists(), "New timestamp file doesn't exist");
-
-        temp.close().unwrap();
-        Ok(())
-    }
+    temp.close().unwrap();
+    Ok(())
 }
