@@ -43,7 +43,7 @@ fn main() -> ExitCode {
         Err(ParseFailure::Stdout(out)) => {
             println!("{}", out);
             return ExitCode::SUCCESS;
-        },
+        }
         Err(ParseFailure::Stderr(out)) => {
             eprintln!("{}", out);
             return ExitCode::FAILURE;
