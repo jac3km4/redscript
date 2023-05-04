@@ -76,10 +76,7 @@ fn is_not_slong(p: &PathBuf) -> bool {
 fn no_space(name: &'static str, help: &'static str) -> impl Parser<String> {
     any::<String>(name)
         .help(help)
-        .guard(
-            |s| s.starts_with(name.to_owned().as_str()),
-            "no_space doesn't start with -<name>",
-        )
+        .guard(move |s| s.starts_with(name), "no_space doesn't start with -<name>")
         .parse(move |s| s.strip_prefix(name).map(str::to_owned).ok_or("could not extract name"))
         .anywhere()
 }

@@ -8,20 +8,16 @@ use bpaf::ParseFailure;
 use fd_lock::RwLock;
 use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, LevelFilter, LogSpecBuilder, Logger, Naming};
 use hashbrown::{HashMap, HashSet};
-use opts::{fix_args, Opts};
 use redscript::ast::Span;
 use redscript::bundle::ScriptBundle;
 use redscript_compiler::compiler::{CompilationResources, Compiler};
 use redscript_compiler::source_map::{Files, SourceFilter};
 use redscript_compiler::StringInterner;
 use scc::error::Error;
+use scc::hints::UserHints;
+use scc::opts::{fix_args, Opts};
 use scc::timestamp::CompileTimestamp;
 use serde::Deserialize;
-
-use crate::hints::UserHints;
-
-mod hints;
-mod opts;
 
 const BUNDLE_FILE_NAME: &str = "final.redscripts";
 const BACKUP_FILE_NAME: &str = "final.redscripts.bk";
