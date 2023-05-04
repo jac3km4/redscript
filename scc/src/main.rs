@@ -8,19 +8,15 @@ use std::process::ExitCode;
 use bpaf::ParseFailure;
 use fd_lock::RwLock;
 use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, LevelFilter, LogSpecBuilder, Logger, Naming};
-use opts::{fix_args, Opts};
 use redscript::ast::Span;
 use redscript::bundle::ScriptBundle;
 use redscript_compiler::error::Error;
 use redscript_compiler::source_map::{Files, SourceFilter};
 use redscript_compiler::unit::CompilationUnit;
+use scc::hints::UserHints;
+use scc::opts::{fix_args, Opts};
 use scc::timestamp::CompileTimestamp;
 use serde::Deserialize;
-
-use crate::hints::UserHints;
-
-mod hints;
-mod opts;
 
 const BUNDLE_FILE_NAME: &str = "final.redscripts";
 const BACKUP_FILE_NAME: &str = "final.redscripts.bk";
