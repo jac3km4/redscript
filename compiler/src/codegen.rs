@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::rc::Rc;
 
 use itertools::Itertools;
@@ -441,7 +440,7 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
             .collect_vec();
 
         let mut invoke_flags = 0u16;
-        for (n, (arg, typ)) in args.borrow().into_iter().zip(arg_types).enumerate() {
+        for (n, (arg, typ)) in (&args).into_iter().zip(arg_types).enumerate() {
             let is_rvalue_ref = A::is_rvalue_ref(arg, typ);
             if is_rvalue_ref {
                 invoke_flags |= 1 << n;
