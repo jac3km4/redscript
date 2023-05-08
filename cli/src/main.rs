@@ -39,7 +39,7 @@ struct DecompileOpts {
 #[derive(Debug, Options)]
 struct CompileOpts {
     #[options(required, short = "s", help = "source file or directory")]
-    src: PathBuf,
+    src: Vec<PathBuf>,
     #[options(required, short = "b", help = "redscript bundle file to use")]
     bundle: PathBuf,
     #[options(required, short = "o", help = "redscript bundle file to write")]
@@ -49,7 +49,7 @@ struct CompileOpts {
 #[derive(Debug, Options)]
 struct LintOpts {
     #[options(required, short = "s", help = "source file or directory")]
-    src: PathBuf,
+    src: Vec<PathBuf>,
     #[options(short = "b", help = "redscript bundle file to use, optional")]
     bundle: Option<PathBuf>,
 }
@@ -106,7 +106,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 fn compile(opts: CompileOpts) -> Result<(), redscript_compiler::error::Error> {
     let mut bundle = load_bundle(&opts.bundle)?;
 
-    let files = Files::from_dir(&opts.src, &SourceFilter::None)?;
+    let files = Files::from_dirs(&opts.src, &SourceFilter::None)?;
 
     match CompilationUnit::new_with_defaults(&mut bundle.pool)?.compile_and_report(&files) {
         Ok(()) => {
@@ -164,7 +164,7 @@ fn lint(opts: LintOpts) -> Result<(), redscript_compiler::error::Error> {
         Some(bundle_path) => {
             let mut bundle = load_bundle(&bundle_path)?;
 
-            let files = Files::from_dir(&opts.src, &SourceFilter::None)?;
+            let files = Files::from_dirs(&opts.src, &SourceFilter::None)?;
 
             if CompilationUnit::new_with_defaults(&mut bundle.pool)?
                 .compile_and_report(&files)
