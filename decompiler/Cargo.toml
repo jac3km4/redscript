@@ -8,4 +8,5 @@ edition.workspace = true
 redscript = { path = "../core" }
 log.workspace = true
 thiserror.workspace = true
+hashbrown.workspace = true
 itertools.workspace = true

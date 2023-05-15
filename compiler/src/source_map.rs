@@ -1,8 +1,8 @@
-use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::{fmt, iter};
 
+use hashbrown::HashSet;
 use itertools::{Either, Itertools};
 use redscript::ast::{Pos, Span};
 use walkdir::{DirEntry, WalkDir};

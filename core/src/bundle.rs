@@ -1,9 +1,9 @@
-use std::collections::hash_map::{self, HashMap};
 use std::hash::Hash;
 use std::io::Seek;
 use std::marker::PhantomData;
 use std::{fmt, io};
 
+use hashbrown::hash_map::{self, HashMap};
 use itertools::chain;
 use modular_bitfield::prelude::*;
 use thiserror::Error;

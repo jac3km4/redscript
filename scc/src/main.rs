@@ -1,4 +1,3 @@
-use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead};
 use std::ops::Not;
@@ -8,6 +7,7 @@ use std::process::ExitCode;
 use bpaf::ParseFailure;
 use fd_lock::RwLock;
 use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, LevelFilter, LogSpecBuilder, Logger, Naming};
+use hashbrown::{HashMap, HashSet};
 use redscript::ast::Span;
 use redscript::bundle::ScriptBundle;
 use redscript_compiler::error::Error;

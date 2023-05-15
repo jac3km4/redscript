@@ -1,8 +1,8 @@
-use std::collections::HashMap;
 use std::error::Error;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
+use hashbrown::HashMap;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]

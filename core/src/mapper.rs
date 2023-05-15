@@ -1,6 +1,7 @@
-use std::collections::HashMap;
 use std::hash::Hash;
 use std::marker::PhantomData;
+
+use hashbrown::HashMap;
 
 use crate::bundle::{ConstantPool, PoolIndex};
 use crate::bytecode::Instr;

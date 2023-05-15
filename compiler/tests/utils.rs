@@ -1,6 +1,6 @@
-use std::collections::HashMap;
 use std::io::Cursor;
 
+use hashbrown::HashMap;
 use redscript::bundle::{ConstantPool, PoolIndex, ScriptBundle};
 use redscript::bytecode::{Code, Offset};
 use redscript::definition::{AnyDefinition, ClassFlags, Definition};

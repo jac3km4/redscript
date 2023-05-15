@@ -1,5 +1,6 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::BTreeSet;
 
+use hashbrown::{HashMap, HashSet};
 use redscript::ast::{Constant, Expr, Ident, Literal, Seq, SourceAst, Span, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Instr};

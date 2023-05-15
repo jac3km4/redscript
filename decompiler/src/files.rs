@@ -1,7 +1,7 @@
-use std::collections::{HashMap, HashSet};
 use std::iter;
 use std::path::Path;
 
+use hashbrown::{HashMap, HashSet};
 use itertools::Itertools;
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::definition::{AnyDefinition, Definition};
