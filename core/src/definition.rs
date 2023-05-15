@@ -122,6 +122,14 @@ impl Definition {
     pub fn enum_value(name: PoolIndex<CName>, parent: PoolIndex<Enum>, value: i64) -> Definition {
         Definition::default(name, parent.cast(), AnyDefinition::EnumValue(value))
     }
+
+    pub fn source_file(source: SourceFile) -> Definition {
+        Definition::default(
+            PoolIndex::UNDEFINED,
+            PoolIndex::UNDEFINED,
+            AnyDefinition::SourceFile(source),
+        )
+    }
 }
 
 #[derive(Debug, Clone, EnumAsInner)]
@@ -764,8 +772,17 @@ impl Encode for Visibility {
 
 #[derive(Debug, Clone)]
 pub struct SourceReference {
-    pub file: PoolIndex<Definition>,
+    pub file: PoolIndex<SourceFile>,
     pub line: u32,
+}
+
+impl Default for SourceReference {
+    fn default() -> Self {
+        SourceReference {
+            file: PoolIndex::DEFAULT_SOURCE,
+            line: 0,
+        }
+    }
 }
 
 impl Decode for SourceReference {

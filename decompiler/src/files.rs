@@ -4,16 +4,16 @@ use std::path::Path;
 use hashbrown::{HashMap, HashSet};
 use itertools::Itertools;
 use redscript::bundle::{ConstantPool, PoolIndex};
-use redscript::definition::{AnyDefinition, Definition};
+use redscript::definition::{AnyDefinition, Definition, SourceFile};
 
 pub struct FileIndex<'a> {
-    file_map: HashMap<PoolIndex<Definition>, HashSet<PoolIndex<Definition>>>,
+    file_map: HashMap<PoolIndex<SourceFile>, HashSet<PoolIndex<Definition>>>,
     pool: &'a ConstantPool,
 }
 
 impl<'a> FileIndex<'a> {
     pub fn from_pool(pool: &'a ConstantPool) -> FileIndex<'a> {
-        let mut file_map: HashMap<PoolIndex<Definition>, HashSet<PoolIndex<Definition>>> = HashMap::new();
+        let mut file_map: HashMap<PoolIndex<SourceFile>, HashSet<PoolIndex<Definition>>> = HashMap::new();
 
         for (idx, def) in pool.definitions() {
             if let Some(source) = def.source() {

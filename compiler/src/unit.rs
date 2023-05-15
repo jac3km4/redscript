@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::path::PathBuf;
 
 use hashbrown::{HashMap, HashSet};
 use redscript::ast::{Constant, Expr, Ident, Literal, Seq, SourceAst, Span, TypeName};
@@ -16,7 +17,7 @@ use crate::diagnostics::{Diagnostic, DiagnosticPass, FunctionMetadata};
 use crate::error::{Cause, Error, ResultSpan};
 use crate::parser::*;
 use crate::scope::{Reference, Scope, TypeId, Value};
-use crate::source_map::Files;
+use crate::source_map::{Files, SourceLoc};
 use crate::sugar::Desugar;
 use crate::symbol::{FunctionSignature, Import, ModulePath, Symbol, SymbolMap};
 use crate::transform::ExprTransformer;
@@ -33,6 +34,7 @@ pub struct CompilationUnit<'a> {
     wrappers: ProxyMap,
     proxies: ProxyMap,
     diagnostics: Vec<Diagnostic>,
+    file_map: HashMap<PathBuf, PoolIndex<SourceFile>>,
     diagnostic_passes: Vec<Box<dyn DiagnosticPass + Send>>,
 }
 
@@ -61,26 +63,28 @@ impl<'a> CompilationUnit<'a> {
             wrappers: HashMap::new(),
             proxies: HashMap::new(),
             diagnostics: vec![],
+            file_map: HashMap::new(),
             diagnostic_passes: passes,
         })
     }
 
-    pub fn compile(mut self, modules: Vec<SourceModule>) -> Result<Vec<Diagnostic>, Error> {
-        let funcs = self.compile_modules(modules, true, false)?;
-        self.finish(funcs)
+    pub fn compile(mut self, modules: Vec<SourceModule>, files: &Files) -> Result<Vec<Diagnostic>, Error> {
+        let funcs = self.compile_modules(modules, files, true, false)?;
+        self.finish(funcs, files)
     }
 
     pub fn compile_files(self, files: &Files) -> Result<Vec<Diagnostic>, Error> {
-        self.compile(Self::parse(files)?)
+        self.compile(Self::parse(files)?, files)
     }
 
-    pub fn typecheck(
+    fn typecheck(
         mut self,
         modules: Vec<SourceModule>,
+        files: &Files,
         desugar: bool,
         permissive: bool,
     ) -> Result<(Vec<CompiledFunction>, Vec<Diagnostic>), Error> {
-        let funcs = self.compile_modules(modules, desugar, permissive)?;
+        let funcs = self.compile_modules(modules, files, desugar, permissive)?;
         Ok((funcs, self.diagnostics))
     }
 
@@ -90,7 +94,7 @@ impl<'a> CompilationUnit<'a> {
         desugar: bool,
         permissive: bool,
     ) -> Result<(Vec<CompiledFunction>, Vec<Diagnostic>), Error> {
-        self.typecheck(Self::parse(files)?, desugar, permissive)
+        self.typecheck(Self::parse(files)?, files, desugar, permissive)
     }
 
     pub fn compile_and_report(self, files: &Files) -> Result<(), Error> {
@@ -146,6 +150,7 @@ impl<'a> CompilationUnit<'a> {
     fn compile_modules(
         &mut self,
         modules: Vec<SourceModule>,
+        files: &Files,
         desugar: bool,
         permissive: bool,
     ) -> Result<Vec<CompiledFunction>, Error> {
@@ -216,28 +221,31 @@ impl<'a> CompilationUnit<'a> {
                         } else {
                             None
                         };
-                        self.define_function(
-                            index,
-                            parent,
-                            flags,
-                            base,
+                        let opt_loc = files.lookup(source.declaration.span);
+                        let source_ref = opt_loc.map(|loc| self.define_source_ref(loc)).unwrap_or_default();
+                        let spec = FunctionSpec {
+                            fun_idx: index,
+                            class_idx: parent,
+                            class_flags: flags,
+                            base_method: base,
+                            source_ref,
                             wrapped,
                             is_replacement,
                             visibility,
                             source,
-                            &mut module_scope,
-                        )
+                        };
+                        self.define_function(spec, &mut module_scope)
                     }
                     Slot::Class {
                         index,
                         source,
                         visibility,
-                    } => self.define_class(index, visibility, source, false, &mut module_scope),
+                    } => self.define_class(index, visibility, source, false, files, &mut module_scope),
                     Slot::Struct {
                         index,
                         source,
                         visibility,
-                    } => self.define_class(index, visibility, source, true, &mut module_scope),
+                    } => self.define_class(index, visibility, source, true, files, &mut module_scope),
                     Slot::Field {
                         index,
                         source,
@@ -259,7 +267,7 @@ impl<'a> CompilationUnit<'a> {
         // create function proxies
         for (wrapped, wrapper) in self.wrappers.drain() {
             let proxy = self.proxies.get(&wrapped).unwrap();
-            Self::construct_proxy(*proxy, wrapped, wrapper, &mut self.scope, self.pool)?;
+            Self::construct_proxy(*proxy, wrapped, wrapper, files, &mut self.scope, self.pool)?;
         }
 
         // compile function bodies
@@ -284,9 +292,9 @@ impl<'a> CompilationUnit<'a> {
         Ok(compiled_funcs)
     }
 
-    fn finish(self, functions: Vec<CompiledFunction>) -> Result<Vec<Diagnostic>, Error> {
+    fn finish(self, functions: Vec<CompiledFunction>, files: &Files) -> Result<Vec<Diagnostic>, Error> {
         for mut func in functions {
-            let code = Assembler::from_body(func.code, &mut func.scope, self.pool)?;
+            let code = Assembler::from_body(func.code, files, &mut func.scope, self.pool)?;
             let function = self.pool.function_mut(func.index)?;
             function.code = code;
             function.locals = func.locals;
@@ -415,6 +423,7 @@ impl<'a> CompilationUnit<'a> {
         visibility: Visibility,
         source: ClassSource,
         is_struct: bool,
+        files: &Files,
         scope: &mut Scope,
     ) -> Result<(), Error> {
         let is_import_only = source.qualifiers.contain(Qualifier::ImportOnly);
@@ -443,18 +452,22 @@ impl<'a> CompilationUnit<'a> {
                     let fun_sig = FunctionSignature::from_source(&fun);
                     let name_idx = self.pool.names.add(Ref::from(fun_sig.as_ref()));
                     let fun_idx = self.pool.stub_definition(name_idx);
+                    let opt_loc = files.lookup(fun.declaration.span);
+                    let source_ref = opt_loc.map(|loc| self.define_source_ref(loc)).unwrap_or_default();
 
-                    self.define_function(
+                    let spec = FunctionSpec {
                         fun_idx,
                         class_idx,
-                        Some(flags),
-                        None,
-                        None,
-                        false,
+                        class_flags: Some(flags),
+                        base_method: None,
+                        source_ref,
+                        wrapped: None,
+                        is_replacement: false,
                         visibility,
-                        fun,
-                        scope,
-                    )?;
+                        source: fun,
+                    };
+
+                    self.define_function(spec, scope)?;
                     functions.push(fun_idx);
                 }
                 MemberSource::Field(let_) => {
@@ -500,35 +513,23 @@ impl<'a> CompilationUnit<'a> {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn define_function(
-        &mut self,
-        fun_idx: PoolIndex<Function>,
-        class_idx: PoolIndex<Class>,
-        class_flags: Option<ClassFlags>,
-        base_method: Option<PoolIndex<Function>>,
-        wrapped: Option<PoolIndex<Function>>,
-        is_replacement: bool,
-        visibility: Visibility,
-        source: FunctionSource,
-        scope: &mut Scope,
-    ) -> Result<(), Error> {
-        let decl = &source.declaration;
-        let is_native = !is_replacement && decl.qualifiers.contain(Qualifier::Native);
-        let is_static = decl.qualifiers.contain(Qualifier::Static) || class_idx.is_undefined();
+    fn define_function(&mut self, spec: FunctionSpec, scope: &mut Scope) -> Result<(), Error> {
+        let decl = &spec.source.declaration;
+        let is_native = !spec.is_replacement && decl.qualifiers.contain(Qualifier::Native);
+        let is_static = decl.qualifiers.contain(Qualifier::Static) || spec.class_idx.is_undefined();
         let is_callback = decl.qualifiers.contain(Qualifier::Callback);
 
-        if is_native && class_flags.map_or(false, |f| !f.is_native()) {
-            self.report(Cause::UnexpectedNative.with_span(source.declaration.span))?;
+        if is_native && spec.class_flags.map_or(false, |f| !f.is_native()) {
+            self.report(Cause::UnexpectedNative.with_span(spec.source.declaration.span))?;
         }
-        if !is_native && class_flags.map_or(true, |f| !f.is_abstract()) && source.body.is_none() {
-            self.report(Cause::MissingBody.with_span(source.declaration.span))?;
+        if !is_native && spec.class_flags.map_or(true, |f| !f.is_abstract()) && spec.source.body.is_none() {
+            self.report(Cause::MissingBody.with_span(spec.source.declaration.span))?;
         }
-        if is_native && source.body.is_some() {
-            self.report(Cause::UnexpectedBody.with_span(source.declaration.span))?;
+        if is_native && spec.source.body.is_some() {
+            self.report(Cause::UnexpectedBody.with_span(spec.source.declaration.span))?;
         }
 
-        let return_type = match source.type_ {
+        let return_type = match spec.source.type_ {
             None => None,
             Some(type_) if type_ == TypeName::VOID => None,
             Some(type_) => {
@@ -539,7 +540,7 @@ impl<'a> CompilationUnit<'a> {
 
         let mut parameters = Vec::new();
 
-        for param in &source.parameters {
+        for param in &spec.source.parameters {
             let type_ = self.try_resolve_type(&param.type_, scope, decl.span)?;
             let type_idx = scope.get_type_index(&type_, self.pool).with_span(decl.span)?;
             let flags = ParameterFlags::new()
@@ -548,14 +549,11 @@ impl<'a> CompilationUnit<'a> {
                 .with_is_const(param.qualifiers.contain(Qualifier::Const));
             let name = self.pool.names.add(param.name.to_heap());
             let param = Parameter { type_: type_idx, flags };
-            let idx = self.pool.add_definition(Definition::param(name, fun_idx.cast(), param));
+            let idx = self
+                .pool
+                .add_definition(Definition::param(name, spec.fun_idx.cast(), param));
             parameters.push(idx);
         }
-
-        let source_ref = SourceReference {
-            file: PoolIndex::DEFAULT_SOURCE,
-            line: 0,
-        };
 
         let flags = FunctionFlags::new()
             .with_is_static(is_static)
@@ -563,19 +561,19 @@ impl<'a> CompilationUnit<'a> {
             .with_is_cast(decl.name.as_ref() == "Cast")
             .with_is_exec(decl.qualifiers.contain(Qualifier::Exec))
             .with_is_final(decl.qualifiers.contain(Qualifier::Final))
-            .with_is_callback(is_callback && wrapped.is_none())
+            .with_is_callback(is_callback && spec.wrapped.is_none())
             .with_is_const(decl.qualifiers.contain(Qualifier::Const))
             .with_is_quest(decl.qualifiers.contain(Qualifier::Quest))
             .with_has_return_value(return_type.is_some())
             .with_has_parameters(!parameters.is_empty());
 
         let function = Function {
-            visibility,
+            visibility: spec.visibility,
             flags,
-            source: Some(source_ref),
+            source: Some(spec.source_ref),
             return_type,
             unk1: false,
-            base_method: base_method.filter(|_| !flags.is_static()),
+            base_method: spec.base_method.filter(|_| !flags.is_static()),
             parameters,
             locals: vec![],
             operator: None,
@@ -584,23 +582,23 @@ impl<'a> CompilationUnit<'a> {
             unk2: vec![],
             unk3: None,
         };
-        let name_idx = self.pool.definition(fun_idx)?.name;
-        let definition = Definition::function(name_idx, class_idx.cast(), function);
+        let name_idx = self.pool.definition(spec.fun_idx)?.name;
+        let definition = Definition::function(name_idx, spec.class_idx.cast(), function);
 
-        if let Some(code) = source.body {
+        if let Some(code) = spec.source.body {
             let item = FunctionBody {
-                class: class_idx,
-                index: fun_idx,
-                wrapped,
+                class: spec.class_idx,
+                index: spec.fun_idx,
+                wrapped: spec.wrapped,
                 code,
                 scope: scope.clone(),
                 was_callback: is_callback,
-                span: source.span,
+                span: spec.source.span,
             };
             self.function_bodies.push(item);
         }
 
-        self.pool.put_definition(fun_idx, definition);
+        self.pool.put_definition(spec.fun_idx, definition);
         Ok(())
     }
 
@@ -727,6 +725,22 @@ impl<'a> CompilationUnit<'a> {
             }
         }
         Err(Cause::UnsupportedFeature("global let binding").with_span(decl.span))
+    }
+
+    fn define_source_ref(&mut self, loc: SourceLoc<'_>) -> SourceReference {
+        let count = self.file_map.len();
+        let file = self.file_map.entry_ref(loc.file.path()).or_insert_with(|| {
+            let file = SourceFile {
+                id: count as u32,
+                path_hash: 0, // TODO: consider hashing the path
+                path: loc.file.path().to_owned(),
+            };
+            self.pool.add_definition(Definition::source_file(file))
+        });
+        SourceReference {
+            file: *file,
+            line: loc.start.line as u32,
+        }
     }
 
     fn determine_function_location(&mut self, source: FunctionSource, module: &ModulePath) -> Result<Slot, Error> {
@@ -988,6 +1002,7 @@ impl<'a> CompilationUnit<'a> {
         slot: PoolIndex<Function>,
         wrapped: PoolIndex<Function>,
         wrapper: PoolIndex<Function>,
+        files: &Files,
         scope: &mut Scope,
         pool: &mut ConstantPool,
     ) -> Result<(), Error> {
@@ -1014,7 +1029,7 @@ impl<'a> CompilationUnit<'a> {
         } else {
             call
         };
-        let code = Assembler::from_body(Seq::new(vec![expr]), scope, pool)?;
+        let code = Assembler::from_body(Seq::new(vec![expr]), files, scope, pool)?;
 
         let compiled = Function {
             code,
@@ -1206,6 +1221,19 @@ enum Slot {
         index: PoolIndex<Enum>,
         source: EnumSource,
     },
+}
+
+#[derive(Debug)]
+struct FunctionSpec {
+    fun_idx: PoolIndex<Function>,
+    class_idx: PoolIndex<Class>,
+    class_flags: Option<ClassFlags>,
+    base_method: Option<PoolIndex<Function>>,
+    source_ref: SourceReference,
+    wrapped: Option<PoolIndex<Function>>,
+    is_replacement: bool,
+    visibility: Visibility,
+    source: FunctionSource,
 }
 
 fn eval_conditions(cte: &cte::Context, anns: &[Annotation]) -> Result<bool, Error> {

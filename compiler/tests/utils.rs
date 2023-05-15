@@ -7,6 +7,7 @@ use redscript::definition::{AnyDefinition, ClassFlags, Definition};
 use redscript_compiler::diagnostics::Diagnostic;
 use redscript_compiler::error::Error;
 use redscript_compiler::parser;
+use redscript_compiler::source_map::Files;
 use redscript_compiler::symbol::FunctionSignature;
 use redscript_compiler::unit::CompilationUnit;
 
@@ -118,7 +119,7 @@ pub fn compiled(sources: Vec<&str>) -> Result<(ConstantPool, Vec<Diagnostic>), E
         .map(|source| parser::parse_str(source).unwrap())
         .collect();
     let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
-    let res = CompilationUnit::new_with_defaults(&mut scripts.pool)?.compile(modules)?;
+    let res = CompilationUnit::new_with_defaults(&mut scripts.pool)?.compile(modules, &Files::default())?;
 
     Ok((scripts.pool, res))
 }

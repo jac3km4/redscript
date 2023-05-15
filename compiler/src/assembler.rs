@@ -6,17 +6,20 @@ use redscript::definition::{Function, Local};
 
 use crate::error::{Cause, Error, ResultSpan};
 use crate::scope::{Reference, Scope, TypeId, Value};
+use crate::source_map::Files;
 use crate::symbol::Symbol;
 use crate::typechecker::{type_of, Callable, Member, TypedAst};
 
-pub struct Assembler {
+pub struct Assembler<'a> {
+    files: &'a Files,
     instructions: Vec<Instr<Label>>,
     labels: usize,
 }
 
-impl Assembler {
-    fn new() -> Self {
+impl<'a> Assembler<'a> {
+    fn new(files: &'a Files) -> Self {
         Self {
+            files,
             instructions: Vec::new(),
             labels: 0,
         }
@@ -243,7 +246,7 @@ impl Assembler {
             },
             Expr::Call(callable, _, args, span) => match callable {
                 Callable::Function(fun) => {
-                    self.assemble_call(fun, args.into_vec(), scope, pool, false)?;
+                    self.assemble_call(fun, args.into_vec(), scope, pool, false, span)?;
                 }
                 Callable::Intrinsic(op, type_) => {
                     self.assemble_intrinsic(op, args.into_vec(), &type_, scope, pool, span)?;
@@ -254,7 +257,7 @@ impl Assembler {
                 match *expr {
                     Expr::Ident(Reference::Symbol(Symbol::Class(_, _) | Symbol::Struct(_, _)), span) => {
                         if fun.flags.is_static() {
-                            self.assemble_call(fun_idx, args, scope, pool, true)?;
+                            self.assemble_call(fun_idx, args, scope, pool, true, span)?;
                         } else {
                             return Err(
                                 Cause::InvalidNonStaticMethodCall(Ident::from_heap(pool.def_name(fun_idx)?))
@@ -272,7 +275,7 @@ impl Assembler {
                         let exit_label = self.new_label();
                         self.emit(Instr::Context(exit_label));
                         self.assemble(expr, scope, pool, None)?;
-                        self.assemble_call(fun_idx, args, scope, pool, force_static_call)?;
+                        self.assemble_call(fun_idx, args, scope, pool, force_static_call, span)?;
                         self.emit_label(exit_label);
                     }
                 }
@@ -379,6 +382,7 @@ impl Assembler {
         scope: &mut Scope,
         pool: &mut ConstantPool,
         force_static: bool,
+        span: Span,
     ) -> Result<(), Error> {
         let fun = pool.function(function_idx)?;
         let fun_flags = fun.flags;
@@ -397,11 +401,16 @@ impl Assembler {
             }
         }
 
+        let line = self
+            .files
+            .lookup(span)
+            .and_then(|loc| loc.start.line.try_into().ok())
+            .unwrap_or_default();
         if !force_static && !fun_flags.is_final() && !fun_flags.is_static() && !fun_flags.is_native() {
             let name_idx = pool.definition(function_idx)?.name;
-            self.emit(Instr::InvokeVirtual(exit_label, 0, name_idx, invoke_flags));
+            self.emit(Instr::InvokeVirtual(exit_label, line, name_idx, invoke_flags));
         } else {
-            self.emit(Instr::InvokeStatic(exit_label, 0, function_idx, invoke_flags));
+            self.emit(Instr::InvokeStatic(exit_label, line, function_idx, invoke_flags));
         }
         for (arg, flags) in args.into_iter().zip(&param_flags) {
             if flags.is_short_circuit() {
@@ -585,8 +594,13 @@ impl Assembler {
         Code(resolved)
     }
 
-    pub fn from_body(seq: Seq<TypedAst>, scope: &mut Scope, pool: &mut ConstantPool) -> Result<Code<Offset>, Error> {
-        let mut assembler = Self::new();
+    pub fn from_body(
+        seq: Seq<TypedAst>,
+        files: &'a Files,
+        scope: &mut Scope,
+        pool: &mut ConstantPool,
+    ) -> Result<Code<Offset>, Error> {
+        let mut assembler = Self::new(files);
         assembler.assemble_seq(seq, scope, pool, None)?;
         assembler.emit(Instr::Nop);
         Ok(assembler.into_code())
