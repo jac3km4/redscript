@@ -11,37 +11,44 @@ use crate::bytecode::Location;
 use crate::Str;
 
 #[derive(EnumAsInner)]
-#[derive_where(Debug; N::Class, N::Type, N::Local, N::Member, N::Closure, N::Callable, N::CallMeta, N::Inferred)]
+#[derive_where(Debug; N::Class, N::Type, N::Local, N::Member, N::Closure, N::Callable, N::CallMeta, N::Inferred, N::Span)]
 pub enum Expr<N>
 where
     N: ExprKind,
 {
-    Ident(N::Local, Span),
-    Constant(Constant, Span),
-    ArrayLit(Box<[Self]>, N::Inferred, Span),
-    InterpolatedString(Str, Vec<(Self, Str)>, Span),
-    Declare(N::Local, Option<Box<N::Type>>, Option<Box<Self>>, Span),
-    DynCast(N::Class, Box<Self>, Span),
-    Assign(Box<Self>, Box<Self>, N::Inferred, Span),
-    Call(Box<Self>, N::Callable, Box<[N::Type]>, Box<[Self]>, N::CallMeta, Span),
-    Lambda(N::Closure, Box<Self>, Span),
-    Member(Box<Self>, N::Member, Span),
-    ArrayElem(Box<Self>, Box<Self>, N::Inferred, Span),
-    New(N::Class, Box<[Self]>, Span),
-    Return(Option<Box<Self>>, Span),
+    Ident(N::Local, N::Span),
+    Constant(Constant, N::Span),
+    ArrayLit(Box<[Self]>, N::Inferred, N::Span),
+    InterpolatedString(Str, Vec<(Self, Str)>, N::Span),
+    Declare(N::Local, Option<Box<N::Type>>, Option<Box<Self>>, N::Span),
+    DynCast(N::Class, Box<Self>, N::Span),
+    Assign(Box<Self>, Box<Self>, N::Inferred, N::Span),
+    Call(
+        Box<Self>,
+        N::Callable,
+        Box<[N::Type]>,
+        Box<[Self]>,
+        N::CallMeta,
+        N::Span,
+    ),
+    Lambda(N::Closure, Box<Self>, N::Span),
+    Member(Box<Self>, N::Member, N::Span),
+    ArrayElem(Box<Self>, Box<Self>, N::Inferred, N::Span),
+    New(N::Class, Box<[Self]>, N::Span),
+    Return(Option<Box<Self>>, N::Span),
     Seq(Seq<N>),
-    Switch(Box<Self>, Vec<SwitchCase<N>>, Option<Seq<N>>, N::Inferred, Span),
-    Goto(Target, Span),
-    If(Box<Self>, Seq<N>, Option<Seq<N>>, Span),
-    Conditional(Box<Self>, Box<Self>, Box<Self>, Span),
-    While(Box<Self>, Seq<N>, Span),
-    ForIn(N::Local, Box<Self>, Seq<N>, Span),
-    BinOp(Box<Self>, Box<Self>, BinOp, Span),
-    UnOp(Box<Self>, UnOp, Span),
-    This(Span),
-    Super(Span),
-    Break(Span),
-    Null(Span),
+    Switch(Box<Self>, Vec<SwitchCase<N>>, Option<Seq<N>>, N::Inferred, N::Span),
+    Goto(Target, N::Span),
+    If(Box<Self>, Seq<N>, Option<Seq<N>>, N::Span),
+    Conditional(Box<Self>, Box<Self>, Box<Self>, N::Span),
+    While(Box<Self>, Seq<N>, N::Span),
+    ForIn(N::Local, Box<Self>, Seq<N>, N::Span),
+    BinOp(Box<Self>, Box<Self>, BinOp, N::Span),
+    UnOp(Box<Self>, UnOp, N::Span),
+    This(N::Span),
+    Super(N::Span),
+    Break(N::Span),
+    Null(N::Span),
 }
 
 impl<N> Expr<N>
@@ -56,7 +63,12 @@ where
             _ => false,
         }
     }
+}
 
+impl<N> Expr<N>
+where
+    N: ExprKind<Span = Span>,
+{
     pub fn span(&self) -> Span {
         match self {
             Expr::Ident(_, span)
@@ -109,6 +121,7 @@ pub trait ExprKind {
     type Class;
     type Type;
     type Closure;
+    type Span;
 }
 
 #[derive(Debug)]
@@ -122,6 +135,7 @@ impl ExprKind for SourceAst {
     type Inferred = ();
     type Local = Ident;
     type Member = Ident;
+    type Span = Span;
     type Type = TypeName;
 }
 
@@ -256,7 +270,7 @@ pub enum UnOp {
     Neg,
 }
 
-#[derive_where(Debug; N::Class, N::Type, N::Local, N::Member, N::Closure, N::Callable, N::CallMeta, N::Inferred)]
+#[derive_where(Debug; N::Class, N::Type, N::Local, N::Member, N::Closure, N::Callable, N::CallMeta, N::Inferred, N::Span)]
 pub struct SwitchCase<N>
 where
     N: ExprKind,
@@ -265,7 +279,7 @@ where
     pub body: Seq<N>,
 }
 
-#[derive_where(Debug; N::Class, N::Type, N::Local, N::Member, N::Closure, N::Callable, N::CallMeta, N::Inferred)]
+#[derive_where(Debug; N::Class, N::Type, N::Local, N::Member, N::Closure, N::Callable, N::CallMeta, N::Inferred, N::Span)]
 pub struct Seq<N>
 where
     N: ExprKind,

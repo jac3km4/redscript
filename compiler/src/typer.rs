@@ -1540,6 +1540,7 @@ impl<'id> ExprKind for CheckedAst<'id> {
     type Inferred = InferType<'id>;
     type Local = Local;
     type Member = Member<'id>;
+    type Span = Span;
     type Type = InferType<'id>;
 }
 

@@ -1,4 +1,4 @@
-use std::io;
+use std::{fmt, io};
 
 /// Wrapper for [`io::Read`] and [`io::Write`] types with the capability
 /// of keeping the offset in the stream.
@@ -52,5 +52,23 @@ impl<W: io::Write> io::Write for StreamOffset<W> {
     #[inline]
     fn flush(&mut self) -> io::Result<()> {
         self.inner.flush()
+    }
+}
+
+pub struct DeferredFmt<F>(F);
+
+impl<F> DeferredFmt<F> {
+    pub fn new(f: F) -> Self {
+        Self(f)
+    }
+}
+
+impl<F> fmt::Display for DeferredFmt<F>
+where
+    F: Fn(&mut fmt::Formatter<'_>) -> fmt::Result,
+{
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        (self.0)(f)
     }
 }

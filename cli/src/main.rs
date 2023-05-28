@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -10,8 +11,8 @@ use redscript::definition::AnyDefinition;
 use redscript_compiler::compiler::{CompilationResources, Compiler};
 use redscript_compiler::source_map::{Files, SourceFilter};
 use redscript_compiler::StringInterner;
+use redscript_decompiler::display::{display_definition, OutputMode};
 use redscript_decompiler::files::FileIndex;
-use redscript_decompiler::print::{write_definition, OutputMode};
 use vmap::Map;
 
 #[derive(Debug, Options)]
@@ -153,7 +154,7 @@ fn decompile(opts: DecompileOpts) -> Result<bool, redscript_decompiler::error::E
             std::fs::create_dir_all(path.parent().unwrap())?;
             let mut output = io::BufWriter::new(File::create(path)?);
             for def in entry.definitions {
-                if let Err(err) = write_definition(&mut output, def, pool, 0, mode) {
+                if let Err(err) = write!(output, "{}", display_definition(def, pool, mode)) {
                     log::error!("Failed to process definition at {:?}: {}", def, err);
                 }
             }
@@ -166,7 +167,7 @@ fn decompile(opts: DecompileOpts) -> Result<bool, redscript_decompiler::error::E
                 || matches!(&def.value, AnyDefinition::Enum(_))
                 || matches!(&def.value, AnyDefinition::Function(_))
         }) {
-            if let Err(err) = write_definition(&mut output, def, pool, 0, mode) {
+            if let Err(err) = write!(output, "{}", display_definition(def, pool, mode)) {
                 log::error!("Failed to process definition at {:?}: {}", def, err);
             }
         }
