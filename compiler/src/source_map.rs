@@ -55,7 +55,7 @@ impl Files {
     }
 
     pub fn add(&mut self, path: PathBuf, source: String) {
-        let low = self.entries.last().map_or(Pos(0), |f| f.high + 1);
+        let low = self.entries.last().map_or(Pos::ZERO, |f| f.high + 1);
         let high = low + source.len();
         let mut lines = vec![];
         for (offset, _) in source.match_indices('\n') {
@@ -180,9 +180,9 @@ impl File {
     }
 
     pub fn source_slice(&self, span: Span) -> &str {
-        let start = span.low.0 - self.byte_offset().0;
-        let end = span.high.0 - self.byte_offset().0;
-        &self.source[start as usize..end as usize]
+        let start = span.low - self.byte_offset();
+        let end = span.high - self.byte_offset();
+        &self.source[usize::from(start)..usize::from(end)]
     }
 
     pub fn path(&self) -> &Path {

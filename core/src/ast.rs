@@ -313,7 +313,7 @@ pub enum Literal {
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Pos(pub u32);
+pub struct Pos(pub(self) u32);
 
 impl Pos {
     pub const ZERO: Pos = Pos(0);
@@ -339,12 +339,12 @@ impl Add<usize> for Pos {
     }
 }
 
-impl Sub<usize> for Pos {
+impl Sub<Pos> for Pos {
     type Output = Pos;
 
     #[inline]
-    fn sub(self, rhs: usize) -> Pos {
-        Pos(self.0 - rhs as u32)
+    fn sub(self, rhs: Pos) -> Pos {
+        Pos(self.0 - rhs.0)
     }
 }
 
