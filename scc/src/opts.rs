@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use bpaf::*;
 
@@ -69,8 +69,8 @@ impl Opts {
     pub const DEFAULT_THREADS: u8 = 1;
 }
 
-fn is_not_slong(p: &PathBuf) -> bool {
-    matches!((*p).to_str(), Some(str) if !str.starts_with('-'))
+fn is_not_slong<P: AsRef<Path>>(p: &P) -> bool {
+    p.as_ref().to_str().is_some_and(|str| !str.starts_with('-'))
 }
 
 fn no_space(name: &'static str, help: &'static str) -> impl Parser<String> {

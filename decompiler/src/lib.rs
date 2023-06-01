@@ -77,10 +77,10 @@ impl<'a> Decompiler<'a> {
     fn consume_path(&mut self, target: Location, block: Option<BlockContext>) -> Result<Seq<RawAst>, Error> {
         let mut body = Vec::new();
         loop {
-            if self.code.pos() >= target
-                || matches!(body.last(), Some(Expr::Goto(_, _)))
-                || matches!(body.last(), Some(Expr::Break(_)))
-                || matches!(body.last(), Some(Expr::Return(_, _)))
+            if matches!(
+                body.last(),
+                Some(Expr::Goto(_, _) | Expr::Break(_) | Expr::Return(_, _))
+            ) || self.code.pos() >= target
             {
                 break;
             }

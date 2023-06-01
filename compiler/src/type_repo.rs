@@ -912,7 +912,10 @@ impl<'id> TypeId<'id> {
 
 impl TypeId<'static> {
     pub fn get_predefined_by_name(str: &str) -> Option<Self> {
-        predef::BY_NAME.get(str).copied().or_else(|| Self::get_fn_by_name(str))
+        predef::types_by_name()
+            .get(str)
+            .copied()
+            .or_else(|| Self::get_fn_by_name(str))
     }
 
     #[inline]
@@ -999,20 +1002,24 @@ pub enum RefType {
 }
 
 pub mod predef {
+    use std::sync::OnceLock;
+
     use hashbrown::HashMap;
-    use once_cell::sync::Lazy;
     use redscript::function_type_by_arity;
 
     use super::TypeId;
 
     macro_rules! setup {
         ($($id:ident => $name:ident),*) => {
-            $(pub static $id: TypeId<'static>  = TypeId::new(stringify!($name));)*
+            $(pub static $id: TypeId<'static> = TypeId::new(stringify!($name));)*
 
-            pub(super) static BY_NAME: Lazy<HashMap<&str, TypeId<'static>>> = Lazy::new(||
-                [$((stringify!($name), $id)),*]
-                    .into_iter().collect()
-            );
+            pub(super) fn types_by_name() -> &'static HashMap<&'static str, TypeId<'static>> {
+                static BY_NAME: OnceLock<HashMap<&str, TypeId<'static>>> = OnceLock::new();
+
+                BY_NAME.get_or_init(|| {
+                    [$((stringify!($name), $id)),*].into_iter().collect()
+                })
+            }
         };
     }
 

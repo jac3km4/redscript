@@ -1,8 +1,10 @@
 [package]
 name = "redscript-compiler"
 version.workspace = true
+license.workspace = true
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 redscript = { path = "../core" }
@@ -15,7 +17,6 @@ enum-as-inner.workspace = true
 smallvec.workspace = true
 hashbrown.workspace = true
 ahash = "0.8"
-once_cell = "1"
 yansi = "0.5"
 walkdir = "2"
 typed-builder = "0.14"

@@ -3,8 +3,10 @@ members = ["core", "compiler", "decompiler", "cli", "scc"]
 
 [workspace.package]
 version = "0.6.0-M4"
+license = "MIT"
 authors = ["jekky"]
 edition = "2021"
+rust-version = "1.70"
 
 [workspace.dependencies]
 log = "0.4"

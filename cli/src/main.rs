@@ -163,9 +163,10 @@ fn decompile(opts: DecompileOpts) -> Result<bool, redscript_decompiler::error::E
         let mut output = io::BufWriter::new(File::create(&opts.output)?);
 
         for (_, def) in pool.roots().filter(|(_, def)| {
-            matches!(&def.value, AnyDefinition::Class(_))
-                || matches!(&def.value, AnyDefinition::Enum(_))
-                || matches!(&def.value, AnyDefinition::Function(_))
+            matches!(
+                def.value,
+                AnyDefinition::Class(_) | AnyDefinition::Enum(_) | AnyDefinition::Function(_)
+            )
         }) {
             if let Err(err) = write!(output, "{}", display_definition(def, pool, mode)) {
                 log::error!("Failed to process definition at {:?}: {}", def, err);
