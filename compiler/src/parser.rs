@@ -212,7 +212,7 @@ peg::parser! {
             = quiet!{
                 x:$(['a'..='z' | 'A'..='Z' | '_']) xs:$(['0'..='9' | 'a'..='z' | 'A'..='Z' | '_']*)
                 { Ident::from(x) + xs }
-            } / expected!("identifier")
+            } / expected!("an identifier")
 
         rule keyword(id: &'static str) -> () =
             ##parse_string_literal(id) !['0'..='9' | 'a'..='z' | 'A'..='Z' | '_']
@@ -377,11 +377,15 @@ peg::parser! {
             / for_: for_() { for_ }
             / if_: if_() { if_ }
             / switch: switch() { switch }
-            / pos:pos() keyword("return") _ val:expr()? _ ";" end:pos() { Expr::Return(val.map(Box::new), Span::new(pos, end)) }
-            / pos:pos() keyword("break") _ ";" end:pos() { Expr::Break(Span::new(pos, end)) }
+            / pos:pos() keyword("return") _ val:expr()? _ end_of_stmt() end:pos() { Expr::Return(val.map(Box::new), Span::new(pos, end)) }
+            / pos:pos() keyword("break") _ end_of_stmt() end:pos() { Expr::Break(Span::new(pos, end)) }
             / let_:let() { let_ }
-            / expr:expr() _ ";" { expr }
+            / expr:expr() _ end_of_stmt() { expr }
             / expected!("a statement")
+
+        rule end_of_stmt()
+            = ";"
+            / expected!("a semicolon terminating the statement")
 
         pub rule expr() -> Expr<SourceAst> = precedence!{
             x:@ _ "?" _ y:expr() _ ":" _ z:expr() {
