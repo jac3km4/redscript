@@ -77,7 +77,7 @@ impl<'a> CompilationUnit<'a> {
         self.compile(Self::parse(files)?, files)
     }
 
-    fn typecheck(
+    pub fn typecheck(
         mut self,
         modules: Vec<SourceModule>,
         files: &Files,
