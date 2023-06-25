@@ -308,6 +308,7 @@ peg::parser! {
         rule member() -> MemberSource
             = fun:function() { MemberSource::Function(fun) }
             / field:field() { MemberSource::Field(field) }
+            / expected!("a method or a field")
 
         pub rule enum_() -> EnumSource
             = pos:pos() keyword("enum") _ name:ident() _ "{" _ members:commasep(<enum_member()>) _ ","? _ "}" end:pos()
@@ -328,6 +329,7 @@ peg::parser! {
             / struct_:struct_() { SourceEntry::Struct(struct_) }
             / field:field() { SourceEntry::GlobalLet(field) }
             / enum_:enum_() { SourceEntry::Enum(enum_) }
+            / expected!("a top-level definition")
 
         rule import() -> Import
             = pos:pos() annotations:(annotation() ** _) _ keyword("import") _ parts: dotsep(<ident()>) _ "." _ "*" end:pos()
@@ -379,6 +381,7 @@ peg::parser! {
             / pos:pos() keyword("break") _ ";" end:pos() { Expr::Break(Span::new(pos, end)) }
             / let_:let() { let_ }
             / expr:expr() _ ";" { expr }
+            / expected!("a statement")
 
         pub rule expr() -> Expr<SourceAst> = precedence!{
             x:@ _ "?" _ y:expr() _ ":" _ z:expr() {
