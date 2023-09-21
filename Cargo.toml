@@ -3,7 +3,7 @@ members = ["core", "compiler", "decompiler", "cli", "scc"]
 resolver = "2"
 
 [workspace.package]
-version = "0.5.14"
+version = "0.5.15"
 authors = ["jekky"]
 edition = "2021"
 
