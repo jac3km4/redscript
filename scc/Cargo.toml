@@ -12,16 +12,16 @@ hashbrown = { workspace = true, features = ["serde"] }
 byteorder.workspace = true
 flexi_logger.workspace = true
 serde = { version = "1", features = ["derive"] }
-toml = "0.7"
+toml = "0.8"
 vmap = { version = "0.5", default-features = false, optional = true }
-fd-lock = "3"
+fd-lock = "4"
 msgbox = { version = "0.7", optional = true }
 bpaf = "0.7"
 
 [dev-dependencies]
 winsplit = "0.1"
-rstest = "0.17"
-rstest_reuse = "0.5"
+rstest = "0.18"
+rstest_reuse = "0.6"
 pretty_assertions = "1"
 assert_fs = "1"
 assert_cmd = "2"
