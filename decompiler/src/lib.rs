@@ -356,8 +356,12 @@ impl<'a> Decompiler<'a> {
                 let expr = self.consume()?;
                 self.consume_with(Some(expr), None)?
             }
-            Instr::Equals(_) => self.consume_intrisnic(IntrinsicOp::Equals)?,
-            Instr::NotEquals(_) => self.consume_intrisnic(IntrinsicOp::NotEquals)?,
+            Instr::Equals(_) | Instr::RefStringEqualsString(_) | Instr::StringEqualsRefString(_) => {
+                self.consume_intrisnic(IntrinsicOp::Equals)?
+            }
+            Instr::NotEquals(_) | Instr::RefStringNotEqualsString(_) | Instr::StringNotEqualsRefString(_) => {
+                self.consume_intrisnic(IntrinsicOp::NotEquals)?
+            }
             Instr::New(class) => Expr::New(TypeName::basic_owned(self.pool.def_name(class)?), [].into(), Span::ZERO),
             Instr::Delete => self.consume_call("Delete", 1)?,
             Instr::This => Expr::This(Span::ZERO),
@@ -387,6 +391,8 @@ impl<'a> Decompiler<'a> {
             Instr::ArrayGrow(_) => self.consume_intrisnic(IntrinsicOp::ArrayGrow)?,
             Instr::ArrayErase(_) | Instr::ArrayEraseFast(_) => self.consume_intrisnic(IntrinsicOp::ArrayErase)?,
             Instr::ArrayLast(_) | Instr::StaticArrayLast(_) => self.consume_intrisnic(IntrinsicOp::ArrayLast)?,
+            Instr::ArraySort(_) => self.consume_intrisnic(IntrinsicOp::ArraySort)?,
+            Instr::ArraySortByPredicate(_) => self.consume_intrisnic(IntrinsicOp::ArraySortByPredicate)?,
             Instr::ArrayElement(_) | Instr::StaticArrayElement(_) => {
                 let arr = self.consume()?;
                 let idx = self.consume()?;

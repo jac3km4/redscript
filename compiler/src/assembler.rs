@@ -521,6 +521,12 @@ impl<'a> Assembler<'a> {
             IntrinsicOp::ArrayLast => {
                 self.emit(Instr::ArrayLast(get_arg_type(0)?));
             }
+            IntrinsicOp::ArraySort => {
+                self.emit(Instr::ArraySort(get_arg_type(0)?));
+            }
+            IntrinsicOp::ArraySortByPredicate => {
+                self.emit(Instr::ArraySortByPredicate(get_arg_type(0)?));
+            }
             IntrinsicOp::ToString => match type_of(&args[0], scope, pool)? {
                 TypeId::Variant => self.emit(Instr::VariantToString),
                 any => {

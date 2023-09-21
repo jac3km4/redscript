@@ -229,12 +229,12 @@ peg::parser! {
 
         rule escaped_char() -> char
             = !['\\' | '\"'] c:[_] { c }
-            / r#"\n"# { '\n' }
-            / r#"\r"# { '\r' }
-            / r#"\t"# { '\t' }
-            / r#"\'"# { '\'' }
+            / r"\n" { '\n' }
+            / r"\r" { '\r' }
+            / r"\t" { '\t' }
+            / r"\'" { '\'' }
             / r#"\""# { '\"' }
-            / r#"\\"# { '\\' }
+            / r"\\" { '\\' }
             / "\\u{" u:$(['a'..='f' | 'A'..='F' | '0'..='9']*<1,6>) "}" {
                 char::from_u32(u32::from_str_radix(u, 16).unwrap()).unwrap()
             }
@@ -246,7 +246,7 @@ peg::parser! {
             = "\"" s:string_contents() "\"" { s }
 
         rule interpolation() -> Expr<SourceAst>
-            = r#"\("# _ expr:expr() _ ")" { expr }
+            = r"\(" _ expr:expr() _ ")" { expr }
 
         rule string_part() -> (Expr<SourceAst>, Ref<str>)
             = e:interpolation() s:string_contents() { (e, Ref::from(s)) }
