@@ -436,7 +436,7 @@ impl<'a> Assembler<'a> {
         Ok(())
     }
 
-    fn is_rvalue_ref(expr: &Expr<TypedAst>, scope: &mut Scope, pool: &mut ConstantPool) -> Option<bool> {
+    fn is_rvalue_ref(expr: &Expr<TypedAst>, scope: &Scope, pool: &ConstantPool) -> Option<bool> {
         let typ = type_of(expr, scope, pool).ok()?;
         match typ {
             TypeId::ScriptRef(_) => match expr {

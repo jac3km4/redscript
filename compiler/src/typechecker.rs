@@ -639,7 +639,7 @@ impl<'a> TypeChecker<'a> {
         args: &[Expr<TypedAst>],
         param_types: &[TypeId],
         wanted_ret_type: Option<&TypeId>,
-        scope: &mut Scope,
+        scope: &Scope,
         pool: &ConstantPool,
         span: Span,
     ) -> Result<Vec<ArgConversion>, MatcherError> {
