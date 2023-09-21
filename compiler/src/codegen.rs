@@ -507,6 +507,8 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
             Intrinsic::ArrayGrow => Instr::ArrayGrow(alloc_type(&array_of(&type_args[0]))),
             Intrinsic::ArrayErase => Instr::ArrayErase(alloc_type(&array_of(&type_args[0]))),
             Intrinsic::ArrayLast => Instr::ArrayLast(alloc_type(&array_of(&type_args[0]))),
+            Intrinsic::ArraySort => Instr::ArraySort(alloc_type(&array_of(&type_args[0]))),
+            Intrinsic::ArraySortByPredicate => Instr::ArraySortByPredicate(alloc_type(&array_of(&type_args[0]))),
             Intrinsic::ToString => Instr::ToString(alloc_type(&type_args[0])),
             Intrinsic::EnumInt => Instr::EnumToI32(alloc_type(&type_args[0]), 4),
             Intrinsic::IntEnum => Instr::I32ToEnum(alloc_type(&type_args[0]), 4),
