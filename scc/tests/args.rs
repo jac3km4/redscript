@@ -95,6 +95,8 @@ fn file_directory_orders(
     #[values(Some(4), None)] threads: Option<u8>,
     #[values(Some(false), None)] no_testonly: Option<bool>,
     #[values(Some(false), None)] no_breakpoint: Option<bool>,
+    #[values(Some(false), None)] no_exec: Option<bool>,
+    #[values(Some(false), None)] no_debug: Option<bool>,
     #[values(Some(true), Some(false), None)] profile: Option<bool>,
 ) {
 }
@@ -126,6 +128,8 @@ fn standard(
     threads: Option<u8>,
     no_testonly: Option<bool>,
     no_breakpoint: Option<bool>,
+    no_exec: Option<bool>,
+    no_debug: Option<bool>,
     profile: Option<bool>,
 ) {
     let mut args = Vec::<Arg>::new();
@@ -154,6 +158,12 @@ fn standard(
     }
     if no_breakpoint == Some(true) {
         args.push("-no-breakpoint".into());
+    }
+    if no_exec == Some(true) {
+        args.push("-no-exec".into());
+    }
+    if no_debug == Some(true) {
+        args.push("-no-debug".into());
     }
     match profile {
         Some(false) => args.push("-profile=off".into()),
@@ -185,4 +195,6 @@ fn standard(
     self::assert_eq!(opts.no_breakpoint, no_breakpoint.unwrap_or(Opts::DEFAULT_NO_BREAKPOINT));
     self::assert_eq!(opts.profile, profile.unwrap_or(Opts::DEFAULT_NO_PROFILE));
     self::assert_eq!(opts.optimize, optimize.unwrap_or(Opts::DEFAULT_OPTIMIZE));
+    self::assert_eq!(opts.no_exec, no_exec.unwrap_or(Opts::DEFAULT_NO_EXEC));
+    self::assert_eq!(opts.no_debug, no_debug.unwrap_or(Opts::DEFAULT_NO_DEBUG));
 }
