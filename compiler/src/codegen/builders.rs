@@ -173,7 +173,6 @@ impl<'id> FunctionBuilder<'id> {
             cast: 0,
             code: self.body,
             unk2: vec![],
-            unk3: None,
         };
         pool.put_definition(id, Definition::function(name, parent, def));
         id
