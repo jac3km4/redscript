@@ -293,7 +293,6 @@ pub struct Function {
     pub cast: u8,
     pub code: Code<Offset>,
     pub unk2: Vec<PoolIndex<Parameter>>,
-    pub unk3: Option<PoolIndex<Type>>,
 }
 
 impl Decode for Function {
@@ -334,12 +333,10 @@ impl Decode for Function {
         let cast = if flags.is_cast() { input.decode()? } else { 0u8 };
         let code = if flags.has_body() { input.decode()? } else { Code::EMPTY };
 
-        let (unk2, unk3) = if flags.unk4() {
-            let params = input.decode_vec_prefixed::<u32, PoolIndex<Parameter>>()?;
-            let typ = input.decode()?;
-            (params, Some(typ))
+        let unk2 = if flags.unk4() {
+            input.decode_vec_prefixed::<u32, PoolIndex<Parameter>>()?
         } else {
-            (vec![], None)
+            vec![]
         };
 
         let result = Function {
@@ -355,7 +352,6 @@ impl Decode for Function {
             cast,
             code,
             unk2,
-            unk3,
         };
 
         Ok(result)
@@ -368,7 +364,7 @@ impl Encode for Function {
             .flags
             .with_has_return_value(self.return_type.is_some())
             .with_has_base_method(self.base_method.is_some())
-            .with_has_parameters(!self.parameters.is_empty())
+            .with_has_parameters(!self.parameters.is_empty() || !self.unk2.is_empty())
             .with_has_locals(!self.locals.is_empty())
             .with_is_operator(self.operator.is_some())
             .with_has_body(!self.code.is_empty());
@@ -404,9 +400,6 @@ impl Encode for Function {
         }
         if flags.unk4() {
             output.encode_slice_prefixed::<u32, PoolIndex<Parameter>>(&self.unk2)?;
-            if let Some(typ) = self.unk3 {
-                output.encode(&typ)?;
-            }
         }
         Ok(())
     }

@@ -580,7 +580,6 @@ impl<'a> CompilationUnit<'a> {
             cast: 0,
             code: Code::EMPTY,
             unk2: vec![],
-            unk3: None,
         };
         let name_idx = self.pool.definition(spec.fun_idx)?.name;
         let definition = Definition::function(name_idx, spec.class_idx.cast(), function);
