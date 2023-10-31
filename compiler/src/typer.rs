@@ -72,7 +72,9 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
         let mut exprs = Vec::with_capacity(expr.exprs.len());
         for expr in &expr.exprs {
             let res = self.typeck(expr, locals);
-            let Some((expr, _)) = self.reporter.unwrap_err(res) else { continue };
+            let Some((expr, _)) = self.reporter.unwrap_err(res) else {
+                continue;
+            };
             exprs.push(expr);
         }
         Seq::new(exprs)

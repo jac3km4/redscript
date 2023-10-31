@@ -117,7 +117,9 @@ impl<'id> Compiler<'id> {
         let mut items = vec![];
         for entry in module.entries {
             let res = self.preprocess_entry(&module.path, entry, &types, names);
-            let Some(item) = self.reporter.unwrap_err(res).flatten() else { continue };
+            let Some(item) = self.reporter.unwrap_err(res).flatten() else {
+                continue;
+            };
             items.push(item);
         }
         let types = types.pop_scope();
@@ -260,7 +262,9 @@ impl<'id> Compiler<'id> {
                             self.validate_method(data_type.flags, flags, method.decl.span);
 
                             let res = self.preprocess_function(&method, types, &type_vars);
-                            let Some((env, typ)) = self.reporter.unwrap_err(res) else { continue };
+                            let Some((env, typ)) = self.reporter.unwrap_err(res) else {
+                                continue;
+                            };
                             let index = if flags.is_static() {
                                 data_type.statics.add(method.decl.name.clone(), typ, flags)
                             } else {
@@ -282,7 +286,9 @@ impl<'id> Compiler<'id> {
                             self.validate_field(data_type.flags, flags, field.declaration.span);
                             let env = TypeEnv::new(types, &type_vars);
                             let res = env.resolve_type(&field.type_).with_span(field.declaration.span);
-                            let Some(typ) = self.reporter.unwrap_err(res) else { continue };
+                            let Some(typ) = self.reporter.unwrap_err(res) else {
+                                continue;
+                            };
                             data_type.fields.add(field.declaration.name, Field::new(typ, flags));
                         }
                     }
@@ -608,14 +614,19 @@ impl<'id> Compiler<'id> {
 
         for module in &self.compile_queue {
             for item in &module.items {
-                let ModuleItem::Class(this, _, funcs) = item else { continue };
+                let ModuleItem::Class(this, _, funcs) = item else {
+                    continue;
+                };
                 let Some(base) = self
                     .repo
                     .get_type(this.id)
                     .and_then(DataType::as_class)
                     .and_then(|class| class.extends.as_ref())
                     .and_then(|typ| self.repo.get_type(typ.id))
-                    .and_then(DataType::as_class) else { continue };
+                    .and_then(DataType::as_class)
+                else {
+                    continue;
+                };
                 if let Some(span) = base.span.filter(|_| base.flags.is_final()) {
                     self.reporter
                         .report(CompileError::Unsupported(Unsupported::ExtendingFinalClass, span));
@@ -628,7 +639,9 @@ impl<'id> Compiler<'id> {
                     }
                     let mid = MethodId::new(this.id, index);
                     let method = self.repo.get_method(&mid).unwrap();
-                    let Some(base) = Self::get_base_method(this.id, &func.name, this, &method.typ, &self.repo) else { continue };
+                    let Some(base) = Self::get_base_method(this.id, &func.name, this, &method.typ, &self.repo) else {
+                        continue;
+                    };
                     method_to_base.insert(mid, base);
                 }
             }
@@ -641,7 +654,9 @@ impl<'id> Compiler<'id> {
 
         // resolve all unimplemented virtual methods
         for &typ in &self.defined_types {
-            let DataType::Class(class) = self.repo.get_type(typ).unwrap() else { continue };
+            let DataType::Class(class) = self.repo.get_type(typ).unwrap() else {
+                continue;
+            };
             let mut this_unimplemented = class
                 .extends
                 .as_ref()

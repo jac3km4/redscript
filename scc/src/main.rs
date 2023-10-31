@@ -280,7 +280,9 @@ fn error_message(error: Error, files: &Files, r6_dir: &Path) -> String {
 
         for &(code, span) in spans {
             let loc = files.lookup(span)?;
-            let Ok(rel_path) = loc.file.path().strip_prefix(&scripts_dir) else { continue };
+            let Ok(rel_path) = loc.file.path().strip_prefix(&scripts_dir) else {
+                continue;
+            };
             let cause = rel_path
                 .iter()
                 .next()
