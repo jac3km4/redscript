@@ -227,7 +227,7 @@ impl<'id> Compiler<'id> {
                     .try_collect()
                     .with_span(class.span)?;
                 let mut this_args = Vec::with_capacity(class_type_vars.len());
-                for var in class_type_vars.iter() {
+                for var in &*class_type_vars {
                     let typ = InferType::from_var_mono(var, &type_vars);
                     type_vars.insert(var.name.clone(), typ.clone());
                     this_args.push(typ);
@@ -545,7 +545,7 @@ impl<'id> Compiler<'id> {
             .collect::<CompileResult<'_, Box<[_]>, _>>()
             .with_span(func.decl.span)?;
         let mut local_vars = vars.introduce_scope();
-        for var in method_type_vars.iter() {
+        for var in &*method_type_vars {
             local_vars.insert(var.name.clone(), InferType::from_var_mono(var, &local_vars));
         }
         let env = env.with_vars(&local_vars);

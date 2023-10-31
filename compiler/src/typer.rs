@@ -428,7 +428,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
             .exactly_one()
         {
             Ok((id, entry)) => {
-                for var in entry.function.typ.type_vars.iter() {
+                for var in &*entry.function.typ.type_vars {
                     let typ = InferType::from_var_poly(var, &type_vars, &mut self.id_alloc);
                     type_vars.insert(var.name.clone(), typ);
                 }
@@ -456,7 +456,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                     .map_err(|m| {
                         CompileError::for_overloads(name, m.count(), candidates.iter().map(|(_, e)| e), span)
                     })?;
-                for var in entry.function.typ.type_vars.iter() {
+                for var in &*entry.function.typ.type_vars {
                     let typ = InferType::from_var_poly(var, &type_vars, &mut self.id_alloc);
                     type_vars.insert(var.name.clone(), typ);
                 }
@@ -537,7 +537,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                     type_vars.extend(data_type.type_var_names().zip(owner_type.args.iter().cloned()));
                 };
 
-                for var in entry.function.typ.type_vars.iter() {
+                for var in &*entry.function.typ.type_vars {
                     let typ = InferType::from_var_poly(var, &type_vars, &mut self.id_alloc);
                     type_vars.insert(var.name.clone(), typ);
                 }
@@ -557,7 +557,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 (owner, entry)
             }
             Err(matches) => {
-                for arg in args.iter() {
+                for arg in args {
                     let (arg, typ) = self.typeck_with(arg, locals, true)?;
                     checked_args.push(arg);
                     arg_types.push(typ);

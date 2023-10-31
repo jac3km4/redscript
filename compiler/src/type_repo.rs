@@ -780,7 +780,7 @@ impl FuncSignature {
         write!(buf, "{name};").unwrap();
         buf.reserve(typ.params.len() * 4);
 
-        for param in typ.params.iter() {
+        for param in &*typ.params {
             match &param.typ {
                 Type::Bottom => write!(buf, "Nothing;").unwrap(),
                 Type::Top => write!(buf, "Any;").unwrap(),
