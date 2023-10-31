@@ -19,8 +19,8 @@ hashbrown.workspace = true
 ahash = "0.8"
 yansi = "0.5"
 walkdir = "2"
-typed-builder = "0.14"
-indexmap = "1"
+typed-builder = "0.18"
+indexmap = "2"
 sequence_trie = { git = "https://github.com/jac3km4/rust_sequence_trie", rev = "a056b4c", features = [
     "hashbrown",
 ] }
