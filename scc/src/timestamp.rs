@@ -10,14 +10,18 @@ pub struct CompileTimestamp {
 }
 
 impl CompileTimestamp {
-    pub fn read<R: io::Read + io::Seek>(input: &mut R) -> io::Result<Self> {
-        input.seek(io::SeekFrom::Start(0))?;
+    pub fn read<R: io::Read + io::Seek>(input: &mut R) -> io::Result<Option<Self>> {
+        if input.seek(io::SeekFrom::End(0))? == 0 {
+            return Ok(None);
+        }
+
+        input.rewind()?;
         let nanos = input.read_u128::<LittleEndian>()?;
-        Ok(Self { nanos })
+        Ok(Some(Self { nanos }))
     }
 
     pub fn write<W: io::Write + io::Seek>(&self, output: &mut W) -> io::Result<()> {
-        output.seek(io::SeekFrom::Start(0))?;
+        output.rewind()?;
         output.write_u128::<LittleEndian>(self.nanos)?;
         Ok(())
     }

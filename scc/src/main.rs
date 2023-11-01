@@ -199,26 +199,26 @@ fn compile_scripts(
     let write_timestamp = File::open(bundle_path)
         .and_then(|f| CompileTimestamp::of_cache_file(&f))
         .context("Failed to obtain a timestamp of the cache file")?;
-    let saved_timestamp = CompileTimestamp::read(&mut *ts_file);
+    let saved_timestamp =
+        CompileTimestamp::read(&mut *ts_file).context("Failed to read the existing timestamp file")?;
 
     match saved_timestamp {
-        Err(err) if err.kind() == io::ErrorKind::NotFound && backup_path.exists() => {
+        None if backup_path.exists() => {
             log::info!("Previous cache backup file found");
         }
-        Ok(saved_timestamp) if saved_timestamp != write_timestamp => {
+        saved_timestamp if saved_timestamp != Some(write_timestamp) => {
             log::info!(
                 "Redscript cache file is not ours, copying it to {}",
                 backup_path.display()
             );
             fs::copy(bundle_path, &backup_path).context("Failed to copy the cache file")?;
         }
-        Ok(_) if !backup_path.exists() => {
+        Some(_) if !backup_path.exists() => {
             log::warn!(
                 "A compiler timestamp was found but not the backup file, your installation might be corrupted, \
                  try removing redscript.ts and verifying game files"
             );
         }
-        Err(err) => anyhow::bail!("Failed to read the timestamp file: {err}"),
         _ => {}
     }
 
