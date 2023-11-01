@@ -637,12 +637,13 @@ impl fmt::Display for Parameterized<'_> {
 pub struct Func<'id> {
     pub flags: FunctionFlags,
     pub typ: FuncType<'id>,
+    pub base: Option<MethodId<'id>>,
 }
 
 impl<'id> Func<'id> {
     #[inline]
     pub fn new(typ: FuncType<'id>, flags: FunctionFlags) -> Self {
-        Self { typ, flags }
+        Self { typ, flags, base: None }
     }
 
     pub fn is_implemented(&self) -> bool {
@@ -778,15 +779,13 @@ impl FuncSignature {
 
         let mut buf: StrBuf = StrBuf::new();
         write!(buf, "{name};").unwrap();
-        buf.reserve(typ.params.len() * 4);
 
         for param in &*typ.params {
             match &param.typ {
-                Type::Bottom => write!(buf, "Nothing;").unwrap(),
-                Type::Top => write!(buf, "Any;").unwrap(),
-                Type::Data(dt) => write!(buf, "C{};", dt.id).unwrap(),
-                Type::Prim(prim) => write!(buf, "P{prim:?};").unwrap(),
-                Type::Var(_) => write!(buf, "Var;").unwrap(),
+                Type::Bottom => write!(buf, "Nothing").unwrap(),
+                Type::Data(dt) => write!(buf, "{}", dt.id).unwrap(),
+                Type::Prim(prim) => write!(buf, "{prim}").unwrap(),
+                Type::Var(_) | Type::Top => write!(buf, "IScriptable").unwrap(),
             }
         }
         let str = std::str::from_utf8(&buf).unwrap();

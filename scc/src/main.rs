@@ -103,7 +103,8 @@ fn main() -> ExitCode {
         fs::copy(base, &bundle_path).expect("Could not copy base bundle");
     }
 
-    let files = Files::from_dirs(&script_paths, &manifest.source_filter()).expect("Could not load script sources");
+    let mut files = Files::from_dirs(&script_paths, &manifest.source_filter()).expect("Could not load script sources");
+    files.include_std();
 
     match compile_scripts(&scripts_dir, &bundle_path, fallback_dir.as_deref(), &files) {
         Ok(_) => {

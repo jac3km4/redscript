@@ -9,7 +9,7 @@ use hashbrown::{HashMap, HashSet};
 use itertools::{chain, Itertools};
 use redscript::ast::{Expr, Seq, SourceAst, Span};
 use redscript::bundle::{ConstantPool, PoolIndex};
-use redscript::bytecode::Intrinsic;
+use redscript::bytecode::{Instr, Intrinsic};
 use redscript::definition::{
     AnyDefinition, Class as PoolClass, ClassFlags, Enum as PoolEnum, Field as PoolField, FieldFlags,
     Function as PoolFunction, FunctionFlags, ParameterFlags, Type as PoolType, Visibility,
@@ -692,6 +692,7 @@ impl<'id> Compiler<'id> {
             }
             let [method, base] = self.repo.get_many_method_mut([mid, root]).unwrap();
             method.typ.is_ret_poly = matches!(base.typ.ret, Type::Var(_)) && !matches!(method.typ.ret, Type::Var(_));
+            method.base = Some(base_id.clone());
 
             for (l, r) in base.typ.params.iter().zip(method.typ.params.iter_mut()) {
                 if matches!(l.typ, Type::Var(_)) && !matches!(r.typ, Type::Var(_)) {
@@ -768,7 +769,8 @@ impl<'id> CompilationOutputs<'id> {
             match item {
                 &CodeGenItem::AssembleGlobal(id, _, _) => {
                     let (sig, method) = self.repo.globals().get_overload(id.into()).unwrap();
-                    let idx = Self::build_function(sig.clone(), &method.typ, method.flags)
+                    let flags = method.flags.with_is_static(true).with_is_final(true);
+                    let idx = Self::build_function(sig.clone(), &method.typ, flags, None, db)
                         .commit_global(&self.repo, pool, cache);
                     db.globals.insert(id, idx);
                 }
@@ -779,7 +781,7 @@ impl<'id> CompilationOutputs<'id> {
                         self.repo.get_method_with_signature(mid).unwrap()
                     };
                     let &parent = db.classes.get(&mid.owner()).unwrap();
-                    let idx = Self::build_function(sig.clone(), &method.typ, method.flags)
+                    let idx = Self::build_function(sig.clone(), &method.typ, method.flags, method.base.as_ref(), db)
                         .commit(parent, &self.repo, pool, cache);
 
                     pool.class_mut(parent).unwrap().methods.push(idx);
@@ -793,7 +795,8 @@ impl<'id> CompilationOutputs<'id> {
                     };
                     let &parent = db.classes.get(&mid.owner()).unwrap();
                     let wrapper_sig = FuncSignature::new(names::wrapper(i, sig.clone().into_str()));
-                    let idx = Self::build_function(wrapper_sig, &method.typ, method.flags)
+                    let idx = Self::build_function(wrapper_sig, &method.typ, method.flags, method.base.as_ref(), db)
+                        .with_wrapper_flag()
                         .commit(parent, &self.repo, pool, cache);
 
                     pool.class_mut(parent).unwrap().methods.push(idx);
@@ -804,17 +807,33 @@ impl<'id> CompilationOutputs<'id> {
         }
 
         for (mid, indexes) in &mut wrappers {
-            let last_wrapper = *indexes.back().unwrap();
             let wrapped_idx = *db.methods.get(mid).unwrap();
+            let last_wrapper_idx = indexes.pop_back().unwrap();
 
             let wrapped_name = pool.definition(wrapped_idx).unwrap().name;
-            let wrapper_name = pool.definition(last_wrapper).unwrap().name;
-            pool.rename(last_wrapper, wrapped_name);
-            pool.rename(wrapped_idx, wrapper_name);
-            pool.swap_definition(wrapped_idx, last_wrapper);
+            let wrapper_name = pool.definition(last_wrapper_idx).unwrap().name;
 
-            indexes.pop_back();
-            indexes.push_front(last_wrapper);
+            let wrapped = pool.function_mut(wrapped_idx).unwrap();
+            if wrapped.flags.is_callback() {
+                // make sure only one remains a callback
+                wrapped.flags = wrapped.flags.with_is_callback(false);
+                let new_flags = wrapped.flags.with_is_callback(true);
+
+                // the game crashes when parameter names are not aligned in callback methods
+                let from_args = pool.function(wrapped_idx).unwrap().parameters.clone();
+                let to_args = pool.function(last_wrapper_idx).unwrap().parameters.clone();
+                pool.function_mut(last_wrapper_idx).unwrap().flags = new_flags;
+                for (&from, &to) in from_args.iter().zip(&to_args) {
+                    pool.rename(to, pool.definition(from).unwrap().name);
+                }
+            }
+
+            Self::remap_locals(last_wrapper_idx, wrapped_idx, pool);
+            pool.rename(last_wrapper_idx, wrapped_name);
+            pool.rename(wrapped_idx, wrapper_name);
+            pool.swap_definition(wrapped_idx, last_wrapper_idx);
+
+            indexes.push_front(last_wrapper_idx);
             indexes.push_back(wrapped_idx);
         }
 
@@ -881,12 +900,16 @@ impl<'id> CompilationOutputs<'id> {
                     class_type.statics.iter().map(|e| Self::build_function(
                         e.signature.clone(),
                         &e.function.typ,
-                        e.function.flags
+                        e.function.flags,
+                        None,
+                        db
                     )),
                     class_type.methods.iter().map(|e| Self::build_function(
                         e.signature.clone(),
                         &e.function.typ,
-                        e.function.flags
+                        e.function.flags,
+                        e.function.base.as_ref(),
+                        db
                     ))
                 );
                 let idx = ClassBuilder::builder()
@@ -925,7 +948,13 @@ impl<'id> CompilationOutputs<'id> {
         }
     }
 
-    fn build_function(signature: FuncSignature, typ: &FuncType<'id>, flags: FunctionFlags) -> FunctionBuilder<'id> {
+    fn build_function(
+        signature: FuncSignature,
+        typ: &FuncType<'id>,
+        flags: FunctionFlags,
+        base: Option<&MethodId<'id>>,
+        db: &CompilationDb<'id>,
+    ) -> FunctionBuilder<'id> {
         let params = typ.params.iter().enumerate().map(|(i, param)| {
             ParamBuilder::builder()
                 .name(names::param(i))
@@ -933,13 +962,52 @@ impl<'id> CompilationOutputs<'id> {
                 .flags(ParameterFlags::new().with_is_out(param.is_out))
                 .build()
         });
+        let base_idx = base.map(|mid| *db.methods.get(mid).unwrap());
+
         FunctionBuilder::builder()
             .flags(flags)
             .visibility(Visibility::Public)
             .name(signature.into_str())
             .return_type(if typ.is_ret_poly { Type::Top } else { typ.ret.clone() })
             .params(params)
+            .base(base_idx)
             .build()
+    }
+
+    fn remap_locals(proxy: PoolIndex<PoolFunction>, target: PoolIndex<PoolFunction>, pool: &mut ConstantPool) {
+        // this is a workaround for a game crash which happens when the game loads
+        // locals that are not placed adjacent to the parent function in the pool
+        let locals = pool.function(target).unwrap().locals.clone();
+        let mut mapped_locals = HashMap::new();
+        for local_idx in locals {
+            let mut local = pool.definition(local_idx).unwrap().clone();
+            local.parent = proxy.cast();
+            mapped_locals.insert(local_idx, pool.add_definition(local));
+        }
+
+        let params = pool.function(target).unwrap().parameters.clone();
+        let mut mapped_params = HashMap::new();
+        for param_idx in params {
+            let mut param = pool.definition(param_idx).unwrap().clone();
+            param.parent = proxy.cast();
+            mapped_params.insert(param_idx, pool.add_definition(param));
+        }
+
+        let fun = pool.function_mut(target).unwrap();
+        fun.locals = mapped_locals.values().copied().collect();
+        fun.parameters = mapped_params.values().copied().collect();
+
+        for instr in &mut fun.code.0 {
+            match instr {
+                Instr::Local(local) => {
+                    *instr = Instr::Local(*mapped_locals.get(local).unwrap());
+                }
+                Instr::Param(param) => {
+                    *instr = Instr::Param(*mapped_params.get(param).unwrap());
+                }
+                _ => {}
+            }
+        }
     }
 
     pub fn reporter(&self) -> &ErrorReporter<'id> {

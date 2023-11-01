@@ -123,6 +123,10 @@ pub struct FunctionBuilder<'id> {
     locals: Vec<LocalBuilder<'id>>,
     #[builder(default = Code::EMPTY)]
     body: Code<Offset>,
+    #[builder(default = None)]
+    base: Option<PoolIndex<Function>>,
+    #[builder(default = false)]
+    is_wrapper: bool,
 }
 
 impl<'id> FunctionBuilder<'id> {
@@ -142,31 +146,55 @@ impl<'id> FunctionBuilder<'id> {
         pool: &mut ConstantPool,
         cache: &mut TypeCache,
     ) -> PoolIndex<Function> {
+        // callback methods must use the same parameter names as the base method they override
+        let rename_param = match self.base {
+            Some(base) if self.flags.is_callback() => pool
+                .function(base)
+                .unwrap()
+                .parameters
+                .first()
+                .map(|param| pool.def_name(*param).unwrap()),
+            _ => None,
+        };
+
         let id = pool.reserve();
         let name = pool.names.add(self.name);
+
         let return_type = matches!(self.return_type, Type::Prim(Prim::Unit))
             .not()
             .then(|| cache.alloc_type(&self.return_type, repo, pool));
-        let parameters = self
-            .params
-            .into_iter()
-            .map(|param| param.commit(id, repo, pool, cache))
-            .collect();
+
+        let parameters = match rename_param {
+            Some(rename) => self
+                .params
+                .into_iter()
+                .map(|param| param.renamed(rename.clone()).commit(id, repo, pool, cache))
+                .collect(),
+            None => self
+                .params
+                .into_iter()
+                .map(|param| param.commit(id, repo, pool, cache))
+                .collect(),
+        };
+
         let locals = self
             .locals
             .into_iter()
             .map(|local| local.commit(repo, pool, cache))
             .collect();
+
         let def = Function {
             visibility: self.visibility,
-            flags: self.flags,
+            flags: self
+                .flags
+                .with_is_callback(self.flags.is_callback() && !self.is_wrapper),
             source: Some(SourceReference {
                 file: PoolIndex::DEFAULT_SOURCE,
                 line: 0,
             }),
             return_type,
             unk1: false,
-            base_method: None,
+            base_method: self.base,
             parameters,
             locals,
             operator: None,
@@ -174,8 +202,17 @@ impl<'id> FunctionBuilder<'id> {
             code: self.body,
             unk2: vec![],
         };
+
         pool.put_definition(id, Definition::function(name, parent, def));
         id
+    }
+
+    #[inline]
+    pub fn with_wrapper_flag(self) -> Self {
+        Self {
+            is_wrapper: true,
+            ..self
+        }
     }
 }
 
@@ -236,6 +273,11 @@ impl<'id> ParamBuilder<'id> {
             flags: self.flags,
         };
         pool.add_definition(Definition::param(name, parent, def))
+    }
+
+    #[inline]
+    pub fn renamed(self, name: Str) -> Self {
+        Self { name, ..self }
     }
 }
 
