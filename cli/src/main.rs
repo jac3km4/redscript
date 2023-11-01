@@ -1,9 +1,9 @@
-use std::fs::File;
+use std::fs::{self, File};
 use std::io;
 use std::path::{Path, PathBuf};
 
+use argh::FromArgs;
 use flexi_logger::{LevelFilter, LogSpecBuilder, Logger};
-use gumdrop::Options;
 use redscript::bundle::ScriptBundle;
 use redscript::definition::AnyDefinition;
 use redscript_compiler::source_map::{Files, SourceFilter};
@@ -12,45 +12,67 @@ use redscript_decompiler::files::FileIndex;
 use redscript_decompiler::print::{write_definition, OutputMode};
 use vmap::Map;
 
-#[derive(Debug, Options)]
+/// redscript command line interface
+#[derive(Debug, FromArgs)]
+struct Args {
+    #[argh(subcommand)]
+    command: Command,
+}
+
+#[derive(Debug, FromArgs)]
+#[argh(subcommand)]
 enum Command {
-    #[options(help = "[opts]")]
     Decompile(DecompileOpts),
-    #[options(help = "[opts]")]
     Compile(CompileOpts),
-    #[options(help = "[opts]")]
     Lint(LintOpts),
 }
 
-#[derive(Debug, Options)]
+/// decompile a .redscripts file
+#[derive(Debug, FromArgs)]
+#[argh(subcommand, name = "decompile")]
 struct DecompileOpts {
-    #[options(required, short = "i", help = "input redscripts bundle file")]
+    /// path to an input .redscripts file
+    #[argh(option, short = 'i')]
     input: PathBuf,
-    #[options(required, short = "o", help = "output file or directory")]
+    /// path to an output file or directory
+    #[argh(option, short = 'o')]
     output: PathBuf,
-    #[options(short = "m", help = "dump mode (one of: 'ast', 'bytecode' or 'code')")]
+    /// output mode, use 'code' to print redscript code, 'ast' to print a direct representation
+    /// of the AST, 'bytecode' to print individual bytecode instructions
+    #[argh(option, short = 'm', default = "String::from(\"code\")")]
     mode: String,
-    #[options(short = "f", help = "split output into individual files")]
+    /// write individual files based on the stored file index instead of a single file
+    #[argh(switch, short = 'f')]
     dump_files: bool,
-    #[options(short = "v", help = "verbose output (include implicit conversions)")]
+    /// include implicit operations in the output (conversions etc.)
+    #[argh(switch, short = 'v')]
     verbose: bool,
 }
 
-#[derive(Debug, Options)]
+/// compile redscript source code into a .redscripts file
+#[derive(Debug, FromArgs)]
+#[argh(subcommand, name = "compile")]
 struct CompileOpts {
-    #[options(required, short = "s", help = "source file or directory")]
+    /// path to an input source file or directory
+    #[argh(option, short = 's')]
     src: Vec<PathBuf>,
-    #[options(required, short = "b", help = "redscript bundle file to use")]
+    /// path to a .redscripts file to use for incremental compilation
+    #[argh(option, short = 'b')]
     bundle: PathBuf,
-    #[options(required, short = "o", help = "redscript bundle file to write")]
+    /// path to an output .redscripts file
+    #[argh(option, short = 'o')]
     output: PathBuf,
 }
 
-#[derive(Debug, Options)]
+/// lint redscript source code
+#[derive(Debug, FromArgs)]
+#[argh(subcommand, name = "lint")]
 struct LintOpts {
-    #[options(required, short = "s", help = "source file or directory")]
+    /// path to an input source file or directory
+    #[argh(option, short = 's')]
     src: Vec<PathBuf>,
-    #[options(short = "b", help = "redscript bundle file to use, optional")]
+    /// path to a .redscripts file to use for incremental compilation
+    #[argh(option, short = 'b')]
     bundle: Option<PathBuf>,
 }
 
@@ -71,36 +93,13 @@ fn setup_logger() {
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let command: Command = match Command::parse_args_default(&args) {
-        Ok(res) => res,
-        Err(err) => {
-            log::info!(
-                "{} \n\
-                 Usage: \n\
-                 {} \n\
-                 Compiler options: \n\
-                 {} \n\
-                 Decompiler options: \n\
-                 {} \n\
-                 Lint options \n\
-                 {}",
-                err,
-                Command::usage(),
-                CompileOpts::usage(),
-                DecompileOpts::usage(),
-                LintOpts::usage()
-            );
-            return Ok(());
-        }
-    };
+    let args: Args = argh::from_env();
 
-    match command {
-        Command::Decompile(opts) => decompile(opts)?,
-        Command::Compile(opts) => compile(opts)?,
-        Command::Lint(opts) => lint(opts)?,
+    match args.command {
+        Command::Decompile(opts) => Ok(decompile(opts)?),
+        Command::Compile(opts) => Ok(compile(opts)?),
+        Command::Lint(opts) => Ok(lint(opts)?),
     }
-    Ok(())
 }
 
 fn compile(opts: CompileOpts) -> Result<(), redscript_compiler::error::Error> {
@@ -134,7 +133,7 @@ fn decompile(opts: DecompileOpts) -> Result<(), redscript_decompiler::error::Err
         for entry in FileIndex::from_pool(pool).iter() {
             let path = opts.output.as_path().join(entry.path);
 
-            std::fs::create_dir_all(path.parent().unwrap())?;
+            fs::create_dir_all(path.parent().unwrap())?;
             let mut output = io::BufWriter::new(File::create(path)?);
             for def in entry.definitions {
                 if let Err(err) = write_definition(&mut output, def, pool, 0, mode) {
