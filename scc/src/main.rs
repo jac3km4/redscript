@@ -177,8 +177,6 @@ fn compile_scripts(
         fs::rename(&fallback_timestamp_path, &timestamp_path).context("Failed to rename the legacy timestamp file")?;
     }
 
-    dbg!(timestamp_path.exists());
-
     let mut ts_lock = RwLock::new(
         OpenOptions::new()
             .read(true)
