@@ -1326,6 +1326,7 @@ dependencies = [
 name = "redscript-cli"
 version = "0.5.16"
 dependencies = [
+ "anyhow",
  "argh",
  "flexi_logger",
  "log",
@@ -1493,6 +1494,7 @@ dependencies = [
 name = "scc"
 version = "0.5.16"
 dependencies = [
+ "anyhow",
  "assert_cmd",
  "assert_fs",
  "bpaf",

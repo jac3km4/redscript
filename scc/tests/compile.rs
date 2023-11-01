@@ -10,9 +10,9 @@ use scc::timestamp::*;
 #[test]
 fn no_args() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("scc")?;
-    cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("r6/scripts directory is required"));
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "Expected <-compile>, pass --help for usage information",
+    ));
     Ok(())
 }
 
@@ -20,9 +20,7 @@ fn no_args() -> Result<(), Box<dyn std::error::Error>> {
 fn help() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("scc")?;
     cmd.arg("--help");
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("Available positional items"));
+    cmd.assert().failure().stderr(predicate::str::contains("not compile\n"));
     Ok(())
 }
 
@@ -35,7 +33,7 @@ fn bundle_result() -> Result<(), Box<dyn std::error::Error>> {
     let predef = project_dir.join("resources/predef.redscripts");
     let predef_cmp = project_dir.join("resources/predef.redscripts.cmp");
     let bundle_path = temp.child("final.redscripts");
-    fs::copy(predef, &bundle_path).expect("Could not copy predef.redscripts");
+    fs::copy(predef, &bundle_path).expect("should copy predef.redscripts to bundle path");
 
     let script_file = temp.child("test.reds");
     script_file.write_str("class TestClass {}")?;

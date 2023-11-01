@@ -1,7 +1,8 @@
-use std::error::Error;
 use std::ffi::OsStr;
+use std::fs;
 use std::path::{Path, PathBuf};
 
+use anyhow::Context;
 use hashbrown::HashMap;
 use serde::Deserialize;
 
@@ -20,17 +21,19 @@ pub struct UserHints {
 }
 
 impl UserHints {
-    pub fn load(path: impl AsRef<Path>) -> Result<Self, Box<dyn Error>> {
+    pub fn load(path: impl AsRef<Path>) -> anyhow::Result<Self> {
         let mut hints = HashMap::new();
         if !path.as_ref().exists() {
             return Ok(Self { hints });
         }
-        let dir = std::fs::read_dir(path)?;
+
+        let dir = fs::read_dir(path).context("Failed to read the hints directory")?;
         for entry in dir {
-            let entry = entry?;
+            let entry = entry.context("Failed to read a hint directory entry")?;
             if entry.path().extension() == Some(OsStr::new("toml")) {
-                let contents = std::fs::read_to_string(entry.path())?;
-                let contents: HashMap<String, Vec<UserHint>> = toml::from_str(&contents)?;
+                let contents = fs::read_to_string(entry.path()).context("Failed to read a hint file")?;
+                let contents: HashMap<String, Vec<UserHint>> =
+                    toml::from_str(&contents).context("Failed to parse a hint file")?;
                 for (key, val) in contents {
                     hints.entry(key).or_default().extend(val);
                 }

@@ -3,7 +3,6 @@ use std::io;
 use std::time::SystemTime;
 
 use byteorder::*;
-use redscript_compiler::error::Error;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct CompileTimestamp {
@@ -11,19 +10,23 @@ pub struct CompileTimestamp {
 }
 
 impl CompileTimestamp {
-    pub fn read<R: io::Read + io::Seek>(input: &mut R) -> Result<Self, Error> {
-        input.seek(io::SeekFrom::Start(0))?;
+    pub fn read<R: io::Read + io::Seek>(input: &mut R) -> io::Result<Option<Self>> {
+        if input.seek(io::SeekFrom::End(0))? == 0 {
+            return Ok(None);
+        }
+
+        input.rewind()?;
         let nanos = input.read_u128::<LittleEndian>()?;
-        Ok(Self { nanos })
+        Ok(Some(Self { nanos }))
     }
 
-    pub fn write<W: io::Write + io::Seek>(&self, output: &mut W) -> Result<(), Error> {
-        output.seek(io::SeekFrom::Start(0))?;
+    pub fn write<W: io::Write + io::Seek>(&self, output: &mut W) -> io::Result<()> {
+        output.rewind()?;
         output.write_u128::<LittleEndian>(self.nanos)?;
         Ok(())
     }
 
-    pub fn of_cache_file(file: &File) -> Result<Self, Error> {
+    pub fn of_cache_file(file: &File) -> io::Result<Self> {
         let nanos = file
             .metadata()?
             .modified()?

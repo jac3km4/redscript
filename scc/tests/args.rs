@@ -103,12 +103,12 @@ fn file_directory_orders(
 
 #[test]
 fn get_help() {
-    println!(
-        "{}",
+    assert_eq!(
+        "not compile",
         Opts::get_parser()
             .run_inner(bpaf::Args::from(&["--help"]))
             .unwrap_err()
-            .unwrap_stdout()
+            .unwrap_stderr()
     );
 }
 
@@ -185,7 +185,7 @@ fn standard(
     .unwrap();
     let opts = Opts::load(&fixed_args.iter().map(String::as_str).collect::<Vec<&str>>()).unwrap();
 
-    self::assert_eq!(opts.scripts_dir, Some(PathBuf::from(scripts_dir)));
+    self::assert_eq!(opts.scripts_dir, PathBuf::from(scripts_dir));
     self::assert_eq!(opts.cache_file, cache_file.map(|s| PathBuf::from(s)));
     self::assert_eq!(opts.cache_dir, cache_dir.map(|s| PathBuf::from(s)));
     self::assert_eq!(opts.script_paths_file, script_paths_file.map(|s| PathBuf::from(s)));

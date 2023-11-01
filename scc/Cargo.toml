@@ -8,6 +8,7 @@ edition.workspace = true
 redscript = { path = "../core" }
 redscript-compiler = { path = "../compiler" }
 log.workspace = true
+anyhow.workspace = true
 hashbrown = { workspace = true, features = ["serde"] }
 byteorder.workspace = true
 flexi_logger.workspace = true

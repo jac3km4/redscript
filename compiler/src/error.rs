@@ -111,37 +111,35 @@ impl Cause {
     #[inline]
     pub fn code(&self) -> &'static str {
         match self {
-            Cause::PoolError(_) => "POOL_ERR",
-            Cause::TypeError(_, _)
-            | Cause::UnexpectedValueReturn
-            | Cause::UnexpectedVoidReturn(_)
-            | Cause::InvalidIntrinsicUse(_, _)
-            | Cause::UnificationFailed(_, _) => "TYPE_ERR",
-            Cause::FunctionNotFound(_) => "UNRESOLVED_FN",
-            Cause::MethodNotFound(_, _) => "UNRESOLVED_METHOD",
-            Cause::MemberNotFound(_, _) => "UNRESOLVED_MEMBER",
-            Cause::ClassNotFound(_) | Cause::UnresolvedType(_) => "UNRESOLVED_TYPE",
-            Cause::UnresolvedReference(_) => "UNRESOLVED_REF",
-            Cause::UnresolvedImport(_) | Cause::UnresolvedModule(_) => "UNRESOLVED_IMPORT",
-            Cause::InvalidArgCount(_, _) | Cause::NoMatchingOverload(_, _) => "NO_MATCHING_OVERLOAD",
-            Cause::InstantiatingAbstract(_) => "NEW_ABSTRACT",
-            Cause::TypeAnnotationRequired => "TYPE_ANN_REQUIRED",
-            Cause::InvalidAnnotationArgs => "INVALID_ANN_USE",
-            Cause::InvalidMemberAccess(_) => "INVALID_MEMBER_ACCESS",
-            Cause::VoidCannotBeUsed => "INVALID_VOID_USE",
-            Cause::InvalidStaticMethodCall(_) => "INVALID_STATIC_USE",
-            Cause::InvalidNonStaticMethodCall(_) => "INVALID_NONSTATIC_USE",
-            Cause::UnexpectedThis => "UNEXPECTED_THIS",
-            Cause::SymbolRedefinition => "SYM_REDEFINITION",
-            Cause::FieldRedefinition => "FIELD_REDEFINITION",
-            Cause::MissingBody => "MISSING_BODY",
-            Cause::UnexpectedBody => "UNEXPECTED_BODY",
-            Cause::UnexpectedNative => "UNEXPECTED_NATIVE",
-            Cause::UnsupportedPersistent(_) => "INVALID_PERSISTENT",
-            Cause::InvalidConstant => "INVALID_CONSTANT",
-            Cause::UnsupportedFeature(_) | Cause::UnsupportedOperation(_, _) | Cause::UnexpectedToken(_) => {
-                "UNSUPPORTED"
-            }
+            Self::PoolError(_) => "POOL_ERR",
+            Self::TypeError(_, _)
+            | Self::UnexpectedValueReturn
+            | Self::UnexpectedVoidReturn(_)
+            | Self::InvalidIntrinsicUse(_, _)
+            | Self::UnificationFailed(_, _) => "TYPE_ERR",
+            Self::FunctionNotFound(_) => "UNRESOLVED_FN",
+            Self::MethodNotFound(_, _) => "UNRESOLVED_METHOD",
+            Self::MemberNotFound(_, _) => "UNRESOLVED_MEMBER",
+            Self::ClassNotFound(_) | Self::UnresolvedType(_) => "UNRESOLVED_TYPE",
+            Self::UnresolvedReference(_) => "UNRESOLVED_REF",
+            Self::UnresolvedImport(_) | Self::UnresolvedModule(_) => "UNRESOLVED_IMPORT",
+            Self::InvalidArgCount(_, _) | Self::NoMatchingOverload(_, _) => "NO_MATCHING_OVERLOAD",
+            Self::InstantiatingAbstract(_) => "NEW_ABSTRACT",
+            Self::TypeAnnotationRequired => "TYPE_ANN_REQUIRED",
+            Self::InvalidAnnotationArgs => "INVALID_ANN_USE",
+            Self::InvalidMemberAccess(_) => "INVALID_MEMBER_ACCESS",
+            Self::VoidCannotBeUsed => "INVALID_VOID_USE",
+            Self::InvalidStaticMethodCall(_) => "INVALID_STATIC_USE",
+            Self::InvalidNonStaticMethodCall(_) => "INVALID_NONSTATIC_USE",
+            Self::UnexpectedThis => "UNEXPECTED_THIS",
+            Self::SymbolRedefinition => "SYM_REDEFINITION",
+            Self::FieldRedefinition => "FIELD_REDEFINITION",
+            Self::MissingBody => "MISSING_BODY",
+            Self::UnexpectedBody => "UNEXPECTED_BODY",
+            Self::UnexpectedNative => "UNEXPECTED_NATIVE",
+            Self::UnsupportedPersistent(_) => "INVALID_PERSISTENT",
+            Self::InvalidConstant => "INVALID_CONSTANT",
+            Self::UnsupportedFeature(_) | Self::UnsupportedOperation(_, _) | Self::UnexpectedToken(_) => "UNSUPPORTED",
         }
     }
 }

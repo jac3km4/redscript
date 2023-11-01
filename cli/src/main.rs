@@ -2,6 +2,7 @@ use std::fs::{self, File};
 use std::io;
 use std::path::{Path, PathBuf};
 
+use anyhow::Context;
 use argh::FromArgs;
 use flexi_logger::{LevelFilter, LogSpecBuilder, Logger};
 use redscript::bundle::ScriptBundle;
@@ -76,7 +77,7 @@ struct LintOpts {
     bundle: Option<PathBuf>,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> anyhow::Result<()> {
     setup_logger();
 
     run().map_err(|err| {
@@ -89,10 +90,10 @@ fn setup_logger() {
     Logger::with(LogSpecBuilder::new().default(LevelFilter::Info).build())
         .log_to_stdout()
         .start()
-        .expect("Failed to initialize the logger");
+        .expect("info logger should always start");
 }
 
-fn run() -> Result<(), Box<dyn std::error::Error>> {
+fn run() -> anyhow::Result<()> {
     let args: Args = argh::from_env();
 
     match args.command {
@@ -102,14 +103,22 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
-fn compile(opts: CompileOpts) -> Result<(), redscript_compiler::error::Error> {
+fn compile(opts: CompileOpts) -> anyhow::Result<()> {
     let mut bundle = load_bundle(&opts.bundle)?;
 
-    let files = Files::from_dirs(&opts.src, &SourceFilter::None)?;
+    let files = Files::from_dirs(&opts.src, &SourceFilter::None)
+        .map_err(|err| anyhow::anyhow!("Failed to load the source files: {err}"))?;
 
-    match CompilationUnit::new_with_defaults(&mut bundle.pool)?.compile_and_report(&files) {
+    match CompilationUnit::new_with_defaults(&mut bundle.pool)
+        .map_err(|err| anyhow::anyhow!("Failed to create the compilation unit: {err}"))?
+        .compile_and_report(&files)
+    {
         Ok(()) => {
-            bundle.save(&mut io::BufWriter::new(File::create(&opts.output)?))?;
+            let file = File::create(&opts.output).context("Failed to create a file at the specified output path")?;
+            bundle
+                .save(&mut io::BufWriter::new(file))
+                .context("Failed to write the script cache")?;
+
             log::info!("Output successfully saved to {}", opts.output.display());
         }
         Err(_) => {
@@ -119,30 +128,34 @@ fn compile(opts: CompileOpts) -> Result<(), redscript_compiler::error::Error> {
     Ok(())
 }
 
-fn decompile(opts: DecompileOpts) -> Result<(), redscript_decompiler::error::Error> {
+fn decompile(opts: DecompileOpts) -> anyhow::Result<()> {
     let bundle = load_bundle(&opts.input)?;
     let pool = &bundle.pool;
 
     let mode = match opts.mode.as_str() {
         "ast" => OutputMode::SyntaxTree,
         "bytecode" => OutputMode::Bytecode,
-        _ => OutputMode::Code { verbose: opts.verbose },
+        "code" => OutputMode::Code { verbose: opts.verbose },
+        _ => anyhow::bail!("Invalid output mode: {}", opts.mode),
     };
 
     if opts.dump_files {
         for entry in FileIndex::from_pool(pool).iter() {
             let path = opts.output.as_path().join(entry.path);
 
-            fs::create_dir_all(path.parent().unwrap())?;
-            let mut output = io::BufWriter::new(File::create(path)?);
+            fs::create_dir_all(path.parent().expect("entry path should have at least one component"))?;
+
+            let file = File::create(path).context("Failed to create a file at the specified output path")?;
+            let mut output = io::BufWriter::new(file);
             for def in entry.definitions {
                 if let Err(err) = write_definition(&mut output, def, pool, 0, mode) {
-                    log::error!("Failed to process definition at {:?}: {}", def, err);
+                    log::error!("Failed to process a definition: {err}");
                 }
             }
         }
     } else {
-        let mut output = io::BufWriter::new(File::create(&opts.output)?);
+        let file = File::create(&opts.output).context("Failed to create a file at the specified output path")?;
+        let mut output = io::BufWriter::new(file);
 
         for (_, def) in pool.roots().filter(|(_, def)| {
             matches!(&def.value, AnyDefinition::Class(_))
@@ -150,7 +163,7 @@ fn decompile(opts: DecompileOpts) -> Result<(), redscript_decompiler::error::Err
                 || matches!(&def.value, AnyDefinition::Function(_))
         }) {
             if let Err(err) = write_definition(&mut output, def, pool, 0, mode) {
-                log::error!("Failed to process definition at {:?}: {}", def, err);
+                log::error!("Failed to process a definition: {err}");
             }
         }
     }
@@ -158,14 +171,15 @@ fn decompile(opts: DecompileOpts) -> Result<(), redscript_decompiler::error::Err
     Ok(())
 }
 
-fn lint(opts: LintOpts) -> Result<(), redscript_compiler::error::Error> {
+fn lint(opts: LintOpts) -> anyhow::Result<()> {
     match opts.bundle {
         Some(bundle_path) => {
             let mut bundle = load_bundle(&bundle_path)?;
+            let files = Files::from_dirs(&opts.src, &SourceFilter::None)
+                .map_err(|err| anyhow::anyhow!("Failed to load the source files: {err}"))?;
 
-            let files = Files::from_dirs(&opts.src, &SourceFilter::None)?;
-
-            if CompilationUnit::new_with_defaults(&mut bundle.pool)?
+            if CompilationUnit::new_with_defaults(&mut bundle.pool)
+                .map_err(|err| anyhow::anyhow!("Failed to create the compilation unit: {err}"))?
                 .compile_and_report(&files)
                 .is_ok()
             {
@@ -177,10 +191,10 @@ fn lint(opts: LintOpts) -> Result<(), redscript_compiler::error::Error> {
     }
 }
 
-fn load_bundle(path: &Path) -> Result<ScriptBundle, io::Error> {
+fn load_bundle(path: &Path) -> anyhow::Result<ScriptBundle> {
     let (map, _) = Map::with_options()
         .open(path)
-        .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+        .context("Failed to open the script cache")?;
     let mut reader = io::Cursor::new(map.as_ref());
-    ScriptBundle::load(&mut reader)
+    ScriptBundle::load(&mut reader).context("Failed to load the script cache")
 }

@@ -1,9 +1,10 @@
+use std::fmt;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead};
-use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use anyhow::Context;
 use bpaf::ParseFailure;
 use fd_lock::RwLock;
 use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, LevelFilter, LogSpecBuilder, Logger, Naming};
@@ -46,43 +47,48 @@ fn main() -> ExitCode {
         }
     };
 
-    let scripts_dir = if let Some(dir) = opts.scripts_dir {
-        dir
+    let r6_dir = opts
+        .scripts_dir
+        .parent()
+        .expect("r6/scripts directory must have a parent")
+        .to_path_buf();
+
+    setup_logger(&r6_dir);
+
+    if let Err(err) = run(opts, r6_dir) {
+        log::error!("{}", err);
+        ExitCode::FAILURE
     } else {
-        eprintln!("Error: r6/scripts directory is required");
-        return ExitCode::FAILURE;
-    };
+        ExitCode::SUCCESS
+    }
+}
 
-    let r6_dir = scripts_dir.parent().unwrap();
-    let default_cache_dir = r6_dir.join("cache");
+fn run(opts: Opts, r6_dir: PathBuf) -> anyhow::Result<()> {
+    let manifest = ScriptManifest::load(&opts.scripts_dir)?.unwrap_or_default();
 
-    setup_logger(r6_dir);
-
-    let manifest = ScriptManifest::load(&scripts_dir).unwrap_or_else(|err| {
-        log::info!("Using defaults for the script manifest ({err})");
-        ScriptManifest::default()
-    });
-
-    let mut script_paths = vec![scripts_dir.clone()];
+    let mut script_paths = vec![opts.scripts_dir.clone()];
     match opts.script_paths_file.as_deref().map(load_script_paths).transpose() {
         Ok(loaded_paths) => script_paths.extend(loaded_paths.unwrap_or_default()),
         Err(err) => log::warn!("An invalid script paths file was provided: {err}, it will be ignored"),
     };
 
+    let default_cache_dir = r6_dir.join("cache");
     let (bundle_path, cache_dir, fallback_dir) = match (opts.cache_file.as_deref(), opts.cache_dir.as_deref()) {
         (Some(file), _) => {
-            log::info!("Bundle path provided: {}", file.to_str().unwrap());
+            log::info!("Script cache file path provided: {}", file.display());
             if opts.cache_dir.is_some() {
                 log::warn!("Custom cache directory also provided - ignoring");
             }
             (
                 file.to_path_buf(),
-                file.parent().unwrap().to_path_buf(),
+                file.parent()
+                    .ok_or_else(|| anyhow::anyhow!("script cache path should have a parent"))?
+                    .to_path_buf(),
                 Some(default_cache_dir.clone()),
             )
         }
         (None, Some(dir)) => {
-            log::info!("Custom cache directory provided: {}", dir.to_str().unwrap());
+            log::info!("Custom cache directory provided: {}", dir.display());
             (
                 dir.join(BUNDLE_FILE_NAME),
                 dir.to_path_buf(),
@@ -99,23 +105,28 @@ fn main() -> ExitCode {
     if !bundle_path.exists() {
         let base = get_base_bundle_path(&default_cache_dir);
         fs::create_dir_all(cache_dir).expect("Could not create the custom cache directory");
-        fs::copy(base, &bundle_path).expect("Could not copy base bundle");
+        fs::copy(base, &bundle_path).expect("Could not copy the base script cache file");
     }
 
     let files = Files::from_dirs(&script_paths, &manifest.source_filter()).expect("Could not load script sources");
 
-    match compile_scripts(&scripts_dir, &bundle_path, fallback_dir.as_deref(), &files) {
+    match compile_scripts(&r6_dir, &opts.scripts_dir, &bundle_path, fallback_dir.as_deref(), files) {
         Ok(_) => {
             log::info!("Output successfully saved to {}", bundle_path.display());
-            ExitCode::SUCCESS
+            Ok(())
         }
         Err(err) => {
-            let content = error_message(err, &files, r6_dir);
+            let content = format!(
+                "REDScript compilation failed. The game will start, but none of the scripts will take effect. \
+                Read below for an error report.\n\n\
+                {err}\n\
+                If you need more information, consult the logs."
+            );
             #[cfg(feature = "popup")]
-            msgbox::create("Compilation error", &content, msgbox::IconType::Error).unwrap();
+            msgbox::create("Compilation error", &content, msgbox::IconType::Error).ok();
 
-            log::error!("Compilation error: {}", content);
-            ExitCode::FAILURE
+            log::error!("{}", content);
+            Ok(())
         }
     }
 }
@@ -144,40 +155,53 @@ fn setup_logger(r6_dir: &Path) {
         .rotate(Criterion::Age(Age::Day), Naming::Timestamps, Cleanup::KeepLogFiles(4))
         .format(|out, time, msg| write!(out, "[{} - {}] {}", msg.level(), time.now().to_rfc2822(), msg.args()))
         .start()
-        .expect("Failed to initialize the logger");
+        .expect("the logger should always start");
 }
 
 fn compile_scripts(
+    r6_dir: &Path,
     script_dir: &Path,
     bundle_path: &Path,
     fallback_cache_dir: Option<&Path>,
-    files: &Files,
-) -> Result<(), Error> {
+    files: Files,
+) -> anyhow::Result<()> {
     let backup_path = bundle_path.with_extension(BACKUP_FILE_EXT);
     let fallback_backup_path = fallback_cache_dir.map(|dir| dir.join(BACKUP_FILE_NAME));
     let timestamp_path = bundle_path.with_extension(TIMESTAMP_FILE_EXT);
-    let fallback_timestamp_path = bundle_path.parent().unwrap().join(LEGACY_TIMESTAMP_FILE_NAME);
+    let fallback_timestamp_path = bundle_path
+        .parent()
+        .expect("script cache path should have a parent")
+        .join(LEGACY_TIMESTAMP_FILE_NAME);
 
     if !timestamp_path.exists() && fallback_timestamp_path.exists() {
-        fs::rename(&fallback_timestamp_path, &timestamp_path).expect("Error renaming timestamp");
+        fs::rename(&fallback_timestamp_path, &timestamp_path).context("Failed to rename the legacy timestamp file")?;
     }
+
+    dbg!(timestamp_path.exists());
 
     let mut ts_lock = RwLock::new(
         OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
-            .open(&timestamp_path)?,
+            .open(&timestamp_path)
+            .context("Failed to open the timestamp file")?,
     );
-    let mut ts_file = ts_lock.write()?;
+
+    let mut ts_file = ts_lock
+        .write()
+        .context("Failed to acquire a write lock on the timestamp file")?;
 
     if let Some(fallback_path) = fallback_backup_path.filter(|fallback| fallback.exists() && !backup_path.exists()) {
         log::info!("Re-initializing backup file from {}", fallback_path.display());
-        fs::copy(fallback_path, &backup_path)?;
+        fs::copy(fallback_path, &backup_path).context("Failed to copy the backup file")?;
     }
 
-    let write_timestamp = CompileTimestamp::of_cache_file(&File::open(bundle_path)?)?;
-    let saved_timestamp = CompileTimestamp::read(&mut *ts_file).ok();
+    let write_timestamp = File::open(bundle_path)
+        .and_then(|f| CompileTimestamp::of_cache_file(&f))
+        .context("Failed to obtain a timestamp of the cache file")?;
+    let saved_timestamp =
+        CompileTimestamp::read(&mut *ts_file).context("Failed to read the existing timestamp file")?;
 
     match saved_timestamp {
         None if backup_path.exists() => {
@@ -188,7 +212,7 @@ fn compile_scripts(
                 "Redscript cache file is not ours, copying it to {}",
                 backup_path.display()
             );
-            fs::copy(bundle_path, &backup_path)?;
+            fs::copy(bundle_path, &backup_path).context("Failed to copy the cache file")?;
         }
         Some(_) if !backup_path.exists() => {
             log::warn!(
@@ -203,11 +227,14 @@ fn compile_scripts(
     let mut bundle = {
         let (map, _) = vmap::Map::with_options()
             .open(backup_path)
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
-        ScriptBundle::load(&mut io::Cursor::new(map.as_ref()))?
+            .context("Failed to open the original script cache file")?;
+        ScriptBundle::load(&mut io::Cursor::new(map.as_ref())).context("Failed to load the original script cache")?
     };
     #[cfg(not(feature = "mmap"))]
-    let mut bundle = ScriptBundle::load(&mut io::BufReader::new(File::open(backup_path)?))?;
+    let mut bundle = {
+        let file = File::open(backup_path).context("Failed to open the original script cache file")?;
+        ScriptBundle::load(&mut io::BufReader::new(file)).context("Failed to load the original script cache")?
+    };
 
     if !files.is_empty() {
         log::info!(
@@ -216,53 +243,69 @@ fn compile_scripts(
             files.display(script_dir)
         );
     }
-    CompilationUnit::new(&mut bundle.pool, vec![])?.compile_and_report(files)?;
-    log::info!("Compilation complete");
+    match CompilationUnit::new(&mut bundle.pool, vec![])
+        .map_err(|err| anyhow::anyhow!("Failed to create the compilation unit: {err}"))?
+        .compile_and_report(&files)
+    {
+        Ok(_) => {
+            log::info!("Compilation complete");
 
-    let mut file = File::create(bundle_path)?;
-    bundle.save(&mut io::BufWriter::new(&mut file))?;
-    file.sync_all()?;
+            let mut file = File::create(bundle_path)?;
+            bundle.save(&mut io::BufWriter::new(&mut file))?;
+            file.sync_all()?;
 
-    CompileTimestamp::of_cache_file(&file)?.write(&mut *ts_file)?;
+            CompileTimestamp::of_cache_file(&file)?.write(&mut *ts_file)?;
+            Ok(())
+        }
+        Err(err) => {
+            let hints = UserHints::load(r6_dir.join("config").join(USER_HINTS_DIR)).unwrap_or_else(|err| {
+                log::error!("Failed to parse one of the user hints TOML files: {}", err);
+                UserHints::default()
+            });
 
-    Ok(())
-}
-
-#[derive(Debug, Deserialize, Default)]
-struct ScriptManifest {
-    exclusions: HashSet<String>,
-}
-
-impl ScriptManifest {
-    pub fn load(script_dir: &Path) -> Result<Self, String> {
-        let path = script_dir.join("redscript.toml");
-        let contents = fs::read_to_string(path).map_err(|err| match err.kind() {
-            io::ErrorKind::NotFound => "manifest not present".to_owned(),
-            _ => err.to_string(),
-        })?;
-
-        let manifest = toml::from_str(&contents).map_err(|err| format!("manifest parse error: {err}"))?;
-        Ok(manifest)
-    }
-
-    pub fn source_filter(self) -> SourceFilter {
-        SourceFilter::Exclude(self.exclusions)
+            Err(ErrorReport::from_error(err, script_dir.to_path_buf(), files, hints)?.into())
+        }
     }
 }
 
-fn error_message(error: Error, files: &Files, r6_dir: &Path) -> String {
-    fn detailed_message(spans: &[(&'static str, Span)], files: &Files, r6_dir: &Path) -> Option<String> {
-        let scripts_dir = r6_dir.join("scripts");
-        let hints = UserHints::load(r6_dir.join("config").join(USER_HINTS_DIR)).unwrap_or_else(|err| {
-            log::error!("Failed to parse one of the user actions TOML files: {}", err);
-            UserHints::default()
-        });
+#[derive(Debug)]
+struct ErrorReport {
+    scripts_dir: PathBuf,
+    files: Files,
+    hints: UserHints,
+    spans: Vec<(&'static str, Span)>,
+}
+
+impl ErrorReport {
+    fn from_error(error: Error, scripts_dir: PathBuf, files: Files, hints: UserHints) -> anyhow::Result<Self> {
+        let spans = match error {
+            Error::CompileError(code, span) => {
+                vec![(code.code(), span)]
+            }
+            Error::SyntaxError(_, span) => vec![("SYNTAX_ERR", span)],
+            Error::CteError(_, span) => vec![("CTE_ERR", span)],
+            Error::MultipleErrors(spans) => spans,
+            Error::IoError(err) => anyhow::bail!("There's been an I/O error: {err}"),
+            Error::PoolError(err) => anyhow::bail!("There's been a constant pool error: {err}"),
+        };
+
+        Ok(Self {
+            scripts_dir,
+            files,
+            hints,
+            spans,
+        })
+    }
+}
+
+impl fmt::Display for ErrorReport {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut offending_mods = HashSet::new();
         let mut hints_matched = HashMap::new();
 
-        for &(code, span) in spans {
-            let loc = files.lookup(span)?;
-            let Ok(rel_path) = loc.file.path().strip_prefix(&scripts_dir) else {
+        for &(code, span) in &self.spans {
+            let loc = self.files.lookup(span).expect("span should point to a source map file");
+            let Ok(rel_path) = loc.file.path().strip_prefix(&self.scripts_dir) else {
                 continue;
             };
             let cause = rel_path
@@ -272,43 +315,62 @@ fn error_message(error: Error, files: &Files, r6_dir: &Path) -> String {
                 .to_string_lossy();
 
             offending_mods.insert(cause);
-            if let Some(act) = hints.get_by_error(code, rel_path, loc.file.source_slice(span), loc.enclosing_line()) {
+            if let Some(act) =
+                self.hints
+                    .get_by_error(code, rel_path, loc.file.source_slice(span), loc.enclosing_line())
+            {
                 hints_matched.entry(&act.id).or_insert(act);
             }
         }
 
-        let offending_mods_msg: String = offending_mods.iter().flat_map(|file| ["- ", file, "\n"]).collect();
-        let hints_msg: Option<String> = hints_matched
-            .is_empty()
-            .not()
-            .then(|| hints_matched.values().flat_map(|a| ["- ", &a.message, "\n"]).collect());
-
-        let res = if let Some(hints_msg) = hints_msg {
-            format!(
-                "This is caused by errors in:\n\
-                {offending_mods_msg}\
-                Based on the errors found, the suggested actions are:\n\
-                {hints_msg}\
-                If you need more information, consult the logs."
-            )
+        if !offending_mods.is_empty() {
+            writeln!(f, "Errors have been found in:")?;
+            for mod_ in &offending_mods {
+                writeln!(f, "- {}", mod_)?;
+            }
+        }
+        if !hints_matched.is_empty() {
+            writeln!(
+                f,
+                "One or more of the errors found has a known solution. \
+                Please follow the instructions below to resolve it:"
+            )?;
+            for act in hints_matched.values() {
+                writeln!(f, "- {}", act.message)?;
+            }
         } else {
-            format!(
-                "This is caused by errors in:\n\
-                {offending_mods_msg}\
-                You can try updating or removing these scripts to resolve the issue. If you need more information, consult the logs."
-            )
-        };
-        Some(res)
+            writeln!(
+                f,
+                "You should check if your REDScript mods are outdated and update them if necessary. \
+                They may also be incompatible with the current version of the game, \
+                in which case you should remove them and try again."
+            )?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for ErrorReport {}
+
+#[derive(Debug, Deserialize, Default)]
+struct ScriptManifest {
+    exclusions: HashSet<String>,
+}
+
+impl ScriptManifest {
+    pub fn load(script_dir: &Path) -> anyhow::Result<Option<Self>> {
+        let path = script_dir.join("redscript.toml");
+        match fs::read_to_string(path) {
+            Ok(contents) => {
+                let manifest = toml::from_str(&contents).context("Failed to parse the redscript manifest TOML file")?;
+                Ok(Some(manifest))
+            }
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(err) => anyhow::bail!("Failed to read the redscript manifest TOML file: {err}"),
+        }
     }
 
-    let str = match error {
-        Error::CompileError(code, span) => detailed_message(&[(code.code(), span)], files, r6_dir).unwrap_or_default(),
-        Error::SyntaxError(_, span) => detailed_message(&[("SYNTAX_ERR", span)], files, r6_dir).unwrap_or_default(),
-        Error::MultipleErrors(spans) => detailed_message(&spans, files, r6_dir).unwrap_or_default(),
-        Error::IoError(err) => format!("This is caused by an I/O error: {err}"),
-        Error::PoolError(err) => format!("This is caused by a constant pool error: {err}"),
-        _ => String::new(),
-    };
-
-    format!("REDScript compilation failed. The game will start, but none of the scripts will take effect. {str}")
+    pub fn source_filter(self) -> SourceFilter {
+        SourceFilter::Exclude(self.exclusions)
+    }
 }
