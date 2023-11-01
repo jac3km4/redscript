@@ -1341,6 +1341,7 @@ dependencies = [
 name = "redscript-cli"
 version = "0.6.0-M4"
 dependencies = [
+ "anyhow",
  "argh",
  "flexi_logger",
  "log",
@@ -1513,6 +1514,7 @@ dependencies = [
 name = "scc"
 version = "0.6.0-M4"
 dependencies = [
+ "anyhow",
  "assert_cmd",
  "assert_fs",
  "bpaf",
@@ -1529,7 +1531,6 @@ dependencies = [
  "rstest",
  "rstest_reuse",
  "serde",
- "thiserror",
  "toml 0.8.6",
  "vmap",
  "winsplit",

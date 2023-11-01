@@ -51,7 +51,7 @@ pub fn fix_args(args: Vec<String>) -> Vec<String> {
 
 #[derive(Clone, Debug)]
 pub struct Opts {
-    pub scripts_dir: Option<PathBuf>,
+    pub scripts_dir: PathBuf,
     pub cache_dir: Option<PathBuf>,
     pub optimize: bool,
     pub threads: u8,
@@ -127,12 +127,12 @@ fn slong(name: &'static str, arg_name: &'static str, help: &'static str) -> impl
         .catch()
 }
 
-fn scripts_dir() -> impl Parser<Option<PathBuf>> {
+fn scripts_dir() -> impl Parser<PathBuf> {
     let tag = any::<String>("-compile")
         .help("Compile scripts to blob")
         .guard(|s| s == "-compile", "not compile");
     let value = positional::<PathBuf>("SCRIPT_PATH").guard(is_not_slong, "starts with -");
-    construct!(tag, value).adjacent().map(|pair| pair.1).optional().catch()
+    construct!(tag, value).adjacent().map(|pair| pair.1)
 }
 
 fn script_paths_file() -> impl Parser<Option<PathBuf>> {

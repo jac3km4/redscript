@@ -11,7 +11,7 @@ redscript = { path = "../core" }
 redscript-compiler = { path = "../compiler" }
 log.workspace = true
 byteorder.workspace = true
-thiserror.workspace = true
+anyhow.workspace = true
 flexi_logger.workspace = true
 hashbrown = { workspace = true, features = ["serde"] }
 serde = { version = "1", features = ["derive"] }

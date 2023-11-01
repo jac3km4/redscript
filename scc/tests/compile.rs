@@ -10,9 +10,9 @@ use scc::timestamp::*;
 #[test]
 fn no_args() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("scc")?;
-    cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("r6/scripts directory is required"));
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "Expected <-compile>, pass --help for usage information",
+    ));
     Ok(())
 }
 
@@ -20,9 +20,7 @@ fn no_args() -> Result<(), Box<dyn std::error::Error>> {
 fn help() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("scc")?;
     cmd.arg("--help");
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("Available positional items"));
+    cmd.assert().failure().stderr(predicate::str::contains("not compile\n"));
     Ok(())
 }
 
