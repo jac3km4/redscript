@@ -1,10 +1,12 @@
 use std::ffi::OsStr;
+use std::fmt::Display;
 use std::path::{Path, PathBuf};
-use std::{fmt, io, iter};
+use std::{fmt, fs, io, iter};
 
 use hashbrown::HashSet;
 use itertools::{Either, Itertools};
 use redscript::ast::{Pos, Span};
+use redscript::io::DeferredFmt;
 use walkdir::{DirEntry, WalkDir};
 
 #[derive(Debug, Default)]
@@ -29,7 +31,7 @@ impl Files {
     pub fn from_files(paths: impl Iterator<Item = PathBuf>) -> io::Result<Self> {
         let mut files = Self::default();
         for path in paths {
-            let sources = std::fs::read_to_string(&path)?;
+            let sources = fs::read_to_string(&path)?;
             files.add(path, sources);
         }
         Ok(files)
@@ -90,8 +92,14 @@ impl Files {
         self.entries.is_empty()
     }
 
-    pub fn display<'p>(&self, root: &'p Path) -> FilesDispay<'_, 'p> {
-        FilesDispay { files: self, root }
+    pub fn display<'a>(&'a self, root: &'a Path) -> impl fmt::Display + 'a {
+        DeferredFmt::new(move |f: &mut fmt::Formatter<'_>| {
+            self.entries
+                .iter()
+                .map(|entry| entry.path.strip_prefix(root).unwrap_or(&entry.path).display())
+                .format("\n")
+                .fmt(f)
+        })
     }
 }
 
@@ -106,23 +114,6 @@ fn filtered_file_iter<'a>(path: &'a Path, filter: &'a SourceFilter) -> impl Iter
             .map(DirEntry::into_path)
             .filter(move |p| filter.apply(p.strip_prefix(path).unwrap()));
         Either::Right(iter)
-    }
-}
-
-#[derive(Debug)]
-pub struct FilesDispay<'a, 'p> {
-    files: &'a Files,
-    root: &'p Path,
-}
-
-impl<'a, 'p> fmt::Display for FilesDispay<'a, 'p> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.files
-            .entries
-            .iter()
-            .map(|entry| entry.path.strip_prefix(self.root).unwrap_or(&entry.path).display())
-            .format("\n")
-            .fmt(f)
     }
 }
 

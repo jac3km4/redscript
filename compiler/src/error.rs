@@ -3,12 +3,13 @@ use std::fmt;
 use itertools::Itertools;
 use peg::error::ExpectedSet;
 use redscript::ast::Span;
+use redscript::io::DeferredFmt;
 use redscript::{str_fmt, Str};
 use thiserror::Error;
 #[cfg(feature = "pretty-errors")]
 use yansi::Paint;
 
-use crate::source_map::{Files, SourceLoc};
+use crate::source_map::Files;
 use crate::type_repo::{OverloadEntry, TypeId};
 use crate::typer::{Data, Mono};
 
@@ -79,9 +80,32 @@ impl<'id> CompileError<'id> {
         }
     }
 
-    pub fn display(self, files: &Files) -> DisplayError<'_, 'id> {
-        let location = files.lookup(self.span()).expect("Unknown file");
-        DisplayError { location, error: self }
+    pub fn display<'f: 'id>(self, files: &'f Files) -> impl fmt::Display + 'id {
+        let location = files
+            .lookup(self.span())
+            .expect("span should point to a source map file");
+
+        DeferredFmt::new(move |f: &mut fmt::Formatter<'_>| {
+            let line = location.enclosing_line().trim_end().replace('\t', " ");
+            let underline_len = if location.start.line == location.end.line {
+                (location.end.col - location.start.col).max(1)
+            } else {
+                3
+            };
+            const EMPTY: &str = "";
+
+            #[cfg(feature = "pretty-errors")]
+            writeln!(f, "At {}:", Paint::blue(&self.location).underline())?;
+            #[cfg(not(feature = "pretty-errors"))]
+            writeln!(f, "At {}:", location)?;
+            writeln!(f, "{line}")?;
+            writeln!(f, "{EMPTY:0$}{EMPTY:^<underline_len$}", location.start.col)?;
+            #[cfg(feature = "pretty-errors")]
+            writeln!(f, "{}", Paint::red(&self.error).bold())?;
+            #[cfg(not(feature = "pretty-errors"))]
+            writeln!(f, "{}", &self)?;
+            Ok(())
+        })
     }
 
     pub(crate) fn for_overloads<'a>(
@@ -130,36 +154,6 @@ pub enum TypeError<'id> {
     UnresolvedType(Str),
     #[error("expected {1} type arguments")]
     InvalidNumberOfTypeArgs(usize, usize),
-}
-
-#[derive(Debug)]
-pub struct DisplayError<'file, 'id> {
-    location: SourceLoc<'file>,
-    error: CompileError<'id>,
-}
-
-impl fmt::Display for DisplayError<'_, '_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let line = self.location.enclosing_line().trim_end().replace('\t', " ");
-        let underline_len = if self.location.start.line == self.location.end.line {
-            (self.location.end.col - self.location.start.col).max(1)
-        } else {
-            3
-        };
-        const EMPTY: &str = "";
-
-        #[cfg(feature = "pretty-errors")]
-        writeln!(f, "At {}:", Paint::blue(&self.location).underline())?;
-        #[cfg(not(feature = "pretty-errors"))]
-        writeln!(f, "At {}:", self.location)?;
-        writeln!(f, "{line}")?;
-        writeln!(f, "{EMPTY:0$}{EMPTY:^<underline_len$}", self.location.start.col)?;
-        #[cfg(feature = "pretty-errors")]
-        writeln!(f, "{}", Paint::red(&self.error).bold())?;
-        #[cfg(not(feature = "pretty-errors"))]
-        writeln!(f, "{}", &self.error)?;
-        Ok(())
-    }
 }
 
 #[derive(Debug, Error)]
