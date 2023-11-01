@@ -440,7 +440,7 @@ impl<'a> Assembler<'a> {
         let typ = type_of(expr, scope, pool).ok()?;
         match typ {
             TypeId::ScriptRef(_) => match expr {
-                Expr::Call(Callable::Intrinsic(IntrinsicOp::AsRef, _), _, args, _) => match args.get(0) {
+                Expr::Call(Callable::Intrinsic(IntrinsicOp::AsRef, _), _, args, _) => match args.first() {
                     Some(expr) => Some(Self::is_rvalue(expr)),
                     _ => Some(true),
                 },
