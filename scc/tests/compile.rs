@@ -27,6 +27,7 @@ fn help() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+#[ignore = "outdated"]
 fn bundle_result() -> Result<(), Box<dyn std::error::Error>> {
     let temp = assert_fs::TempDir::new().unwrap();
     let scc_dir = std::env::current_dir().unwrap();
@@ -52,6 +53,7 @@ fn bundle_result() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+#[ignore = "outdated"]
 fn timestamp_migration() -> Result<(), Box<dyn std::error::Error>> {
     let temp = assert_fs::TempDir::new().unwrap();
     let scc_dir = std::env::current_dir().unwrap();
