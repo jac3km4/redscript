@@ -5,6 +5,7 @@ use peg::error::ExpectedSet;
 use redscript::ast::Span;
 use redscript::{str_fmt, Str};
 use thiserror::Error;
+#[cfg(feature = "pretty-errors")]
 use yansi::Paint;
 
 use crate::source_map::{Files, SourceLoc};
@@ -146,10 +147,18 @@ impl fmt::Display for DisplayError<'_, '_> {
             3
         };
         const EMPTY: &str = "";
+
+        #[cfg(feature = "pretty-errors")]
         writeln!(f, "At {}:", Paint::blue(&self.location).underline())?;
+        #[cfg(not(feature = "pretty-errors"))]
+        writeln!(f, "At {}:", self.location)?;
         writeln!(f, "{line}")?;
         writeln!(f, "{EMPTY:0$}{EMPTY:^<underline_len$}", self.location.start.col)?;
-        writeln!(f, "{}", Paint::red(&self.error).bold())
+        #[cfg(feature = "pretty-errors")]
+        writeln!(f, "{}", Paint::red(&self.error).bold())?;
+        #[cfg(not(feature = "pretty-errors"))]
+        writeln!(f, "{}", &self.error)?;
+        Ok(())
     }
 }
 
