@@ -70,12 +70,7 @@ impl Definition {
             AnyDefinition::Class(ref class) => class
                 .methods
                 .iter()
-                .filter_map(|idx| {
-                    pool.function(*idx)
-                        .ok()
-                        .and_then(|fun| fun.source.as_ref())
-                        .map(|source| source.line)
-                })
+                .filter_map(|&idx| pool[idx].source.as_ref().map(|source| source.line))
                 .min(),
             _ => None,
         }
@@ -556,7 +551,7 @@ impl Encode for SourceFile {
     fn encode<O: io::Write>(&self, output: &mut O) -> io::Result<()> {
         output.encode(&self.id)?;
         output.encode(&self.path_hash)?;
-        output.encode_str_prefixed::<u16>(&self.path.to_str().unwrap().replace('/', "\\"))
+        output.encode_str_prefixed::<u16>(&self.path.to_string_lossy().replace('/', "\\"))
     }
 }
 

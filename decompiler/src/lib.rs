@@ -46,11 +46,11 @@ impl<'a> Decompiler<'a> {
 
     fn decompiled(function: &Function, pool: &'a ConstantPool) -> Result<Seq<RawAst>, Error> {
         let mut locals = BTreeMap::new();
-        for local_index in &function.locals {
-            let local = pool.local(*local_index)?;
-            let name = pool.def_name(*local_index)?;
-            let type_ = TypeName::from_repr(&pool.def_name(local.type_)?);
-            locals.insert(name, type_);
+        for &local_index in &function.locals {
+            let local = &pool[local_index];
+            let name = pool.def_name(local_index)?;
+            let type_ = TypeName::from_repr(pool.def_name(local.type_)?);
+            locals.insert(name.into(), type_);
         }
 
         let mut decompiler = Decompiler::new(function.code.cursor(), function.base_method, pool);
@@ -63,7 +63,7 @@ impl<'a> Decompiler<'a> {
     }
 
     fn definition_ident<A>(&self, index: PoolIndex<A>) -> Result<Ident, Error> {
-        Ok(self.pool.def_name(index)?)
+        Ok(self.pool.def_name(index)?.into())
     }
 
     fn consume_n(&mut self, n: usize) -> Result<Vec<Expr<RawAst>>, Error> {
@@ -251,20 +251,20 @@ impl<'a> Decompiler<'a> {
             &Instr::F32Const(val) => Expr::Constant(Constant::F32(val), None),
             &Instr::F64Const(val) => Expr::Constant(Constant::F64(val), None),
             &Instr::StringConst(idx) => {
-                let str = self.pool.strings.get(idx)?;
-                Expr::Constant(Constant::String(Literal::String, str), None)
+                let str = self.pool.strings().get(idx)?;
+                Expr::Constant(Constant::String(Literal::String, str.into()), None)
             }
             &Instr::NameConst(idx) => {
-                let str = self.pool.names.get(idx)?;
-                Expr::Constant(Constant::String(Literal::Name, str), None)
+                let str = self.pool.names().get(idx)?;
+                Expr::Constant(Constant::String(Literal::Name, str.into()), None)
             }
             &Instr::TweakDbIdConst(idx) => {
-                let str = self.pool.tweakdb_ids.get(idx)?;
-                Expr::Constant(Constant::String(Literal::TweakDbId, str), None)
+                let str = self.pool.tweakdb_ids().get(idx)?;
+                Expr::Constant(Constant::String(Literal::TweakDbId, str.into()), None)
             }
             &Instr::ResourceConst(idx) => {
-                let str = self.pool.resources.get(idx)?;
-                Expr::Constant(Constant::String(Literal::Resource, str), None)
+                let str = self.pool.resources().get(idx)?;
+                Expr::Constant(Constant::String(Literal::Resource, str.into()), None)
             }
             Instr::TrueConst => Expr::Constant(Constant::Bool(true), None),
             Instr::FalseConst => Expr::Constant(Constant::Bool(false), None),
@@ -307,24 +307,28 @@ impl<'a> Decompiler<'a> {
             }
             &Instr::Construct(n, class) => {
                 let params = self.consume_n(n.into())?;
-                Expr::New(TypeName::without_args(self.pool.def_name(class)?), params.into(), None)
+                Expr::New(
+                    TypeName::without_args(self.pool.def_name(class)?.into()),
+                    params.into(),
+                    None,
+                )
             }
             &Instr::InvokeStatic(_, line, idx, _) => {
                 let def = self.pool.definition(idx)?;
-                let fun = self.pool.function(idx)?;
-                let name = self.pool.names.get(def.name)?;
+                let fun = &self.pool[idx];
+                let name = self.pool.names().get(def.name)?;
                 let params = self.consume_params()?;
                 let expr = if let Some(ctx) = context {
-                    Expr::Member(ctx.into(), name, None)
+                    Expr::Member(ctx.into(), name.into(), None)
                 } else if fun.flags.is_static() {
                     if def.parent.is_undefined() {
-                        if name.as_ref().starts_with("Cast;") {
+                        if name.starts_with("Cast;") {
                             let ret_type = fun
                                 .return_type
                                 .ok_or(Error::DecompileError("Cast without return type"))?;
-                            let type_name = TypeName::from_repr(&self.pool.def_name(ret_type)?);
+                            let type_name = TypeName::from_repr(self.pool.def_name(ret_type)?);
                             return Ok(Expr::Call(
-                                Expr::Ident(name, None).into(),
+                                Expr::Ident(name.into(), None).into(),
                                 (),
                                 [type_name].into(),
                                 params.into(),
@@ -332,10 +336,10 @@ impl<'a> Decompiler<'a> {
                                 Some(line),
                             ));
                         };
-                        Expr::Ident(name, None)
+                        Expr::Ident(name.into(), None)
                     } else {
                         let class_name = self.pool.def_name(def.parent)?;
-                        Expr::Member(Expr::Ident(class_name, None).into(), name, None)
+                        Expr::Member(Expr::Ident(class_name.into(), None).into(), name.into(), None)
                     }
                 } else {
                     let ctx = if self.base_method == Some(idx) {
@@ -343,7 +347,7 @@ impl<'a> Decompiler<'a> {
                     } else {
                         Expr::This(None)
                     };
-                    Expr::Member(ctx.into(), name, None)
+                    Expr::Member(ctx.into(), name.into(), None)
                 };
                 Expr::Call(expr.into(), (), [].into(), params.into(), (), Some(line))
                 // if let AnyDefinition::Function(ref fun) = def.value {
@@ -351,12 +355,12 @@ impl<'a> Decompiler<'a> {
                 // }
             }
             &Instr::InvokeVirtual(_, line, idx, _) => {
-                let name = self.pool.names.get(idx)?;
+                let name = self.pool.names().get(idx)?;
                 let params = self.consume_params()?;
                 let expr = if let Some(ctx) = context {
-                    Expr::Member(ctx.into(), name, None)
+                    Expr::Member(ctx.into(), name.into(), None)
                 } else {
-                    Expr::Member(Expr::This(None).into(), name, None)
+                    Expr::Member(Expr::This(None).into(), name.into(), None)
                 };
                 Expr::Call(expr.into(), (), [].into(), params.into(), (), Some(line))
             }
@@ -384,7 +388,11 @@ impl<'a> Decompiler<'a> {
             Instr::NotEquals(_) | Instr::RefStringNotEqualsString(_) | Instr::StringNotEqualsRefString(_) => {
                 self.consume_intrisnic(Intrinsic::NotEquals)?
             }
-            &Instr::New(class) => Expr::New(TypeName::without_args(self.pool.def_name(class)?), [].into(), None),
+            &Instr::New(class) => Expr::New(
+                TypeName::without_args(self.pool.def_name(class)?.into()),
+                [].into(),
+                None,
+            ),
             Instr::Delete => self.consume_call("Delete", 1)?,
             Instr::This => Expr::This(None),
             Instr::ArrayClear(_) => self.consume_intrisnic(Intrinsic::ArrayClear)?,
@@ -425,18 +433,18 @@ impl<'a> Decompiler<'a> {
             }
             Instr::EnumToI32(_, _) => self.consume_intrisnic(Intrinsic::EnumInt)?,
             &Instr::I32ToEnum(typ, _) => {
-                let type_name = TypeName::from_repr(&self.pool.def_name(typ)?);
+                let type_name = TypeName::from_repr(self.pool.def_name(typ)?);
                 self.consume_intrisnic_typed(Intrinsic::IntEnum, vec![type_name])?
             }
             &Instr::DynamicCast(typ, _) => {
-                let type_name = TypeName::from_repr(&self.pool.def_name(typ)?);
+                let type_name = TypeName::from_repr(self.pool.def_name(typ)?);
                 let expr = self.consume()?;
                 Expr::DynCast(type_name, Box::new(expr), None)
             }
             Instr::ToString(_) | Instr::VariantToString => self.consume_intrisnic(Intrinsic::ToString)?,
             Instr::ToVariant(_) => self.consume_intrisnic(Intrinsic::ToVariant)?,
             &Instr::FromVariant(typ) => {
-                let type_name = TypeName::from_repr(&self.pool.def_name(typ)?);
+                let type_name = TypeName::from_repr(self.pool.def_name(typ)?);
                 self.consume_intrisnic_typed(Intrinsic::FromVariant, vec![type_name])?
             }
             Instr::VariantIsRef => self.consume_intrisnic(Intrinsic::VariantIsRef)?,

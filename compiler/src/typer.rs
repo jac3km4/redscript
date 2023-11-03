@@ -144,7 +144,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 if let Some(prev) = locals.insert((*name).clone(), info) {
                     locals.insert(names::shadowed(locals.len()), prev);
                 }
-                Ok((Expr::Declare(local, Some(typ.into()), expr, *span), InferType::UNIT))
+                Ok((Expr::Declare(local, Some(typ.into()), expr, *span), InferType::VOID))
             }
             Expr::DynCast(target, expr, span) => {
                 let (expr, _) = self.typeck(expr, locals)?;
@@ -153,8 +153,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                     .types
                     .get(target.name())
                     .ok_or_else(|| CompileError::UnresolvedVar(target.name().clone(), *span))?;
-                let data_type = self.repo.get_type(id).unwrap();
-                let type_args: Rc<[_]> = data_type
+                let type_args: Rc<[_]> = self.repo[id]
                     .type_vars()
                     .iter()
                     .map(|var| InferType::from_var_poly(var, self.env.vars, &mut self.id_alloc))
@@ -167,16 +166,16 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 let (mut expr, expr_ty) = self.typeck(expr, locals)?;
                 let (place, place_ty) = self.typeck(place, locals)?;
                 self.constrain(&mut expr, &expr_ty, &place_ty)?;
-                Ok((Expr::Assign(place.into(), expr.into(), expr_ty, *span), InferType::UNIT))
+                Ok((Expr::Assign(place.into(), expr.into(), expr_ty, *span), InferType::VOID))
             }
             Expr::Call(expr, _, targs, args, _, span) => match &**expr {
-                Expr::Member(expr, name, span) => self.check_overload(expr, name.clone(), args, locals, *span),
+                Expr::Member(expr, name, span) => self.check_overload(expr, name, args, locals, *span),
                 Expr::Ident(name, span) if name.as_str() == "Cast" => self.check_cast(args, targs, locals, *span),
                 Expr::Ident(name, span) if locals.get(name).is_none() => {
                     match self.names.get(name).map(Vec::as_slice) {
                         Some([Global::MethodAlias(mid)]) => self.check_wrapper(
                             &Expr::This(*span),
-                            self.repo.get_method_name(mid).unwrap().clone(),
+                            self.repo.get_method_name(mid).unwrap(),
                             args,
                             locals,
                             Callable::WrappedMethod(mid.clone()),
@@ -184,13 +183,13 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                         ),
                         Some([Global::StaticAlias(mid)]) => self.check_wrapper(
                             &Expr::Ident(mid.owner().name().into(), *span),
-                            self.repo.get_static_name(mid).unwrap().clone(),
+                            self.repo.get_static_name(mid).unwrap(),
                             args,
                             locals,
                             Callable::WrappedStatic(mid.clone()),
                             *span,
                         ),
-                        Some(matches) => self.check_global(name.clone(), matches, &args[..], locals, *span),
+                        Some(matches) => self.check_global(name, matches, &args[..], locals, *span),
                         _ => Err(CompileError::UnresolvedVar(name.clone(), *span)),
                     }
                 }
@@ -206,7 +205,8 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                     let ret = self.id_alloc.allocate_free_type();
                     let mut type_args = arg_types.clone();
                     type_args.push(ret.clone());
-                    let id = TypeId::get_fn_by_arity(args.len()).unwrap();
+                    let id = TypeId::get_fn_by_arity(args.len())
+                        .ok_or_else(|| CompileError::Unsupported(Unsupported::FunctionMaxArityExceeded, *span))?;
                     typ.constrain(&InferType::data(Data::new(id, type_args.into())), self.repo)
                         .with_span(*span)?;
                     let call = Expr::Call(
@@ -223,7 +223,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
             Expr::Member(expr, member, span) => {
                 if let Some((id, members)) = expr.as_ident().and_then(|(n, _)| {
                     let &id = self.env.types.get(n)?;
-                    Some((id, self.repo.get_type(id)?.as_enum()?))
+                    Some((id, self.repo[id].as_enum()?))
                 }) {
                     let member = members
                         .get_member(member)
@@ -245,9 +245,13 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                         Some((FieldId::new(type_id, idx), typ))
                     })
                     .ok_or_else(|| CompileError::UnresolvedMember(upper_bound.id, member.clone(), *span))?;
-                let spec = upper_bound.instantiate_as(id.owner(), self.repo).unwrap();
-                let data_type = self.repo.get_type(spec.id).unwrap();
-                let type_vars = data_type.type_var_names().zip(spec.args.iter().cloned()).collect();
+                let spec = upper_bound
+                    .instantiate_as(id.owner(), self.repo)
+                    .expect("should always match the type of the upper bound");
+                let type_vars = self.repo[spec.id]
+                    .type_var_names()
+                    .zip(spec.args.iter().cloned())
+                    .collect();
                 let inferred = InferType::from_type(&fty.typ, &type_vars);
                 Ok((
                     Expr::Member(expr.into(), Member::Field(id, inferred.clone()), *span),
@@ -273,7 +277,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                     .get(typ.name())
                     .ok_or_else(|| TypeError::UnresolvedType(typ.name().clone()))
                     .with_span(*span)?;
-                let data_type = self.repo.get_type(id).unwrap();
+                let data_type = &self.repo[id];
                 let type_args: Rc<[_]> = data_type
                     .type_vars()
                     .iter()
@@ -310,14 +314,14 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                     }
                     None => {
                         self.return_type
-                            .constrain(&InferType::UNIT, self.repo)
+                            .constrain(&InferType::VOID, self.repo)
                             .with_span(*span)?;
                         None
                     }
                 };
-                Ok((Expr::Return(expr, *span), InferType::UNIT))
+                Ok((Expr::Return(expr, *span), InferType::VOID))
             }
-            Expr::Seq(seq) => Ok((Expr::Seq(self.typeck_seq(seq, locals)), InferType::UNIT)),
+            Expr::Seq(seq) => Ok((Expr::Seq(self.typeck_seq(seq, locals)), InferType::VOID)),
             Expr::Switch(scrutinee, cases, default, _, span) => {
                 let (scrutinee, scrutinee_type) = self.typeck(scrutinee, locals)?;
                 let cases = cases
@@ -334,7 +338,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                     .map(|body| self.typeck_seq(body, &mut locals.introduce_scope()));
                 Ok((
                     Expr::Switch(scrutinee.into(), cases, default, scrutinee_type, *span),
-                    InferType::UNIT,
+                    InferType::VOID,
                 ))
             }
             Expr::If(cond, if_, else_, span) => {
@@ -346,7 +350,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 let else_ = else_
                     .as_ref()
                     .map(|e| self.typeck_seq(e, &mut locals.introduce_scope()));
-                Ok((Expr::If(cond.into(), if_, else_, *span), InferType::UNIT))
+                Ok((Expr::If(cond.into(), if_, else_, *span), InferType::VOID))
             }
             Expr::Conditional(cond, lhs, rhs, span) => {
                 let (cond, cond_type) = self.typeck(cond, locals)?;
@@ -367,26 +371,26 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                     .constrain(&InferType::prim(Prim::Bool), self.repo)
                     .with_span(*span)?;
                 let body = self.typeck_seq(body, &mut locals.introduce_scope());
-                Ok((Expr::While(cond.into(), body, *span), InferType::UNIT))
+                Ok((Expr::While(cond.into(), body, *span), InferType::VOID))
             }
             Expr::ForIn(_, _, _, _) => todo!(),
             Expr::BinOp(lhs, rhs, op, span) => {
-                let name = Str::from_static(<&str>::from(op));
+                let name = <&str>::from(op);
                 let matches = self
                     .names
-                    .get(&name)
-                    .ok_or_else(|| CompileError::UnresolvedFunction(name.clone(), *span))?;
+                    .get(name)
+                    .ok_or_else(|| CompileError::UnresolvedFunction(name.into(), *span))?;
                 self.check_global(name, matches, [&**lhs, &**rhs], locals, *span)
             }
             Expr::UnOp(expr, op, span) => {
-                let name = Str::from_static(<&str>::from(op));
+                let name = <&str>::from(op);
                 let matches = self
                     .names
-                    .get(&name)
-                    .ok_or_else(|| CompileError::UnresolvedFunction(name.clone(), *span))?;
+                    .get(name)
+                    .ok_or_else(|| CompileError::UnresolvedFunction(name.into(), *span))?;
                 self.check_global(name, matches, Some(&**expr), locals, *span)
             }
-            &Expr::Break(span) => Ok((Expr::Break(span), InferType::UNIT)),
+            &Expr::Break(span) => Ok((Expr::Break(span), InferType::VOID)),
             Expr::This(span) => {
                 let loc = locals
                     .get("this")
@@ -401,7 +405,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
 
     fn check_global<'a>(
         &mut self,
-        name: Str,
+        name: &str,
         overloads: &[Global<'id>],
         args: impl IntoIterator<IntoIter = impl ExactSizeIterator<Item = &'a Expr<SourceAst>>>,
         locals: &mut LocalMap<'_, 'id>,
@@ -418,7 +422,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
             .flat_map(|id| {
                 self.repo
                     .globals()
-                    .get_overloads(id.index().unwrap())
+                    .get_overloads(id.index().expect("global should always have an index"))
                     .map(move |e| (id, e))
             })
             .collect_vec();
@@ -454,7 +458,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                     })
                     .exactly_one()
                     .map_err(|m| {
-                        CompileError::for_overloads(name, m.count(), candidates.iter().map(|(_, e)| e), span)
+                        CompileError::for_overloads(name.into(), m.count(), candidates.iter().map(|(_, e)| e), span)
                     })?;
                 for var in &*entry.function.typ.type_vars {
                     let typ = InferType::from_var_poly(var, &type_vars, &mut self.id_alloc);
@@ -487,7 +491,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
     fn check_overload(
         &mut self,
         expr: &Expr<SourceAst>,
-        name: Str,
+        name: &str,
         args: &[Expr<SourceAst>],
         locals: &mut LocalMap<'_, 'id>,
         span: Span,
@@ -509,9 +513,9 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
         };
 
         let candidates = if expr.is_some() {
-            self.repo.resolve_methods(upper_bound.id, &name).collect_vec()
+            self.repo.resolve_methods(upper_bound.id, name).collect_vec()
         } else {
-            self.repo.resolve_statics(upper_bound.id, &name).collect_vec()
+            self.repo.resolve_statics(upper_bound.id, name).collect_vec()
         };
 
         let mut checked_args = Vec::with_capacity(args.len());
@@ -524,7 +528,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
             .exactly_one()
         {
             Ok((owner, entry)) => {
-                let data_type = self.repo.get_type(*owner).unwrap();
+                let data_type = &self.repo[*owner];
                 if expr.is_none() && upper_bound.args.is_empty() {
                     let it = data_type.type_vars().iter().map(|var| {
                         let typ = InferType::from_var_poly(var, &ScopedMap::default(), &mut self.id_alloc);
@@ -532,8 +536,11 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                     });
                     type_vars.extend(it);
                 } else {
-                    let owner_type = upper_bound.instantiate_as(*owner, self.repo).unwrap();
-                    debug_assert_eq!(owner_type.args.len(), data_type.type_vars().len());
+                    let owner_type = upper_bound
+                        .instantiate_as(*owner, self.repo)
+                        .expect("should always match the type of the upper bound");
+                    assert_eq!(owner_type.args.len(), data_type.type_vars().len());
+
                     type_vars.extend(data_type.type_var_names().zip(owner_type.args.iter().cloned()));
                 };
 
@@ -572,13 +579,13 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                     .exactly_one()
                     .map_err(|matches| {
                         CompileError::for_overloads(
-                            name.clone(),
+                            name.into(),
                             matches.count(),
                             candidates.iter().map(|(_, e)| e),
                             span,
                         )
                     })?;
-                let data_type = self.repo.get_type(*owner).unwrap();
+                let data_type = &self.repo[*owner];
                 if expr.is_none() && upper_bound.args.is_empty() {
                     let it = data_type.type_vars().iter().map(|var| {
                         let typ = InferType::from_var_poly(var, &ScopedMap::default(), &mut self.id_alloc);
@@ -586,8 +593,11 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                     });
                     type_vars.extend(it);
                 } else {
-                    let owner_type = upper_bound.instantiate_as(*owner, self.repo).unwrap();
-                    debug_assert_eq!(owner_type.args.len(), data_type.type_vars().len());
+                    let owner_type = upper_bound
+                        .instantiate_as(*owner, self.repo)
+                        .expect("should always match the type of the upper bound");
+                    assert_eq!(owner_type.args.len(), data_type.type_vars().len());
+
                     type_vars.extend(data_type.type_var_names().zip(owner_type.args.iter().cloned()));
                 };
                 (owner, entry)
@@ -628,7 +638,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
     fn check_wrapper(
         &mut self,
         expr: &Expr<SourceAst>,
-        name: Str,
+        name: &str,
         args: &[Expr<SourceAst>],
         locals: &mut LocalMap<'_, 'id>,
         wrapped: Callable<'id>,
@@ -719,7 +729,8 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
         let (ret, ret_type) = self.typeck(body, &mut locals)?;
         fn_type_args.push(ret_type.clone());
 
-        let id = TypeId::get_fn_by_arity(lambda_params.len()).unwrap();
+        let id = TypeId::get_fn_by_arity(lambda_params.len())
+            .ok_or_else(|| CompileError::Unsupported(Unsupported::FunctionMaxArityExceeded, span))?;
         let typ = InferType::data(Data::new(id, fn_type_args.into()));
 
         let mut params = IndexMap::default();
@@ -873,7 +884,7 @@ pub enum InferType<'id> {
 
 impl<'id> InferType<'id> {
     pub const TOP: Self = Self::Mono(Mono::Top);
-    pub const UNIT: Self = Self::prim(Prim::Unit);
+    pub const VOID: Self = Self::prim(Prim::Void);
 
     #[inline]
     pub const fn prim(prim: Prim) -> Self {
@@ -1117,9 +1128,15 @@ impl<'id> Mono<'id> {
                 let id = type_repo
                     .lub(lhs.id, rhs.id)
                     .ok_or_else(|| TypeError::Unsatisfied(lhs.clone(), rhs.clone()))?;
-                let lhs = lhs.clone().instantiate_as(id, type_repo).unwrap();
-                let rhs = rhs.clone().instantiate_as(id, type_repo).unwrap();
-                let vars = type_repo.get_type(id).unwrap().type_vars();
+                let lhs = lhs
+                    .clone()
+                    .instantiate_as(id, type_repo)
+                    .expect("should always match the lub type");
+                let rhs = rhs
+                    .clone()
+                    .instantiate_as(id, type_repo)
+                    .expect("should always match the lub type");
+                let vars = type_repo[id].type_vars();
                 let args = izip!(vars, lhs.args.iter(), rhs.args.iter())
                     .map(|(var, l, r)| match var.variance {
                         Variance::Co => l.lub(r, type_repo),
@@ -1145,7 +1162,7 @@ impl<'id> Mono<'id> {
                     .clone()
                     .instantiate_as(r.id, type_repo)
                     .ok_or_else(|| TypeError::Mismatch(self.clone(), rhs.clone()))?;
-                let vars = type_repo.get_type(r.id).expect("undefined type").type_vars();
+                let vars = type_repo[r.id].type_vars();
                 for (var, l, r) in izip!(vars, lhs.args.iter(), r.args.iter()) {
                     match var.variance {
                         Variance::Co => l.constrain(r, type_repo)?,
@@ -1251,7 +1268,13 @@ impl<'id> Data<'id> {
     pub fn instantiate_as(self, target: TypeId<'id>, type_repo: &TypeRepo<'id>) -> Option<Self> {
         let mut cur = self;
         while cur.id != target {
-            let class = type_repo.get_type(cur.id).expect("undefined type");
+            let class = &type_repo[cur.id];
+            assert_eq!(
+                class.type_vars().len(),
+                cur.args.len(),
+                "number of type vars should always match args"
+            );
+
             let map = class.type_var_names().zip(cur.args.iter().cloned()).collect();
             cur = Self::from_type(class.base()?, &map);
         }
@@ -1415,10 +1438,16 @@ impl<'ctx, 'id> Simplifier<'ctx, 'id> {
 
     fn check_variance_mono(&mut self, mono: &Mono<'id>, variance: Variance) {
         if let Mono::Data(data) = mono {
-            let typ = self.type_repo.get_type(data.id).expect("undefined type");
+            let vars = self.type_repo[data.id].type_vars();
+            assert_eq!(
+                data.args.len(),
+                vars.len(),
+                "number of type vars should always match args"
+            );
+
             data.args
                 .iter()
-                .zip(typ.type_vars())
+                .zip(vars)
                 .for_each(|(arg, var)| self.check_variance(arg, variance.combine(var.variance)));
         }
     }
@@ -1443,11 +1472,17 @@ impl<'ctx, 'id> Simplifier<'ctx, 'id> {
     fn simplify_mono(&mut self, mono: &Mono<'id>, variance: Variance) -> Type<'id> {
         match mono {
             Mono::Data(data) => {
-                let typ = self.type_repo.get_type(data.id).expect("undefined type");
+                let vars = self.type_repo[data.id].type_vars();
+                assert_eq!(
+                    data.args.len(),
+                    vars.len(),
+                    "number of type vars should always match args"
+                );
+
                 let args = data
                     .args
                     .iter()
-                    .zip(typ.type_vars())
+                    .zip(vars)
                     .map(|(arg, var)| self.simplify(arg, variance.combine(var.variance)))
                     .collect();
                 Type::Data(Parameterized::new(data.id, args))
@@ -1573,7 +1608,7 @@ impl<'id> CallMetadata<'id> {
     pub fn empty() -> Self {
         Self {
             arg_types: [].into(),
-            ret_type: InferType::UNIT,
+            ret_type: InferType::VOID,
             this_type: None,
         }
     }

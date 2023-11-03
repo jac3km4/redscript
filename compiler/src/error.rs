@@ -184,4 +184,6 @@ pub enum Unsupported {
     ExtendingFinalClass,
     #[error("defining a native member in a non-native type")]
     NativeInNonNative,
+    #[error("function type with more than 8 parameters")]
+    FunctionMaxArityExceeded,
 }

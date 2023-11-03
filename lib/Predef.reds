@@ -82,7 +82,7 @@ public class BoxedInt8 extends Primitive {
   let value: Int8;
 
   public static func New(value: Int8) -> BoxedInt8 {
-    let self: BoxedInt8 = new BoxedInt8();
+    let self = new BoxedInt8();
     self.value = value;
     return self;
   }
@@ -105,7 +105,7 @@ public class BoxedInt16 extends Primitive {
   let value: Int16;
 
   public static func New(value: Int16) -> BoxedInt16 {
-    let self: BoxedInt16 = new BoxedInt16();
+    let self = new BoxedInt16();
     self.value = value;
     return self;
   }
@@ -128,7 +128,7 @@ public class BoxedInt32 extends Primitive {
   let value: Int32;
 
   public static func New(value: Int32) -> BoxedInt32 {
-    let self: BoxedInt32 = new BoxedInt32();
+    let self = new BoxedInt32();
     self.value = value;
     return self;
   }
@@ -151,7 +151,7 @@ public class BoxedInt64 extends Primitive {
   let value: Int64;
 
   public static func New(value: Int64) -> BoxedInt64 {
-    let self: BoxedInt64 = new BoxedInt64();
+    let self = new BoxedInt64();
     self.value = value;
     return self;
   }
@@ -174,7 +174,7 @@ public class BoxedFloat extends Primitive {
   let value: Float;
 
   public static func New(value: Float) -> BoxedFloat {
-    let self: BoxedFloat = new BoxedFloat();
+    let self = new BoxedFloat();
     self.value = value;
     return self;
   }
@@ -197,7 +197,7 @@ public class BoxedDouble extends Primitive {
   let value: Double;
 
   public static func New(value: Double) -> BoxedDouble {
-    let self: BoxedDouble = new BoxedDouble();
+    let self = new BoxedDouble();
     self.value = value;
     return self;
   }
@@ -220,7 +220,7 @@ public class BoxedUint8 extends Primitive {
   let value: Uint8;
 
   public static func New(value: Uint8) -> BoxedUint8 {
-    let self: BoxedUint8 = new BoxedUint8();
+    let self = new BoxedUint8();
     self.value = value;
     return self;
   }
@@ -243,7 +243,7 @@ public class BoxedUint16 extends Primitive {
   let value: Uint16;
 
   public static func New(value: Uint16) -> BoxedUint16 {
-    let self: BoxedUint16 = new BoxedUint16();
+    let self = new BoxedUint16();
     self.value = value;
     return self;
   }
@@ -266,7 +266,7 @@ public class BoxedUint32 extends Primitive {
   let value: Uint32;
 
   public static func New(value: Uint32) -> BoxedUint32 {
-    let self: BoxedUint32 = new BoxedUint32();
+    let self = new BoxedUint32();
     self.value = value;
     return self;
   }
@@ -289,7 +289,7 @@ public class BoxedUint64 extends Primitive {
   let value: Uint64;
 
   public static func New(value: Uint64) -> BoxedUint64 {
-    let self: BoxedUint64 = new BoxedUint64();
+    let self = new BoxedUint64();
     self.value = value;
     return self;
   }
@@ -312,7 +312,7 @@ public class BoxedBool extends Primitive {
   let value: Bool;
 
   public static func New(value: Bool) -> BoxedBool {
-    let self: BoxedBool = new BoxedBool();
+    let self = new BoxedBool();
     self.value = value;
     return self;
   }
@@ -335,7 +335,7 @@ public class BoxedString extends Primitive {
   let value: String;
 
   public static func New(value: String) -> BoxedString {
-    let self: BoxedString = new BoxedString();
+    let self = new BoxedString();
     self.value = value;
     return self;
   }
@@ -358,7 +358,7 @@ public class BoxedCName extends Primitive {
   let value: CName;
 
   public static func New(value: CName) -> BoxedCName {
-    let self: BoxedCName = new BoxedCName();
+    let self = new BoxedCName();
     self.value = value;
     return self;
   }
@@ -381,7 +381,7 @@ public class BoxedTweakDBID extends Primitive {
   let value: TweakDBID;
 
   public static func New(value: TweakDBID) -> BoxedTweakDBID {
-    let self: BoxedTweakDBID = new BoxedTweakDBID();
+    let self = new BoxedTweakDBID();
     self.value = value;
     return self;
   }
@@ -404,7 +404,47 @@ public class BoxedVariant {
   let value: Variant;
 
   public static func New(value: Variant) -> BoxedVariant {
-    let self: BoxedVariant = new BoxedVariant();
+    let self = new BoxedVariant();
+    self.value = value;
+    return self;
+  }
+}
+
+public class BoxedNodeRef {
+  let value: NodeRef;
+
+  public static func New(value: NodeRef) -> BoxedNodeRef {
+    let self = new BoxedNodeRef();
+    self.value = value;
+    return self;
+  }
+}
+
+public class BoxedLocalizationString {
+  let value: LocalizationString;
+
+  public static func New(value: LocalizationString) -> BoxedLocalizationString {
+    let self = new BoxedLocalizationString();
+    self.value = value;
+    return self;
+  }
+}
+
+public class BoxedCRUID {
+  let value: CRUID;
+
+  public static func New(value: CRUID) -> BoxedCRUID {
+    let self = new BoxedCRUID();
+    self.value = value;
+    return self;
+  }
+}
+
+public class BoxedResRef {
+  let value: redResourceReferenceScriptToken;
+
+  public static func New(value: redResourceReferenceScriptToken) -> BoxedResRef {
+    let self = new BoxedResRef();
     self.value = value;
     return self;
   }

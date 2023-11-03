@@ -1,8 +1,7 @@
 use std::hash::Hash;
 use std::io::Seek;
 use std::marker::PhantomData;
-use std::ops::{Deref, DerefMut};
-use std::{fmt, io};
+use std::{fmt, io, ops};
 
 use hashbrown::{hash_map, HashMap};
 use itertools::chain;
@@ -126,11 +125,11 @@ impl Encode for Header {
 
 #[derive(Debug, Clone, Default)]
 pub struct ConstantPool {
-    pub names: Strings<CName>,
-    pub tweakdb_ids: Strings<TweakDbId>,
-    pub resources: Strings<Resource>,
-    pub strings: Strings<String>,
-    pub definitions: Vec<Definition>,
+    names: Strings<CName>,
+    tweakdb_ids: Strings<TweakDbId>,
+    resources: Strings<Resource>,
+    strings: Strings<String>,
+    definitions: Vec<Definition>,
 }
 
 impl ConstantPool {
@@ -243,15 +242,44 @@ impl ConstantPool {
         Ok(header)
     }
 
-    fn definition_by<F: Fn(&AnyDefinition) -> Option<&A>, A>(
-        &self,
-        index: PoolIndex<A>,
-        get: F,
-    ) -> Result<&A, PoolError> {
-        self.definitions
-            .get(index.value as usize)
-            .and_then(|def| get(&def.value))
-            .ok_or_else(|| PoolError::DefinitionNotFound(index.cast()))
+    #[inline]
+    pub fn names(&self) -> &Strings<CName> {
+        &self.names
+    }
+
+    #[inline]
+    pub fn names_mut(&mut self) -> &mut Strings<CName> {
+        &mut self.names
+    }
+
+    #[inline]
+    pub fn tweakdb_ids(&self) -> &Strings<TweakDbId> {
+        &self.tweakdb_ids
+    }
+
+    #[inline]
+    pub fn tweakdb_ids_mut(&mut self) -> &mut Strings<TweakDbId> {
+        &mut self.tweakdb_ids
+    }
+
+    #[inline]
+    pub fn resources(&self) -> &Strings<Resource> {
+        &self.resources
+    }
+
+    #[inline]
+    pub fn resources_mut(&mut self) -> &mut Strings<Resource> {
+        &mut self.resources
+    }
+
+    #[inline]
+    pub fn strings(&self) -> &Strings<String> {
+        &self.strings
+    }
+
+    #[inline]
+    pub fn strings_mut(&mut self) -> &mut Strings<String> {
+        &mut self.strings
     }
 
     pub fn definition<A>(&self, index: PoolIndex<A>) -> Result<&Definition, PoolError> {
@@ -260,76 +288,12 @@ impl ConstantPool {
             .ok_or_else(|| PoolError::DefinitionNotFound(index.cast()))
     }
 
-    pub fn function(&self, index: PoolIndex<Function>) -> Result<&Function, PoolError> {
-        self.definition_by(index, |def| def.as_function().map(Deref::deref))
-    }
-
-    pub fn function_mut(&mut self, index: PoolIndex<Function>) -> Result<&mut Function, PoolError> {
-        self.definitions
-            .get_mut(index.value as usize)
-            .and_then(|def| def.value.as_function_mut().map(DerefMut::deref_mut))
-            .ok_or_else(|| PoolError::DefinitionNotFound(index.cast()))
-    }
-
-    pub fn complete_function(
-        &mut self,
-        index: PoolIndex<Function>,
-        locals: Vec<PoolIndex<Local>>,
-        code: Code<Offset>,
-    ) -> Result<(), PoolError> {
-        for l in &locals {
-            self.definitions.get_mut(u32::from(*l) as usize).unwrap().parent = index.cast();
-        }
-        let f = self.function_mut(index)?;
-        f.locals = locals;
-        f.code = code;
-        Ok(())
-    }
-
-    pub fn field(&self, index: PoolIndex<Field>) -> Result<&Field, PoolError> {
-        self.definition_by(index, |def| def.as_field().map(Deref::deref))
-    }
-
-    pub fn field_mut(&mut self, index: PoolIndex<Field>) -> Result<&mut Field, PoolError> {
-        self.definitions
-            .get_mut(index.value as usize)
-            .and_then(|def| def.value.as_field_mut().map(DerefMut::deref_mut))
-            .ok_or_else(|| PoolError::DefinitionNotFound(index.cast()))
-    }
-
-    pub fn parameter(&self, index: PoolIndex<Parameter>) -> Result<&Parameter, PoolError> {
-        self.definition_by(index, AnyDefinition::as_parameter)
-    }
-
-    pub fn local(&self, index: PoolIndex<Local>) -> Result<&Local, PoolError> {
-        self.definition_by(index, AnyDefinition::as_local)
-    }
-
-    pub fn type_(&self, index: PoolIndex<Type>) -> Result<&Type, PoolError> {
-        self.definition_by(index, AnyDefinition::as_type)
-    }
-
-    pub fn class(&self, index: PoolIndex<Class>) -> Result<&Class, PoolError> {
-        self.definition_by(index, |def| def.as_class().map(Deref::deref))
-    }
-
-    pub fn class_mut(&mut self, index: PoolIndex<Class>) -> Result<&mut Class, PoolError> {
-        self.definitions
-            .get_mut(index.value as usize)
-            .and_then(|def| def.value.as_class_mut().map(DerefMut::deref_mut))
-            .ok_or_else(|| PoolError::DefinitionNotFound(index.cast()))
-    }
-
-    pub fn enum_(&self, index: PoolIndex<Enum>) -> Result<&Enum, PoolError> {
-        self.definition_by(index, |def| def.as_enum().map(Deref::deref))
-    }
-
-    pub fn enum_value(&self, index: PoolIndex<i64>) -> Result<i64, PoolError> {
-        self.definition_by(index, AnyDefinition::as_enum_value).cloned()
-    }
-
-    pub fn def_name<A>(&self, index: PoolIndex<A>) -> Result<Str, PoolError> {
+    pub fn def_name<A>(&self, index: PoolIndex<A>) -> Result<&str, PoolError> {
         self.names.get(self.definition(index)?.name)
+    }
+
+    pub fn def_name_idx<A>(&self, index: PoolIndex<A>) -> Result<PoolIndex<CName>, PoolError> {
+        Ok(self.definition(index)?.name)
     }
 
     pub fn definitions(&self) -> impl ExactSizeIterator<Item = (PoolIndex<Definition>, &Definition)> {
@@ -369,7 +333,75 @@ impl ConstantPool {
     pub fn roots(&self) -> impl Iterator<Item = (PoolIndex<Definition>, &Definition)> {
         self.definitions().filter(|(_, def)| def.parent.is_undefined())
     }
+
+    pub fn complete_function(&mut self, index: PoolIndex<Function>, locals: Vec<PoolIndex<Local>>, code: Code<Offset>) {
+        for l in &locals {
+            self.definitions[u32::from(*l) as usize].parent = index.cast();
+        }
+        let func = &mut self[index];
+        func.locals = locals;
+        func.code = code;
+    }
 }
+
+impl<A: DefinitionVariant> ops::Index<PoolIndex<A>> for ConstantPool {
+    type Output = A;
+
+    #[inline]
+    fn index(&self, index: PoolIndex<A>) -> &Self::Output {
+        A::variant(&self.definitions[index.value as usize].value).unwrap()
+    }
+}
+
+impl<A: DefinitionVariant> ops::IndexMut<PoolIndex<A>> for ConstantPool {
+    #[inline]
+    fn index_mut(&mut self, index: PoolIndex<A>) -> &mut Self::Output {
+        A::variant_mut(&mut self.definitions[index.value as usize].value).unwrap()
+    }
+}
+
+trait DefinitionVariant {
+    fn variant(def: &AnyDefinition) -> Option<&Self>;
+    fn variant_mut(def: &mut AnyDefinition) -> Option<&mut Self>;
+}
+
+macro_rules! impl_definition_variant {
+    ($as_var:ident, $as_var_mut:ident, box $var:ty) => {
+        impl DefinitionVariant for $var {
+            #[inline]
+            fn variant(def: &AnyDefinition) -> Option<&Self> {
+                def.$as_var().map(Box::as_ref)
+            }
+
+            #[inline]
+            fn variant_mut(def: &mut AnyDefinition) -> Option<&mut Self> {
+                def.$as_var_mut().map(Box::as_mut)
+            }
+        }
+    };
+    ($as_var:ident, $as_var_mut:ident, $var:ty) => {
+        impl DefinitionVariant for $var {
+            #[inline]
+            fn variant(def: &AnyDefinition) -> Option<&Self> {
+                def.$as_var()
+            }
+
+            #[inline]
+            fn variant_mut(def: &mut AnyDefinition) -> Option<&mut Self> {
+                def.$as_var_mut()
+            }
+        }
+    };
+}
+
+impl_definition_variant!(as_type, as_type_mut, Type);
+impl_definition_variant!(as_class, as_class_mut, box Class);
+impl_definition_variant!(as_enum, as_enum_mut, box Enum);
+impl_definition_variant!(as_enum_value, as_enum_value_mut, i64);
+impl_definition_variant!(as_function, as_function_mut, box Function);
+impl_definition_variant!(as_parameter, as_parameter_mut, Parameter);
+impl_definition_variant!(as_local, as_local_mut, Local);
+impl_definition_variant!(as_field, as_field_mut, box Field);
 
 #[derive(Debug, Clone)]
 pub struct Strings<K> {
@@ -404,14 +436,14 @@ impl<K: DefaultString> Strings<K> {
         Ok(offsets.into_inner())
     }
 
-    pub fn get(&self, index: PoolIndex<K>) -> Result<Str, PoolError> {
+    pub fn get(&self, index: PoolIndex<K>) -> Result<&str, PoolError> {
         match K::DEFAULT {
-            Some(default) if index.is_undefined() => Ok(Str::from_static(default)),
+            Some(default) if index.is_undefined() => Ok(default),
             _ => self
                 .strings
                 .get(index.value as usize)
-                .cloned()
-                .ok_or_else(|| PoolError::StringNotFound(index.cast())),
+                .ok_or_else(|| PoolError::StringNotFound(index.cast()))
+                .map(Str::as_str),
         }
     }
 
@@ -442,6 +474,15 @@ impl<K> Default for Strings<K> {
             mappings: HashMap::new(),
             phantom: PhantomData,
         }
+    }
+}
+
+impl<A: DefaultString> ops::Index<PoolIndex<A>> for Strings<A> {
+    type Output = str;
+
+    #[inline]
+    fn index(&self, index: PoolIndex<A>) -> &Self::Output {
+        self.get(index).unwrap()
     }
 }
 
@@ -641,7 +682,7 @@ impl<A> PoolIndex<A> {
     pub const DEFAULT_SOURCE: PoolIndex<A> = PoolIndex::new(1);
     pub const UNDEFINED: PoolIndex<A> = PoolIndex::new(0);
 
-    pub const fn new(index: u32) -> PoolIndex<A> {
+    const fn new(index: u32) -> PoolIndex<A> {
         PoolIndex {
             value: index,
             phantom: PhantomData,

@@ -77,7 +77,7 @@ impl<'a, 'f> Writer<'a, 'f> {
                 } else {
                     write!(self.fmt, "class ")?;
                 }
-                write!(self.fmt, "{} ", self.pool.names.get(definition.name)?)?;
+                write!(self.fmt, "{} ", self.pool.names().get(definition.name)?)?;
                 if !class.base.is_undefined() {
                     write!(self.fmt, "extends {} ", self.pool.def_name(class.base)?)?;
                 }
@@ -97,13 +97,13 @@ impl<'a, 'f> Writer<'a, 'f> {
                 writeln!(self.fmt, "}}")?;
             }
             AnyDefinition::EnumValue(val) => {
-                let name = self.pool.names.get(definition.name)?;
+                let name = self.pool.names().get(definition.name)?;
                 self.write_indent(depth)?;
                 writeln!(self.fmt, "{} = {},", name, val)?;
             }
             AnyDefinition::Enum(enum_) => {
                 writeln!(self.fmt)?;
-                writeln!(self.fmt, "enum {} {{", self.pool.names.get(definition.name)?)?;
+                writeln!(self.fmt, "enum {} {{", self.pool.names().get(definition.name)?)?;
 
                 for member in &enum_.members {
                     self.write_definition(self.pool.definition(*member)?, depth + 1)?;
@@ -117,7 +117,7 @@ impl<'a, 'f> Writer<'a, 'f> {
                     |idx| format_type(self.pool.definition(idx).unwrap(), self.pool).unwrap(),
                 );
 
-                let name = self.pool.names.get(definition.name)?;
+                let name = self.pool.names().get(definition.name)?;
                 let pretty_name = name.split(';').next().expect("Function with empty name");
 
                 let params = fun
@@ -167,7 +167,7 @@ impl<'a, 'f> Writer<'a, 'f> {
             AnyDefinition::Parameter(_) => write!(self.fmt, "{}", format_param(definition, self.pool)?)?,
             AnyDefinition::Local(local) => {
                 let type_name = format_type(self.pool.definition(local.type_)?, self.pool)?;
-                let name = self.pool.names.get(definition.name)?;
+                let name = self.pool.names().get(definition.name)?;
                 self.write_indent(depth)?;
                 if local.flags.is_const() {
                     write!(self.fmt, "const ")?;
@@ -178,7 +178,7 @@ impl<'a, 'f> Writer<'a, 'f> {
             }
             AnyDefinition::Field(field) => {
                 let type_name = format_type(self.pool.definition(field.type_)?, self.pool)?;
-                let field_name = self.pool.names.get(definition.name)?;
+                let field_name = self.pool.names().get(definition.name)?;
 
                 writeln!(self.fmt)?;
                 for property in &field.attributes {
@@ -495,7 +495,7 @@ impl<'a, 'f> Writer<'a, 'f> {
 fn format_param(def: &Definition, pool: &ConstantPool) -> Result<String, Error> {
     let param = def.value.as_parameter().expect("Expected a param definition");
     let type_name = format_type(pool.definition(param.type_)?, pool)?;
-    let name = pool.names.get(def.name)?;
+    let name = pool.names().get(def.name)?;
     let out = if param.flags.is_out() { "out " } else { "" };
     let optional = if param.flags.is_optional() { "opt " } else { "" };
     let const_ = if param.flags.is_const() { "const " } else { "" };
@@ -505,7 +505,7 @@ fn format_param(def: &Definition, pool: &ConstantPool) -> Result<String, Error> 
 fn format_type(def: &Definition, pool: &ConstantPool) -> Result<String, Error> {
     let type_ = def.value.as_type().expect("Expected a type definition");
     let result = match type_ {
-        Type::Prim | Type::Class => pool.names.get(def.name)?.to_string(),
+        Type::Prim | Type::Class => pool.names().get(def.name)?.to_string(),
         Type::Ref(nested) => format!("ref<{}>", format_type(pool.definition(*nested)?, pool)?),
         Type::WeakRef(nested) => format!("wref<{}>", format_type(pool.definition(*nested)?, pool)?),
         Type::Array(nested) => format!("array<{}>", format_type(pool.definition(*nested)?, pool)?),

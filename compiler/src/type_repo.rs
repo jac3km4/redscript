@@ -1,7 +1,7 @@
 use std::borrow::Borrow;
 use std::hash::Hash;
 use std::rc::Rc;
-use std::{fmt, iter};
+use std::{fmt, iter, ops};
 
 use enum_as_inner::EnumAsInner;
 use hashbrown::{HashMap, HashSet};
@@ -220,6 +220,15 @@ impl<'id> Default for TypeRepo<'id> {
     #[inline]
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl<'id> ops::Index<TypeId<'id>> for TypeRepo<'id> {
+    type Output = DataType<'id>;
+
+    #[inline]
+    fn index(&self, index: TypeId<'id>) -> &Self::Output {
+        self.get_type(index).unwrap()
     }
 }
 
@@ -571,7 +580,7 @@ impl<'repo, 'id> Iterator for UpperIter<'repo, 'id> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let id = self.current?;
-        let class = self.db.get_type(id)?.as_class()?;
+        let class = self.db[id].as_class().expect("base type should be a class");
         self.current = class.extends.as_ref().map(|typ| typ.id);
         Some((id, class))
     }
@@ -614,7 +623,7 @@ impl<'id> Parameterized<'id> {
     }
 
     pub fn check_well_formed(&self, repo: &TypeRepo<'id>) -> Result<(), TypeError<'id>> {
-        let expected = repo.get_type(self.id).unwrap().type_vars();
+        let expected = repo[self.id].type_vars();
         if expected.len() == self.args.len() {
             Ok(())
         } else {
@@ -825,9 +834,9 @@ pub enum Prim {
     LocalizationString,
     #[strum(serialize = "CRUID")]
     Cruid,
-    Unit,
     #[strum(serialize = "redResourceReferenceScriptToken")]
     ResRef,
+    Void,
 }
 
 impl Prim {
@@ -848,7 +857,11 @@ impl Prim {
             Self::CName => Some(predef::BOXED_CNAME),
             Self::TweakDbId => Some(predef::BOXED_TWEAKDB_ID),
             Self::Variant => Some(predef::BOXED_VARIANT),
-            Self::NodeRef | Self::LocalizationString | Self::Cruid | Self::ResRef | Self::Unit => None,
+            Self::NodeRef => Some(predef::BOXED_NODE_REF),
+            Self::LocalizationString => Some(predef::BOXED_LOCALIZATION_STRING),
+            Self::Cruid => Some(predef::BOXED_CRUID),
+            Self::ResRef => Some(predef::BOXED_RES_REF),
+            Self::Void => None,
         }
     }
 }
@@ -1064,6 +1077,10 @@ pub mod predef {
         BOXED_CNAME => BoxedCName,
         BOXED_TWEAKDB_ID => BoxedTweakDBID,
         BOXED_VARIANT => BoxedVariant,
+        BOXED_NODE_REF => BoxedNodeRef,
+        BOXED_LOCALIZATION_STRING => BoxedLocalizationString,
+        BOXED_CRUID => BoxedCRUID,
+        BOXED_RES_REF => BoxedResRef,
         BOXED_ENUM => BoxedEnum,
         BOXED_STRUCT => BoxedStruct
     );

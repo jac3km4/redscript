@@ -53,7 +53,7 @@ impl<'id> ClassBuilder<'id> {
         pool: &mut ConstantPool,
         cache: &mut TypeCache,
     ) -> PoolIndex<Class> {
-        let name = pool.names.add(self.name);
+        let name = pool.names_mut().add(self.name);
         let methods = self
             .methods
             .into_iter()
@@ -87,12 +87,12 @@ pub struct EnumBuilder {
 
 impl EnumBuilder {
     pub fn commit_as(self, pool: &mut ConstantPool, idx: PoolIndex<Enum>) -> PoolIndex<Enum> {
-        let name = pool.names.add(self.name);
+        let name = pool.names_mut().add(self.name);
         let members = self
             .members
             .into_iter()
             .map(|(name, val)| {
-                let name = pool.names.add(name);
+                let name = pool.names_mut().add(name);
                 pool.add_definition(Definition::enum_value(name, idx, val))
             })
             .collect_vec();
@@ -115,7 +115,7 @@ pub struct FunctionBuilder<'id> {
     visibility: Visibility,
     #[builder(setter(into))]
     name: Str,
-    #[builder(default = Type::Prim(Prim::Unit))]
+    #[builder(default = Type::Prim(Prim::Void))]
     return_type: Type<'id>,
     #[builder(default, setter(transform = |it: impl IntoIterator<Item=ParamBuilder<'id>>| it.into_iter().collect()))]
     params: Vec<ParamBuilder<'id>>,
@@ -148,19 +148,17 @@ impl<'id> FunctionBuilder<'id> {
     ) -> PoolIndex<Function> {
         // callback methods must use the same parameter names as the base method they override
         let rename_param = match self.base {
-            Some(base) if self.flags.is_callback() => pool
-                .function(base)
-                .unwrap()
+            Some(base) if self.flags.is_callback() => pool[base]
                 .parameters
                 .first()
-                .map(|param| pool.def_name(*param).unwrap()),
+                .map(|param| Str::from(pool.def_name(*param).unwrap())),
             _ => None,
         };
 
         let id = pool.reserve();
-        let name = pool.names.add(self.name);
+        let name = pool.names_mut().add(self.name);
 
-        let return_type = matches!(self.return_type, Type::Prim(Prim::Unit))
+        let return_type = matches!(self.return_type, Type::Prim(Prim::Void))
             .not()
             .then(|| cache.alloc_type(&self.return_type, repo, pool));
 
@@ -235,7 +233,7 @@ impl<'id> FieldBuilder<'id> {
         pool: &mut ConstantPool,
         cache: &mut TypeCache,
     ) -> PoolIndex<Field> {
-        let name = pool.names.add(self.name);
+        let name = pool.names_mut().add(self.name);
         let type_ = cache.alloc_type(&self.typ, repo, pool);
         let def = Field {
             visibility: self.visibility,
@@ -266,7 +264,7 @@ impl<'id> ParamBuilder<'id> {
         pool: &mut ConstantPool,
         cache: &mut TypeCache,
     ) -> PoolIndex<Parameter> {
-        let name = pool.names.add(self.name);
+        let name = pool.names_mut().add(self.name);
         let type_ = cache.alloc_type(&self.typ, repo, pool);
         let def = Parameter {
             type_,
@@ -292,7 +290,7 @@ pub struct LocalBuilder<'id> {
 
 impl<'id> LocalBuilder<'id> {
     pub fn commit(self, repo: &TypeRepo<'id>, pool: &mut ConstantPool, cache: &mut TypeCache) -> PoolIndex<Local> {
-        let name = pool.names.add(self.name);
+        let name = pool.names_mut().add(self.name);
         let type_ = cache.alloc_type(&self.typ, repo, pool);
         let def = Local {
             type_,
@@ -319,7 +317,7 @@ impl TypeCache {
         pool: &mut ConstantPool,
     ) -> PoolIndex<PoolType> {
         if matches!(typ, Type::Var(_) | Type::Bottom | Type::Top)
-            || matches!(typ, Type::Data(data) if matches!(repo.get_type(data.id), Some(DataType::Class(class)) if !class.flags.is_struct()))
+            || matches!(typ, Type::Data(data) if matches!(&repo[data.id], DataType::Class(class) if !class.flags.is_struct()))
         {
             let data = Type::Data(Parameterized::new(predef::REF, Rc::new([typ.clone()])));
             self.alloc_type_unwrapped(&data, repo, pool)
@@ -349,7 +347,7 @@ impl TypeCache {
         pool: &mut ConstantPool,
     ) -> PoolIndex<PoolType> {
         let pool_type = match typ {
-            Type::Data(data) => match (repo.get_type(data.id).unwrap(), &data.args[..]) {
+            Type::Data(data) => match (&repo[data.id], &data.args[..]) {
                 (DataType::Builtin { .. }, [arg]) => match data.id {
                     id if id == predef::REF => PoolType::Ref(self.alloc_type_unwrapped(arg, repo, pool)),
                     id if id == predef::WREF => PoolType::WeakRef(self.alloc_type_unwrapped(arg, repo, pool)),
@@ -362,7 +360,7 @@ impl TypeCache {
             Type::Bottom | Type::Top | Type::Var(_) => PoolType::Class,
             Type::Prim(_) => PoolType::Prim,
         };
-        let name_idx = pool.names.add(name.clone());
+        let name_idx = pool.names_mut().add(name.clone());
         let type_idx = pool.add_definition(Definition::type_(name_idx, pool_type));
         self.types.insert(name, type_idx);
         type_idx
@@ -371,7 +369,7 @@ impl TypeCache {
 
 fn serialize_type<'id>(typ: &Type<'id>, repo: &TypeRepo<'id>, unwrapped: bool) -> Either<&'id str, Str> {
     match typ {
-        Type::Data(typ) => match repo.get_type(typ.id).unwrap() {
+        Type::Data(typ) => match &repo[typ.id] {
             _ if typ.id == predef::REF || typ.id == predef::WREF => {
                 Either::Right(str_fmt!("{}:{}", typ.id, serialize_type(&typ.args[0], repo, true)))
             }

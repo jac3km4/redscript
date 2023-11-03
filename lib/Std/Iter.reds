@@ -25,7 +25,7 @@ public abstract class Iter<A> {
   public final func Filter(pred: (A) -> Bool) -> Iter<A> =
     Filtered.New(this, pred)
 
-  public final func ForEach(f: (A) -> Unit) {
+  public final func ForEach(f: (A) -> Void) {
     while this.HasNext() {
       f(this.Next());
     }

@@ -97,17 +97,26 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
     ) {
         match expr {
             Expr::Ident(id, _) => match id {
-                Local::Var(_) => self.emit(Instr::Local(self.locals.get_index(id).unwrap())),
-                Local::Param(_) => self.emit(Instr::Param(self.params.get_index(id).unwrap())),
-                Local::Capture(_) => self.emit(Instr::ObjectField(self.captures.get_index(id).unwrap())),
+                Local::Var(_) => {
+                    let idx = self.locals.get_index(id).expect("local should be defined");
+                    self.emit(Instr::Local(idx));
+                }
+                Local::Param(_) => {
+                    let idx = self.params.get_index(id).expect("param should be defined");
+                    self.emit(Instr::Param(idx));
+                }
+                Local::Capture(_) => {
+                    let idx = self.captures.get_index(id).expect("capture should be defined");
+                    self.emit(Instr::ObjectField(idx));
+                }
                 Local::This => self.emit(Instr::This),
             },
             Expr::Constant(cons, _) => match cons {
                 Constant::String(lit, str) => match lit {
-                    Literal::String => self.emit(Instr::StringConst(pool.strings.add(str))),
-                    Literal::Name => self.emit(Instr::NameConst(pool.names.add(str))),
-                    Literal::Resource => self.emit(Instr::ResourceConst(pool.resources.add(str))),
-                    Literal::TweakDbId => self.emit(Instr::TweakDbIdConst(pool.tweakdb_ids.add(str))),
+                    Literal::String => self.emit(Instr::StringConst(pool.strings_mut().add(str))),
+                    Literal::Name => self.emit(Instr::NameConst(pool.names_mut().add(str))),
+                    Literal::Resource => self.emit(Instr::ResourceConst(pool.resources_mut().add(str))),
+                    Literal::TweakDbId => self.emit(Instr::TweakDbIdConst(pool.tweakdb_ids_mut().add(str))),
                 },
                 Constant::F32(i) => self.emit(Instr::F32Const(i)),
                 Constant::F64(i) => self.emit(Instr::F64Const(i)),
@@ -121,7 +130,7 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
             Expr::ArrayLit(_, _, _) => todo!(),
             Expr::InterpolatedString(_, _, _) => todo!(),
             Expr::Declare(local, typ, init, _) => {
-                let typ = typ.unwrap().simplify(self.repo);
+                let typ = typ.expect("type should be populated in codegen").simplify(self.repo);
                 let idx = LocalBuilder::builder()
                     .name(names::local(local))
                     .typ(typ.clone())
@@ -133,8 +142,7 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
                     self.emit(Instr::Local(idx));
                     self.assemble(*val, pool, cache);
                 } else {
-                    // let typ = typ.expect("Local without type");
-                    // self.emit_initializer(local, *typ, scope, pool).with_span(span)?;
+                    // TODO: emit initializers
                 }
             }
             Expr::DynCast(target, expr, _) => {
@@ -153,7 +161,7 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
                     self.emit_static_call(idx, args.into_vec(), &meta.arg_types, pool, cache);
                 }
                 Callable::WrappedStatic(_) => {
-                    let wrapped = self.wrapped.expect("unexpected WrappedStatic");
+                    let wrapped = self.wrapped.expect("wrapped should be defined for WrappedStatic");
                     self.emit_static_call(wrapped, args.into_vec(), &meta.arg_types, pool, cache);
                 }
                 Callable::Instance(mid) => {
@@ -161,14 +169,14 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
                     self.emit_instance_call(*expr, args, &meta, idx, pool, cache, false);
                 }
                 Callable::WrappedMethod(_) => {
-                    let wrapped = self.wrapped.expect("unexpected WrappedStatic");
+                    let wrapped = self.wrapped.expect("wrapped should be defined for WrappedMethod");
                     self.emit_instance_call(*expr, args, &meta, wrapped, pool, cache, true);
                 }
                 Callable::Lambda => {
                     let exit_label = self.new_label();
                     self.emit(Instr::Context(exit_label));
                     self.assemble(*expr, pool, cache);
-                    self.emit_virtual_call(pool.names.add("Apply"), args.into_vec(), pool, cache);
+                    self.emit_virtual_call(pool.names_mut().add("Apply"), args.into_vec(), pool, cache);
                     self.emit_label(exit_label);
                 }
                 Callable::Global(gid) => {
@@ -182,7 +190,11 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
                     }
                 }
                 Callable::Cast => {
-                    let from = meta.arg_types.first().unwrap().simplify(self.repo);
+                    let from = meta
+                        .arg_types
+                        .first()
+                        .expect("cast should define one type argument")
+                        .simplify(self.repo);
                     let to = meta.ret_type.simplify(self.repo);
                     let entry = self
                         .repo
@@ -202,9 +214,24 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
                     .captures
                     .values()
                     .map(|&(_, captured)| match captured {
-                        Local::Var(_) => Instr::Local(self.locals.get_index(captured).unwrap()),
-                        Local::Param(_) => Instr::Param(self.params.get_index(captured).unwrap()),
-                        Local::Capture(_) => Instr::ObjectField(self.captures.get_index(captured).unwrap()),
+                        Local::Var(_) => {
+                            let idx = self
+                                .locals
+                                .get_index(captured)
+                                .expect("captured local should be defined");
+                            Instr::Local(idx)
+                        }
+                        Local::Param(_) => {
+                            let idx = self
+                                .params
+                                .get_index(captured)
+                                .expect("captured param should be defined");
+                            Instr::Param(idx)
+                        }
+                        Local::Capture(_) => {
+                            let idx = self.captures.get_index(captured).expect("capture should be defined");
+                            Instr::ObjectField(idx)
+                        }
                         Local::This => Instr::This,
                     })
                     .collect_vec();
@@ -221,25 +248,22 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
                 let &base = self
                     .db
                     .classes
-                    .get(&TypeId::get_fn_by_arity(params.len()).unwrap())
+                    .get(&TypeId::get_fn_by_arity(params.len()).expect("lambda should have valid arity"))
                     .unwrap();
                 let idx = pool.definitions().len();
                 let parent_class =
                     Self::closure(&params, &captures, idx).commit_with_base(base, self.repo, pool, cache);
-                let summoner = pool.class(parent_class).unwrap().methods[0];
+
+                let &[summoner, apply, ..] = &pool[parent_class].methods[..] else {
+                    panic!("lambda should have a summoner and an apply method")
+                };
+
                 Self::impl_summoner(parent_class, summoner, pool);
                 self.emit_static_call(summoner, args, &[], pool, cache);
 
-                let apply = pool.class(parent_class).unwrap().methods[1];
-                let param_indices = LocalIndices::new(
-                    params,
-                    pool.function(apply).unwrap().parameters.iter().copied().collect(),
-                );
-                let capture_indices = LocalIndices::new(
-                    captures,
-                    pool.class(parent_class).unwrap().fields.iter().copied().collect(),
-                );
-                let body = if env.ret_type.simplify(self.repo) == Type::Prim(Prim::Unit) {
+                let param_indices = LocalIndices::new(params, pool[apply].parameters.iter().copied().collect());
+                let capture_indices = LocalIndices::new(captures, pool[parent_class].fields.iter().copied().collect());
+                let body = if env.ret_type.simplify(self.repo) == Type::Prim(Prim::Void) {
                     *body
                 } else {
                     Expr::Return(Some(body), Span::ZERO)
@@ -254,11 +278,13 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
                     pool,
                     cache,
                 );
-                pool.complete_function(apply, locals.into_vec(), code).unwrap();
+                pool.complete_function(apply, locals.into_vec(), code);
             }
             Expr::Member(expr, member, _) => match member {
                 Member::Field(field, _) => {
-                    let dt = self.repo.get_type(field.owner()).unwrap().as_class().unwrap();
+                    let dt = self.repo[field.owner()]
+                        .as_class()
+                        .expect("field should only be used on classes");
                     if dt.flags.is_struct() {
                         self.emit(Instr::StructField(*self.db.fields.get(&field).unwrap()));
                         self.assemble(*expr, pool, cache);
@@ -270,10 +296,11 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
                         self.emit_label(exit_label);
                     }
                 }
-                Member::EnumMember(member) => self.emit(Instr::EnumConst(
-                    *self.db.enums.get(&member.owner()).unwrap(),
-                    *self.db.enum_members.get(&member).unwrap(),
-                )),
+                Member::EnumMember(member) => {
+                    let enum_ = self.db.enums.get(&member.owner()).unwrap();
+                    let item = self.db.enum_members.get(&member).unwrap();
+                    self.emit(Instr::EnumConst(*enum_, *item));
+                }
             },
             Expr::ArrayElem(arr, idx, typ, _) => {
                 let arr_type = Type::Data(Parameterized::new(predef::ARRAY, Rc::new([typ.simplify(self.repo)])));
@@ -282,7 +309,9 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
                 self.assemble(*idx, pool, cache);
             }
             Expr::New(typ, args, _) => {
-                let class = self.repo.get_type(typ.id).unwrap().as_class().unwrap();
+                let class = self.repo[typ.id]
+                    .as_class()
+                    .expect("new should only be used on classes");
                 let &tt = self.db.classes.get(&typ.id).unwrap();
                 if class.flags.is_struct() {
                     self.emit(Instr::Construct(args.len() as u8, tt));
@@ -374,7 +403,6 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
                 self.emit(Instr::Jump(loop_label));
                 self.emit_label(exit_label);
             }
-            Expr::ForIn(_, _, _, _) => todo!(),
             Expr::Null(_) => {
                 self.emit(Instr::Null);
             }
@@ -382,9 +410,11 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
                 self.emit(Instr::This);
             }
             Expr::Break(_) => {
-                self.emit(Instr::Jump(exit.unwrap()));
+                self.emit(Instr::Jump(exit.expect("break should have exit label")));
             }
-            Expr::BinOp(_, _, _, _) | Expr::UnOp(_, _, _) | Expr::Goto(_, _) => unreachable!(),
+            Expr::BinOp(_, _, _, _) | Expr::UnOp(_, _, _) | Expr::Goto(_, _) | Expr::ForIn(_, _, _, _) => {
+                unreachable!()
+            }
         }
     }
 
@@ -399,8 +429,7 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
         cache: &mut TypeCache,
         force_static: bool,
     ) {
-        let name = pool.definition(idx).unwrap().name;
-        let flags = pool.function(idx).unwrap().flags;
+        let flags = pool[idx].flags;
         let exit_label = self.new_label();
         self.emit(Instr::Context(exit_label));
 
@@ -414,6 +443,7 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
         if force_static || flags.is_final() {
             self.emit_static_call(idx, args.into_vec(), &meta.arg_types, pool, cache);
         } else {
+            let name = pool.def_name_idx(idx).unwrap();
             self.emit_virtual_call(name, args.into_vec(), pool, cache);
         }
         self.emit_label(exit_label);
@@ -432,11 +462,10 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
         A: Assemble<'id>,
     {
         let exit_label = self.new_label();
-        let func = pool.function(idx).unwrap();
-        let flags = func
+        let flags = pool[idx]
             .parameters
             .iter()
-            .map(|&p| pool.parameter(p).unwrap().flags)
+            .map(|&param| pool[param].flags)
             .collect_vec();
 
         let mut invoke_flags = 0u16;
@@ -558,18 +587,18 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
     }
 
     fn impl_summoner(class: PoolIndex<PoolClass>, summoner: PoolIndex<Function>, pool: &mut ConstantPool) {
-        let name = pool.definition(class).unwrap().name;
+        let name = pool.def_name_idx(class).unwrap();
         let class_idx = pool.add_definition(Definition::type_(name, PoolType::Class));
         let ref_ = pool.add_definition(Definition::type_(name, PoolType::Ref(class_idx)));
         let this = Definition::local(
-            pool.names.add("self"),
+            pool.names_mut().add("self"),
             summoner,
             PoolLocal::new(ref_, LocalFlags::new()),
         );
         let this = pool.add_definition(this);
+        let fields = &pool[class].fields;
+        let params = &pool[summoner].parameters;
 
-        let fields = &pool.class(class).unwrap().fields;
-        let params = &pool.function(summoner).unwrap().parameters;
         let mut code = vec![];
         code.push(Instr::Assign);
         code.push(Instr::Local(this));
@@ -583,7 +612,8 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
         }
         code.push(Instr::Return);
         code.push(Instr::Local(this));
-        let summoner = pool.function_mut(summoner).unwrap();
+
+        let summoner = &mut pool[summoner];
         summoner.return_type = Some(ref_);
         summoner.code = Code(code);
         summoner.locals = vec![this];

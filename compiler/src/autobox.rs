@@ -137,10 +137,10 @@ impl<'ctx, 'id> Autobox<'ctx, 'id> {
     }
 
     fn box_primitive(&self, boxable: &Boxable<'id>, expr: Expr<CheckedAst<'id>>) -> Expr<CheckedAst<'id>> {
-        if matches!(boxable, Boxable::Prim(Prim::Unit)) {
+        if matches!(boxable, Boxable::Prim(Prim::Void)) {
             return expr;
         }
-        let boxed = boxable.boxed_type().unwrap();
+        let boxed = boxable.boxed_type().expect("boxable should not be void");
         let span = expr.span();
         let (method, arg) = match boxable {
             Boxable::Prim(_) => ("New", expr),
@@ -167,17 +167,14 @@ impl<'ctx, 'id> Autobox<'ctx, 'id> {
                 ("FromIntRepr", expr)
             }
         };
-        let method = self
-            .type_repo
-            .get_type(boxed)
-            .unwrap()
+        let method = self.type_repo[boxed]
             .as_class()
-            .unwrap()
+            .expect("boxed type should be a class")
             .statics
             .by_name(method)
             .exactly_one()
             .ok()
-            .unwrap();
+            .expect("boxed type should have a New method");
         Expr::Call(
             Expr::EMPTY.into(),
             Callable::Static(MethodId::new(boxed, method.index)).into(),
@@ -189,19 +186,16 @@ impl<'ctx, 'id> Autobox<'ctx, 'id> {
     }
 
     fn unbox_primitive(&self, boxable: &Boxable<'id>, expr: Expr<CheckedAst<'id>>) -> Expr<CheckedAst<'id>> {
-        if matches!(boxable, Boxable::Prim(Prim::Unit)) {
+        if matches!(boxable, Boxable::Prim(Prim::Void)) {
             return expr;
         }
-        let boxed = boxable.boxed_type().unwrap();
-        let (index, _) = self
-            .type_repo
-            .get_type(boxed)
-            .unwrap()
+        let boxed = boxable.boxed_type().expect("boxable should not be void");
+        let (index, _) = self.type_repo[boxed]
             .as_class()
-            .unwrap()
+            .expect("boxed type should be a class")
             .fields
             .by_name("value")
-            .unwrap();
+            .expect("boxed type should have a value field");
         let span = expr.span();
         let get_field = Expr::Member(
             expr.into(),
@@ -247,7 +241,7 @@ impl<'id> Boxable<'id> {
     }
 
     fn from_type_id(id: TypeId<'id>, repo: &TypeRepo<'id>) -> Option<Boxable<'id>> {
-        match repo.get_type(id)? {
+        match &repo[id] {
             DataType::Class(class) if class.flags.is_struct() => Some(Boxable::Struct(id)),
             DataType::Enum(_) => Some(Boxable::Enum(id)),
             _ => None,
@@ -273,7 +267,7 @@ impl<'id> Boxable<'id> {
 fn requires_boxing<'id>(typ: &Type<'id>, repo: &TypeRepo<'id>) -> bool {
     match typ {
         Type::Top | Type::Var(_) => true,
-        Type::Data(data) => match repo.get_type(data.id).unwrap() {
+        Type::Data(data) => match &repo[data.id] {
             DataType::Class(c) => !c.flags.is_struct(),
             &DataType::Builtin { is_unboxed, .. } => !is_unboxed,
             &DataType::Enum(_) => false,

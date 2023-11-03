@@ -197,7 +197,10 @@ impl<'id> Compiler<'id> {
                 types.insert(typ.name().into(), typ);
             }
             ImportItem::Func(func) => {
-                let name = repo.globals().get_name(func).unwrap();
+                let name = repo
+                    .globals()
+                    .get_name(func)
+                    .expect("ImportItem should point to a function");
                 names
                     .top_mut()
                     .entry_ref(name.name())
@@ -333,7 +336,8 @@ impl<'id> Compiler<'id> {
                             let ct = self
                                 .repo
                                 .get_type_mut(id)
-                                .and_then(DataType::as_class_mut)
+                                .unwrap()
+                                .as_class_mut()
                                 .ok_or_else(|| TypeError::UnresolvedType(ident.clone()))
                                 .with_span(span)?;
                             let index = if flags.is_static() {
@@ -407,10 +411,8 @@ impl<'id> Compiler<'id> {
             .get(replace)
             .ok_or_else(|| TypeError::UnresolvedType(replace.clone()))
             .with_span(span)?;
-        let res = self
-            .repo
-            .get_type(id)
-            .and_then(DataType::as_class)
+        let res = self.repo[id]
+            .as_class()
             .ok_or_else(|| TypeError::UnresolvedType(replace.clone()))
             .with_span(span)?;
         Ok((Data::without_args(id), res))
@@ -562,7 +564,7 @@ impl<'id> Compiler<'id> {
             .type_
             .as_ref()
             .map(|typ| env.resolve_type(typ))
-            .unwrap_or(Ok(Type::Prim(Prim::Unit)))
+            .unwrap_or(Ok(Type::Prim(Prim::Void)))
             .with_span(func.decl.span)?;
         let func_type = FuncType::new(method_type_vars, params, ret.clone());
         Ok((local_vars.pop_scope(), func_type))
@@ -617,13 +619,10 @@ impl<'id> Compiler<'id> {
                 let ModuleItem::Class(this, _, funcs) = item else {
                     continue;
                 };
-                let Some(base) = self
-                    .repo
-                    .get_type(this.id)
-                    .and_then(DataType::as_class)
+                let Some(base) = self.repo[this.id]
+                    .as_class()
                     .and_then(|class| class.extends.as_ref())
-                    .and_then(|typ| self.repo.get_type(typ.id))
-                    .and_then(DataType::as_class)
+                    .and_then(|typ| self.repo[typ.id].as_class())
                 else {
                     continue;
                 };
@@ -654,7 +653,7 @@ impl<'id> Compiler<'id> {
 
         // resolve all unimplemented virtual methods
         for &typ in &self.defined_types {
-            let DataType::Class(class) = self.repo.get_type(typ).unwrap() else {
+            let DataType::Class(class) = &self.repo[typ] else {
                 continue;
             };
             let mut this_unimplemented = class
@@ -676,8 +675,9 @@ impl<'id> Compiler<'id> {
             if !class.flags.is_abstract() && !this_unimplemented.is_empty() {
                 for method in &this_unimplemented {
                     let name = self.repo.get_method_name(method).unwrap();
+                    let span = class.span.expect("span should be defined on user classes");
                     self.reporter
-                        .report(CompileError::UnimplementedMethod(name.clone(), class.span.unwrap()));
+                        .report(CompileError::UnimplementedMethod(name.clone(), span));
                 }
             }
 
@@ -715,13 +715,11 @@ impl<'id> Compiler<'id> {
             .flat_map(|(type_id, class)| class.methods.by_name(name).map(move |res| (type_id, res)))
             .filter(|(_, e)| e.function.typ.params.len() == typ.params.len() && !e.function.flags.is_final())
             .filter(|(id, e)| {
-                let base = this.clone().instantiate_as(*id, repo).unwrap();
-                let vars = repo
-                    .get_type(*id)
-                    .unwrap()
-                    .type_var_names()
-                    .zip(base.args.iter().cloned())
-                    .collect();
+                let base = this
+                    .clone()
+                    .instantiate_as(*id, repo)
+                    .expect("should always match upper bound type");
+                let vars = repo[*id].type_var_names().zip(base.args.iter().cloned()).collect();
                 e.function
                     .typ
                     .params
@@ -732,7 +730,7 @@ impl<'id> Compiler<'id> {
             })
             .at_most_one()
             .ok()
-            .unwrap()?;
+            .expect("there should no more than one base method")?;
         Some(MethodId::new(id, entry.index))
     }
 }
@@ -748,7 +746,7 @@ pub struct CompilationOutputs<'id> {
 impl<'id> CompilationOutputs<'id> {
     pub fn commit(self, db: &mut CompilationDb<'id>, cache: &mut TypeCache, pool: &mut ConstantPool) {
         for &item in &self.defined_types {
-            match self.repo.get_type(item).unwrap() {
+            match self.repo[item] {
                 DataType::Class(_) => {
                     db.classes.insert(item, pool.reserve());
                 }
@@ -784,7 +782,7 @@ impl<'id> CompilationOutputs<'id> {
                     let idx = Self::build_function(sig.clone(), &method.typ, method.flags, method.base.as_ref(), db)
                         .commit(parent, &self.repo, pool, cache);
 
-                    pool.class_mut(parent).unwrap().methods.push(idx);
+                    pool[parent].methods.push(idx);
                     db.methods.insert(mid.clone(), idx);
                 }
                 CodeGenItem::WrapMethod(mid, _, _, is_static) => {
@@ -799,7 +797,7 @@ impl<'id> CompilationOutputs<'id> {
                         .with_wrapper_flag()
                         .commit(parent, &self.repo, pool, cache);
 
-                    pool.class_mut(parent).unwrap().methods.push(idx);
+                    pool[parent].methods.push(idx);
                     wrappers.entry(mid.clone()).or_default().push_back(idx);
                 }
                 _ => {}
@@ -808,23 +806,23 @@ impl<'id> CompilationOutputs<'id> {
 
         for (mid, indexes) in &mut wrappers {
             let wrapped_idx = *db.methods.get(mid).unwrap();
-            let last_wrapper_idx = indexes.pop_back().unwrap();
+            let last_wrapper_idx = indexes.pop_back().expect("should have at least one wrapper");
 
-            let wrapped_name = pool.definition(wrapped_idx).unwrap().name;
-            let wrapper_name = pool.definition(last_wrapper_idx).unwrap().name;
+            let wrapped_name = pool.def_name_idx(wrapped_idx).unwrap();
+            let wrapper_name = pool.def_name_idx(last_wrapper_idx).unwrap();
 
-            let wrapped = pool.function_mut(wrapped_idx).unwrap();
+            let wrapped = &mut pool[wrapped_idx];
             if wrapped.flags.is_callback() {
                 // make sure only one remains a callback
                 wrapped.flags = wrapped.flags.with_is_callback(false);
                 let new_flags = wrapped.flags.with_is_callback(true);
 
                 // the game crashes when parameter names are not aligned in callback methods
-                let from_args = pool.function(wrapped_idx).unwrap().parameters.clone();
-                let to_args = pool.function(last_wrapper_idx).unwrap().parameters.clone();
-                pool.function_mut(last_wrapper_idx).unwrap().flags = new_flags;
-                for (&from, &to) in from_args.iter().zip(&to_args) {
-                    pool.rename(to, pool.definition(from).unwrap().name);
+                let from_params = pool[wrapped_idx].parameters.clone();
+                let to_params = pool[last_wrapper_idx].parameters.clone();
+                pool[last_wrapper_idx].flags = new_flags;
+                for (&from, &to) in from_params.iter().zip(&to_params) {
+                    pool.rename(to, pool.def_name_idx(from).unwrap());
                 }
             }
 
@@ -846,32 +844,27 @@ impl<'id> CompilationOutputs<'id> {
                     } else {
                         db.methods.get(&mid).unwrap()
                     };
-                    let param_indices =
-                        LocalIndices::new(params, pool.function(idx).unwrap().parameters.iter().copied().collect());
+                    let param_indices = LocalIndices::new(params, pool[idx].parameters.iter().copied().collect());
                     let (locals, code) =
                         CodeGen::build_function(body, param_indices, &self.repo, db, None, pool, cache);
-                    pool.complete_function(idx, locals.into_vec(), code).unwrap();
+                    pool.complete_function(idx, locals.into_vec(), code);
                 }
                 CodeGenItem::AssembleGlobal(gid, params, body) => {
                     let &idx = db.globals.get(&gid).unwrap();
-                    let param_indices =
-                        LocalIndices::new(params, pool.function(idx).unwrap().parameters.iter().copied().collect());
+                    let param_indices = LocalIndices::new(params, pool[idx].parameters.iter().copied().collect());
                     let (locals, code) =
                         CodeGen::build_function(body, param_indices, &self.repo, db, None, pool, cache);
-                    pool.complete_function(idx, locals.into_vec(), code).unwrap();
+                    pool.complete_function(idx, locals.into_vec(), code);
                 }
                 CodeGenItem::WrapMethod(mid, params, body, _) => {
-                    let indexes = wrappers.get_mut(&mid).unwrap();
-                    let wrapped = indexes.pop_front();
-                    let index = indexes.front().copied().unwrap();
+                    let indexes = wrappers.get_mut(&mid).expect("wrapper should have been created");
+                    let wrapped = indexes.pop_front().expect("should have at least one wrapped method");
+                    let index = indexes.front().copied().expect("should have at least one wrapper");
 
-                    let param_indices = LocalIndices::new(
-                        params,
-                        pool.function(index).unwrap().parameters.iter().copied().collect(),
-                    );
+                    let param_indices = LocalIndices::new(params, pool[index].parameters.iter().copied().collect());
                     let (locals, code) =
-                        CodeGen::build_function(body, param_indices, &self.repo, db, wrapped, pool, cache);
-                    pool.complete_function(index, locals.into_vec(), code).unwrap();
+                        CodeGen::build_function(body, param_indices, &self.repo, db, Some(wrapped), pool, cache);
+                    pool.complete_function(index, locals.into_vec(), code);
                 }
             }
         }
@@ -884,8 +877,7 @@ impl<'id> CompilationOutputs<'id> {
         cache: &mut TypeCache,
         pool: &mut ConstantPool,
     ) {
-        let item = repo.get_type(id).unwrap();
-        match item {
+        match &repo[id] {
             DataType::Class(class_type) => {
                 let &class_idx = db.classes.get(&id).unwrap();
                 let base = class_type.extends.as_ref().and_then(|c| db.classes.get(&c.id)).copied();
@@ -920,7 +912,7 @@ impl<'id> CompilationOutputs<'id> {
                     .build()
                     .commit_as(class_idx, base.unwrap_or(PoolIndex::UNDEFINED), repo, pool, cache);
 
-                let class = pool.class(idx).unwrap();
+                let class = &pool[idx];
                 for (entry, &idx) in class_type.fields.iter().zip(&class.fields) {
                     db.fields.insert(FieldId::new(id, entry.index), idx);
                 }
@@ -939,8 +931,7 @@ impl<'id> CompilationOutputs<'id> {
                     .members(typ.iter().map(|e| (e.name.clone(), e.value)))
                     .build()
                     .commit_as(pool, enum_idx);
-                let enum_ = pool.enum_(idx).unwrap();
-                for (entry, &member) in typ.iter().zip(&enum_.members) {
+                for (entry, &member) in typ.iter().zip(&pool[idx].members) {
                     db.enum_members.insert(FieldId::new(id, entry.index), member);
                 }
             }
@@ -977,7 +968,7 @@ impl<'id> CompilationOutputs<'id> {
     fn remap_locals(proxy: PoolIndex<PoolFunction>, target: PoolIndex<PoolFunction>, pool: &mut ConstantPool) {
         // this is a workaround for a game crash which happens when the game loads
         // locals that are not placed adjacent to the parent function in the pool
-        let locals = pool.function(target).unwrap().locals.clone();
+        let locals = pool[target].locals.clone();
         let mut mapped_locals = HashMap::new();
         for local_idx in locals {
             let mut local = pool.definition(local_idx).unwrap().clone();
@@ -985,7 +976,7 @@ impl<'id> CompilationOutputs<'id> {
             mapped_locals.insert(local_idx, pool.add_definition(local));
         }
 
-        let params = pool.function(target).unwrap().parameters.clone();
+        let params = pool[target].parameters.clone();
         let mut mapped_params = HashMap::new();
         for param_idx in params {
             let mut param = pool.definition(param_idx).unwrap().clone();
@@ -993,17 +984,17 @@ impl<'id> CompilationOutputs<'id> {
             mapped_params.insert(param_idx, pool.add_definition(param));
         }
 
-        let fun = pool.function_mut(target).unwrap();
+        let fun = &mut pool[target];
         fun.locals = mapped_locals.values().copied().collect();
         fun.parameters = mapped_params.values().copied().collect();
 
         for instr in &mut fun.code.0 {
             match instr {
                 Instr::Local(local) => {
-                    *instr = Instr::Local(*mapped_locals.get(local).unwrap());
+                    *instr = Instr::Local(*mapped_locals.get(local).expect("mapped local should exist"));
                 }
                 Instr::Param(param) => {
-                    *instr = Instr::Param(*mapped_params.get(param).unwrap());
+                    *instr = Instr::Param(*mapped_params.get(param).expect("mapped local should exist"));
                 }
                 _ => {}
             }
@@ -1039,33 +1030,33 @@ impl<'id> CompilationDb<'id> {
         interner: &'id StringInterner,
     ) -> ClassType<'id> {
         self.classes.insert(owner, idx);
-        let class = pool.class(idx).unwrap();
+        let class = &pool[idx];
         let mut fields = FieldMap::default();
         for &idx in &class.fields {
             let name = pool.def_name(idx).unwrap();
-            let field = pool.field(idx).unwrap();
+            let field = &pool[idx];
             let typ = CompilationDb::load_type(field.type_, pool, interner);
-            let index = fields.add(name.clone(), Field::new(typ, field.flags));
+            let index = fields.add(name.into(), Field::new(typ, field.flags));
             self.fields.insert(FieldId::new(owner, index), idx);
         }
 
         let mut methods = FuncMap::default();
         let mut statics = FuncMap::default();
-        for &pool_idx in &class.methods {
-            let method = pool.function(pool_idx).unwrap();
-            let (short_name, signature, ftyp) = CompilationDb::load_function(pool_idx, pool, interner);
+        for &idx in &class.methods {
+            let method = &pool[idx];
+            let (short_name, signature, ftyp) = CompilationDb::load_function(idx, pool, interner);
             if method.flags.is_static() {
                 let index = statics.add_with_signature(short_name, signature, ftyp, method.flags);
-                self.statics.insert(MethodId::new(owner, index), pool_idx);
+                self.statics.insert(MethodId::new(owner, index), idx);
             } else {
                 let index = methods.add_with_signature(short_name, signature, ftyp, method.flags);
-                self.methods.insert(MethodId::new(owner, index), pool_idx);
+                self.methods.insert(MethodId::new(owner, index), idx);
             }
         }
 
         let base = class.base.is_undefined().not().then(|| {
             let name = pool.def_name(class.base).unwrap();
-            Parameterized::without_args(get_type_id(&name, interner))
+            Parameterized::without_args(get_type_id(name, interner))
         });
 
         ClassType {
@@ -1081,12 +1072,10 @@ impl<'id> CompilationDb<'id> {
 
     fn load_enum(&mut self, owner: TypeId<'id>, idx: PoolIndex<PoolEnum>, pool: &ConstantPool) -> EnumType {
         self.enums.insert(owner, idx);
-        let enum_ = pool.enum_(idx).unwrap();
         let mut typ = EnumType::default();
-        for &idx in &enum_.members {
+        for &idx in &pool[idx].members {
             let name = pool.def_name(idx).unwrap();
-            let value = pool.enum_value(idx).unwrap();
-            let i = typ.add_member(name, value);
+            let i = typ.add_member(name.into(), pool[idx]);
             self.enum_members.insert(FieldId::new(owner, i), idx);
         }
         typ
@@ -1098,33 +1087,32 @@ impl<'id> CompilationDb<'id> {
         interner: &'id StringInterner,
     ) -> (Str, FuncSignature, FuncType<'id>) {
         let name = pool.def_name(idx).unwrap();
-        let func = pool.function(idx).unwrap();
+        let func = &pool[idx];
         let ret = func
             .return_type
-            .map_or(Type::Prim(Prim::Unit), |idx| Self::load_type(idx, pool, interner));
+            .map_or(Type::Prim(Prim::Void), |idx| Self::load_type(idx, pool, interner));
         let params = func
             .parameters
             .iter()
             .map(|&idx| {
-                let param = pool.parameter(idx).unwrap();
+                let param = &pool[idx];
                 let typ = Self::load_type(param.type_, pool, interner);
                 FuncParam::custom(typ, param.flags.is_out())
             })
             .collect();
-        let short_name = name.split_once(';').map_or_else(|| name.clone(), |(s, _)| s.into());
+        let short_name = name.split_once(';').map_or_else(|| name, |(s, _)| s);
         let ftyp = FuncType::new([].into(), params, ret);
-        (short_name, FuncSignature::new(name), ftyp)
+        (short_name.into(), FuncSignature::new(name.into()), ftyp)
     }
 
     fn load_type(idx: PoolIndex<PoolType>, pool: &ConstantPool, interner: &'id StringInterner) -> Type<'id> {
-        match pool.type_(idx).unwrap() {
+        match &pool[idx] {
             PoolType::Prim => {
                 let str = pool.def_name(idx).unwrap();
-                Type::Prim(Prim::from_str(&str).unwrap())
+                Type::Prim(Prim::from_str(str).expect("should be a known primitive type"))
             }
             PoolType::Class => {
                 let name = pool.def_name(idx).unwrap();
-                let name = name.as_str();
                 Type::Data(Parameterized::new(get_type_id(name, interner), Rc::new([])))
             }
             &PoolType::Ref(inner) => Self::load_type(inner, pool, interner),
@@ -1160,12 +1148,12 @@ impl<'id> CompilationResources<'id> {
         for (idx, def) in pool.definitions() {
             match &def.value {
                 AnyDefinition::Type(_) => {
-                    let mangled = pool.names.get(def.name).unwrap();
+                    let mangled = pool.names()[def.name].into();
                     type_cache.add(mangled, idx.cast());
                 }
                 AnyDefinition::Class(_) => {
-                    let name = pool.names.get(def.name).unwrap();
-                    let owner = get_type_id(&name, interner);
+                    let name = &pool.names()[def.name];
+                    let owner = get_type_id(name, interner);
                     let class = db.load_class(owner, idx.cast(), pool, interner);
                     type_repo.add_type(owner, DataType::Class(class));
                 }
@@ -1178,8 +1166,8 @@ impl<'id> CompilationResources<'id> {
                     db.globals.insert(GlobalId::new(id), idx.cast());
                 }
                 AnyDefinition::Enum(_) => {
-                    let name = pool.names.get(def.name).unwrap();
-                    let owner = get_type_id(&name, interner);
+                    let name = &pool.names()[def.name];
+                    let owner = get_type_id(name, interner);
                     let enum_ = db.load_enum(owner, idx.cast(), pool);
                     type_repo.add_type(owner, DataType::Enum(enum_));
                 }
