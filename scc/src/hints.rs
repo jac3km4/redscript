@@ -1,9 +1,9 @@
-use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
+use hashbrown::HashMap;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
