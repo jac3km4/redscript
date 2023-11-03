@@ -1,8 +1,9 @@
 use std::io;
 
 use byteorder::{LittleEndian, ReadBytesExt};
+use smallvec::SmallVec;
 
-use crate::{Str, StrBuf};
+use crate::Str;
 
 pub trait Decode: Sized {
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self>;
@@ -87,7 +88,7 @@ impl Decode for f32 {
 
 impl Decode for Str {
     fn decode<I: io::Read>(input: &mut I) -> io::Result<Self> {
-        let mut buf: StrBuf = StrBuf::with_capacity(22);
+        let mut buf: SmallVec<[_; 22]> = SmallVec::with_capacity(22);
         loop {
             let c = input.read_u8()?;
             if c == 0 {

@@ -9,7 +9,7 @@ use itertools::{Either, Itertools};
 use redscript::ast::{Span, Variance};
 use redscript::bytecode::Intrinsic;
 use redscript::definition::{ClassFlags, FieldFlags, FunctionFlags};
-use redscript::{function_arity_from_str, str_fmt, Str, StrBuf};
+use redscript::{function_arity_from_str, str_fmt, Str};
 use simple_interner::Interned;
 use smallvec::SmallVec;
 use strum::{EnumString, IntoStaticStr};
@@ -784,21 +784,13 @@ impl FuncSignature {
     }
 
     pub fn from_name_and_type(name: impl fmt::Display, typ: &FuncType<'_>) -> Self {
-        use std::io::Write;
-
-        let mut buf: StrBuf = StrBuf::new();
-        write!(buf, "{name};").unwrap();
-
-        for param in &*typ.params {
-            match &param.typ {
-                Type::Bottom => write!(buf, "Nothing").unwrap(),
-                Type::Data(dt) => write!(buf, "{}", dt.id).unwrap(),
-                Type::Prim(prim) => write!(buf, "{prim}").unwrap(),
-                Type::Var(_) | Type::Top => write!(buf, "IScriptable").unwrap(),
-            }
-        }
-        let str = std::str::from_utf8(&buf).unwrap();
-        Self(Str::from_ref(str))
+        let params = typ.params.iter().format_with("", |param, f| match &param.typ {
+            Type::Bottom => f(&"Nothing"),
+            Type::Data(dt) => f(&dt.id),
+            Type::Prim(prim) => f(&prim),
+            Type::Var(_) | Type::Top => f(&"IScriptable"),
+        });
+        Self(str_fmt!("{name};{params}"))
     }
 
     pub fn into_str(self) -> Str {
