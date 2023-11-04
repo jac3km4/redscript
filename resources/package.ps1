@@ -2,14 +2,15 @@
     Build the executable, copy required files and create a Nexus-style mod archive.
 #>
 param (
-    [Parameter(Mandatory=$true)]
+    [Parameter(Mandatory = $true)]
     [string]$stagingDir,
     
-    [Parameter(Mandatory=$true)]
+    [Parameter(Mandatory = $true)]
     [string]$archiveName
 )
 
-cargo build --release --features mmap,popup
+cargo build --release --bin scc --features 'mmap,popup'
+cargo build --release --bin redscript-cli --features 'mmap,pretty-errors'
 
 $toolsDir = @($stagingDir, 'engine', 'tools') -join [IO.Path]::DirectorySeparatorChar
 
