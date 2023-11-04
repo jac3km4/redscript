@@ -1320,7 +1320,7 @@ dependencies = [
 
 [[package]]
 name = "redscript"
-version = "0.6.0-M4"
+version = "0.6.0-M5"
 dependencies = [
  "byteorder",
  "crc32fast",
@@ -1339,7 +1339,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-cli"
-version = "0.6.0-M4"
+version = "0.6.0-M5"
 dependencies = [
  "anyhow",
  "argh",
@@ -1353,7 +1353,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-compiler"
-version = "0.6.0-M4"
+version = "0.6.0-M5"
 dependencies = [
  "ahash",
  "enum-as-inner",
@@ -1376,7 +1376,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-decompiler"
-version = "0.6.0-M4"
+version = "0.6.0-M5"
 dependencies = [
  "hashbrown 0.14.2",
  "itertools",
@@ -1512,7 +1512,7 @@ dependencies = [
 
 [[package]]
 name = "scc"
-version = "0.6.0-M4"
+version = "0.6.0-M5"
 dependencies = [
  "anyhow",
  "assert_cmd",
