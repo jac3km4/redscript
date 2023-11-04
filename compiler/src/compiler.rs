@@ -286,7 +286,7 @@ impl<'id> Compiler<'id> {
                         }
                         MemberSource::Field(field) => {
                             let flags = get_field_flags(&field.declaration.qualifiers);
-                            self.validate_field(data_type.flags, flags, field.declaration.span);
+                            Self::validate_field(&mut self.reporter, data_type.flags, flags, field.declaration.span);
                             let env = TypeEnv::new(types, &type_vars);
                             let res = env.resolve_type(&field.type_).with_span(field.declaration.span);
                             let Some(typ) = self.reporter.unwrap_err(res) else {
@@ -350,9 +350,28 @@ impl<'id> Compiler<'id> {
                             let data = Data::without_args(id);
                             return Ok(Some(ModuleItem::AnnotatedMethod(data, body, MethodInjection::Add)));
                         }
-                        _ => {}
+                        (AnnotationKind::ReplaceGlobal, []) => {
+                            let span = func.decl.span;
+                            let name = ScopedName::top_level(func.decl.name.clone());
+                            let entry = self
+                                .repo
+                                .globals()
+                                .by_name(&name)
+                                .exactly_one()
+                                .map_err(|_| CompileError::UnresolvedFunction(name.name().into(), span))?;
+                            let body = CompileBody::new(func, entry.index, env, true)
+                                .ok_or(CompileError::Unsupported(Unsupported::AnnotatedFuncWithNoBody, span))?;
+                            return Ok(Some(ModuleItem::Global(body)));
+                        }
+                        (AnnotationKind::If, [_]) => {
+                            todo!("conditional compilation is not supported yet")
+                        }
+                        _ => {
+                            return Err(CompileError::Unsupported(Unsupported::InvalidAnnotation, ann.span));
+                        }
                     }
                 }
+
                 let name = ScopedName::new(func.decl.name.clone(), path.clone());
                 let index = self.repo.globals_mut().add(name, typ, flags);
                 let global = if let Ok(intrinsic) = Intrinsic::from_str(&func.decl.name) {
@@ -371,7 +390,40 @@ impl<'id> Compiler<'id> {
                     Ok(None)
                 }
             }
-            SourceEntry::GlobalLet(_) => todo!(),
+            SourceEntry::GlobalLet(field) => {
+                let span = field.declaration.span;
+                let target = field
+                    .declaration
+                    .annotations
+                    .iter()
+                    .find(|ann| ann.kind == AnnotationKind::AddField)
+                    .ok_or_else(|| CompileError::Unsupported(Unsupported::GlobalLetBinding, span))?;
+                let [Expr::Ident(ident, ident_span)] = &target.args[..] else {
+                    return Err(CompileError::Unsupported(Unsupported::InvalidAnnotation, span));
+                };
+                let &id = types
+                    .get(ident)
+                    .ok_or_else(|| TypeError::UnresolvedType(ident.clone()))
+                    .with_span(*ident_span)?;
+                let ct = self
+                    .repo
+                    .get_type_mut(id)
+                    .unwrap()
+                    .as_class_mut()
+                    .ok_or_else(|| TypeError::UnresolvedType(ident.clone()))
+                    .with_span(*ident_span)?;
+                let flags = get_field_flags(&field.declaration.qualifiers);
+                Self::validate_field(&mut self.reporter, ct.flags, flags, field.declaration.span);
+
+                let res = TypeEnv::new(types, &ScopedMap::default())
+                    .resolve_type(&field.type_)
+                    .with_span(field.declaration.span);
+                let Some(typ) = self.reporter.unwrap_err(res) else {
+                    return Ok(None);
+                };
+                ct.fields.add(field.declaration.name, Field::new(typ, flags));
+                Ok(None)
+            }
         }
     }
 
@@ -394,10 +446,9 @@ impl<'id> Compiler<'id> {
         }
     }
 
-    fn validate_field(&mut self, type_flags: ClassFlags, field_flags: FieldFlags, span: Span) {
+    fn validate_field(reporter: &mut ErrorReporter<'id>, type_flags: ClassFlags, field_flags: FieldFlags, span: Span) {
         if field_flags.is_native() && !type_flags.is_native() {
-            self.reporter
-                .report(CompileError::Unsupported(Unsupported::NativeInNonNative, span));
+            reporter.report(CompileError::Unsupported(Unsupported::NativeInNonNative, span));
         }
     }
 

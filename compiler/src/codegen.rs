@@ -127,8 +127,6 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
                 Constant::Bool(true) => self.emit(Instr::TrueConst),
                 Constant::Bool(false) => self.emit(Instr::FalseConst),
             },
-            Expr::ArrayLit(_, _, _) => todo!(),
-            Expr::InterpolatedString(_, _, _) => todo!(),
             Expr::Declare(local, typ, init, _) => {
                 let typ = typ.expect("type should be populated in codegen").simplify(self.repo);
                 let idx = LocalBuilder::builder()
@@ -412,8 +410,13 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
             Expr::Break(_) => {
                 self.emit(Instr::Jump(exit.expect("break should have exit label")));
             }
-            Expr::BinOp(_, _, _, _) | Expr::UnOp(_, _, _) | Expr::Goto(_, _) | Expr::ForIn(_, _, _, _) => {
-                unreachable!()
+            Expr::BinOp(_, _, _, _)
+            | Expr::UnOp(_, _, _)
+            | Expr::Goto(_, _)
+            | Expr::ArrayLit(_, _, _)
+            | Expr::InterpolatedString(_, _, _)
+            | Expr::ForIn(_, _, _, _) => {
+                unreachable!("this expression should be removed before codegen")
             }
         }
     }

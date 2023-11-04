@@ -373,7 +373,19 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 let body = self.typeck_seq(body, &mut locals.introduce_scope());
                 Ok((Expr::While(cond.into(), body, *span), InferType::VOID))
             }
-            Expr::ForIn(_, _, _, _) => todo!(),
+            Expr::ForIn(elem, iter, body, span) => {
+                let (iter, iter_type) = self.typeck(iter, locals)?;
+                let elem_type = self.id_alloc.allocate_free_type();
+                iter_type
+                    .constrain(&InferType::Mono(Mono::Data(Data::array(elem_type.clone()))), self.repo)
+                    .with_span(*span)?;
+                let mut locals = locals.introduce_scope();
+                let info = self.id_alloc.allocate_local(elem_type);
+                let local = info.local;
+                locals.insert(elem.clone(), info);
+                let body = self.typeck_seq(body, &mut locals);
+                Ok((Expr::ForIn(local, iter.into(), body, *span), InferType::VOID))
+            }
             Expr::BinOp(lhs, rhs, op, span) => {
                 let name = <&str>::from(op);
                 let matches = self

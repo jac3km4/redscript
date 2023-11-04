@@ -186,4 +186,8 @@ pub enum Unsupported {
     NativeInNonNative,
     #[error("function type with more than 8 parameters")]
     FunctionMaxArityExceeded,
+    #[error("this kind of annotation")]
+    InvalidAnnotation,
+    #[error("introducing global let bindings")]
+    GlobalLetBinding,
 }
