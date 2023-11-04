@@ -43,13 +43,7 @@ impl Files {
                 $(self.add($name.into(), include_str!(concat!("../../lib/", $name)).to_owned());)*
             };
         }
-        include_libs![
-            "Predef.reds",
-            "Std.reds",
-            "Std/Collection.reds",
-            "Std/Iter.reds",
-            "Std/Log.reds",
-        ];
+        include_libs!["Predef.reds", "Std.reds", "Std/Collection.reds", "Std/Iter.reds",];
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &File> {
