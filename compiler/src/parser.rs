@@ -40,7 +40,7 @@ impl SourceEntry {
 
 #[derive(Debug)]
 pub struct ClassSource {
-    pub tparams: Vec<TypeParam>,
+    pub type_params: Vec<TypeParam>,
     pub qualifiers: Qualifiers,
     pub name: Ident,
     pub base: Option<TypeName>,
@@ -376,11 +376,11 @@ peg::parser! {
 
         pub rule class() -> ClassSource
             = pos:pos() qualifiers:qualifiers() _ keyword("class") _ name:ident() _ tparams:tparams()? _ base:extends()? _ "{" _ members:member()**_ _ "}" end:pos()
-            { ClassSource { qualifiers, tparams: tparams.unwrap_or_default(), name, base, members, span: Span::new(pos, end) } }
+            { ClassSource { qualifiers, type_params: tparams.unwrap_or_default(), name, base, members, span: Span::new(pos, end) } }
 
         pub rule struct_() -> ClassSource
             = pos:pos() qualifiers:qualifiers() _ keyword("struct") _ name:ident() _ "{" _ members:member()**_ _ "}" end:pos()
-            { ClassSource { qualifiers, tparams: vec![], name, base: None, members, span: Span::new(pos, end) } }
+            { ClassSource { qualifiers, type_params: vec![], name, base: None, members, span: Span::new(pos, end) } }
 
         rule member() -> MemberSource
             = fun:function() { MemberSource::Method(fun) }

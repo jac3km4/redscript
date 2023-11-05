@@ -120,12 +120,22 @@ impl<'id> TypeRepo<'id> {
         Some(res)
     }
 
-    pub fn get_method_name(&self, id: &MethodId<'id>) -> Option<&Str> {
-        self.types.get(&id.owner)?.as_class()?.methods.get_name(id.index.0)
+    pub fn get_method_name(&self, id: &MethodId<'id>) -> Option<&str> {
+        self.types
+            .get(&id.owner)?
+            .as_class()?
+            .methods
+            .get_name(id.index.0)
+            .map(Str::as_str)
     }
 
-    pub fn get_static_name(&self, id: &MethodId<'id>) -> Option<&Str> {
-        self.types.get(&id.owner)?.as_class()?.statics.get_name(id.index.0)
+    pub fn get_static_name(&self, id: &MethodId<'id>) -> Option<&str> {
+        self.types
+            .get(&id.owner)?
+            .as_class()?
+            .statics
+            .get_name(id.index.0)
+            .map(Str::as_str)
     }
 
     #[inline]
@@ -241,15 +251,6 @@ pub enum Type<'id> {
     Var(VarName),
 }
 
-impl<'id> Type<'id> {
-    pub fn check_well_formed(&self, repo: &TypeRepo<'id>) -> Result<(), TypeError<'id>> {
-        match self {
-            Type::Data(data) => data.check_well_formed(repo),
-            _ => Ok(()),
-        }
-    }
-}
-
 impl fmt::Display for Type<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -308,7 +309,7 @@ impl<'id> DataType<'id> {
     }
 
     #[inline]
-    pub fn type_var_names(&self) -> impl Iterator<Item = Str> + '_ {
+    pub fn type_var_names(&self) -> impl ExactSizeIterator<Item = Str> + '_ {
         self.type_vars().iter().map(|v| v.name.clone())
     }
 
@@ -627,7 +628,11 @@ impl<'id> Parameterized<'id> {
         if expected.len() == self.args.len() {
             Ok(())
         } else {
-            Err(TypeError::InvalidNumberOfTypeArgs(self.args.len(), expected.len()))
+            Err(TypeError::InvalidNumberOfTypeArgs(
+                self.args.len(),
+                expected.len(),
+                self.id,
+            ))
         }
     }
 }
@@ -983,7 +988,7 @@ impl ScopedName {
     }
 
     #[inline]
-    pub fn name(&self) -> &Str {
+    pub fn name(&self) -> &str {
         &self.name
     }
 

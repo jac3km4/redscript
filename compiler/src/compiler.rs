@@ -39,6 +39,7 @@ pub struct Compiler<'id> {
     defined_types: Vec<TypeId<'id>>,
     modules: ModuleMap<'id>,
     compile_queue: Vec<Module<'id>>,
+    early_validation: EarlyStageTypeValidation<'id>,
     reporter: ErrorReporter<'id>,
 }
 
@@ -50,6 +51,7 @@ impl<'id> Compiler<'id> {
             defined_types: vec![],
             modules: ModuleMap::default(),
             compile_queue: vec![],
+            early_validation: EarlyStageTypeValidation::default(),
             reporter: ErrorReporter::default(),
         }
     }
@@ -133,9 +135,13 @@ impl<'id> Compiler<'id> {
 
     fn populate_entry(&mut self, path: &ModulePath, entry: &SourceEntry, types: &mut TypeScope<'_, 'id>) {
         match entry {
-            SourceEntry::Class(ClassSource { name, .. })
-            | SourceEntry::Struct(ClassSource { name, .. })
-            | SourceEntry::Enum(EnumSource { name, .. }) => {
+            SourceEntry::Class(class) | SourceEntry::Struct(class) => {
+                let type_id = generate_type_id(&class.name, path, self.interner);
+                self.modules.add_type(type_id);
+                types.insert(class.name.clone(), type_id);
+                self.early_validation.register(type_id, TypeMeta::from_class(class));
+            }
+            SourceEntry::Enum(EnumSource { name, .. }) => {
                 let type_id = generate_type_id(name, path, self.interner);
                 self.modules.add_type(type_id);
                 types.insert(name.clone(), type_id);
@@ -223,12 +229,14 @@ impl<'id> Compiler<'id> {
                 let type_id = generate_type_id(&class.name, path, self.interner);
                 let mut type_vars = ScopedMap::default();
                 let env = TypeEnv::new(types, &type_vars);
-                let class_type_vars: Box<_> = class
-                    .tparams
+                let class_type_vars: CompileResult<'id, Box<_>> = class
+                    .type_params
                     .iter()
-                    .map(|typ| env.instantiate_var(typ))
+                    .map(|typ| env.instantiate_var(typ, &self.early_validation))
                     .try_collect()
-                    .with_span(class.span)?;
+                    .with_span(class.span);
+                let class_type_vars = self.reporter.unwrap_err(class_type_vars).unwrap_or_default();
+
                 let mut this_args = Vec::with_capacity(class_type_vars.len());
                 for var in &*class_type_vars {
                     let typ = InferType::from_var_mono(var, &type_vars);
@@ -237,14 +245,14 @@ impl<'id> Compiler<'id> {
                 }
                 let extends = class
                     .base
-                    .map(|base| TypeEnv::new(types, &type_vars).resolve_param_type(&base))
+                    .map(|base| TypeEnv::new(types, &type_vars).resolve_param_type(&base, &self.early_validation))
                     .transpose()
-                    .with_span(class.span)?
-                    .or_else(|| {
-                        is_struct
-                            .not()
-                            .then(|| Parameterized::without_args(predef::ISCRIPTABLE))
-                    });
+                    .with_span(class.span);
+                let extends = self.reporter.unwrap_err(extends).unwrap_or_default().or_else(|| {
+                    is_struct
+                        .not()
+                        .then(|| Parameterized::without_args(predef::ISCRIPTABLE))
+                });
                 let mut data_type = ClassType {
                     type_vars: class_type_vars,
                     extends,
@@ -288,7 +296,9 @@ impl<'id> Compiler<'id> {
                             let flags = get_field_flags(&field.declaration.qualifiers);
                             Self::validate_field(&mut self.reporter, data_type.flags, flags, field.declaration.span);
                             let env = TypeEnv::new(types, &type_vars);
-                            let res = env.resolve_type(&field.type_).with_span(field.declaration.span);
+                            let res = env
+                                .resolve_type(&field.type_, &self.early_validation)
+                                .with_span(field.declaration.span);
                             let Some(typ) = self.reporter.unwrap_err(res) else {
                                 continue;
                             };
@@ -416,7 +426,7 @@ impl<'id> Compiler<'id> {
                 Self::validate_field(&mut self.reporter, ct.flags, flags, field.declaration.span);
 
                 let res = TypeEnv::new(types, &ScopedMap::default())
-                    .resolve_type(&field.type_)
+                    .resolve_type(&field.type_, &self.early_validation)
                     .with_span(field.declaration.span);
                 let Some(typ) = self.reporter.unwrap_err(res) else {
                     return Ok(None);
@@ -454,34 +464,34 @@ impl<'id> Compiler<'id> {
 
     fn locate_annotation_target(
         &self,
-        replace: &Str,
+        to_replace: &str,
         types: &TypeScope<'_, 'id>,
         span: Span,
     ) -> CompileResult<'id, (Data<'id>, &ClassType<'id>)> {
         let &id = types
-            .get(replace)
-            .ok_or_else(|| TypeError::UnresolvedType(replace.clone()))
+            .get(to_replace)
+            .ok_or_else(|| TypeError::UnresolvedType(to_replace.into()))
             .with_span(span)?;
         let res = self.repo[id]
             .as_class()
-            .ok_or_else(|| TypeError::UnresolvedType(replace.clone()))
+            .ok_or_else(|| TypeError::UnresolvedType(to_replace.into()))
             .with_span(span)?;
         Ok((Data::without_args(id), res))
     }
 
     fn locate_annotation_method(
         &self,
-        replace: &Str,
-        name: &Str,
+        to_replace: &str,
+        name: &str,
         types: &TypeScope<'_, 'id>,
         span: Span,
     ) -> CompileResult<'id, (Data<'id>, OverloadEntry<'_, 'id>)> {
-        let (data, res) = self.locate_annotation_target(replace, types, span)?;
+        let (data, res) = self.locate_annotation_target(to_replace, types, span)?;
         let entry = res
             .methods
             .by_name(name)
             .exactly_one()
-            .map_err(|_| CompileError::UnresolvedFunction(name.clone(), span))?;
+            .map_err(|_| CompileError::UnresolvedFunction(name.into(), span))?;
         Ok((data, entry))
     }
 
@@ -594,7 +604,7 @@ impl<'id> Compiler<'id> {
         let method_type_vars = func
             .tparams
             .iter()
-            .map(|ty| env.instantiate_var(ty))
+            .map(|ty| env.instantiate_var(ty, &self.early_validation))
             .collect::<CompileResult<'_, Box<[_]>, _>>()
             .with_span(func.decl.span)?;
         let mut local_vars = vars.introduce_scope();
@@ -606,7 +616,7 @@ impl<'id> Compiler<'id> {
             .parameters
             .iter()
             .map(|param| {
-                let typ = env.resolve_type(&param.type_)?;
+                let typ = env.resolve_type(&param.type_, &self.early_validation)?;
                 Ok(FuncParam::custom(typ, param.qualifiers.contain(Qualifier::Out)))
             })
             .try_collect()
@@ -614,7 +624,7 @@ impl<'id> Compiler<'id> {
         let ret = func
             .type_
             .as_ref()
-            .map(|typ| env.resolve_type(typ))
+            .map(|typ| env.resolve_type(typ, &self.early_validation))
             .unwrap_or(Ok(Type::Prim(Prim::Void)))
             .with_span(func.decl.span)?;
         let func_type = FuncType::new(method_type_vars, params, ret.clone());
@@ -729,7 +739,7 @@ impl<'id> Compiler<'id> {
                     let name = self.repo.get_method_name(method).unwrap();
                     let span = class.span.expect("span should be defined on user classes");
                     self.reporter
-                        .report(CompileError::UnimplementedMethod(name.clone(), span));
+                        .report(CompileError::UnimplementedMethod(name.into(), span));
                 }
             }
 
@@ -766,13 +776,21 @@ impl<'id> Compiler<'id> {
             .skip(1)
             .flat_map(|(type_id, class)| class.methods.by_name(name).map(move |res| (type_id, res)))
             .filter(|(_, e)| e.function.typ.params.len() == typ.params.len() && !e.function.flags.is_final())
-            .filter(|(id, e)| {
+            .filter(|(id, entry)| {
                 let base = this
                     .clone()
                     .instantiate_as(*id, repo)
                     .expect("should always match upper bound type");
-                let vars = repo[*id].type_var_names().zip(base.args.iter().cloned()).collect();
-                e.function
+                let var_names = repo[*id].type_var_names();
+                assert_eq!(
+                    var_names.len(),
+                    base.args.len(),
+                    "number of type vars should match number of args"
+                );
+                let vars = var_names.zip(base.args.iter().cloned()).collect();
+
+                entry
+                    .function
                     .typ
                     .params
                     .iter()
@@ -1218,11 +1236,11 @@ impl<'id> CompilationResources<'id> {
     }
 }
 
-fn generate_type_id<'id>(name: &Str, path: &ModulePath, interner: &'id StringInterner) -> TypeId<'id> {
+fn generate_type_id<'id>(name: &str, path: &ModulePath, interner: &'id StringInterner) -> TypeId<'id> {
     if path.is_empty() {
         return get_type_id(name, interner);
     }
-    let str = path.iter().chain(Some(name)).join(".");
+    let str = path.iter().map(Str::as_str).chain(Some(name)).join(".");
     TypeId::from_interned(interner.intern(str))
 }
 
@@ -1320,6 +1338,48 @@ impl<'id> ModuleMap<'id> {
     pub fn add_type(&mut self, typ: TypeId<'id>) {
         self.map
             .insert_owned(typ.as_parts().map(Str::from), ImportItem::Type(typ));
+    }
+}
+
+#[derive(Debug, Default)]
+struct EarlyStageTypeValidation<'id> {
+    types: HashMap<TypeId<'id>, TypeMeta>,
+}
+
+impl<'id> EarlyStageTypeValidation<'id> {
+    #[inline]
+    fn register(&mut self, typ: TypeId<'id>, meta: TypeMeta) {
+        self.types.insert(typ, meta);
+    }
+}
+
+/// Metadata used solely for checking type validity at an early stage of compilation.
+#[derive(Debug)]
+struct TypeMeta {
+    param_count: usize,
+}
+
+impl TypeMeta {
+    #[inline]
+    fn from_class(class: &ClassSource) -> Self {
+        Self {
+            param_count: class.type_params.len(),
+        }
+    }
+}
+
+impl<'id> TypeValidator<'id> for EarlyStageTypeValidation<'id> {
+    fn validate(&self, param: &Parameterized<'id>) -> Result<(), TypeError<'id>> {
+        let expected = if [predef::REF, predef::WREF, predef::SCRIPT_REF, predef::ARRAY].contains(&param.id) {
+            1
+        } else {
+            self.types.get(&param.id).map(|m| m.param_count).unwrap_or(0)
+        };
+        if param.args.len() != expected {
+            Err(TypeError::InvalidNumberOfTypeArgs(param.args.len(), expected, param.id))
+        } else {
+            Ok(())
+        }
     }
 }
 

@@ -508,11 +508,15 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
         locals: &mut LocalMap<'_, 'id>,
         span: Span,
     ) -> CompileResult<'id, Inferred<'id>> {
-        let (expr, upper_bound, this) = if let Some(Type::Data(data)) = expr
+        let (expr, upper_bound, this) = if let Some(id) = expr
             .as_ident()
-            .and_then(|(name, _)| self.env.resolve_type(&TypeName::without_args(name.clone())).ok())
+            .and_then(|(name, _)| self.env.resolve_type_id(name).ok())
         {
-            (None, Data::from_type(&data, self.env.vars), None)
+            (
+                None,
+                Data::from_type(&Parameterized::without_args(id), self.env.vars),
+                None,
+            )
         } else {
             let (expr, expr_type) = self.typeck(expr, locals)?;
             (
@@ -806,7 +810,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
         let target = match targs {
             [name] => self.env.resolve_infer_type(name, self.repo).with_span(span)?,
             [] => self.id_alloc.allocate_free_type(),
-            _ => return Err(TypeError::InvalidNumberOfTypeArgs(targs.len(), 1)).with_span(span),
+            _ => return Err(TypeError::InvalidNumberOfFunctionTypeArgs(targs.len(), 1)).with_span(span),
         };
         let [arg] = args else {
             return Err(CompileError::UnresolvedFunction(Str::from_static("Cast"), span));
@@ -844,13 +848,27 @@ impl<'ctx, 'scope, 'id> TypeEnv<'ctx, 'scope, 'id> {
         }
     }
 
-    fn resolve_infer_type(&self, name: &TypeName, repo: &TypeRepo<'id>) -> Result<InferType<'id>, TypeError<'id>> {
-        let ty = self.resolve_type(name)?;
-        ty.check_well_formed(repo)?;
+    fn resolve_infer_type(
+        &self,
+        name: &TypeName,
+        validator: &impl TypeValidator<'id>,
+    ) -> Result<InferType<'id>, TypeError<'id>> {
+        let ty = self.resolve_type(name, validator)?;
         Ok(InferType::from_type(&ty, self.vars))
     }
 
-    pub fn resolve_type(&self, name: &TypeName) -> Result<Type<'id>, TypeError<'id>> {
+    pub fn resolve_type_id(&self, name: &str) -> Result<TypeId<'id>, TypeError<'id>> {
+        self.types
+            .get(name)
+            .ok_or_else(|| TypeError::UnresolvedType(name.into()))
+            .copied()
+    }
+
+    pub fn resolve_type(
+        &self,
+        name: &TypeName,
+        validator: &impl TypeValidator<'id>,
+    ) -> Result<Type<'id>, TypeError<'id>> {
         if self.vars.get(name.name()).is_some() {
             Ok(Type::Var(VarName::Named(name.name().clone())))
         } else if name.name() == "Nothing" {
@@ -862,29 +880,36 @@ impl<'ctx, 'scope, 'id> TypeEnv<'ctx, 'scope, 'id> {
                 .arguments()
                 .iter()
                 .exactly_one()
-                .map_err(|e| TypeError::InvalidNumberOfTypeArgs(e.count(), 1))?;
-            self.resolve_type(typ)
+                .map_err(|e| TypeError::InvalidNumberOfTypeArgs(e.count(), 1, predef::REF))?;
+            self.resolve_type(typ, validator)
         } else if let Ok(prim) = Prim::from_str(name.name()) {
             Ok(Type::Prim(prim))
         } else {
-            Ok(Type::Data(self.resolve_param_type(name)?))
+            Ok(Type::Data(self.resolve_param_type(name, validator)?))
         }
     }
 
-    pub fn resolve_param_type(&self, name: &TypeName) -> Result<Parameterized<'id>, TypeError<'id>> {
-        let &id = self
-            .types
-            .get(name.name())
-            .ok_or_else(|| TypeError::UnresolvedType(name.name().clone()))?;
+    pub fn resolve_param_type(
+        &self,
+        name: &TypeName,
+        validator: &impl TypeValidator<'id>,
+    ) -> Result<Parameterized<'id>, TypeError<'id>> {
+        let id = self.resolve_type_id(name.name())?;
         let args = name
             .arguments()
             .iter()
-            .map(|arg| self.resolve_type(arg))
+            .map(|arg| self.resolve_type(arg, validator))
             .try_collect()?;
-        Ok(Parameterized::new(id, args))
+        let result = Parameterized::new(id, args);
+        validator.validate(&result)?;
+        Ok(result)
     }
 
-    pub fn instantiate_var(&self, var: &TypeParam) -> Result<TypeVar<'id>, TypeError<'id>> {
+    pub fn instantiate_var(
+        &self,
+        var: &TypeParam,
+        validator: &impl TypeValidator<'id>,
+    ) -> Result<TypeVar<'id>, TypeError<'id>> {
         let var = TypeVar {
             name: var.name.clone(),
             variance: var.variance,
@@ -892,7 +917,7 @@ impl<'ctx, 'scope, 'id> TypeEnv<'ctx, 'scope, 'id> {
             upper: var
                 .extends
                 .as_ref()
-                .map(|typ| self.resolve_param_type(typ))
+                .map(|typ| self.resolve_param_type(typ, validator))
                 .transpose()?,
         };
         Ok(var)
@@ -1803,5 +1828,15 @@ impl<'id, A> IntoTypeError for Result<A, TypeError<'id>> {
     #[inline]
     fn with_span(self, span: Span) -> Self::Result {
         self.map_err(|e| CompileError::TypeError(e, span))
+    }
+}
+
+pub trait TypeValidator<'id> {
+    fn validate(&self, typ: &Parameterized<'id>) -> Result<(), TypeError<'id>>;
+}
+
+impl<'id> TypeValidator<'id> for TypeRepo<'id> {
+    fn validate(&self, typ: &Parameterized<'id>) -> Result<(), TypeError<'id>> {
+        typ.check_well_formed(self)
     }
 }

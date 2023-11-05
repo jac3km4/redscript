@@ -79,7 +79,7 @@ impl<'id> CompileError<'id> {
         }
     }
 
-    pub fn display<'this, 'files>(&'this self, files: &'files Files) -> DisplayError<'files, &'this Self> {
+    pub fn display<'files>(&self, files: &'files Files) -> DisplayError<'files, &Self> {
         let location = files
             .lookup(self.span())
             .expect("span should point to a source map file");
@@ -160,8 +160,10 @@ pub enum TypeError<'id> {
     CannotUnify(Mono<'id>, Mono<'id>),
     #[error("type {0} not found")]
     UnresolvedType(Str),
-    #[error("expected {1} type arguments")]
-    InvalidNumberOfTypeArgs(usize, usize),
+    #[error("provided {0} type arguments, but {2} expects {1}")]
+    InvalidNumberOfTypeArgs(usize, usize, TypeId<'id>),
+    #[error("provided {0} type arguments, but expected {1}")]
+    InvalidNumberOfFunctionTypeArgs(usize, usize),
 }
 
 #[derive(Debug, Error)]
@@ -179,7 +181,7 @@ impl ParseError {
         self.1
     }
 
-    pub fn display<'this, 'files>(&'this self, files: &'files Files) -> DisplayError<'files, &'this Self> {
+    pub fn display<'files>(&self, files: &'files Files) -> DisplayError<'files, &Self> {
         let location = files.lookup(self.1).expect("span should point to a source map file");
         DisplayError { location, error: self }
     }
