@@ -851,7 +851,7 @@ impl<'ctx, 'scope, 'id> TypeEnv<'ctx, 'scope, 'id> {
     fn resolve_infer_type(
         &self,
         name: &TypeName,
-        validator: &impl TypeValidator<'id>,
+        validator: &dyn TypeValidator<'id>,
     ) -> Result<InferType<'id>, TypeError<'id>> {
         let ty = self.resolve_type(name, validator)?;
         Ok(InferType::from_type(&ty, self.vars))
@@ -867,7 +867,7 @@ impl<'ctx, 'scope, 'id> TypeEnv<'ctx, 'scope, 'id> {
     pub fn resolve_type(
         &self,
         name: &TypeName,
-        validator: &impl TypeValidator<'id>,
+        validator: &dyn TypeValidator<'id>,
     ) -> Result<Type<'id>, TypeError<'id>> {
         if self.vars.get(name.name()).is_some() {
             Ok(Type::Var(VarName::Named(name.name().clone())))
@@ -892,7 +892,7 @@ impl<'ctx, 'scope, 'id> TypeEnv<'ctx, 'scope, 'id> {
     pub fn resolve_param_type(
         &self,
         name: &TypeName,
-        validator: &impl TypeValidator<'id>,
+        validator: &dyn TypeValidator<'id>,
     ) -> Result<Parameterized<'id>, TypeError<'id>> {
         let id = self.resolve_type_id(name.name())?;
         let args = name
@@ -908,7 +908,7 @@ impl<'ctx, 'scope, 'id> TypeEnv<'ctx, 'scope, 'id> {
     pub fn instantiate_var(
         &self,
         var: &TypeParam,
-        validator: &impl TypeValidator<'id>,
+        validator: &dyn TypeValidator<'id>,
     ) -> Result<TypeVar<'id>, TypeError<'id>> {
         let var = TypeVar {
             name: var.name.clone(),
