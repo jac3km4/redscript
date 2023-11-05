@@ -211,7 +211,7 @@ fn lint(opts: LintOpts) -> anyhow::Result<bool> {
                     Ok(false)
                 }
                 Err(error) => {
-                    log::error!("{}", error);
+                    log::error!("{}", error.display(&files));
                     Ok(false)
                 }
             }

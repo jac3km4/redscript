@@ -318,7 +318,7 @@ impl ErrorReport {
             scripts_dir,
             files,
             hints,
-            spans: vec![("SYNTAX_ERR", err.1)],
+            spans: vec![("SYNTAX_ERR", err.span())],
         }
     }
 }

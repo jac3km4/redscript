@@ -99,7 +99,7 @@ impl<'id> Compiler<'id> {
         files.iter().map(|file| {
             parser::parse_file(file).map_err(|err| {
                 let pos = file.byte_offset() + err.location.offset;
-                ParseError(err.expected, Span::new(pos, pos))
+                ParseError::new(err.expected, Span::new(pos, pos))
             })
         })
     }

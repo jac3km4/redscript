@@ -79,7 +79,7 @@ impl<'id> CompileError<'id> {
         }
     }
 
-    pub fn display<'err, 'files>(&'err self, files: &'files Files) -> DisplayError<'err, 'files, 'id> {
+    pub fn display<'this, 'files>(&'this self, files: &'files Files) -> DisplayError<'files, &'this Self> {
         let location = files
             .lookup(self.span())
             .expect("span should point to a source map file");
@@ -112,12 +112,12 @@ impl<'id> CompileError<'id> {
 }
 
 #[derive(Debug)]
-pub struct DisplayError<'error, 'file, 'id> {
+pub struct DisplayError<'file, Err> {
     location: SourceLoc<'file>,
-    error: &'error CompileError<'id>,
+    error: Err,
 }
 
-impl fmt::Display for DisplayError<'_, '_, '_> {
+impl<Err: fmt::Display> fmt::Display for DisplayError<'_, Err> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let line = self.location.enclosing_line().trim_end().replace('\t', " ");
         let underline_len = if self.location.start.line == self.location.end.line {
@@ -166,7 +166,24 @@ pub enum TypeError<'id> {
 
 #[derive(Debug, Error)]
 #[error("syntax error, expected {0}")]
-pub struct ParseError(pub ExpectedSet, pub Span);
+pub struct ParseError(ExpectedSet, Span);
+
+impl ParseError {
+    #[inline]
+    pub fn new(expected: ExpectedSet, span: Span) -> Self {
+        Self(expected, span)
+    }
+
+    #[inline]
+    pub fn span(&self) -> Span {
+        self.1
+    }
+
+    pub fn display<'this, 'files>(&'this self, files: &'files Files) -> DisplayError<'files, &'this Self> {
+        let location = files.lookup(self.1).expect("span should point to a source map file");
+        DisplayError { location, error: self }
+    }
+}
 
 #[derive(Debug, Error)]
 pub enum Unsupported {
