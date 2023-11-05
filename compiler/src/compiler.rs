@@ -636,7 +636,7 @@ impl<'id> Compiler<'id> {
         let mut id_alloc = IdAlloc::default();
         let mut locals = ScopedMap::default();
         let mut params = IndexMap::default();
-        let mut boxed = HashMap::default();
+        let mut boxed = ScopedMap::default();
 
         for (lhs, rhs) in body.parameters.iter().zip(typ.params.iter()) {
             let info = id_alloc.allocate_param(InferType::from_type(&rhs.typ, &local_vars));
@@ -658,7 +658,7 @@ impl<'id> Compiler<'id> {
         Desugar::run(&mut body.body);
         let mut id_alloc = IdAlloc::default();
         let mut seq = Typer::run(repo, names, env, &body.body, &mut locals, ret, &mut id_alloc, reporter);
-        Autobox::run(&mut seq, repo, ScopedMap::Tail(boxed), poly_ret);
+        Autobox::run(&mut seq, repo, boxed, poly_ret);
         (seq, params)
     }
 

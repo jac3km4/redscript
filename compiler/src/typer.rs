@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::hash::Hash;
 use std::marker::PhantomData;
+use std::ops::Not;
 use std::rc::Rc;
 use std::str::FromStr;
 use std::{fmt, iter, mem};
@@ -84,30 +85,12 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
     }
 
     fn typeck(&mut self, expr: &Expr<SourceAst>, locals: &mut LocalMap<'_, 'id>) -> CompileResult<'id, Inferred<'id>> {
-        self.typeck_with(expr, locals, false)
-    }
-
-    fn typeck_with(
-        &mut self,
-        expr: &Expr<SourceAst>,
-        locals: &mut LocalMap<'_, 'id>,
-        is_out: bool,
-    ) -> CompileResult<'id, Inferred<'id>> {
         match expr {
             Expr::Ident(id, span) => {
                 let info = locals
                     .get(id)
                     .ok_or_else(|| CompileError::UnresolvedVar(id.clone(), *span))?;
-                let typ = match info.local {
-                    Local::Var(_)
-                        if !is_out
-                            && matches!(&info.typ, InferType::Mono(Mono::Data(data)) if data.id.is_function()) =>
-                    {
-                        info.typ.instantiate(self.id_alloc)
-                    }
-                    _ => info.typ.clone(),
-                };
-                Ok((Expr::Ident(info.local, *span), typ))
+                Ok((Expr::Ident(info.local, *span), info.typ.clone()))
             }
             Expr::Constant(val, span) => {
                 let prim = match val {
@@ -451,8 +434,8 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                     let typ = InferType::from_var_poly(var, &type_vars, self.id_alloc);
                     type_vars.insert(var.name.clone(), typ);
                 }
-                for (arg, param) in args.zip(entry.function.typ.params.iter()) {
-                    let (arg, typ) = self.typeck_with(arg, locals, param.is_out)?;
+                for arg in args {
+                    let (arg, typ) = self.typeck(arg, locals)?;
                     checked_args.push(arg);
                     arg_types.push(typ);
                 }
@@ -460,7 +443,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
             }
             Err(matches) => {
                 for arg in args {
-                    let (arg, typ) = self.typeck_with(arg, locals, true)?;
+                    let (arg, typ) = self.typeck(arg, locals)?;
                     checked_args.push(arg);
                     arg_types.push(typ);
                 }
@@ -571,7 +554,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                             let locals = locals.push_scope(CaptureCollector::run(arg, locals.top()));
                             self.check_lambda_against(locals, params, body, data, &type_vars, *span)?
                         }
-                        _ => self.typeck_with(arg, locals, param.is_out)?,
+                        _ => self.typeck(arg, locals)?,
                     };
                     checked_args.push(arg);
                     arg_types.push(typ);
@@ -580,7 +563,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
             }
             Err(matches) => {
                 for arg in args {
-                    let (arg, typ) = self.typeck_with(arg, locals, true)?;
+                    let (arg, typ) = self.typeck(arg, locals)?;
                     checked_args.push(arg);
                     arg_types.push(typ);
                 }
@@ -962,10 +945,12 @@ impl<'id> InferType<'id> {
     }
 
     #[inline]
+    #[allow(unused)]
     fn instantiate(&self, vars: &mut IdAlloc) -> Self {
         self.freshen(&mut HashMap::default(), vars)
     }
 
+    #[allow(unused)]
     fn freshen(&self, ctx: &mut HashMap<VarId, RcVar<'id>>, alloc: &mut IdAlloc) -> Self {
         match self {
             Self::Mono(mono) => Self::Mono(mono.freshen(ctx, alloc)),
@@ -1107,6 +1092,7 @@ impl<'id> Mono<'id> {
         Self::Var(MonoVar::from_type_var(var, ctx).into())
     }
 
+    #[allow(unused)]
     fn freshen(&self, ctx: &mut HashMap<VarId, RcVar<'id>>, vars: &mut IdAlloc) -> Self {
         match self {
             Self::Data(data) => {
@@ -1391,14 +1377,10 @@ impl<'id> Var<'id> {
         (self.upper.is_top() && !self.lower.is_bottom()).then(|| self.lower.clone())
     }
 
-    pub fn either_bound(&self) -> Option<&Mono<'id>> {
-        if !self.lower.is_bottom() {
-            Some(&self.lower)
-        } else if !self.upper.is_top() {
-            Some(&self.upper)
-        } else {
-            None
-        }
+    pub(crate) fn lower_bound(this: RcVar<'id>) -> Option<Mono<'id>> {
+        let rep = Self::rep(this);
+        let lower = &rep.borrow().lower;
+        lower.is_bottom().not().then(|| lower.clone())
     }
 }
 

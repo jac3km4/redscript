@@ -6,7 +6,7 @@ use redscript::bytecode::Intrinsic;
 
 use crate::scoped_map::ScopedMap;
 use crate::type_repo::{predef, DataType, FieldId, MethodId, Prim, Type, TypeId, TypeRepo};
-use crate::typer::{CallMetadata, Callable, CheckedAst, Data, InferType, Local, Member, Mono};
+use crate::typer::{CallMetadata, Callable, CheckedAst, Data, InferType, Local, Member, Mono, Var};
 use crate::visit_expr;
 
 #[derive(Debug)]
@@ -264,7 +264,7 @@ impl<'id> Boxable<'id> {
     pub fn from_infer_type(typ: &InferType<'id>, repo: &TypeRepo<'id>) -> Option<Boxable<'id>> {
         match typ {
             InferType::Mono(mono) => Self::from_mono(mono, repo),
-            InferType::Poly(poly) => Self::from_mono(poly.borrow().either_bound()?, repo),
+            InferType::Poly(poly) => Self::from_mono(&Var::lower_bound(poly.clone())?, repo),
         }
     }
 }
