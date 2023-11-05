@@ -580,7 +580,7 @@ impl<'repo, 'id> Iterator for UpperIter<'repo, 'id> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let id = self.current?;
-        let class = self.db[id].as_class().expect("base type should be a class");
+        let class = self.db[id].as_class()?;
         self.current = class.extends.as_ref().map(|typ| typ.id);
         Some((id, class))
     }

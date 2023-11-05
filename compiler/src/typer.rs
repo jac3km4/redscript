@@ -235,7 +235,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 }
                 let (expr, expr_ty) = self.typeck(expr, locals)?;
                 let upper_bound = expr_ty
-                    .known_upper_bound(self.repo)
+                    .force_upper_bound(self.repo)
                     .ok_or(CompileError::CannotLookupMember(*span))?;
                 let (id, fty) = self
                     .repo
@@ -518,7 +518,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
             (
                 Some(expr),
                 expr_type
-                    .known_upper_bound(self.repo)
+                    .force_upper_bound(self.repo)
                     .ok_or(CompileError::CannotLookupMember(span))?,
                 Some(expr_type),
             )
@@ -1054,20 +1054,16 @@ impl<'id> InferType<'id> {
         }
     }
 
-    fn known_upper_bound(&self, type_repo: &TypeRepo<'id>) -> Option<Data<'id>> {
+    fn force_upper_bound(&self, type_repo: &TypeRepo<'id>) -> Option<Data<'id>> {
         if let Some((_, typ)) = self.ref_type() {
-            typ.known_upper_bound(type_repo)
+            typ.force_upper_bound(type_repo)
         } else {
             match self {
                 Self::Mono(mono) => mono.known_upper_bound(),
                 Self::Poly(var) => {
-                    let lower = var.borrow().only_lower_bounded();
-                    if let Some(lower) = lower {
-                        Var::add_upper_bound(var.clone(), &lower, type_repo).ok()?;
-                        lower.known_upper_bound()
-                    } else {
-                        var.borrow().upper.known_upper_bound()
-                    }
+                    let bound = Var::either_bound(var.clone())?;
+                    Var::add_upper_bound(var.clone(), &bound, type_repo).ok()?;
+                    bound.known_upper_bound()
                 }
             }
         }
@@ -1130,7 +1126,7 @@ impl<'id> Mono<'id> {
                 }
             }
             (&Self::Prim(n0), &Self::Prim(n1)) if n0 == n1 => Ok(Self::Prim(n0)),
-            (Self::Data(_), Self::Prim(prim)) => {
+            (Self::Data(data), Self::Prim(prim)) if !type_repo[data.id].is_builtin() => {
                 let id = prim
                     .boxed_type()
                     .ok_or_else(|| TypeError::CannotUnify(self.clone(), rhs.clone()))?;
@@ -1200,7 +1196,7 @@ impl<'id> Mono<'id> {
             (Self::Var(lhs), Self::Var(rhs)) if lhs.name == rhs.name => Ok(()),
             (Self::Var(lhs), rhs) if lhs.upper != Mono::Top => lhs.upper.constrain(rhs, type_repo),
             (lhs, Self::Var(rhs)) if rhs.lower != Mono::Bottom => lhs.constrain(&rhs.upper, type_repo),
-            (Self::Prim(prim), Self::Data(_)) => {
+            (Self::Prim(prim), Self::Data(data)) if !type_repo[data.id].is_builtin() => {
                 let id = prim
                     .boxed_type()
                     .ok_or_else(|| TypeError::Mismatch(self.clone(), rhs.clone()))?;
@@ -1381,10 +1377,6 @@ impl<'id> Var<'id> {
             r0.rep = Some(rep1);
         }
         Ok(())
-    }
-
-    fn only_lower_bounded(&self) -> Option<Mono<'id>> {
-        (self.upper.is_top() && !self.lower.is_bottom()).then(|| self.lower.clone())
     }
 
     pub(crate) fn either_bound(this: RcVar<'id>) -> Option<Mono<'id>> {

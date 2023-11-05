@@ -42,7 +42,7 @@ public abstract class Iter<A> {
     return state;
   }
 
-  public final func Into<C extends Extendable<A>>(out sink: C) -> C {
+  public final func Into<C extends Extendable<A>>(sink: C) -> C {
     while this.HasNext() {
       sink.Extend(this.Next());
     }

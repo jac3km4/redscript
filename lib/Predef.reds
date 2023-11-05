@@ -3,19 +3,19 @@ import Std.{Primitive, Primitive}
 // intrinsics
 public func Equals<A>(lhs: A, rhs: A) -> Bool;
 public func NotEquals<A>(lhs: A, rhs: A) -> Bool;
-public func ArrayClear<A>(out array: array<A>);
+public func ArrayClear<A>(array: array<A>);
 public func ArraySize<A>(array: array<A>) -> Int32;
-public func ArrayResize<A>(out array: array<A>, size: Int32);
+public func ArrayResize<A>(array: array<A>, size: Int32);
 public func ArrayFindFirst<A>(array: array<A>, needle: A) -> A;
 public func ArrayFindLast<A>(array: array<A>, needle: A) -> A;
 public func ArrayContains<A>(array: array<A>, needle: A) -> Bool;
 public func ArrayCount<A>(array: array<A>, needle: A) -> Int32;
-public func ArrayPush<A>(out array: array<A>, elem: A);
-public func ArrayPop<A>(out array: array<A>) -> A;
-public func ArrayInsert<A>(out array: array<A>, idx: Int32, elem: A);
-public func ArrayRemove<A>(out array: array<A>, elem: A);
-public func ArrayGrow<A>(out array: array<A>, size: Int32);
-public func ArrayErase<A>(out array: array<A>, idx: Int32) -> Bool;
+public func ArrayPush<A>(array: array<A>, elem: A);
+public func ArrayPop<A>(array: array<A>) -> A;
+public func ArrayInsert<A>(array: array<A>, idx: Int32, elem: A);
+public func ArrayRemove<A>(array: array<A>, elem: A);
+public func ArrayGrow<A>(array: array<A>, size: Int32);
+public func ArrayErase<A>(array: array<A>, idx: Int32) -> Bool;
 public func ArrayLast<A>(array: array<A>) -> A;
 
 public func ToString<A>(a: A) -> String;
