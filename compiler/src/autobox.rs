@@ -264,7 +264,7 @@ impl<'id> Boxable<'id> {
     pub fn from_infer_type(typ: &InferType<'id>, repo: &TypeRepo<'id>) -> Option<Boxable<'id>> {
         match typ {
             InferType::Mono(mono) => Self::from_mono(mono, repo),
-            InferType::Poly(poly) => Self::from_mono(&Var::lower_bound(poly.clone())?, repo),
+            InferType::Poly(poly) => Self::from_mono(&Var::either_bound(poly.clone())?, repo),
         }
     }
 }
