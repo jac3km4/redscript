@@ -656,8 +656,9 @@ impl<'id> Compiler<'id> {
         let env = TypeEnv::new(types, &local_vars);
 
         Desugar::run(&mut body.body);
-        let mut seq = Typer::run(repo, names, env, &body.body, &mut locals, ret, reporter);
-        Autobox::run(&mut seq, repo, boxed, poly_ret);
+        let mut id_alloc = IdAlloc::default();
+        let mut seq = Typer::run(repo, names, env, &body.body, &mut locals, ret, &mut id_alloc, reporter);
+        Autobox::run(&mut seq, repo, ScopedMap::Tail(boxed), poly_ret);
         (seq, params)
     }
 

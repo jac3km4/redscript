@@ -353,7 +353,7 @@ peg::parser! {
             = pos:pos() decl:decl(<keyword("func")>) _ tparams:tparams()? _ "(" _ parameters:commasep(<param()>) _ ")" _ type_:func_type()? _ body:function_body()? ";"? end:pos()
             { FunctionSource { tparams: tparams.unwrap_or_default(), decl, type_, parameters, body, span: Span::new(pos, end) } }
         rule function_body() -> Seq<SourceAst>
-            = "{" _ body:seq() _ "}" { body }
+            = body:block() { body }
             / pos:pos() "=" _ expr:expr() _ end:pos() { Seq::new(vec![Expr::Return(Some(Box::new(expr)), Span::new(pos, end))]) }
 
         rule param() -> ParameterSource
@@ -434,19 +434,22 @@ peg::parser! {
         rule default() -> Seq<SourceAst>
             = keyword("default") _ ":" _ body:seq() { body }
 
+        rule block() -> Seq<SourceAst>
+            = "{" _ body:seq() _ "}" { body }
+
         rule while_() -> Expr<SourceAst>
-            = pos:pos() keyword("while") _ cond:expr() _ "{" _ body:seq() _ "}" _ ";"? end:pos()
+            = pos:pos() keyword("while") _ cond:expr() _ body:block() _ ";"? end:pos()
             { Expr::While(Box::new(cond), body, Span::new(pos, end)) }
 
         rule for_() -> Expr<SourceAst>
-            = pos:pos() keyword("for") _ ident:ident() _ keyword("in") _ array:expr() _ "{" _ body:seq() _ "}" _ ";"? end:pos()
+            = pos:pos() keyword("for") _ ident:ident() _ keyword("in") _ array:expr() _ body:block() _ ";"? end:pos()
             { Expr::ForIn(ident, Box::new(array), body, Span::new(pos, end)) }
 
         rule if_() -> Expr<SourceAst>
-            = pos:pos() keyword("if") _ cond:expr() _ "{" _ if_:seq() _ "}" _ else_:else_()? _ ";"? end:pos()
+            = pos:pos() keyword("if") _ cond:expr() _ if_:block() _ else_:else_()? _ ";"? end:pos()
             { Expr::If(Box::new(cond), if_, else_, Span::new(pos, end)) }
         rule else_() -> Seq<SourceAst>
-            = keyword("else") _ "{" _ body:seq() _ "}" { body }
+            = keyword("else") _ body:block() { body }
             / keyword("else") _ body:if_() { Seq::new(vec![body]) }
 
         pub rule stmt() -> Expr<SourceAst>
@@ -459,6 +462,13 @@ peg::parser! {
             / let_:let() { let_ }
             / expr:expr() _ end_of_stmt() { expr }
             / expected!("a statement")
+
+        rule lambda_body() -> Seq<SourceAst>
+            = "{" _ body:seq() _ "}" { body }
+            / expr:expr() {
+                let span = expr.span();
+                Seq::new(vec![Expr::Return(Some(expr.into()), span)])
+            }
 
         rule lparam() -> Param
             = name:ident() _ typ:(":" _ typ:type_() { typ })?
@@ -537,8 +547,8 @@ peg::parser! {
             pos:pos() "[" _ exprs:commasep(<expr()>)_ "]" end:pos() {
                 Expr::ArrayLit(exprs.into(), (), Span::new(pos, end))
             }
-            pos:pos() "(" _ params:commasep(<lparam()>) _ ")" _ "->" _ expr:expr() end:pos() {
-                Expr::Lambda(params.into(), expr.into(), Span::new(pos, end))
+            pos:pos() "(" _ params:commasep(<lparam()>) _ ")" _ "->" _ seq:lambda_body() end:pos() {
+                Expr::Lambda(params.into(), seq, Span::new(pos, end))
             }
             "(" _ v:expr() _ ")" { v }
             pos:pos() keyword("null") end:pos() {

@@ -31,7 +31,7 @@ where
         N::CallMeta,
         N::Span,
     ),
-    Lambda(N::Closure, Box<Self>, N::Span),
+    Lambda(N::Closure, Seq<N>, N::Span),
     Member(Box<Self>, N::Member, N::Span),
     ArrayElem(Box<Self>, Box<Self>, N::Inferred, N::Span),
     New(N::Class, Box<[Self]>, N::Span),

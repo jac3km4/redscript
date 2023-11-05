@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use itertools::Itertools;
-use redscript::ast::{Constant, Expr, Literal, Seq, Span};
+use redscript::ast::{Constant, Expr, Literal, Seq};
 use redscript::bundle::{CName, ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Instr, Intrinsic, Label, Location, Offset};
 use redscript::definition::{
@@ -30,6 +30,7 @@ pub struct CodeGen<'ctx, 'id> {
     params: LocalIndices<'id, PoolParam>,
     locals: LocalIndices<'id, PoolLocal>,
     wrapped: Option<PoolIndex<Function>>,
+    unit_lambda: bool,
     instructions: Vec<Instr<Label>>,
     labels: usize,
 }
@@ -41,6 +42,7 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
         type_repo: &'ctx TypeRepo<'id>,
         db: &'ctx CompilationDb<'id>,
         wrapped: Option<PoolIndex<Function>>,
+        unit_lambda: bool,
     ) -> Self {
         Self {
             repo: type_repo,
@@ -49,6 +51,7 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
             captures,
             wrapped,
             locals: LocalIndices::default(),
+            unit_lambda,
             instructions: vec![],
             labels: 0,
         }
@@ -261,18 +264,15 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
 
                 let param_indices = LocalIndices::new(params, pool[apply].parameters.iter().copied().collect());
                 let capture_indices = LocalIndices::new(captures, pool[parent_class].fields.iter().copied().collect());
-                let body = if env.ret_type.simplify(self.repo) == Type::Prim(Prim::Void) {
-                    *body
-                } else {
-                    Expr::Return(Some(body), Span::ZERO)
-                };
-                let (locals, code) = Self::build_expr(
+
+                let (locals, code) = Self::build_seq(
                     body,
                     param_indices,
                     capture_indices,
                     self.repo,
                     self.db,
                     None,
+                    env.ret_type.simplify(self.repo) == Type::Prim(Prim::Void),
                     pool,
                     cache,
                 );
@@ -319,6 +319,9 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
                 } else {
                     self.emit(Instr::New(tt));
                 }
+            }
+            Expr::Return(Some(expr), _) if self.unit_lambda => {
+                self.assemble(*expr, pool, cache);
             }
             Expr::Return(Some(expr), _) => {
                 self.emit(Instr::Return);
@@ -641,18 +644,19 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn build_expr(
-        expr: Expr<CheckedAst<'id>>,
+    pub fn build_seq(
+        expr: Seq<CheckedAst<'id>>,
         params: LocalIndices<'id, PoolParam>,
         captures: LocalIndices<'id, PoolField>,
         type_repo: &'ctx TypeRepo<'id>,
         db: &'ctx CompilationDb<'id>,
         wrapped: Option<PoolIndex<Function>>,
+        unit_lambda: bool,
         pool: &mut ConstantPool,
         cache: &mut TypeCache,
     ) -> (IndexVec<PoolLocal>, Code<Offset>) {
-        let mut assembler = Self::new(params, captures, type_repo, db, wrapped);
-        assembler.assemble(expr, pool, cache);
+        let mut assembler = Self::new(params, captures, type_repo, db, wrapped, unit_lambda);
+        assembler.assemble_seq(expr, pool, cache, None);
         assembler.emit(Instr::Nop);
         assembler.into_code()
     }
@@ -667,13 +671,14 @@ impl<'ctx, 'id> CodeGen<'ctx, 'id> {
         pool: &mut ConstantPool,
         cache: &mut TypeCache,
     ) -> (IndexVec<PoolLocal>, Code<Offset>) {
-        Self::build_expr(
-            Expr::Seq(seq),
+        Self::build_seq(
+            seq,
             params,
             LocalIndices::default(),
             type_repo,
             db,
             wrapped,
+            false,
             pool,
             cache,
         )

@@ -29,7 +29,7 @@ macro_rules! visit_expr {
                 }
             }
             Expr::Lambda(_, body, _) => {
-                $self.$fun(body);
+                (&$($mut)? body.exprs).into_iter().for_each(|e| $self.$fun(e));
             }
             Expr::Member(context, _, _) => {
                 $self.$fun(context);

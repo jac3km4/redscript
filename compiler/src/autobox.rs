@@ -1,10 +1,10 @@
 use std::mem;
 
-use hashbrown::HashMap;
 use itertools::{izip, Itertools};
 use redscript::ast::{Expr, Seq};
 use redscript::bytecode::Intrinsic;
 
+use crate::scoped_map::ScopedMap;
 use crate::type_repo::{predef, DataType, FieldId, MethodId, Prim, Type, TypeId, TypeRepo};
 use crate::typer::{CallMetadata, Callable, CheckedAst, Data, InferType, Local, Member, Mono};
 use crate::visit_expr;
@@ -12,7 +12,7 @@ use crate::visit_expr;
 #[derive(Debug)]
 pub struct Autobox<'ctx, 'id> {
     type_repo: &'ctx TypeRepo<'id>,
-    boxed_locals: HashMap<Local, Boxable<'id>>,
+    boxed_locals: ScopedMap<'ctx, Local, Boxable<'id>>,
     poly_ret: Option<Boxable<'id>>,
 }
 
@@ -20,7 +20,7 @@ impl<'ctx, 'id> Autobox<'ctx, 'id> {
     #[inline]
     fn new(
         type_repo: &'ctx TypeRepo<'id>,
-        boxed_locals: HashMap<Local, Boxable<'id>>,
+        boxed_locals: ScopedMap<'ctx, Local, Boxable<'id>>,
         poly_ret: Option<Boxable<'id>>,
     ) -> Self {
         Self {
@@ -33,12 +33,15 @@ impl<'ctx, 'id> Autobox<'ctx, 'id> {
     pub fn run(
         seq: &mut Seq<CheckedAst<'id>>,
         type_repo: &'ctx TypeRepo<'id>,
-        boxed_locals: HashMap<Local, Boxable<'id>>,
+        boxed_locals: ScopedMap<'ctx, Local, Boxable<'id>>,
         poly_ret: Option<Boxable<'id>>,
     ) {
-        let mut this = Self::new(type_repo, boxed_locals, poly_ret);
+        Self::new(type_repo, boxed_locals, poly_ret).apply_seq(seq);
+    }
+
+    fn apply_seq(&mut self, seq: &mut Seq<CheckedAst<'id>>) {
         for expr in &mut seq.exprs {
-            this.apply(expr);
+            self.apply(expr);
         }
     }
 
@@ -101,18 +104,20 @@ impl<'ctx, 'id> Autobox<'ctx, 'id> {
                 }
             }
             Expr::Lambda(env, body, _) => {
+                let mut locals = self.boxed_locals.introduce_scope();
                 for (&loc, typ) in &env.params {
                     if let Some(prim) = Boxable::from_infer_type(typ, self.type_repo) {
-                        self.boxed_locals.insert(loc, prim);
+                        locals.insert(loc, prim);
                     }
                 }
                 for (&loc, (_, capture)) in &env.captures {
                     if let Some(prim) = self.boxed_locals.get(capture) {
-                        self.boxed_locals.insert(loc, prim.clone());
+                        locals.insert(loc, prim.clone());
                     }
                 }
-                self.apply(body);
-                self.try_box_expr(body, &env.ret_type);
+
+                let ret = Boxable::from_infer_type(&env.ret_type, self.type_repo);
+                Autobox::run(body, self.type_repo, locals, ret);
             }
             Expr::Return(Some(expr), _) => {
                 self.apply(expr);

@@ -33,7 +33,7 @@ pub struct Typer<'ctx, 'id> {
     names: &'ctx NameScope<'ctx, 'id>,
     env: TypeEnv<'ctx, 'ctx, 'id>,
     return_type: InferType<'id>,
-    id_alloc: IdAlloc,
+    id_alloc: &'ctx mut IdAlloc,
     reporter: &'ctx mut ErrorReporter<'id>,
 }
 
@@ -43,6 +43,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
         names: &'ctx NameScope<'ctx, 'id>,
         env: TypeEnv<'ctx, 'ctx, 'id>,
         return_type: InferType<'id>,
+        id_alloc: &'ctx mut IdAlloc,
         reporter: &'ctx mut ErrorReporter<'id>,
     ) -> Self {
         Self {
@@ -50,12 +51,13 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
             env,
             names,
             return_type,
-            id_alloc: IdAlloc::default(),
+            id_alloc,
             reporter,
         }
     }
 
     #[inline]
+    #[allow(clippy::too_many_arguments)]
     pub fn run(
         repo: &'ctx TypeRepo<'id>,
         names: &'ctx NameScope<'ctx, 'id>,
@@ -63,9 +65,10 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
         expr: &Seq<SourceAst>,
         locals: &mut LocalMap<'_, 'id>,
         return_type: InferType<'id>,
+        id_alloc: &'ctx mut IdAlloc,
         reporter: &'ctx mut ErrorReporter<'id>,
     ) -> Seq<CheckedAst<'id>> {
-        Self::new(repo, names, env, return_type, reporter).typeck_seq(expr, locals)
+        Self::new(repo, names, env, return_type, id_alloc, reporter).typeck_seq(expr, locals)
     }
 
     pub fn typeck_seq(&mut self, expr: &Seq<SourceAst>, locals: &mut LocalMap<'_, 'id>) -> Seq<CheckedAst<'id>> {
@@ -100,7 +103,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                         if !is_out
                             && matches!(&info.typ, InferType::Mono(Mono::Data(data)) if data.id.is_function()) =>
                     {
-                        info.typ.instantiate(&mut self.id_alloc)
+                        info.typ.instantiate(self.id_alloc)
                     }
                     _ => info.typ.clone(),
                 };
@@ -156,7 +159,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 let type_args: Rc<[_]> = self.repo[id]
                     .type_vars()
                     .iter()
-                    .map(|var| InferType::from_var_poly(var, self.env.vars, &mut self.id_alloc))
+                    .map(|var| InferType::from_var_poly(var, self.env.vars, self.id_alloc))
                     .collect();
                 let data = Data::new(id, type_args);
                 let typ = InferType::data(data.clone());
@@ -281,7 +284,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 let type_args: Rc<[_]> = data_type
                     .type_vars()
                     .iter()
-                    .map(|var| InferType::from_var_poly(var, self.env.vars, &mut self.id_alloc))
+                    .map(|var| InferType::from_var_poly(var, self.env.vars, self.id_alloc))
                     .collect();
                 let mut checked_args = vec![];
                 let mut arg_types = vec![];
@@ -445,7 +448,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
         {
             Ok((id, entry)) => {
                 for var in &*entry.function.typ.type_vars {
-                    let typ = InferType::from_var_poly(var, &type_vars, &mut self.id_alloc);
+                    let typ = InferType::from_var_poly(var, &type_vars, self.id_alloc);
                     type_vars.insert(var.name.clone(), typ);
                 }
                 for (arg, param) in args.zip(entry.function.typ.params.iter()) {
@@ -473,7 +476,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                         CompileError::for_overloads(name.into(), m.count(), candidates.iter().map(|(_, e)| e), span)
                     })?;
                 for var in &*entry.function.typ.type_vars {
-                    let typ = InferType::from_var_poly(var, &type_vars, &mut self.id_alloc);
+                    let typ = InferType::from_var_poly(var, &type_vars, self.id_alloc);
                     type_vars.insert(var.name.clone(), typ);
                 }
                 (id, entry)
@@ -543,7 +546,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 let data_type = &self.repo[*owner];
                 if expr.is_none() && upper_bound.args.is_empty() {
                     let it = data_type.type_vars().iter().map(|var| {
-                        let typ = InferType::from_var_poly(var, &ScopedMap::default(), &mut self.id_alloc);
+                        let typ = InferType::from_var_poly(var, &ScopedMap::default(), self.id_alloc);
                         (var.name.clone(), typ)
                     });
                     type_vars.extend(it);
@@ -557,7 +560,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 };
 
                 for var in &*entry.function.typ.type_vars {
-                    let typ = InferType::from_var_poly(var, &type_vars, &mut self.id_alloc);
+                    let typ = InferType::from_var_poly(var, &type_vars, self.id_alloc);
                     type_vars.insert(var.name.clone(), typ);
                 }
                 for (arg, param) in args.iter().zip(entry.function.typ.params.iter()) {
@@ -600,7 +603,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
                 let data_type = &self.repo[*owner];
                 if expr.is_none() && upper_bound.args.is_empty() {
                     let it = data_type.type_vars().iter().map(|var| {
-                        let typ = InferType::from_var_poly(var, &ScopedMap::default(), &mut self.id_alloc);
+                        let typ = InferType::from_var_poly(var, &ScopedMap::default(), self.id_alloc);
                         (var.name.clone(), typ)
                     });
                     type_vars.extend(it);
@@ -717,7 +720,7 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
         mut locals: LocalMap<'_, 'id>,
         lambda_params: &[Param],
         expected_params: Option<impl IntoIterator<Item = InferType<'id>>>,
-        body: &Expr<SourceAst>,
+        body: &Seq<SourceAst>,
         span: Span,
     ) -> CompileResult<'id, Inferred<'id>> {
         let mut fn_type_args = expected_params
@@ -738,7 +741,18 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
             .zip(&fn_type_args)
             .map(|(param, typ)| (param.name.clone(), self.id_alloc.allocate_param(typ.clone())));
         locals.extend(param_locals);
-        let (ret, ret_type) = self.typeck(body, &mut locals)?;
+
+        let ret_type = self.id_alloc.allocate_free_type();
+        let body = Typer::run(
+            self.repo,
+            self.names,
+            self.env.clone(),
+            body,
+            &mut locals,
+            ret_type.clone(),
+            self.id_alloc,
+            self.reporter,
+        );
         fn_type_args.push(ret_type.clone());
 
         let id = TypeId::get_fn_by_arity(lambda_params.len())
@@ -765,14 +779,14 @@ impl<'ctx, 'id> Typer<'ctx, 'id> {
             captures,
             ret_type,
         };
-        Ok((Expr::Lambda(env.into(), ret.into(), span), typ))
+        Ok((Expr::Lambda(env.into(), body, span), typ))
     }
 
     fn check_lambda_against(
         &mut self,
         locals: LocalMap<'_, 'id>,
         lambda_params: &[Param],
-        body: &Expr<SourceAst>,
+        body: &Seq<SourceAst>,
         data: &Parameterized<'id>,
         type_vars: &Vars<'_, 'id>,
         span: Span,
@@ -965,7 +979,7 @@ impl<'id> InferType<'id> {
                     let lower = lower.freshen(ctx, alloc);
                     let upper = upper.freshen(ctx, alloc);
                     let res = alloc.allocate_tvar(lower, upper);
-                    ctx.insert(id, res.clone());
+                    ctx.insert(rep.borrow().id, res.clone());
                     res
                 };
                 Self::Poly(res)
@@ -1747,7 +1761,9 @@ impl<'ctx, 'id> CaptureCollector<'ctx, 'id> {
                         .collect(),
                     count: self.count,
                 };
-                nested.collect(body);
+                for expr in &body.exprs {
+                    nested.collect(expr);
+                }
                 self.captures = nested.captures;
                 self.count = nested.count;
             }
