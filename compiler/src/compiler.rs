@@ -867,15 +867,14 @@ impl<'id> CompilationOutputs<'id> {
             if wrapped.flags.is_callback() {
                 // make sure only one remains a callback
                 wrapped.flags = wrapped.flags.with_is_callback(false);
-                let new_flags = wrapped.flags.with_is_callback(true);
+                pool[last_wrapper_idx].flags = wrapped.flags.with_is_callback(true);
+            }
 
-                // the game crashes when parameter names are not aligned in callback methods
-                let from_params = pool[wrapped_idx].parameters.clone();
-                let to_params = pool[last_wrapper_idx].parameters.clone();
-                pool[last_wrapper_idx].flags = new_flags;
-                for (&from, &to) in from_params.iter().zip(&to_params) {
-                    pool.rename(to, pool.def_name_idx(from).unwrap());
-                }
+            // the game crashes when parameter names are not aligned sometimes
+            let from_params = pool[wrapped_idx].parameters.clone();
+            let to_params = pool[last_wrapper_idx].parameters.clone();
+            for (&from, &to) in from_params.iter().zip(&to_params) {
+                pool.rename(to, pool.def_name_idx(from).unwrap());
             }
 
             Self::remap_locals(last_wrapper_idx, wrapped_idx, pool);
@@ -1028,27 +1027,12 @@ impl<'id> CompilationOutputs<'id> {
             mapped_locals.insert(local_idx, pool.add_definition(local));
         }
 
-        let params = pool[target].parameters.clone();
-        let mut mapped_params = HashMap::new();
-        for param_idx in params {
-            let mut param = pool.definition(param_idx).unwrap().clone();
-            param.parent = proxy.cast();
-            mapped_params.insert(param_idx, pool.add_definition(param));
-        }
-
         let fun = &mut pool[target];
         fun.locals = mapped_locals.values().copied().collect();
-        fun.parameters = mapped_params.values().copied().collect();
 
         for instr in &mut fun.code.0 {
-            match instr {
-                Instr::Local(local) => {
-                    *instr = Instr::Local(*mapped_locals.get(local).expect("mapped local should exist"));
-                }
-                Instr::Param(param) => {
-                    *instr = Instr::Param(*mapped_params.get(param).expect("mapped local should exist"));
-                }
-                _ => {}
+            if let Instr::Local(local) = instr {
+                *instr = Instr::Local(*mapped_locals.get(local).expect("mapped local should exist"));
             }
         }
     }
