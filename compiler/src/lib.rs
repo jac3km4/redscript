@@ -6,7 +6,7 @@ pub mod compiler;
 pub mod error;
 #[allow(clippy::redundant_closure_call)]
 pub mod parser;
-mod scoped_map;
+pub mod scoped_map;
 pub mod source_map;
 pub mod sugar;
 pub mod type_repo;

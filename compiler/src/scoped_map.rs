@@ -63,6 +63,10 @@ where
         self.scope_iter().map(HashMap::len).sum()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.scope_iter().all(HashMap::is_empty)
+    }
+
     #[inline]
     pub fn scope_iter(&self) -> ScopeIter<'_, 'a, K, V> {
         ScopeIter { map: Some(self) }

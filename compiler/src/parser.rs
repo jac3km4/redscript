@@ -217,6 +217,10 @@ pub fn parse_str(str: &str) -> Result<SourceModule, ParseError<LineCol>> {
     lang::module(str, Pos::ZERO)
 }
 
+pub fn parse_stmts(str: &str) -> Result<Seq<SourceAst>, ParseError<LineCol>> {
+    lang::seq(str.trim(), Pos::ZERO)
+}
+
 peg::parser! {
     grammar lang(offset: Pos) for str {
         use peg::ParseLiteral;
@@ -324,7 +328,7 @@ peg::parser! {
             / type_:literal_type()? str:escaped_string()
                 { Constant::String(type_.unwrap_or(Literal::String), Str::from(str)) }
 
-        rule seq() -> Seq<SourceAst> = exprs:(stmt() ** _) { Seq::new(exprs) }
+        pub rule seq() -> Seq<SourceAst> = exprs:(stmt() ** _) { Seq::new(exprs) }
 
         rule type_args() -> Vec<TypeName> = "<" _ args:commasep(<type_()>) _ ">" { args }
         rule type_() -> TypeName

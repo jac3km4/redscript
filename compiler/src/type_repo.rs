@@ -273,7 +273,7 @@ impl fmt::Display for VarName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Named(name) => f.write_str(name),
-            Self::CompGen(_) => f.write_str("α"),
+            Self::CompGen(i) => i.fmt(f),
         }
     }
 }
@@ -285,6 +285,12 @@ impl VarId {
     #[inline]
     pub(crate) fn new(val: u32) -> Self {
         Self(val)
+    }
+}
+
+impl fmt::Display for VarId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "'{}", self.0)
     }
 }
 
@@ -596,7 +602,7 @@ pub struct TypeVar<'id> {
 }
 
 impl<'id> TypeVar<'id> {
-    const fn unconstrained(name: Str, variance: Variance) -> Self {
+    pub const fn unconstrained(name: Str, variance: Variance) -> Self {
         Self {
             name,
             variance,

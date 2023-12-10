@@ -1,13 +1,105 @@
-// use std::io::Cursor;
+use std::fs;
+use std::path::Path;
 
-// use hashbrown::HashMap;
-// use redscript::bundle::{ConstantPool, PoolIndex, ScriptBundle};
-// use redscript::bytecode::{Code, Offset};
-// use redscript::definition::{AnyDefinition, ClassFlags, Definition};
-// use redscript_compiler::diagnostics::Diagnostic;
-// use redscript_compiler::error::Error;
-// use redscript_compiler::parser;
-// use redscript_compiler::symbol::FunctionSignature;
+use hashbrown::HashMap;
+use pretty_assertions::assert_eq;
+use redscript::ast::{Seq, Variance};
+use redscript::Str;
+use redscript_compiler::error::CompileError;
+use redscript_compiler::parser::parse_stmts;
+use redscript_compiler::scoped_map::ScopedMap;
+use redscript_compiler::sugar::Desugar;
+use redscript_compiler::type_repo::{predef, ClassType, DataType, Parameterized, TypeId, TypeRepo, TypeVar};
+use redscript_compiler::typer::{CheckedAst, ErrorReporter, IdAlloc, InferType, LocalInfo, TypeEnv, Typer};
+use with_locals::with;
+
+#[with]
+pub fn check_file_as_seq(path: impl AsRef<Path>, return_type: InferType<'static>) -> TypecheckResult {
+    let contents = fs::read_to_string(Path::new(".").join("tests").join(path)).unwrap();
+    let mut body = parse_stmts(&contents).unwrap();
+    let mut locals = ScopedMap::default();
+    let (repo, types) = test_repo();
+    let names = ScopedMap::default();
+    let vars = ScopedMap::default();
+    let env = TypeEnv::new(&types, &vars);
+    let mut id_alloc = IdAlloc::default();
+    let mut reporter = ErrorReporter::default();
+
+    let mut typer = Typer::new(&repo, &names, env, return_type, &mut id_alloc, &mut reporter);
+    Desugar::run(&mut body);
+    let body = typer.typeck_seq(&body, &mut locals);
+    TypecheckResult {
+        repo,
+        errors: reporter.into_errors(),
+        body,
+        locals: locals.pop_scope(),
+    }
+}
+
+pub struct TypecheckResult {
+    repo: TypeRepo<'static>,
+    errors: Vec<CompileError<'static>>,
+    body: Seq<CheckedAst<'static>>,
+    locals: HashMap<Str, LocalInfo<'static>>,
+}
+
+impl TypecheckResult {
+    pub fn no_errors(self) -> Self {
+        assert_eq!(&self.errors, &[], "compilation failed");
+        self
+    }
+
+    pub fn local_has_type(mut self, name: &str, expected: &str) -> Self {
+        let local = self.locals.remove(&Str::from(name)).expect("local not found");
+        let simplified = local.typ.simplify(&self.repo).to_string();
+        assert_eq!(simplified, expected, "'{}' has wrong type", name);
+        self
+    }
+
+    pub fn no_more_locals(self) -> Self {
+        assert_eq!(self.locals, HashMap::default(), "leftover locals");
+        self
+    }
+}
+
+fn test_repo() -> (TypeRepo<'static>, ScopedMap<'static, Str, TypeId<'static>>) {
+    let mut repo = TypeRepo::new();
+    let mut names = ScopedMap::default();
+
+    names.insert("ref".into(), predef::REF);
+    names.insert("wref".into(), predef::WREF);
+
+    repo.add_type(predef::ISCRIPTABLE, DataType::Class(ClassType::default()));
+    names.insert("IScriptable".into(), predef::ISCRIPTABLE);
+
+    macro_rules! add_function_type {
+        ($arity:literal, [$($arg:ident),*]) => {
+            let id = TypeId::get_fn_by_name($arity).unwrap();
+            repo.add_type(
+                TypeId::get_fn_by_name($arity).unwrap(),
+                DataType::Class(ClassType {
+                    type_vars: [
+                        $(TypeVar::unconstrained(stringify!($arg).into(), Variance::Contra),)*
+                        TypeVar::unconstrained("R".into(), Variance::Co)
+                    ].into(),
+                    extends: Some(Parameterized::without_args(predef::ISCRIPTABLE)),
+                    ..Default::default()
+                }),
+            );
+            names.insert($arity.into(), id);
+        }
+    }
+
+    add_function_type!("Function0", []);
+    add_function_type!("Function1", [A]);
+    add_function_type!("Function2", [A, B]);
+    add_function_type!("Function3", [A, B, C]);
+    add_function_type!("Function4", [A, B, C, D]);
+    add_function_type!("Function5", [A, B, C, D, E]);
+    add_function_type!("Function6", [A, B, C, D, E, F]);
+
+    (repo, names)
+}
 
 // pub const PREDEF: &[u8] = include_bytes!("../../resources/predef.redscripts");
 

@@ -355,7 +355,7 @@ impl From<Pos> for usize {
     }
 }
 
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+#[derive(Default, Copy, Clone, PartialEq, Eq)]
 pub struct Span {
     pub low: Pos,
     pub high: Pos,
@@ -384,6 +384,12 @@ impl Span {
         } else {
             Ordering::Equal
         }
+    }
+}
+
+impl Debug for Span {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}..{}", self.low, self.high)
     }
 }
 

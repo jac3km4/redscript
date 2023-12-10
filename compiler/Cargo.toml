@@ -27,5 +27,9 @@ sequence_trie = { git = "https://github.com/jac3km4/rust_sequence_trie", rev = "
 simple-interner = { version = "0.3", features = ["hashbrown"] }
 peg = "0.8"
 
+[dev-dependencies]
+pretty_assertions = "1"
+with_locals = "0.3"
+
 [features]
 pretty-errors = ["yansi"]

@@ -14,7 +14,7 @@ use crate::typer::{Data, Mono};
 
 pub type CompileResult<'id, A, E = CompileError<'id>> = Result<A, E>;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 pub enum CompileError<'id> {
     #[error("{0}")]
     TypeError(TypeError<'id>, Span),
@@ -141,7 +141,7 @@ impl<Err: fmt::Display> fmt::Display for DisplayError<'_, Err> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct OverloadOption(Str);
 
 impl fmt::Display for OverloadOption {
@@ -150,7 +150,7 @@ impl fmt::Display for OverloadOption {
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 pub enum TypeError<'id> {
     #[error("found {0}, expected {1}")]
     Mismatch(Mono<'id>, Mono<'id>),
@@ -187,7 +187,7 @@ impl ParseError {
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq, Eq)]
 pub enum Unsupported {
     #[error("calling a custom class constructor")]
     CustomClassConstructor,

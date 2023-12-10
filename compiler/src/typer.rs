@@ -1692,7 +1692,7 @@ pub enum Member<'id> {
     EnumMember(FieldId<'id>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LocalInfo<'id> {
     pub local: Local,
     pub typ: InferType<'id>,
