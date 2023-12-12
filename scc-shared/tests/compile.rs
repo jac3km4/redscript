@@ -5,7 +5,7 @@ use std::process::Command;
 use assert_cmd::prelude::*;
 use assert_fs::prelude::*;
 use predicates::prelude::*;
-use scc::timestamp::*;
+use scc_shared::timestamp::*;
 
 #[test]
 fn no_args() -> Result<(), Box<dyn std::error::Error>> {
@@ -35,11 +35,13 @@ fn bundle_result() -> Result<(), Box<dyn std::error::Error>> {
     let bundle_path = temp.child("final.redscripts");
     fs::copy(predef, &bundle_path).expect("should copy predef.redscripts to bundle path");
 
-    let script_file = temp.child("test.reds");
+    let script_file = temp.child("scripts/test.reds");
     script_file.write_str("class TestClass {}")?;
 
     let mut cmd = Command::cargo_bin("scc")?;
-    cmd.arg("-compile").arg(script_file.path()).arg(bundle_path.path());
+    cmd.arg("-compile")
+        .arg(temp.child("scripts").path())
+        .arg(bundle_path.path());
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Output successfully saved"));

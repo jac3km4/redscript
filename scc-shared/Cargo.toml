@@ -1,0 +1,32 @@
+[package]
+name = "scc-shared"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+redscript = { path = "../core" }
+redscript-compiler = { path = "../compiler" }
+log.workspace = true
+anyhow.workspace = true
+hashbrown = { workspace = true, features = ["serde"] }
+byteorder.workspace = true
+flexi_logger.workspace = true
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+vmap = { version = "0.5", default-features = false, optional = true }
+fd-lock = "4"
+msgbox = { version = "0.7", optional = true }
+
+[dev-dependencies]
+pretty_assertions = "1"
+assert_fs = "1"
+assert_cmd = "2"
+predicates = "3"
+
+[features]
+popup = ["msgbox"]
+mmap = ["vmap"]

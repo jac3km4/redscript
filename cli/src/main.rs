@@ -113,7 +113,7 @@ fn compile(opts: CompileOpts) -> anyhow::Result<()> {
         .map_err(|err| anyhow::anyhow!("Failed to create the compilation unit: {err}"))?
         .compile_and_report(&files)
     {
-        Ok(()) => {
+        Ok(_) => {
             let file = File::create(&opts.output).context("Failed to create a file at the specified output path")?;
             bundle
                 .save(&mut io::BufWriter::new(file))

@@ -8,16 +8,26 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct UserHint {
-    pub id: String,
-    pub message: String,
-    pub file: Option<PathBuf>,
-    pub span_starts_with: Option<String>,
-    pub line_contains: Option<String>,
+    id: String,
+    message: String,
+    file: Option<PathBuf>,
+    span_starts_with: Option<String>,
+    line_contains: Option<String>,
+}
+
+impl UserHint {
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
 }
 
 #[derive(Debug, Default)]
 pub struct UserHints {
-    pub hints: HashMap<String, Vec<UserHint>>,
+    hints: HashMap<String, Vec<UserHint>>,
 }
 
 impl UserHints {

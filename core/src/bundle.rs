@@ -615,6 +615,7 @@ impl Decode for Timestamp {
     }
 }
 
+#[repr(transparent)]
 pub struct PoolIndex<A> {
     value: u32,
     phantom: PhantomData<A>,

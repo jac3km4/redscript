@@ -2,11 +2,11 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use hashbrown::{HashMap, HashSet};
-use redscript::ast::{Constant, Expr, Ident, Literal, Seq, SourceAst, Span, TypeName};
+use redscript::ast::{Constant, Expr, Ident, Literal, Pos, Seq, SourceAst, Span, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Instr};
 use redscript::definition::*;
-use redscript::mapper::{MultiMapper, PoolMapper};
+use redscript::mapper::{Mapper, MultiMapper, PoolMapper};
 use redscript::Ref;
 
 use crate::assembler::Assembler;
@@ -33,6 +33,7 @@ pub struct CompilationUnit<'a> {
     field_defaults: Vec<FieldDefault>,
     wrappers: ProxyMap,
     proxies: ProxyMap,
+    source_refs: Vec<SourceRef>,
     diagnostics: Vec<Diagnostic>,
     file_map: HashMap<PathBuf, PoolIndex<SourceFile>>,
     diagnostic_passes: Vec<Box<dyn DiagnosticPass + Send>>,
@@ -58,22 +59,23 @@ impl<'a> CompilationUnit<'a> {
             pool,
             symbols,
             scope,
-            function_bodies: Vec::new(),
-            field_defaults: Vec::new(),
+            function_bodies: vec![],
+            field_defaults: vec![],
             wrappers: HashMap::new(),
             proxies: HashMap::new(),
+            source_refs: vec![],
             diagnostics: vec![],
             file_map: HashMap::new(),
             diagnostic_passes: passes,
         })
     }
 
-    pub fn compile(mut self, modules: Vec<SourceModule>, files: &Files) -> Result<Vec<Diagnostic>, Error> {
+    pub fn compile(mut self, modules: Vec<SourceModule>, files: &Files) -> Result<CompilationOutput, Error> {
         let funcs = self.compile_modules(modules, files, true, false)?;
         self.finish(funcs, files)
     }
 
-    pub fn compile_files(self, files: &Files) -> Result<Vec<Diagnostic>, Error> {
+    pub fn compile_files(self, files: &Files) -> Result<CompilationOutput, Error> {
         self.compile(Self::parse(files)?, files)
     }
 
@@ -97,35 +99,29 @@ impl<'a> CompilationUnit<'a> {
         self.typecheck(Self::parse(files)?, files, desugar, permissive)
     }
 
-    pub fn compile_and_report(self, files: &Files) -> Result<(), Error> {
+    pub fn compile_and_report(self, files: &Files) -> Result<CompilationOutput, Error> {
         match self.compile_files(files) {
-            Ok(mut diagnostics) => {
-                diagnostics.sort_by_key(Diagnostic::is_fatal);
-
-                for diagnostic in &diagnostics {
+            Ok(output) => {
+                for diagnostic in &output.diagnostics {
                     diagnostic.log(files);
                 }
 
-                if diagnostics.iter().any(Diagnostic::is_fatal) {
-                    let spans = diagnostics
+                if output.diagnostics.iter().any(Diagnostic::is_fatal) {
+                    let spans = output
+                        .diagnostics
                         .iter()
                         .filter(|d| d.is_fatal())
                         .map(|d| (d.code(), d.span()))
                         .collect();
                     Err(Error::MultipleErrors(spans))
                 } else {
-                    Ok(())
+                    Ok(output)
                 }
             }
             Err(err) => match Diagnostic::from_error(err) {
                 Ok(diagnostic) => {
                     diagnostic.log(files);
-
-                    if diagnostic.is_fatal() {
-                        Err(Error::MultipleErrors(vec![(diagnostic.code(), diagnostic.span())]))
-                    } else {
-                        Ok(())
-                    }
+                    Err(Error::MultipleErrors(vec![(diagnostic.code(), diagnostic.span())]))
                 }
                 Err(other) => {
                     log::error!("{}: {}", "Unexpected error during compilation", other);
@@ -292,7 +288,7 @@ impl<'a> CompilationUnit<'a> {
         Ok(compiled_funcs)
     }
 
-    fn finish(self, functions: Vec<CompiledFunction>, files: &Files) -> Result<Vec<Diagnostic>, Error> {
+    fn finish(self, functions: Vec<CompiledFunction>, files: &Files) -> Result<CompilationOutput, Error> {
         for mut func in functions {
             let code = Assembler::from_body(func.code, files, &mut func.scope, self.pool)?;
             let function = self.pool.function_mut(func.index)?;
@@ -315,8 +311,16 @@ impl<'a> CompilationUnit<'a> {
             self.pool.swap_definition(wrapped, proxy);
         }
 
-        Self::cleanup_pool(self.pool);
-        Ok(self.diagnostics)
+        let mut diagnostics = self.diagnostics;
+        diagnostics.sort_by_key(Diagnostic::is_fatal);
+        let mut source_refs = self.source_refs;
+
+        Self::cleanup_pool(self.pool, &mut source_refs);
+
+        Ok(CompilationOutput {
+            diagnostics,
+            source_refs,
+        })
     }
 
     fn define_symbol(&mut self, entry: SourceEntry, module: &ModulePath, permissive: bool) -> Result<Slot, Error> {
@@ -510,6 +514,7 @@ impl<'a> CompilationUnit<'a> {
         let name_idx = self.pool.definition(class_idx)?.name;
 
         self.pool.put_definition(class_idx, Definition::class(name_idx, class));
+        self.source_refs.push(SourceRef::new(class_idx.cast(), source.span.low));
         Ok(())
     }
 
@@ -598,6 +603,8 @@ impl<'a> CompilationUnit<'a> {
         }
 
         self.pool.put_definition(spec.fun_idx, definition);
+        self.source_refs
+            .push(SourceRef::new(spec.fun_idx.cast(), spec.source.span.low));
         Ok(())
     }
 
@@ -657,8 +664,8 @@ impl<'a> CompilationUnit<'a> {
             attributes,
             defaults: vec![],
         };
-        let name_index = self.pool.definition(field_idx)?.name;
-        let definition = Definition::field(name_index, class_idx.cast(), field);
+        let name = self.pool.definition(field_idx)?.name;
+        let definition = Definition::field(name, class_idx.cast(), field);
 
         if let Some(value) = source.default {
             self.field_defaults.push(FieldDefault {
@@ -670,6 +677,7 @@ impl<'a> CompilationUnit<'a> {
         }
 
         self.pool.put_definition(field_idx, definition);
+        self.source_refs.push(SourceRef::new(field_idx.cast(), decl.span.low));
         Ok(())
     }
 
@@ -1073,7 +1081,7 @@ impl<'a> CompilationUnit<'a> {
 
     // this method is a workaround for a game crash which happens when the game loads
     // a class which has a base class that is placed after the subclass in the pool
-    fn cleanup_pool(pool: &mut ConstantPool) {
+    fn cleanup_pool(pool: &mut ConstantPool, refs: &mut [SourceRef]) {
         fn collect_subtypes(
             class_idx: PoolIndex<Class>,
             hierarchy: &HashMap<PoolIndex<Class>, Vec<PoolIndex<Class>>>,
@@ -1143,9 +1151,11 @@ impl<'a> CompilationUnit<'a> {
         // fix any references to the reordered classes
         if !unsorted.is_empty() {
             let mappings = sorted.into_iter().zip(unsorted).collect();
-            PoolMapper::default()
-                .with_class_mapper(MultiMapper::new(mappings))
-                .map(pool);
+            let mapper = MultiMapper::new(mappings);
+            for ref_ in refs {
+                ref_.index = mapper.apply(ref_.index.cast()).cast();
+            }
+            PoolMapper::default().with_class_mapper(mapper).map(pool);
         }
     }
 
@@ -1246,4 +1256,44 @@ fn eval_conditions(cte: &cte::Context, anns: &[Annotation]) -> Result<bool, Erro
                 .ok_or_else(|| Error::CteError("invalid value", expr.span()))?;
             Ok(acc && *res)
         })
+}
+
+#[derive(Debug, Default)]
+pub struct CompilationOutput {
+    diagnostics: Vec<Diagnostic>,
+    source_refs: Vec<SourceRef>,
+}
+
+impl CompilationOutput {
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        &self.diagnostics
+    }
+
+    pub fn source_refs(&self) -> &[SourceRef] {
+        &self.source_refs
+    }
+
+    pub fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
+}
+
+#[derive(Debug)]
+pub struct SourceRef {
+    index: PoolIndex<Definition>,
+    pos: Pos,
+}
+
+impl SourceRef {
+    pub fn new(index: PoolIndex<Definition>, pos: Pos) -> Self {
+        Self { index, pos }
+    }
+
+    pub fn index(&self) -> PoolIndex<Definition> {
+        self.index
+    }
+
+    pub fn pos(&self) -> Pos {
+        self.pos
+    }
 }

@@ -961,6 +961,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "itertools"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "25db6b064527c5d482d0423354fcd07a89a2dfe07b67892e62411946db7f07b0"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "js-sys"
 version = "0.3.65"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1016,6 +1025,12 @@ checksum = "5a634b1c61a95585bd15607c6ab0c4e5b226e695ff2800ba0cdccddf208c406c"
 dependencies = [
  "autocfg",
 ]
+
+[[package]]
+name = "minidl"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc0a023a2715164b8a15b7f91a4baa3decc92158a539b96bf0bdb61f18c69366"
 
 [[package]]
 name = "modular-bitfield"
@@ -1182,7 +1197,7 @@ dependencies = [
  "anstyle",
  "difflib",
  "float-cmp",
- "itertools",
+ "itertools 0.11.0",
  "normalize-line-endings",
  "predicates-core",
  "regex",
@@ -1314,7 +1329,7 @@ dependencies = [
  "enum-as-inner",
  "flexstr",
  "hashbrown 0.14.2",
- "itertools",
+ "itertools 0.12.0",
  "log",
  "modular-bitfield",
  "rusty-hook",
@@ -1344,7 +1359,7 @@ dependencies = [
  "flexstr",
  "hamt-sync",
  "hashbrown 0.14.2",
- "itertools",
+ "itertools 0.12.0",
  "log",
  "peg",
  "redscript",
@@ -1359,7 +1374,7 @@ name = "redscript-decompiler"
 version = "0.5.16"
 dependencies = [
  "hashbrown 0.14.2",
- "itertools",
+ "itertools 0.12.0",
  "log",
  "redscript",
  "thiserror",
@@ -1495,9 +1510,22 @@ name = "scc"
 version = "0.5.16"
 dependencies = [
  "anyhow",
+ "bpaf",
+ "minidl",
+ "pretty_assertions",
+ "rstest",
+ "rstest_reuse",
+ "scc-shared",
+ "winsplit",
+]
+
+[[package]]
+name = "scc-shared"
+version = "0.5.16"
+dependencies = [
+ "anyhow",
  "assert_cmd",
  "assert_fs",
- "bpaf",
  "byteorder",
  "fd-lock",
  "flexi_logger",
@@ -1508,12 +1536,9 @@ dependencies = [
  "pretty_assertions",
  "redscript",
  "redscript-compiler",
- "rstest",
- "rstest_reuse",
  "serde",
  "toml 0.8.6",
  "vmap",
- "winsplit",
 ]
 
 [[package]]

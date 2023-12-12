@@ -304,7 +304,8 @@ pub enum Literal {
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Pos(pub u32);
+#[repr(transparent)]
+pub struct Pos(u32);
 
 impl Pos {
     pub const ZERO: Pos = Pos(0);

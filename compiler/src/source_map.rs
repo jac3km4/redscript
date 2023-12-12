@@ -1,13 +1,11 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::{fmt, iter};
+use std::{fmt, io, iter};
 
 use hashbrown::HashSet;
 use itertools::{Either, Itertools};
 use redscript::ast::{Pos, Span};
 use walkdir::{DirEntry, WalkDir};
-
-use crate::error::Error;
 
 #[derive(Debug, Default)]
 pub struct Files {
@@ -19,16 +17,16 @@ impl Files {
         Self::default()
     }
 
-    pub fn from_dirs(paths: &[PathBuf], filter: &SourceFilter) -> Result<Self, Error> {
+    pub fn from_dirs(paths: &[PathBuf], filter: &SourceFilter) -> io::Result<Self> {
         let files = paths.iter().flat_map(|path| filtered_file_iter(path, filter));
         Self::from_files(files)
     }
 
-    pub fn from_dir(path: &Path, filter: &SourceFilter) -> Result<Self, Error> {
+    pub fn from_dir(path: &Path, filter: &SourceFilter) -> io::Result<Self> {
         Self::from_files(filtered_file_iter(path, filter))
     }
 
-    pub fn from_files(paths: impl Iterator<Item = PathBuf>) -> Result<Self, Error> {
+    pub fn from_files(paths: impl Iterator<Item = PathBuf>) -> io::Result<Self> {
         let mut files = Self::new();
         for path in paths {
             let sources = std::fs::read_to_string(&path)?;
@@ -42,7 +40,7 @@ impl Files {
     }
 
     pub fn add(&mut self, path: PathBuf, source: String) {
-        let low = self.entries.last().map_or(Pos(0), |f| f.high + 1);
+        let low = self.entries.last().map_or(Pos::ZERO, |f| f.high + 1);
         let high = low + source.len();
         let mut lines = vec![];
         for (offset, _) in source.match_indices('\n') {
@@ -139,7 +137,7 @@ impl File {
         Self { source, ..self }
     }
 
-    fn lookup(&self, pos: Pos) -> Option<FilePos> {
+    pub fn lookup(&self, pos: Pos) -> Option<FilePos> {
         let res = self.lines.1.binary_search(&pos).map(|p| p + 1);
         let index = res.unwrap_or_else(|i| i);
         let (line, low) = if pos < self.lines.0 {
@@ -167,9 +165,9 @@ impl File {
     }
 
     pub fn source_slice(&self, span: Span) -> &str {
-        let start = span.low.0 - self.byte_offset().0;
-        let end = span.high.0 - self.byte_offset().0;
-        &self.source[start as usize..end as usize]
+        let start = usize::from(span.low) - usize::from(self.byte_offset());
+        let end = usize::from(span.high) - usize::from(self.byte_offset());
+        &self.source[start..end]
     }
 
     pub fn path(&self) -> &Path {

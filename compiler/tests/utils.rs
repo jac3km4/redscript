@@ -121,7 +121,7 @@ pub fn compiled(sources: Vec<&str>) -> Result<(ConstantPool, Vec<Diagnostic>), E
     let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
     let res = CompilationUnit::new_with_defaults(&mut scripts.pool)?.compile(modules, &Files::default())?;
 
-    Ok((scripts.pool, res))
+    Ok((scripts.pool, res.into_diagnostics()))
 }
 
 pub fn check_class_flags(pool: &ConstantPool, name: &str, flags: ClassFlags) -> Result<(), Error> {

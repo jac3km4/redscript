@@ -17,6 +17,7 @@ mkdir $stagingDir
 cp -r ./resources/mod/* $stagingDir
 mkdir -p $toolsDir
 cp ./target/release/scc.exe $toolsDir
+cp ./target/release/scc_shared.dll $toolsDir
 
 cd $stagingDir
 7z a -mx=9 -r $archiveName *
