@@ -44,6 +44,7 @@ jobs:
           exit $rustfmt_exit_code
 
       - run: cargo clippy -- -Dwarnings
+      - run: cargo build
       - run: cargo test
   
   build:
