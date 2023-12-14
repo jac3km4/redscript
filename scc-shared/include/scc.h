@@ -1,5 +1,6 @@
 #include <cstddef>
 #include <stdint.h>
+#include <stdbool.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -50,7 +51,7 @@ typedef size_t scc_output_source_ref_count(SccOutput* output);
 
 typedef uint8_t scc_source_ref_type(SccOutput* output, SccSourceRef* ref);
 
-typedef BOOL scc_source_ref_is_native(SccOutput* output, SccSourceRef* ref);
+typedef bool scc_source_ref_is_native(SccOutput* output, SccSourceRef* ref);
 
 typedef StrWithLen scc_source_ref_name(SccOutput* output, SccSourceRef* ref);
 
