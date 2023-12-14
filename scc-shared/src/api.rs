@@ -1,6 +1,7 @@
 use std::ffi::CStr;
 use std::marker::PhantomData;
 use std::path::PathBuf;
+use std::ptr;
 
 use redscript::bundle::ScriptBundle;
 use redscript::definition::AnyDefinition;
@@ -51,6 +52,25 @@ pub extern "C" fn scc_get_success(output: &SccResult) -> Option<&SccOutput> {
     match output {
         SccResult::Success(success) => Some(success),
         SccResult::Error(_) => None,
+    }
+}
+
+/// # Safety
+/// The caller must ensure that `buffer` is a valid pointer to a buffer of at least `buffer_size`
+/// bytes.
+#[no_mangle]
+pub unsafe extern "C" fn scc_copy_error(output: &SccResult, buffer: *mut u8, buffer_size: usize) -> usize {
+    match output {
+        SccResult::Success(_) => 0,
+        SccResult::Error(error) => {
+            let error = error.to_string();
+            let max_len = error.len().min(buffer_size - 1);
+            unsafe {
+                ptr::copy_nonoverlapping(error.as_ptr(), buffer, max_len);
+                buffer.add(max_len).write(0);
+            }
+            max_len
+        }
     }
 }
 

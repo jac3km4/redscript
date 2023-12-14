@@ -40,6 +40,8 @@ typedef void scc_free_result(SccResult* result);
 
 typedef SccOutput* scc_get_success(SccResult* result);
 
+typedef size_t scc_copy_error(SccResult* result, char* buffer, size_t buffer_size);
+
 typedef SccSourceRef* scc_output_get_source_ref(
     SccOutput* output,
     size_t index);
@@ -83,6 +85,11 @@ typedef struct SccApi {
      * Returns the output for a successful compilation and NULL otherwise.
      */
     scc_get_success* get_success;
+    /**
+     * Copies the error message to the given buffer. The message is truncated if the
+     * buffer is too small.
+     */
+    scc_copy_error* copy_error;
     /**
      * Returns the source reference at the given index.
      */
@@ -128,6 +135,7 @@ inline SccApi scc_load_api(HMODULE module)
         (scc_compile*)GetProcAddress(module, "scc_compile"),
         (scc_free_result*)GetProcAddress(module, "scc_free_result"),
         (scc_get_success*)GetProcAddress(module, "scc_get_success"),
+        (scc_copy_error*)GetProcAddress(module, "scc_copy_error"),
         (scc_output_get_source_ref*)GetProcAddress(module, "scc_output_get_source_ref"),
         (scc_output_source_ref_count*)GetProcAddress(module, "scc_output_source_ref_count"),
         (scc_source_ref_type*)GetProcAddress(module, "scc_source_ref_type"),
