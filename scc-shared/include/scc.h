@@ -1,3 +1,4 @@
+#include <cstddef>
 #include <stdint.h>
 
 #ifdef _WIN32
@@ -11,7 +12,7 @@ typedef struct SccSourceRef SccSourceRef;
 
 typedef struct StrWithLen {
     const char* str;
-    uint32_t len;
+    size_t len;
 } StrWithLen;
 
 enum SccSourceRefType {
@@ -41,9 +42,9 @@ typedef SccOutput* scc_get_success(SccResult* result);
 
 typedef SccSourceRef* scc_output_get_source_ref(
     SccOutput* output,
-    uint32_t index);
+    size_t index);
 
-typedef uint32_t scc_output_source_ref_count(SccOutput* output);
+typedef size_t scc_output_source_ref_count(SccOutput* output);
 
 typedef uint8_t scc_source_ref_type(SccOutput* output, SccSourceRef* ref);
 
@@ -55,7 +56,7 @@ typedef StrWithLen scc_source_ref_parent_name(SccOutput* output, SccSourceRef* r
 
 typedef StrWithLen scc_source_ref_path(SccOutput* output, SccSourceRef* ref);
 
-typedef uint32_t scc_source_ref_line(SccOutput* output, SccSourceRef* ref);
+typedef size_t scc_source_ref_line(SccOutput* output, SccSourceRef* ref);
 
 typedef struct SccApi {
     /**

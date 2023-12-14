@@ -55,13 +55,13 @@ pub extern "C" fn scc_get_success(output: &SccResult) -> Option<&SccOutput> {
 }
 
 #[no_mangle]
-pub extern "C" fn scc_output_get_source_ref(output: &SccOutput, i: u32) -> *const SourceRef {
-    &output.compilation.source_refs()[i as usize] as *const SourceRef
+pub extern "C" fn scc_output_get_source_ref(output: &SccOutput, i: usize) -> *const SourceRef {
+    &output.compilation.source_refs()[i] as *const SourceRef
 }
 
 #[no_mangle]
-pub extern "C" fn scc_output_source_ref_count(output: &SccOutput) -> u32 {
-    output.compilation.source_refs().len() as u32
+pub extern "C" fn scc_output_source_ref_count(output: &SccOutput) -> usize {
+    output.compilation.source_refs().len()
 }
 
 #[no_mangle]
@@ -122,11 +122,11 @@ pub extern "C" fn scc_source_ref_path<'a>(output: &'a SccOutput, link: &SourceRe
 }
 
 #[no_mangle]
-pub extern "C" fn scc_source_ref_line(output: &SccOutput, link: &SourceRef) -> u32 {
+pub extern "C" fn scc_source_ref_line(output: &SccOutput, link: &SourceRef) -> usize {
     let Some(pos) = output.files.lookup_file(link.pos()).and_then(|f| f.lookup(link.pos())) else {
-        return u32::MAX;
+        return usize::MAX;
     };
-    pos.line as u32
+    pos.line
 }
 
 #[derive(Debug)]
