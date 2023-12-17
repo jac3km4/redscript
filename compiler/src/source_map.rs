@@ -17,8 +17,8 @@ impl Files {
         Self::default()
     }
 
-    pub fn from_dirs(paths: &[PathBuf], filter: &SourceFilter) -> io::Result<Self> {
-        let files = paths.iter().flat_map(|path| filtered_file_iter(path, filter));
+    pub fn from_dirs(paths: &[impl AsRef<Path>], filter: &SourceFilter) -> io::Result<Self> {
+        let files = paths.iter().flat_map(|path| filtered_file_iter(path.as_ref(), filter));
         Self::from_files(files)
     }
 

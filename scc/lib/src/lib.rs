@@ -48,8 +48,8 @@ fn try_run(settings: &SccSettings) -> anyhow::Result<SccResult> {
         .as_deref()
         .map(PathBuf::from)
         .unwrap_or_else(|| default_cache_dir.join(BUNDLE_FILE_NAME));
-    let script_paths = iter::once(settings.r6_dir.join("scripts"))
-        .chain(settings.additional_script_paths.iter().map(PathBuf::from))
+    let script_paths = iter::once(settings.r6_dir.join("scripts").into_boxed_path())
+        .chain(settings.additional_script_paths.iter().cloned())
         .collect::<Vec<_>>();
 
     if !cache_file.exists() {

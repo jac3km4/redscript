@@ -1,6 +1,6 @@
 use std::ffi::CStr;
 use std::marker::PhantomData;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::ptr;
 
 use redscript::bundle::ScriptBundle;
@@ -15,9 +15,9 @@ use crate::compile;
 #[no_mangle]
 pub unsafe extern "C" fn scc_settings_new(r6_dir: *const i8) -> Box<SccSettings> {
     Box::new(SccSettings {
-        r6_dir: PathBuf::from(CStr::from_ptr(r6_dir).to_string_lossy().as_ref()),
+        r6_dir: PathBuf::from(CStr::from_ptr(r6_dir).to_string_lossy().as_ref()).into_boxed_path(),
         custom_cache_file: None,
-        additional_script_paths: Vec::new(),
+        additional_script_paths: vec![],
     })
 }
 
@@ -26,7 +26,7 @@ pub unsafe extern "C" fn scc_settings_new(r6_dir: *const i8) -> Box<SccSettings>
 /// `path` is a valid null-terminated UTF-8 string.
 #[no_mangle]
 pub unsafe extern "C" fn scc_settings_set_custom_cache_file(settings: &mut SccSettings, path: *const i8) {
-    settings.custom_cache_file = Some(PathBuf::from(CStr::from_ptr(path).to_string_lossy().as_ref()));
+    settings.custom_cache_file = Some(PathBuf::from(CStr::from_ptr(path).to_string_lossy().as_ref()).into_boxed_path());
 }
 
 /// # Safety
@@ -36,7 +36,7 @@ pub unsafe extern "C" fn scc_settings_set_custom_cache_file(settings: &mut SccSe
 pub unsafe extern "C" fn scc_settings_add_script_path(settings: &mut SccSettings, path: *const i8) {
     settings
         .additional_script_paths
-        .push(PathBuf::from(CStr::from_ptr(path).to_string_lossy().as_ref()));
+        .push(PathBuf::from(CStr::from_ptr(path).to_string_lossy().as_ref()).into_boxed_path());
 }
 
 #[no_mangle]
@@ -150,10 +150,11 @@ pub extern "C" fn scc_source_ref_line(output: &SccOutput, link: &SourceRef) -> u
 }
 
 #[derive(Debug)]
+#[repr(C)]
 pub struct SccSettings {
-    pub r6_dir: PathBuf,
-    pub custom_cache_file: Option<PathBuf>,
-    pub additional_script_paths: Vec<PathBuf>,
+    pub r6_dir: Box<Path>,
+    pub custom_cache_file: Option<Box<Path>>,
+    pub additional_script_paths: Vec<Box<Path>>,
 }
 
 #[derive(Debug)]

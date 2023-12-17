@@ -61,26 +61,25 @@ fn run(opts: Opts, r6_dir: PathBuf) -> anyhow::Result<()> {
     };
 
     let settings = SccSettings {
-        r6_dir,
-        custom_cache_file: Some(custom_cache_file),
+        r6_dir: r6_dir.into(),
+        custom_cache_file: Some(custom_cache_file.into()),
         additional_script_paths,
     };
 
-    match *SccApi::load().compile(settings.into()) {
-        SccResult::Success(_) => Ok(()),
-        SccResult::Error(err) => Err(err),
-    }
+    SccApi::load().compile(settings.into());
+    Ok(())
 }
 
-fn load_script_paths(script_paths_file: &Path) -> io::Result<Vec<PathBuf>> {
+fn load_script_paths(script_paths_file: &Path) -> io::Result<Vec<Box<Path>>> {
     io::BufReader::new(File::open(script_paths_file)?)
         .lines()
-        .map(|line| line.map(PathBuf::from))
+        .map(|line| Ok(PathBuf::from(line?).into_boxed_path()))
         .collect()
 }
 
 struct SccApi {
     compile: unsafe extern "C" fn(settings: Box<SccSettings>) -> Box<SccResult>,
+    free_result: unsafe extern "C" fn(result: Box<SccResult>),
 }
 
 impl SccApi {
@@ -95,11 +94,14 @@ impl SccApi {
         unsafe {
             SccApi {
                 compile: dll.sym("scc_compile\0").expect("should be able to get scc_compile"),
+                free_result: dll
+                    .sym("scc_free_result\0")
+                    .expect("should be able to get scc_free_result"),
             }
         }
     }
 
-    fn compile(&self, settings: Box<SccSettings>) -> Box<SccResult> {
-        unsafe { (self.compile)(settings) }
+    fn compile(&self, settings: Box<SccSettings>) {
+        unsafe { (self.free_result)((self.compile)(settings)) }
     }
 }
