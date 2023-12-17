@@ -1,5 +1,5 @@
 [workspace]
-members = ["core", "compiler", "decompiler", "cli", "scc", "scc-shared", "scc-shared/ctests"]
+members = ["core", "compiler", "decompiler", "cli", "scc/cli", "scc/lib", "scc/lib-tests"]
 resolver = "2"
 
 [workspace.package]

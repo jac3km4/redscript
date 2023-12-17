@@ -2,10 +2,10 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
-    println!("cargo:rerun-if-changed=../include/scc.h");
+    println!("cargo:rerun-if-changed=../lib/include/scc.h");
 
     let bindings = bindgen::Builder::default()
-        .header("../include/scc.h")
+        .header("../lib/include/scc.h")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .clang_arg("-D BINDING_TEST")
         .generate()

@@ -7,11 +7,9 @@ use bpaf::ParseFailure;
 use opts::{fix_args, Opts};
 #[cfg(test)]
 use rstest_reuse;
-use scc_shared::api::{SccResult, SccSettings};
+use scc_lib::api::{SccResult, SccSettings};
 
 mod opts;
-
-const BUNDLE_FILE_NAME: &str = "final.redscripts";
 
 fn main() -> ExitCode {
     let opts = match Opts::load(
@@ -46,6 +44,8 @@ fn main() -> ExitCode {
 }
 
 fn run(opts: Opts, r6_dir: PathBuf) -> anyhow::Result<()> {
+    const BUNDLE_FILE_NAME: &str = "final.redscripts";
+
     let additional_script_paths = opts
         .script_paths_file
         .as_deref()
@@ -89,7 +89,7 @@ impl SccApi {
 
         let dll_path = std::env::current_exe()
             .expect("should be able to get current exe path")
-            .with_file_name("scc_shared.dll");
+            .with_file_name("scc_lib.dll");
 
         let dll = Library::load(dll_path).expect("should be able to load scc.dll");
         unsafe {

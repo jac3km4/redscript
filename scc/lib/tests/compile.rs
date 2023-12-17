@@ -1,11 +1,12 @@
 use std::fs;
 use std::fs::{File, OpenOptions};
+use std::path::Path;
 use std::process::Command;
 
 use assert_cmd::prelude::*;
 use assert_fs::prelude::*;
 use predicates::prelude::*;
-use scc_shared::timestamp::*;
+use scc_lib::timestamp::*;
 
 #[test]
 fn no_args() -> Result<(), Box<dyn std::error::Error>> {
@@ -27,11 +28,9 @@ fn help() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn bundle_result() -> Result<(), Box<dyn std::error::Error>> {
     let temp = assert_fs::TempDir::new()?;
-    let scc_dir = std::env::current_dir()?;
-    let project_dir = scc_dir.parent().unwrap();
 
-    let predef = project_dir.join("resources/predef.redscripts");
-    let predef_cmp = project_dir.join("resources/predef.redscripts.cmp");
+    let predef = Path::new("../../resources/predef.redscripts");
+    let predef_cmp = Path::new("../../resources/predef.redscripts.cmp");
     let bundle_path = temp.child("final.redscripts");
     fs::copy(predef, &bundle_path).expect("should copy predef.redscripts to bundle path");
 
@@ -46,7 +45,7 @@ fn bundle_result() -> Result<(), Box<dyn std::error::Error>> {
         .success()
         .stdout(predicate::str::contains("Output successfully saved"));
 
-    bundle_path.assert(predicate::path::eq_file(predef_cmp.as_path()));
+    bundle_path.assert(predicate::path::eq_file(predef_cmp));
     temp.close()?;
     Ok(())
 }
@@ -54,10 +53,8 @@ fn bundle_result() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn timestamp_migration() -> Result<(), Box<dyn std::error::Error>> {
     let temp = assert_fs::TempDir::new()?;
-    let scc_dir = std::env::current_dir()?;
-    let project_dir = scc_dir.parent().unwrap();
 
-    let predef = project_dir.join("resources/predef.redscripts");
+    let predef = Path::new("../../resources/predef.redscripts");
     let bundle_path = temp.child("final.redscripts");
     let backup_path = temp.child("final.redscripts.bk");
     let new_ts_path = temp.child("final.redscripts.ts");

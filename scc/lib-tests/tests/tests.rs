@@ -4,7 +4,7 @@ use std::{fs, mem};
 use assert_fs::prelude::*;
 use minidl::*;
 use offset::offset_of;
-use scc_ctests::*;
+use scc_lib_tests::*;
 
 #[test]
 fn api_functions_are_stable() {
@@ -183,7 +183,7 @@ fn receives_an_error() {
 }
 
 fn load_api() -> SccApi {
-    let lib = Library::load("scc_shared.dll").unwrap();
+    let lib = Library::load("scc_lib.dll").unwrap();
     unsafe {
         SccApi {
             settings_new: lib.sym("scc_settings_new\0").unwrap(),

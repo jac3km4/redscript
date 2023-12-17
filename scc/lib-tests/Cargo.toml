@@ -1,5 +1,5 @@
 [package]
-name = "scc-ctests"
+name = "scc-lib-tests"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true

@@ -5,7 +5,7 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-scc-shared = { path = "../scc-shared" }
+scc-lib = { path = "../lib" }
 anyhow.workspace = true
 bpaf = "0.7"
 minidl = "0.1"

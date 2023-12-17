@@ -1627,23 +1627,12 @@ dependencies = [
  "pretty_assertions",
  "rstest",
  "rstest_reuse",
- "scc-shared",
+ "scc-lib",
  "winsplit",
 ]
 
 [[package]]
-name = "scc-ctests"
-version = "0.5.16"
-dependencies = [
- "assert_fs",
- "bindgen",
- "minidl",
- "offset",
- "pretty_assertions",
-]
-
-[[package]]
-name = "scc-shared"
+name = "scc-lib"
 version = "0.5.16"
 dependencies = [
  "anyhow",
@@ -1662,6 +1651,17 @@ dependencies = [
  "serde",
  "toml 0.8.6",
  "vmap",
+]
+
+[[package]]
+name = "scc-lib-tests"
+version = "0.5.16"
+dependencies = [
+ "assert_fs",
+ "bindgen",
+ "minidl",
+ "offset",
+ "pretty_assertions",
 ]
 
 [[package]]
