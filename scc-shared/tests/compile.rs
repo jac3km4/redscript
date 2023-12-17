@@ -26,8 +26,8 @@ fn help() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn bundle_result() -> Result<(), Box<dyn std::error::Error>> {
-    let temp = assert_fs::TempDir::new().unwrap();
-    let scc_dir = std::env::current_dir().unwrap();
+    let temp = assert_fs::TempDir::new()?;
+    let scc_dir = std::env::current_dir()?;
     let project_dir = scc_dir.parent().unwrap();
 
     let predef = project_dir.join("resources/predef.redscripts");
@@ -47,14 +47,14 @@ fn bundle_result() -> Result<(), Box<dyn std::error::Error>> {
         .stdout(predicate::str::contains("Output successfully saved"));
 
     bundle_path.assert(predicate::path::eq_file(predef_cmp.as_path()));
-    temp.close().unwrap();
+    temp.close()?;
     Ok(())
 }
 
 #[test]
 fn timestamp_migration() -> Result<(), Box<dyn std::error::Error>> {
-    let temp = assert_fs::TempDir::new().unwrap();
-    let scc_dir = std::env::current_dir().unwrap();
+    let temp = assert_fs::TempDir::new()?;
+    let scc_dir = std::env::current_dir()?;
     let project_dir = scc_dir.parent().unwrap();
 
     let predef = project_dir.join("resources/predef.redscripts");
@@ -84,6 +84,6 @@ fn timestamp_migration() -> Result<(), Box<dyn std::error::Error>> {
     assert!(!ts_path.exists(), "Old timestamp file still exists");
     assert!(new_ts_path.exists(), "New timestamp file doesn't exist");
 
-    temp.close().unwrap();
+    temp.close()?;
     Ok(())
 }

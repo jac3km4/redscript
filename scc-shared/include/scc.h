@@ -1,8 +1,7 @@
-#include <cstddef>
 #include <stdint.h>
 #include <stdbool.h>
 
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(BINDING_TEST)
 #include <windows.h>
 #endif
 
@@ -125,7 +124,7 @@ typedef struct SccApi {
     scc_source_ref_line* source_ref_line;
 } SccApi;
 
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(BINDING_TEST)
 
 inline SccApi scc_load_api(HMODULE module)
 {

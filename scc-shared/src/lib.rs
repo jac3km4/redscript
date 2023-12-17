@@ -98,7 +98,7 @@ fn setup_logger(r6_dir: &Path) {
         .rotate(Criterion::Age(Age::Day), Naming::Timestamps, Cleanup::KeepLogFiles(4))
         .format(|out, time, msg| write!(out, "[{} - {}] {}", msg.level(), time.now().to_rfc2822(), msg.args()))
         .start()
-        .expect("the logger should always start");
+        .ok();
 }
 
 fn compile_at(r6_dir: &Path, cache_file: &Path, files: Files) -> anyhow::Result<SccResult> {
