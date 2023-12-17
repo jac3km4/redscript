@@ -52,9 +52,15 @@ impl UserHints {
         Ok(Self { hints })
     }
 
-    pub fn get_by_error(&self, error_code: &str, path: &Path, source: &str, source_line: &str) -> Option<&UserHint> {
+    pub fn get_by_error(
+        &self,
+        error_code: &str,
+        path: Option<&Path>,
+        source: &str,
+        source_line: &str,
+    ) -> Option<&UserHint> {
         self.hints.get(error_code)?.iter().find(|a| {
-            a.file.as_ref().map_or(true, |p| p == path)
+            a.file.as_ref().map_or(true, |p| Some(p.as_path()) == path)
                 && (matches!(&a.span_starts_with, Some(str) if source.starts_with(str))
                     || matches!(&a.line_contains, Some(str) if source_line.contains(str)))
         })

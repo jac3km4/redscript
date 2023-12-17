@@ -251,12 +251,10 @@ impl fmt::Display for ErrorReport {
 
         for &(code, span) in &self.spans {
             let loc = self.files.lookup(span).expect("span should point to a source map file");
-            let Ok(rel_path) = loc.file.path().strip_prefix(&self.scripts_dir) else {
-                continue;
-            };
+            let rel_path = loc.file.path().strip_prefix(&self.scripts_dir).ok();
             let cause = rel_path
-                .iter()
-                .next()
+                .and_then(|rel_path| rel_path.iter().next())
+                .or_else(|| loc.file.path().file_name())
                 .unwrap_or_else(|| loc.file.path().as_os_str())
                 .to_string_lossy();
 
