@@ -45,7 +45,8 @@ fn main() -> ExitCode {
 
             // any error reported here is an unexpected critical failure, and this CLI wrapper
             // has no access to the logger, so we just write the error to a new log file
-            std::fs::write(r6_dir.join("logs").join("scc_rCURRENT.log"), format!("{err}")).ok();
+            let message = format!("REDScript compilation could not proceed due to an error: {err}");
+            std::fs::write(r6_dir.join("logs").join("scc_rCURRENT.log"), message).ok();
             ExitCode::FAILURE
         }
     }
