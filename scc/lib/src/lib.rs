@@ -75,8 +75,6 @@ fn try_compile(settings: &SccSettings) -> anyhow::Result<SccResult> {
             Ok(output)
         }
         Err(err) => {
-            log::error!("{err}");
-
             #[cfg(feature = "popup")]
             {
                 let content = format!(
@@ -170,7 +168,13 @@ fn try_compile_files(r6_dir: &Path, cache_file: &Path, files: Files) -> anyhow::
         Ok(compilation) => {
             log::info!("Compilation complete");
 
-            let mut file = File::create(cache_file)?;
+            let mut file = File::create(cache_file).map_err(|err| match err.kind() {
+                io::ErrorKind::PermissionDenied => anyhow::anyhow!(
+                    "Could not write to '{}', make sure the file is not read-only",
+                    cache_file.display()
+                ),
+                _ => err.into(),
+            })?;
             bundle.save(&mut io::BufWriter::new(&mut file))?;
             file.sync_all()?;
 
