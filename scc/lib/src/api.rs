@@ -231,4 +231,13 @@ mod tests {
             assert_eq!(std::slice::from_raw_parts(str.ptr, str.len), b"test");
         }
     }
+
+    #[test]
+    fn source_ref_type_is_stable() {
+        assert_eq!(SourceRefType::Undefined as u8, 0);
+        assert_eq!(SourceRefType::Class as u8, 1);
+        assert_eq!(SourceRefType::Field as u8, 2);
+        assert_eq!(SourceRefType::Function as u8, 3);
+        assert_eq!(SourceRefType::Enum as u8, 4);
+    }
 }

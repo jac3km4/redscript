@@ -58,6 +58,12 @@ fn api_types_are_stable() {
     assert_eq!(mem::size_of::<StrWithLen>(), 16);
     assert_eq!(offset_of!(StrWithLen::str_).as_u32(), 0);
     assert_eq!(offset_of!(StrWithLen::len).as_u32(), 8);
+
+    assert_eq!(SccSourceRefType_SCC_SOURCE_REF_TYPE_UNDEFINED, 0);
+    assert_eq!(SccSourceRefType_SCC_SOURCE_REF_TYPE_CLASS, 1);
+    assert_eq!(SccSourceRefType_SCC_SOURCE_REF_TYPE_FIELD, 2);
+    assert_eq!(SccSourceRefType_SCC_SOURCE_REF_TYPE_FUNCTION, 3);
+    assert_eq!(SccSourceRefType_SCC_SOURCE_REF_TYPE_ENUM, 4);
 }
 
 #[test]
