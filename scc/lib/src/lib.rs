@@ -14,7 +14,8 @@ use hashbrown::{HashMap, HashSet};
 use hints::UserHints;
 use log::LevelFilter;
 use redscript::ast::Span;
-use redscript::bundle::ScriptBundle;
+use redscript::bundle::{ConstantPool, ScriptBundle};
+use redscript::definition::{Definition, Enum};
 use redscript_compiler::error::Error;
 use redscript_compiler::source_map::{Files, SourceFilter};
 use redscript_compiler::unit::CompilationUnit;
@@ -28,6 +29,8 @@ const BACKUP_FILE_EXT: &str = "redscripts.bk";
 const TIMESTAMP_FILE_EXT: &str = "redscripts.ts";
 
 const USER_HINTS_DIR: &str = "redsUserHints";
+
+const REDSCRIPT_SIGNATURE_DEF: &str = "$REDSCRIPT_SIGNATURE";
 
 pub fn compile(settings: &SccSettings) -> Box<SccResult> {
     setup_logger(&settings.r6_dir);
@@ -79,6 +82,7 @@ fn try_compile(settings: &SccSettings) -> anyhow::Result<SccResult> {
             {
                 let content = format!(
                     "{err}\n\
+                    The game will start but no scripts will take effect.\n\
                     If you need more information, consult the logs."
                 );
                 msgbox::create("Compilation error", &content, msgbox::IconType::Error).ok();
@@ -132,10 +136,11 @@ fn try_compile_files(r6_dir: &Path, cache_file: &Path, files: Files) -> anyhow::
             fs::copy(cache_file, &backup_path).context("Failed to copy the cache file")?;
         }
         Some(_) if !backup_path.exists() => {
-            log::warn!(
-                "A compiler timestamp was found but not the backup file, your installation might be corrupted, \
-                 try removing redscript.ts and verifying game files"
-            );
+            return Err(anyhow::anyhow!(
+                "A REDScript timestamp was found, but backup files are missing, your installation \
+                might be corrupted, you should remove the 'r6/cache/redscript.ts' file and verify \
+                game files with Steam/GOG"
+            ));
         }
         _ => {}
     }
@@ -153,6 +158,13 @@ fn try_compile_files(r6_dir: &Path, cache_file: &Path, files: Files) -> anyhow::
         ScriptBundle::load(&mut io::BufReader::new(file)).context("Failed to load the original script cache")?
     };
 
+    if check_for_redscript_signature_def(&bundle.pool) {
+        return Err(anyhow::anyhow!(
+            "The REDScript backup has been corrupted, try removing everything in the 'r6/cache' \
+            directory and verify game files with Steam/GOG"
+        ));
+    }
+
     let default_scripts_dir = r6_dir.join("scripts");
     if !files.is_empty() {
         log::info!(
@@ -167,6 +179,8 @@ fn try_compile_files(r6_dir: &Path, cache_file: &Path, files: Files) -> anyhow::
     {
         Ok(compilation) => {
             log::info!("Compilation complete");
+
+            add_redscript_signature_def(&mut bundle.pool);
 
             let mut file = File::create(cache_file).map_err(|err| match err.kind() {
                 io::ErrorKind::PermissionDenied => anyhow::anyhow!(
@@ -212,6 +226,22 @@ fn get_base_bundle_path(cache_dir: &Path) -> PathBuf {
     } else {
         cache_dir.join(BUNDLE_FILE_NAME)
     }
+}
+
+fn add_redscript_signature_def(pool: &mut ConstantPool) {
+    let name = pool.names.add(REDSCRIPT_SIGNATURE_DEF.into());
+    let enum_ = Enum {
+        flags: 0,
+        size: 0,
+        members: vec![],
+        unk1: false,
+    };
+    pool.add_definition::<Enum>(Definition::enum_(name, enum_));
+}
+
+fn check_for_redscript_signature_def(pool: &ConstantPool) -> bool {
+    let last_def_name = pool.definitions().next_back().and_then(|(i, _)| pool.def_name(i).ok());
+    matches!(last_def_name.as_deref(), Some(REDSCRIPT_SIGNATURE_DEF))
 }
 
 #[derive(Debug)]
@@ -267,14 +297,10 @@ impl fmt::Display for ErrorReport {
             }
         }
 
-        writeln!(
-            f,
-            "REDScript compilation failed. \
-            The game will start, but none of the scripts will take effect."
-        )?;
+        writeln!(f, "REDScript compilation has failed.")?;
 
         if !offending_mods.is_empty() {
-            writeln!(f, "This error has been caused by:")?;
+            writeln!(f, "This error has been caused by mods listed below:")?;
             for mod_ in &offending_mods {
                 writeln!(f, "- {}", mod_)?;
             }
@@ -289,9 +315,10 @@ impl fmt::Display for ErrorReport {
                 writeln!(f, "- {}", act.message())?;
             }
         } else {
+            writeln!(f)?;
             writeln!(
                 f,
-                "You should check if your REDScript mods are outdated and update them if necessary. \
+                "You should check if these mods are outdated and update them if possible. \
                 They may also be incompatible with the current version of the game, \
                 in which case you should remove them and try again."
             )?;

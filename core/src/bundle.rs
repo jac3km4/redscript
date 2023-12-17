@@ -315,7 +315,7 @@ impl ConstantPool {
         self.names.get(self.definition(index)?.name)
     }
 
-    pub fn definitions(&self) -> impl Iterator<Item = (PoolIndex<Definition>, &Definition)> {
+    pub fn definitions(&self) -> impl DoubleEndedIterator<Item = (PoolIndex<Definition>, &Definition)> {
         self.definitions
             .iter()
             .enumerate()

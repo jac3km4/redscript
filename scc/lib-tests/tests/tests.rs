@@ -179,11 +179,13 @@ fn receives_an_error() {
         let error = std::str::from_utf8(&error[..error_len]).unwrap();
         assert_eq!(
             error,
-            "REDScript compilation failed. The game will start, but none of the scripts will take effect.\n\
-            This error has been caused by:\n\
+            "REDScript compilation has failed.\n\
+            This error has been caused by mods listed below:\n\
             - test.reds\n\
-            You should check if your REDScript mods are outdated and update them if necessary. \
-            They may also be incompatible with the current version of the game, in which case you should remove them and try again.\n"
+            \n\
+            You should check if these mods are outdated and update them if possible. \
+            They may also be incompatible with the current version of the game, in which case you \
+            should remove them and try again.\n"
         );
 
         api.free_result.unwrap()(result);
