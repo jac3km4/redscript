@@ -32,7 +32,7 @@ const USER_HINTS_DIR: &str = "redsUserHints";
 pub fn compile(settings: &SccSettings) -> Box<SccResult> {
     setup_logger(&settings.r6_dir);
 
-    match try_run(settings) {
+    match try_compile(settings) {
         Ok(output) => Box::new(output),
         Err(err) => {
             log::error!("{}", err);
@@ -41,7 +41,7 @@ pub fn compile(settings: &SccSettings) -> Box<SccResult> {
     }
 }
 
-fn try_run(settings: &SccSettings) -> anyhow::Result<SccResult> {
+fn try_compile(settings: &SccSettings) -> anyhow::Result<SccResult> {
     let default_cache_dir = settings.r6_dir.join("cache");
     let cache_file = settings
         .custom_cache_file
@@ -69,7 +69,7 @@ fn try_run(settings: &SccSettings) -> anyhow::Result<SccResult> {
 
     let files = Files::from_dirs(&script_paths, &SourceFilter::None).context("Could not load script sources")?;
 
-    match compile_at(&settings.r6_dir, &cache_file, files) {
+    match try_compile_files(&settings.r6_dir, &cache_file, files) {
         Ok(output) => {
             log::info!("Output successfully saved to {}", cache_file.display());
             Ok(output)
@@ -90,18 +90,7 @@ fn try_run(settings: &SccSettings) -> anyhow::Result<SccResult> {
     }
 }
 
-fn setup_logger(r6_dir: &Path) {
-    let file = FileSpec::default().directory(r6_dir.join("logs")).basename("redscript");
-    Logger::with(LogSpecBuilder::new().default(LevelFilter::Info).build())
-        .log_to_file(file)
-        .duplicate_to_stdout(Duplicate::All)
-        .rotate(Criterion::Age(Age::Day), Naming::Timestamps, Cleanup::KeepLogFiles(4))
-        .format(|out, time, msg| write!(out, "[{} - {}] {}", msg.level(), time.now().to_rfc2822(), msg.args()))
-        .start()
-        .ok();
-}
-
-fn compile_at(r6_dir: &Path, cache_file: &Path, files: Files) -> anyhow::Result<SccResult> {
+fn try_compile_files(r6_dir: &Path, cache_file: &Path, files: Files) -> anyhow::Result<SccResult> {
     let backup_path = cache_file.with_extension(BACKUP_FILE_EXT);
     let timestamp_path = cache_file.with_extension(TIMESTAMP_FILE_EXT);
 
@@ -199,6 +188,17 @@ fn compile_at(r6_dir: &Path, cache_file: &Path, files: Files) -> anyhow::Result<
             Err(ErrorReport::from_error(err, default_scripts_dir.clone(), files, hints)?.into())
         }
     }
+}
+
+fn setup_logger(r6_dir: &Path) {
+    let file = FileSpec::default().directory(r6_dir.join("logs")).basename("redscript");
+    Logger::with(LogSpecBuilder::new().default(LevelFilter::Info).build())
+        .log_to_file(file)
+        .duplicate_to_stdout(Duplicate::All)
+        .rotate(Criterion::Age(Age::Day), Naming::Timestamps, Cleanup::KeepLogFiles(4))
+        .format(|out, time, msg| write!(out, "[{} - {}] {}", msg.level(), time.now().to_rfc2822(), msg.args()))
+        .start()
+        .ok();
 }
 
 fn get_base_bundle_path(cache_dir: &Path) -> PathBuf {

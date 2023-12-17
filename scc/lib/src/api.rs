@@ -216,3 +216,19 @@ pub enum SourceRefType {
     Function = 3,
     Enum = 4,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn str_with_len_has_correct_layout() {
+        let mut data = [0u8; 16];
+        unsafe {
+            data.as_mut_ptr().cast::<*const u8>().write(b"test".as_ptr());
+            data.as_mut_ptr().add(8).cast::<usize>().write(4);
+            let str = data.as_ptr().cast::<StrWithLen<'_>>().read();
+            assert_eq!(std::slice::from_raw_parts(str.ptr, str.len), b"test");
+        }
+    }
+}
