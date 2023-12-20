@@ -113,10 +113,13 @@ pub extern "C" fn scc_source_ref_is_native(output: &SccOutput, link: &SourceRef)
 
 #[no_mangle]
 pub extern "C" fn scc_source_ref_name<'a>(output: &'a SccOutput, link: &SourceRef) -> StrWithLen<'a> {
-    let Ok(name) = output.bundle.pool.def_name(link.index()) else {
+    let Ok(def) = output.bundle.pool.definition(link.index()) else {
         return StrWithLen::default();
     };
-    name.as_ref().into()
+    let Ok(name) = output.bundle.pool.names.get_ref(def.name) else {
+        return StrWithLen::default();
+    };
+    name.into()
 }
 
 #[no_mangle]
@@ -127,10 +130,13 @@ pub extern "C" fn scc_source_ref_parent_name<'a>(output: &'a SccOutput, link: &S
     if def.parent.is_undefined() {
         return StrWithLen::default();
     }
-    let Ok(name) = output.bundle.pool.def_name(def.parent) else {
+    let Ok(parent) = output.bundle.pool.definition(def.parent) else {
         return StrWithLen::default();
     };
-    name.as_ref().into()
+    let Ok(name) = output.bundle.pool.names.get_ref(parent.name) else {
+        return StrWithLen::default();
+    };
+    name.into()
 }
 
 #[no_mangle]
@@ -138,7 +144,7 @@ pub extern "C" fn scc_source_ref_path<'a>(output: &'a SccOutput, link: &SourceRe
     let Some(file) = output.files.lookup_file(link.pos()) else {
         return StrWithLen::default();
     };
-    file.path().to_string_lossy().as_ref().into()
+    file.path().to_str().unwrap_or_default().into()
 }
 
 #[no_mangle]
@@ -188,7 +194,7 @@ pub struct StrWithLen<'a> {
     _marker: PhantomData<&'a str>,
 }
 
-impl From<&str> for StrWithLen<'_> {
+impl<'a> From<&'a str> for StrWithLen<'a> {
     fn from(value: &str) -> Self {
         Self {
             ptr: value.as_ptr(),

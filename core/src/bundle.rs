@@ -398,6 +398,17 @@ impl<K: DefaultString> Strings<K> {
         }
     }
 
+    pub fn get_ref(&self, index: PoolIndex<K>) -> Result<&str, PoolError> {
+        match K::DEFAULT {
+            Some(default) if index.is_undefined() => Ok(default),
+            _ => self
+                .strings
+                .get(index.value as usize)
+                .map(Ref::as_ref)
+                .ok_or_else(|| PoolError::StringNotFound(index.cast())),
+        }
+    }
+
     pub fn get_index(&self, name: &str) -> Option<PoolIndex<K>> {
         self.mappings.get(name).copied()
     }
