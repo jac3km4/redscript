@@ -1,3 +1,6 @@
+#ifndef SCC_H
+#define SCC_H
+
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -148,3 +151,5 @@ inline SccApi scc_load_api(HMODULE module)
 }
 
 #endif
+
+#endif /* SCC_H */
