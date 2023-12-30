@@ -135,7 +135,7 @@ impl fmt::Display for Deprecation {
     }
 }
 
-pub trait DiagnosticPass {
+pub trait DiagnosticPass: fmt::Debug {
     fn diagnose(&self, body: &Seq<TypedAst>, metadata: &FunctionMetadata) -> Vec<Diagnostic>;
 }
 

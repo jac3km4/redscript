@@ -9,6 +9,7 @@ use crate::scope::{Reference, Value};
 use crate::typechecker::TypedAst;
 use crate::visit_expr;
 
+#[derive(Debug)]
 pub struct UnusedCheck;
 
 impl DiagnosticPass for UnusedCheck {

@@ -3,6 +3,7 @@ use redscript::ast::{Expr, Seq};
 use super::{Diagnostic, DiagnosticPass, FunctionMetadata};
 use crate::typechecker::TypedAst;
 
+#[derive(Debug)]
 pub struct ReturnValueCheck;
 
 impl DiagnosticPass for ReturnValueCheck {

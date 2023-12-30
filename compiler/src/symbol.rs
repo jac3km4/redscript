@@ -11,6 +11,7 @@ use crate::error::{Cause, Error, ResultSpan};
 use crate::parser::{Annotation, FunctionSource, Qualifier};
 use crate::scope::Scope;
 
+#[derive(Debug)]
 pub struct SymbolMap {
     symbols: SequenceTrie<Ident, Symbol>,
 }

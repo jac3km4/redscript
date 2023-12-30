@@ -25,6 +25,7 @@ use crate::typechecker::{collect_supertypes, Callable, TypeChecker, TypedAst};
 
 type ProxyMap = HashMap<PoolIndex<Function>, PoolIndex<Function>>;
 
+#[derive(Debug)]
 pub struct CompilationUnit<'a> {
     pool: &'a mut ConstantPool,
     symbols: SymbolMap,
@@ -1176,6 +1177,7 @@ impl<'a> CompilationUnit<'a> {
     }
 }
 
+#[derive(Debug)]
 struct FunctionBody {
     class: PoolIndex<Class>,
     index: PoolIndex<Function>,
@@ -1186,6 +1188,7 @@ struct FunctionBody {
     span: Span,
 }
 
+#[derive(Debug)]
 struct FieldDefault {
     class: PoolIndex<Class>,
     index: PoolIndex<Field>,
@@ -1193,6 +1196,7 @@ struct FieldDefault {
     scope: Scope,
 }
 
+#[derive(Debug)]
 pub struct CompiledFunction {
     pub index: PoolIndex<Function>,
     pub code: Seq<TypedAst>,
@@ -1201,6 +1205,7 @@ pub struct CompiledFunction {
     pub span: Span,
 }
 
+#[derive(Debug)]
 enum Slot {
     Function {
         index: PoolIndex<Function>,
