@@ -698,6 +698,7 @@ impl<'a> CompilationUnit<'a> {
         };
         let name_index = self.pool.definition(index)?.name;
         self.pool.put_definition(index, Definition::enum_(name_index, enum_));
+        self.source_refs.push(SourceRef::new(index.cast(), source.span.low));
         Ok(())
     }
 
