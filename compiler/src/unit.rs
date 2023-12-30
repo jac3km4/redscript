@@ -86,17 +86,16 @@ impl<'a> CompilationUnit<'a> {
         files: &Files,
         desugar: bool,
         permissive: bool,
-    ) -> Result<(Vec<CompiledFunction>, Vec<Diagnostic>), Error> {
-        let funcs = self.compile_modules(modules, files, desugar, permissive)?;
-        Ok((funcs, self.diagnostics))
+    ) -> Result<TypecheckOutput, Error> {
+        let functions = self.compile_modules(modules, files, desugar, permissive)?;
+        Ok(TypecheckOutput {
+            functions,
+            diagnostics: self.diagnostics,
+            source_refs: self.source_refs,
+        })
     }
 
-    pub fn typecheck_files(
-        self,
-        files: &Files,
-        desugar: bool,
-        permissive: bool,
-    ) -> Result<(Vec<CompiledFunction>, Vec<Diagnostic>), Error> {
+    pub fn typecheck_files(self, files: &Files, desugar: bool, permissive: bool) -> Result<TypecheckOutput, Error> {
         self.typecheck(Self::parse(files)?, files, desugar, permissive)
     }
 
@@ -1280,6 +1279,27 @@ impl CompilationOutput {
 
     pub fn into_diagnostics(self) -> Vec<Diagnostic> {
         self.diagnostics
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct TypecheckOutput {
+    functions: Vec<CompiledFunction>,
+    diagnostics: Vec<Diagnostic>,
+    source_refs: Vec<SourceRef>,
+}
+
+impl TypecheckOutput {
+    pub fn functions(&self) -> &[CompiledFunction] {
+        &self.functions
+    }
+
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        &self.diagnostics
+    }
+
+    pub fn source_refs(&self) -> &[SourceRef] {
+        &self.source_refs
     }
 }
 
