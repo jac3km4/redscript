@@ -223,7 +223,6 @@ mod test {
     use pretty_assertions::assert_eq;
     use rstest::rstest;
     use rstest_reuse::{self, *};
-    use winsplit;
 
     use super::*;
 
@@ -330,7 +329,7 @@ mod test {
 
     #[test]
     fn check_options() {
-        Opts::get_parser().check_invariants(false)
+        Opts::get_parser().check_invariants(false);
     }
 
     #[apply(file_directory_orders)]
@@ -362,7 +361,7 @@ mod test {
             args.push("-compilePathsFile".into());
             args.push(PathBuf::from(value).into());
         }
-        for warning in warnings.iter() {
+        for warning in warnings {
             args.push(["-W", warning].join("").into());
         }
         if let Some(n) = threads {
@@ -389,22 +388,22 @@ mod test {
         if optimize == Some(true) {
             args.push("-optimize".to_owned().into());
         }
-        let expected_args = args.iter().map(|a| a.to_arg_str()).collect::<Vec<_>>();
+        let expected_args = args.iter().map(Arg::to_arg_str).collect::<Vec<_>>();
         let fixed_args = test_fix_args(
             args.iter()
                 .map(Arg::to_command_str)
                 .collect::<Vec<_>>()
                 .join(" ")
                 .as_str(),
-            expected_args.iter().map(|a| a.as_str()).collect::<Vec<_>>().as_slice(),
+            expected_args.iter().map(String::as_str).collect::<Vec<_>>().as_slice(),
         )
         .unwrap();
         let opts = Opts::load(&fixed_args.iter().map(String::as_str).collect::<Vec<&str>>()).unwrap();
 
         self::assert_eq!(opts.scripts_dir, PathBuf::from(scripts_dir));
-        self::assert_eq!(opts.cache_file, cache_file.map(|s| PathBuf::from(s)));
-        self::assert_eq!(opts.cache_dir, cache_dir.map(|s| PathBuf::from(s)));
-        self::assert_eq!(opts.script_paths_file, script_paths_file.map(|s| PathBuf::from(s)));
+        self::assert_eq!(opts.cache_file, cache_file.map(PathBuf::from));
+        self::assert_eq!(opts.cache_dir, cache_dir.map(PathBuf::from));
+        self::assert_eq!(opts.script_paths_file, script_paths_file.map(PathBuf::from));
         self::assert_eq!(opts.warnings, warnings);
         self::assert_eq!(opts.threads, threads.unwrap_or(Opts::DEFAULT_THREADS));
         self::assert_eq!(opts.no_testonly, no_testonly.unwrap_or(Opts::DEFAULT_NO_TESTONLY));

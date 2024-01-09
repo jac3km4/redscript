@@ -400,7 +400,7 @@ fn write_call<W: Write>(
     if let Ok(binop) = BinOp::from_str(fun_name) {
         if parent_op
             .filter(|op| match op {
-                ParentOp::UnOp(_) | ParentOp::Dot => true,
+                ParentOp::UnOp | ParentOp::Dot => true,
                 ParentOp::BinOp(op) => !binop.does_associate(*op),
             })
             .is_some()
@@ -448,7 +448,7 @@ fn write_binop<W: Write>(
 
 fn write_unop<W: Write>(out: &mut W, param: &Expr<SourceAst>, op: UnOp, verbose: bool) -> Result<(), Error> {
     write!(out, "{}", format_unop(op))?;
-    write_expr_nested(out, param, Some(ParentOp::UnOp(op)), verbose, 0)
+    write_expr_nested(out, param, Some(ParentOp::UnOp), verbose, 0)
 }
 
 fn format_param(def: &Definition, pool: &ConstantPool) -> Result<String, Error> {
@@ -512,7 +512,7 @@ fn format_unop(op: UnOp) -> &'static str {
 }
 
 enum ParentOp {
-    UnOp(UnOp),
+    UnOp,
     BinOp(BinOp),
     Dot,
 }

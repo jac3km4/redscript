@@ -58,8 +58,8 @@ fn timestamp_migration() -> Result<(), Box<dyn std::error::Error>> {
     let bundle_path = temp.child("final.redscripts");
     let backup_path = temp.child("final.redscripts.bk");
     let new_ts_path = temp.child("final.redscripts.ts");
-    fs::copy(&predef, &bundle_path).expect("Could not copy predef.redscripts to bundle path");
-    fs::copy(&predef, &backup_path).expect("Could not copy predef.redscripts to backup path");
+    fs::copy(predef, &bundle_path).expect("Could not copy predef.redscripts to bundle path");
+    fs::copy(predef, backup_path).expect("Could not copy predef.redscripts to backup path");
 
     let ts_path = temp.child("redscript.ts");
     let bundle_file = File::open(&bundle_path)?;

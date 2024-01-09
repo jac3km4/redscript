@@ -1,3 +1,4 @@
+#![allow(clippy::redundant_closure_call)]
 use redscript::bytecode::{Code, Instr, Offset};
 
 #[allow(unused)]
