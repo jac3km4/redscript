@@ -16,8 +16,11 @@ flexstr.workspace = true
 modular-bitfield = "0.11"
 crc32fast = "1.3"
 
+[dev-dependencies]
+rusty-hook = "0.11"
+
 [features]
 arc = []
 
-[dev-dependencies]
-rusty-hook = "0.11"
+[lints]
+workspace = true

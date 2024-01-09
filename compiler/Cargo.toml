@@ -17,3 +17,6 @@ peg = "0.8"
 hamt-sync = { git = "https://github.com/jac3km4/hamt-sync", rev = "v0.2.6" }
 sequence_trie = "0.3"
 walkdir = "2"
+
+[lints]
+workspace = true

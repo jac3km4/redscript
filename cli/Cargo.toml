@@ -13,3 +13,6 @@ anyhow.workspace = true
 flexi_logger = { workspace = true, features = ["colors"] }
 vmap = { version = "0.5", default-features = false }
 argh = "0.1"
+
+[lints]
+workspace = true

@@ -10,3 +10,6 @@ log.workspace = true
 thiserror.workspace = true
 hashbrown.workspace = true
 itertools.workspace = true
+
+[lints]
+workspace = true

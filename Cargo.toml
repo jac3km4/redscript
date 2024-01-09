@@ -19,6 +19,34 @@ byteorder = "1.4"
 flexstr = "0.9"
 flexi_logger = { version = "0.27", default-features = false }
 
+[workspace.lints.rust]
+warnings = "deny"
+future-incompatible = "deny"
+let-underscore = "deny"
+nonstandard-style = "deny"
+rust-2018-compatibility = "deny"
+rust-2018-idioms = "deny"
+rust-2021-compatibility = "deny"
+
+[workspace.lints.clippy]
+all = "deny"
+match_same_arms = "deny"
+semicolon_if_nothing_returned = "deny"
+single_match_else = "deny"
+redundant_closure_for_method_calls = "deny"
+cloned_instead_of_copied = "deny"
+redundant_else = "deny"
+unnested_or_patterns = "deny"
+unreadable_literal = "deny"
+type_repetition_in_bounds = "deny"
+equatable_if_let = "deny"
+implicit_clone = "deny"
+default_trait_access = "deny"
+explicit_deref_methods = "deny"
+explicit_iter_loop = "deny"
+inefficient_to_string = "deny"
+match_bool = "deny"
+
 [workspace.metadata.release]
 pre-release-commit-message = "chore: release {{version}}"
 tag-prefix = ""

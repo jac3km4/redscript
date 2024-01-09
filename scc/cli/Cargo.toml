@@ -15,3 +15,6 @@ winsplit = "0.1"
 rstest = "0.18"
 rstest_reuse = "0.6"
 pretty_assertions = "1"
+
+[lints]
+workspace = true

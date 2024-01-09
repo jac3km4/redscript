@@ -12,3 +12,6 @@ offset = "0.1"
 
 [build-dependencies]
 bindgen = "0.69"
+
+[lints]
+workspace = true

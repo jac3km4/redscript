@@ -30,3 +30,6 @@ predicates = "3"
 [features]
 popup = ["msgbox"]
 mmap = ["vmap"]
+
+[lints]
+workspace = true
