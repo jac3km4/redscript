@@ -800,14 +800,18 @@ impl<'a> CompilationUnit<'a> {
 
                     let name_idx = self.pool.names.add(Ref::from(format!("wrapper${wrapped_idx}")));
                     let wrapper_idx = self.pool.stub_definition(name_idx);
-                    let base = self.pool.function(fun_idx).ok().and_then(|fun| fun.base_method);
-
+                    let (parent, base) = (|| {
+                        let def = self.pool.definition(fun_idx).ok()?;
+                        let fun = def.value.as_function()?;
+                        Some((def.parent.cast(), fun.base_method))
+                    })()
+                    .unwrap_or((target_class_idx, None));
                     self.wrappers.insert(fun_idx, wrapper_idx);
                     self.pool.class_mut(target_class_idx)?.functions.push(wrapper_idx);
 
                     let slot = Slot::Function {
                         index: wrapper_idx,
-                        parent: target_class_idx,
+                        parent,
                         base,
                         wrapped: Some(wrapped_idx),
                         is_replacement: true,
@@ -832,10 +836,15 @@ impl<'a> CompilationUnit<'a> {
                         .with_span(ann.span)?
                         .by_id(&sig, self.pool)
                         .ok_or_else(|| Cause::MethodNotFound(name, class_name.clone()).with_span(ann.span))?;
-                    let base = self.pool.function(fun_idx).ok().and_then(|fun| fun.base_method);
+                    let (parent, base) = (|| {
+                        let def = self.pool.definition(fun_idx).ok()?;
+                        let fun = def.value.as_function()?;
+                        Some((def.parent.cast(), fun.base_method))
+                    })()
+                    .unwrap_or((target_class_idx, None));
                     let slot = Slot::Function {
                         index: fun_idx,
-                        parent: target_class_idx,
+                        parent,
                         base,
                         wrapped: None,
                         is_replacement: true,
