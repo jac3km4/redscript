@@ -11,8 +11,10 @@ use redscript::Ref;
 
 use crate::assembler::Assembler;
 use crate::cte;
-use crate::diagnostics::return_val::ReturnValueCheck;
-use crate::diagnostics::unused::UnusedCheck;
+use crate::diagnostics::invalid_temp_use::InvalidUseOfTemporaryCheck;
+use crate::diagnostics::missing_return::MissingReturnCheck;
+use crate::diagnostics::stmt_fallthrough::StatementFallthroughCheck;
+use crate::diagnostics::unused_local::UnusedLocalCheck;
 use crate::diagnostics::{Diagnostic, DiagnosticPass, FunctionMetadata};
 use crate::error::{Cause, Error, ResultSpan};
 use crate::parser::*;
@@ -42,7 +44,12 @@ pub struct CompilationUnit<'a> {
 
 impl<'a> CompilationUnit<'a> {
     pub fn new_with_defaults(pool: &'a mut ConstantPool) -> Result<Self, Error> {
-        let passes: Vec<Box<dyn DiagnosticPass + Send>> = vec![Box::new(UnusedCheck), Box::new(ReturnValueCheck)];
+        let passes: Vec<Box<dyn DiagnosticPass + Send>> = vec![
+            Box::new(UnusedLocalCheck),
+            Box::new(MissingReturnCheck),
+            Box::new(StatementFallthroughCheck),
+            Box::new(InvalidUseOfTemporaryCheck),
+        ];
         Self::new(pool, passes)
     }
 

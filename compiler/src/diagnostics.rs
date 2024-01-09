@@ -1,26 +1,47 @@
 use std::fmt;
 
 use peg::error::ExpectedSet;
-use redscript::ast::{Seq, Span};
+use redscript::ast::{Expr, Seq, Span};
 use redscript::bundle::PoolIndex;
 use redscript::definition::{Function, FunctionFlags};
+use thiserror::Error;
 
 use crate::error::{Cause, Error};
 use crate::source_map::Files;
 use crate::typechecker::TypedAst;
 
-pub mod return_val;
-pub mod unused;
+pub mod invalid_temp_use;
+pub mod missing_return;
+pub mod stmt_fallthrough;
+pub mod unused_local;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum Diagnostic {
+    #[error("this code supersedes a previous replacement of the same method, making it obsolete")]
     MethodConflict(PoolIndex<Function>, Span),
+    #[error("a field with this name is already defined in the class, this will have no effect")]
     FieldConflict(Span),
+    #[error("{0}")]
     Deprecation(Deprecation, Span),
+    #[error("this variable is never used")]
     UnusedLocal(Span),
+    #[error("not all code paths return a value, make sure you're not missing a return statement")]
     MissingReturn(Span),
+    #[error(
+        "the body of this case might fall through, it should end with a break/return statement \
+         or contain no statements at all"
+    )]
+    StatementFallthrough(Span),
+    #[error(
+        "this use of a temporary value is not allowed, consider extracting the highlighted \
+         expression into a variable"
+    )]
+    InvalidUseOfTemporary(Span),
+    #[error("syntax error, expected {0}")]
     SyntaxError(ExpectedSet, Span),
+    #[error("{0}")]
     CompileError(Cause, Span),
+    #[error("compile-time expression error: {0}")]
     CteError(&'static str, Span),
 }
 
@@ -87,6 +108,8 @@ impl Diagnostic {
             | Self::Deprecation(_, span)
             | Self::UnusedLocal(span)
             | Self::MissingReturn(span)
+            | Self::StatementFallthrough(span)
+            | Self::InvalidUseOfTemporary(span)
             | Self::CompileError(_, span)
             | Self::SyntaxError(_, span)
             | Self::CteError(_, span) => *span,
@@ -97,25 +120,6 @@ impl Diagnostic {
         match self {
             Self::CompileError(cause, _) => cause.code(),
             _ => "OTHER",
-        }
-    }
-}
-
-impl fmt::Display for Diagnostic {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::MethodConflict(_, _) => {
-                f.write_str("this replacement overwrites a previous replacement of the same method")
-            }
-            Self::FieldConflict(_) => {
-                f.write_str("field with this name is already defined in the class, this will have no effect")
-            }
-            Self::Deprecation(msg, _) => f.write_fmt(format_args!("{msg}")),
-            Self::UnusedLocal(_) => f.write_str("unused variable"),
-            Self::MissingReturn(_) => f.write_str("function might not return a value"),
-            Self::SyntaxError(set, _) => f.write_fmt(format_args!("syntax error, expected {set}")),
-            Self::CompileError(cause, _) => f.write_fmt(format_args!("{cause}")),
-            Self::CteError(msg, _) => f.write_fmt(format_args!("compile-time expression error: {msg}")),
         }
     }
 }
@@ -137,6 +141,20 @@ impl fmt::Display for Deprecation {
 
 pub trait DiagnosticPass: fmt::Debug {
     fn diagnose(&self, body: &Seq<TypedAst>, metadata: &FunctionMetadata) -> Vec<Diagnostic>;
+}
+
+pub trait ExprDiagnosticPass: fmt::Debug {
+    fn diagnose(&self, body: &Expr<TypedAst>, metadata: &FunctionMetadata, results: &mut Vec<Diagnostic>);
+}
+
+impl<A: ExprDiagnosticPass> DiagnosticPass for A {
+    fn diagnose(&self, body: &Seq<TypedAst>, metadata: &FunctionMetadata) -> Vec<Diagnostic> {
+        let mut results = vec![];
+        for expr in &body.exprs {
+            self.diagnose(expr, metadata, &mut results);
+        }
+        results
+    }
 }
 
 pub struct FunctionMetadata {

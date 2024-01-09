@@ -4,9 +4,9 @@ use super::{Diagnostic, DiagnosticPass, FunctionMetadata};
 use crate::typechecker::TypedAst;
 
 #[derive(Debug)]
-pub struct ReturnValueCheck;
+pub struct MissingReturnCheck;
 
-impl DiagnosticPass for ReturnValueCheck {
+impl DiagnosticPass for MissingReturnCheck {
     fn diagnose(&self, body: &Seq<TypedAst>, meta: &FunctionMetadata) -> Vec<Diagnostic> {
         if meta.flags.has_return_value() && !meta.was_callback && !does_seq_return(body) {
             vec![Diagnostic::MissingReturn(meta.span)]

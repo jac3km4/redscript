@@ -10,9 +10,9 @@ use crate::typechecker::TypedAst;
 use crate::visit_expr;
 
 #[derive(Debug)]
-pub struct UnusedCheck;
+pub struct UnusedLocalCheck;
 
-impl DiagnosticPass for UnusedCheck {
+impl DiagnosticPass for UnusedLocalCheck {
     fn diagnose(&self, body: &Seq<TypedAst>, _meta: &FunctionMetadata) -> Vec<Diagnostic> {
         let names = UsedNames::from_seq(body);
         let mut diagnostics = vec![];

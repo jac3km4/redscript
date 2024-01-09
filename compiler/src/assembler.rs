@@ -441,20 +441,12 @@ impl<'a> Assembler<'a> {
         match typ {
             TypeId::ScriptRef(_) => match expr {
                 Expr::Call(Callable::Intrinsic(IntrinsicOp::AsRef, _), _, args, _) => match args.first() {
-                    Some(expr) => Some(Self::is_rvalue(expr)),
+                    Some(expr) => Some(expr.is_rvalue()),
                     _ => Some(true),
                 },
                 _ => Some(true),
             },
             _ => None,
-        }
-    }
-
-    fn is_rvalue(expr: &Expr<TypedAst>) -> bool {
-        match expr {
-            Expr::Constant(_, _) | Expr::Ident(_, _) | Expr::This(_) | Expr::Super(_) => false,
-            Expr::Member(inner, _, _) | Expr::ArrayElem(inner, _, _) => Self::is_rvalue(inner),
-            _ => true,
         }
     }
 
