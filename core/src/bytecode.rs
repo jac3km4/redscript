@@ -1021,21 +1021,41 @@ pub struct Label {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Code<Loc>(pub Vec<Instr<Loc>>);
+pub struct Code<Loc>(Vec<Instr<Loc>>);
 
 impl<Loc: Clone> Code<Loc> {
     pub const EMPTY: Self = Code(vec![]);
 
+    #[inline]
+    pub fn new(code: Vec<Instr<Loc>>) -> Self {
+        Self(code)
+    }
+
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    #[inline]
     pub fn cursor(&self) -> CodeCursor<'_, Loc> {
         CodeCursor::new(&self.0)
     }
 
+    #[inline]
     pub fn iter(&self) -> CodeIter<'_, Loc> {
         CodeIter::new(&self.0)
+    }
+}
+
+impl<Loc> AsMut<[Instr<Loc>]> for Code<Loc> {
+    #[inline]
+    fn as_mut(&mut self) -> &mut [Instr<Loc>] {
+        &mut self.0
     }
 }
 

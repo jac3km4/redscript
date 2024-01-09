@@ -57,7 +57,7 @@ where
                 }
                 AnyDefinition::Function(fun) => {
                     def.parent = self.map_class.apply(def.parent.cast()).cast();
-                    for instr in &mut fun.code.0 {
+                    for instr in fun.code.as_mut() {
                         self.map_instr(instr);
                     }
                 }

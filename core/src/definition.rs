@@ -331,13 +331,21 @@ impl Decode for Function {
             None
         };
         let cast = if flags.is_cast() { input.decode()? } else { 0u8 };
-        let code = if flags.has_body() { input.decode()? } else { Code::EMPTY };
 
-        let unk2 = if flags.unk4() {
-            input.decode_vec_prefixed::<u32, PoolIndex<Parameter>>()?
-        } else {
-            vec![]
+        #[cfg(feature = "parse-code")]
+        let (code, unk2) = {
+            let code = if flags.has_body() { input.decode()? } else { Code::EMPTY };
+
+            let unk2 = if flags.unk4() {
+                input.decode_vec_prefixed::<u32, PoolIndex<Parameter>>()?
+            } else {
+                vec![]
+            };
+            (code, unk2)
         };
+
+        #[cfg(not(feature = "parse-code"))]
+        let (code, unk2) = (Code::EMPTY, vec![]);
 
         let result = Function {
             visibility,

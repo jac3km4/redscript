@@ -1088,7 +1088,7 @@ impl<'a> CompilationUnit<'a> {
         let fun = pool.function_mut(target)?;
         fun.locals = mapped_locals.values().copied().collect();
 
-        for instr in &mut fun.code.0 {
+        for instr in fun.code.as_mut() {
             if let Instr::Local(local) = instr {
                 *instr = Instr::Local(*mapped_locals.get(local).unwrap());
             }

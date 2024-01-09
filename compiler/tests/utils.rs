@@ -107,7 +107,7 @@ macro_rules! match_index {
 macro_rules! check_code {
     [$($check:expr),*] => {
         |code: Code<Offset>, ctx: &mut TestContext| {
-            let mut instrs = code.0.into_iter();
+            let mut instrs = code.iter().map(|(_, i)| i);
             $($check(instrs.next().expect("Not enough instructions"), ctx);)*
         }
     }

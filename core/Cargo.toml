@@ -20,7 +20,9 @@ crc32fast = "1.3"
 rusty-hook = "0.11"
 
 [features]
+default = ["parse-code"]
 arc = []
+parse-code = []
 
 [lints]
 workspace = true
