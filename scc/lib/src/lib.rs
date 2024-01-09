@@ -240,8 +240,7 @@ fn add_redscript_signature_def(pool: &mut ConstantPool) {
 }
 
 fn check_for_redscript_signature_def(pool: &ConstantPool) -> bool {
-    let last_def_name = pool.definitions().next_back().and_then(|(i, _)| pool.def_name(i).ok());
-    matches!(last_def_name.as_deref(), Some(REDSCRIPT_SIGNATURE_DEF))
+    pool.names.get_index(REDSCRIPT_SIGNATURE_DEF).is_some()
 }
 
 #[derive(Debug)]
