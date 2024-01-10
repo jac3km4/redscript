@@ -974,6 +974,26 @@ impl NameKind for TypedAst {
     type Type = TypeId;
 }
 
+pub type TypedExpr = Expr<TypedAst>;
+
+pub trait TypedExprExt {
+    fn is_rvalue(&self) -> bool;
+}
+
+impl TypedExprExt for TypedExpr {
+    fn is_rvalue(&self) -> bool {
+        match self {
+            Expr::Constant(_, _)
+            | Expr::Ident(_, _)
+            | Expr::This(_)
+            | Expr::Super(_)
+            | Expr::Call(Callable::Intrinsic(IntrinsicOp::Deref, _), _, _, _) => false,
+            Expr::Member(inner, _, _) | Expr::ArrayElem(inner, _, _) => inner.is_rvalue(),
+            _ => true,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Callable {
     Function(PoolIndex<Function>),

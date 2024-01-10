@@ -124,14 +124,6 @@ where
             }
         }
     }
-
-    pub fn is_rvalue(&self) -> bool {
-        match self {
-            Expr::Constant(_, _) | Expr::Ident(_, _) | Expr::This(_) | Expr::Super(_) => false,
-            Expr::Member(inner, _, _) | Expr::ArrayElem(inner, _, _) => inner.is_rvalue(),
-            _ => true,
-        }
-    }
 }
 
 #[derive(Debug, Clone)]

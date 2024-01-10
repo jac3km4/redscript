@@ -8,7 +8,7 @@ use crate::error::{Cause, Error, ResultSpan};
 use crate::scope::{Reference, Scope, TypeId, Value};
 use crate::source_map::Files;
 use crate::symbol::Symbol;
-use crate::typechecker::{type_of, Callable, Member, TypedAst};
+use crate::typechecker::{type_of, Callable, Member, TypedAst, TypedExprExt};
 
 pub struct Assembler<'a> {
     files: &'a Files,

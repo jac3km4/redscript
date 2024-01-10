@@ -2,7 +2,7 @@ use redscript::ast::Expr;
 use redscript::bytecode::IntrinsicOp;
 
 use super::{Diagnostic, ExprDiagnosticPass, FunctionMetadata};
-use crate::typechecker::{Callable, Member, TypedAst};
+use crate::typechecker::{Callable, Member, TypedAst, TypedExprExt};
 use crate::visit_expr;
 
 #[derive(Debug)]
