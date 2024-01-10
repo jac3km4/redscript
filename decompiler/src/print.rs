@@ -130,7 +130,7 @@ pub fn write_definition<W: Write>(
             write!(out, "func {}({}) -> {}", pretty_name, params, return_type)?;
 
             if fun.flags.has_body() {
-                write_function_body(out, fun, pool, depth, mode)?;
+                write_function_body(out, fun, definition, pool, depth, mode)?;
             } else {
                 write!(out, ";")?;
             }
@@ -193,6 +193,7 @@ pub fn write_definition<W: Write>(
 fn write_function_body<W: Write>(
     out: &mut W,
     fun: &Function,
+    def: &Definition,
     pool: &ConstantPool,
     depth: usize,
     mode: OutputMode,
@@ -200,11 +201,11 @@ fn write_function_body<W: Write>(
     writeln!(out, " {{")?;
     match mode {
         OutputMode::Code { verbose } => {
-            let code = Decompiler::decompiled(fun, pool)?;
+            let code = Decompiler::decompiled(fun, def, pool)?;
             write_seq(out, &code, verbose, depth + 1)?;
         }
         OutputMode::SyntaxTree => {
-            let code = Decompiler::decompiled(fun, pool)?;
+            let code = Decompiler::decompiled(fun, def, pool)?;
             for expr in code.exprs {
                 write_indent(out, depth + 1)?;
                 writeln!(out, "{:#?}", expr)?;
