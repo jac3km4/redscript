@@ -1052,6 +1052,13 @@ impl<Loc: Clone> Code<Loc> {
     }
 }
 
+impl<Loc> AsRef<[Instr<Loc>]> for Code<Loc> {
+    #[inline]
+    fn as_ref(&self) -> &[Instr<Loc>] {
+        &self.0
+    }
+}
+
 impl<Loc> AsMut<[Instr<Loc>]> for Code<Loc> {
     #[inline]
     fn as_mut(&mut self) -> &mut [Instr<Loc>] {
