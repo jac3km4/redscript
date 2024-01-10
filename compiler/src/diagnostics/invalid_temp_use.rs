@@ -2,14 +2,14 @@ use redscript::ast::Expr;
 use redscript::bytecode::IntrinsicOp;
 
 use super::{Diagnostic, ExprDiagnosticPass, FunctionMetadata};
-use crate::typechecker::{Callable, Member, TypedAst, TypedExprExt};
+use crate::typechecker::{Callable, Member, TypedExpr, TypedExprExt};
 use crate::visit_expr;
 
 #[derive(Debug)]
 pub struct InvalidUseOfTemporaryCheck;
 
 impl ExprDiagnosticPass for InvalidUseOfTemporaryCheck {
-    fn diagnose(&self, body: &Expr<TypedAst>, _meta: &FunctionMetadata, results: &mut Vec<Diagnostic>) {
+    fn diagnose(&self, body: &TypedExpr, _meta: &FunctionMetadata, results: &mut Vec<Diagnostic>) {
         InvalidUseOfTemporaryVisitor { results }.on_expr(body);
     }
 }
@@ -19,7 +19,7 @@ struct InvalidUseOfTemporaryVisitor<'a> {
 }
 
 impl InvalidUseOfTemporaryVisitor<'_> {
-    fn on_expr(&mut self, expr: &Expr<TypedAst>) {
+    fn on_expr(&mut self, expr: &TypedExpr) {
         match expr {
             Expr::Member(inner, Member::StructField(_), _) if inner.is_rvalue() => {
                 self.results.push(Diagnostic::InvalidUseOfTemporary(inner.span()));

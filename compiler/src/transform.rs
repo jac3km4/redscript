@@ -4,7 +4,7 @@ use redscript::ast::{BinOp, Constant, Expr, NameKind, Seq, Span, SwitchCase, Tar
 use redscript::Ref;
 
 use crate::error::Error;
-use crate::typechecker::TypedAst;
+use crate::typechecker::{TypedAst, TypedExpr};
 
 pub trait ExprTransformer<N>
 where
@@ -339,7 +339,7 @@ macro_rules! visit_expr {
     };
 }
 
-pub fn visit_seq<F: FnMut(&Expr<TypedAst>)>(seq: &Seq<TypedAst>, mut fun: F) {
+pub fn visit_seq<F: FnMut(&TypedExpr)>(seq: &Seq<TypedAst>, mut fun: F) {
     for item in &seq.exprs {
         fun(item);
     }

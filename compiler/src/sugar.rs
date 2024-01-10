@@ -10,13 +10,13 @@ use crate::error::{Cause, Error, ResultSpan};
 use crate::scope::{Reference, Scope, TypeId, Value};
 use crate::symbol::{FunctionSignature, FunctionSignatureBuilder};
 use crate::transform::ExprTransformer;
-use crate::typechecker::{type_of, Callable, TypedAst};
+use crate::typechecker::{type_of, Callable, TypedAst, TypedExpr};
 
 pub struct Desugar<'a> {
     pool: &'a mut ConstantPool,
     scope: &'a mut Scope,
     name_count: usize,
-    prefix_exprs: Vec<Expr<TypedAst>>,
+    prefix_exprs: Vec<TypedExpr>,
     locals: Vec<PoolIndex<Local>>,
 }
 
@@ -35,7 +35,7 @@ impl<'a> Desugar<'a> {
         self.locals
     }
 
-    fn add_prefix(&mut self, expr: Expr<TypedAst>) {
+    fn add_prefix(&mut self, expr: TypedExpr) {
         self.prefix_exprs.push(expr);
     }
 
@@ -65,10 +65,10 @@ impl<'a> Desugar<'a> {
 impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
     fn on_array_lit(
         &mut self,
-        exprs: Box<[Expr<TypedAst>]>,
+        exprs: Box<[TypedExpr]>,
         type_: Option<Box<TypeId>>,
         pos: Span,
-    ) -> Result<Expr<TypedAst>, Error> {
+    ) -> Result<TypedExpr, Error> {
         let type_ = TypeId::Array(type_.unwrap());
         let local = self.fresh_local(&type_).with_span(pos)?;
         let array_ref = Expr::Ident(local.clone(), pos);
@@ -97,9 +97,9 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
     fn on_interpolated_string(
         &mut self,
         prefix: Ref<str>,
-        parts: Vec<(Expr<TypedAst>, Ref<str>)>,
+        parts: Vec<(TypedExpr, Ref<str>)>,
         span: Span,
-    ) -> Result<Expr<TypedAst>, Error> {
+    ) -> Result<TypedExpr, Error> {
         let mut acc = Expr::Constant(Constant::String(Literal::String, prefix), span);
         let str_type = self.scope.resolve_type(&TypeName::STRING, self.pool).with_span(span)?;
 
@@ -110,7 +110,7 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
         let add_str = self.get_function(add_str).with_span(span)?;
 
         let as_ref = Callable::Intrinsic(IntrinsicOp::AsRef, TypeId::ScriptRef(Box::new(str_type.clone())));
-        let as_ref = |exp: Expr<TypedAst>| Expr::Call(as_ref.clone(), [].into(), [exp].into(), span);
+        let as_ref = |exp: TypedExpr| Expr::Call(as_ref.clone(), [].into(), [exp].into(), span);
 
         for (part, str) in parts {
             let part = self.on_expr(part)?;
@@ -128,7 +128,7 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
             let combined = if str.is_empty() {
                 part
             } else {
-                let str: Expr<TypedAst> = as_ref(Expr::Constant(Constant::String(Literal::String, str), span));
+                let str: TypedExpr = as_ref(Expr::Constant(Constant::String(Literal::String, str), span));
                 as_ref(Expr::Call(add_str.clone(), [].into(), [part, str].into(), span))
             };
 
@@ -140,10 +140,10 @@ impl<'a> ExprTransformer<TypedAst> for Desugar<'a> {
     fn on_for_in(
         &mut self,
         name: PoolIndex<Local>,
-        array: Expr<TypedAst>,
+        array: TypedExpr,
         seq: Seq<TypedAst>,
         span: Span,
-    ) -> Result<Expr<TypedAst>, Error> {
+    ) -> Result<TypedExpr, Error> {
         let mut seq = self.on_seq(seq)?;
 
         let array = self.on_expr(array)?;

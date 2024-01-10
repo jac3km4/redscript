@@ -1,14 +1,14 @@
 use std::fmt;
 
 use peg::error::ExpectedSet;
-use redscript::ast::{Expr, Seq, Span};
+use redscript::ast::{Seq, Span};
 use redscript::bundle::PoolIndex;
 use redscript::definition::{Function, FunctionFlags};
 use thiserror::Error;
 
 use crate::error::{Cause, Error};
 use crate::source_map::Files;
-use crate::typechecker::TypedAst;
+use crate::typechecker::{TypedAst, TypedExpr};
 
 pub mod invalid_temp_use;
 pub mod missing_return;
@@ -144,7 +144,7 @@ pub trait DiagnosticPass: fmt::Debug {
 }
 
 pub trait ExprDiagnosticPass: fmt::Debug {
-    fn diagnose(&self, body: &Expr<TypedAst>, metadata: &FunctionMetadata, results: &mut Vec<Diagnostic>);
+    fn diagnose(&self, body: &TypedExpr, metadata: &FunctionMetadata, results: &mut Vec<Diagnostic>);
 }
 
 impl<A: ExprDiagnosticPass> DiagnosticPass for A {

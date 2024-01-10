@@ -8,7 +8,7 @@ use crate::error::{Cause, Error, ResultSpan};
 use crate::scope::{Reference, Scope, TypeId, Value};
 use crate::source_map::Files;
 use crate::symbol::Symbol;
-use crate::typechecker::{type_of, Callable, Member, TypedAst, TypedExprExt};
+use crate::typechecker::{type_of, Callable, Member, TypedAst, TypedExpr, TypedExprExt};
 
 pub struct Assembler<'a> {
     files: &'a Files,
@@ -44,7 +44,7 @@ impl<'a> Assembler<'a> {
 
     fn assemble(
         &mut self,
-        expr: Expr<TypedAst>,
+        expr: TypedExpr,
         scope: &mut Scope,
         pool: &mut ConstantPool,
         exit: Option<Label>,
@@ -378,7 +378,7 @@ impl<'a> Assembler<'a> {
     fn assemble_call(
         &mut self,
         function_idx: PoolIndex<Function>,
-        args: Vec<Expr<TypedAst>>,
+        args: Vec<TypedExpr>,
         scope: &mut Scope,
         pool: &mut ConstantPool,
         force_static: bool,
@@ -436,7 +436,7 @@ impl<'a> Assembler<'a> {
         Ok(())
     }
 
-    fn is_rvalue_ref(expr: &Expr<TypedAst>, scope: &Scope, pool: &ConstantPool) -> Option<bool> {
+    fn is_rvalue_ref(expr: &TypedExpr, scope: &Scope, pool: &ConstantPool) -> Option<bool> {
         let typ = type_of(expr, scope, pool).ok()?;
         match typ {
             TypeId::ScriptRef(_) => match expr {
@@ -453,7 +453,7 @@ impl<'a> Assembler<'a> {
     fn assemble_intrinsic(
         &mut self,
         intrinsic: IntrinsicOp,
-        args: Vec<Expr<TypedAst>>,
+        args: Vec<TypedExpr>,
         return_type: &TypeId,
         scope: &mut Scope,
         pool: &mut ConstantPool,

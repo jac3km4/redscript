@@ -1,7 +1,7 @@
 use redscript::ast::{Expr, Seq};
 
 use super::{Diagnostic, DiagnosticPass, FunctionMetadata};
-use crate::typechecker::TypedAst;
+use crate::typechecker::{TypedAst, TypedExpr};
 
 #[derive(Debug)]
 pub struct MissingReturnCheck;
@@ -16,7 +16,7 @@ impl DiagnosticPass for MissingReturnCheck {
     }
 }
 
-fn does_always_return(expr: &Expr<TypedAst>) -> bool {
+fn does_always_return(expr: &TypedExpr) -> bool {
     match expr {
         Expr::Return(_, _) => true,
         Expr::Seq(seq) => does_seq_return(seq),

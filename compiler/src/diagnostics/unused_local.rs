@@ -6,7 +6,7 @@ use redscript::definition::{Local, Parameter};
 
 use super::{Diagnostic, DiagnosticPass, FunctionMetadata};
 use crate::scope::{Reference, Value};
-use crate::typechecker::TypedAst;
+use crate::typechecker::{TypedAst, TypedExpr};
 use crate::visit_expr;
 
 #[derive(Debug)]
@@ -43,7 +43,7 @@ impl UsedNames {
         names
     }
 
-    fn on_expr(&mut self, expr: &Expr<TypedAst>) {
+    fn on_expr(&mut self, expr: &TypedExpr) {
         match expr {
             Expr::Declare(local, _, _, span) | Expr::ForIn(local, _, _, span) => {
                 self.declared.push((*local, *span));
