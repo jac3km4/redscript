@@ -441,7 +441,7 @@ impl<'a> Assembler<'a> {
         match typ {
             TypeId::ScriptRef(_) => match expr {
                 Expr::Call(Callable::Intrinsic(IntrinsicOp::AsRef, _), _, args, _) => match args.first() {
-                    Some(expr) => Some(expr.is_rvalue()),
+                    Some(expr) => Some(expr.is_prvalue()),
                     _ => Some(true),
                 },
                 _ => Some(true),

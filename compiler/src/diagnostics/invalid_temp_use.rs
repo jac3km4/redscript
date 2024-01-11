@@ -21,26 +21,23 @@ struct InvalidUseOfTemporaryVisitor<'a> {
 impl InvalidUseOfTemporaryVisitor<'_> {
     fn on_expr(&mut self, expr: &TypedExpr) {
         match expr {
-            Expr::Member(inner, Member::StructField(_), _) if inner.is_rvalue() => {
+            Expr::Member(inner, Member::StructField(_), _) if inner.is_prvalue() => {
                 self.results.push(Diagnostic::InvalidUseOfTemporary(inner.span()));
             }
-            Expr::ArrayElem(inner, _, _) if inner.is_rvalue() => {
+            Expr::ArrayElem(inner, _, _) if inner.is_prvalue() => {
                 self.results.push(Diagnostic::InvalidUseOfTemporary(inner.span()));
             }
-            Expr::Call(callable, _, args, _) => match (callable, &args[..]) {
+            Expr::Call(Callable::Intrinsic(op, _), _, args, _) => match (op, &args[..]) {
                 (
-                    Callable::Intrinsic(
-                        IntrinsicOp::ArrayContains
-                        | IntrinsicOp::ArrayCount
-                        | IntrinsicOp::ArrayFindFirst
-                        | IntrinsicOp::ArrayFindLast
-                        | IntrinsicOp::ArrayLast
-                        | IntrinsicOp::ArrayPop
-                        | IntrinsicOp::ArraySize,
-                        _,
-                    ),
+                    IntrinsicOp::ArrayContains
+                    | IntrinsicOp::ArrayCount
+                    | IntrinsicOp::ArrayFindFirst
+                    | IntrinsicOp::ArrayFindLast
+                    | IntrinsicOp::ArrayLast
+                    | IntrinsicOp::ArrayPop
+                    | IntrinsicOp::ArraySize,
                     [inner, ..],
-                ) if inner.is_rvalue() => self.results.push(Diagnostic::InvalidUseOfTemporary(inner.span())),
+                ) if inner.is_prvalue() => self.results.push(Diagnostic::InvalidUseOfTemporary(inner.span())),
                 _ => {}
             },
             _ => {}
