@@ -110,6 +110,7 @@ fn try_compile_files(r6_dir: &Path, cache_file: &Path, files: Files) -> anyhow::
             .read(true)
             .write(true)
             .create(true)
+            .truncate(false)
             .open(&timestamp_path)
             .context("Failed to open the timestamp file")?,
     );
