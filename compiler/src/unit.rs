@@ -243,12 +243,12 @@ impl<'a> CompilationUnit<'a> {
                         index,
                         source,
                         visibility,
-                    } => self.define_class(index, visibility, source, false, files, &mut module_scope),
+                    } => self.define_class(index, visibility, source, false, files, &mut module_scope, &cte),
                     Slot::Struct {
                         index,
                         source,
                         visibility,
-                    } => self.define_class(index, visibility, source, true, files, &mut module_scope),
+                    } => self.define_class(index, visibility, source, true, files, &mut module_scope, &cte),
                     Slot::Field {
                         index,
                         source,
@@ -428,6 +428,7 @@ impl<'a> CompilationUnit<'a> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn define_class(
         &mut self,
         class_idx: PoolIndex<Class>,
@@ -436,6 +437,7 @@ impl<'a> CompilationUnit<'a> {
         is_struct: bool,
         files: &Files,
         scope: &mut Scope,
+        ctx: &cte::Context,
     ) -> Result<(), Error> {
         let is_import_only = source.qualifiers.contain(Qualifier::ImportOnly);
         let is_class_native = is_import_only || source.qualifiers.contain(Qualifier::Native);
@@ -454,6 +456,10 @@ impl<'a> CompilationUnit<'a> {
         for member in source.members {
             match member {
                 MemberSource::Function(fun) => {
+                    if !eval_conditions(ctx, &fun.declaration.annotations)? {
+                        continue;
+                    }
+
                     if is_struct && !fun.declaration.qualifiers.contain(Qualifier::Static) {
                         let err = Cause::UnsupportedFeature("defining non-static struct methods")
                             .with_span(fun.declaration.span);
@@ -482,6 +488,10 @@ impl<'a> CompilationUnit<'a> {
                     functions.push(fun_idx);
                 }
                 MemberSource::Field(let_) => {
+                    if !eval_conditions(ctx, &let_.declaration.annotations)? {
+                        continue;
+                    }
+
                     let name_idx = self.pool.names.add(let_.declaration.name.to_heap());
                     let field_idx = self.pool.stub_definition(name_idx);
 
