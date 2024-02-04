@@ -17,8 +17,11 @@ pub mod unused_local;
 
 #[derive(Debug, Error)]
 pub enum Diagnostic {
-    #[error("this code supersedes a previous replacement of the same method, making it obsolete")]
-    MethodConflict(PoolIndex<Function>, Span),
+    #[error(
+        "this method replacement overwrites a previous annotation targeting the same method, \
+         only one replacement per method can be active at a time"
+    )]
+    ReplaceMethodConflict(PoolIndex<Function>, Span),
     #[error("a field with this name is already defined in the class, this will have no effect")]
     FieldConflict(Span),
     #[error("{0}")]
@@ -37,6 +40,11 @@ pub enum Diagnostic {
          expression into a variable"
     )]
     InvalidUseOfTemporary(Span),
+    #[error(
+        "this annotation adds a method that conflicts with an existing method in the class, \
+         it might cause a runtime error"
+    )]
+    AddMethodConflict(Span),
     #[error("syntax error, expected {0}")]
     SyntaxError(ExpectedSet, Span),
     #[error("{0}")]
@@ -92,24 +100,26 @@ impl Diagnostic {
     pub fn is_fatal(&self) -> bool {
         !matches!(
             self,
-            Self::MethodConflict(_, _)
+            Self::ReplaceMethodConflict(_, _)
                 | Self::FieldConflict(_)
                 | Self::Deprecation(_, _)
                 | Self::UnusedLocal(_)
                 | Self::MissingReturn(_)
+                | Self::AddMethodConflict(_)
         )
     }
 
     #[inline]
     pub fn span(&self) -> Span {
         match self {
-            Self::MethodConflict(_, span)
+            Self::ReplaceMethodConflict(_, span)
             | Self::FieldConflict(span)
             | Self::Deprecation(_, span)
             | Self::UnusedLocal(span)
             | Self::MissingReturn(span)
             | Self::StatementFallthrough(span)
             | Self::InvalidUseOfTemporary(span)
+            | Self::AddMethodConflict(span)
             | Self::CompileError(_, span)
             | Self::SyntaxError(_, span)
             | Self::CteError(_, span) => *span,

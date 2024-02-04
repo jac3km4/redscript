@@ -215,7 +215,7 @@ impl<'a> CompilationUnit<'a> {
                     } => {
                         let pos = source.declaration.span;
                         if seen_funcs.contains(&index) {
-                            self.diagnostics.push(Diagnostic::MethodConflict(index, pos));
+                            self.diagnostics.push(Diagnostic::ReplaceMethodConflict(index, pos));
                         } else {
                             seen_funcs.insert(index);
                         }
@@ -882,6 +882,17 @@ impl<'a> CompilationUnit<'a> {
                         Symbol::Struct(idx, _) | Symbol::Class(idx, _) => idx,
                         _ => return Err(Cause::ClassNotFound(class_name.clone()).with_span(ann.span)),
                     };
+
+                    if self
+                        .scope
+                        .resolve_method(name.clone(), target_class_idx, self.pool)
+                        .ok()
+                        .and_then(|cd| cd.by_id(&sig, self.pool))
+                        .is_some()
+                    {
+                        self.diagnostics.push(Diagnostic::AddMethodConflict(ann.span));
+                    }
+
                     let class = self.pool.class(target_class_idx)?;
                     let base_method = if class.base != PoolIndex::UNDEFINED {
                         let base = self.pool.class(class.base)?;
