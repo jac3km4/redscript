@@ -100,6 +100,13 @@ pub enum Cause {
         if .1.len() > MAX_RESOLUTION_ERRORS {"\n...and more"} else {""}
     )]
     NoMatchingOverload(Ident, Box<[FunctionMatchError]>),
+    #[error(
+        "this signature does not match any existing method, make sure that the function qualifiers
+         and argument types are correct"
+    )]
+    NoMethodWithMatchingSignature,
+    #[error("no method with this name exists on the target type")]
+    NoMethodWithMatchingName,
 }
 
 impl Cause {
@@ -118,7 +125,9 @@ impl Cause {
             | Self::InvalidIntrinsicUse(_, _)
             | Self::UnificationFailed(_, _) => "TYPE_ERR",
             Self::FunctionNotFound(_) => "UNRESOLVED_FN",
-            Self::MethodNotFound(_, _) => "UNRESOLVED_METHOD",
+            Self::MethodNotFound(_, _) | Self::NoMethodWithMatchingSignature | Self::NoMethodWithMatchingName => {
+                "UNRESOLVED_METHOD"
+            }
             Self::MemberNotFound(_, _) => "UNRESOLVED_MEMBER",
             Self::ClassNotFound(_) | Self::UnresolvedType(_) => "UNRESOLVED_TYPE",
             Self::UnresolvedReference(_) => "UNRESOLVED_REF",

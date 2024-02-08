@@ -151,6 +151,30 @@ impl Scope {
         }
     }
 
+    pub fn resolve_direct_method(
+        &self,
+        ident: Ident,
+        class_idx: PoolIndex<Class>,
+        pool: &ConstantPool,
+    ) -> Result<FunctionCandidates, Cause> {
+        let mut functions = vec![];
+
+        let class = pool.class(class_idx)?;
+        for fun in &class.functions {
+            if FunctionSignature::from_raw(&pool.def_name(*fun)?).name() == ident.as_ref() {
+                functions.push(*fun);
+            }
+        }
+        if functions.is_empty() {
+            Err(Cause::MethodNotFound(
+                ident,
+                Ident::from_heap(pool.def_name(class_idx)?),
+            ))
+        } else {
+            Ok(FunctionCandidates { functions })
+        }
+    }
+
     pub fn resolve_value(&self, name: Ident) -> Result<Value, Cause> {
         self.references
             .find(&name)
