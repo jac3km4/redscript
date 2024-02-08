@@ -818,18 +818,14 @@ impl<'a> CompilationUnit<'a> {
 
                     let name_idx = self.pool.names.add(Ref::from(format!("wrapper${wrapped_idx}")));
                     let wrapper_idx = self.pool.stub_definition(name_idx);
-                    let (parent, base) = (|| {
-                        let def = self.pool.definition(fun_idx).ok()?;
-                        let fun = def.value.as_function()?;
-                        Some((def.parent.cast(), fun.base_method))
-                    })()
-                    .unwrap_or((target_class_idx, None));
+                    let base = self.pool.function(fun_idx).ok().and_then(|fun| fun.base_method);
+
                     self.wrappers.insert(fun_idx, wrapper_idx);
                     self.pool.class_mut(target_class_idx)?.functions.push(wrapper_idx);
 
                     let slot = Slot::Function {
                         index: wrapper_idx,
-                        parent,
+                        parent: target_class_idx,
                         base,
                         wrapped: Some(wrapped_idx),
                         is_replacement: true,
@@ -862,15 +858,11 @@ impl<'a> CompilationUnit<'a> {
                                 Cause::NoMethodWithMatchingName.with_span(ann.span)
                             }
                         })?;
-                    let (parent, base) = (|| {
-                        let def = self.pool.definition(fun_idx).ok()?;
-                        let fun = def.value.as_function()?;
-                        Some((def.parent.cast(), fun.base_method))
-                    })()
-                    .unwrap_or((target_class_idx, None));
+
+                    let base = self.pool.function(fun_idx).ok().and_then(|fun| fun.base_method);
                     let slot = Slot::Function {
                         index: fun_idx,
-                        parent,
+                        parent: target_class_idx,
                         base,
                         wrapped: None,
                         is_replacement: true,
