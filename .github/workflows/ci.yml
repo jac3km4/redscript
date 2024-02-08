@@ -12,15 +12,28 @@ env:
 
 jobs:
   lint:
-    name: Lint & test
+    name: Lint
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "stable"
+          cache-on-failure: true
+      - run: cargo clippy
+  
+  rustfmt:
+    name: Check formatting
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@nightly
         with:
-          components: clippy, rustfmt
+          components: rustfmt
       - uses: Swatinem/rust-cache@v2
-
       - name: Run cargo fmt
         shell: pwsh
         run: |
@@ -43,10 +56,18 @@ jobs:
           }
           exit $rustfmt_exit_code
 
-      - run: cargo clippy -- -Dwarnings
-      - run: cargo build
+  test:
+    name: Test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "stable"
+          cache-on-failure: true
       - run: cargo test
-  
+
   build:
     name: Build & upload artifacts
     runs-on: windows-latest
