@@ -33,7 +33,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt
-      - uses: Swatinem/rust-cache@v2
       - name: Run cargo fmt
         shell: pwsh
         run: |
