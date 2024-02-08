@@ -487,7 +487,6 @@ fn compile_null_wref_assignment() {
     TestContext::compiled(vec![sources]).unwrap().run("Testing", check);
 }
 
-#[allow(illegal_floating_point_literal_pattern)]
 #[test]
 fn compile_number_literals() {
     let sources = "
@@ -772,7 +771,6 @@ fn compile_struct_constructor() {
     TestContext::compiled(vec![sources]).unwrap().run("Testing", check);
 }
 
-#[allow(illegal_floating_point_literal_pattern)]
 #[test]
 fn compile_initializers() {
     let sources = r#"
