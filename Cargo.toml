@@ -54,4 +54,5 @@ shared-version = true
 publish = false
 
 [profile.release]
-lto = "thin"
+lto = true
+codegen-units = 1
