@@ -114,7 +114,7 @@ fn custom_output_clean() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn custom_output_with_backup() -> Result<(), Box<dyn std::error::Error>> {
+fn custom_output_with_restore() -> Result<(), Box<dyn std::error::Error>> {
     let temp = assert_fs::TempDir::new()?;
 
     let predef = Path::new("../../resources/predef.redscripts");
@@ -122,8 +122,11 @@ fn custom_output_with_backup() -> Result<(), Box<dyn std::error::Error>> {
     let bundle_path = temp.child("final.redscripts");
     let backup_path = temp.child("final.redscripts.bk");
     let output_path = temp.child("final.redscripts.modded");
-    fs::copy(predef, &bundle_path).expect("should copy predef.redscripts to bundle path");
+    fs::copy(predef_cmp, &bundle_path).expect("should copy predef.redscripts.cmp to bundle path");
     fs::copy(predef, &backup_path).expect("should copy predef.redscripts to backup path");
+
+    CompileTimestamp::of_cache_file(&File::open(&bundle_path)?)?
+        .write(&mut File::create(temp.child("redscript.ts"))?)?;
 
     let script_file = temp.child("scripts/test.reds");
     script_file.write_str("class TestClass {}")?;
@@ -134,9 +137,10 @@ fn custom_output_with_backup() -> Result<(), Box<dyn std::error::Error>> {
         .arg("-outputCacheFile")
         .arg(output_path.path())
         .arg(bundle_path.path());
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("Output successfully saved"));
+    cmd.assert().success().stdout(
+        predicate::str::contains("Output successfully saved")
+            .and(predicate::str::contains("Restoring the backup file")),
+    );
 
     backup_path.assert(predicate::path::missing());
     output_path.assert(predicate::path::eq_file(predef_cmp));
