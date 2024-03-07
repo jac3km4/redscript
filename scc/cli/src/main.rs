@@ -72,6 +72,7 @@ fn run(opts: Opts, r6_dir: &Path) -> anyhow::Result<bool> {
     let settings = SccSettings {
         r6_dir: r6_dir.into(),
         custom_cache_file: Some(custom_cache_file.into()),
+        output_cache_file: opts.output_cache_file.map(PathBuf::into_boxed_path),
         additional_script_paths,
     };
 

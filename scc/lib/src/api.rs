@@ -17,6 +17,7 @@ pub unsafe extern "C" fn scc_settings_new(r6_dir: *const i8) -> Box<SccSettings>
     Box::new(SccSettings {
         r6_dir: PathBuf::from(CStr::from_ptr(r6_dir).to_string_lossy().as_ref()).into_boxed_path(),
         custom_cache_file: None,
+        output_cache_file: None,
         additional_script_paths: vec![],
     })
 }
@@ -27,6 +28,14 @@ pub unsafe extern "C" fn scc_settings_new(r6_dir: *const i8) -> Box<SccSettings>
 #[no_mangle]
 pub unsafe extern "C" fn scc_settings_set_custom_cache_file(settings: &mut SccSettings, path: *const i8) {
     settings.custom_cache_file = Some(PathBuf::from(CStr::from_ptr(path).to_string_lossy().as_ref()).into_boxed_path());
+}
+
+/// # Safety
+/// The caller must ensure that `settings` is a valid pointer to a `SccSettings` struct and
+/// `path` is a valid null-terminated UTF-8 string.
+#[no_mangle]
+pub unsafe extern "C" fn scc_settings_set_output_cache_file(settings: &mut SccSettings, path: *const i8) {
+    settings.output_cache_file = Some(PathBuf::from(CStr::from_ptr(path).to_string_lossy().as_ref()).into_boxed_path());
 }
 
 /// # Safety
@@ -158,6 +167,7 @@ pub extern "C" fn scc_source_ref_line(output: &SccOutput, link: &SourceRef) -> u
 pub struct SccSettings {
     pub r6_dir: Box<Path>,
     pub custom_cache_file: Option<Box<Path>>,
+    pub output_cache_file: Option<Box<Path>>,
     pub additional_script_paths: Vec<Box<Path>>,
 }
 

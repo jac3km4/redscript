@@ -13,6 +13,7 @@ use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, LogSpecBuilder,
 use hashbrown::{HashMap, HashSet};
 use hints::UserHints;
 use log::LevelFilter;
+use normpath::PathExt;
 use redscript::ast::Span;
 use redscript::bundle::{ConstantPool, ScriptBundle};
 use redscript::definition::{Definition, Enum};
@@ -46,7 +47,7 @@ pub fn compile(settings: &SccSettings) -> Box<SccResult> {
 
 fn try_compile(settings: &SccSettings) -> anyhow::Result<SccResult> {
     let default_cache_dir = settings.r6_dir.join("cache");
-    let cache_file = settings
+    let cache_path = settings
         .custom_cache_file
         .as_deref()
         .map(PathBuf::from)
@@ -55,15 +56,18 @@ fn try_compile(settings: &SccSettings) -> anyhow::Result<SccResult> {
         .chain(settings.additional_script_paths.iter().cloned())
         .collect::<Vec<_>>();
 
-    if !cache_file.exists() {
+    if !cache_path.exists() {
         let base_cache_file = get_base_bundle_path(&default_cache_dir);
-        let cache_dir = cache_file.parent().context("Provided cache file path has no parent")?;
+        let cache_dir = cache_path
+            .parent()
+            .context("Provided cache file path has no parent directory")?;
         fs::create_dir_all(cache_dir).context("Failed to create the cache directory")?;
-        fs::copy(base_cache_file, &cache_file).context("Could not copy the base script cache file")?;
+        fs::copy(base_cache_file, &cache_path).context("Could not copy the base script cache file")?;
     }
 
-    let backup_path = cache_file.with_extension(BACKUP_FILE_EXT);
+    let backup_path = cache_path.with_extension(BACKUP_FILE_EXT);
     let fallback_backup_path = settings.r6_dir.join("cache").join(BACKUP_FILE_NAME);
+    let output_cache_path = settings.output_cache_file.as_deref().unwrap_or(&cache_path);
 
     if fallback_backup_path.exists() && !backup_path.exists() {
         log::info!("Re-initializing backup file from {}", fallback_backup_path.display());
@@ -72,9 +76,9 @@ fn try_compile(settings: &SccSettings) -> anyhow::Result<SccResult> {
 
     let files = Files::from_dirs(&script_paths, &SourceFilter::None).context("Could not load script sources")?;
 
-    match try_compile_files(&settings.r6_dir, &cache_file, files) {
+    match try_compile_files(&settings.r6_dir, &cache_path, output_cache_path, files) {
         Ok(output) => {
-            log::info!("Output successfully saved to {}", cache_file.display());
+            log::info!("Output successfully saved to {}", cache_path.display());
             Ok(output)
         }
         Err(err) => {
@@ -92,13 +96,22 @@ fn try_compile(settings: &SccSettings) -> anyhow::Result<SccResult> {
     }
 }
 
-fn try_compile_files(r6_dir: &Path, cache_file: &Path, files: Files) -> anyhow::Result<SccResult> {
-    let backup_path = cache_file.with_extension(BACKUP_FILE_EXT);
-    let timestamp_path = cache_file.with_extension(TIMESTAMP_FILE_EXT);
+fn try_compile_files(
+    r6_dir: &Path,
+    cache_path: &Path,
+    output_cache_path: &Path,
+    files: Files,
+) -> anyhow::Result<SccResult> {
+    let backup_path = cache_path.with_extension(BACKUP_FILE_EXT);
+    let timestamp_path = cache_path.with_extension(TIMESTAMP_FILE_EXT);
+    #[cfg(windows)]
+    let is_output_file_separate = output_cache_path.normalize_virtually()? != cache_path.normalize_virtually()?;
+    #[cfg(not(windows))]
+    let is_output_file_separate = output_cache_path != cache_path;
 
-    let fallback_timestamp_path = cache_file
+    let fallback_timestamp_path = cache_path
         .parent()
-        .expect("script cache path should have a parent")
+        .expect("script cache path should have a parent directory")
         .join(LEGACY_TIMESTAMP_FILE_NAME);
 
     if !timestamp_path.exists() && fallback_timestamp_path.exists() {
@@ -119,43 +132,59 @@ fn try_compile_files(r6_dir: &Path, cache_file: &Path, files: Files) -> anyhow::
         .write()
         .context("Failed to acquire a write lock on the timestamp file")?;
 
-    let write_timestamp = File::open(cache_file)
+    let write_timestamp = File::open(cache_path)
         .and_then(|f| CompileTimestamp::of_cache_file(&f))
         .context("Failed to obtain a timestamp of the cache file")?;
     let saved_timestamp =
         CompileTimestamp::read(&mut *ts_file).context("Failed to read the existing timestamp file")?;
 
-    match saved_timestamp {
-        None if backup_path.exists() => {
-            log::info!("Previous cache backup file found");
+    let input_cache_path = if is_output_file_separate {
+        match saved_timestamp {
+            saved_timestamp if saved_timestamp != Some(write_timestamp) && backup_path.exists() => {
+                log::info!("Removing a stale backup file at {}", backup_path.display());
+                fs::remove_file(&backup_path).context("Failed to remove a stale backup file")?;
+            }
+            _ if backup_path.exists() => {
+                log::info!("Restoring the backup file to {}", cache_path.display());
+                fs::rename(&backup_path, cache_path).context("Failed to restore the backup file")?;
+            }
+            _ => {}
         }
-        saved_timestamp if saved_timestamp != Some(write_timestamp) => {
-            log::info!(
-                "Redscript cache file is not ours, copying it to {}",
-                backup_path.display()
-            );
-            fs::copy(cache_file, &backup_path).context("Failed to copy the cache file")?;
+        cache_path.to_path_buf()
+    } else {
+        match saved_timestamp {
+            None if backup_path.exists() => {
+                log::info!("Previous cache backup file found");
+            }
+            saved_timestamp if saved_timestamp != Some(write_timestamp) => {
+                log::info!(
+                    "Redscript cache file is not ours, copying it to {}",
+                    backup_path.display()
+                );
+                fs::copy(cache_path, &backup_path).context("Failed to copy the cache file")?;
+            }
+            Some(_) if !backup_path.exists() => {
+                return Err(anyhow::anyhow!(
+                    "A REDScript timestamp was found, but backup files are missing, your \
+                     installation might be corrupted, you should remove the \
+                     'r6/cache/redscript.ts' file and verify game files with Steam/GOG"
+                ));
+            }
+            _ => {}
         }
-        Some(_) if !backup_path.exists() => {
-            return Err(anyhow::anyhow!(
-                "A REDScript timestamp was found, but backup files are missing, your installation \
-                might be corrupted, you should remove the 'r6/cache/redscript.ts' file and verify \
-                game files with Steam/GOG"
-            ));
-        }
-        _ => {}
-    }
+        backup_path
+    };
 
     #[cfg(feature = "mmap")]
     let mut bundle = {
         let (map, _) = vmap::Map::with_options()
-            .open(backup_path)
+            .open(input_cache_path)
             .context("Failed to open the original script cache file")?;
         ScriptBundle::load(&mut io::Cursor::new(map.as_ref())).context("Failed to load the original script cache")?
     };
     #[cfg(not(feature = "mmap"))]
     let mut bundle = {
-        let file = File::open(backup_path).context("Failed to open the original script cache file")?;
+        let file = File::open(input_cache_path).context("Failed to open the original script cache file")?;
         ScriptBundle::load(&mut io::BufReader::new(file)).context("Failed to load the original script cache")?
     };
 
@@ -183,10 +212,10 @@ fn try_compile_files(r6_dir: &Path, cache_file: &Path, files: Files) -> anyhow::
 
             add_redscript_signature_def(&mut bundle.pool);
 
-            let mut file = File::create(cache_file).map_err(|err| match err.kind() {
+            let mut file = File::create(output_cache_path).map_err(|err| match err.kind() {
                 io::ErrorKind::PermissionDenied => anyhow::anyhow!(
                     "Could not write to '{}', make sure the file is not read-only",
-                    cache_file.display()
+                    output_cache_path.display()
                 ),
                 _ => err.into(),
             })?;

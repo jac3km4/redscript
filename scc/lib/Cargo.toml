@@ -18,6 +18,7 @@ flexi_logger.workspace = true
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 vmap = { version = "0.6", default-features = false, optional = true }
+normpath = "1"
 fd-lock = "4"
 msgbox = { version = "0.7", optional = true }
 

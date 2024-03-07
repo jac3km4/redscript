@@ -14,6 +14,7 @@ fn api_functions_are_stable() {
     let SccApi {
         settings_new,
         settings_set_custom_cache_file,
+        settings_set_output_cache_file,
         settings_add_script_path,
         compile,
         free_result,
@@ -32,6 +33,8 @@ fn api_functions_are_stable() {
     let _settings_new: unsafe extern "C" fn(*const i8) -> *mut SccSettings = settings_new.unwrap();
     let _settings_set_custom_cache_file: unsafe extern "C" fn(*mut SccSettings, *const i8) =
         settings_set_custom_cache_file.unwrap();
+    let _settings_set_output_cache_file: unsafe extern "C" fn(*mut SccSettings, *const i8) =
+        settings_set_output_cache_file.unwrap();
     let _settings_add_script_path: unsafe extern "C" fn(*mut SccSettings, *const i8) =
         settings_add_script_path.unwrap();
     let _compile: unsafe extern "C" fn(*mut SccSettings) -> *mut SccResult = compile.unwrap();
@@ -88,6 +91,7 @@ fn compiles_successfully() {
         let settings = (api.settings_new.unwrap())(r6_dir_cstr.as_ptr() as _);
         (api.settings_add_script_path.unwrap())(settings, script_path_cstr.as_ptr() as _);
         (api.settings_set_custom_cache_file.unwrap())(settings, bundle_path_cstr.as_ptr() as _);
+        (api.settings_set_output_cache_file.unwrap())(settings, bundle_path_cstr.as_ptr() as _);
 
         let result = (api.compile.unwrap())(settings);
         let output = (api.get_success.unwrap())(result);
@@ -200,6 +204,7 @@ fn load_api() -> SccApi {
             settings_new: lib.sym("scc_settings_new\0").unwrap(),
             settings_set_custom_cache_file: lib.sym("scc_settings_set_custom_cache_file\0").unwrap(),
             settings_add_script_path: lib.sym("scc_settings_add_script_path\0").unwrap(),
+            settings_set_output_cache_file: lib.sym("scc_settings_set_output_cache_file\0").unwrap(),
             compile: lib.sym("scc_compile\0").unwrap(),
             free_result: lib.sym("scc_free_result\0").unwrap(),
             get_success: lib.sym("scc_get_success\0").unwrap(),

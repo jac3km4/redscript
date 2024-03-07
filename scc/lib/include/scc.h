@@ -32,6 +32,10 @@ typedef void scc_settings_set_custom_cache_file(
     SccSettings* settings,
     const char* cache_file);
 
+typedef void scc_settings_set_output_cache_file(
+    SccSettings* settings,
+    const char* cache_file);
+
 typedef void scc_settings_add_script_path(
     SccSettings* settings,
     const char* path);
@@ -71,6 +75,13 @@ typedef struct SccApi {
      * Overrides the default cache file location.
      */
     scc_settings_set_custom_cache_file* settings_set_custom_cache_file;
+    /**
+     * Sets a custom output cache file location.
+     *
+     * Added in redscript 0.5.18. It will be null if the loaded library version is older.
+     * The caller should do a null check if they want to maintain backward compatibility.
+     */
+    scc_settings_set_output_cache_file* settings_set_output_cache_file;
     /**
      * Adds a path to be searched for scripts during compilation.
      */
@@ -133,6 +144,7 @@ inline SccApi scc_load_api(HMODULE module)
     SccApi api = {
         (scc_settings_new*)GetProcAddress(module, "scc_settings_new"),
         (scc_settings_set_custom_cache_file*)GetProcAddress(module, "scc_settings_set_custom_cache_file"),
+        (scc_settings_set_output_cache_file*)GetProcAddress(module, "scc_settings_set_output_cache_file"),
         (scc_settings_add_script_path*)GetProcAddress(module, "scc_settings_add_script_path"),
         (scc_compile*)GetProcAddress(module, "scc_compile"),
         (scc_free_result*)GetProcAddress(module, "scc_free_result"),

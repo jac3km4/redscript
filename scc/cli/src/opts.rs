@@ -61,6 +61,7 @@ pub struct Opts {
     pub profile: bool,
     pub script_paths_file: Option<PathBuf>,
     pub cache_file: Option<PathBuf>,
+    pub output_cache_file: Option<PathBuf>,
     pub no_exec: bool,
     pub no_debug: bool,
 }
@@ -161,6 +162,19 @@ fn cache_dir() -> impl Parser<Option<PathBuf>> {
         .catch()
 }
 
+fn output_cache_file() -> impl Parser<Option<PathBuf>> {
+    let tag = any::<String>("-outputCacheFile")
+        .help("A custom output path to write the final.redscripts to")
+        .guard(|s| s == "-outputCacheFile", "not outputCacheFile");
+    let value = positional::<PathBuf>("OUTPUT_CACHE_FILE").guard(is_not_slong, "starts with -");
+    construct!(tag, value)
+        .adjacent()
+        .anywhere()
+        .map(|pair| pair.1)
+        .optional()
+        .catch()
+}
+
 impl Opts {
     pub fn get_parser() -> OptionParser<Opts> {
         let optimize = toggle_options("-optimize", "Enable optimiziations. Off by default")
@@ -204,6 +218,7 @@ impl Opts {
             no_breakpoint,
             profile,
             script_paths_file(),
+            output_cache_file(),
             cache_file,
             no_exec,
             no_debug
@@ -296,6 +311,9 @@ mod test {
     const CACHE_FILE: &str =
         "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\cache\\final.redscripts";
 
+    const OUTPUT_CACHE_FILE: &str =
+        "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\cache\\final.redscripts.modded";
+
     const CACHE_DIR: &str = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\cache\\modded";
 
     #[template]
@@ -303,6 +321,7 @@ mod test {
     fn file_directory_orders(
         #[values(SCRIPTS_DIR)] scripts_dir: &str,
         #[values(Some(CACHE_FILE), None)] cache_file: Option<&str>,
+        #[values(Some(OUTPUT_CACHE_FILE), None)] output_cache_file: Option<&str>,
         #[values(Some(CACHE_DIR), None)] cache_dir: Option<&str>,
         #[values(Some(PATHS_FILE), None)] script_paths_file: Option<&str>,
         #[values(&["none"], &[])] warnings: &[&str],
@@ -336,6 +355,7 @@ mod test {
     fn standard(
         scripts_dir: &str,
         cache_file: Option<&str>,
+        output_cache_file: Option<&str>,
         cache_dir: Option<&str>,
         script_paths_file: Option<&str>,
         warnings: &[&str],
@@ -351,6 +371,10 @@ mod test {
         args.push("-compile".into());
         args.push(PathBuf::from(scripts_dir).into());
         if let Some(value) = cache_file {
+            args.push(PathBuf::from(value).into());
+        }
+        if let Some(value) = output_cache_file {
+            args.push("-outputCacheFile".into());
             args.push(PathBuf::from(value).into());
         }
         if let Some(value) = cache_dir {
@@ -402,6 +426,7 @@ mod test {
 
         self::assert_eq!(opts.scripts_dir, PathBuf::from(scripts_dir));
         self::assert_eq!(opts.cache_file, cache_file.map(PathBuf::from));
+        self::assert_eq!(opts.output_cache_file, output_cache_file.map(PathBuf::from));
         self::assert_eq!(opts.cache_dir, cache_dir.map(PathBuf::from));
         self::assert_eq!(opts.script_paths_file, script_paths_file.map(PathBuf::from));
         self::assert_eq!(opts.warnings, warnings);

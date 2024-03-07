@@ -4,7 +4,7 @@ use std::time::SystemTime;
 
 use byteorder::*;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CompileTimestamp {
     nanos: u128,
 }
