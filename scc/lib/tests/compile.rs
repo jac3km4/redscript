@@ -108,6 +108,7 @@ fn custom_output_clean() -> Result<(), Box<dyn std::error::Error>> {
         .success()
         .stdout(predicate::str::contains("Output successfully saved"));
 
+    bundle_path.assert(predicate::path::eq_file(predef));
     output_path.assert(predicate::path::eq_file(predef_cmp));
     temp.close()?;
     Ok(())
@@ -142,6 +143,7 @@ fn custom_output_with_restore() -> Result<(), Box<dyn std::error::Error>> {
             .and(predicate::str::contains("Restoring the backup file")),
     );
 
+    bundle_path.assert(predicate::path::eq_file(predef));
     backup_path.assert(predicate::path::missing());
     output_path.assert(predicate::path::eq_file(predef_cmp));
     temp.close()?;
