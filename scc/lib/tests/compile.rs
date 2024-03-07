@@ -84,3 +84,62 @@ fn timestamp_migration() -> Result<(), Box<dyn std::error::Error>> {
     temp.close()?;
     Ok(())
 }
+
+#[test]
+fn custom_output_clean() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = assert_fs::TempDir::new()?;
+
+    let predef = Path::new("../../resources/predef.redscripts");
+    let predef_cmp = Path::new("../../resources/predef.redscripts.cmp");
+    let bundle_path = temp.child("final.redscripts");
+    let output_path = temp.child("final.redscripts.modded");
+    fs::copy(predef, &bundle_path).expect("should copy predef.redscripts to bundle path");
+
+    let script_file = temp.child("scripts/test.reds");
+    script_file.write_str("class TestClass {}")?;
+
+    let mut cmd = Command::cargo_bin("scc")?;
+    cmd.arg("-compile")
+        .arg(temp.child("scripts").path())
+        .arg("-outputCacheFile")
+        .arg(output_path.path())
+        .arg(bundle_path.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Output successfully saved"));
+
+    output_path.assert(predicate::path::eq_file(predef_cmp));
+    temp.close()?;
+    Ok(())
+}
+
+#[test]
+fn custom_output_with_backup() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = assert_fs::TempDir::new()?;
+
+    let predef = Path::new("../../resources/predef.redscripts");
+    let predef_cmp = Path::new("../../resources/predef.redscripts.cmp");
+    let bundle_path = temp.child("final.redscripts");
+    let backup_path = temp.child("final.redscripts.bk");
+    let output_path = temp.child("final.redscripts.modded");
+    fs::copy(predef, &bundle_path).expect("should copy predef.redscripts to bundle path");
+    fs::copy(predef, &backup_path).expect("should copy predef.redscripts to backup path");
+
+    let script_file = temp.child("scripts/test.reds");
+    script_file.write_str("class TestClass {}")?;
+
+    let mut cmd = Command::cargo_bin("scc")?;
+    cmd.arg("-compile")
+        .arg(temp.child("scripts").path())
+        .arg("-outputCacheFile")
+        .arg(output_path.path())
+        .arg(bundle_path.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Output successfully saved"));
+
+    backup_path.assert(predicate::path::missing());
+    output_path.assert(predicate::path::eq_file(predef_cmp));
+    temp.close()?;
+    Ok(())
+}
