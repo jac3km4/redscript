@@ -78,7 +78,7 @@ fn try_compile(settings: &SccSettings) -> anyhow::Result<SccResult> {
 
     match try_compile_files(&settings.r6_dir, &cache_path, output_cache_path, files) {
         Ok(output) => {
-            log::info!("Output successfully saved to {}", cache_path.display());
+            log::info!("Output successfully saved to {}", output_cache_path.display());
             Ok(output)
         }
         Err(err) => {
