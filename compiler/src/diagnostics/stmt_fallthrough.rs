@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use redscript::ast::Expr;
 
 use super::{Diagnostic, ExprDiagnosticPass, FunctionMetadata};
@@ -20,7 +21,7 @@ struct StatementFallthroughVisitor<'a> {
 impl StatementFallthroughVisitor<'_> {
     fn on_expr(&mut self, expr: &TypedExpr) {
         if let Expr::Switch(_, cases, _, _) = expr {
-            for case in cases.iter().take(cases.len().max(1) - 1) {
+            for case in cases.iter().dropping_back(1) {
                 if !matches!(case.body.exprs.last(), None | Some(Expr::Break(_) | Expr::Return(_, _))) {
                     self.results.push(Diagnostic::StatementFallthrough(case.matcher.span()));
                 }
