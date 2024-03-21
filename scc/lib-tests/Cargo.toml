@@ -8,7 +8,6 @@ edition.workspace = true
 minidl = "0.1"
 pretty_assertions = "1"
 assert_fs = "1"
-offset = "0.1"
 
 [build-dependencies]
 bindgen = "0.69"

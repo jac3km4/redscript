@@ -3,7 +3,6 @@ use std::{fs, mem};
 
 use assert_fs::prelude::*;
 use minidl::*;
-use offset::offset_of;
 use scc_lib_tests::*;
 
 #[test]
@@ -59,8 +58,8 @@ fn api_functions_are_stable() {
 #[test]
 fn api_types_are_stable() {
     assert_eq!(mem::size_of::<StrWithLen>(), 16);
-    assert_eq!(offset_of!(StrWithLen::str_).as_u32(), 0);
-    assert_eq!(offset_of!(StrWithLen::len).as_u32(), 8);
+    assert_eq!(mem::offset_of!(StrWithLen, str_), 0);
+    assert_eq!(mem::offset_of!(StrWithLen, len), 8);
 
     assert_eq!(SccSourceRefType_SCC_SOURCE_REF_TYPE_UNDEFINED, 0);
     assert_eq!(SccSourceRefType_SCC_SOURCE_REF_TYPE_CLASS, 1);

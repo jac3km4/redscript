@@ -1206,12 +1206,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "offset"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "130c0b387eddc88f54c7373ec110d0de911a19742e17b8ced6bb516511983f36"
-
-[[package]]
 name = "once_cell"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1660,7 +1654,6 @@ dependencies = [
  "assert_fs",
  "bindgen",
  "minidl",
- "offset",
  "pretty_assertions",
 ]
 
