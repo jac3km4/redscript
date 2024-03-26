@@ -29,8 +29,7 @@ pub enum SourceEntry {
 impl SourceEntry {
     pub fn annotations(&self) -> &[Annotation] {
         match self {
-            Self::Class(class) => &class.declaration.annotations,
-            Self::Struct(class) => &class.declaration.annotations,
+            Self::Class(class) | Self::Struct(class) => &class.declaration.annotations,
             Self::Function(fun) => &fun.declaration.annotations,
             Self::GlobalLet(field) => &field.declaration.annotations,
             Self::Enum(enum_) => &enum_.declaration.annotations,
