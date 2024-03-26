@@ -333,8 +333,9 @@ impl<'a> CompilationUnit<'a> {
     fn define_symbol(&mut self, entry: SourceEntry, module: &ModulePath, permissive: bool) -> Result<Slot, Error> {
         match entry {
             SourceEntry::Class(source) => {
-                let path = module.with_child(source.name.clone());
-                let visibility = source.qualifiers.visibility().unwrap_or(Visibility::Private);
+                let decl = &source.declaration;
+                let path = module.with_child(decl.name.clone());
+                let visibility = decl.qualifiers.visibility().unwrap_or(Visibility::Private);
 
                 if let Ok(Symbol::Class(_, _) | Symbol::Struct(_, _)) =
                     self.symbols.get_symbol(&path).with_span(source.span)
@@ -351,7 +352,7 @@ impl<'a> CompilationUnit<'a> {
                 // add to globals when no module
                 if module.is_empty() {
                     self.scope
-                        .add_symbol(source.name.clone(), Symbol::Class(index, visibility));
+                        .add_symbol(decl.name.clone(), Symbol::Class(index, visibility));
                 }
 
                 let slot = Slot::Class {
@@ -362,8 +363,9 @@ impl<'a> CompilationUnit<'a> {
                 Ok(slot)
             }
             SourceEntry::Struct(source) => {
-                let path = module.with_child(source.name.clone());
-                let visibility = source.qualifiers.visibility().unwrap_or(Visibility::Private);
+                let decl = &source.declaration;
+                let path = module.with_child(decl.name.clone());
+                let visibility = decl.qualifiers.visibility().unwrap_or(Visibility::Private);
 
                 if let Ok(Symbol::Class(_, _) | Symbol::Struct(_, _)) =
                     self.symbols.get_symbol(&path).with_span(source.span)
@@ -380,7 +382,7 @@ impl<'a> CompilationUnit<'a> {
                 // add to globals when no module
                 if module.is_empty() {
                     self.scope
-                        .add_symbol(source.name.clone(), Symbol::Struct(index, visibility));
+                        .add_symbol(decl.name.clone(), Symbol::Struct(index, visibility));
                 }
 
                 let slot = Slot::Struct {
@@ -411,7 +413,8 @@ impl<'a> CompilationUnit<'a> {
                 Ok(slot)
             }
             SourceEntry::Enum(source) => {
-                let path = module.with_child(source.name.clone());
+                let decl = &source.declaration;
+                let path = module.with_child(decl.name.clone());
                 let name_index = self.pool.names.add(path.render().to_heap());
                 let index = self.pool.stub_definition(name_index);
 
@@ -419,7 +422,7 @@ impl<'a> CompilationUnit<'a> {
 
                 // add to globals when no module
                 if module.is_empty() {
-                    self.scope.add_symbol(source.name.clone(), Symbol::Enum(index));
+                    self.scope.add_symbol(decl.name.clone(), Symbol::Enum(index));
                 }
 
                 let slot = Slot::Enum { index, source };
@@ -439,10 +442,11 @@ impl<'a> CompilationUnit<'a> {
         scope: &mut Scope,
         ctx: &cte::Context,
     ) -> Result<(), Error> {
-        let is_import_only = source.qualifiers.contain(Qualifier::ImportOnly);
-        let is_class_native = is_import_only || source.qualifiers.contain(Qualifier::Native);
-        let is_class_abstract = !is_struct && source.qualifiers.contain(Qualifier::Abstract);
-        let is_class_final = source.qualifiers.contain(Qualifier::Final);
+        let qualifiers = &source.declaration.qualifiers;
+        let is_import_only = qualifiers.contain(Qualifier::ImportOnly);
+        let is_class_native = is_import_only || qualifiers.contain(Qualifier::Native);
+        let is_class_abstract = !is_struct && qualifiers.contain(Qualifier::Abstract);
+        let is_class_final = qualifiers.contain(Qualifier::Final);
 
         let flags = ClassFlags::new()
             .with_is_abstract(is_class_abstract)

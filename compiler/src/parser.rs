@@ -29,17 +29,18 @@ pub enum SourceEntry {
 impl SourceEntry {
     pub fn annotations(&self) -> &[Annotation] {
         match self {
+            Self::Class(class) => &class.declaration.annotations,
+            Self::Struct(class) => &class.declaration.annotations,
             Self::Function(fun) => &fun.declaration.annotations,
             Self::GlobalLet(field) => &field.declaration.annotations,
-            _ => &[],
+            Self::Enum(enum_) => &enum_.declaration.annotations,
         }
     }
 }
 
 #[derive(Debug)]
 pub struct ClassSource {
-    pub qualifiers: Qualifiers,
-    pub name: Ident,
+    pub declaration: Declaration,
     pub base: Option<Ident>,
     pub members: Vec<MemberSource>,
     pub span: Span,
@@ -76,7 +77,7 @@ pub struct ParameterSource {
 
 #[derive(Debug)]
 pub struct EnumSource {
-    pub name: Ident,
+    pub declaration: Declaration,
     pub members: Vec<EnumMember>,
     pub span: Span,
 }
@@ -298,12 +299,12 @@ peg::parser! {
         rule extends() -> Ident = keyword("extends") _ name:ident() { name }
 
         pub rule class() -> ClassSource
-            = pos:pos() qualifiers:qualifiers() _ keyword("class") _ name:ident() _ base:extends()? _ "{" _ members:member()**_ _ "}" end:pos()
-            { ClassSource { qualifiers, name, base, members, span: Span::new(pos, end) } }
+            = pos:pos() declaration:decl(<keyword("class")>) _ base:extends()? _ "{" _ members:member()**_ _ "}" end:pos()
+            { ClassSource { declaration, base, members, span: Span::new(pos, end) } }
 
         pub rule struct_() -> ClassSource
-            = pos:pos() qualifiers:qualifiers() _ keyword("struct") _ name:ident() _ "{" _ members:member()**_ _ "}" end:pos()
-            { ClassSource { qualifiers, name, base: None, members, span: Span::new(pos, end) } }
+            = pos:pos() declaration:decl(<keyword("struct")>) _ "{" _ members:member()**_ _ "}" end:pos()
+            { ClassSource { declaration, base: None, members, span: Span::new(pos, end) } }
 
         rule member() -> MemberSource
             = fun:function() { MemberSource::Function(fun) }
@@ -311,8 +312,8 @@ peg::parser! {
             / expected!("a method or a field")
 
         pub rule enum_() -> EnumSource
-            = pos:pos() keyword("enum") _ name:ident() _ "{" _ members:commasep(<enum_member()>) _ ","? _ "}" end:pos()
-            { EnumSource { name, members, span: Span::new(pos, end) } }
+            = pos:pos() declaration:decl(<keyword("enum")>) _ "{" _ members:commasep(<enum_member()>) _ ","? _ "}" end:pos()
+            { EnumSource { declaration, members, span: Span::new(pos, end) } }
 
         rule enum_member() -> EnumMember
             = name:ident() _ "=" _ value:number()
@@ -520,7 +521,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", module.entries),
-            r#"[Class(ClassSource { qualifiers: Qualifiers([Public]), name: "A", base: Some("IScriptable"), members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private, Const]), name: "m_field", span: Span { low: Pos(53), high: Pos(78) } }, type_: TypeName { name: "Int32", arguments: None }, default: None }), Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public]), name: "GetField", span: Span { low: Pos(104), high: Pos(124) } }, type_: Some(TypeName { name: "Int32", arguments: None }), parameters: [], body: Some(Seq { exprs: [Return(Some(Member(This(Span { low: Pos(165), high: Pos(169) }), "m_field", Span { low: Pos(165), high: Pos(177) })), Span { low: Pos(158), high: Pos(178) })] }), span: Span { low: Pos(104), high: Pos(196) } })], span: Span { low: Pos(0), high: Pos(211) } })]"#
+            r#"[Class(ClassSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public]), name: "A", span: Span { low: Pos(0), high: Pos(14) } }, base: Some("IScriptable"), members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private, Const]), name: "m_field", span: Span { low: Pos(53), high: Pos(78) } }, type_: TypeName { name: "Int32", arguments: None }, default: None }), Function(FunctionSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Public]), name: "GetField", span: Span { low: Pos(104), high: Pos(124) } }, type_: Some(TypeName { name: "Int32", arguments: None }), parameters: [], body: Some(Seq { exprs: [Return(Some(Member(This(Span { low: Pos(165), high: Pos(169) }), "m_field", Span { low: Pos(165), high: Pos(177) })), Span { low: Pos(158), high: Pos(178) })] }), span: Span { low: Pos(104), high: Pos(196) } })], span: Span { low: Pos(0), high: Pos(211) } })]"#
         );
     }
 
@@ -630,7 +631,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", module.entries),
-            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: "Test", base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: "m_field", span: Span { low: Pos(130), high: Pos(149) } }, type_: TypeName { name: "String", arguments: None }, default: None })], span: Span { low: Pos(101), high: Pos(189) } })]"#
+            r#"[Class(ClassSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([]), name: "Test", span: Span { low: Pos(101), high: Pos(111) } }, base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: "m_field", span: Span { low: Pos(130), high: Pos(149) } }, type_: TypeName { name: "String", arguments: None }, default: None })], span: Span { low: Pos(101), high: Pos(189) } })]"#
         );
     }
 
@@ -648,7 +649,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             format!("{:?}", module.entries),
-            r#"[Class(ClassSource { qualifiers: Qualifiers([]), name: "Test", base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: "m_field", span: Span { low: Pos(114), high: Pos(133) } }, type_: TypeName { name: "String", arguments: None }, default: None })], span: Span { low: Pos(13), high: Pos(156) } })]"#
+            r#"[Class(ClassSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([]), name: "Test", span: Span { low: Pos(13), high: Pos(23) } }, base: None, members: [Field(FieldSource { declaration: Declaration { annotations: [], qualifiers: Qualifiers([Private]), name: "m_field", span: Span { low: Pos(114), high: Pos(133) } }, type_: TypeName { name: "String", arguments: None }, default: None })], span: Span { low: Pos(13), high: Pos(156) } })]"#
         );
     }
 
