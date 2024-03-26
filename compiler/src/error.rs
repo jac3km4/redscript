@@ -101,7 +101,7 @@ pub enum Cause {
     )]
     NoMatchingOverload(Ident, Box<[FunctionMatchError]>),
     #[error(
-        "this signature does not match any existing method, make sure that the function qualifiers
+        "this signature does not match any existing method, make sure that the function qualifiers \
          and argument types are correct"
     )]
     NoMethodWithMatchingSignature,
