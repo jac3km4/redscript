@@ -12,7 +12,7 @@ minidl = "0.1"
 
 [dev-dependencies]
 winsplit = "0.1"
-rstest = "0.21"
+rstest = "0.24"
 rstest_reuse = "0.7"
 pretty_assertions = "1"
 

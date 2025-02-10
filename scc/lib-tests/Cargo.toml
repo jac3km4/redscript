@@ -10,7 +10,7 @@ pretty_assertions = "1"
 assert_fs = "1"
 
 [build-dependencies]
-bindgen = "0.69"
+bindgen = "0.71"
 
 [lints]
 workspace = true

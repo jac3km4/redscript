@@ -20,8 +20,8 @@ log = "0.4"
 thiserror = "2"
 anyhow = "1"
 hashbrown = "0.15"
-itertools = "0.13"
-strum = { version = "0.26", features = ["derive"] }
+itertools = "0.14"
+strum = { version = "0.27", features = ["derive"] }
 enum-as-inner = "0.6"
 modular-bitfield = "0.11"
 byteorder = "1"
