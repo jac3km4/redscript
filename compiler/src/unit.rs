@@ -564,7 +564,7 @@ impl<'a> CompilationUnit<'a> {
         let is_static = decl.qualifiers.contain(Qualifier::Static) || spec.class_idx.is_undefined();
         let is_callback = decl.qualifiers.contain(Qualifier::Callback);
 
-        if is_native && spec.class_flags.map_or(false, |f| !f.is_native()) {
+        if is_native && spec.class_flags.is_some_and(|f| !f.is_native()) {
             self.report(Cause::UnexpectedNative.with_span(spec.source.declaration.span))?;
         }
         if !is_native && spec.class_flags.map_or(true, |f| !f.is_abstract()) && spec.source.body.is_none() {
@@ -1008,7 +1008,10 @@ impl<'a> CompilationUnit<'a> {
                     };
                     return Ok(slot);
                 }
-                AnnotationKind::AddField | AnnotationKind::If | AnnotationKind::RuntimeProperty => {}
+                AnnotationKind::AddField
+                | AnnotationKind::If
+                | AnnotationKind::RuntimeProperty
+                | AnnotationKind::NeverRef => {}
             }
         }
 

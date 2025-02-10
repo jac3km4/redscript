@@ -149,6 +149,7 @@ pub enum AnnotationKind {
     AddField,
     If,
     RuntimeProperty,
+    NeverRef,
 }
 
 pub fn parse_file(file: &File) -> Result<SourceModule, ParseError<LineCol>> {
