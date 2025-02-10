@@ -1406,7 +1406,7 @@ dependencies = [
 
 [[package]]
 name = "redscript"
-version = "0.5.27"
+version = "0.5.28"
 dependencies = [
  "byteorder",
  "crc32fast",
@@ -1423,7 +1423,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-cli"
-version = "0.5.27"
+version = "0.5.28"
 dependencies = [
  "anyhow",
  "argh",
@@ -1437,7 +1437,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-compiler"
-version = "0.5.27"
+version = "0.5.28"
 dependencies = [
  "enum-as-inner",
  "flexstr",
@@ -1455,7 +1455,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-decompiler"
-version = "0.5.27"
+version = "0.5.28"
 dependencies = [
  "hashbrown 0.15.2",
  "itertools 0.14.0",
@@ -1603,7 +1603,7 @@ dependencies = [
 
 [[package]]
 name = "scc"
-version = "0.5.27"
+version = "0.5.28"
 dependencies = [
  "anyhow",
  "bpaf",
@@ -1617,7 +1617,7 @@ dependencies = [
 
 [[package]]
 name = "scc-lib"
-version = "0.5.27"
+version = "0.5.28"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -1640,7 +1640,7 @@ dependencies = [
 
 [[package]]
 name = "scc-lib-tests"
-version = "0.5.27"
+version = "0.5.28"
 dependencies = [
  "assert_fs",
  "bindgen",
