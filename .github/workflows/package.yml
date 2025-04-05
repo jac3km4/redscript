@@ -9,6 +9,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: tree:0
       - run: rustup toolchain install stable --profile minimal --no-self-update
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --release
