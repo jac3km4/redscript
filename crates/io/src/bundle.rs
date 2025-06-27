@@ -809,8 +809,8 @@ pub enum SaveError {
 impl fmt::Display for SaveError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SaveError::Mmap(err) => write!(f, "mmap error: {}", err),
-            SaveError::Encoding(err) => write!(f, "encoding error: {}", err),
+            SaveError::Mmap(err) => write!(f, "mmap error: {err}"),
+            SaveError::Encoding(err) => write!(f, "encoding error: {err}"),
         }
     }
 }

@@ -158,7 +158,7 @@ struct NumberTypeRangeHint<'ctx>(TypeId<'ctx>);
 impl fmt::Display for NumberTypeRangeHint<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fn write_range<T: fmt::Display>(f: &mut fmt::Formatter<'_>, min: T, max: T) -> fmt::Result {
-            write!(f, ", provide a value between {} and {}", min, max)
+            write!(f, ", provide a value between {min} and {max}")
         }
         match self.0 {
             id if id == predef::UINT8 => write_range(f, u8::MIN, u8::MAX),
@@ -181,9 +181,9 @@ impl<T: fmt::Display + PartialEq> fmt::Display for DisplayRangeInclusive<'_, T> 
         let start = self.0.start();
         let end = self.0.end();
         if start == end {
-            write!(f, "{}", start)
+            write!(f, "{start}")
         } else {
-            write!(f, "between {} and {}", start, end)
+            write!(f, "between {start} and {end}")
         }
     }
 }

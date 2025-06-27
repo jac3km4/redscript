@@ -170,7 +170,7 @@ fn main() -> anyhow::Result<ExitCode> {
     fern::Dispatch::new()
         .format(move |out, message, record| {
             let level = colors.color(record.level());
-            out.finish(format_args!("[{}] {}", level, message));
+            out.finish(format_args!("[{level}] {message}"));
         })
         .chain(std::io::stdout())
         .apply()?;
@@ -330,7 +330,7 @@ fn format(opts: FormatOpts) -> anyhow::Result<ExitCode> {
         if opts.save {
             fs::write(file.path(), formatted)?;
         } else {
-            println!("{}", module);
+            println!("{module}");
         }
     }
 

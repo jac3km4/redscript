@@ -929,7 +929,7 @@ impl fmt::Display for MangledType<'_, '_> {
                     write!(f, "ref:")?;
                 }
                 if let Some(name) = agg.named_implementation(self.typ) {
-                    write!(f, "{}", name)
+                    write!(f, "{name}")
                 } else {
                     write!(f, "{}", self.typ)
                 }

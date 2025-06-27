@@ -8,7 +8,7 @@ fn formatted_files() {
     insta::glob!("data/*.reds", |path| {
         let current = env::current_dir().unwrap().canonicalize().unwrap();
         let relative = path.strip_prefix(&current).unwrap();
-        let sources = SourceMap::from_files(&[relative]).unwrap();
+        let sources = SourceMap::from_files([relative]).unwrap();
 
         let settings = FormatSettings::default();
         for (id, file) in sources.files() {

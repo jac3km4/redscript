@@ -39,7 +39,7 @@ impl fmt::Display for ErrorReport<'_> {
                     recommended steps:"
                 )?;
                 for hint in &source.hints {
-                    writeln!(f, "- {}", hint)?;
+                    writeln!(f, "- {hint}")?;
                 }
             } else {
                 writeln!(
@@ -88,7 +88,7 @@ impl CompilationFailure {
             .collect();
 
         let hints_config = UserHints::load(settings.user_hints_dir()).unwrap_or_else(|err| {
-            log::warn!("Failed to parse one of the user hints TOML files: {}", err);
+            log::warn!("Failed to parse one of the user hints TOML files: {err}");
             UserHints::default()
         });
 

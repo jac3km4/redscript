@@ -407,33 +407,33 @@ impl fmt::Display for Token<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Ident(s) | Self::LineComment(s) | Self::DocComment(s) | Self::BlockComment(s) => {
-                write!(f, "{}", s)
+                write!(f, "{s}")
             }
-            Self::Int(n) => write!(f, "{}", n),
-            Self::Uint(n) => write!(f, "{}u", n),
-            Self::Ulong(n) => write!(f, "{}ul", n),
-            Self::Long(n) => write!(f, "{}l", n),
-            Self::Float(n) => write!(f, "{}", n),
-            Self::Double(n) => write!(f, "{}d", n),
-            Self::Str(s) => write!(f, "\"{}\"", s),
-            Self::CName(s) => write!(f, "n\"{}\"", s),
-            Self::ResRef(s) => write!(f, "r\"{}\"", s),
-            Self::TdbId(s) => write!(f, "t\"{}\"", s),
+            Self::Int(n) => write!(f, "{n}"),
+            Self::Uint(n) => write!(f, "{n}u"),
+            Self::Ulong(n) => write!(f, "{n}ul"),
+            Self::Long(n) => write!(f, "{n}l"),
+            Self::Float(n) => write!(f, "{n}"),
+            Self::Double(n) => write!(f, "{n}d"),
+            Self::Str(s) => write!(f, "\"{s}\""),
+            Self::CName(s) => write!(f, "n\"{s}\""),
+            Self::ResRef(s) => write!(f, "r\"{s}\""),
+            Self::TdbId(s) => write!(f, "t\"{s}\""),
             Self::InterpStr(s) => {
                 write!(f, "s\"")?;
                 for (tok, _) in s {
-                    write!(f, "{}", tok)?;
+                    write!(f, "{tok}")?;
                 }
                 write!(f, "\"")
             }
             Self::LineFeed => writeln!(f),
             Self::Group(s) => {
                 for (tok, _) in s {
-                    write!(f, "\\({})", tok)?;
+                    write!(f, "\\({tok})")?;
                 }
                 Ok(())
             }
-            Self::StrFrag(s) => write!(f, "{}", s),
+            Self::StrFrag(s) => write!(f, "{s}"),
             Self::AssignAdd => write!(f, "+="),
             Self::AssignSub => write!(f, "-="),
             Self::AssignMul => write!(f, "*="),
