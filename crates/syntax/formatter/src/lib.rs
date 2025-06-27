@@ -573,9 +573,9 @@ impl<K: AstKind> Formattable for Expr<'_, K> {
                 let expr = (**expr).as_wrapped().as_fmt(ctx);
                 let typ = (**typ).as_wrapped().as_fmt(ctx);
                 if parenthesize {
-                    write!(f, "({} as {})", expr, typ)
+                    write!(f, "({expr} as {typ})")
                 } else {
-                    write!(f, "{} as {}", expr, typ)
+                    write!(f, "{expr} as {typ}")
                 }
             }
             Expr::New { typ, args } => {
@@ -594,9 +594,9 @@ impl<K: AstKind> Formattable for Expr<'_, K> {
                 let then = (**then).as_wrapped().as_fmt(ctx);
                 let else_ = (**else_).as_wrapped().as_fmt(ctx);
                 if parenthesize {
-                    write!(f, "({} ? {} : {})", cond, then, else_)
+                    write!(f, "({cond} ? {then} : {else_})")
                 } else {
-                    write!(f, "{} ? {} : {}", cond, then, else_)
+                    write!(f, "{cond} ? {then} : {else_}")
                 }
             }
             Expr::Lambda { params, body } => {
@@ -982,7 +982,7 @@ where
 
 impl Formattable for &str {
     fn format(&self, f: &mut fmt::Formatter<'_>, _ctx: FormatCtx<'_>) -> fmt::Result {
-        write!(f, "{}", self)
+        write!(f, "{self}")
     }
 }
 
@@ -1094,14 +1094,14 @@ fn format_chain<K: AstKind>(
                     writeln!(f)?;
                     write!(f, "{}", ctx.ws())?;
                 }
-                write!(f, ".{}", member)?;
+                write!(f, ".{member}")?;
             }
             Chain::Call(member, type_args, args) => {
                 if break_line {
                     writeln!(f)?;
                     write!(f, "{}", ctx.ws())?;
                 }
-                write!(f, ".{}", member)?;
+                write!(f, ".{member}")?;
                 format_call_args::<K>(type_args, args, f, ctx)?;
             }
             Chain::Index(index) => write!(f, "[{}]", index.as_fmt(ctx))?,

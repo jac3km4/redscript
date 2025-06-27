@@ -15,7 +15,7 @@ use redscript_io::{
 #[test]
 fn bytecode() {
     insta::glob!("data/*.reds", |path| {
-        let sources = SourceMap::from_files(&[path]).unwrap();
+        let sources = SourceMap::from_files([path]).unwrap();
         sources.populate_boot_lib();
 
         let interner = TypeInterner::default();
@@ -45,7 +45,7 @@ fn bytecode() {
             .monomorphize(&unit, &symbols, &mut bundle)
             .unwrap();
         insta::assert_snapshot!(BytecodePrinter::new(&bundle, bundle_len));
-    })
+    });
 }
 
 #[derive(Debug)]
@@ -172,91 +172,91 @@ impl fmt::Display for BytecodePrinter<'_> {
                     Instr::ArraySize(idx) => writeln!(f, "array.size {}", indices.type_(idx))?,
                     Instr::ArrayResize(idx) => writeln!(f, "array.resize {}", indices.type_(idx))?,
                     Instr::ArrayFindFirst(idx) => {
-                        writeln!(f, "array.find_first {}", indices.type_(idx))?
+                        writeln!(f, "array.find_first {}", indices.type_(idx))?;
                     }
                     Instr::ArrayFindFirstFast(idx) => {
-                        writeln!(f, "array.find_first_fast {}", indices.type_(idx))?
+                        writeln!(f, "array.find_first_fast {}", indices.type_(idx))?;
                     }
                     Instr::ArrayFindLast(idx) => {
-                        writeln!(f, "array.find_last {}", indices.type_(idx))?
+                        writeln!(f, "array.find_last {}", indices.type_(idx))?;
                     }
                     Instr::ArrayFindLastFast(idx) => {
-                        writeln!(f, "array.find_last_fast {}", indices.type_(idx))?
+                        writeln!(f, "array.find_last_fast {}", indices.type_(idx))?;
                     }
                     Instr::ArrayContains(idx) => {
-                        writeln!(f, "array.contains {}", indices.type_(idx))?
+                        writeln!(f, "array.contains {}", indices.type_(idx))?;
                     }
                     Instr::ArrayContainsFast(idx) => {
-                        writeln!(f, "array.contains_fast {}", indices.type_(idx))?
+                        writeln!(f, "array.contains_fast {}", indices.type_(idx))?;
                     }
                     Instr::ArrayCount(idx) => writeln!(f, "array.count {}", indices.type_(idx))?,
                     Instr::ArrayCountFast(idx) => {
-                        writeln!(f, "array.count_fast {}", indices.type_(idx))?
+                        writeln!(f, "array.count_fast {}", indices.type_(idx))?;
                     }
                     Instr::ArrayPush(idx) => writeln!(f, "array.push {}", indices.type_(idx))?,
                     Instr::ArrayPop(idx) => writeln!(f, "array.pop {}", indices.type_(idx))?,
                     Instr::ArrayInsert(idx) => writeln!(f, "array.insert {}", indices.type_(idx))?,
                     Instr::ArrayRemove(idx) => writeln!(f, "array.remove {}", indices.type_(idx))?,
                     Instr::ArrayRemoveFast(idx) => {
-                        writeln!(f, "array.remove_fast {}", indices.type_(idx))?
+                        writeln!(f, "array.remove_fast {}", indices.type_(idx))?;
                     }
                     Instr::ArrayGrow(idx) => writeln!(f, "array.grow {}", indices.type_(idx))?,
                     Instr::ArrayErase(idx) => writeln!(f, "array.erase {}", indices.type_(idx))?,
                     Instr::ArrayEraseFast(idx) => {
-                        writeln!(f, "array.erase_fast {}", indices.type_(idx))?
+                        writeln!(f, "array.erase_fast {}", indices.type_(idx))?;
                     }
                     Instr::ArrayLast(idx) => writeln!(f, "array.last {}", indices.type_(idx))?,
                     Instr::ArrayElement(idx) => {
-                        writeln!(f, "array.element {}", indices.type_(idx))?
+                        writeln!(f, "array.element {}", indices.type_(idx))?;
                     }
                     Instr::ArraySort(idx) => writeln!(f, "array.sort {}", indices.type_(idx))?,
                     Instr::ArraySortByPredicate(idx) => {
-                        writeln!(f, "array.sort_by {}", indices.type_(idx))?
+                        writeln!(f, "array.sort_by {}", indices.type_(idx))?;
                     }
                     Instr::StaticArraySize(idx) => {
-                        writeln!(f, "static_array.size {}", indices.type_(idx))?
+                        writeln!(f, "static_array.size {}", indices.type_(idx))?;
                     }
                     Instr::StaticArrayFindFirst(idx) => {
-                        writeln!(f, "static_array.find_first {}", indices.type_(idx))?
+                        writeln!(f, "static_array.find_first {}", indices.type_(idx))?;
                     }
                     Instr::StaticArrayFindFirstFast(idx) => {
-                        writeln!(f, "static_array.find_first_fast {}", indices.type_(idx))?
+                        writeln!(f, "static_array.find_first_fast {}", indices.type_(idx))?;
                     }
                     Instr::StaticArrayFindLast(idx) => {
-                        writeln!(f, "static_array.find_last {}", indices.type_(idx))?
+                        writeln!(f, "static_array.find_last {}", indices.type_(idx))?;
                     }
                     Instr::StaticArrayFindLastFast(idx) => {
-                        writeln!(f, "static_array.find_last_fast {}", indices.type_(idx))?
+                        writeln!(f, "static_array.find_last_fast {}", indices.type_(idx))?;
                     }
                     Instr::StaticArrayContains(idx) => {
-                        writeln!(f, "static_array.contains {}", indices.type_(idx))?
+                        writeln!(f, "static_array.contains {}", indices.type_(idx))?;
                     }
                     Instr::StaticArrayContainsFast(idx) => {
-                        writeln!(f, "static_array.contains_fast {}", indices.type_(idx))?
+                        writeln!(f, "static_array.contains_fast {}", indices.type_(idx))?;
                     }
                     Instr::StaticArrayCount(idx) => {
-                        writeln!(f, "static_array.count {}", indices.type_(idx))?
+                        writeln!(f, "static_array.count {}", indices.type_(idx))?;
                     }
                     Instr::StaticArrayCountFast(idx) => {
-                        writeln!(f, "static_array.count_fast {}", indices.type_(idx))?
+                        writeln!(f, "static_array.count_fast {}", indices.type_(idx))?;
                     }
                     Instr::StaticArrayLast(idx) => {
-                        writeln!(f, "static_array.last {}", indices.type_(idx))?
+                        writeln!(f, "static_array.last {}", indices.type_(idx))?;
                     }
                     Instr::StaticArrayElement(idx) => {
-                        writeln!(f, "static_array.element {}", indices.type_(idx))?
+                        writeln!(f, "static_array.element {}", indices.type_(idx))?;
                     }
                     Instr::EnumToI32 { enum_type, size } => {
-                        writeln!(f, "enum.to_int {} {}", indices.type_(enum_type), size)?
+                        writeln!(f, "enum.to_int {} {}", indices.type_(enum_type), size)?;
                     }
                     Instr::I32ToEnum { enum_type, size } => {
-                        writeln!(f, "enum.from_int {} {}", indices.type_(enum_type), size)?
+                        writeln!(f, "enum.from_int {} {}", indices.type_(enum_type), size)?;
                     }
                     Instr::DynamicCast { class, is_weak } if is_weak => {
-                        writeln!(f, "wref.dyncast {}", indices.class(class))?
+                        writeln!(f, "wref.dyncast {}", indices.class(class))?;
                     }
                     Instr::DynamicCast { class, .. } => {
-                        writeln!(f, "ref.dyncast {}", indices.class(class))?
+                        writeln!(f, "ref.dyncast {}", indices.class(class))?;
                     }
                     Instr::ToString(idx) => {
                         writeln!(f, "to_string {}", indices.type_(idx))?;
@@ -273,7 +273,7 @@ impl fmt::Display for BytecodePrinter<'_> {
                     Instr::Deref(idx) => {
                         writeln!(f, "deref {}", indices.type_(idx))?;
                     }
-                    other => writeln!(f, "{}", other)?,
+                    other => writeln!(f, "{other}")?,
                 }
             }
 

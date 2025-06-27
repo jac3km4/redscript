@@ -119,7 +119,7 @@ impl<'ctx> Diagnostics<'ctx> {
                 warnings += 1;
             }
         }
-        log::info!("Completed with {} warnings and {} errors", warnings, errors);
+        log::info!("Completed with {warnings} warnings and {errors} errors");
         Ok(())
     }
 
@@ -154,7 +154,7 @@ impl<'ctx> From<Vec<Diagnostic<'ctx>>> for Diagnostics<'ctx> {
 
 impl fmt::Display for Diagnostics<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.into_iter().try_for_each(|d| writeln!(f, "{}", d))
+        self.into_iter().try_for_each(|d| writeln!(f, "{d}"))
     }
 }
 
