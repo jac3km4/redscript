@@ -22,7 +22,7 @@ jobs:
       - if: ${{ inputs.os == 'windows-latest' }}
         run: .\resources\package.ps1 -stagingDir ${{ runner.temp }}/redscript-staging -archiveName $ARCHIVE_NAME
       - if: ${{ inputs.os != 'windows-latest' }}
-        run: ./resources/package.sh -stagingDir "${{ runner.temp }}/redscript-staging" -archiveName "$ARCHIVE_NAME"
+        run: ./resources/package.sh "${{ runner.temp }}/redscript-staging" "$ARCHIVE_NAME"
       - uses: actions/upload-artifact@v4
         name: Upload artifacts
         with:
