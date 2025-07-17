@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ "*.*.x" ]
+    branches: ["*.*.x"]
   pull_request:
 
 env:
@@ -24,7 +24,7 @@ jobs:
           shared-key: "stable"
           cache-on-failure: true
       - run: cargo clippy
-  
+
   rustfmt:
     name: Check formatting
     runs-on: windows-latest
@@ -65,28 +65,22 @@ jobs:
         with:
           shared-key: "stable"
           cache-on-failure: true
-      - run:  |
+      - run: |
           cargo build
           cargo test
 
   build:
-    name: Build & upload artifacts
-    runs-on: windows-latest
-    env:
-      ARCHIVE_NAME: redscript-${{ github.ref_name }}.zip
-
-    steps:
-      - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Build and package the mod archive
-        run: .\resources\package.ps1 -stagingDir ${{ runner.temp }}/redscript-staging -archiveName ${{ env.ARCHIVE_NAME }}
-
-      - name: Archive artifacts
-        uses: actions/upload-artifact@v4
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-        with:
-          path: |
-            ${{ env.MOD_ARTIFACT_PATH }}
-            ./target/release/redscript-cli.exe
+    uses: ./.github/workflows/build.yml
+    strategy:
+      matrix:
+        os:
+          - windows-latest
+          - macos-14
+        include:
+          - os: windows-latest
+            suffix: windows
+          - os: macos-14
+            suffix: macos
+    with:
+      os: ${{ matrix.os }}
+      suffix: ${{ matrix.suffix }}

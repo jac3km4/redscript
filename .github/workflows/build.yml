@@ -1,0 +1,36 @@
+on:
+  workflow_call:
+    inputs:
+      os:
+        required: true
+        type: string
+      suffix:
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: ${{ inputs.os }}
+    env:
+      ARCHIVE_NAME: redscript-${{ github.ref_name }}-${{ inputs.suffix }}.zip
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-${{ inputs.os }}
+      - if: ${{ inputs.os == 'windows-latest' }}
+        run: .\resources\package.ps1 -stagingDir ${{ runner.temp }}/redscript-staging -archiveName $ARCHIVE_NAME
+      - if: ${{ inputs.os != 'windows-latest' }}
+        run: ./resources/package.sh -stagingDir "${{ runner.temp }}/redscript-staging" -archiveName "$ARCHIVE_NAME"
+      - uses: actions/upload-artifact@v4
+        name: Upload artifacts
+        with:
+          path: |
+            target/release/scc.exe
+            target/release/scc_lib.dll
+            target/release/scc
+            target/release/libscc_lib.so
+            target/release/libscc_lib.dylib
+          name: artifact-${{ inputs.os }}
+          if-no-files-found: error
