@@ -27,10 +27,8 @@ jobs:
         name: Upload artifacts
         with:
           path: |
-            target/release/scc.exe
-            target/release/scc_lib.dll
-            target/release/scc
-            target/release/libscc_lib.so
-            target/release/libscc_lib.dylib
+            target/release/redscript-cli.exe
+            target/release/redscript-cli
+            ${{ runner.temp }}/redscript-staging/${{ env.ARCHIVE_NAME }}
           name: artifact-${{ inputs.os }}
           if-no-files-found: error
