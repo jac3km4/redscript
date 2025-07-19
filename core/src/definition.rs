@@ -484,7 +484,7 @@ impl Decode for Type {
             4 => Ok(Type::Array(input.decode()?)),
             5 => Ok(Type::StaticArray(input.decode()?, input.decode()?)),
             6 => Ok(Type::ScriptRef(input.decode()?)),
-            _ => panic!("Unknown Type enum value {}", tag),
+            _ => panic!("Unknown Type enum value {tag}"),
         }
     }
 }
@@ -746,7 +746,7 @@ impl Encode for FunctionFlags {
     }
 }
 
-#[derive(BitfieldSpecifier)]
+#[derive(Specifier)]
 #[bits = 8]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Visibility {

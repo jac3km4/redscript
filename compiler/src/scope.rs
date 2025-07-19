@@ -274,7 +274,7 @@ impl Scope {
             },
             Type::Class => {
                 let name = pool.def_name(index)?;
-                let ident = Ident::from_ref(name.split('.').last().unwrap());
+                let ident = Ident::from_ref(name.split('.').next_back().unwrap());
                 match self.symbols.find(&ident) {
                     Some(Symbol::Class(class_idx, _)) => TypeId::Class(*class_idx),
                     Some(Symbol::Struct(struct_idx, _)) => TypeId::Struct(*struct_idx),

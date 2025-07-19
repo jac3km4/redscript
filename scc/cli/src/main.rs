@@ -5,10 +5,7 @@ use std::process::ExitCode;
 
 use anyhow::Context;
 use bpaf::ParseFailure;
-use opts::{fix_args, Opts};
-#[cfg(test)]
-#[allow(unused)]
-use rstest_reuse;
+use opts::{Opts, fix_args};
 use scc_lib::api::{SccOutput, SccResult, SccSettings};
 
 mod opts;
@@ -23,11 +20,11 @@ fn main() -> ExitCode {
     ) {
         Ok(opts) => opts,
         Err(ParseFailure::Stdout(out)) => {
-            println!("{}", out);
+            println!("{out}");
             return ExitCode::SUCCESS;
         }
         Err(ParseFailure::Stderr(out)) => {
-            eprintln!("{}", out);
+            eprintln!("{out}");
             return ExitCode::FAILURE;
         }
     };
@@ -42,7 +39,7 @@ fn main() -> ExitCode {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::FAILURE,
         Err(err) => {
-            eprintln!("{}", err);
+            eprintln!("{err}");
 
             // any error reported here is an unexpected critical failure, and this CLI wrapper
             // has no access to the logger, so we just write the error to a new log file

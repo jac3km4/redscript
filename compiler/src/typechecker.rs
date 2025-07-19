@@ -2,11 +2,11 @@ use std::iter;
 use std::ops::Not;
 use std::str::FromStr;
 
-use itertools::{izip, Itertools};
+use itertools::{Itertools, izip};
+use redscript::Ref;
 use redscript::ast::{Constant, Expr, Ident, Intrinsic, Literal, NameKind, Seq, SourceAst, Span, SwitchCase, TypeName};
 use redscript::bundle::{ConstantPool, PoolError, PoolIndex};
 use redscript::definition::{Class, Definition, Enum, Field, Function, Local, LocalFlags};
-use redscript::Ref;
 use thiserror::Error;
 
 use crate::diagnostics::{Deprecation, Diagnostic};
@@ -682,7 +682,7 @@ impl<'a> TypeChecker<'a> {
                 self.report(err)?;
 
                 let dummy_args: Vec<_> = args.map(|expr| self.check(expr, None, scope)).try_collect()?;
-                let convs = iter::repeat(ArgConversion::identity()).take(dummy_args.len()).collect();
+                let convs = std::iter::repeat_n(ArgConversion::identity(), dummy_args.len()).collect();
                 Ok(FunctionMatch::new(overloads.functions[0], dummy_args, convs, false))
             }
             Err(err) => Err(err),

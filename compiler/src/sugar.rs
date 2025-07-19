@@ -1,15 +1,15 @@
 use std::vec;
 
+use redscript::Ref;
 use redscript::ast::{BinOp, Constant, Expr, Ident, Intrinsic, Literal, Seq, Span, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::definition::{Definition, Local, LocalFlags};
-use redscript::Ref;
 
 use crate::error::{Cause, Error, ResultSpan};
 use crate::scope::{Reference, Scope, TypeId, Value};
 use crate::symbol::{FunctionSignature, FunctionSignatureBuilder};
 use crate::transform::ExprTransformer;
-use crate::typechecker::{type_of, Callable, TypedAst, TypedExpr};
+use crate::typechecker::{Callable, TypedAst, TypedExpr, type_of};
 
 pub struct Desugar<'a> {
     pool: &'a mut ConstantPool,

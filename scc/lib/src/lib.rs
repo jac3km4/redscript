@@ -40,7 +40,7 @@ pub fn compile(settings: &SccSettings) -> Box<SccResult> {
     match try_compile(settings) {
         Ok(output) => Box::new(output),
         Err(err) => {
-            log::error!("{}", err);
+            log::error!("{err}");
             Box::new(SccResult::Error(err))
         }
     }
@@ -230,7 +230,7 @@ fn try_compile_files(
         }
         Err(err) => {
             let hints = UserHints::load(r6_dir.join("config").join(USER_HINTS_DIR)).unwrap_or_else(|err| {
-                log::error!("Failed to parse one of the user hints TOML files: {}", err);
+                log::error!("Failed to parse one of the user hints TOML files: {err}");
                 UserHints::default()
             });
 
@@ -332,7 +332,7 @@ impl fmt::Display for ErrorReport {
         if !offending_mods.is_empty() {
             writeln!(f, "This error has been caused by mods listed below:")?;
             for mod_ in &offending_mods {
-                writeln!(f, "- {}", mod_)?;
+                writeln!(f, "- {mod_}")?;
             }
         }
         if !hints_matched.is_empty() {

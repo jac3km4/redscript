@@ -7,8 +7,8 @@ use redscript::bundle::ConstantPool;
 use redscript::bytecode::Instr;
 use redscript::definition::{AnyDefinition, Definition, Function, Type};
 
-use crate::error::Error;
 use crate::Decompiler;
+use crate::error::Error;
 
 const INDENT_CHAR: char = ' ';
 const INDENT_SIZE: usize = 2;
@@ -69,7 +69,7 @@ pub fn write_definition<W: Write>(
             for method_index in &class.functions {
                 let method = pool.definition(*method_index)?;
                 if let Err(err) = write_definition(out, method, pool, depth + 1, mode) {
-                    log::error!("Method decompilation {} failed (caused by {})", method_index, err);
+                    log::error!("Method decompilation {method_index} failed (caused by {err})");
                 }
             }
             writeln!(out, "}}")?;
@@ -77,7 +77,7 @@ pub fn write_definition<W: Write>(
         AnyDefinition::EnumValue(val) => {
             let name = pool.names.get(definition.name)?;
             write_indent(out, depth)?;
-            writeln!(out, "{} = {},", name, val)?;
+            writeln!(out, "{name} = {val},")?;
         }
         AnyDefinition::Enum(enum_) => {
             writeln!(out)?;
@@ -128,7 +128,7 @@ pub fn write_definition<W: Write>(
             if fun.flags.is_callback() {
                 write!(out, "cb ")?;
             }
-            write!(out, "func {}({}) -> {}", pretty_name, params, return_type)?;
+            write!(out, "func {pretty_name}({params}) -> {return_type}")?;
 
             if fun.flags.has_body() {
                 write_function_body(out, fun, definition, pool, depth, mode)?;
@@ -147,7 +147,7 @@ pub fn write_definition<W: Write>(
             } else {
                 write!(out, "let ")?;
             }
-            write!(out, "{}: {};", name, type_name)?;
+            write!(out, "{name}: {type_name};")?;
         }
         AnyDefinition::Field(field) => {
             let type_name = format_type(pool.definition(field.type_)?, pool)?;
@@ -184,7 +184,7 @@ pub fn write_definition<W: Write>(
             if field.flags.is_const() {
                 write!(out, "const ")?;
             }
-            writeln!(out, "let {}: {};", field_name, type_name)?;
+            writeln!(out, "let {field_name}: {type_name};")?;
         }
         AnyDefinition::SourceFile(_) => panic!(),
     }
@@ -209,7 +209,7 @@ fn write_function_body<W: Write>(
             let code = Decompiler::decompiled(fun, def, pool)?;
             for expr in code.exprs {
                 write_indent(out, depth + 1)?;
-                writeln!(out, "{:#?}", expr)?;
+                writeln!(out, "{expr:#?}")?;
             }
         }
         OutputMode::Bytecode => {
@@ -218,7 +218,7 @@ fn write_function_body<W: Write>(
                 writeln!(out)?;
             }
             for (offset, instr) in fun.code.iter() {
-                let op = format!("{:?}", instr).to_lowercase();
+                let op = format!("{instr:?}").to_lowercase();
                 write_indent(out, depth + 1)?;
                 match instr {
                     Instr::InvokeStatic(_, _, fun, _) => {
@@ -259,18 +259,18 @@ fn write_expr_nested<W: Write>(
     depth: usize,
 ) -> Result<(), Error> {
     match expr {
-        Expr::Ident(ident, _) => write!(out, "{}", ident)?,
+        Expr::Ident(ident, _) => write!(out, "{ident}")?,
         Expr::Constant(cons, _) => match cons {
             Constant::String(Literal::String, str) => write!(out, "\"{}\"", str::escape_default(str))?,
             Constant::String(Literal::Name, str) => write!(out, "n\"{}\"", str::escape_default(str))?,
             Constant::String(Literal::Resource, str) => write!(out, "r\"{}\"", str::escape_default(str))?,
             Constant::String(Literal::TweakDbId, str) => write!(out, "t\"{}\"", str::escape_default(str))?,
-            Constant::I32(lit) => write!(out, "{}", lit)?,
-            Constant::I64(lit) => write!(out, "{}l", lit)?,
-            Constant::U32(lit) => write!(out, "{}u", lit)?,
-            Constant::U64(lit) => write!(out, "{}u", lit)?,
-            Constant::F32(lit) => write!(out, "{:.2}", lit)?,
-            Constant::F64(lit) => write!(out, "{:.2}d", lit)?,
+            Constant::I32(lit) => write!(out, "{lit}")?,
+            Constant::I64(lit) => write!(out, "{lit}l")?,
+            Constant::U32(lit) => write!(out, "{lit}u")?,
+            Constant::U64(lit) => write!(out, "{lit}u")?,
+            Constant::F32(lit) => write!(out, "{lit:.2}")?,
+            Constant::F64(lit) => write!(out, "{lit:.2}d")?,
             Constant::Bool(true) => write!(out, "true")?,
             Constant::Bool(false) => write!(out, "false")?,
         },
@@ -286,7 +286,7 @@ fn write_expr_nested<W: Write>(
             }
         }
         Expr::Declare(name, type_, val, _) => {
-            write!(out, "let {}", name)?;
+            write!(out, "let {name}")?;
             if let Some(type_) = type_ {
                 write!(out, ": {}", type_.pretty())?;
             }
@@ -313,7 +313,7 @@ fn write_expr_nested<W: Write>(
             write!(out, "]")?;
         }
         Expr::New(ident, params, _) => {
-            write!(out, "new {}(", ident)?;
+            write!(out, "new {ident}(")?;
             if !params.is_empty() {
                 for param in params.iter().take(params.len() - 1) {
                     write_expr(out, param, verbose, depth)?;
@@ -380,7 +380,7 @@ fn write_expr_nested<W: Write>(
         }
         Expr::Member(expr, accessor, _) => {
             write_expr(out, expr, verbose, 0)?;
-            write!(out, ".{}", accessor)?;
+            write!(out, ".{accessor}")?;
         }
         Expr::BinOp(lhs, rhs, op, _) => {
             write_binop(out, lhs, rhs, *op, verbose)?;
@@ -427,7 +427,7 @@ fn write_call<W: Write>(
     } else if (fun_name == "WeakRefToRef" || fun_name == "RefToWeakRef" || fun_name == "AsRef") && !verbose {
         write_expr(out, &params[0], verbose, 0)
     } else {
-        write!(out, "{}", fun_name)?;
+        write!(out, "{fun_name}")?;
         if !type_params.is_empty() {
             write!(out, "<{}>", type_params.iter().map(TypeName::pretty).format(", "))?;
         }

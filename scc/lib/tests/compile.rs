@@ -68,7 +68,12 @@ fn timestamp_migration() -> Result<(), Box<dyn std::error::Error>> {
 
     let ts_path = temp.child("redscript.ts");
     let bundle_file = File::open(&bundle_path)?;
-    let mut ts_file = OpenOptions::new().read(true).write(true).create(true).open(&ts_path)?;
+    let mut ts_file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&ts_path)?;
     CompileTimestamp::of_cache_file(&bundle_file)?.write(&mut ts_file)?;
 
     let script_path = temp.child("test.reds");

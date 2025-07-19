@@ -8,11 +8,11 @@ use itertools::chain;
 use modular_bitfield::prelude::*;
 use thiserror::Error;
 
+use crate::Ref;
 use crate::decode::{Decode, DecodeExt};
 use crate::definition::{AnyDefinition, Class, Definition, Enum, Field, Function, Local, Parameter, Type};
 use crate::encode::{Encode, EncodeExt};
 use crate::io::StreamOffset;
-use crate::Ref;
 
 #[derive(Debug)]
 pub struct ScriptBundle {
@@ -557,7 +557,7 @@ impl Encode for DefinitionHeader {
     }
 }
 
-#[derive(BitfieldSpecifier)]
+#[derive(Specifier)]
 #[bits = 8]
 #[derive(Debug, Clone, Copy)]
 pub enum DefinitionType {

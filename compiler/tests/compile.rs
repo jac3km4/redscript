@@ -318,8 +318,7 @@ fn fail_on_instance_call_of_static_method() {
             &errs[..],
             &[Diagnostic::CompileError(Cause::InvalidStaticMethodCall, _)]
         ),
-        "{:?}",
-        errs
+        "{errs:?}"
     );
 }
 
@@ -341,8 +340,7 @@ fn fail_on_static_call_of_instance_method() {
             &errs[..],
             &[Diagnostic::CompileError(Cause::InvalidNonStaticMethodCall, _)]
         ),
-        "{:?}",
-        errs
+        "{errs:?}"
     );
 }
 
@@ -365,8 +363,7 @@ fn fail_with_extra_arg_on_static_receiver() {
             &errs[..],
             &[Diagnostic::CompileError(Cause::NoMatchingOverload(_, _), _)]
         ),
-        "{:?}",
-        errs
+        "{errs:?}"
     );
 }
 
@@ -399,8 +396,7 @@ fn fail_on_bad_variant_ops() {
                 Diagnostic::InvalidUseOfTemporary(_),
             ]
         ),
-        "{:?}",
-        errs
+        "{errs:?}"
     );
 }
 
@@ -416,7 +412,7 @@ fn fail_on_nonprim_sort() {
     "#;
 
     let (_, errs) = compiled(vec![sources]).unwrap();
-    assert!(matches!(&errs[..], &[Diagnostic::InvalidSortType(_),]), "{:?}", errs);
+    assert!(matches!(&errs[..], &[Diagnostic::InvalidSortType(_),]), "{errs:?}");
 }
 
 #[test]
@@ -436,8 +432,7 @@ fn fail_invalid_dyn_cast() {
     let errs = errs.into_iter().filter(Diagnostic::is_fatal).collect_vec();
     assert!(
         matches!(&errs[..], &[Diagnostic::CompileError(Cause::NonClassRef(_), _)]),
-        "{:?}",
-        errs
+        "{errs:?}"
     );
 }
 
@@ -456,8 +451,7 @@ fn warn_pointless_dyn_cast() {
     let (_, errs) = compiled(vec![sources]).unwrap();
     assert!(
         matches!(&errs[..], &[Diagnostic::PointlessDynCast(_, _, _)]),
-        "{:?}",
-        errs
+        "{errs:?}"
     );
 }
 
@@ -476,7 +470,6 @@ fn warn_redundant_dyn_cast() {
     let (_, errs) = compiled(vec![sources]).unwrap();
     assert!(
         matches!(&errs[..], &[Diagnostic::RedundantDynCast(_, _, _)]),
-        "{:?}",
-        errs
+        "{errs:?}"
     );
 }

@@ -24,8 +24,7 @@ impl TestContext {
         let (pool, diagnostics) = compiled(sources)?;
         assert!(
             !diagnostics.iter().any(Diagnostic::is_fatal),
-            "Fatal errors: {:?}",
-            diagnostics
+            "Fatal errors: {diagnostics:?}"
         );
         let res = Self {
             pool,
@@ -38,7 +37,7 @@ impl TestContext {
     pub fn match_index(&mut self, idx: PoolIndex<Definition>, name: &str) {
         match self.indexes.get(name) {
             Some(val) if *val == idx => (),
-            Some(val) => panic!("{} is {}, expected {}", name, val, idx),
+            Some(val) => panic!("{name} is {val}, expected {idx}"),
             None => {
                 self.indexes.insert(name.to_owned(), idx);
             }
@@ -138,10 +137,10 @@ pub fn check_class_flags(pool: &ConstantPool, name: &str, flags: ClassFlags) -> 
         .find(|(_, def)| def.name == name_index)
         .map(|(_, def)| &def.value);
 
-    if let Some(AnyDefinition::Class(ref class)) = match_ {
+    if let Some(AnyDefinition::Class(class)) = match_ {
         assert_eq!(class.flags, flags);
     } else {
-        panic!("Class definition {} not found in the pool", name)
+        panic!("Class definition {name} not found in the pool")
     }
     Ok(())
 }

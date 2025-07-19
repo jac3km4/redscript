@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
-use redscript::ast::{BinOp, Constant, Expr, NameKind, Seq, Span, SwitchCase, Target, UnOp};
 use redscript::Ref;
+use redscript::ast::{BinOp, Constant, Expr, NameKind, Seq, Span, SwitchCase, Target, UnOp};
 
 use crate::error::Error;
 use crate::typechecker::{TypedAst, TypedExpr};

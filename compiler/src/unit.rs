@@ -4,12 +4,12 @@ use std::path::PathBuf;
 
 use hashbrown::{HashMap, HashSet};
 use itertools::Itertools;
+use redscript::Ref;
 use redscript::ast::{Constant, Expr, Ident, Literal, Pos, Seq, SourceAst, Span, TypeName};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::bytecode::{Code, Instr};
 use redscript::definition::*;
 use redscript::mapper::{Mapper, MultiMapper, PoolMapper};
-use redscript::Ref;
 
 use crate::assembler::Assembler;
 use crate::cte;
@@ -26,7 +26,7 @@ use crate::source_map::{Files, SourceLoc};
 use crate::sugar::Desugar;
 use crate::symbol::{FunctionSignature, Import, ModulePath, Symbol, SymbolMap};
 use crate::transform::ExprTransformer;
-use crate::typechecker::{collect_supertypes, Callable, TypeChecker, TypedAst};
+use crate::typechecker::{Callable, TypeChecker, TypedAst, collect_supertypes};
 
 type ProxyMap = HashMap<PoolIndex<Function>, PoolIndex<Function>>;
 
@@ -567,7 +567,7 @@ impl<'a> CompilationUnit<'a> {
         if is_native && spec.class_flags.is_some_and(|f| !f.is_native()) {
             self.report(Cause::UnexpectedNative.with_span(spec.source.declaration.span))?;
         }
-        if !is_native && spec.class_flags.map_or(true, |f| !f.is_abstract()) && spec.source.body.is_none() {
+        if !is_native && spec.class_flags.is_none_or(|f| !f.is_abstract()) && spec.source.body.is_none() {
             self.report(Cause::MissingBody.with_span(spec.source.declaration.span))?;
         }
         if is_native && spec.source.body.is_some() {
@@ -715,8 +715,13 @@ impl<'a> CompilationUnit<'a> {
             .iter()
             .filter(|ann| ann.kind == AnnotationKind::RuntimeProperty)
             .map(|ann| match &ann.args[..] {
-                [Expr::Constant(Constant::String(Literal::String, key), _), Expr::Constant(Constant::String(Literal::String, val), _)] =>
-                    Ok(Property { name: key.as_ref().to_owned(), value: val.as_ref().to_owned() }),
+                [
+                    Expr::Constant(Constant::String(Literal::String, key), _),
+                    Expr::Constant(Constant::String(Literal::String, val), _),
+                ] => Ok(Property {
+                    name: key.as_ref().to_owned(),
+                    value: val.as_ref().to_owned(),
+                }),
                 _ => Err(Cause::InvalidAnnotationArgs.with_span(ann.span)),
             })
             .collect::<Result<_, Error>>()?;
@@ -1101,7 +1106,7 @@ impl<'a> CompilationUnit<'a> {
                 },
                 Expr::Member(receiver, name, _) => {
                     if let Expr::Ident(receiver_name, _) = receiver.as_ref() {
-                        Ok(format!("{}.{}", receiver_name, name))
+                        Ok(format!("{receiver_name}.{name}"))
                     } else {
                         Err(Cause::InvalidConstant.with_span(expr.span()))
                     }

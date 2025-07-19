@@ -22,7 +22,7 @@ fn does_always_return(expr: &TypedExpr) -> bool {
         Expr::Seq(seq) => does_seq_return(seq),
         Expr::Switch(_, cases, default, _) => {
             let cases_return = cases.iter().all(|case| does_seq_return(&case.body));
-            let default_returns = default.as_ref().map_or(true, does_seq_return);
+            let default_returns = default.as_ref().is_none_or(does_seq_return);
             cases_return && default_returns
         }
         Expr::If(_, if_, Some(else_), _) => {

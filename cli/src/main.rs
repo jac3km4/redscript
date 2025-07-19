@@ -10,7 +10,7 @@ use redscript::definition::AnyDefinition;
 use redscript_compiler::source_map::Files;
 use redscript_compiler::unit::CompilationUnit;
 use redscript_decompiler::files::FileIndex;
-use redscript_decompiler::print::{write_definition, OutputMode};
+use redscript_decompiler::print::{OutputMode, write_definition};
 use vmap::Map;
 
 /// redscript command line interface
@@ -81,7 +81,7 @@ fn main() -> anyhow::Result<()> {
     setup_logger();
 
     run().map_err(|err| {
-        log::error!("{}", err);
+        log::error!("{err}");
         err
     })
 }

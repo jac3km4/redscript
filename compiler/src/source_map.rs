@@ -90,7 +90,7 @@ impl Files {
     }
 }
 
-fn dir_file_iter(path: &Path) -> impl Iterator<Item = PathBuf> {
+fn dir_file_iter(path: &Path) -> impl Iterator<Item = PathBuf> + use<> {
     if path.is_file() {
         Either::Left(iter::once(path.to_path_buf()))
     } else {

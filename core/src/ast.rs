@@ -7,8 +7,8 @@ use itertools::Itertools;
 use strum::{Display, EnumString, IntoStaticStr};
 
 use super::str_fmt;
-use crate::bytecode::Location;
 use crate::Ref;
+use crate::bytecode::Location;
 
 #[derive(Debug, EnumAsInner)]
 pub enum Expr<Name>

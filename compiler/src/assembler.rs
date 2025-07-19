@@ -8,7 +8,7 @@ use crate::error::{Cause, Error, ResultSpan};
 use crate::scope::{Reference, Scope, TypeId, Value};
 use crate::source_map::Files;
 use crate::symbol::Symbol;
-use crate::typechecker::{type_of, Callable, Member, TypedAst, TypedExpr, TypedExprExt};
+use crate::typechecker::{Callable, Member, TypedAst, TypedExpr, TypedExprExt, type_of};
 
 pub struct Assembler<'a> {
     files: &'a Files,
@@ -293,7 +293,7 @@ impl<'a> Assembler<'a> {
             }
             Expr::ArrayLit(_, _, span) => return Err(Cause::UnsupportedFeature("ArrayLit").with_span(span)),
             Expr::InterpolatedString(_, _, span) => {
-                return Err(Cause::UnsupportedFeature("InterpolatedString").with_span(span))
+                return Err(Cause::UnsupportedFeature("InterpolatedString").with_span(span));
             }
             Expr::ForIn(_, _, _, span) => return Err(Cause::UnsupportedFeature("For-in").with_span(span)),
             Expr::BinOp(_, _, _, span) => return Err(Cause::UnsupportedFeature("BinOp").with_span(span)),

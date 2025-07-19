@@ -187,7 +187,7 @@ impl Cause {
                     "the name of this type conflicts with a type defined in pre-compiled scripts"
                 )
             }
-            other => write!(f, "{}", other),
+            other => write!(f, "{other}"),
         })
     }
 }

@@ -36,7 +36,7 @@ pub fn fix_args(args: Vec<String>) -> Vec<String> {
                 }
             } else {
                 let last = fixed_args.last_mut().unwrap();
-                *last = format!("{} {}", last, broken_arg);
+                *last = format!("{last} {broken_arg}");
             }
         }
         if contains_quote {
@@ -233,6 +233,7 @@ impl Opts {
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_arguments)]
 mod test {
     use std::path::PathBuf;
 

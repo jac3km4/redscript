@@ -12,57 +12,67 @@ use crate::compile;
 
 /// # Safety
 /// The caller must ensure that `r6_dir` is a valid null-terminated UTF-8 string.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn scc_settings_new(r6_dir: *const i8) -> Box<SccSettings> {
-    Box::new(SccSettings {
-        r6_dir: PathBuf::from(CStr::from_ptr(r6_dir).to_string_lossy().as_ref()).into_boxed_path(),
-        custom_cache_file: None,
-        output_cache_file: None,
-        additional_script_paths: vec![],
-        show_error_popup: true,
-    })
+    unsafe {
+        Box::new(SccSettings {
+            r6_dir: PathBuf::from(CStr::from_ptr(r6_dir).to_string_lossy().as_ref()).into_boxed_path(),
+            custom_cache_file: None,
+            output_cache_file: None,
+            additional_script_paths: vec![],
+            show_error_popup: true,
+        })
+    }
 }
 
 /// # Safety
 /// The caller must ensure that `settings` is a valid pointer to a `SccSettings` struct and
 /// `path` is a valid null-terminated UTF-8 string.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn scc_settings_set_custom_cache_file(settings: &mut SccSettings, path: *const i8) {
-    settings.custom_cache_file = Some(PathBuf::from(CStr::from_ptr(path).to_string_lossy().as_ref()).into_boxed_path());
+    unsafe {
+        settings.custom_cache_file =
+            Some(PathBuf::from(CStr::from_ptr(path).to_string_lossy().as_ref()).into_boxed_path());
+    }
 }
 
 /// # Safety
 /// The caller must ensure that `settings` is a valid pointer to a `SccSettings` struct and
 /// `path` is a valid null-terminated UTF-8 string.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn scc_settings_set_output_cache_file(settings: &mut SccSettings, path: *const i8) {
-    settings.output_cache_file = Some(PathBuf::from(CStr::from_ptr(path).to_string_lossy().as_ref()).into_boxed_path());
+    unsafe {
+        settings.output_cache_file =
+            Some(PathBuf::from(CStr::from_ptr(path).to_string_lossy().as_ref()).into_boxed_path());
+    }
 }
 
 /// # Safety
 /// The caller must ensure that `settings` is a valid pointer to a `SccSettings` struct and
 /// `path` is a valid null-terminated UTF-8 string.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn scc_settings_add_script_path(settings: &mut SccSettings, path: *const i8) {
-    settings
-        .additional_script_paths
-        .push(PathBuf::from(CStr::from_ptr(path).to_string_lossy().as_ref()).into_boxed_path());
+    unsafe {
+        settings
+            .additional_script_paths
+            .push(PathBuf::from(CStr::from_ptr(path).to_string_lossy().as_ref()).into_boxed_path());
+    }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn scc_settings_disable_error_popup(settings: &mut SccSettings) {
     settings.show_error_popup = false;
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn scc_compile(settings: Box<SccSettings>) -> Box<SccResult> {
     compile(&settings)
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn scc_free_result(_: Box<SccResult>) {}
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn scc_get_success(output: &SccResult) -> Option<&SccOutput> {
     match output {
         SccResult::Success(success) => Some(success),
@@ -73,7 +83,7 @@ pub extern "C" fn scc_get_success(output: &SccResult) -> Option<&SccOutput> {
 /// # Safety
 /// The caller must ensure that `buffer` is a valid pointer to a buffer of at least `buffer_size`
 /// bytes.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn scc_copy_error(output: &SccResult, buffer: *mut u8, buffer_size: usize) -> usize {
     match output {
         SccResult::Success(_) => 0,
@@ -89,17 +99,17 @@ pub unsafe extern "C" fn scc_copy_error(output: &SccResult, buffer: *mut u8, buf
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn scc_output_get_source_ref(output: &SccOutput, i: usize) -> *const SourceRef {
     &output.compilation.source_refs()[i] as *const SourceRef
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn scc_output_source_ref_count(output: &SccOutput) -> usize {
     output.compilation.source_refs().len()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn scc_source_ref_type(output: &SccOutput, link: &SourceRef) -> SourceRefType {
     let Ok(def) = output.bundle.pool.definition(link.index()) else {
         return SourceRefType::Undefined;
@@ -113,7 +123,7 @@ pub extern "C" fn scc_source_ref_type(output: &SccOutput, link: &SourceRef) -> S
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn scc_source_ref_is_native(output: &SccOutput, link: &SourceRef) -> bool {
     let Ok(def) = output.bundle.pool.definition(link.index()) else {
         return false;
@@ -126,7 +136,7 @@ pub extern "C" fn scc_source_ref_is_native(output: &SccOutput, link: &SourceRef)
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn scc_source_ref_name<'a>(output: &'a SccOutput, link: &SourceRef) -> StrWithLen<'a> {
     (|| {
         let def = output.bundle.pool.definition(link.index())?;
@@ -136,7 +146,7 @@ pub extern "C" fn scc_source_ref_name<'a>(output: &'a SccOutput, link: &SourceRe
     .into()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn scc_source_ref_parent_name<'a>(output: &'a SccOutput, link: &SourceRef) -> StrWithLen<'a> {
     (|| {
         let def = output.bundle.pool.definition(link.index()).ok()?;
@@ -150,7 +160,7 @@ pub extern "C" fn scc_source_ref_parent_name<'a>(output: &'a SccOutput, link: &S
     .into()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn scc_source_ref_path<'a>(output: &'a SccOutput, link: &SourceRef) -> StrWithLen<'a> {
     output
         .files
@@ -160,7 +170,7 @@ pub extern "C" fn scc_source_ref_path<'a>(output: &'a SccOutput, link: &SourceRe
         .into()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn scc_source_ref_line(output: &SccOutput, link: &SourceRef) -> usize {
     let Some(pos) = output.files.lookup_file(link.pos()).and_then(|f| f.lookup(link.pos())) else {
         return usize::MAX;

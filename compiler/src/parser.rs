@@ -2,9 +2,9 @@ use std::str::FromStr;
 
 use peg::error::ParseError;
 use peg::str::LineCol;
+use redscript::Ref;
 use redscript::ast::{BinOp, Constant, Expr, Ident, Literal, Pos, Seq, SourceAst, Span, SwitchCase, TypeName, UnOp};
 use redscript::definition::Visibility;
-use redscript::Ref;
 use strum::EnumString;
 
 use crate::source_map::File;
@@ -216,7 +216,7 @@ peg::parser! {
             } / expected!("an identifier")
 
         rule keyword(id: &'static str) -> () =
-            ##parse_string_literal(id) !['0'..='9' | 'a'..='z' | 'A'..='Z' | '_']
+            #{|input, pos| input.parse_string_literal(pos, id)} !['0'..='9' | 'a'..='z' | 'A'..='Z' | '_']
 
         rule number_str() -> &'input str
             = str:$(['-']? ['0'..='9' | '.']+)
@@ -508,7 +508,7 @@ mod tests {
     fn parse_ternary_op() {
         let expr = lang::expr("3.0 ? 5.0 : 5 + 4", Pos::ZERO).unwrap();
         assert_eq!(
-            format!("{:?}", expr),
+            format!("{expr:?}"),
             "Conditional(Constant(F32(3.0), Span { low: Pos(0), high: Pos(3) }), Constant(F32(5.0), Span { low: Pos(6), high: Pos(9) }), BinOp(Constant(I32(5), Span { low: Pos(12), high: Pos(13) }), Constant(I32(4), Span { low: Pos(16), high: Pos(17) }), Add, Span { low: Pos(12), high: Pos(17) }), Span { low: Pos(0), high: Pos(17) })"
         );
     }
@@ -558,7 +558,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            format!("{:?}", stmt),
+            format!("{stmt:?}"),
             r#"While(BinOp(Ident("i", Span { low: Pos(6), high: Pos(7) }), Constant(I32(1000), Span { low: Pos(10), high: Pos(14) }), Less, Span { low: Pos(6), high: Pos(14) }), Seq { exprs: [BinOp(Member(This(Span { low: Pos(33), high: Pos(37) }), "counter", Span { low: Pos(33), high: Pos(45) }), Member(Ident("Object", Span { low: Pos(49), high: Pos(55) }), "CONSTANT", Span { low: Pos(49), high: Pos(64) }), AssignAdd, Span { low: Pos(33), high: Pos(64) }), BinOp(Ident("i", Span { low: Pos(82), high: Pos(83) }), Constant(I32(1), Span { low: Pos(87), high: Pos(88) }), AssignAdd, Span { low: Pos(82), high: Pos(88) })] }, Span { low: Pos(0), high: Pos(104) })"#
         );
     }
@@ -575,7 +575,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            format!("{:?}", stmt),
+            format!("{stmt:?}"),
             r#"If(Member(This(Span { low: Pos(3), high: Pos(7) }), "m_fixBugs", Span { low: Pos(3), high: Pos(17) }), Seq { exprs: [MethodCall(This(Span { low: Pos(36), high: Pos(40) }), "NoBugs", [], Span { low: Pos(36), high: Pos(49) })] }, Some(Seq { exprs: [MethodCall(This(Span { low: Pos(89), high: Pos(93) }), "Bugs", [], Span { low: Pos(89), high: Pos(100) })] }), Span { low: Pos(0), high: Pos(116) })"#
         );
     }
@@ -596,7 +596,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            format!("{:?}", stmt),
+            format!("{stmt:?}"),
             r#"If(Constant(Bool(true), Span { low: Pos(3), high: Pos(7) }), Seq { exprs: [Return(Some(Constant(I32(0), Span { low: Pos(33), high: Pos(34) })), Span { low: Pos(26), high: Pos(35) })] }, Some(Seq { exprs: [If(Constant(Bool(false), Span { low: Pos(59), high: Pos(64) }), Seq { exprs: [Return(Some(Constant(I32(1), Span { low: Pos(90), high: Pos(91) })), Span { low: Pos(83), high: Pos(92) })] }, Some(Seq { exprs: [If(Constant(Bool(true), Span { low: Pos(116), high: Pos(120) }), Seq { exprs: [Return(Some(Constant(I32(2), Span { low: Pos(146), high: Pos(147) })), Span { low: Pos(139), high: Pos(148) })] }, Some(Seq { exprs: [Return(Some(Constant(I32(3), Span { low: Pos(194), high: Pos(195) })), Span { low: Pos(187), high: Pos(196) })] }), Span { low: Pos(113), high: Pos(211) })] }), Span { low: Pos(56), high: Pos(211) })] }), Span { low: Pos(0), high: Pos(211) })"#
         );
     }
@@ -617,7 +617,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            format!("{:?}", stmt),
+            format!("{stmt:?}"),
             r#"Switch(Ident("value", Span { low: Pos(7), high: Pos(12) }), [SwitchCase { matcher: Constant(String(String, "0"), Span { low: Pos(37), high: Pos(40) }), body: Seq { exprs: [] } }, SwitchCase { matcher: Constant(String(String, "1"), Span { low: Pos(64), high: Pos(67) }), body: Seq { exprs: [Call("Log", [], [Constant(String(String, "0 or 1"), Span { low: Pos(93), high: Pos(101) })], Span { low: Pos(89), high: Pos(102) })] } }, SwitchCase { matcher: Constant(String(String, "2"), Span { low: Pos(126), high: Pos(129) }), body: Seq { exprs: [Break(Span { low: Pos(151), high: Pos(157) })] } }], Some(Seq { exprs: [Call("Log", [], [Constant(String(String, "default"), Span { low: Pos(208), high: Pos(217) })], Span { low: Pos(204), high: Pos(218) })] }), Span { low: Pos(0), high: Pos(233) })"#
         );
     }
@@ -693,7 +693,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            format!("{:?}", str),
+            format!("{str:?}"),
             r#"("My name is ", [(Ident("name", Span { low: Pos(15), high: Pos(19) }), " and I am "), (BinOp(Ident("currentYear", Span { low: Pos(32), high: Pos(43) }), Ident("birthYear", Span { low: Pos(46), high: Pos(55) }), Subtract, Span { low: Pos(32), high: Pos(55) }), " years old")])"#
         );
     }
@@ -702,7 +702,7 @@ mod tests {
     fn parse_complex_logic() {
         let str = lang::expr(r#"(true || false && false) && ((true || false) && true)"#, Pos::ZERO).unwrap();
         assert_eq!(
-            format!("{:?}", str),
+            format!("{str:?}"),
             r#"BinOp(BinOp(Constant(Bool(true), Span { low: Pos(1), high: Pos(5) }), BinOp(Constant(Bool(false), Span { low: Pos(9), high: Pos(14) }), Constant(Bool(false), Span { low: Pos(18), high: Pos(23) }), LogicAnd, Span { low: Pos(9), high: Pos(23) }), LogicOr, Span { low: Pos(1), high: Pos(23) }), BinOp(BinOp(Constant(Bool(true), Span { low: Pos(30), high: Pos(34) }), Constant(Bool(false), Span { low: Pos(38), high: Pos(43) }), LogicOr, Span { low: Pos(30), high: Pos(43) }), Constant(Bool(true), Span { low: Pos(48), high: Pos(52) }), LogicAnd, Span { low: Pos(30), high: Pos(52) }), LogicAnd, Span { low: Pos(1), high: Pos(52) })"#
         );
     }

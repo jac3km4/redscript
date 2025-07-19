@@ -13,7 +13,7 @@ resolver = "2"
 [workspace.package]
 version = "0.5.28"
 authors = ["jekky"]
-edition = "2021"
+edition = "2024"
 
 [workspace.dependencies]
 log = "0.4"
@@ -23,11 +23,11 @@ hashbrown = "0.15"
 itertools = "0.14"
 strum = { version = "0.27", features = ["derive"] }
 enum-as-inner = "0.6"
-modular-bitfield = "0.11"
+modular-bitfield = "0.12"
 byteorder = "1"
 flexstr = "0.9"
 crc32fast = "1"
-flexi_logger = { version = "0.29", default-features = false }
+flexi_logger = { version = "0.31", default-features = false }
 hamt-sync = { git = "https://github.com/jac3km4/hamt-sync", rev = "v0.2.6" }
 sequence_trie = { git = "https://github.com/jac3km4/rust_sequence_trie", rev = "a056b4c" }
 peg = "0.8"
