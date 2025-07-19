@@ -22,10 +22,10 @@ cp -r ./resources/mod/* "$staging_dir"
 mkdir -p "$tools_dir"
 
 cp ./target/release/scc "$tools_dir"
-if [ "$OSTYPE" = "darwin"* ]; then
+if [[ "$OSTYPE" == "darwin"* ]]; then
     cp ./target/release/libscc_lib.dylib "$tools_dir"
     cp ./target/release/redscript-cli "$working_dir/redscript-cli-aarch64-darwin"
-elif [ "$OSTYPE" = "linux-gnu"* ]; then
+elif [[ "$OSTYPE" = "linux-gnu"* ]]; then
     cp ./target/release/libscc_lib.so "$tools_dir"
     cp ./target/release/redscript-cli "$working_dir/redscript-cli-x86_64-linux-gnu"
 fi
