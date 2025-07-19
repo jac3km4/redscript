@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Build the executable, copy required files and create a Nexus-style mod archive.
 set -e
 
@@ -16,13 +16,11 @@ cargo build --release --features mmap,popup
 
 tools_dir="$staging_dir/engine/tools"
 
-mkdir -p "$staging_dir"
-cp -r ./resources/mod/* "$staging_dir"
-
 mkdir -p "$tools_dir"
 
 cp ./target/release/scc "$tools_dir"
 if [[ "$OSTYPE" == "darwin"* ]]; then
+    cp -r ./resources/mod/macos/* "$staging_dir"
     cp ./target/release/libscc_lib.dylib "$tools_dir"
     cp ./target/release/redscript-cli "$working_dir/redscript-cli-aarch64-darwin"
 elif [[ "$OSTYPE" = "linux-gnu"* ]]; then

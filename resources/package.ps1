@@ -16,7 +16,7 @@ cargo build --release --features mmap,popup
 $toolsDir = @($stagingDir, 'engine', 'tools') -join [IO.Path]::DirectorySeparatorChar
 
 mkdir $stagingDir
-cp -r ./resources/mod/* $stagingDir
+cp -r ./resources/mod/windows/* $stagingDir
 mkdir -p $toolsDir
 cp ./target/release/scc.exe $toolsDir
 cp ./target/release/scc_lib.dll $toolsDir
