@@ -4,10 +4,12 @@
 param (
     [Parameter(Mandatory=$true)]
     [string]$stagingDir,
-    
+
     [Parameter(Mandatory=$true)]
     [string]$archiveName
 )
+
+$workingDir = (Get-Location).Path
 
 cargo build --release --features mmap,popup
 
@@ -18,11 +20,7 @@ cp -r ./resources/mod/* $stagingDir
 mkdir -p $toolsDir
 cp ./target/release/scc.exe $toolsDir
 cp ./target/release/scc_lib.dll $toolsDir
+cp ./target/release/redscript-cli.exe $workingDir
 
 cd $stagingDir
-7z a -mx=9 -r $archiveName *
-
-# this variable is exported for the CI job to upload artifacts
-if (Test-Path env:GITHUB_ENV) {
-    echo "MOD_ARTIFACT_PATH=$($(Resolve-Path $archiveName) -replace '\\', '\\')" >> $env:GITHUB_ENV
-}
+7z a -mx=9 -r "$workingDir/$archiveName" *

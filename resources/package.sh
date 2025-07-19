@@ -10,6 +10,8 @@ fi
 staging_dir="$1"
 archive_name="$2"
 
+working_dir=$(pwd)
+
 cargo build --release --features mmap,popup
 
 tools_dir="$staging_dir/engine/tools"
@@ -20,17 +22,13 @@ cp -r ./resources/mod/* "$staging_dir"
 mkdir -p "$tools_dir"
 
 cp ./target/release/scc "$tools_dir"
-if [ -f ./target/release/libscc_lib.dylib ]; then
+if [ "$OSTYPE" = "darwin"* ]; then
     cp ./target/release/libscc_lib.dylib "$tools_dir"
-fi
-if [ -f ./target/release/libscc_lib.so ]; then
+    cp ./target/release/redscript-cli "$working_dir/redscript-cli-aarch64-darwin"
+elif [ "$OSTYPE" = "linux-gnu"* ]; then
     cp ./target/release/libscc_lib.so "$tools_dir"
+    cp ./target/release/redscript-cli "$working_dir/redscript-cli-x86_64-linux-gnu"
 fi
 
 cd "$staging_dir"
-zip -r "$archive_name" *
-
-# Export variable for CI job to upload artifacts
-if [ -n "$GITHUB_ENV" ]; then
-    echo "MOD_ARTIFACT_PATH=$(realpath "$archive_name")" >> "$GITHUB_ENV"
-fi
+zip -r "$working_dir/$archive_name" *

@@ -27,8 +27,9 @@ jobs:
         name: Upload artifacts
         with:
           path: |
-            target/release/redscript-cli.exe
-            target/release/redscript-cli
-            ${{ runner.temp }}/redscript-staging/${{ env.ARCHIVE_NAME }}
+            redscript-cli.exe
+            redscript-cli-aarch64-darwin
+            redscript-cli-x86_64-linux-gnu
+            ${{ env.ARCHIVE_NAME }}
           name: artifact-${{ inputs.os }}
           if-no-files-found: error
