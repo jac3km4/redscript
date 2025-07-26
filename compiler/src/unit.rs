@@ -1016,7 +1016,8 @@ impl<'a> CompilationUnit<'a> {
                 AnnotationKind::AddField
                 | AnnotationKind::If
                 | AnnotationKind::RuntimeProperty
-                | AnnotationKind::NeverRef => {}
+                | AnnotationKind::NeverRef
+                | AnnotationKind::MixedRef => {}
             }
         }
 

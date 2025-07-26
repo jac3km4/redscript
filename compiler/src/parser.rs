@@ -150,6 +150,7 @@ pub enum AnnotationKind {
     If,
     RuntimeProperty,
     NeverRef,
+    MixedRef,
 }
 
 pub fn parse_file(file: &File) -> Result<SourceModule, ParseError<LineCol>> {
