@@ -210,10 +210,10 @@ impl<'src, K: AstKind> Aggregate<'src, K> {
 
 impl<'src> Aggregate<'src, WithSpan> {
     pub fn find_at(&self, pos: u32) -> Option<QueryResult<'_, 'src>> {
-        if let Some((extends, span)) = self.extends.as_deref() {
-            if span.contains(pos) {
-                return Some(extends.find_at(pos));
-            }
+        if let Some((extends, span)) = self.extends.as_deref()
+            && span.contains(pos)
+        {
+            return Some(extends.find_at(pos));
         }
         let idx = self
             .items

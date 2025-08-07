@@ -76,15 +76,15 @@ impl<'ctx> Compilation<'ctx> {
         }
 
         let mut monomorph = self.mappings.into_monomorphizer(self.sources);
-        if let Err(err) = monomorph.monomorphize(&self.unit, &self.symbols, &mut self.bundle) {
-            if let Some(span) = err.span() {
-                self.diagnostics.push(Diagnostic::Other(
-                    Box::new(err),
-                    DiagnosticLevel::Error,
-                    span,
-                ));
-                return Err(FlushError::CompilationErrors(self.diagnostics));
-            }
+        if let Err(err) = monomorph.monomorphize(&self.unit, &self.symbols, &mut self.bundle)
+            && let Some(span) = err.span()
+        {
+            self.diagnostics.push(Diagnostic::Other(
+                Box::new(err),
+                DiagnosticLevel::Error,
+                span,
+            ));
+            return Err(FlushError::CompilationErrors(self.diagnostics));
         }
 
         self.bundle.into_writeable().save(path)?;

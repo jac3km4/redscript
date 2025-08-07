@@ -259,7 +259,4 @@ pub mod types {
     pub struct Field;
     #[derive(Debug, Default)]
     pub struct SourceFile;
-
-    #[derive(Debug, Default)]
-    pub struct Definition;
 }
