@@ -441,11 +441,11 @@ impl<'a> TypeChecker<'a> {
         span: Span,
     ) -> Result<TypedExpr, Error> {
         if intrinsic == Intrinsic::NameOf
-            && args.len() == 0
+            && args.is_empty()
             && let Some(expected) = expected
         {
             // New syntax for NameOf, e.g. `NameOf<MyClass>()`.
-            let name = expected.pretty(&self.pool)?;
+            let name = expected.pretty(self.pool)?;
             let short_name = name.rsplit_once('.').map_or(name.as_str(), |(_, name)| name);
             return self.check_intrinsic(intrinsic, &[Expr::Ident(short_name.into(), span)], None, scope, span);
         }
@@ -758,16 +758,16 @@ impl<'a> TypeChecker<'a> {
         span: Span,
     ) -> Result<Vec<ArgConversion>, MatcherError> {
         let fun = pool.function(fun_index)?;
-        if fun.flags.is_cast() {
-            if let Some(wanted_ret_type) = wanted_ret_type {
-                let type_idx = fun.return_type.ok_or(Cause::VoidCannotBeUsed).with_span(span)?;
-                let ret_type = scope.resolve_type_from_pool(type_idx, pool).with_span(span)?;
+        if fun.flags.is_cast()
+            && let Some(wanted_ret_type) = wanted_ret_type
+        {
+            let type_idx = fun.return_type.ok_or(Cause::VoidCannotBeUsed).with_span(span)?;
+            let ret_type = scope.resolve_type_from_pool(type_idx, pool).with_span(span)?;
 
-                if find_conversion(&ret_type, wanted_ret_type, pool)?.is_none() {
-                    let given = wanted_ret_type.pretty(pool)?;
-                    let expected = ret_type.pretty(pool)?;
-                    return Err(FunctionMatchError::ReturnMismatch { given, expected }.into());
-                }
+            if find_conversion(&ret_type, wanted_ret_type, pool)?.is_none() {
+                let given = wanted_ret_type.pretty(pool)?;
+                let expected = ret_type.pretty(pool)?;
+                return Err(FunctionMatchError::ReturnMismatch { given, expected }.into());
             }
         }
 

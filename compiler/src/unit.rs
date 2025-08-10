@@ -199,13 +199,12 @@ impl<'a> CompilationUnit<'a> {
             };
 
             for import in imports {
-                if eval_conditions(&cte, import.annotations())? {
-                    if let Err(err) = self
+                if eval_conditions(&cte, import.annotations())?
+                    && let Err(err) = self
                         .symbols
                         .populate_import(import, &mut module_scope, Visibility::Public)
-                    {
-                        self.report(err)?;
-                    }
+                {
+                    self.report(err)?;
                 }
             }
 
@@ -352,11 +351,11 @@ impl<'a> CompilationUnit<'a> {
                 let path = module.with_child(decl.name.clone());
                 let visibility = decl.qualifiers.visibility().unwrap_or(Visibility::Private);
 
-                if let Some(Symbol::Class(idx, _) | Symbol::Struct(idx, _)) = self.symbols.get_symbol(&path) {
-                    if !permissive {
-                        let pos = self.source_refs.get(&idx.cast()).copied();
-                        return Err(Cause::SymbolRedefinition(pos).with_span(source.span));
-                    }
+                if let Some(Symbol::Class(idx, _) | Symbol::Struct(idx, _)) = self.symbols.get_symbol(&path)
+                    && !permissive
+                {
+                    let pos = self.source_refs.get(&idx.cast()).copied();
+                    return Err(Cause::SymbolRedefinition(pos).with_span(source.span));
                 }
 
                 let name_index = self.pool.names.add(path.render().to_heap());
@@ -382,11 +381,11 @@ impl<'a> CompilationUnit<'a> {
                 let path = module.with_child(decl.name.clone());
                 let visibility = decl.qualifiers.visibility().unwrap_or(Visibility::Private);
 
-                if let Some(Symbol::Class(idx, _) | Symbol::Struct(idx, _)) = self.symbols.get_symbol(&path) {
-                    if !permissive {
-                        let pos = self.source_refs.get(&idx.cast()).copied();
-                        return Err(Cause::SymbolRedefinition(pos).with_span(source.span));
-                    }
+                if let Some(Symbol::Class(idx, _) | Symbol::Struct(idx, _)) = self.symbols.get_symbol(&path)
+                    && !permissive
+                {
+                    let pos = self.source_refs.get(&idx.cast()).copied();
+                    return Err(Cause::SymbolRedefinition(pos).with_span(source.span));
                 }
 
                 let name_index = self.pool.names.add(path.render().to_heap());

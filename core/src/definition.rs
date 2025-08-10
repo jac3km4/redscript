@@ -378,10 +378,10 @@ impl Encode for Function {
 
         output.encode(&self.visibility)?;
         output.encode(&flags)?;
-        if !flags.is_native() {
-            if let Some(ref source) = self.source {
-                output.encode(source)?;
-            }
+        if !flags.is_native()
+            && let Some(ref source) = self.source
+        {
+            output.encode(source)?;
         }
         if let Some(ref type_) = self.return_type {
             output.encode(type_)?;

@@ -167,13 +167,14 @@ impl<'a> Decompiler<'a> {
                     let exit = exit_offset.absolute(label);
                     let matcher = self.consume()?;
 
-                    if block.is_none() && exit > start_position {
-                        if let Some(epilogue) = self.code.range(start_position, exit)?.find_map(|(loc, i)| match i {
+                    if block.is_none()
+                        && exit > start_position
+                        && let Some(epilogue) = self.code.range(start_position, exit)?.find_map(|(loc, i)| match i {
                             Instr::Jump(offset) if offset.absolute(loc) > exit => Some(offset.absolute(loc)),
                             _ => None,
-                        }) {
-                            block = Some(BlockContext::new_switch(epilogue));
-                        }
+                        })
+                    {
+                        block = Some(BlockContext::new_switch(epilogue));
                     }
 
                     self.code.seek_abs(start_position)?;
