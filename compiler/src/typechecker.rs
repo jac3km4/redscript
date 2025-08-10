@@ -440,6 +440,16 @@ impl<'a> TypeChecker<'a> {
         scope: &mut Scope,
         span: Span,
     ) -> Result<TypedExpr, Error> {
+        if intrinsic == Intrinsic::NameOf
+            && args.len() == 0
+            && let Some(expected) = expected
+        {
+            // New syntax for NameOf, e.g. `NameOf<MyClass>()`.
+            let name = expected.pretty(&self.pool)?;
+            let short_name = name.rsplit_once('.').map_or(name.as_str(), |(_, name)| name);
+            return self.check_intrinsic(intrinsic, &[Expr::Ident(short_name.into(), span)], None, scope, span);
+        }
+
         if args.len() != intrinsic.arg_count().into() {
             let cause = Cause::InvalidArgCount(Ident::from_static(intrinsic.into()), intrinsic.arg_count() as usize);
             return Err(cause.with_span(span));

@@ -705,6 +705,7 @@ fn compile_nameof() {
         func Testing() {
             let a = n"My.Mod.Dummy";
             let b = NameOf(Dummy);
+            let c = NameOf<Dummy>();
         }
         "#;
 
@@ -714,6 +715,9 @@ fn compile_nameof() {
         mem!(NameConst(dummy)),
         pat!(Assign),
         mem!(Local(b)),
+        mem!(NameConst(dummy)),
+        pat!(Assign),
+        mem!(Local(c)),
         mem!(NameConst(dummy)),
         pat!(Nop)
     ];

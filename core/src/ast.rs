@@ -555,7 +555,7 @@ pub enum Kind {
     StaticArray(u32),
 }
 
-#[derive(Debug, Clone, Copy, EnumString, Display, IntoStaticStr)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, Display, IntoStaticStr)]
 pub enum Intrinsic {
     Equals,
     NotEquals,
