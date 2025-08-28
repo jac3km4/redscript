@@ -152,6 +152,8 @@ impl<'a> TypeChecker<'a> {
                 };
                 if let Ok(intrinsic) = Intrinsic::from_str(name.as_ref()) {
                     self.check_intrinsic(intrinsic, args, expected.as_ref(), scope, *span)?
+                } else if let Ok(Symbol::Struct(idx, _)) = scope.resolve_symbol(name.clone()) {
+                    return self.check_struct_constructor(idx, args, scope, span);
                 } else {
                     let candidates = scope.resolve_function(name.clone()).with_span(*span)?;
                     let match_ = self.resolve_overload(
@@ -281,31 +283,7 @@ impl<'a> TypeChecker<'a> {
                         }
                         Expr::New(type_, [].into(), *span)
                     }
-                    TypeId::Struct(class_idx) => {
-                        let class = self.pool.class(class_idx)?;
-                        let name = self.pool.def_name(class_idx)?;
-
-                        if class.flags.is_native() && !SEALED_STRUCTS.contains(&*name) {
-                            if args.is_empty() {
-                                return Ok(Expr::New(type_, [].into(), *span));
-                            }
-                            self.diagnostics
-                                .push(Diagnostic::NonSealedStructConstruction(Ident::from_heap(name), *span));
-                        }
-
-                        let fields = class.fields.clone();
-                        if fields.len() != args.len() {
-                            return Err(Cause::InvalidArgCount(type_name.pretty(), fields.len()).with_span(*span));
-                        }
-                        let mut checked_args = Vec::with_capacity(args.len());
-                        for (arg, field_idx) in args.iter().zip(&fields) {
-                            let field = self.pool.field(*field_idx)?;
-                            let field_type = scope.resolve_type_from_pool(field.type_, self.pool).with_span(*span)?;
-                            let checked_arg = self.check_and_convert(arg, &field_type, scope)?;
-                            checked_args.push(checked_arg);
-                        }
-                        Expr::New(type_, checked_args.into_boxed_slice(), *span)
-                    }
+                    TypeId::Struct(class_idx) => self.check_struct_constructor(class_idx, args, scope, span)?,
                     _ => {
                         return Err(Cause::UnsupportedOperation("constructing", type_name.pretty()).with_span(*span));
                     }
@@ -421,6 +399,39 @@ impl<'a> TypeChecker<'a> {
             Expr::Null(span) => Expr::Null(*span),
         };
         Ok(res)
+    }
+
+    fn check_struct_constructor(
+        &mut self,
+        class_idx: PoolIndex<Class>,
+        args: &[Expr<SourceAst>],
+        scope: &mut Scope,
+        span: &Span,
+    ) -> Result<Expr<TypedAst>, Error> {
+        let class = self.pool.class(class_idx)?;
+        let name = self.pool.def_name(class_idx)?;
+        let type_ = TypeId::Struct(class_idx);
+        if class.flags.is_native() && !SEALED_STRUCTS.contains(&*name) {
+            if args.is_empty() {
+                return Ok(Expr::New(type_, [].into(), *span));
+            }
+            self.diagnostics.push(Diagnostic::NonSealedStructConstruction(
+                Ident::from_heap(name.clone()),
+                *span,
+            ));
+        }
+        let fields = class.fields.clone();
+        if fields.len() != args.len() {
+            return Err(Cause::InvalidArgCount(Ident::from_heap(name), fields.len()).with_span(*span));
+        }
+        let mut checked_args = Vec::with_capacity(args.len());
+        for (arg, field_idx) in args.iter().zip(&fields) {
+            let field = self.pool.field(*field_idx)?;
+            let field_type = scope.resolve_type_from_pool(field.type_, self.pool).with_span(*span)?;
+            let checked_arg = self.check_and_convert(arg, &field_type, scope)?;
+            checked_args.push(checked_arg);
+        }
+        Ok(Expr::New(type_, checked_args.into_boxed_slice(), *span))
     }
 
     pub fn check_seq(&mut self, seq: &Seq<SourceAst>, scope: &mut Scope) -> Result<Seq<TypedAst>, Error> {
