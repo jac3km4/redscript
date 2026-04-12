@@ -1210,7 +1210,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                 }
             }
 
-            let [to_impl, unimpl] = virtuals.get_many_mut([&base.id(), &cls_id]);
+            let [to_impl, unimpl] = virtuals.get_disjoint_mut([&base.id(), &cls_id]);
             let to_impl = to_impl.map(|set| set.iter()).unwrap_or_default();
             let unimpl = unimpl.expect("unimplemented set should exist");
             let mut missing = vec![];

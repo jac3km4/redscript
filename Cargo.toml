@@ -43,16 +43,16 @@ derive-where = "1"
 paste = "1"
 bon = "3"
 bitflags = "2"
-bitfield-struct = "0.12"
+bitfield-struct = "0.13"
 identity-hash = "0.1"
 foldhash = "0.2"
 slab = "0.4"
 smallvec = { version = "1", features = ["union", "const_generics"] }
-hashbrown = "0.16"
+hashbrown = "0.17"
 indexmap = "2"
 elsa = { version = "1", features = ["indexmap"] }
 serde = "1"
-toml = { version = "0.9", default-features = false }
+toml = { version = "1", default-features = false }
 fern = "0.7"
 flexi_logger = { version = "0.31", default-features = false }
 argh = "0.1"
@@ -68,7 +68,7 @@ minidl = "0.1"
 bindgen = "0.72"
 mimalloc = { version = "0.1", features = ["v3"] }
 
-similar-asserts = "1"
+similar-asserts = "2"
 insta = { version = "1", features = ["glob"] }
 
 [workspace.dependencies.byte]
