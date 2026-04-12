@@ -1,8 +1,9 @@
 use std::fmt;
 
+use redscript_ast as ast;
 use redscript_ast::Span;
+use redscript_parser as parser;
 use thiserror::Error;
-use {redscript_ast as ast, redscript_parser as parser};
 
 use crate::lower::{LowerResult, Poly, TypeError};
 use crate::stages::FunctionAnnotation;
