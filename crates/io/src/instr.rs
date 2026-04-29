@@ -341,7 +341,7 @@ pub enum Instr<Loc = Offset> {
 }
 
 impl<L> Instr<L> {
-    /// virtual_size
+    /// Gets the `virtual_size` of this definition.
     pub fn virtual_size(&self) -> u16 {
         let op_size = match self {
             Instr::Breakpoint(_) => 19,
@@ -452,7 +452,7 @@ impl<L> Instr<L> {
         1 + op_size
     }
 
-    /// map_labels
+    /// Applies a mapping function to labels.
     pub fn map_labels(self, f: impl Fn(L) -> Option<Offset>) -> Option<Instr> {
         let res = match self {
             Instr::Nop => Instr::Nop,
@@ -753,7 +753,7 @@ pub struct Jump<Loc> {
 
 impl<Loc> Jump<Loc> {
     #[inline]
-    /// new
+    /// Creates a new instance.
     pub fn new(target: Loc) -> Self {
         Jump { target }
     }
@@ -761,13 +761,13 @@ impl<Loc> Jump<Loc> {
 
 impl Jump<Offset> {
     #[inline]
-    /// new_with_offset
+    /// Creates a new instance with a given offset.
     pub fn new_with_offset(target: Offset) -> Self {
         Jump { target: target - 3 }
     }
 
     #[inline]
-    /// target
+    /// Gets the `target` of this definition.
     pub fn target(&self) -> Offset {
         self.target + 3
     }
@@ -782,7 +782,7 @@ pub struct Conditional<Loc> {
 
 impl<Loc> Conditional<Loc> {
     #[inline]
-    /// new
+    /// Creates a new instance.
     pub fn new(false_label: Loc, exit: Loc) -> Self {
         Conditional { false_label, exit }
     }
@@ -790,7 +790,7 @@ impl<Loc> Conditional<Loc> {
 
 impl Conditional<Offset> {
     #[inline]
-    /// new_with_offset
+    /// Creates a new instance with a given offset.
     pub fn new_with_offset(false_label: Offset, exit: Offset) -> Self {
         Conditional {
             false_label: false_label - 3,
@@ -799,13 +799,13 @@ impl Conditional<Offset> {
     }
 
     #[inline]
-    /// false_label
+    /// Gets the `false_label` of this definition.
     pub fn false_label(&self) -> Offset {
         self.false_label + 3
     }
 
     #[inline]
-    /// exit
+    /// Gets the `exit` of this definition.
     pub fn exit(&self) -> Offset {
         self.exit + 5
     }
@@ -820,7 +820,7 @@ pub struct Switch<Loc> {
 
 impl<Loc> Switch<Loc> {
     #[inline]
-    /// new
+    /// Creates a new instance.
     pub fn new(expr_type: TypeIndex, first_case: Loc) -> Self {
         Switch {
             expr_type,
@@ -831,7 +831,7 @@ impl<Loc> Switch<Loc> {
 
 impl Switch<Offset> {
     #[inline]
-    /// new_with_offset
+    /// Creates a new instance with a given offset.
     pub fn new_with_offset(expr_type: TypeIndex, first_case: Offset) -> Self {
         Switch {
             expr_type,
@@ -840,7 +840,7 @@ impl Switch<Offset> {
     }
 
     #[inline]
-    /// first_case
+    /// Gets the `first_case` of this definition.
     pub fn first_case(&self) -> Offset {
         self.first_case + 11
     }
@@ -855,7 +855,7 @@ pub struct SwitchLabel<Loc> {
 
 impl<Loc> SwitchLabel<Loc> {
     #[inline]
-    /// new
+    /// Creates a new instance.
     pub fn new(next_case: Loc, body: Loc) -> Self {
         SwitchLabel { next_case, body }
     }
@@ -863,7 +863,7 @@ impl<Loc> SwitchLabel<Loc> {
 
 impl SwitchLabel<Offset> {
     #[inline]
-    /// new_with_offset
+    /// Creates a new instance with a given offset.
     pub fn new_with_offset(next_case: Offset, body: Offset) -> Self {
         SwitchLabel {
             next_case: next_case - 3,
@@ -872,13 +872,13 @@ impl SwitchLabel<Offset> {
     }
 
     #[inline]
-    /// next_case
+    /// Gets the `next_case` of this definition.
     pub fn next_case(&self) -> Offset {
         self.next_case + 3
     }
 
     #[inline]
-    /// body
+    /// Gets the function body.
     pub fn body(&self) -> Offset {
         self.body + 5
     }
@@ -964,13 +964,13 @@ pub struct InvokeFlags(u16);
 
 impl InvokeFlags {
     #[inline]
-    /// set_is_rvalue_ref
+    /// Sets whether the nth argument is an rvalue reference.
     pub fn set_is_rvalue_ref(&mut self, nth: u8) {
         self.0 |= 1 << nth;
     }
 
     #[inline]
-    /// is_rvalue_ref
+    /// Checks if the nth argument is an rvalue reference.
     pub fn is_rvalue_ref(&self, nth: u8) -> bool {
         self.0 & (1 << nth) != 0
     }

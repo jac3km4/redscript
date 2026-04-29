@@ -77,7 +77,7 @@ impl Definition<'_> {
         }
     }
 
-    /// name
+    /// Gets the name index of this definition.
     pub fn name(&self) -> CNameIndex {
         match self {
             Definition::Type(t) => t.name,
@@ -107,7 +107,7 @@ impl Definition<'_> {
         }
     }
 
-    /// into_owned
+    /// Converts this definition into an owned version.
     pub fn into_owned(self) -> Definition<'static> {
         match self {
             Definition::Type(t) => Definition::Type(t),
@@ -284,13 +284,13 @@ impl Type {
     }
 
     #[inline]
-    /// name
+    /// Gets the name index of this definition.
     pub fn name(&self) -> CNameIndex {
         self.name
     }
 
     #[inline]
-    /// kind
+    /// Gets the kind of this type.
     pub fn kind(&self) -> TypeKind {
         self.kind
     }
@@ -341,7 +341,7 @@ pub struct Class {
 }
 
 impl Class {
-    /// new
+    /// Creates a new instance.
     pub fn new(name: CNameIndex, visiblity: Visibility, flags: ClassFlags) -> Self {
         Self {
             name,
@@ -355,86 +355,86 @@ impl Class {
     }
 
     #[inline]
-    /// name
+    /// Gets the name index of this definition.
     pub fn name(&self) -> CNameIndex {
         self.name
     }
 
     #[inline]
-    /// visibility
+    /// Gets the visibility.
     pub fn visibility(&self) -> Visibility {
         self.visiblity
     }
 
     #[inline]
-    /// flags
+    /// Gets the flags.
     pub fn flags(&self) -> ClassFlags {
         self.flags
     }
 
     #[inline]
-    /// base
+    /// Gets the base class index.
     pub fn base(&self) -> Option<ClassIndex> {
         self.base
     }
 
     #[inline]
-    /// methods
+    /// Gets the list of methods.
     pub fn methods(&self) -> &[FunctionIndex] {
         &self.methods
     }
 
     #[inline]
-    /// fields
+    /// Gets the list of fields.
     pub fn fields(&self) -> &[FieldIndex] {
         &self.fields
     }
 
     #[inline]
-    /// fields_mut
+    /// Gets a mutable list of fields.
     pub fn fields_mut(&mut self) -> &mut Vec<FieldIndex> {
         &mut self.fields
     }
 
     #[inline]
-    /// overrides
+    /// Gets the list of overrides.
     pub fn overrides(&self) -> &[FieldIndex] {
         &self.overrides
     }
 
-    /// with_base
+    /// Returns a copy of this object with the `base` updated.
     pub fn with_base(mut self, base: Option<ClassIndex>) -> Self {
         self.base = base;
         self
     }
 
-    /// with_methods
+    /// Returns a copy of this object with the `methods` updated.
     pub fn with_methods(mut self, methods: impl Into<Vec<FunctionIndex>>) -> Self {
         self.methods = methods.into();
         self.flags.set_has_functions(!self.methods.is_empty());
         self
     }
 
-    /// add_method
+    /// Adds to the `methods` of this object.
     pub fn add_method(&mut self, method: FunctionIndex) {
         self.methods.push(method);
         self.flags.set_has_functions(true);
     }
 
-    /// with_fields
+    /// Returns a copy of this object with the `fields` updated.
     pub fn with_fields(mut self, fields: impl Into<Vec<FieldIndex>>) -> Self {
         self.fields = fields.into();
         self.flags.set_has_fields(!self.fields.is_empty());
         self
     }
 
-    /// add_field
+    /// Adds to the `fields` of this object.
     pub fn add_field(&mut self, field: FieldIndex) {
         self.fields.push(field);
         self.flags.set_has_fields(true);
     }
 
-    /// with_overrides
+    /// Returns a copy of this object with the `overrides` updated.
     pub fn with_overrides(mut self, overrides: impl Into<Vec<FieldIndex>>) -> Self {
         self.overrides = overrides.into();
         self.flags.set_has_overrides(!self.overrides.is_empty());
@@ -480,25 +480,25 @@ pub struct EnumMember {
 
 impl EnumMember {
     #[inline]
-    /// new
+    /// Creates a new instance.
     pub fn new(name: CNameIndex, enum_: EnumIndex, value: i64) -> Self {
         Self { name, enum_, value }
     }
 
     #[inline]
-    /// name
+    /// Gets the name index of this definition.
     pub fn name(&self) -> CNameIndex {
         self.name
     }
 
     #[inline]
-    /// enum_
+    /// Gets the enum index.
     pub fn enum_(&self) -> EnumIndex {
         self.enum_
     }
 
     #[inline]
-    /// value
+    /// Gets the value.
     pub fn value(&self) -> i64 {
         self.value
     }
@@ -524,7 +524,7 @@ pub struct Enum {
 }
 
 impl Enum {
-    /// new
+    /// Creates a new instance.
     pub fn new(name: CNameIndex, visiblity: Visibility, size: u8) -> Self {
         Self {
             name,
@@ -536,42 +536,42 @@ impl Enum {
     }
 
     #[inline]
-    /// name
+    /// Gets the name index of this definition.
     pub fn name(&self) -> CNameIndex {
         self.name
     }
 
     #[inline]
-    /// visibility
+    /// Gets the visibility.
     pub fn visibility(&self) -> Visibility {
         self.visiblity
     }
 
     #[inline]
-    /// size
+    /// Gets the size.
     pub fn size(&self) -> u8 {
         self.size
     }
 
     #[inline]
-    /// values
+    /// Gets the list of enum values.
     pub fn values(&self) -> &[EnumValueIndex] {
         &self.values
     }
 
     #[inline]
-    /// is_native
+    /// Returns whether this is native.
     pub fn is_native(&self) -> bool {
         self.is_native
     }
 
-    /// with_values
+    /// Returns a copy of this object with the `values` updated.
     pub fn with_values(mut self, values: impl Into<Vec<EnumValueIndex>>) -> Self {
         self.values = values.into();
         self
     }
 
-    /// with_is_native
+    /// Returns a copy of this object with the `is_native` updated.
     pub fn with_is_native(mut self, is_native: bool) -> Self {
         self.is_native = is_native;
         self
@@ -615,7 +615,7 @@ pub struct Function<'i> {
 }
 
 impl<'i> Function<'i> {
-    /// new
+    /// Creates a new instance.
     pub fn new(name: CNameIndex, visibility: Visibility, flags: FunctionFlags) -> Self {
         Self {
             name,
@@ -635,108 +635,108 @@ impl<'i> Function<'i> {
     }
 
     #[inline]
-    /// name
+    /// Gets the name index of this definition.
     pub fn name(&self) -> CNameIndex {
         self.name
     }
 
     #[inline]
-    /// class
+    /// Gets the class index.
     pub fn class(&self) -> Option<ClassIndex> {
         self.class
     }
 
     #[inline]
-    /// visibility
+    /// Gets the visibility.
     pub fn visibility(&self) -> Visibility {
         self.visibility
     }
 
     #[inline]
-    /// flags
+    /// Gets the flags.
     pub fn flags(&self) -> FunctionFlags {
         self.flags
     }
 
     #[inline]
-    /// source
+    /// Gets the source reference.
     pub fn source(&self) -> Option<SourceReference> {
         self.source
     }
 
     #[inline]
-    /// return_type
+    /// Gets the return type.
     pub fn return_type(&self) -> Option<TypeIndex> {
         self.return_type
     }
 
     #[inline]
-    /// is_const_return
+    /// Returns whether the return type is const.
     pub fn is_const_return(&self) -> bool {
         self.is_const_return
     }
 
     #[inline]
-    /// base_method
+    /// Gets the base method index.
     pub fn base_method(&self) -> Option<FunctionIndex> {
         self.base_method
     }
 
     #[inline]
-    /// parameters
+    /// Gets the list of parameters.
     pub fn parameters(&self) -> &[ParameterIndex] {
         &self.parameters
     }
 
     #[inline]
-    /// parameters_mut
+    /// Gets a mutable list of parameters.
     pub fn parameters_mut(&mut self) -> &mut Vec<ParameterIndex> {
         &mut self.parameters
     }
 
     #[inline]
-    /// locals
+    /// Gets the list of local variables.
     pub fn locals(&self) -> &[LocalIndex] {
         &self.locals
     }
 
     #[inline]
-    /// operator
+    /// Gets the operator.
     pub fn operator(&self) -> Option<CNameIndex> {
         self.operator
     }
 
     #[inline]
-    /// cast_cost
+    /// Gets the cast cost.
     pub fn cast_cost(&self) -> u8 {
         self.cast_cost
     }
 
     #[inline]
-    /// body
+    /// Gets the function body.
     pub fn body(&self) -> &FunctionBody<'i> {
         &self.body
     }
 
-    /// with_name
+    /// Returns a copy of this object with the `name` updated.
     pub fn with_name(mut self, name: CNameIndex) -> Self {
         self.name = name;
         self
     }
 
-    /// with_flags
+    /// Returns a copy of this object with the `flags` updated.
     pub fn with_flags(mut self, flags: FunctionFlags) -> Self {
         self.flags = flags;
         self
     }
 
-    /// with_class
+    /// Returns a copy of this object with the `class` updated.
     pub fn with_class(mut self, class: Option<ClassIndex>) -> Self {
         self.class = class;
         self
     }
 
-    /// with_source
+    /// Returns a copy of this object with the `source` updated.
     pub fn with_source(mut self, source: Option<SourceReference>) -> Self {
         assert!(
             !self.flags.is_native() || source.is_none(),
@@ -746,71 +746,71 @@ impl<'i> Function<'i> {
         self
     }
 
-    /// with_return_type
+    /// Returns a copy of this object with the `return_type` updated.
     pub fn with_return_type(mut self, return_type: Option<TypeIndex>) -> Self {
         self.return_type = return_type;
         self.flags.set_has_return_value(return_type.is_some());
         self
     }
 
-    /// with_const_return_type
+    /// Returns a copy of this object with the `const_return_type` updated.
     pub fn with_const_return_type(mut self, return_type: TypeIndex) -> Self {
         self.is_const_return = true;
         self.with_return_type(Some(return_type))
     }
 
-    /// with_base_method
+    /// Returns a copy of this object with the `base_method` updated.
     pub fn with_base_method(mut self, base_method: Option<FunctionIndex>) -> Self {
         self.base_method = base_method;
         self.flags.set_has_base_method(base_method.is_some());
         self
     }
 
-    /// with_parameters
+    /// Returns a copy of this object with the `parameters` updated.
     pub fn with_parameters(mut self, parameters: impl Into<Vec<ParameterIndex>>) -> Self {
         self.parameters = parameters.into();
         self.flags.set_has_parameters(!self.parameters.is_empty());
         self
     }
 
-    /// with_locals
+    /// Returns a copy of this object with the `locals` updated.
     pub fn with_locals(mut self, locals: impl Into<Vec<LocalIndex>>) -> Self {
         self.set_locals(locals);
         self
     }
 
-    /// set_locals
+    /// Sets the `locals` of this object.
     pub fn set_locals(&mut self, locals: impl Into<Vec<LocalIndex>>) {
         self.locals = locals.into();
         self.flags.set_has_locals(!self.locals.is_empty());
     }
 
-    /// with_operator
+    /// Returns a copy of this object with the `operator` updated.
     pub fn with_operator(mut self, operator: Option<CNameIndex>) -> Self {
         self.operator = operator;
         self.flags.set_is_operator(operator.is_some());
         self
     }
 
-    /// with_cast_cost
+    /// Returns a copy of this object with the `cast_cost` updated.
     pub fn with_cast_cost(mut self, cast_cost: u8) -> Self {
         self.cast_cost = cast_cost;
         self.flags.set_is_cast(cast_cost != 0);
         self
     }
 
-    /// with_body
+    /// Returns a copy of this object with the `body` updated.
     pub fn with_body(mut self, body: FunctionBody<'i>) -> Self {
         self.set_body(body);
         self
     }
 
-    /// with_code
+    /// Returns a copy of this object with the `code` updated.
     pub fn with_code(self, code: Vec<Instr>) -> Self {
         self.with_body(FunctionBody::Code(code))
     }
 
-    /// set_body
+    /// Sets the `body` of this object.
     pub fn set_body(&mut self, body: FunctionBody<'i>) {
         self.flags.set_has_body(!body.is_empty());
         if matches!(self.body, FunctionBody::Code(_)) {
@@ -819,12 +819,12 @@ impl<'i> Function<'i> {
         self.body = body;
     }
 
-    /// set_code
+    /// Sets the `code` of this object.
     pub fn set_code(&mut self, code: Vec<Instr>) {
         self.set_body(FunctionBody::Code(code));
     }
 
-    /// into_owned
+    /// Converts this definition into an owned version.
     pub fn into_owned(self) -> Function<'static> {
         debug_assert_eq!(self.flags().has_base_method(), self.base_method.is_some());
         debug_assert_eq!(self.flags().has_return_value(), self.return_type.is_some());
@@ -905,7 +905,7 @@ pub struct Parameter {
 
 impl Parameter {
     #[inline]
-    /// new
+    /// Creates a new instance.
     pub fn new(
         name: CNameIndex,
         function: FunctionIndex,
@@ -921,30 +921,30 @@ impl Parameter {
     }
 
     #[inline]
-    /// name
+    /// Gets the name index of this definition.
     pub fn name(&self) -> CNameIndex {
         self.name
     }
 
     #[inline]
-    /// function
+    /// Gets the function index.
     pub fn function(&self) -> FunctionIndex {
         self.function
     }
 
     #[inline]
-    /// type_
+    /// Gets the type index.
     pub fn type_(&self) -> TypeIndex {
         self.type_
     }
 
     #[inline]
-    /// flags
+    /// Gets the flags.
     pub fn flags(&self) -> ParameterFlags {
         self.flags
     }
 
-    /// with_function
+    /// Returns a copy of this object with the `function` updated.
     pub fn with_function(mut self, function: FunctionIndex) -> Self {
         self.function = function;
         self
@@ -985,7 +985,7 @@ pub struct Local {
 
 impl Local {
     #[inline]
-    /// new
+    /// Creates a new instance.
     pub fn new(
         name: CNameIndex,
         function: FunctionIndex,
@@ -1001,30 +1001,30 @@ impl Local {
     }
 
     #[inline]
-    /// name
+    /// Gets the name index of this definition.
     pub fn name(&self) -> CNameIndex {
         self.name
     }
 
     #[inline]
-    /// function
+    /// Gets the function index.
     pub fn function(&self) -> FunctionIndex {
         self.function
     }
 
     #[inline]
-    /// type_
+    /// Gets the type index.
     pub fn type_(&self) -> TypeIndex {
         self.type_
     }
 
     #[inline]
-    /// flags
+    /// Gets the flags.
     pub fn flags(&self) -> LocalFlags {
         self.flags
     }
 
-    /// with_function
+    /// Returns a copy of this object with the `function` updated.
     pub fn with_function(mut self, function: FunctionIndex) -> Self {
         self.function = function;
         self
@@ -1068,7 +1068,7 @@ pub struct Field<'i> {
 }
 
 impl<'i> Field<'i> {
-    /// new
+    /// Creates a new instance.
     pub fn new(
         name: CNameIndex,
         class: ClassIndex,
@@ -1089,79 +1089,79 @@ impl<'i> Field<'i> {
     }
 
     #[inline]
-    /// name
+    /// Gets the name index of this definition.
     pub fn name(&self) -> CNameIndex {
         self.name
     }
 
     #[inline]
-    /// class
+    /// Gets the class index.
     pub fn class(&self) -> ClassIndex {
         self.class
     }
 
     #[inline]
-    /// visibility
+    /// Gets the visibility.
     pub fn visibility(&self) -> Visibility {
         self.visibility
     }
 
     #[inline]
-    /// type_
+    /// Gets the type index.
     pub fn type_(&self) -> TypeIndex {
         self.type_
     }
 
     #[inline]
-    /// flags
+    /// Gets the flags.
     pub fn flags(&self) -> FieldFlags {
         self.flags
     }
 
     #[inline]
-    /// hint
+    /// Gets the hint string.
     pub fn hint(&self) -> Option<&str> {
         self.hint.as_deref()
     }
 
     #[inline]
-    /// attributes
+    /// Gets the attributes.
     pub fn attributes(&self) -> &[Property<'i>] {
         &self.attributes
     }
 
     #[inline]
-    /// defaults
+    /// Gets the default values.
     pub fn defaults(&self) -> &[Property<'i>] {
         &self.defaults
     }
 
-    /// with_hint
+    /// Returns a copy of this object with the `hint` updated.
     pub fn with_hint(mut self, hint: impl Into<Str<'i>>) -> Self {
         self.hint = Some(hint.into());
         self.flags.set_has_hint(true);
         self
     }
 
-    /// with_attributes
+    /// Returns a copy of this object with the `attributes` updated.
     pub fn with_attributes(mut self, attributes: impl Into<Vec<Property<'i>>>) -> Self {
         self.attributes = attributes.into();
         self
     }
 
-    /// with_defaults
+    /// Returns a copy of this object with the `defaults` updated.
     pub fn with_defaults(mut self, defaults: impl Into<Vec<Property<'i>>>) -> Self {
         self.set_defaults(defaults);
         self
     }
 
-    /// set_defaults
+    /// Sets the `defaults` of this object.
     pub fn set_defaults(&mut self, defaults: impl Into<Vec<Property<'i>>>) {
         self.defaults = defaults.into();
         self.flags.set_has_default(!self.defaults.is_empty());
     }
 
-    /// into_owned
+    /// Converts this definition into an owned version.
     pub fn into_owned(self) -> Field<'static> {
         Field {
             name: self.name,
@@ -1223,7 +1223,7 @@ pub struct SourceFile<'i> {
 
 impl<'i> SourceFile<'i> {
     #[inline]
-    /// new
+    /// Creates a new instance.
     pub fn new(index: u32, path_hash: u32, code_crc: u32, path: impl Into<Str<'i>>) -> Self {
         Self {
             index,
@@ -1234,30 +1234,30 @@ impl<'i> SourceFile<'i> {
     }
 
     #[inline]
-    /// index
+    /// Gets the pool index.
     pub fn index(&self) -> u32 {
         self.index
     }
 
     #[inline]
-    /// path_hash
+    /// Gets the hash of the path.
     pub fn path_hash(&self) -> u32 {
         self.path_hash
     }
 
     #[inline]
-    /// code_crc
+    /// Gets the CRC of the code.
     pub fn code_crc(&self) -> u32 {
         self.code_crc
     }
 
     #[inline]
-    /// path
+    /// Gets the file path.
     pub fn path(&self) -> &str {
         &self.path
     }
 
-    /// into_owned
+    /// Converts this definition into an owned version.
     pub fn into_owned(self) -> SourceFile<'static> {
         SourceFile {
             index: self.index,
@@ -1286,7 +1286,7 @@ pub enum FunctionBody<'i> {
 }
 
 impl FunctionBody<'_> {
-    /// is_empty
+    /// Returns true if this is empty.
     pub fn is_empty(&self) -> bool {
         match self {
             &FunctionBody::Raw { max_offset, .. } => max_offset == 0,
@@ -1294,7 +1294,7 @@ impl FunctionBody<'_> {
         }
     }
 
-    /// into_owned
+    /// Converts this definition into an owned version.
     pub fn into_owned(self) -> FunctionBody<'static> {
         match self {
             FunctionBody::Raw { max_offset, bytes } => FunctionBody::Raw {
@@ -1306,12 +1306,12 @@ impl FunctionBody<'_> {
     }
 
     #[inline]
-    /// code_iter
+    /// Returns an iterator over the code instructions.
     pub fn code_iter(&self) -> FunctionBodyIter<'_> {
         FunctionBodyIter::new(self)
     }
 
-    /// code_owned
+    /// Returns an owned vector of the code instructions.
     pub fn code_owned(&self) -> byte::Result<Vec<Instr>> {
         match self {
             FunctionBody::Raw { .. } => self.code_iter().collect::<Result<Vec<_>, _>>(),
@@ -1411,7 +1411,7 @@ impl<'a> FunctionBodyIter<'a> {
         }
     }
 
-    /// virtual_offset
+    /// Gets the current virtual offset.
     pub fn virtual_offset(&self) -> u32 {
         match self {
             FunctionBodyIter::Raw {
@@ -1425,7 +1425,7 @@ impl<'a> FunctionBodyIter<'a> {
         }
     }
 
-    /// with_offsets
+    /// Returns an iterator yielding virtual offsets and instructions.
     pub fn with_offsets(mut self) -> impl Iterator<Item = (u32, byte::Result<Instr>)> + use<'a> {
         iter::from_fn(move || Some((self.virtual_offset(), self.next()?)))
     }
@@ -1469,7 +1469,7 @@ pub struct CodeIter<'a, L> {
 
 impl<'a, L> CodeIter<'a, L> {
     #[inline]
-    /// new
+    /// Creates a new instance.
     pub fn new(instructions: &'a [Instr<L>]) -> Self {
         Self {
             virtual_offset: 0,
@@ -1478,18 +1478,18 @@ impl<'a, L> CodeIter<'a, L> {
     }
 
     #[inline]
-    /// virtual_offset
+    /// Gets the current virtual offset.
     pub fn virtual_offset(&self) -> u32 {
         self.virtual_offset
     }
 
-    /// with_offsets
+    /// Returns an iterator yielding virtual offsets and instructions.
     pub fn with_offsets(mut self) -> impl Iterator<Item = (u32, &'a Instr<L>)> {
         iter::from_fn(move || Some((self.virtual_offset(), self.next()?)))
     }
 
     #[inline]
-    /// as_slice
+    /// Returns the instructions as a slice.
     pub fn as_slice(&self) -> &'a [Instr<L>] {
         self.instructions
     }
@@ -1517,7 +1517,7 @@ pub struct Property<'i> {
 
 impl<'i> Property<'i> {
     #[inline]
-    /// new
+    /// Creates a new instance.
     pub fn new(name: impl Into<Str<'i>>, value: impl Into<Str<'i>>) -> Self {
         Self {
             name: name.into(),
@@ -1526,18 +1526,18 @@ impl<'i> Property<'i> {
     }
 
     #[inline]
-    /// name
+    /// Gets the name index of this definition.
     pub fn name(&self) -> &str {
         &self.name
     }
 
     #[inline]
-    /// value
+    /// Gets the value.
     pub fn value(&self) -> &str {
         &self.value
     }
 
-    /// into_owned
+    /// Converts this definition into an owned version.
     pub fn into_owned(self) -> Property<'static> {
         Property {
             name: self.name.into_owned().into(),
@@ -1560,19 +1560,19 @@ impl SourceReference {
     };
 
     #[inline]
-    /// new
+    /// Creates a new instance.
     pub fn new(file: SourceFileIndex, line: u32) -> Self {
         Self { file, line }
     }
 
     #[inline]
-    /// file
+    /// Gets the source file reference.
     pub fn file(&self) -> SourceFileIndex {
         self.file
     }
 
     #[inline]
-    /// line
+    /// Gets the line number.
     pub fn line(&self) -> u32 {
         self.line
     }
