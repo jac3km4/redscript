@@ -11,83 +11,121 @@ use crate::{
 
 #[derive(Debug, Clone, PartialEq, TryRead, TryWrite, Measure)]
 #[byte(tag_type = u8)]
+/// Represents a single operation or instruction in the REDengine bytecode.
 pub enum Instr<Loc = Offset> {
     #[byte(tag = 0x00)]
+    /// No operation.
     Nop,
     #[byte(tag = 0x01)]
+    /// Pushes a null reference onto the stack.
     Null,
     #[byte(tag = 0x02)]
+    /// Pushes the 32-bit integer `1` onto the stack.
     I32One,
     #[byte(tag = 0x03)]
+    /// Pushes the 32-bit integer `0` onto the stack.
     I32Zero,
     #[byte(tag = 0x04)]
+    /// Pushes an 8-bit integer constant onto the stack.
     I8Const(i8),
     #[byte(tag = 0x05)]
+    /// Pushes a 16-bit integer constant onto the stack.
     I16Const(i16),
     #[byte(tag = 0x06)]
+    /// Pushes a 32-bit integer constant onto the stack.
     I32Const(i32),
     #[byte(tag = 0x07)]
+    /// Pushes a 64-bit integer constant onto the stack.
     I64Const(i64),
     #[byte(tag = 0x08)]
+    /// Pushes an unsigned 8-bit integer constant onto the stack.
     U8Const(u8),
     #[byte(tag = 0x09)]
+    /// Pushes an unsigned 16-bit integer constant onto the stack.
     U16Const(u16),
     #[byte(tag = 0x0A)]
+    /// Pushes an unsigned 32-bit integer constant onto the stack.
     U32Const(u32),
     #[byte(tag = 0x0B)]
+    /// Pushes an unsigned 64-bit integer constant onto the stack.
     U64Const(u64),
     #[byte(tag = 0x0C)]
+    /// Pushes a 32-bit floating point constant onto the stack.
     F32Const(f32),
     #[byte(tag = 0x0D)]
+    /// Pushes a 64-bit floating point constant onto the stack.
     F64Const(f64),
     #[byte(tag = 0x0E)]
+    /// Pushes a name (CName) constant onto the stack.
     CNameConst(CNameIndex),
     #[byte(tag = 0x0F)]
+    /// Pushes an enumeration constant onto the stack.
     EnumConst {
         enum_: EnumIndex,
         value: EnumValueIndex,
     },
     #[byte(tag = 0x10)]
+    /// Pushes a string constant onto the stack.
     StringConst(StringIndex),
     #[byte(tag = 0x11)]
+    /// Pushes a TweakDB ID constant onto the stack.
     TweakDbIdConst(TweakDbIndex),
     #[byte(tag = 0x12)]
+    /// Pushes a resource reference constant onto the stack.
     ResourceConst(ResourceIndex),
     #[byte(tag = 0x13)]
+    /// Pushes the boolean value `true` onto the stack.
     TrueConst,
     #[byte(tag = 0x14)]
+    /// Pushes the boolean value `false` onto the stack.
     FalseConst,
     #[byte(tag = 0x15)]
+    /// Triggers a breakpoint during execution.
     Breakpoint(Box<Breakpoint>),
     #[byte(tag = 0x16)]
+    /// Assigns a value to a local variable or field.
     Assign,
     #[byte(tag = 0x17)]
+    /// Defines a jump target.
     Target(Loc),
     #[byte(tag = 0x18)]
+    /// Pushes a reference to a local variable onto the stack.
     Local(LocalIndex),
     #[byte(tag = 0x19)]
+    /// Pushes a reference to a parameter onto the stack.
     Param(ParameterIndex),
     #[byte(tag = 0x1A)]
+    /// Accesses a field of an object.
     ObjectField(FieldIndex),
     #[byte(tag = 0x1B)]
+    /// Accesses an external variable.
     ExternalVar,
     #[byte(tag = 0x1C)]
+    /// Initiates a switch statement.
     Switch(Switch<Loc>),
     #[byte(tag = 0x1D)]
+    /// Defines a label within a switch statement.
     SwitchLabel(SwitchLabel<Loc>),
     #[byte(tag = 0x1E)]
+    /// Defines the default case of a switch statement.
     SwitchDefault,
     #[byte(tag = 0x1F)]
+    /// Unconditionally jumps to a target location.
     Jump(Jump<Loc>),
     #[byte(tag = 0x20)]
+    /// Jumps to a target location if the condition is false.
     JumpIfFalse(Jump<Loc>),
     #[byte(tag = 0x21)]
+    /// Skips an instruction.
     Skip(Jump<Loc>),
     #[byte(tag = 0x22)]
+    /// Evaluates a conditional expression.
     Conditional(Conditional<Loc>),
     #[byte(tag = 0x23)]
+    /// Constructs a new object.
     Construct { arg_count: u8, class: ClassIndex },
     #[byte(tag = 0x24)]
+    /// Invokes a static method.
     InvokeStatic {
         exit: Jump<Loc>,
         line: u16,
@@ -95,6 +133,7 @@ pub enum Instr<Loc = Offset> {
         flags: InvokeFlags,
     },
     #[byte(tag = 0x25)]
+    /// Invokes a virtual method.
     InvokeVirtual {
         exit: Jump<Loc>,
         line: u16,
@@ -102,140 +141,207 @@ pub enum Instr<Loc = Offset> {
         flags: InvokeFlags,
     },
     #[byte(tag = 0x26)]
+    /// Marks the end of parameters for a method invocation.
     ParamEnd,
     #[byte(tag = 0x27)]
+    /// Returns from the current method.
     Return,
     #[byte(tag = 0x28)]
+    /// Accesses a field of a struct.
     StructField(FieldIndex),
     #[byte(tag = 0x29)]
+    /// Pushes a context onto the stack.
     Context(Jump<Loc>),
     #[byte(tag = 0x2A)]
+    /// Checks if two values are equal.
     Equals(TypeIndex),
     #[byte(tag = 0x2B)]
+    /// Checks if a reference string is equal to a string.
     RefStringEqualsString(TypeIndex),
     #[byte(tag = 0x2C)]
+    /// Checks if a string is equal to a reference string.
     StringEqualsRefString(TypeIndex),
     #[byte(tag = 0x2D)]
+    /// Checks if two values are not equal.
     NotEquals(TypeIndex),
     #[byte(tag = 0x2E)]
+    /// Checks if a reference string is not equal to a string.
     RefStringNotEqualsString(TypeIndex),
     #[byte(tag = 0x2F)]
+    /// Checks if a string is not equal to a reference string.
     StringNotEqualsRefString(TypeIndex),
     #[byte(tag = 0x30)]
+    /// Allocates a new object.
     New(ClassIndex),
     #[byte(tag = 0x31)]
+    /// Deletes an object.
     Delete,
     #[byte(tag = 0x32)]
+    /// Pushes a reference to `this` onto the stack.
     This,
     #[byte(tag = 0x33)]
+    /// Profiling instruction.
     Profile(Box<Profile>),
     #[byte(tag = 0x34)]
+    /// Clears an array.
     ArrayClear(TypeIndex),
     #[byte(tag = 0x35)]
+    /// Gets the size of an array.
     ArraySize(TypeIndex),
     #[byte(tag = 0x36)]
+    /// Resizes an array.
     ArrayResize(TypeIndex),
     #[byte(tag = 0x37)]
+    /// Finds the first occurrence of an element in an array.
     ArrayFindFirst(TypeIndex),
     #[byte(tag = 0x38)]
+    /// Fast lookup for the first occurrence in an array.
     ArrayFindFirstFast(TypeIndex),
     #[byte(tag = 0x39)]
+    /// Finds the last occurrence of an element in an array.
     ArrayFindLast(TypeIndex),
     #[byte(tag = 0x3A)]
+    /// Fast lookup for the last occurrence in an array.
     ArrayFindLastFast(TypeIndex),
     #[byte(tag = 0x3B)]
+    /// Checks if an array contains a specific element.
     ArrayContains(TypeIndex),
     #[byte(tag = 0x3C)]
+    /// Fast check for element presence in an array.
     ArrayContainsFast(TypeIndex),
     #[byte(tag = 0x3D)]
+    /// Counts the occurrences of an element in an array.
     ArrayCount(TypeIndex),
     #[byte(tag = 0x3E)]
+    /// Fast count of an element in an array.
     ArrayCountFast(TypeIndex),
     #[byte(tag = 0x3F)]
+    /// Pushes an element to the end of an array.
     ArrayPush(TypeIndex),
     #[byte(tag = 0x40)]
+    /// Pops an element from the end of an array.
     ArrayPop(TypeIndex),
     #[byte(tag = 0x41)]
+    /// Inserts an element into an array at a specific index.
     ArrayInsert(TypeIndex),
     #[byte(tag = 0x42)]
+    /// Removes an element from an array.
     ArrayRemove(TypeIndex),
     #[byte(tag = 0x43)]
+    /// Fast removal of an element from an array.
     ArrayRemoveFast(TypeIndex),
     #[byte(tag = 0x44)]
+    /// Grows the capacity of an array.
     ArrayGrow(TypeIndex),
     #[byte(tag = 0x45)]
+    /// Erases an element from an array at a specific index.
     ArrayErase(TypeIndex),
     #[byte(tag = 0x46)]
+    /// Fast erase of an element from an array.
     ArrayEraseFast(TypeIndex),
     #[byte(tag = 0x47)]
+    /// Gets the last element of an array.
     ArrayLast(TypeIndex),
     #[byte(tag = 0x48)]
+    /// Gets an element from an array at a specific index.
     ArrayElement(TypeIndex),
     #[byte(tag = 0x49)]
+    /// Sorts an array.
     ArraySort(TypeIndex),
     #[byte(tag = 0x4A)]
+    /// Sorts an array using a predicate.
     ArraySortByPredicate(TypeIndex),
     #[byte(tag = 0x4B)]
+    /// Gets the size of a static array.
     StaticArraySize(TypeIndex),
     #[byte(tag = 0x4C)]
+    /// Finds the first occurrence of an element in a static array.
     StaticArrayFindFirst(TypeIndex),
     #[byte(tag = 0x4D)]
+    /// Fast lookup for the first occurrence in a static array.
     StaticArrayFindFirstFast(TypeIndex),
     #[byte(tag = 0x4E)]
+    /// Finds the last occurrence of an element in a static array.
     StaticArrayFindLast(TypeIndex),
     #[byte(tag = 0x4F)]
+    /// Fast lookup for the last occurrence in a static array.
     StaticArrayFindLastFast(TypeIndex),
     #[byte(tag = 0x50)]
+    /// Checks if a static array contains a specific element.
     StaticArrayContains(TypeIndex),
     #[byte(tag = 0x51)]
+    /// Fast check for element presence in a static array.
     StaticArrayContainsFast(TypeIndex),
     #[byte(tag = 0x52)]
+    /// Counts the occurrences of an element in a static array.
     StaticArrayCount(TypeIndex),
     #[byte(tag = 0x53)]
+    /// Fast count of an element in a static array.
     StaticArrayCountFast(TypeIndex),
     #[byte(tag = 0x54)]
+    /// Gets the last element of a static array.
     StaticArrayLast(TypeIndex),
     #[byte(tag = 0x55)]
+    /// Gets an element from a static array at a specific index.
     StaticArrayElement(TypeIndex),
     #[byte(tag = 0x56)]
+    /// Converts a reference to a boolean.
     RefToBool,
     #[byte(tag = 0x57)]
+    /// Converts a weak reference to a boolean.
     WeakRefToBool,
     #[byte(tag = 0x58)]
+    /// Converts an enum value to a 32-bit integer.
     EnumToI32 { enum_type: TypeIndex, size: u8 },
     #[byte(tag = 0x59)]
+    /// Converts a 32-bit integer to an enum value.
     I32ToEnum { enum_type: TypeIndex, size: u8 },
     #[byte(tag = 0x5A)]
+    /// Performs a dynamic cast.
     DynamicCast { class: ClassIndex, is_weak: bool },
     #[byte(tag = 0x5B)]
+    /// Converts a value to a string.
     ToString(TypeIndex),
     #[byte(tag = 0x5C)]
+    /// Converts a value to a variant.
     ToVariant(TypeIndex),
     #[byte(tag = 0x5D)]
+    /// Extracts a value from a variant.
     FromVariant(TypeIndex),
     #[byte(tag = 0x5E)]
+    /// Checks if a variant is defined.
     VariantIsDefined,
     #[byte(tag = 0x5F)]
+    /// Checks if a variant contains a reference.
     VariantIsRef,
     #[byte(tag = 0x60)]
+    /// Checks if a variant contains an array.
     VariantIsArray,
     #[byte(tag = 0x61)]
+    /// Gets the type name of a variant.
     VariantTypeName,
     #[byte(tag = 0x62)]
+    /// Converts a variant to a string.
     VariantToString,
     #[byte(tag = 0x63)]
+    /// Converts a weak reference to a strong reference.
     WeakRefToRef,
     #[byte(tag = 0x64)]
+    /// Converts a strong reference to a weak reference.
     RefToWeakRef,
     #[byte(tag = 0x65)]
+    /// Pushes a null weak reference onto the stack.
     WeakRefNull,
     #[byte(tag = 0x66)]
+    /// Gets a reference to a value.
     AsRef(TypeIndex),
     #[byte(tag = 0x67)]
+    /// Dereferences a reference.
     Deref(TypeIndex),
 }
 
 impl<L> Instr<L> {
+    /// Gets the `virtual_size` of this definition.
     pub fn virtual_size(&self) -> u16 {
         let op_size = match self {
             Instr::Breakpoint(_) => 19,
@@ -346,6 +452,7 @@ impl<L> Instr<L> {
         1 + op_size
     }
 
+    /// Applies a mapping function to labels.
     pub fn map_labels(self, f: impl Fn(L) -> Option<Offset>) -> Option<Instr> {
         let res = match self {
             Instr::Nop => Instr::Nop,
@@ -639,12 +746,14 @@ impl<L: fmt::Display> fmt::Display for Instr<L> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, TryRead, TryWrite, Measure)]
+/// Represents an unconditional jump instruction.
 pub struct Jump<Loc> {
     target: Loc,
 }
 
 impl<Loc> Jump<Loc> {
     #[inline]
+    /// Creates a new instance.
     pub fn new(target: Loc) -> Self {
         Jump { target }
     }
@@ -652,17 +761,20 @@ impl<Loc> Jump<Loc> {
 
 impl Jump<Offset> {
     #[inline]
+    /// Creates a new instance with a given offset.
     pub fn new_with_offset(target: Offset) -> Self {
         Jump { target: target - 3 }
     }
 
     #[inline]
+    /// Gets the `target` of this definition.
     pub fn target(&self) -> Offset {
         self.target + 3
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, TryRead, TryWrite, Measure)]
+/// Represents a conditional jump instruction.
 pub struct Conditional<Loc> {
     false_label: Loc,
     exit: Loc,
@@ -670,6 +782,7 @@ pub struct Conditional<Loc> {
 
 impl<Loc> Conditional<Loc> {
     #[inline]
+    /// Creates a new instance.
     pub fn new(false_label: Loc, exit: Loc) -> Self {
         Conditional { false_label, exit }
     }
@@ -677,6 +790,7 @@ impl<Loc> Conditional<Loc> {
 
 impl Conditional<Offset> {
     #[inline]
+    /// Creates a new instance with a given offset.
     pub fn new_with_offset(false_label: Offset, exit: Offset) -> Self {
         Conditional {
             false_label: false_label - 3,
@@ -685,17 +799,20 @@ impl Conditional<Offset> {
     }
 
     #[inline]
+    /// Gets the `false_label` of this definition.
     pub fn false_label(&self) -> Offset {
         self.false_label + 3
     }
 
     #[inline]
+    /// Gets the `exit` of this definition.
     pub fn exit(&self) -> Offset {
         self.exit + 5
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, TryRead, TryWrite, Measure)]
+/// Represents the start of a switch statement.
 pub struct Switch<Loc> {
     expr_type: TypeIndex,
     first_case: Loc,
@@ -703,6 +820,7 @@ pub struct Switch<Loc> {
 
 impl<Loc> Switch<Loc> {
     #[inline]
+    /// Creates a new instance.
     pub fn new(expr_type: TypeIndex, first_case: Loc) -> Self {
         Switch {
             expr_type,
@@ -713,6 +831,7 @@ impl<Loc> Switch<Loc> {
 
 impl Switch<Offset> {
     #[inline]
+    /// Creates a new instance with a given offset.
     pub fn new_with_offset(expr_type: TypeIndex, first_case: Offset) -> Self {
         Switch {
             expr_type,
@@ -721,12 +840,14 @@ impl Switch<Offset> {
     }
 
     #[inline]
+    /// Gets the `first_case` of this definition.
     pub fn first_case(&self) -> Offset {
         self.first_case + 11
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, TryRead, TryWrite, Measure)]
+/// Represents a label within a switch statement.
 pub struct SwitchLabel<Loc> {
     next_case: Loc,
     body: Loc,
@@ -734,6 +855,7 @@ pub struct SwitchLabel<Loc> {
 
 impl<Loc> SwitchLabel<Loc> {
     #[inline]
+    /// Creates a new instance.
     pub fn new(next_case: Loc, body: Loc) -> Self {
         SwitchLabel { next_case, body }
     }
@@ -741,6 +863,7 @@ impl<Loc> SwitchLabel<Loc> {
 
 impl SwitchLabel<Offset> {
     #[inline]
+    /// Creates a new instance with a given offset.
     pub fn new_with_offset(next_case: Offset, body: Offset) -> Self {
         SwitchLabel {
             next_case: next_case - 3,
@@ -749,17 +872,20 @@ impl SwitchLabel<Offset> {
     }
 
     #[inline]
+    /// Gets the `next_case` of this definition.
     pub fn next_case(&self) -> Offset {
         self.next_case + 3
     }
 
     #[inline]
+    /// Gets the function body.
     pub fn body(&self) -> Offset {
         self.body + 5
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, TryRead, TryWrite, Measure)]
+/// Represents a breakpoint instruction.
 pub struct Breakpoint {
     line: u16,
     line_start: u32,
@@ -770,6 +896,7 @@ pub struct Breakpoint {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, TryRead, TryWrite, Measure)]
+/// Represents a profiling instruction.
 pub struct Profile {
     #[byte(ctx = Prefixed(ctx))]
     function: Vec<u8>,
@@ -777,6 +904,7 @@ pub struct Profile {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, TryRead, TryWrite, Measure)]
+/// Represents an offset location in the bytecode.
 pub struct Offset {
     value: i16,
 }
@@ -831,15 +959,18 @@ impl fmt::Display for Offset {
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, TryRead, TryWrite, Measure)]
+/// Flags associated with an invocation instruction.
 pub struct InvokeFlags(u16);
 
 impl InvokeFlags {
     #[inline]
+    /// Sets whether the nth argument is an rvalue reference.
     pub fn set_is_rvalue_ref(&mut self, nth: u8) {
         self.0 |= 1 << nth;
     }
 
     #[inline]
+    /// Checks if the nth argument is an rvalue reference.
     pub fn is_rvalue_ref(&self, nth: u8) -> bool {
         self.0 & (1 << nth) != 0
     }
