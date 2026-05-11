@@ -347,6 +347,8 @@ impl<K: AstKind> Formattable for Block<'_, K> {
         for stmt in &self.stmts[..] {
             writeln!(f, "{}", stmt.as_wrapped().as_fmt(ctx.bump(1)))?;
         }
+        // Render trailing comments (after last statement, before closing brace)
+        write!(f, "{}", ctx.node_prefix(NodeId::block(self), Some(ctx.bump(1).ws())))?;
         write!(f, "{}}}", ctx.ws())
     }
 }
@@ -1611,7 +1613,51 @@ impl<'src> AstVisitor<'src, WithSpan> for PrefixCollector<'_, 'src> {
         block
             .stmts
             .iter()
-            .try_for_each(|stmt| self.visit_stmt(stmt))
+            .try_for_each(|stmt| self.visit_stmt(stmt))?;
+
+        // Collect trailing comments inside the block (after last statement, before closing brace)
+        // Use a heuristic: collect comments that appear immediately after the last statement,
+        // stopping at the first double-newline (blank line) which likely indicates the block end
+        // Also handle empty blocks (no statements but may have comments)
+        let mut trailing_comments = vec![];
+        let mut consecutive_linefeeds = 0;
+
+        // Process tokens after the last statement (or start of block if empty): linefeeds and comments
+        while let [(fst, _span), rest @ ..] = self.remainder {
+            match fst {
+                Token::LineComment(comment) => {
+                    trailing_comments.push(Prefix::LineComment(comment));
+                    consecutive_linefeeds = 0;
+                    self.remainder = rest;
+                }
+                Token::BlockComment(comment) => {
+                    trailing_comments.push(Prefix::BlockComment(comment));
+                    consecutive_linefeeds = 0;
+                    self.remainder = rest;
+                }
+                Token::LineFeed => {
+                    consecutive_linefeeds += 1;
+                    // Stop if we hit a blank line (two consecutive linefeeds)
+                    // This likely means we've reached the closing brace or end of block
+                    if consecutive_linefeeds >= 2 {
+                        break;
+                    }
+                    self.remainder = rest;
+                }
+                _ => {
+                    // Stop when we hit a non-comment, non-linefeed token
+                    break;
+                }
+            }
+        }
+        if !trailing_comments.is_empty() {
+            // Store trailing comments with the block's ID
+            self.prefixes.entry(NodeId::block(block))
+                .or_insert_with(Vec::new)
+                .extend(trailing_comments);
+        }
+
+        Ok(())
     }
 
     fn visit_default(&mut self, stmts: &[Spanned<SourceStmt<'src>>]) -> Result<(), Self::Error> {

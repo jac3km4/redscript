@@ -418,4 +418,9 @@ impl NodeId {
     pub fn condition<K: AstKind>(condition: &Pattern<'_, K>) -> Self {
         Self(ptr::from_ref(condition).cast())
     }
+
+    #[inline]
+    pub fn block<K: AstKind>(block: &Block<'_, K>) -> Self {
+        Self(ptr::from_ref(block).cast())
+    }
 }

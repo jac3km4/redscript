@@ -3,6 +3,7 @@ source: crates/syntax/formatter/tests/formatted.rs
 expression: module
 input_file: crates/syntax/formatter/tests/data/control-flow.reds
 ---
+
 func Test() {
   if true
     && false
