@@ -1621,6 +1621,7 @@ impl<'src> AstVisitor<'src, WithSpan> for PrefixCollector<'_, 'src> {
         // Also handle empty blocks (no statements but may have comments)
         let mut trailing_comments = vec![];
         let mut consecutive_linefeeds = 0;
+        let mut seen_comment = false;
 
         // Process tokens after the last statement (or start of block if empty): linefeeds and comments
         while let [(fst, _span), rest @ ..] = self.remainder {
@@ -1628,18 +1629,20 @@ impl<'src> AstVisitor<'src, WithSpan> for PrefixCollector<'_, 'src> {
                 Token::LineComment(comment) => {
                     trailing_comments.push(Prefix::LineComment(comment));
                     consecutive_linefeeds = 0;
+                    seen_comment = true;
                     self.remainder = rest;
                 }
                 Token::BlockComment(comment) => {
                     trailing_comments.push(Prefix::BlockComment(comment));
                     consecutive_linefeeds = 0;
+                    seen_comment = true;
                     self.remainder = rest;
                 }
                 Token::LineFeed => {
                     consecutive_linefeeds += 1;
-                    // Stop if we hit a blank line (two consecutive linefeeds)
-                    // This likely means we've reached the closing brace or end of block
-                    if consecutive_linefeeds >= 2 {
+                    // Only stop on blank line if we've already seen at least one comment
+                    // This prevents stopping at blank lines BEFORE the first comment
+                    if seen_comment && consecutive_linefeeds >= 2 {
                         break;
                     }
                     self.remainder = rest;

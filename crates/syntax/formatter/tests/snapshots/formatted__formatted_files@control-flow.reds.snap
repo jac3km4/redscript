@@ -11,16 +11,15 @@ func Test() {
     && false
     && true
     && false {
+    // trailing comment
   } else if false {
     FTLog("a");
   } else {
     FTLog("b");
   }
-
   if true {
     FTLog("c");
   }
-
   while true
     && false
     && true
@@ -29,11 +28,9 @@ func Test() {
     && false {
     FTLog("d");
   }
-
   while false {
     FTLog("e");
   }
-
   for x in [
     "lorem",
     "ipsum",
@@ -57,7 +54,6 @@ func Test() {
   ] {
     FTLog(x);
   }
-
   switch 1 {
     case 0:
       FTLog("f");
@@ -66,7 +62,6 @@ func Test() {
     default:
       FTLog("h");
   }
-
   let result;
   switch [1, 2, 3] {
     case let [..,a, b, c]:
@@ -81,11 +76,9 @@ func Test() {
     default:
       result = 0;
   }
-
   if let [..,a, b, c] = [1, 2, 3] {
     result = a;
   }
-
   if let [
     one,
     two,
@@ -105,10 +98,8 @@ func Test() {
     sixteen
   ] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] {
   }
-
   if let Class { fieldA } = new Class() {
   }
-
   if let Class {
     fieldA,
     fieldB,
@@ -123,11 +114,9 @@ func Test() {
     fieldK
   } = new Class() {
   }
-
   for y in [1, 2, 3] {
     FTLog(s"f: \(y)");
   }
-
   let f1 = (a) -> a;
   let f2 = (a) -> {
     return a;
@@ -148,5 +137,3 @@ class Class {
   let fieldJ: Double;
   let fieldK: String;
 }
-
-// trailing comment
