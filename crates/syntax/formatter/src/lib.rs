@@ -348,7 +348,11 @@ impl<K: AstKind> Formattable for Block<'_, K> {
             writeln!(f, "{}", stmt.as_wrapped().as_fmt(ctx.bump(1)))?;
         }
         // Render trailing comments (after last statement, before closing brace)
-        write!(f, "{}", ctx.node_prefix(NodeId::block(self), Some(ctx.bump(1).ws())))?;
+        write!(
+            f,
+            "{}",
+            ctx.node_prefix(NodeId::block(self), Some(ctx.bump(1).ws()))
+        )?;
         write!(f, "{}}}", ctx.ws())
     }
 }
@@ -1655,8 +1659,9 @@ impl<'src> AstVisitor<'src, WithSpan> for PrefixCollector<'_, 'src> {
         }
         if !trailing_comments.is_empty() {
             // Store trailing comments with the block's ID
-            self.prefixes.entry(NodeId::block(block))
-                .or_insert_with(Vec::new)
+            self.prefixes
+                .entry(NodeId::block(block))
+                .or_default()
                 .extend(trailing_comments);
         }
 
