@@ -68,6 +68,7 @@ func LongFunc1(
     4.0,
     "lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore"
   );
+
   LongFunc2(
     LongFunc2(
       0,

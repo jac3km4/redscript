@@ -1619,46 +1619,59 @@ impl<'src> AstVisitor<'src, WithSpan> for PrefixCollector<'_, 'src> {
             .iter()
             .try_for_each(|stmt| self.visit_stmt(stmt))?;
 
-        // Collect trailing comments inside the block (after last statement, before closing brace)
-        // Use a heuristic: collect comments that appear immediately after the last statement,
-        // stopping at the first double-newline (blank line) which likely indicates the block end
-        // Also handle empty blocks (no statements but may have comments)
+        // Collect trailing comments inside the block (after last statement, before
+        // closing brace). The remainder stream contains only LineFeed/comment tokens
+        // (whitespace/comment partition), so we cannot see a closing brace token to
+        // stop on. To avoid stealing comments and blank-line separators that belong
+        // to the surrounding scope, we use two guards:
+        //
+        // 1. Skip empty blocks. With no last statement, the loop would walk forward
+        //    past the closing brace into sibling/parent scope and capture comments
+        //    that belong elsewhere (eg. a top-level comment after the function).
+        //
+        // 2. Stop on a blank line (two consecutive LineFeeds). A blank line after a
+        //    comment-or-statement marks the end of the trailing-comment region, even
+        //    without a brace token. This bounds the walk inside the current block.
+        //
+        // 3. Buffer LineFeeds in `pending` and only commit consumption to
+        //    `self.remainder` when a comment actually follows. If no comment is seen,
+        //    blank-line separators between sibling statements remain in
+        //    `self.remainder` and are picked up by the next stmt's visit_node, which
+        //    handles blank-line preservation between siblings.
+        if block.stmts.is_empty() {
+            return Ok(());
+        }
+
         let mut trailing_comments = vec![];
         let mut consecutive_linefeeds = 0;
-        let mut seen_comment = false;
+        let mut pending = self.remainder;
 
-        // Process tokens after the last statement (or start of block if empty): linefeeds and comments
-        while let [(fst, _span), rest @ ..] = self.remainder {
+        while let [(fst, _span), rest @ ..] = pending {
             match fst {
                 Token::LineComment(comment) => {
                     trailing_comments.push(Prefix::LineComment(comment));
                     consecutive_linefeeds = 0;
-                    seen_comment = true;
+                    pending = rest;
                     self.remainder = rest;
                 }
                 Token::BlockComment(comment) => {
                     trailing_comments.push(Prefix::BlockComment(comment));
                     consecutive_linefeeds = 0;
-                    seen_comment = true;
+                    pending = rest;
                     self.remainder = rest;
                 }
                 Token::LineFeed => {
                     consecutive_linefeeds += 1;
-                    // Only stop on blank line if we've already seen at least one comment
-                    // This prevents stopping at blank lines BEFORE the first comment
-                    if seen_comment && consecutive_linefeeds >= 2 {
+                    if consecutive_linefeeds >= 2 {
                         break;
                     }
-                    self.remainder = rest;
+                    pending = rest;
                 }
-                _ => {
-                    // Stop when we hit a non-comment, non-linefeed token
-                    break;
-                }
+                _ => break,
             }
         }
+
         if !trailing_comments.is_empty() {
-            // Store trailing comments with the block's ID
             self.prefixes
                 .entry(NodeId::block(block))
                 .or_default()
