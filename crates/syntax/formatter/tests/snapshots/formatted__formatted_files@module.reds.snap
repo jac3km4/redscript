@@ -2,7 +2,6 @@
 source: crates/syntax/formatter/tests/formatted.rs
 expression: module
 input_file: crates/syntax/formatter/tests/data/module.reds
-snapshot_kind: text
 ---
 module Test.Module
 

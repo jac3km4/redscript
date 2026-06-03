@@ -1,0 +1,11 @@
+---
+source: crates/syntax/formatter/tests/formatted.rs
+expression: module
+input_file: crates/syntax/formatter/tests/data/trailing-comments-in-block.reds
+---
+
+func Test() {
+  1 + 2;
+  // Comment 1
+  // Comment 2
+}
