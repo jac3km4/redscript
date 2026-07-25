@@ -47,6 +47,7 @@ fn run(r6_dir: &Path, args: Option<Arguments>) -> anyhow::Result<()> {
         .context("missing 'settings_add_script_path'")?;
     let compile = api.compile.context("missing 'compile'")?;
     let free_result = api.free_result.context("missing 'free_result'")?;
+    let get_success = api.get_success.context("missing 'get_success'")?;
 
     let root = c_path(r6_dir)?;
 
@@ -72,7 +73,12 @@ fn run(r6_dir: &Path, args: Option<Arguments>) -> anyhow::Result<()> {
         }
 
         let res = compile(settings);
+        let succeeded = !get_success(res).is_null();
         free_result(res);
+
+        if !succeeded {
+            std::process::exit(1);
+        }
     }
 
     Ok(())
