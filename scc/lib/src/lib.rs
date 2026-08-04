@@ -9,7 +9,7 @@ use std::{fmt, io, iter, vec};
 use anyhow::Context;
 use api::{SccOutput, SccResult, SccSettings};
 use fd_lock::RwLock;
-use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, LogSpecBuilder, Logger, Naming};
+use flexi_logger::{Age, Cleanup, Criterion, FileSpec, LogSpecBuilder, Logger, Naming};
 use hashbrown::{HashMap, HashSet};
 use hints::UserHints;
 use log::LevelFilter;
@@ -239,11 +239,15 @@ fn try_compile_files(
     }
 }
 
+// FIX (2026-08-03): scc_compile runs in-process inside the game's GUI executable, which has no
+// console and thus no valid stdout handle. duplicate_to_stdout tried to write there anyway, and
+// when that write failed flexi_logger's own error-reporting path (which also goes through
+// stdout) failed too, causing flexi_logger to panic ("error output channel itself is broken").
+// File logging alone is all that's meaningful here anyway - nothing reads scc's stdout in-game.
 fn setup_logger(r6_dir: &Path) {
     let file = FileSpec::default().directory(r6_dir.join("logs")).basename("redscript");
     Logger::with(LogSpecBuilder::new().default(LevelFilter::Info).build())
         .log_to_file(file)
-        .duplicate_to_stdout(Duplicate::All)
         .rotate(Criterion::Age(Age::Day), Naming::Timestamps, Cleanup::KeepLogFiles(4))
         .format(|out, time, msg| write!(out, "[{} - {}] {}", msg.level(), time.now().to_rfc2822(), msg.args()))
         .start()
