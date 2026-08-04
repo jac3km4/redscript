@@ -1,3 +1,8 @@
+// The #[bitfield] macro (modular_bitfield) below generates code that this rustc version
+// misreports as "unnecessary parentheses" on the annotated fields themselves; none of the
+// fields actually contain parens, so this is a lint false positive tied to the macro expansion.
+#![allow(unused_parens)]
+
 use std::path::PathBuf;
 use std::{fmt, io};
 
