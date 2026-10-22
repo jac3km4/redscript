@@ -3,6 +3,12 @@
 Based on redscript v0.5.31 by jac3km4 and contributors, under the original MIT
 licence. This is an unofficial compatibility contribution, not an upstream release.
 
+Based on Antrakt92's upstream PR #203, commit
+`c18995d329743e1a89774fe5378b388e3205e08d`:
+https://github.com/jac3km4/redscript/pull/203 . That commit skips GitHub CI;
+its reported local results are not GitHub check results. This fork additionally
+fixes Clippy diagnostics from Rust 1.99 and applies nightly rustfmt.
+
 The 2.5 format keeps version 14 but adds header flag 0x2 and a seventh table
 header. There is one 12-byte linkage record per definition, including index zero.
 The reader follows stored table offsets and validates linkage count, bounds and
@@ -24,23 +30,28 @@ definition growth, invalid linkage bounds/count/CRC and external-patch rejection
 No new game cache, decompiled game code or proprietary mod source is included.
 The tests build extended input from the existing upstream predef fixture.
 
-Independent local Windows checks also exercised the exported DLL API, compilation
-against a pristine 2.5 cache, and official SCC LoadAndSave plus functional compare.
-New classes, fields, added methods, wrappers and replacements survived those
-format checks. Invalid input preserved the original cache and an existing CLI
-output sentinel. A minimal game run compiled and loaded Auto Continue 1.1.2,
-confirmed the final loading prompt automatically and reached the rendered world.
-These checks do not establish full-collection or other framework compatibility.
+Local Windows checks for this fork include 6,234 passing workspace tests,
+including the libclang-based C API suite, all-target/all-feature Clippy, and
+nightly formatting. The Windows SCC executable and DLL are built with the
+release features `mmap,popup`. REDCheatMenu2 v1.2.0 is compiled against a copy of
+the installed 2.5 cache; the output is read again and compiled again from its
+backup. Header and all seven table CRCs are independently checked with Python.
+No proprietary game cache or mod source is part of this repository or package.
+
+The PR author reports additional official SCC and in-game checks in PR #203.
+Those checks have not been repeated locally for this fork. In-game behavior of
+REDCheatMenu2 and compatibility with other frameworks still need verification.
 
 ## Local checks
 
 ```text
-cargo build --locked -p redscript-cli -p scc-lib -p scc
-cargo test --locked --workspace --exclude scc-lib-tests
-cargo clippy --locked --workspace --exclude scc-lib-tests --all-targets
-cargo fmt --all -- --check
+cargo build --locked --workspace
+cargo test --locked --workspace
+cargo clippy --locked --workspace --all-features --all-targets
+cargo +nightly fmt --all -- --check
+cargo build --locked --release -p redscript-cli -p scc-lib -p scc --features mmap,popup
 ```
 
-The bindgen-based scc-lib-tests suite needs libclang. Exported DLL behavior was
-also exercised independently with compiler error popups disabled. The stable
-formatter ignores this repository's nightly-only formatting options.
+The bindgen-based scc-lib-tests suite needs libclang. Build the debug DLL without
+`popup` before running its API tests so intentional compiler-error cases do not
+wait for an interactive message box.

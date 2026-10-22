@@ -1,7 +1,6 @@
 //! Inspect and round-trip a cache without compiling scripts or launching the game.
-use std::env;
-use std::fs;
 use std::io::{self, Cursor};
+use std::{env, fs};
 
 use redscript::bundle::ScriptBundle;
 

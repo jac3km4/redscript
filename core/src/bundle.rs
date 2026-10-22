@@ -104,11 +104,11 @@ pub struct Header {
 }
 
 impl Header {
-    const MAGIC: u32 = 0x5344_4552;
-    const SIZE: usize = 104;
     const EXTENDED_SIZE: usize = 116;
     const LINKAGE_FLAG: u32 = 2;
     const LINKAGE_ROW_SIZE: u32 = 12;
+    const MAGIC: u32 = 0x5344_4552;
+    const SIZE: usize = 104;
     const SUPPORTED_VERSION: u32 = 14;
 
     fn size(&self) -> usize {
@@ -147,7 +147,9 @@ impl Header {
             // Bit 0 resolves an object against a precompiled base. This compiler
             // writes complete bundles, not patches with external definitions.
             if rows
-                .chunks_exact(Self::LINKAGE_ROW_SIZE as usize)
+                .as_chunks::<{ Self::LINKAGE_ROW_SIZE as usize }>()
+                .0
+                .iter()
                 .any(|row| row[0] & 1 != 0)
             {
                 return Err(io::Error::new(
@@ -973,7 +975,7 @@ mod tests {
         let extra_offset = bytes.len() as u32;
         // Distinct opaque rows ensure preservation is not just zero padding.
         let mut extra: Vec<u8> = (0..count * 12).map(|index| (index % 251) as u8).collect();
-        for row in extra.chunks_exact_mut(12) {
+        for row in extra.as_chunks_mut::<12>().0 {
             row[0] &= !1;
         }
         put_u32(&mut bytes, 104, extra_offset);
