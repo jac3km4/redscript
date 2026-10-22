@@ -12,7 +12,7 @@ param (
 $ErrorActionPreference = 'Stop'
 $workingDir = (Get-Location).Path
 
-cargo build --release --locked --features mmap,popup
+cargo build --release --locked -p scc -p scc-lib -p redscript-cli --features mmap,popup
 if ($LASTEXITCODE -ne 0) {
     throw "cargo build failed with exit code $LASTEXITCODE"
 }

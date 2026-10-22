@@ -12,7 +12,7 @@ archive_name="$2"
 
 working_dir=$(pwd)
 
-cargo build --release --locked --features mmap,popup
+cargo build --release --locked -p scc -p scc-lib -p redscript-cli --features mmap,popup
 
 tools_dir="$staging_dir/engine/tools"
 
