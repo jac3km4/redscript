@@ -1,5 +1,5 @@
 use std::fs::{self, File};
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
@@ -113,10 +113,10 @@ fn compile(opts: CompileOpts) -> anyhow::Result<()> {
         .compile_and_report(&files)
     {
         Ok(_) => {
-            let file = File::create(&opts.output).context("Failed to create a file at the specified output path")?;
-            bundle
-                .save(&mut io::BufWriter::new(file))
-                .context("Failed to write the script cache")?;
+            let bytes = bundle.to_bytes().context("Failed to write the script cache")?;
+            let mut file =
+                File::create(&opts.output).context("Failed to create a file at the specified output path")?;
+            file.write_all(&bytes).context("Failed to write the script cache")?;
 
             log::info!("Output successfully saved to {}", opts.output.display());
         }

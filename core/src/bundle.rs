@@ -18,18 +18,66 @@ use crate::io::StreamOffset;
 pub struct ScriptBundle {
     header: Header,
     pub pool: ConstantPool,
+    extended: Option<ExtendedBundle>,
+}
+
+#[derive(Debug)]
+struct ExtendedBundle {
+    original: Vec<u8>,
+    canonical: Vec<u8>,
 }
 
 impl ScriptBundle {
+    pub fn has_linkage_table(&self) -> bool {
+        self.header.linkage.is_some()
+    }
+
     pub fn load<I: io::Read + io::Seek>(input: &mut I) -> io::Result<Self> {
         let header: Header = input.decode()?;
+        header.validate_linkage(input)?;
         let pool = ConstantPool::decode(input, &header)?;
-        let cache = ScriptBundle { header, pool };
+        let mut cache = ScriptBundle {
+            header,
+            pool,
+            extended: None,
+        };
+        if cache.header.data.offset > Header::SIZE as u32 {
+            // Preserve producer padding on an unchanged roundtrip. Edited full
+            // bundles regenerate their linkage instead of copying opaque rows.
+            let mut original = Vec::new();
+            input.seek(io::SeekFrom::Start(0))?;
+            input.read_to_end(&mut original)?;
+            let mut canonical = io::Cursor::new(Vec::new());
+            cache.save_encoded(&mut canonical)?;
+            cache.extended = Some(ExtendedBundle {
+                original,
+                canonical: canonical.into_inner(),
+            });
+        }
         Ok(cache)
     }
 
     pub fn save<O: io::Write + io::Seek>(&self, output: &mut O) -> io::Result<()> {
-        output.seek(io::SeekFrom::Start(Header::SIZE as u64))?;
+        let bytes = self.to_bytes()?;
+        output.seek(io::SeekFrom::Start(0))?;
+        output.write_all(&bytes)
+    }
+
+    /// Finish serialization before opening or truncating an output file.
+    pub fn to_bytes(&self) -> io::Result<Vec<u8>> {
+        let mut canonical = io::Cursor::new(Vec::new());
+        self.save_encoded(&mut canonical)?;
+        let bytes = canonical.into_inner();
+        if let Some(extended) = &self.extended
+            && bytes == extended.canonical
+        {
+            return Ok(extended.original.clone());
+        }
+        Ok(bytes)
+    }
+
+    fn save_encoded<O: io::Write + io::Seek>(&self, output: &mut O) -> io::Result<()> {
+        output.seek(io::SeekFrom::Start(self.header.size() as u64))?;
         let header = self.pool.encode(output, &self.header)?;
 
         output.seek(io::SeekFrom::Start(0))?;
@@ -52,12 +100,66 @@ pub struct Header {
     resources: TableHeader,
     strings: TableHeader,
     definitions: TableHeader,
+    linkage: Option<TableHeader>,
 }
 
 impl Header {
+    const EXTENDED_SIZE: usize = 116;
+    const LINKAGE_FLAG: u32 = 2;
+    const LINKAGE_ROW_SIZE: u32 = 12;
     const MAGIC: u32 = 0x5344_4552;
     const SIZE: usize = 104;
     const SUPPORTED_VERSION: u32 = 14;
+
+    fn size(&self) -> usize {
+        if self.linkage.is_some() {
+            Self::EXTENDED_SIZE
+        } else {
+            Self::SIZE
+        }
+    }
+
+    fn validate_linkage<I: io::Read + io::Seek>(&self, input: &mut I) -> io::Result<()> {
+        if let Some(table) = &self.linkage {
+            if table.count != self.definitions.count {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Linkage and definition counts differ",
+                ));
+            }
+            let size = table
+                .count
+                .checked_mul(Self::LINKAGE_ROW_SIZE)
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Linkage table size overflow"))?;
+            let end = u64::from(table.offset) + u64::from(size);
+            let file_size = input.seek(io::SeekFrom::End(0))?;
+            if table.offset < Self::EXTENDED_SIZE as u32 || end > file_size {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Linkage table is outside the cache",
+                ));
+            }
+            input.seek(io::SeekFrom::Start(table.offset.into()))?;
+            let rows = input.decode_bytes(size)?;
+            if crc32fast::hash(&rows) != table.hash {
+                return Err(io::Error::new(io::ErrorKind::InvalidData, "Linkage table CRC mismatch"));
+            }
+            // Bit 0 resolves an object against a precompiled base. This compiler
+            // writes complete bundles, not patches with external definitions.
+            if rows
+                .as_chunks::<{ Self::LINKAGE_ROW_SIZE as usize }>()
+                .0
+                .iter()
+                .any(|row| row[0] & 1 != 0)
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    "External patch linkage is not supported",
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Decode for Header {
@@ -85,6 +187,28 @@ impl Decode for Header {
         let resources: TableHeader = input.decode()?;
         let definitions: TableHeader = input.decode()?;
         let strings: TableHeader = input.decode()?;
+        let linkage = if flags & Self::LINKAGE_FLAG != 0 {
+            Some(input.decode()?)
+        } else {
+            None
+        };
+        let expected_size = if linkage.is_some() {
+            Self::EXTENDED_SIZE
+        } else {
+            Self::SIZE
+        };
+        if data.offset < expected_size as u32 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "String data overlaps the script header",
+            ));
+        }
+        if data.offset != expected_size as u32 {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "Unrecognized script cache header layout",
+            ));
+        }
 
         let result = Header {
             version,
@@ -99,6 +223,7 @@ impl Decode for Header {
             resources,
             strings,
             definitions,
+            linkage,
         };
         Ok(result)
     }
@@ -118,7 +243,11 @@ impl Encode for Header {
         output.encode(&self.tweakdb_indexes)?;
         output.encode(&self.resources)?;
         output.encode(&self.definitions)?;
-        output.encode(&self.strings)
+        output.encode(&self.strings)?;
+        if let Some(linkage) = &self.linkage {
+            output.encode(linkage)?;
+        }
+        Ok(())
     }
 }
 
@@ -133,14 +262,26 @@ pub struct ConstantPool {
 
 impl ConstantPool {
     pub fn decode<I: io::Read + io::Seek>(input: &mut I, header: &Header) -> io::Result<Self> {
+        if header.data.offset < Header::SIZE as u32 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "String data overlaps the script header",
+            ));
+        }
+        input.seek(io::SeekFrom::Start(header.data.offset.into()))?;
         let buffer = input.decode_bytes(header.data.count)?;
 
         let mut cursor = io::Cursor::new(buffer);
 
+        input.seek(io::SeekFrom::Start(header.names.offset.into()))?;
         let names = Strings::decode_from(&mut cursor, &input.decode_vec(header.names.count)?)?;
+        input.seek(io::SeekFrom::Start(header.tweakdb_indexes.offset.into()))?;
         let tweakdb_ids = Strings::decode_from(&mut cursor, &input.decode_vec(header.tweakdb_indexes.count)?)?;
+        input.seek(io::SeekFrom::Start(header.resources.offset.into()))?;
         let resources = Strings::decode_from(&mut cursor, &input.decode_vec(header.resources.count)?)?;
+        input.seek(io::SeekFrom::Start(header.definitions.offset.into()))?;
         let headers: Vec<DefinitionHeader> = input.decode_vec(header.definitions.count)?;
+        input.seek(io::SeekFrom::Start(header.strings.offset.into()))?;
         let strings = Strings::decode_from(&mut cursor, &input.decode_vec(header.strings.count)?)?;
 
         let mut definitions = Vec::with_capacity(headers.len());
@@ -207,6 +348,22 @@ impl ConstantPool {
         let strings = TableHeader::new(&string_offsets, self.strings.strings.len() as u32, position);
         output.write_all(&string_offsets)?;
 
+        let linkage = if header.linkage.is_some() {
+            let count = u32::try_from(self.definitions.len())
+                .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Too many definitions for linkage"))?;
+            let size = count
+                .checked_mul(Header::LINKAGE_ROW_SIZE)
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Linkage table size overflow"))?;
+            // With external-resolution bit 0 clear, the native loader uses the
+            // definition's parent. Zero rows omit ignored producer padding.
+            let rows = vec![0_u8; size as usize];
+            let position = output.stream_position()? as u32;
+            output.write_all(&rows)?;
+            Some(TableHeader::new(&rows, count, position))
+        } else {
+            None
+        };
+
         let mut buffer = io::Cursor::new(Vec::with_capacity(def_header_size as usize));
         buffer.encode(&DefinitionHeader::DEFAULT)?;
 
@@ -227,6 +384,7 @@ impl ConstantPool {
             resources,
             strings,
             definitions,
+            linkage,
             hash: 0xDEAD_BEEF,
             ..header.clone()
         };
@@ -781,6 +939,150 @@ mod tests {
         tmp.set_position(0);
         let scripts2 = ScriptBundle::load(&mut tmp)?;
         assert_eq!(scripts.pool.definitions.len(), scripts2.pool.definitions.len());
+        Ok(())
+    }
+
+    fn read_u32(bytes: &[u8], offset: usize) -> u32 {
+        u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap())
+    }
+
+    fn put_u32(bytes: &mut [u8], offset: usize, value: u32) {
+        bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+    }
+
+    fn extended_fixture() -> io::Result<Vec<u8>> {
+        let scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
+        let mut output = Cursor::new(Vec::new());
+        scripts.save(&mut output)?;
+        let mut bytes = output.into_inner();
+        bytes.splice(104..104, [0_u8; 12]);
+        put_u32(&mut bytes, 4, 14);
+        put_u32(&mut bytes, 8, 2);
+        put_u32(&mut bytes, 28, 7);
+        for offset in (32..104).step_by(12) {
+            let moved = read_u32(&bytes, offset) + 12;
+            put_u32(&mut bytes, offset, moved);
+        }
+        let table = read_u32(&bytes, 80) as usize;
+        let count = read_u32(&bytes, 84) as usize;
+        for index in 0..count {
+            let at = table + index * 20 + 8;
+            let old = read_u32(&bytes, at);
+            if old > 0 {
+                put_u32(&mut bytes, at, old + 12);
+            }
+        }
+        let extra_offset = bytes.len() as u32;
+        // Distinct opaque rows ensure preservation is not just zero padding.
+        let mut extra: Vec<u8> = (0..count * 12).map(|index| (index % 251) as u8).collect();
+        for row in extra.as_chunks_mut::<12>().0 {
+            row[0] &= !1;
+        }
+        put_u32(&mut bytes, 104, extra_offset);
+        put_u32(&mut bytes, 108, count as u32);
+        put_u32(&mut bytes, 112, crc32fast::hash(&extra));
+        bytes.extend(extra);
+        put_u32(&mut bytes, 24, 0xdead_beef);
+        let hash = crc32fast::hash(&bytes[..116]);
+        put_u32(&mut bytes, 24, hash);
+        Ok(bytes)
+    }
+
+    #[test]
+    fn reload_extended_scripts_preserves_every_byte() -> io::Result<()> {
+        let bytes = extended_fixture()?;
+        let scripts = ScriptBundle::load(&mut Cursor::new(&bytes))?;
+        let mut output = Cursor::new(Vec::new());
+        scripts.save(&mut output)?;
+        assert_eq!(output.into_inner(), bytes);
+        Ok(())
+    }
+
+    #[test]
+    fn edited_extended_scripts_regenerate_linkage_rows() -> io::Result<()> {
+        let bytes = extended_fixture()?;
+        let mut scripts = ScriptBundle::load(&mut Cursor::new(bytes))?;
+        let name = scripts.pool.names.add("ExtendedCacheMutationProbe".into());
+        let _: super::PoolIndex<crate::definition::Type> = scripts.pool.add_definition(
+            crate::definition::Definition::type_(name, crate::definition::Type::Prim),
+        );
+        let mut output = Cursor::new(Vec::new());
+        scripts.save(&mut output)?;
+        let output = output.into_inner();
+        assert_eq!(read_u32(&output, 32), 116);
+        let count = read_u32(&output, 84);
+        assert_eq!(read_u32(&output, 108), count);
+        let at = read_u32(&output, 104) as usize;
+        assert!(output[at..at + count as usize * 12].iter().all(|byte| *byte == 0));
+        assert_eq!(
+            read_u32(&output, 112),
+            crc32fast::hash(&output[at..at + count as usize * 12])
+        );
+        let reloaded = ScriptBundle::load(&mut Cursor::new(output))?;
+        assert!(reloaded.pool.names.get_index("ExtendedCacheMutationProbe").is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn external_patch_linkage_is_rejected() -> io::Result<()> {
+        let mut bytes = extended_fixture()?;
+        let at = read_u32(&bytes, 104) as usize;
+        let count = read_u32(&bytes, 108) as usize;
+        bytes[at + 12] |= 1;
+        let hash = crc32fast::hash(&bytes[at..at + count * 12]);
+        put_u32(&mut bytes, 112, hash);
+        let error = ScriptBundle::load(&mut Cursor::new(bytes)).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::Unsupported);
+        Ok(())
+    }
+
+    #[test]
+    fn mismatched_linkage_count_is_rejected() -> io::Result<()> {
+        let mut bytes = extended_fixture()?;
+        let count = read_u32(&bytes, 108);
+        put_u32(&mut bytes, 108, count - 1);
+        let error = ScriptBundle::load(&mut Cursor::new(bytes)).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        Ok(())
+    }
+
+    #[test]
+    fn corrupt_linkage_table_is_rejected() -> io::Result<()> {
+        let mut bytes = extended_fixture()?;
+        let at = read_u32(&bytes, 104) as usize;
+        bytes[at + 10] ^= 1;
+        let error = ScriptBundle::load(&mut Cursor::new(bytes)).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        Ok(())
+    }
+
+    #[test]
+    fn truncated_linkage_table_is_rejected() -> io::Result<()> {
+        let mut bytes = extended_fixture()?;
+        bytes.pop();
+        let error = ScriptBundle::load(&mut Cursor::new(bytes)).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        Ok(())
+    }
+
+    #[test]
+    fn edited_legacy_scripts_remain_writable() -> io::Result<()> {
+        let mut scripts = ScriptBundle::load(&mut Cursor::new(PREDEF))?;
+        scripts.pool.names.add("LegacyCacheMutationProbe".into());
+        let mut output = Cursor::new(Vec::new());
+        scripts.save(&mut output)?;
+        output.set_position(0);
+        let reloaded = ScriptBundle::load(&mut output)?;
+        assert!(reloaded.pool.names.get_index("LegacyCacheMutationProbe").is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn string_data_cannot_overlap_header() -> io::Result<()> {
+        let mut bytes = PREDEF.to_vec();
+        put_u32(&mut bytes, 32, 100);
+        let error = ScriptBundle::load(&mut Cursor::new(bytes)).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
         Ok(())
     }
 }
