@@ -55,6 +55,9 @@ pub struct Header {
 }
 
 impl Header {
+    /// Set by the game since patch 2.5: the header is followed by a 7th table header describing
+    /// an extra table with one 12-byte record per definition. Redscript doesn't write that table.
+    const FLAG_DEFINITION_RECORDS: u32 = 0x2;
     const MAGIC: u32 = 0x5344_4552;
     const SIZE: usize = 104;
     const SUPPORTED_VERSION: u32 = 14;
@@ -85,6 +88,10 @@ impl Decode for Header {
         let resources: TableHeader = input.decode()?;
         let definitions: TableHeader = input.decode()?;
         let strings: TableHeader = input.decode()?;
+        if flags & Self::FLAG_DEFINITION_RECORDS != 0 {
+            // skip the extra table header; definitions are located by their own offsets
+            let _definition_records: TableHeader = input.decode()?;
+        }
 
         let result = Header {
             version,
@@ -228,6 +235,8 @@ impl ConstantPool {
             strings,
             definitions,
             hash: 0xDEAD_BEEF,
+            // the extra per-definition table is not written, so its flag must not be either
+            flags: header.flags & !Header::FLAG_DEFINITION_RECORDS,
             ..header.clone()
         };
 
@@ -781,6 +790,55 @@ mod tests {
         tmp.set_position(0);
         let scripts2 = ScriptBundle::load(&mut tmp)?;
         assert_eq!(scripts.pool.definitions.len(), scripts2.pool.definitions.len());
+        Ok(())
+    }
+
+    /// Rewrites a pre-2.5 bundle into the layout the game uses since patch 2.5: header flag 0x2,
+    /// a 7th table header after the regular 104-byte header (all absolute offsets shift by 12),
+    /// and a trailing table with one 12-byte record per definition.
+    fn to_patch_2_5_layout(bytes: &[u8]) -> Vec<u8> {
+        const HEADER_SIZE: usize = 104;
+        const SHIFT: u32 = 12;
+        let u32_at = |buf: &[u8], pos: usize| u32::from_le_bytes(buf[pos..pos + 4].try_into().unwrap());
+        let put_u32 = |buf: &mut Vec<u8>, pos: usize, val: u32| buf[pos..pos + 4].copy_from_slice(&val.to_le_bytes());
+
+        let mut out = bytes[..HEADER_SIZE].to_vec();
+        put_u32(&mut out, 8, u32_at(bytes, 8) | 0x2);
+        // table headers (offset, count, hash): data, names, tweakdb ids, resources, definitions, strings
+        for table in 0..6 {
+            let pos = 32 + table * 12;
+            put_u32(&mut out, pos, u32_at(bytes, pos) + SHIFT);
+        }
+        let definitions_offset = u32_at(bytes, 32 + 4 * 12) as usize;
+        let definition_count = u32_at(bytes, 32 + 4 * 12 + 4);
+        let records_offset = bytes.len() as u32 + SHIFT;
+        out.extend_from_slice(&records_offset.to_le_bytes());
+        out.extend_from_slice(&definition_count.to_le_bytes());
+        out.extend_from_slice(&0u32.to_le_bytes());
+        out.extend_from_slice(&bytes[HEADER_SIZE..]);
+        // definition headers are 20 bytes each, the body offset is at +8
+        for i in 0..definition_count as usize {
+            let pos = definitions_offset + SHIFT as usize + i * 20 + 8;
+            let offset = u32_at(&out, pos);
+            if offset != 0 {
+                put_u32(&mut out, pos, offset + SHIFT);
+            }
+        }
+        out.resize(out.len() + definition_count as usize * 12, 0);
+        out
+    }
+
+    #[test]
+    fn load_patch_2_5_layout() -> io::Result<()> {
+        let mut expected = Cursor::new(Vec::new());
+        ScriptBundle::load(&mut Cursor::new(PREDEF))?.save(&mut expected)?;
+
+        let converted = to_patch_2_5_layout(PREDEF);
+        let mut actual = Cursor::new(Vec::new());
+        ScriptBundle::load(&mut Cursor::new(&converted))?.save(&mut actual)?;
+
+        // same definitions read, and the 2.5-only flag dropped since its table isn't written
+        assert_eq!(expected.into_inner(), actual.into_inner());
         Ok(())
     }
 }
