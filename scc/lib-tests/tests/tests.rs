@@ -163,7 +163,8 @@ fn compiles_successfully() {
 
 #[cfg(windows)]
 #[test]
-fn receives_an_error() {
+#[ignore = "opens a modal dialog when the loaded library has the popup feature; run manually"]
+fn receives_an_error_with_popup_enabled() {
     let temp = assert_fs::TempDir::new().unwrap();
     let bundle_path = temp.child("final.redscripts");
     let script_path = temp.child("test.reds");
