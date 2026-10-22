@@ -82,9 +82,13 @@ pub extern "C" fn scc_get_success(output: &SccResult) -> Option<&SccOutput> {
 
 /// # Safety
 /// The caller must ensure that `buffer` is a valid pointer to a buffer of at least `buffer_size`
-/// bytes.
+/// writable bytes when `buffer_size` is nonzero. For a zero-sized buffer the pointer
+/// is not accessed and may be null. The return value excludes the null terminator.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn scc_copy_error(output: &SccResult, buffer: *mut u8, buffer_size: usize) -> usize {
+    if buffer_size == 0 {
+        return 0;
+    }
     match output {
         SccResult::Success(_) => 0,
         SccResult::Error(error) => {
@@ -251,6 +255,26 @@ pub enum SourceRefType {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn copy_error_respects_buffer_capacity_and_terminates() {
+        let error = SccResult::Error(anyhow::anyhow!("test"));
+        for capacity in [0, 1, 2, 4, 5, 8] {
+            let mut buffer = [0x55; 12];
+            let written = unsafe { scc_copy_error(&error, buffer.as_mut_ptr().add(1), capacity) };
+            let expected = capacity.saturating_sub(1).min(4);
+            assert_eq!(written, expected);
+            assert_eq!(buffer[0], 0x55);
+            assert_eq!(&buffer[1..1 + written], &b"test"[..written]);
+            if capacity > 0 {
+                assert_eq!(buffer[1 + written], 0);
+                assert!(buffer[2 + written..].iter().all(|byte| *byte == 0x55));
+            } else {
+                assert_eq!(buffer, [0x55; 12]);
+            }
+        }
+        assert_eq!(unsafe { scc_copy_error(&error, ptr::null_mut(), 0) }, 0);
+    }
 
     #[test]
     fn str_with_len_has_correct_layout() {
