@@ -66,3 +66,69 @@ impl UserHints {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loads_and_matches_user_hint_files() {
+        let dir = assert_fs::TempDir::new().unwrap();
+        fs::write(
+            dir.path().join("example.toml"),
+            r#"
+[[UNRESOLVED_REF]]
+id = "example"
+message = "Install the required mod — проверка"
+file = "example.reds"
+span_starts_with = "MissingType"
+
+[[UNRESOLVED_REF]]
+id = "line-match"
+message = "Check this declaration"
+line_contains = "OtherType"
+"#,
+        )
+        .unwrap();
+        let hints = UserHints::load(dir.path()).unwrap();
+        let hint = hints
+            .get_by_error(
+                "UNRESOLVED_REF",
+                Some(Path::new("example.reds")),
+                "MissingType value",
+                "",
+            )
+            .unwrap();
+        assert_eq!(hint.id(), "example");
+        assert_eq!(hint.message(), "Install the required mod — проверка");
+        assert!(
+            hints
+                .get_by_error("UNRESOLVED_REF", Some(Path::new("other.reds")), "MissingType value", "")
+                .is_none()
+        );
+        assert_eq!(
+            hints
+                .get_by_error("UNRESOLVED_REF", None, "", "let value: OtherType;")
+                .unwrap()
+                .id(),
+            "line-match"
+        );
+        assert!(
+            hints
+                .get_by_error("OTHER_ERROR", None, "MissingType", "OtherType")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn rejects_malformed_hint_files_with_context() {
+        let dir = assert_fs::TempDir::new().unwrap();
+        fs::write(dir.path().join("broken.toml"), "[[UNRESOLVED_REF]\n").unwrap();
+        assert!(
+            UserHints::load(dir.path())
+                .unwrap_err()
+                .to_string()
+                .contains("Failed to parse a hint file")
+        );
+    }
+}

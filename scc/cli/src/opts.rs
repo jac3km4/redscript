@@ -82,98 +82,65 @@ fn is_not_slong(p: &PathBuf) -> bool {
 }
 
 fn no_space(name: &'static str, help: &'static str) -> impl Parser<String> {
-    any::<String>(name)
-        .help(help)
-        .guard(move |s| s.starts_with(name), "no_space doesn't start with -<name>")
-        .parse(move |s| s.strip_prefix(name).map(str::to_owned).ok_or("could not extract name"))
+    any(name, move |s: String| s.strip_prefix(name).map(str::to_owned))
         .anywhere()
+        .help(help)
 }
 
 fn toggle_options(name: &'static str, help: &'static str) -> impl Parser<Option<bool>> {
-    any::<String>(name)
-        .help(help)
-        .guard(move |s| s.as_str() == name, "toggle_option isn't -<name>")
-        .map(|_| true)
-        .adjacent()
+    any(name, move |s: String| (s == name).then_some(true))
         .anywhere()
+        .help(help)
         .optional()
         .catch()
 }
 
 fn equals_sign(name: &'static str, help: &'static str) -> impl Parser<Option<String>> {
-    any::<String>(name)
-        .help(help)
-        .guard(
-            move |s| s.strip_prefix(name).and_then(|s| s.strip_prefix('=')).is_some(),
-            "equals_sign doesn't start with -<name>=",
-        )
-        .parse(move |s| {
-            let (_, val) = s.split_once('=').ok_or("equals_sign does not contain =")?;
-            Ok::<_, &str>(val.to_owned())
-        })
-        .anywhere()
-        .optional()
-        .catch()
+    any(name, move |s: String| {
+        s.strip_prefix(name)
+            .and_then(|s| s.strip_prefix('='))
+            .map(str::to_owned)
+    })
+    .anywhere()
+    .help(help)
+    .optional()
+    .catch()
 }
 
 fn slong(name: &'static str, arg_name: &'static str, help: &'static str) -> impl Parser<Option<String>> {
-    let tag = any::<String>(name)
-        .help(help)
-        .guard(move |s| s.as_str() == name, "slong isn't -<name>");
+    let tag = literal(name).anywhere().help(help);
     let value = positional::<String>(arg_name).guard(|s| !s.starts_with('-'), "starts with -");
-    construct!(tag, value)
-        .adjacent()
-        .anywhere()
-        .map(|pair| pair.1)
-        .optional()
-        .catch()
+    construct!(tag, value).adjacent().map(|pair| pair.1).optional().catch()
 }
 
 fn scripts_dir() -> impl Parser<PathBuf> {
-    let tag = any::<String>("-compile")
-        .help("Compile scripts to blob")
-        .guard(|s| s == "-compile", "not compile");
+    let tag = literal("-compile").help("Compile scripts to blob");
     let value = positional::<PathBuf>("SCRIPT_PATH").guard(is_not_slong, "starts with -");
     construct!(tag, value).adjacent().map(|pair| pair.1)
 }
 
 fn script_paths_file() -> impl Parser<Option<PathBuf>> {
-    let tag = any::<String>("-compilePathsFile")
-        .help("File containing a newline-delimited list of redscript paths to compile")
-        .guard(|s| s == "-compilePathsFile", "not compilePathsFile");
-    let value = positional::<PathBuf>("SCRIPT_PATHS_FILE").guard(is_not_slong, "starts with -");
-    construct!(tag, value)
-        .adjacent()
+    let tag = literal("-compilePathsFile")
         .anywhere()
-        .map(|pair| pair.1)
-        .optional()
-        .catch()
+        .help("File containing a newline-delimited list of redscript paths to compile");
+    let value = positional::<PathBuf>("SCRIPT_PATHS_FILE").guard(is_not_slong, "starts with -");
+    construct!(tag, value).adjacent().map(|pair| pair.1).optional().catch()
 }
 
 fn cache_dir() -> impl Parser<Option<PathBuf>> {
-    let tag = any::<String>("-customCacheDir")
-        .help("A custom cache dir to write the final.redscripts to")
-        .guard(|s| s == "-customCacheDir", "not customCacheDir");
-    let value = positional::<PathBuf>("CACHE_DIR").guard(is_not_slong, "starts with -");
-    construct!(tag, value)
-        .adjacent()
+    let tag = literal("-customCacheDir")
         .anywhere()
-        .map(|pair| pair.1)
-        .optional()
-        .catch()
+        .help("A custom cache dir to write the final.redscripts to");
+    let value = positional::<PathBuf>("CACHE_DIR").guard(is_not_slong, "starts with -");
+    construct!(tag, value).adjacent().map(|pair| pair.1).optional().catch()
 }
 
 fn output_cache_file() -> impl Parser<Option<PathBuf>> {
-    let tag = any::<String>("-outputCacheFile")
-        .help("A custom output path to write the final.redscripts to")
-        .guard(|s| s == "-outputCacheFile", "not outputCacheFile");
-    let value = positional::<PathBuf>("OUTPUT_CACHE_FILE").guard(is_not_slong, "starts with -");
-    construct!(tag, value)
-        .adjacent()
+    let tag = literal("-outputCacheFile")
         .anywhere()
-        .map(|pair| pair.1)
-        .optional()
-        .catch()
+        .help("A custom output path to write the final.redscripts to");
+    let value = positional::<PathBuf>("OUTPUT_CACHE_FILE").guard(is_not_slong, "starts with -");
+    construct!(tag, value).adjacent().map(|pair| pair.1).optional().catch()
 }
 
 impl Opts {
@@ -205,24 +172,23 @@ impl Opts {
         });
         let cache_file = positional::<PathBuf>("CACHE_FILE")
             .guard(is_not_slong, "starts with -")
-            .anywhere()
             .optional()
             .catch();
 
         let parser = construct!(Opts {
-            scripts_dir(),
-            cache_dir(),
             optimize,
-            threads,
             warnings,
             no_testonly,
             no_breakpoint,
             profile,
+            no_exec,
+            no_debug,
+            threads,
             script_paths_file(),
             output_cache_file(),
-            cache_file,
-            no_exec,
-            no_debug
+            cache_dir(),
+            scripts_dir(),
+            cache_file
         });
         parser.to_options()
     }
@@ -339,13 +305,13 @@ mod test {
 
     #[test]
     fn get_help() {
-        assert_eq!(
-            "not compile",
-            Opts::get_parser()
-                .run_inner(bpaf::Args::from(&["--help"]))
-                .unwrap_err()
-                .unwrap_stderr()
-        );
+        let help = Opts::get_parser()
+            .run_inner(bpaf::Args::from(&["--help"]))
+            .unwrap_err()
+            .unwrap_stdout();
+        assert!(help.contains("-compile"));
+        assert!(help.contains("-customCacheDir"));
+        assert!(help.contains("-threads"));
     }
 
     #[test]

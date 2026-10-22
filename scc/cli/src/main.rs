@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anyhow::Context;
-use bpaf::ParseFailure;
 use opts::{Opts, fix_args};
 use scc_lib::api::{SccOutput, SccResult, SccSettings};
 
@@ -19,13 +18,13 @@ fn main() -> ExitCode {
             .as_slice(),
     ) {
         Ok(opts) => opts,
-        Err(ParseFailure::Stdout(out)) => {
-            println!("{out}");
-            return ExitCode::SUCCESS;
-        }
-        Err(ParseFailure::Stderr(out)) => {
-            eprintln!("{out}");
-            return ExitCode::FAILURE;
+        Err(err) => {
+            err.print_message(100);
+            return if err.exit_code() == 0 {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            };
         }
     };
 

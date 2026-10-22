@@ -14,9 +14,10 @@ use scc_lib::timestamp::*;
 #[test]
 fn no_args() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("scc")?;
-    cmd.assert().failure().stderr(predicate::str::contains(
-        "Expected <-compile>, pass --help for usage information",
-    ));
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("-compile"))
+        .stderr(predicate::str::contains("--help"));
     Ok(())
 }
 
@@ -24,7 +25,10 @@ fn no_args() -> Result<(), Box<dyn std::error::Error>> {
 fn help() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("scc")?;
     cmd.arg("--help");
-    cmd.assert().failure().stderr(predicate::str::contains("not compile\n"));
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("-compile"))
+        .stdout(predicate::str::contains("-customCacheDir"));
     Ok(())
 }
 
