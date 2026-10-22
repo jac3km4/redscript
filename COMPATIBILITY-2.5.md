@@ -8,6 +8,9 @@ Based on Antrakt92's upstream PR #203, commit
 https://github.com/jac3km4/redscript/pull/203 . That commit skips GitHub CI;
 its reported local results are not GitHub check results. This fork additionally
 fixes Clippy diagnostics from Rust 1.99 and applies nightly rustfmt.
+It also includes Antrakt92's zero-capacity C API error-buffer fix from PR #204
+(`a77cd07b97744d358d6ee9f0da8fb79056e7e70a`). The broad dependency refresh in
+PR #205 is intentionally separate from this compatibility build.
 
 The 2.5 format keeps version 14 but adds header flag 0x2 and a seventh table
 header. There is one 12-byte linkage record per definition, including index zero.
@@ -30,7 +33,7 @@ definition growth, invalid linkage bounds/count/CRC and external-patch rejection
 No new game cache, decompiled game code or proprietary mod source is included.
 The tests build extended input from the existing upstream predef fixture.
 
-Local Windows checks for this fork include 6,234 passing workspace tests,
+Local Windows checks for this fork include 6,235 passing workspace tests,
 including the libclang-based C API suite, all-target/all-feature Clippy, and
 nightly formatting. The Windows SCC executable and DLL are built with the
 release features `mmap,popup`. REDCheatMenu2 v1.2.0 is compiled against a copy of
