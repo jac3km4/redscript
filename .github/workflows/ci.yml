@@ -5,71 +5,21 @@ on:
     branches: ["*.*.x"]
   pull_request:
 
-env:
-  CARGO_TERM_COLOR: always
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  lint:
-    name: Lint
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: "stable"
-          cache-on-failure: true
-      - run: cargo clippy
-
-  rustfmt:
-    name: Check formatting
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
-        with:
-          components: rustfmt
-      - name: Run cargo fmt
-        shell: pwsh
-        run: |
-          $rustfmt_output = cargo fmt --all --check -- --color always 2> $null
-          $rustfmt_exit_code = $LASTEXITCODE
-          if ($rustfmt_exit_code -ne 0 ) {
-            Write-Output "::error title=Rustfmt code formatting check failed::$(@(
-                "Code formatting error.",
-                " ",
-                "This project requires code to conform to the rustfmt style.",
-                "Please run ``cargo +nightly fmt --all`` before commiting."
-              ) -join '%0A')"
-
-            Write-Output ""
-            Write-Output "Expand for details:"
-            Write-Output "::group::Detailed rustfmt error messages"
-            Write-Output $rustfmt_output
-            Write-Output "::endgroup::"
-            Write-Output ""
-          }
-          exit $rustfmt_exit_code
-
-  test:
-    name: Test
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: "stable"
-          cache-on-failure: true
-      - run: |
-          cargo build
-          cargo test
+  check:
+    uses: ./.github/workflows/check.yml
 
   build:
     uses: ./.github/workflows/build.yml
     strategy:
+      fail-fast: false
       matrix:
         os:
           - windows-latest

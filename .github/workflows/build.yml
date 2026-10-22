@@ -8,28 +8,58 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
   build:
     runs-on: ${{ inputs.os }}
+    timeout-minutes: 45
     env:
-      ARCHIVE_NAME: redscript-${{ github.ref_name }}-${{ inputs.suffix }}.zip
+      ARCHIVE_NAME: redscript-${{ github.ref_type == 'tag' && github.ref_name || github.sha }}-${{ inputs.suffix }}.zip
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: release-${{ inputs.os }}
+          save-if: ${{ !startsWith(github.ref, 'refs/tags/') }}
       - if: ${{ inputs.os == 'windows-latest' }}
-        run: .\resources\package.ps1 -stagingDir "${{ runner.temp }}\redscript-staging" -archiveName "${{ env.ARCHIVE_NAME }}"
+        shell: pwsh
+        run: .\resources\package.ps1 -stagingDir "$env:RUNNER_TEMP\redscript-staging" -archiveName "$env:ARCHIVE_NAME"
       - if: ${{ inputs.os != 'windows-latest' }}
-        run: ./resources/package.sh "${{ runner.temp }}/redscript-staging" "${{ env.ARCHIVE_NAME }}"
+        shell: bash
+        run: ./resources/package.sh "$RUNNER_TEMP/redscript-staging" "$ARCHIVE_NAME"
+      - name: Verify packaged outputs
+        shell: pwsh
+        env:
+          ARTIFACT_SUFFIX: ${{ inputs.suffix }}
+        run: |
+          $cli = switch ($env:ARTIFACT_SUFFIX) {
+            'windows' { 'redscript-cli.exe' }
+            'macos' { 'redscript-cli-aarch64-darwin' }
+            'linux' { 'redscript-cli-x86_64-linux-gnu' }
+            default { throw "Unsupported artifact suffix: $env:ARTIFACT_SUFFIX" }
+          }
+          foreach ($path in @($cli, $env:ARCHIVE_NAME)) {
+            if (!(Test-Path -LiteralPath $path -PathType Leaf) -or (Get-Item -LiteralPath $path).Length -eq 0) {
+              throw "Missing or empty packaged output: $path"
+            }
+          }
+          "cli=$cli" >> $env:GITHUB_OUTPUT
+        id: outputs
       - uses: actions/upload-artifact@v4
         name: Upload artifacts
         with:
           path: |
-            redscript-cli.exe
-            redscript-cli-aarch64-darwin
-            redscript-cli-x86_64-linux-gnu
+            ${{ steps.outputs.outputs.cli }}
             ${{ env.ARCHIVE_NAME }}
           name: artifact-${{ inputs.os }}
           if-no-files-found: error
