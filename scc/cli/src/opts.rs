@@ -30,7 +30,7 @@ pub fn fix_args(args: Vec<String>) -> Vec<String> {
             if broken_arg.contains(' ') {
                 let mut parts = broken_arg.split(' ').collect::<VecDeque<&str>>();
                 let last = fixed_args.last_mut().unwrap();
-                *last = format!("{} {}", last, &parts.pop_front().unwrap());
+                *last = format!("{} {}", last, parts.pop_front().unwrap());
                 for part in parts {
                     fixed_args.push(part.to_string());
                 }
