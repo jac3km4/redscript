@@ -9,9 +9,13 @@ param (
     [string]$archiveName
 )
 
+$ErrorActionPreference = 'Stop'
 $workingDir = (Get-Location).Path
 
-cargo build --release --features mmap,popup
+cargo build --release --locked -p scc -p scc-lib -p redscript-cli --features mmap,popup
+if ($LASTEXITCODE -ne 0) {
+    throw "cargo build failed with exit code $LASTEXITCODE"
+}
 
 $toolsDir = @($stagingDir, 'engine', 'tools') -join [IO.Path]::DirectorySeparatorChar
 
@@ -24,3 +28,6 @@ cp ./target/release/redscript-cli.exe $workingDir
 
 cd $stagingDir
 7z a -mx=9 -r "$workingDir/$archiveName" *
+if ($LASTEXITCODE -ne 0) {
+    throw "7z failed with exit code $LASTEXITCODE"
+}

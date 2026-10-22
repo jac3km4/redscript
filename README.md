@@ -32,6 +32,26 @@ You can build the project and decompile all scripts in one command:
 cargo run --bin redscript-cli --release -- decompile -i '/mnt/d/games/Cyberpunk 2077/r6/cache/final.redscript' -o dump.reds
 ```
 
+## development
+
+CI checks default features and the `mmap,popup` features used in release packages.
+To run the release-feature checks locally:
+
+```sh
+cargo clippy --workspace --all-targets --locked --features mmap,popup
+cargo build --workspace --locked --features mmap,popup
+cargo test --workspace --locked --features mmap,popup
+```
+
+Run the same commands without `--features mmap,popup` to check default features.
+The separate build is required by tests that dynamically load the shared library.
+Formatting uses a pinned nightly because the configuration requires unstable rustfmt options:
+
+```sh
+rustup toolchain install nightly-2026-10-15 --profile minimal --component rustfmt
+cargo +nightly-2026-10-15 fmt --all --check
+```
+
 ## language
 The scripts use a Swift-like language.
 You can find a brief overview of it's features in the [official wiki](https://wiki.redmodding.org/redscript).
