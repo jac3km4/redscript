@@ -3,6 +3,7 @@ pub mod hints;
 pub mod timestamp;
 
 use std::fs::{self, File, OpenOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::{fmt, io, iter, vec};
 
@@ -211,8 +212,10 @@ fn try_compile_files(
         Ok(compilation) => {
             log::info!("Compilation complete");
 
-            add_redscript_signature_def(&mut bundle.pool);
+            let signature_size = if bundle.has_linkage_table() { 4 } else { 0 };
+            add_redscript_signature_def(&mut bundle.pool, signature_size);
 
+            let bytes = bundle.to_bytes()?;
             let mut file = File::create(output_cache_path).map_err(|err| match err.kind() {
                 io::ErrorKind::PermissionDenied => anyhow::anyhow!(
                     "Could not write to '{}', make sure the file is not read-only",
@@ -220,7 +223,7 @@ fn try_compile_files(
                 ),
                 _ => err.into(),
             })?;
-            bundle.save(&mut io::BufWriter::new(&mut file))?;
+            file.write_all(&bytes)?;
             file.sync_all()?;
 
             CompileTimestamp::of_cache_file(&file)?.write(&mut *ts_file)?;
@@ -259,11 +262,13 @@ fn get_base_bundle_path(cache_dir: &Path) -> PathBuf {
     }
 }
 
-fn add_redscript_signature_def(pool: &mut ConstantPool) {
+fn add_redscript_signature_def(pool: &mut ConstantPool, size: u8) {
     let name = pool.names.add(REDSCRIPT_SIGNATURE_DEF.into());
     let enum_ = Enum {
         flags: 0,
-        size: 0,
+        // The 2.5 native loader requires a valid enum storage width, even for
+        // this empty marker. Match the compiler's normal Int32 enum width.
+        size,
         members: vec![],
         unk1: false,
     };
@@ -272,6 +277,27 @@ fn add_redscript_signature_def(pool: &mut ConstantPool) {
 
 fn check_for_redscript_signature_def(pool: &ConstantPool) -> bool {
     pool.names.get_index(REDSCRIPT_SIGNATURE_DEF).is_some()
+}
+
+#[cfg(test)]
+mod signature_tests {
+    use super::*;
+
+    #[test]
+    fn signature_uses_valid_enum_storage_and_remains_detectable() {
+        let mut pool = ScriptBundle::load(&mut io::Cursor::new(
+            include_bytes!("../../../resources/predef.redscripts").as_slice(),
+        ))
+        .unwrap()
+        .pool;
+        assert!(!check_for_redscript_signature_def(&pool));
+        add_redscript_signature_def(&mut pool, 4);
+        assert!(check_for_redscript_signature_def(&pool));
+        let (_, definition) = pool.definitions().next_back().unwrap();
+        let marker = definition.value.as_enum().unwrap();
+        assert_eq!(marker.size, 4);
+        assert!(marker.members.is_empty());
+    }
 }
 
 #[derive(Debug)]
