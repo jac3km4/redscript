@@ -12,7 +12,7 @@ jobs:
   build:
     runs-on: ${{ inputs.os }}
     env:
-      ARCHIVE_NAME: redscript-${{ github.ref_name }}-${{ inputs.suffix }}.zip
+      ARCHIVE_NAME: redscript-${{ github.ref_type == 'tag' && github.ref_name || github.sha }}-${{ inputs.suffix }}.zip
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
