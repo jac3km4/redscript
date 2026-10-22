@@ -55,12 +55,12 @@ pub struct Header {
 }
 
 impl Header {
-    const MAGIC: u32 = 0x5344_4552;
-    const SIZE: usize = 104;
-    const SUPPORTED_VERSION: u32 = 14;
     /// Set by the game since patch 2.5: the header is followed by a 7th table header describing
     /// an extra table with one 12-byte record per definition. Redscript doesn't write that table.
     const FLAG_DEFINITION_RECORDS: u32 = 0x2;
+    const MAGIC: u32 = 0x5344_4552;
+    const SIZE: usize = 104;
+    const SUPPORTED_VERSION: u32 = 14;
 }
 
 impl Decode for Header {
