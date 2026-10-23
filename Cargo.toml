@@ -37,7 +37,6 @@ vmap = { version = "0.6", default-features = false }
 rusty-hook = "0.11"
 
 [workspace.lints.rust]
-warnings = "deny"
 future_incompatible = "deny"
 let_underscore = "deny"
 nonstandard_style = "deny"

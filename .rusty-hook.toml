@@ -1,6 +1,6 @@
 [hooks]
-pre-commit = "cargo +nightly-2026-10-15 fmt --all -- --check"
-pre-push = "cargo +nightly-2026-10-15 fmt --all -- --check"
+pre-commit = "cargo +nightly-2026-10-15 fmt --all --check"
+pre-push = "cargo +nightly-2026-10-15 fmt --all --check"
 post-commit = ""
 
 [logging]

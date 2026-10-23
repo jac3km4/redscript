@@ -12,6 +12,7 @@ permissions:
   contents: read
 
 env:
+  RUSTUP_TOOLCHAIN: stable
   CARGO_TERM_COLOR: always
 
 jobs:
@@ -24,13 +25,11 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
+      - run: rustup toolchain install stable --profile minimal
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: release-${{ inputs.os }}
-          save-if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          save-if: ${{ github.event_name == 'push' && github.ref_type == 'branch' }}
       - if: ${{ inputs.os == 'windows-latest' }}
         shell: pwsh
         run: .\resources\package.ps1 -stagingDir "$env:RUNNER_TEMP\redscript-staging" -archiveName "$env:ARCHIVE_NAME"
@@ -63,3 +62,4 @@ jobs:
             ${{ env.ARCHIVE_NAME }}
           name: artifact-${{ inputs.os }}
           if-no-files-found: error
+          compression-level: 1
