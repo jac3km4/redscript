@@ -197,36 +197,81 @@ pub struct TypeOracle {
     types: HashMap<Span, Recorded>,
     /// Definitions from this index on are declared by the sources.
     first_source: u32,
-    /// The types by qualified name, in the order of the pool.
-    named: Vec<(String, NamedType)>,
+    /// The types by qualified name, the first one of the pool for a name.
     by_name: HashMap<String, NamedType>,
+    /// The classes by their name without some of the leading segments of their module path,
+    /// e.g. `Sub.Class` and `Class` for `Mod.Sub.Class`. `None` when several classes share the
+    /// name.
+    by_suffix: HashMap<String, Option<PoolIndex<Class>>>,
+    /// The classes declared by the sources that declare an overridable method, by method name.
+    overriders: HashMap<String, Vec<PoolIndex<Class>>>,
 }
 
 impl TypeOracle {
     fn new(pool: ConstantPool, types: HashMap<Span, Recorded>, first_source: u32) -> Self {
-        let named: Vec<_> = pool
-            .roots()
-            .filter_map(|(index, def)| {
-                let typ = match &def.value {
-                    AnyDefinition::Class(_) => NamedType::Class(index.cast()),
-                    AnyDefinition::Enum(_) => NamedType::Enum(index.cast()),
-                    AnyDefinition::Type(Type::Prim) => NamedType::Other,
-                    _ => return None,
-                };
-                Some((pool.names.get(def.name).ok()?.to_string(), typ))
-            })
-            .collect();
-        let mut by_name = HashMap::new();
-        for (name, typ) in &named {
-            by_name.entry(name.clone()).or_insert(*typ);
-        }
-        Self {
+        let mut oracle = Self {
             pool,
             types,
             first_source,
-            named,
-            by_name,
+            by_name: HashMap::new(),
+            by_suffix: HashMap::new(),
+            overriders: HashMap::new(),
+        };
+        let mut by_name = HashMap::new();
+        let mut by_suffix: HashMap<String, Option<PoolIndex<Class>>> = HashMap::new();
+        let mut overriders: HashMap<String, Vec<PoolIndex<Class>>> = HashMap::new();
+        for (index, def) in oracle.pool.roots() {
+            let typ = match &def.value {
+                AnyDefinition::Class(_) => NamedType::Class(index.cast()),
+                AnyDefinition::Enum(_) => NamedType::Enum(index.cast()),
+                AnyDefinition::Type(Type::Prim) => NamedType::Other,
+                _ => continue,
+            };
+            let Ok(name) = oracle.pool.names.get(def.name) else {
+                continue;
+            };
+            by_name.entry(name.to_string()).or_insert(typ);
+            let NamedType::Class(class) = typ else {
+                continue;
+            };
+            for (i, _) in name.match_indices('.') {
+                by_suffix
+                    .entry(name[i + 1..].to_owned())
+                    .and_modify(|found| {
+                        if *found != Some(class) {
+                            *found = None;
+                        }
+                    })
+                    .or_insert(Some(class));
+            }
+            if oracle.is_from_sources(class)
+                && let Ok(def) = oracle.pool.class(class)
+            {
+                let mut names: Vec<_> = def
+                    .functions
+                    .iter()
+                    .filter_map(|&index| {
+                        let func = oracle.pool.function(index).ok()?;
+                        let raw = oracle.pool.def_name(index).ok()?;
+                        Self::is_overridable(func).then(|| FunctionSignature::from_raw(&raw).name().to_owned())
+                    })
+                    .collect();
+                names.sort_unstable();
+                names.dedup();
+                for method in names {
+                    overriders.entry(method).or_default().push(class);
+                }
+            }
         }
+        oracle.by_name = by_name;
+        oracle.by_suffix = by_suffix;
+        oracle.overriders = overriders;
+        oracle
+    }
+
+    /// Whether `func` is a method that can be overridden.
+    fn is_overridable(func: &Function) -> bool {
+        !func.flags.is_static() && !func.flags.is_callback()
     }
 
     fn is_from_sources<A>(&self, index: PoolIndex<A>) -> bool {
@@ -241,7 +286,8 @@ impl TypeOracle {
         }
     }
 
-    /// A class or struct by its qualified name, or else by its name without the module path.
+    /// A class or struct by its qualified name, or else by its name without some of its module
+    /// path when only one class has that name.
     fn class_named(&self, name: &str) -> Option<PoolIndex<Class>> {
         if let Some(typ) = self.by_name.get(name) {
             return match typ {
@@ -249,12 +295,7 @@ impl TypeOracle {
                 NamedType::Enum(_) | NamedType::Other => None,
             };
         }
-        self.named.iter().find_map(|(qualified, typ)| match typ {
-            NamedType::Class(index) if qualified.strip_suffix(name).is_some_and(|module| module.ends_with('.')) => {
-                Some(*index)
-            }
-            _ => None,
-        })
+        *self.by_suffix.get(name)?
     }
 
     /// `class` and its bases, from the most derived.
@@ -283,8 +324,7 @@ impl TypeOracle {
 
     /// Whether `class` declares a method `name` that can be overridden.
     fn has_instance_method(&self, class: &Class, name: &str) -> bool {
-        self.methods(class, name)
-            .any(|func| !func.flags.is_static() && !func.flags.is_callback())
+        self.methods(class, name).any(Self::is_overridable)
     }
 
     /// Whether `typ` is the class `class`, possibly through a strong reference.
@@ -359,18 +399,20 @@ impl TypeQuery for TypeOracle {
         Some(res)
     }
 
+    fn base_method_is_const(&self, class: &str, method: &str) -> Option<bool> {
+        let id = self.class_id(class)?;
+        let res = self.hierarchy(id).skip(1).any(|(_, class)| {
+            self.methods(class, method)
+                .any(|func| Self::is_overridable(func) && func.flags.is_const())
+        });
+        Some(res)
+    }
+
     fn is_overridden_in_sources(&self, class: &str, method: &str) -> Option<bool> {
         let id = self.class_id(class)?;
-        let res = self.named.iter().any(|(_, typ)| match typ {
-            NamedType::Class(sub) => {
-                self.is_from_sources(*sub)
-                    && self
-                        .pool
-                        .class(*sub)
-                        .is_ok_and(|class| self.has_instance_method(class, method))
-                    && self.hierarchy(*sub).skip(1).any(|(base, _)| base == id)
-            }
-            NamedType::Enum(_) | NamedType::Other => false,
+        let res = self.overriders.get(method).is_some_and(|subs| {
+            subs.iter()
+                .any(|&sub| self.hierarchy(sub).skip(1).any(|(base, _)| base == id))
         });
         Some(res)
     }
@@ -461,6 +503,7 @@ mod tests {
 
 public native class GameObject extends IScriptable {
   public native func Base();
+  public const native func IsDone() -> Bool;
 }
 
 public native struct GameTime {
@@ -793,5 +836,37 @@ native func OperatorAdd(a: Int32, b: Int32) -> Int32;
         let (oracle, summary, ids) = check(&[src]);
         assert_eq!(summary.untyped, 0);
         assert_eq!(oracle.type_of(span_of(ids[0], src, "1 + 2")), prim("Int32"));
+    }
+
+    #[test]
+    fn const_base_methods_are_found() {
+        let src = "class Sub extends GameObject {
+  func IsDone() -> Bool = true;
+  func Base() {}
+}
+";
+        let (oracle, _, _) = check(&[src]);
+        assert_eq!(oracle.base_method_is_const("Sub", "IsDone"), Some(true));
+        assert_eq!(oracle.base_method_is_const("Sub", "Base"), Some(false));
+        assert_eq!(oracle.base_method_is_const("GameObject", "IsDone"), Some(false));
+        assert_eq!(oracle.base_method_is_const("Missing", "IsDone"), None);
+    }
+
+    #[test]
+    fn ambiguous_short_names_are_unknown() {
+        let a = "module A
+class X {
+  let a: Int32;
+}
+";
+        let b = "module B
+class X {
+  let b: Int32;
+}
+";
+        let (oracle, _, _) = check(&[a, b]);
+        assert_eq!(oracle.class_has_field("A.X", "a"), Some(true));
+        assert_eq!(oracle.class_has_field("B.X", "a"), Some(false));
+        assert_eq!(oracle.class_has_field("X", "a"), None);
     }
 }

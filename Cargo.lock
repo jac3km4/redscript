@@ -497,7 +497,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1191,7 +1191,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1480,7 +1480,7 @@ dependencies = [
 [[package]]
 name = "redscript-ast"
 version = "1.0.0-preview.22"
-source = "git+file:///D:/development/redscript?rev=28782e5#28782e547b39bccc47f74d812c016ae70c3e216a"
+source = "git+file:///D:/development/redscript?rev=5a43f7a#5a43f7a028330392f55d9bdfccc4f265a83e8249"
 dependencies = [
  "bitflags 2.13.2",
  "chumsky",
@@ -1527,7 +1527,7 @@ dependencies = [
 [[package]]
 name = "redscript-convert"
 version = "1.0.0-preview.22"
-source = "git+file:///D:/development/redscript?rev=28782e5#28782e547b39bccc47f74d812c016ae70c3e216a"
+source = "git+file:///D:/development/redscript?rev=5a43f7a#5a43f7a028330392f55d9bdfccc4f265a83e8249"
 dependencies = [
  "elsa",
  "hashbrown 0.17.1",
@@ -1550,7 +1550,7 @@ dependencies = [
 [[package]]
 name = "redscript-formatter"
 version = "1.0.0-preview.22"
-source = "git+file:///D:/development/redscript?rev=28782e5#28782e547b39bccc47f74d812c016ae70c3e216a"
+source = "git+file:///D:/development/redscript?rev=5a43f7a#5a43f7a028330392f55d9bdfccc4f265a83e8249"
 dependencies = [
  "hashbrown 0.17.1",
  "pretty_dtoa",
@@ -1561,7 +1561,7 @@ dependencies = [
 [[package]]
 name = "redscript-parser"
 version = "1.0.0-preview.22"
-source = "git+file:///D:/development/redscript?rev=28782e5#28782e547b39bccc47f74d812c016ae70c3e216a"
+source = "git+file:///D:/development/redscript?rev=5a43f7a#5a43f7a028330392f55d9bdfccc4f265a83e8249"
 dependencies = [
  "chumsky",
  "redscript-ast",
@@ -1685,7 +1685,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1958,7 +1958,7 @@ dependencies = [
  "fastrand",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2225,7 +2225,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

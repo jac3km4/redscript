@@ -37,8 +37,8 @@ vmap = { version = "0.6", default-features = false }
 rusty-hook = "0.11"
 # shared .reds to .script conversion crates from the 1.x branch
 # TODO: the URL must point to the published fork before release
-redscript-convert = { git = "file:///D:/development/redscript", rev = "28782e5" }
-redscript-ast = { git = "file:///D:/development/redscript", rev = "28782e5" }
+redscript-convert = { git = "file:///D:/development/redscript", rev = "5a43f7a" }
+redscript-ast = { git = "file:///D:/development/redscript", rev = "5a43f7a" }
 
 [workspace.lints.rust]
 warnings = "deny"
