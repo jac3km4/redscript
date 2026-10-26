@@ -35,6 +35,9 @@ argh = "0.1"
 walkdir = "2"
 vmap = { version = "0.6", default-features = false }
 rusty-hook = "0.11"
+# shared .reds to .script conversion crates from the 1.x branch
+# TODO: the URL must point to the published fork before release
+redscript-convert = { git = "file:///D:/development/redscript", rev = "28782e5" }
 
 [workspace.lints.rust]
 warnings = "deny"

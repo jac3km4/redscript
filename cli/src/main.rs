@@ -1,6 +1,7 @@
 use std::fs::{self, File};
 use std::io;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 use anyhow::Context;
 use argh::FromArgs;
@@ -9,6 +10,7 @@ use redscript::bundle::ScriptBundle;
 use redscript::definition::AnyDefinition;
 use redscript_compiler::source_map::Files;
 use redscript_compiler::unit::CompilationUnit;
+use redscript_convert::driver::{self, DriverOptions};
 use redscript_decompiler::files::FileIndex;
 use redscript_decompiler::print::{OutputMode, write_definition};
 use vmap::Map;
@@ -26,6 +28,7 @@ enum Command {
     Decompile(DecompileOpts),
     Compile(CompileOpts),
     Lint(LintOpts),
+    Convert(ConvertOpts),
 }
 
 /// decompile a .redscripts file
@@ -77,6 +80,47 @@ struct LintOpts {
     bundle: Option<PathBuf>,
 }
 
+/// convert community (.reds) source code to the REDmod (.script) dialect
+#[derive(Debug, FromArgs)]
+#[argh(subcommand, name = "convert")]
+struct ConvertOpts {
+    /// path to an input source file or directory, can be repeated
+    #[argh(option, short = 's')]
+    src: Vec<PathBuf>,
+    /// target dialect, only `script` (REDmod, the default) is supported: converting `.script`
+    /// back to `.reds` is not supported
+    #[argh(option, long = "to")]
+    _to: Option<TargetDialect>,
+    /// output directory, files are written next to their sources by default
+    #[argh(option, short = 'o')]
+    output: Option<PathBuf>,
+    /// print the converted code to stdout instead of writing files
+    #[argh(switch)]
+    dry_run: bool,
+    /// overwrite output files that already exist
+    #[argh(switch)]
+    force: bool,
+    /// path to the game's .redscripts bundle (r6/cache/final.redscripts), the sources are
+    /// type-checked against it for a type-aware conversion to .script
+    #[argh(option, short = 'b')]
+    bundle: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TargetDialect;
+
+impl FromStr for TargetDialect {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "script" | "redmod" => Ok(Self),
+            "reds" | "community" => Err("converting .script back to .reds is not supported".to_owned()),
+            _ => Err(format!("unknown dialect: {s}, expected `script`")),
+        }
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     setup_logger();
 
@@ -100,6 +144,7 @@ fn run() -> anyhow::Result<()> {
         Command::Decompile(opts) => Ok(decompile(opts)?),
         Command::Compile(opts) => Ok(compile(opts)?),
         Command::Lint(opts) => Ok(lint(opts)?),
+        Command::Convert(opts) => convert(&opts),
     }
 }
 
@@ -188,6 +233,29 @@ fn lint(opts: LintOpts) -> anyhow::Result<()> {
         }
         None => Ok(()),
     }
+}
+
+fn convert(opts: &ConvertOpts) -> anyhow::Result<()> {
+    let driver_opts = DriverOptions {
+        src: &opts.src,
+        output: opts.output.as_deref(),
+        dry_run: opts.dry_run,
+        force: opts.force,
+    };
+    if let Some(bundle) = &opts.bundle {
+        log::warn!(
+            "type information is not supported yet on redscript 0.5, ignoring {} and converting without types",
+            bundle.display()
+        );
+    }
+    let outcome = driver::run(&driver_opts, |converter| -> anyhow::Result<_> {
+        Ok(converter.convert(None)?)
+    })?;
+
+    if outcome.failed {
+        anyhow::bail!("Some sources could not be converted");
+    }
+    Ok(())
 }
 
 fn load_bundle(path: &Path) -> anyhow::Result<ScriptBundle> {
