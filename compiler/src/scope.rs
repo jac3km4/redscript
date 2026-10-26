@@ -54,6 +54,11 @@ impl Scope {
         self.references = self.references.insert(name, Value::Parameter(param));
     }
 
+    /// Whether the type named `name` (e.g. `ref:IScriptable`) is known.
+    pub fn has_type(&self, name: &str) -> bool {
+        self.types.find(&Ident::from_ref(name)).is_some()
+    }
+
     pub fn add_type(&mut self, name: Ident, typ: PoolIndex<Type>) {
         self.types = self.types.insert(name, typ);
     }

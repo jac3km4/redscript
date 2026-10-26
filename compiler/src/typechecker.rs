@@ -1,10 +1,13 @@
-use std::iter;
 use std::ops::Not;
 use std::str::FromStr;
+use std::{iter, mem};
 
+use hashbrown::{HashMap, HashSet};
 use itertools::{Itertools, izip};
 use redscript::Ref;
-use redscript::ast::{Constant, Expr, Ident, Intrinsic, Literal, NameKind, Seq, SourceAst, Span, SwitchCase, TypeName};
+use redscript::ast::{
+    Constant, Expr, Ident, Intrinsic, Literal, NameKind, Pos, Seq, SourceAst, Span, SwitchCase, TypeName,
+};
 use redscript::bundle::{ConstantPool, PoolError, PoolIndex};
 use redscript::definition::{Class, Definition, Enum, Field, Function, Local, LocalFlags};
 use thiserror::Error;
@@ -20,6 +23,12 @@ pub struct TypeChecker<'a> {
     locals: Vec<PoolIndex<Local>>,
     diagnostics: Vec<Diagnostic>,
     permissive: bool,
+    records: Option<TypeRecords>,
+    /// Set when the type expected by the next [`Self::check_and_convert`] is not to be recorded.
+    skip_expected: bool,
+    /// Set when the overload of the call being checked was picked arbitrarily after a failed
+    /// resolution (permissive mode), its type is not recorded.
+    unresolved_call: bool,
 }
 
 impl<'a> TypeChecker<'a> {
@@ -29,10 +38,99 @@ impl<'a> TypeChecker<'a> {
             locals: vec![],
             diagnostics: vec![],
             permissive,
+            records: None,
+            skip_expected: false,
+            unresolved_call: false,
         }
     }
 
+    /// Records the types of the checked expressions in `records`, see [`TypeRecords`].
+    pub fn set_records(&mut self, records: Option<TypeRecords>) {
+        self.records = records;
+    }
+
+    /// Takes the types recorded so far.
+    pub fn take_records(&mut self) -> Option<TypeRecords> {
+        self.records.take()
+    }
+
     pub fn check(
+        &mut self,
+        expr: &Expr<SourceAst>,
+        expected: Option<&TypeId>,
+        scope: &mut Scope,
+    ) -> Result<TypedExpr, Error> {
+        let res = self.check_expr(expr, expected, scope);
+        let unresolved_call = mem::take(&mut self.unresolved_call);
+        let res = res?;
+        if let (Some(records), Expr::Declare(local, _, Some(init), _), Expr::Declare(_, None, _, _)) =
+            (&mut self.records, &res, expr)
+            && records.has_placeholder_type(init)
+        {
+            records.mark_placeholder(*local);
+        }
+        if self.records.is_some()
+            && !unresolved_call
+            && is_value(expr)
+            && !self.has_placeholder_type(&res)
+            && let Ok(typ) = type_of(&res, scope, self.pool)
+        {
+            self.record(expr, |types| &mut types.inferred, typ);
+        }
+        Ok(res)
+    }
+
+    fn record(
+        &mut self,
+        expr: &Expr<SourceAst>,
+        slot: impl FnOnce(&mut RecordedTypes) -> &mut Option<TypeId>,
+        typ: TypeId,
+    ) {
+        if let Some(records) = &mut self.records {
+            *slot(records.entries.entry(RecordKey::of(expr)).or_default()) = Some(typ);
+        }
+    }
+
+    /// Whether the type of `expr` derives from the placeholder of a type that could not be
+    /// resolved.
+    fn has_placeholder_type(&self, expr: &TypedExpr) -> bool {
+        self.records
+            .as_ref()
+            .is_some_and(|records| records.has_placeholder_type(expr))
+    }
+
+    fn is_placeholder<A>(&self, index: PoolIndex<A>) -> bool {
+        self.records
+            .as_ref()
+            .is_some_and(|records| records.placeholders.contains(&index.cast()))
+    }
+
+    /// The error for a member missing on `receiver`. When the type of the receiver is a
+    /// placeholder, the member is not really missing: the error is the one of an access to the
+    /// `null` an unresolved name is replaced with.
+    fn missing_member(&self, receiver: &TypedExpr, cause: Cause, span: Span) -> Error {
+        match cause {
+            Cause::MemberNotFound(..) | Cause::MethodNotFound(..) if self.has_placeholder_type(receiver) => {
+                Cause::InvalidMemberAccess(Ident::from_static("Null")).with_span(span)
+            }
+            cause => cause.with_span(span),
+        }
+    }
+
+    /// Like [`Self::check_and_convert`], without recording the expected type when
+    /// `skip_expected` is set.
+    fn check_and_convert_unrecorded(
+        &mut self,
+        expr: &Expr<SourceAst>,
+        to: &TypeId,
+        skip_expected: bool,
+        scope: &mut Scope,
+    ) -> Result<TypedExpr, Error> {
+        self.skip_expected = skip_expected;
+        self.check_and_convert(expr, to, scope)
+    }
+
+    fn check_expr(
         &mut self,
         expr: &Expr<SourceAst>,
         expected: Option<&TypeId>,
@@ -43,6 +141,9 @@ impl<'a> TypeChecker<'a> {
                 Ok(reference) => Expr::Ident(reference, *span),
                 Err(err) if self.permissive => {
                     self.report(err.with_span(*span))?;
+                    if let Some(records) = &mut self.records {
+                        records.null_placeholders.insert((span.low, span.high));
+                    }
                     Expr::Null(*span)
                 }
                 Err(err) => return Err(err.with_span(*span)),
@@ -142,7 +243,8 @@ impl<'a> TypeChecker<'a> {
             Expr::Assign(lhs, rhs, span) => {
                 let lhs_typed = self.check(lhs, None, scope)?;
                 let type_ = type_of(&lhs_typed, scope, self.pool)?;
-                let rhs_typed = self.check_and_convert(rhs, &type_, scope)?;
+                let skip = self.has_placeholder_type(&lhs_typed);
+                let rhs_typed = self.check_and_convert_unrecorded(rhs, &type_, skip, scope)?;
                 Expr::Assign(Box::new(lhs_typed), Box::new(rhs_typed), *span)
             }
             Expr::Call(name, type_args, args, span) => {
@@ -183,7 +285,8 @@ impl<'a> TypeChecker<'a> {
                 let receiver = matches!(checked_receiver, Expr::Ident(Reference::Symbol(_), _))
                     .not()
                     .then_some(&receiver_type);
-                let candidates = Scope::resolve_method(name.clone(), class, self.pool).with_span(*span)?;
+                let candidates = Scope::resolve_method(name.clone(), class, self.pool)
+                    .map_err(|cause| self.missing_member(&checked_receiver, cause, *span))?;
 
                 let match_ =
                     self.resolve_overload(name.clone(), candidates, args.iter(), expected, receiver, scope, *span)?;
@@ -241,11 +344,13 @@ impl<'a> TypeChecker<'a> {
 
                 let member = match type_.unwrapped() {
                     TypeId::Class(class) => {
-                        let field = Scope::resolve_field(name.clone(), *class, self.pool).with_span(*span)?;
+                        let field = Scope::resolve_field(name.clone(), *class, self.pool)
+                            .map_err(|cause| self.missing_member(&checked_context, cause, *span))?;
                         Member::ClassField(field)
                     }
                     TypeId::Struct(class) => {
-                        let field = Scope::resolve_field(name.clone(), *class, self.pool).with_span(*span)?;
+                        let field = Scope::resolve_field(name.clone(), *class, self.pool)
+                            .map_err(|cause| self.missing_member(&checked_context, cause, *span))?;
                         Member::StructField(field)
                     }
                     TypeId::Enum(enum_) => {
@@ -303,7 +408,8 @@ impl<'a> TypeChecker<'a> {
                 let fun = self.pool.function(scope.function.unwrap())?;
                 if let Some(ret_type) = fun.return_type {
                     let expected = scope.resolve_type_from_pool(ret_type, self.pool).with_span(*span)?;
-                    let checked = self.check_and_convert(expr, &expected, scope)?;
+                    let skip = scope.function.is_some_and(|fun| self.is_placeholder(fun));
+                    let checked = self.check_and_convert_unrecorded(expr, &expected, skip, scope)?;
                     Expr::Return(Some(Box::new(checked)), *span)
                 } else {
                     return Err(Cause::UnexpectedValueReturn.with_span(*span));
@@ -384,6 +490,11 @@ impl<'a> TypeChecker<'a> {
                         let local = self
                             .add_local(name.clone(), &inner, &mut local_scope)
                             .with_span(*span)?;
+                        if let Some(records) = &mut self.records
+                            && records.has_placeholder_type(&array)
+                        {
+                            records.mark_placeholder(local);
+                        }
                         let body = self.check_seq(body, &mut local_scope)?;
                         Expr::ForIn(local, Box::new(array), body, *span)
                     }
@@ -428,7 +539,8 @@ impl<'a> TypeChecker<'a> {
         for (arg, field_idx) in args.iter().zip(&fields) {
             let field = self.pool.field(*field_idx)?;
             let field_type = scope.resolve_type_from_pool(field.type_, self.pool).with_span(*span)?;
-            let checked_arg = self.check_and_convert(arg, &field_type, scope)?;
+            let skip = self.is_placeholder(*field_idx);
+            let checked_arg = self.check_and_convert_unrecorded(arg, &field_type, skip, scope)?;
             checked_args.push(checked_arg);
         }
         Ok(Expr::New(type_, checked_args.into_boxed_slice(), *span))
@@ -437,7 +549,23 @@ impl<'a> TypeChecker<'a> {
     pub fn check_seq(&mut self, seq: &Seq<SourceAst>, scope: &mut Scope) -> Result<Seq<TypedAst>, Error> {
         let mut exprs = Vec::with_capacity(seq.exprs.len());
         for expr in &seq.exprs {
-            exprs.push(self.check(expr, None, scope)?);
+            match self.check(expr, None, scope) {
+                Ok(checked) => exprs.push(checked),
+                // when recording types in permissive mode, the checking goes on with the next
+                // statement, a local declared by the failed one has the placeholder type
+                Err(err) if self.permissive && self.records.is_some() => {
+                    self.report(err)?;
+                    if let Expr::Declare(name, _, _, span) = expr
+                        && scope.has_type(PLACEHOLDER_TYPE)
+                    {
+                        let local = self.add_local(name.clone(), &TypeId::Null, scope).with_span(*span)?;
+                        if let Some(records) = &mut self.records {
+                            records.mark_placeholder(local);
+                        }
+                    }
+                }
+                Err(err) => return Err(err),
+            }
         }
         Ok(Seq { exprs })
     }
@@ -467,6 +595,7 @@ impl<'a> TypeChecker<'a> {
         }
         let first_arg = self.check(&args[0], None, scope)?;
         let first_arg_type = type_of(&first_arg, scope, self.pool)?;
+        let elem_placeholder = self.has_placeholder_type(&first_arg);
         let mut checked_args = vec![];
         let type_ = match (intrinsic, first_arg_type) {
             (Intrinsic::Equals | Intrinsic::NotEquals, arg_type) => {
@@ -498,17 +627,17 @@ impl<'a> TypeChecker<'a> {
                 TypeId::Array(elem) | TypeId::StaticArray(elem, _),
             ) => {
                 checked_args.push(first_arg);
-                checked_args.push(self.check_and_convert(&args[1], &elem, scope)?);
+                checked_args.push(self.check_and_convert_unrecorded(&args[1], &elem, elem_placeholder, scope)?);
                 scope.resolve_type(&TypeName::INT32, self.pool).with_span(span)?
             }
             (Intrinsic::ArrayContains, TypeId::Array(elem) | TypeId::StaticArray(elem, _)) => {
                 checked_args.push(first_arg);
-                checked_args.push(self.check_and_convert(&args[1], &elem, scope)?);
+                checked_args.push(self.check_and_convert_unrecorded(&args[1], &elem, elem_placeholder, scope)?);
                 scope.resolve_type(&TypeName::BOOL, self.pool).with_span(span)?
             }
             (Intrinsic::ArrayPush, TypeId::Array(elem)) => {
                 checked_args.push(first_arg);
-                checked_args.push(self.check_and_convert(&args[1], &elem, scope)?);
+                checked_args.push(self.check_and_convert_unrecorded(&args[1], &elem, elem_placeholder, scope)?);
                 TypeId::Void
             }
             (Intrinsic::ArrayPop, TypeId::Array(elem)) => {
@@ -519,12 +648,12 @@ impl<'a> TypeChecker<'a> {
                 let idx_type = scope.resolve_type(&TypeName::INT32, self.pool).with_span(span)?;
                 checked_args.push(first_arg);
                 checked_args.push(self.check_and_convert(&args[1], &idx_type, scope)?);
-                checked_args.push(self.check_and_convert(&args[2], &elem, scope)?);
+                checked_args.push(self.check_and_convert_unrecorded(&args[2], &elem, elem_placeholder, scope)?);
                 TypeId::Void
             }
             (Intrinsic::ArrayRemove, TypeId::Array(elem)) => {
                 checked_args.push(first_arg);
-                checked_args.push(self.check_and_convert(&args[1], &elem, scope)?);
+                checked_args.push(self.check_and_convert_unrecorded(&args[1], &elem, elem_placeholder, scope)?);
                 scope.resolve_type(&TypeName::BOOL, self.pool).with_span(span)?
             }
             (Intrinsic::ArrayGrow, TypeId::Array(_)) => {
@@ -626,12 +755,18 @@ impl<'a> TypeChecker<'a> {
         to: &TypeId,
         scope: &mut Scope,
     ) -> Result<TypedExpr, Error> {
+        if !mem::take(&mut self.skip_expected) {
+            self.record(expr, |types| &mut types.expected, to.clone());
+        }
         let checked = self.check(expr, Some(to), scope)?;
         let from = type_of(&checked, scope, self.pool)?;
         if let Some(conversion) = find_conversion(&from, to, self.pool)? {
             Ok(insert_conversion(checked, to, conversion))
         } else {
-            self.report(Cause::TypeError(from.pretty(self.pool)?, to.pretty(self.pool)?).with_span(expr.span()))?;
+            // a placeholder type is already reported as unresolved
+            if !self.has_placeholder_type(&checked) {
+                self.report(Cause::TypeError(from.pretty(self.pool)?, to.pretty(self.pool)?).with_span(expr.span()))?;
+            }
             Ok(checked)
         }
     }
@@ -698,15 +833,60 @@ impl<'a> TypeChecker<'a> {
             }
         };
         match match_ {
-            Ok(match_) => Ok(match_),
+            Ok(match_) => {
+                self.record_param_types(match_.index, args, receiver, scope, span);
+                Ok(match_)
+            }
             Err(err) if self.permissive => {
-                self.report(err)?;
-
+                // the parameters are known when there is a single candidate
+                if let [index] = overloads.functions[..] {
+                    self.record_param_types(index, args.clone(), receiver, scope, span);
+                }
                 let dummy_args: Vec<_> = args.map(|expr| self.check(expr, None, scope)).try_collect()?;
+                // a placeholder type is already reported as unresolved
+                if !dummy_args.iter().any(|arg| self.has_placeholder_type(arg)) {
+                    self.report(err)?;
+                }
+
                 let convs = std::iter::repeat_n(ArgConversion::identity(), dummy_args.len()).collect();
+                // the type of the call is known when there is a single candidate
+                self.unresolved_call = overloads.functions.len() != 1;
                 Ok(FunctionMatch::new(overloads.functions[0], dummy_args, convs, false))
             }
             Err(err) => Err(err),
+        }
+    }
+
+    /// Records the types of the parameters of `fun_index` as the types expected for `args`.
+    fn record_param_types<'b>(
+        &mut self,
+        fun_index: PoolIndex<Function>,
+        args: impl ExactSizeIterator<Item = &'b Expr<SourceAst>>,
+        receiver: Option<&TypeId>,
+        scope: &Scope,
+        span: Span,
+    ) {
+        if self.records.is_none() {
+            return;
+        }
+        let Ok((_, types, has_static_receiver)) =
+            Self::validate_call(fun_index, args.len(), receiver, scope, self.pool, span)
+        else {
+            return;
+        };
+        let Ok(fun) = self.pool.function(fun_index) else {
+            return;
+        };
+        let params: Vec<_> = fun
+            .parameters
+            .iter()
+            .skip(usize::from(has_static_receiver))
+            .copied()
+            .collect();
+        for ((arg, typ), param) in args.zip(types).zip(params) {
+            if !self.is_placeholder(param) {
+                self.record(arg, |types| &mut types.expected, typ);
+            }
         }
     }
 
@@ -915,6 +1095,123 @@ pub fn type_of(expr: &TypedExpr, scope: &Scope, pool: &ConstantPool) -> Result<T
         | Expr::Break(_) => TypeId::Void,
     };
     Ok(res)
+}
+
+/// Whether `expr` is an expression with a value rather than a statement.
+fn is_value(expr: &Expr<SourceAst>) -> bool {
+    !matches!(
+        expr,
+        Expr::Declare(..)
+            | Expr::Assign(..)
+            | Expr::Return(..)
+            | Expr::Seq(_)
+            | Expr::Switch(..)
+            | Expr::Goto(..)
+            | Expr::If(..)
+            | Expr::While(..)
+            | Expr::ForIn(..)
+            | Expr::Break(_)
+    )
+}
+
+/// Identifies a source expression for [`TypeRecords`]: its span, and the number of prefix
+/// operators (`!x`, `-x`, `~x`) applied to the operand at that span, because the span of a
+/// prefix operation does not include its operator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RecordKey {
+    pub low: Pos,
+    pub high: Pos,
+    pub prefixes: u8,
+}
+
+impl RecordKey {
+    fn of(expr: &Expr<SourceAst>) -> Self {
+        match expr {
+            Expr::UnOp(inner, _, _) => {
+                let key = Self::of(inner);
+                Self {
+                    prefixes: key.prefixes.saturating_add(1),
+                    ..key
+                }
+            }
+            other => {
+                let span = other.span();
+                Self {
+                    low: span.low,
+                    high: span.high,
+                    prefixes: 0,
+                }
+            }
+        }
+    }
+}
+
+/// The types recorded for a source expression.
+#[derive(Debug, Default, Clone)]
+pub struct RecordedTypes {
+    /// The type of the expression, before any implicit conversion.
+    pub inferred: Option<TypeId>,
+    /// The type expected by its context: the parameter it is passed to, the variable it is
+    /// assigned to, the return type...
+    pub expected: Option<TypeId>,
+}
+
+/// Types recorded while type-checking, by source expression. Later records for the same
+/// expression take precedence. Nothing is recorded for calls whose overload could not be
+/// resolved.
+#[derive(Debug, Default)]
+pub struct TypeRecords {
+    entries: HashMap<RecordKey, RecordedTypes>,
+    /// Functions (for their return type), parameters, fields and locals whose type is the
+    /// placeholder of a type that could not be resolved, which is not their actual type.
+    placeholders: HashSet<PoolIndex<Definition>>,
+    /// The `null` expressions that replace names that could not be resolved.
+    null_placeholders: HashSet<(Pos, Pos)>,
+}
+
+/// The type a type that could not be resolved is replaced with, see [`TypeId::Null`].
+const PLACEHOLDER_TYPE: &str = "ref:IScriptable";
+
+impl TypeRecords {
+    /// Remembers that the type of `index` is a placeholder.
+    pub fn mark_placeholder<A>(&mut self, index: PoolIndex<A>) {
+        self.placeholders.insert(index.cast());
+    }
+
+    /// Whether the type of `expr` derives from a placeholder type.
+    fn has_placeholder_type(&self, expr: &TypedExpr) -> bool {
+        if self.placeholders.is_empty() && self.null_placeholders.is_empty() {
+            return false;
+        }
+        let is = |index: PoolIndex<Definition>| self.placeholders.contains(&index);
+        match expr {
+            Expr::Ident(Reference::Value(Value::Local(index)), _) => is(index.cast()),
+            Expr::Ident(Reference::Value(Value::Parameter(index)), _) => is(index.cast()),
+            Expr::Call(Callable::Function(index), _, _, _) | Expr::MethodCall(_, index, _, _) => is(index.cast()),
+            Expr::Member(_, Member::ClassField(index) | Member::StructField(index), _) => is(index.cast()),
+            // conversions and intrinsics returning (an element of) their argument
+            Expr::Call(Callable::Intrinsic(_, typ), _, args, _) => {
+                !matches!(typ, TypeId::Prim(_) | TypeId::Void) && args.iter().any(|arg| self.has_placeholder_type(arg))
+            }
+            Expr::ArrayElem(inner, _, _) => self.has_placeholder_type(inner),
+            Expr::ArrayLit(elems, _, _) => elems.iter().any(|elem| self.has_placeholder_type(elem)),
+            Expr::Conditional(_, lhs, rhs, _) => self.has_placeholder_type(lhs) || self.has_placeholder_type(rhs),
+            Expr::Null(span) => self.null_placeholders.contains(&(span.low, span.high)),
+            _ => false,
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&RecordKey, &RecordedTypes)> {
+        self.entries.iter()
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
 }
 
 pub fn collect_supertypes(
