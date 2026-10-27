@@ -19,7 +19,9 @@ use redscript_formatter::{
     FormatSettings, ParseOptions, parse_document_with_options, print_document,
 };
 
-use crate::{ConvertDiagnostic, ConvertOptions, NameArena, SourceFields, TypeQuery};
+use crate::{
+    ConditionalVersions, ConvertDiagnostic, ConvertOptions, NameArena, SourceFields, TypeQuery,
+};
 
 const FROM: Dialect = Dialect::Community;
 const TO: Dialect = Dialect::Redmod;
@@ -155,7 +157,7 @@ impl<'a> Converter<'a> {
             None => (None, TypeCheckSummary::default()),
         };
         // the fields with reserved names are renamed in every file, which needs the classes of
-        // all the files first
+        // all the files first, and the versions of a conditional function can be in several files
         let mut modules = vec![];
         for (_, ids) in &groups {
             for &id in ids {
@@ -165,11 +167,13 @@ impl<'a> Converter<'a> {
                 modules.extend(doc.filter(|_| errors.is_empty()).map(|doc| doc.module));
             }
         }
-        let fields = SourceFields::collect(&modules);
+        let fields = SourceFields::collect_with_types(&modules, query);
+        let conditionals = ConditionalVersions::collect(&modules);
         drop(modules);
         let convert_opts = ConvertOptions {
             types: query,
             fields: Some(&fields),
+            conditionals: Some(&conditionals),
         };
         let mut failed = false;
 

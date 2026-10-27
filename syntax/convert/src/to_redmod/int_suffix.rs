@@ -38,6 +38,23 @@ fn field_default<'src>(cx: &mut Cx<'_, 'src>, name: &str, (expr, span): &mut SEx
         } => &mut expr.0,
         other => other,
     };
+    // the minimum values have no literal: the printer writes them as `(-2147483647 - 1)` and
+    // `(-9223372036854775807l - 1l)`, which REDmod does not accept in a field initializer
+    if matches!(
+        literal,
+        Expr::Constant(Constant::I32(i32::MIN) | Constant::I64(i64::MIN))
+    ) {
+        cx.warn(
+            *span,
+            "int-literal-range",
+            format!(
+                "the initializer of field `{name}` is the minimum integer value, which has no \
+                 literal, and REDmod only accepts plain literals in field initializers: \
+                 initialize `{name}` in a method instead"
+            ),
+        );
+        return true;
+    }
     let suffixed = match literal {
         Expr::Constant(Constant::U32(v)) => Some(i32::try_from(*v).ok()),
         Expr::Constant(Constant::U64(v)) => Some(i32::try_from(*v).ok()),
@@ -160,5 +177,27 @@ mod tests {
             ]
         );
         assert_eq!(diags[2].severity, crate::Severity::Warning);
+    }
+
+    #[test]
+    fn field_initializers_with_minimum_values_are_reported() {
+        let (out, diags) = to_redmod(
+            "class C {
+  let a: Int32 = -2147483648;
+  let b: Int64 = -9223372036854775808l;
+  let c: Int32 = -2147483647;
+}
+",
+            run,
+        );
+        let out = squash(&out);
+        assert!(out.contains("let c: Int32 = -2147483647;"), "{out}");
+        assert_eq!(codes(&diags), ["int-literal-range", "int-literal-range"]);
+        assert!(
+            diags
+                .iter()
+                .all(|d| d.message.contains("minimum integer value"))
+        );
+        assert!(diags.iter().all(|d| d.severity == crate::Severity::Warning));
     }
 }

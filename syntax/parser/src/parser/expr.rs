@@ -336,12 +336,24 @@ fn expr_with_span_impl<'tok, 'src: 'tok>(
         .map(|(lhs, ops)| climb_prec(lhs, &mut ops.into_iter().peekable(), 0))
         .erased();
 
+    // 0.5.x compatibility: a branch of a conditional can be the variable `default`, even when
+    // it is followed by the `:` of the conditional (`c ? default : x`)
+    let branch = if compat {
+        just(Token::Default)
+            .then(just(Token::Colon).rewind())
+            .map_with(|_, e| (Expr::Ident("default"), e.span()))
+            .or(expr.clone())
+            .left_branch()
+    } else {
+        expr.clone().right_branch()
+    };
+
     let ternary = binops
         .then(
             just(Token::Question)
-                .ignore_then(expr.clone())
+                .ignore_then(branch.clone())
                 .then_ignore(just(Token::Colon))
-                .then(expr)
+                .then(branch)
                 .or_not(),
         )
         .map_with(|(cond, tern), e| match tern {

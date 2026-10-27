@@ -841,13 +841,16 @@ impl<K: AstKind> Formattable for Expr<'_, K> {
                 Ok(())
             }
             Expr::Assign { lhs, rhs } => {
+                // an assignment has the lowest precedence, it is parenthesized as an operand
+                let parenthesize = ctx.parent.is_some();
                 let ctx = ctx.without_parent_op();
-                write!(
-                    f,
-                    "{} = {}",
-                    en::<K>(&**lhs).as_fmt(ctx),
-                    en::<K>(&**rhs).as_fmt(ctx)
-                )
+                let lhs = en::<K>(&**lhs);
+                let rhs = en::<K>(&**rhs);
+                if parenthesize {
+                    write!(f, "({} = {})", lhs.as_fmt(ctx), rhs.as_fmt(ctx))
+                } else {
+                    write!(f, "{} = {}", lhs.as_fmt(ctx), rhs.as_fmt(ctx))
+                }
             }
             Expr::Member { .. } | Expr::BinOp { .. } => format_chain(self, f, ctx),
             Expr::UnOp { op, expr } => {
@@ -910,7 +913,12 @@ impl<K: AstKind> Formattable for Expr<'_, K> {
             Expr::Conditional { cond, then, else_ } => {
                 let parenthesize = ctx.parent.is_some();
                 let ctx = ctx.without_parent_op();
-                let cond = ef::<K>(&**cond, ctx);
+                // the condition is an operand, an assignment there needs parentheses
+                let cond = if matches!((**cond).as_wrapped(), Expr::Assign { .. }) {
+                    ef::<K>(&**cond, ctx.with_parent_op(ParentOp::TopPrec))
+                } else {
+                    ef::<K>(&**cond, ctx)
+                };
                 let then = ef::<K>(&**then, ctx);
                 let else_ = ef::<K>(&**else_, ctx);
                 if parenthesize {
@@ -1384,7 +1392,7 @@ fn format_chain<K: AstKind>(
     let parenthesize = loop {
         match cur {
             // handle expressions that might require parentheses first
-            Expr::Conditional { .. } => {
+            Expr::Conditional { .. } | Expr::Assign { .. } => {
                 break cur_parent.is_some();
             }
             Expr::DynCast { .. } => {

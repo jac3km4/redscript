@@ -16,12 +16,12 @@
 //! The casts are `IntEnum(..)` (whose target is always an enum: its type argument, or else the
 //! return type of the function), `x as E` and `Cast<E>(..)` when `E` is an enum declared in the
 //! module or the type information says so. The argument goes into a local of its own when its
-//! type is known: the type argument of a cast, `Int32` for `EnumInt(..)`, the target of `as`, or
-//! the type information for a call. Otherwise only the enum cast is moved. Other returns are left
-//! unchanged.
+//! type is known: the type argument of a cast, `Int32` for `EnumInt(..)`, a reference to the class
+//! an `as` casts to (or the enum), or the type information for a call. Otherwise only the enum
+//! cast is moved. Other returns are left unchanged.
 
 use hashbrown::HashSet;
-use redscript_ast::{Expr, SourceModule, Span, Stmt};
+use redscript_ast::{Expr, SourceModule, Span, Stmt, Type};
 
 use super::hoist::{Hoist, Hoisting, Rewrite};
 use crate::index::{ModuleIndex, Names};
@@ -148,7 +148,15 @@ impl<'src> SafeEnumReturn<'_, '_, 'src> {
                 type_args.first().cloned()
             }
             (Expr::Call { .. }, Some("EnumInt")) => Some(plain_type("Int32", syn)),
-            (Expr::DynCast { typ, .. }, _) => Some((**typ).clone()),
+            // `as` casts to a class, held by a strong reference (an enum stays a value)
+            (Expr::DynCast { typ, .. }, _) if self.is_enum(typ, expr.1) => Some((**typ).clone()),
+            (Expr::DynCast { typ, .. }, _) => Some((
+                Type::Named {
+                    name: "ref",
+                    args: [(**typ).clone()].into(),
+                },
+                syn,
+            )),
             _ => None,
         };
         declared.or_else(|| {
@@ -210,8 +218,12 @@ impl<'src> Rewrite<'src> for SafeEnumReturn<'_, '_, 'src> {
 
 #[cfg(test)]
 mod tests {
+    use redscript_ast::Dialect;
+
     use super::*;
-    use crate::test_util::{MapTypeQuery, codes, span_of, squash, to_redmod, to_redmod_with_types};
+    use crate::test_util::{
+        MapTypeQuery, codes, run_pass, span_of, squash, to_redmod, to_redmod_with_types,
+    };
 
     #[test]
     fn casts_returned_directly_go_into_locals() {
@@ -279,6 +291,26 @@ func G(o: ref<Obj>) -> EKey {
             assert!(out.contains(expected), "{expected}: {out}");
         }
         assert_eq!(codes(&diags), ["safe-enum-return"; 2]);
+    }
+
+    #[test]
+    fn class_casts_go_into_references() {
+        let src = "enum EKey { A = 0 }
+
+func F(o: ref<Obj>) -> EKey {
+  return IntEnum<EKey>(Cast<Int32>(o.Make() as Foo));
+}
+";
+        let (out, _) = run_pass(src, Dialect::Community, Dialect::Community, run);
+        assert!(
+            squash(&out).contains("let value: ref<Foo> = o.Make() as Foo;"),
+            "{out}"
+        );
+        let (out, _) = to_redmod(src, run);
+        assert!(
+            squash(&out).contains("let value: Foo = o.Make() as Foo;"),
+            "{out}"
+        );
     }
 
     #[test]

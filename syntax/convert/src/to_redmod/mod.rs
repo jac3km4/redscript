@@ -36,10 +36,11 @@ pub fn run<'src>(module: &mut SourceModule<'src>, cx: &mut Cx<'_, 'src>) {
     // diagnostics are reported on the original AST, before any other rewrite
     crate::diagnostics::community(module, cx);
 
-    // first, the other passes see one assignment per statement
-    chained_assign::run(module, cx);
-    // while the receivers of the fields have their original spans and declared types
+    // first, while the receivers of the fields have their original spans and declared types,
+    // before the chained assignments are split into copies with synthetic spans
     fields::run(module, cx);
+    // then the other passes see one assignment per statement
+    chained_assign::run(module, cx);
 
     imports::run(module, cx);
     inline_body::run(module, cx);

@@ -404,6 +404,37 @@ fn default_variable_does_not_break_switch() {
     );
 }
 
+#[test]
+fn default_variable_as_conditional_branch() {
+    assert_eq!(
+        expr("c ? default : x", COMPAT),
+        ternary(ident("c"), ident("default"), ident("x"))
+    );
+    assert_eq!(
+        expr("c ? x : default", COMPAT),
+        ternary(ident("c"), ident("x"), ident("default"))
+    );
+    assert_eq!(
+        expr("c ? d ? x : default : default", COMPAT),
+        ternary(
+            ident("c"),
+            ternary(ident("d"), ident("x"), ident("default")),
+            ident("default")
+        )
+    );
+    // a switch arm after a conditional is still a switch arm
+    let res = stmt(
+        "switch x { case 1: y = c ? default : 2; break; default: f(c ? 1 : default); }",
+        COMPAT,
+    );
+    let Stmt::Switch { cases, default, .. } = res else {
+        panic!("expected a switch");
+    };
+    assert_eq!(cases.len(), 1);
+    assert_eq!(default.unwrap().len(), 1);
+    assert!(expr_errors("c ? default : x", STRICT) > 0);
+}
+
 // 6. lexer
 
 #[test]
@@ -426,6 +457,20 @@ fn ge_after_generic_close() {
     );
     // comparisons are unaffected
     assert_eq!(expr("a < b >= c", COMPAT), expr("a < b >= c", STRICT));
+    // so is the `:` of a conditional followed by a comparison
+    assert_eq!(
+        expr("G(c ? p : q < a, b >= d)", COMPAT),
+        expr("G(c ? p : q < a, b >= d)", STRICT)
+    );
+    assert_eq!(
+        expr("c ? p : q < a >= d", COMPAT),
+        expr("c ? p : q < a >= d", STRICT)
+    );
+    // fields and locals named with a keyword
+    assert!(
+        stmt("let default: array<Int32>= [];", COMPAT)
+            .eq(&stmt("let default: array<Int32> = [];", COMPAT))
+    );
     assert_eq!(
         expr("a >= b", COMPAT),
         binop(ident("a"), BinOp::Ge, ident("b"))

@@ -30,6 +30,7 @@ mod index;
 mod to_redmod;
 mod walk;
 
+pub use diagnostics::ConditionalVersions;
 pub use to_redmod::fields::SourceFields;
 
 #[cfg(test)]
@@ -155,10 +156,11 @@ pub struct BaseMethodInfo {
     pub is_native: bool,
     /// Whether the class declaring the overridden method is native or `importonly`.
     pub class_is_native: bool,
-    /// Whether the overridden method takes a `TweakDBID` parameter.
+    /// Whether the overridden method takes a `TweakDBID` parameter, possibly inside an array or
+    /// a reference.
     pub has_tweakdbid_param: bool,
-    /// Whether the class declaring the overridden method is declared by the converted sources
-    /// rather than by the game scripts.
+    /// Whether the overridden method is declared by the converted sources rather than by the
+    /// game scripts, including the methods they add to game classes with `@addMethod`.
     pub from_sources: bool,
 }
 
@@ -207,8 +209,10 @@ pub trait TypeQuery {
     }
     /// The non-static method `method` of the nearest base class of the class `class`
     /// (qualified) that declares one, i.e. the method an override of `method` in `class`
-    /// overrides. When the base class declares several overloads, the flags are set when one of
-    /// them has them. `None` when the class is unknown or no base class declares the method.
+    /// overrides. When the base class declares several overloads, the flags are those of the
+    /// overload with the parameter types of the override; when it cannot be told, they are set
+    /// when one of the overloads has them. `None` when the class is unknown or no base class
+    /// declares the method.
     fn base_method_info(&self, _class: &str, _method: &str) -> Option<BaseMethodInfo> {
         None
     }
@@ -227,6 +231,9 @@ pub struct ConvertOptions<'a> {
     /// The classes declared by all the files converted together, whose fields with reserved
     /// names are renamed in every file. Only the classes of the module are known without it.
     pub fields: Option<&'a SourceFields>,
+    /// The versions of the conditional functions of all the files converted together, whose
+    /// limits are checked across files. Only the versions of the module are known without it.
+    pub conditionals: Option<&'a ConditionalVersions>,
 }
 
 impl fmt::Debug for ConvertOptions<'_> {
@@ -234,6 +241,7 @@ impl fmt::Debug for ConvertOptions<'_> {
         f.debug_struct("ConvertOptions")
             .field("types", &self.types.is_some())
             .field("fields", &self.fields)
+            .field("conditionals", &self.conditionals)
             .finish()
     }
 }

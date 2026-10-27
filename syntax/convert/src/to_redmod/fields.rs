@@ -19,15 +19,15 @@
 use hashbrown::{HashMap, HashSet};
 use redscript_ast::{
     Condition, Expr, Import, Item, ItemQualifiers, LetCondition, Pattern, SourceConditionalBlock,
-    SourceFunctionBody, SourceModule, SourcePattern, Span, Stmt,
+    SourceExpr, SourceFunctionBody, SourceItemDecl, SourceModule, SourcePattern, Span, Stmt,
 };
 
-use crate::Cx;
 use crate::index::{LocalTypes, ModuleIndex, TypeEnv};
 use crate::walk::{
     MutVisitor, REDMOD_RESERVED, SExpr, SParam, SStmt, for_each_function, pattern_bindings,
     type_name, walk_body, walk_expr, walk_stmt, walk_stmts,
 };
+use crate::{Cx, TypeHint, TypeQuery};
 
 /// The classes and structs declared by the converted sources, with their fields whose names
 /// REDmod rejects and the names they get. Collected from every file before the conversion, see
@@ -40,6 +40,8 @@ pub struct SourceFields {
     by_simple: HashMap<String, Vec<String>>,
     /// The original names of the renamed fields.
     old_names: HashSet<String>,
+    /// The enums declared by the sources, by name with and without the module path.
+    enums: HashSet<String>,
 }
 
 #[derive(Debug, Default)]
@@ -48,6 +50,9 @@ struct SourceClass {
     base: Option<String>,
     /// The names of all the fields declared by the class.
     fields: HashSet<String>,
+    /// The names of the methods declared by the class and of the members added to it with
+    /// `@addField` and `@addMethod`, which a renamed field must not take either.
+    members: HashSet<String>,
     /// The new names of the renamed fields declared by the class, by original name.
     renamed: HashMap<String, String>,
 }
@@ -58,12 +63,38 @@ impl SourceFields {
     pub fn collect<'a, 'src: 'a>(
         modules: impl IntoIterator<Item = &'a SourceModule<'src>>,
     ) -> Self {
+        Self::collect_with_types(modules, None)
+    }
+
+    /// Like [`SourceFields::collect`], with type information: the new names also avoid the
+    /// fields and methods of the game classes the classes derive from.
+    pub fn collect_with_types<'a, 'src: 'a>(
+        modules: impl IntoIterator<Item = &'a SourceModule<'src>>,
+        types: Option<&dyn TypeQuery>,
+    ) -> Self {
         let mut this = Self::default();
         let mut bases = vec![];
         let mut reserved = vec![];
+        let mut added = vec![];
         for module in modules {
             let resolver = Resolver::of(module);
             for (decl, _) in &module.items[..] {
+                if let Item::Enum(enum_) = &decl.item {
+                    this.enums.insert(enum_.name.0.to_owned());
+                    this.enums.insert(resolver.qualify(enum_.name.0));
+                    continue;
+                }
+                if let Some(target) = added_to(decl) {
+                    let member = match &decl.item {
+                        Item::Let(field) => Some(field.name.0),
+                        Item::Function(func) => Some(func.name.0),
+                        _ => None,
+                    };
+                    if let Some(member) = member {
+                        added.push((target, member.to_owned(), resolver.clone()));
+                    }
+                    continue;
+                }
                 let (Item::Class(agg) | Item::Struct(agg)) = &decl.item else {
                     continue;
                 };
@@ -77,12 +108,18 @@ impl SourceFields {
                 let qualified = resolver.qualify(name);
                 let class = this.classes.entry(qualified.clone()).or_default();
                 for (member, _) in &agg.items {
-                    if let Item::Let(field) = &member.item {
-                        let field = field.name.0;
-                        class.fields.insert(field.to_owned());
-                        if is_renamed_field(member.qualifiers, field) {
-                            reserved.push((qualified.clone(), field.to_owned()));
+                    match &member.item {
+                        Item::Let(field) => {
+                            let field = field.name.0;
+                            class.fields.insert(field.to_owned());
+                            if is_renamed_field(member.qualifiers, field) {
+                                reserved.push((qualified.clone(), field.to_owned()));
+                            }
                         }
+                        Item::Function(func) => {
+                            class.members.insert(func.name.0.to_owned());
+                        }
+                        _ => {}
                     }
                 }
                 this.by_simple
@@ -100,20 +137,41 @@ impl SourceFields {
                 info.base = base;
             }
         }
+        for (target, member, resolver) in added {
+            if let Some(class) = this.resolve(&target, &resolver)
+                && let Some(info) = this.classes.get_mut(&class)
+            {
+                info.members.insert(member);
+            }
+        }
         for (class, field) in reserved {
-            let taken: HashSet<String> = this
-                .related(&class)
-                .into_iter()
+            let related = this.related(&class);
+            let taken: HashSet<String> = related
+                .iter()
                 .flat_map(|name| {
                     let info = &this.classes[name.as_str()];
-                    info.fields.iter().chain(info.renamed.values()).cloned()
+                    info.fields
+                        .iter()
+                        .chain(&info.members)
+                        .chain(info.renamed.values())
+                        .cloned()
                 })
                 .collect();
+            // the fields and methods of the game bases, and the members other files add to them
+            let is_taken = |name: &String| {
+                taken.contains(name)
+                    || types.is_some_and(|types| {
+                        related.iter().any(|class| {
+                            types.class_has_field(class, name) == Some(true)
+                                || types.base_has_method(class, name) == Some(true)
+                        })
+                    })
+            };
             let base = format!("{field}_");
-            let new = if taken.contains(&base) {
+            let new = if is_taken(&base) {
                 (1..)
                     .map(|i| format!("{base}_{i}"))
-                    .find(|name| !taken.contains(name))
+                    .find(|name| !is_taken(name))
                     .expect("infinite iterator")
             } else {
                 base
@@ -225,6 +283,25 @@ impl SourceFields {
     }
 }
 
+/// The class `decl` adds a member to with `@addField` or `@addMethod`, as written.
+fn added_to(decl: &SourceItemDecl<'_>) -> Option<String> {
+    decl.annotations.iter().find_map(|(ann, _)| {
+        if !matches!(ann.name, "addField" | "addMethod") {
+            return None;
+        }
+        ann.args.first().and_then(|(target, _)| path_of(target))
+    })
+}
+
+/// The path written by `expr`, e.g. `Mod.Class` for a qualified name.
+pub(crate) fn path_of(expr: &SourceExpr<'_>) -> Option<String> {
+    match expr {
+        Expr::Ident(name) => Some((*name).to_owned()),
+        Expr::Member { expr, member } => Some(format!("{}.{member}", path_of(&expr.0)?)),
+        _ => None,
+    }
+}
+
 /// Whether a field named `field` declared with `qualifiers` in a class of the sources is renamed.
 fn is_renamed_field(qualifiers: ItemQualifiers, field: &str) -> bool {
     REDMOD_RESERVED.contains(&field) && !qualifiers.contains(ItemQualifiers::NATIVE)
@@ -311,7 +388,7 @@ pub fn run<'src>(module: &mut SourceModule<'src>, cx: &mut Cx<'_, 'src>) {
     let fields = if let Some(fields) = cx.opts.fields {
         fields
     } else {
-        owned = SourceFields::collect([&*module]);
+        owned = SourceFields::collect_with_types([&*module], cx.opts.types);
         &owned
     };
     if fields.is_empty() {
@@ -430,7 +507,9 @@ impl<'src> Uses<'_, '_, 'src> {
         self.cx.arena.alloc(name)
     }
 
-    fn receiver(&self, receiver: &SExpr<'src>) -> Receiver {
+    /// The class of `receiver`, the value the member `member` is read from in the member access
+    /// at `span`.
+    fn receiver(&self, receiver: &SExpr<'src>, member: &str, span: Span) -> Receiver {
         let from_name = |name: Option<String>| match name {
             Some(name) => Receiver::Source(name),
             None => Receiver::Other,
@@ -452,15 +531,44 @@ impl<'src> Uses<'_, '_, 'src> {
         }
         match self.env.type_of(receiver) {
             Some(typ) => {
-                from_name(type_name(&typ).and_then(|name| self.fields.resolve(name, self.resolver)))
+                let name = type_name(&typ);
+                if let Some(class) = name.and_then(|name| self.fields.resolve(name, self.resolver))
+                {
+                    return Receiver::Source(class);
+                }
+                // a type that the type information does not know either: the type checker
+                // replaced it with a placeholder, it may be a class of the sources after all
+                match (name, self.cx.opts.types) {
+                    (Some(name), Some(types)) if types.class_has_field(name, member).is_none() => {
+                        Receiver::Unknown
+                    }
+                    _ => Receiver::Other,
+                }
             }
+            None if self.is_enum(receiver, span) => Receiver::Other,
             None => Receiver::Unknown,
         }
     }
 
+    /// Whether `receiver` names an enum, of the sources or, as far as the type information
+    /// tells, of the game: the member access at `span` is a value of the enum.
+    fn is_enum(&self, receiver: &SExpr<'src>, span: Span) -> bool {
+        let Expr::Ident(name) = receiver.0 else {
+            return false;
+        };
+        !self.is_local(name)
+            && (self.fields.enums.contains(name)
+                || self
+                    .cx
+                    .opts
+                    .types
+                    .and_then(|types| types.type_of(span))
+                    .is_some_and(|hint| matches!(hint, TypeHint::Enum(_))))
+    }
+
     /// Renames the field read from `receiver` or warns when its type is unknown.
     fn member(&mut self, receiver: &SExpr<'src>, member: &mut &'src str, span: Span) {
-        match self.receiver(receiver) {
+        match self.receiver(receiver, member, span) {
             Receiver::Source(class) => {
                 if let Some(new) = self.fields.renamed(&class, member) {
                     *member = self.alloc(new);
@@ -858,5 +966,119 @@ func F(n: ref<N>, p: ref<PlayerPuppet>) -> CName {
         let (out, diags) = to_redmod(src, run);
         assert!(squash(&out).contains("x.hint + this.other"), "{out}");
         assert!(diags.is_empty(), "{diags:?}");
+    }
+
+    #[test]
+    fn new_names_avoid_methods_added_members_and_game_bases() {
+        let src = "class A extends GameObject {
+  let hint: Int32;
+  let event: Int32;
+  let static: Int32;
+  let optional: Int32;
+  func hint_() {}
+}
+
+@addField(A)
+let event_: Int32;
+
+func F(a: ref<A>) -> Int32 = a.hint + a.event + a.static + a.optional;
+";
+        let types = MapTypeQuery::new()
+            .with_class_field("A", "static_")
+            .with_class("A", Some("GameObject"), &[], false)
+            .with_class("GameObject", None, &["optional_"], true);
+        let (out, _) = to_redmod_with_types(src, &types, run);
+        let out = squash(&out);
+        for expected in [
+            "let hint__1: Int32;",
+            "let event__1: Int32;",
+            "let static__1: Int32;",
+            "let optional__1: Int32;",
+            "a.hint__1 + a.event__1 + a.static__1 + a.optional__1",
+        ] {
+            assert!(out.contains(expected), "{expected}: {out}");
+        }
+        // without type information, only the names of the sources are avoided
+        let (out, _) = to_redmod(src, run);
+        assert!(
+            squash(&out).contains("a.hint__1 + a.event__1 + a.static_ + a.optional_"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn placeholder_receivers_are_unresolved() {
+        let src = "class C {
+  let hint: Int32;
+}
+
+func F(u: ref<Unknown>, w: ref<inkWidget>) -> Int32 = u.hint + w.hint;
+";
+        let types = MapTypeQuery::new().with_class_field("inkWidget", "name");
+        let (out, diags) = to_redmod_with_types(src, &types, run);
+        assert!(squash(&out).contains("u.hint + w.hint"), "{out}");
+        let unresolved: Vec<_> = diags
+            .iter()
+            .filter(|d| d.code == "reserved-field-unresolved")
+            .collect();
+        assert_eq!(unresolved.len(), 1, "{diags:?}");
+        assert_eq!(unresolved[0].span, span_of(src, "u.hint", 0));
+        // without type information, a type that is not a class of the sources is another type
+        let (_, diags) = to_redmod(src, run);
+        assert!(!codes(&diags).contains(&"reserved-field-unresolved"));
+    }
+
+    #[test]
+    fn enum_receivers_are_not_unresolved() {
+        let src = "class C {
+  let hint: Int32;
+  let event: Int32;
+}
+
+enum Mode { hint = 0 }
+
+func F() {
+  let a = Mode.hint;
+  let b = GameMode.event;
+  let c = Other.event;
+}
+";
+        let types = MapTypeQuery::new().with_type(
+            span_of(src, "GameMode.event", 0),
+            TypeHint::Enum("GameMode".to_owned()),
+        );
+        let (out, diags) = to_redmod_with_types(src, &types, run);
+        let out = squash(&out);
+        assert!(out.contains("let a = Mode.hint;"), "{out}");
+        assert!(out.contains("let b = GameMode.event;"), "{out}");
+        let unresolved: Vec<_> = diags
+            .iter()
+            .filter(|d| d.code == "reserved-field-unresolved")
+            .map(|d| d.span)
+            .collect();
+        assert_eq!(unresolved, [span_of(src, "Other.event", 0)]);
+    }
+
+    #[test]
+    fn split_chains_keep_renamed_fields() {
+        let src = "class C {
+  let hint: Int32;
+}
+
+func F() -> Int32 {
+  let g = Get();
+  let a: Int32;
+  a = g.hint = 1;
+  return a;
+}
+";
+        let types = MapTypeQuery::new().with_type(
+            span_in(src, "a = g.hint = 1", 0, "g"),
+            TypeHint::Class("C".to_owned()),
+        );
+        let (out, diags) = to_redmod_with_types(src, &types, crate::to_redmod::run);
+        let out = squash(&out);
+        assert!(out.contains("g.hint_ = 1; a = g.hint_;"), "{out}");
+        assert!(!codes(&diags).contains(&"reserved-field-unresolved"));
     }
 }

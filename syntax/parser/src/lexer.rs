@@ -489,7 +489,9 @@ pub fn split_generic_ge(tokens: &mut Vec<(Token<'_, LexSpan>, LexSpan)>) {
     }
 }
 
-/// Whether the tokens end with an unclosed `name: Type<...` type annotation.
+/// Whether the tokens end with an unclosed `let name: Type<...` type annotation. The `let` is
+/// required: without it, the `:` of a conditional (`c ? p : q < a, b >= d`) would look like an
+/// annotation.
 fn closes_type_annotation(tokens: &[(Token<'_, LexSpan>, LexSpan)]) -> bool {
     let mut it = significant_before(tokens);
     let mut depth = 1u32;
@@ -501,7 +503,22 @@ fn closes_type_annotation(tokens: &[(Token<'_, LexSpan>, LexSpan)]) -> bool {
             _ => return false,
         }
     }
-    matches!(it.next(), Some(Token::Ident(_))) && matches!(it.next(), Some(Token::Colon))
+    matches!(it.next(), Some(Token::Ident(_)))
+        && matches!(it.next(), Some(Token::Colon))
+        && matches!(
+            it.next(),
+            Some(
+                Token::Ident(_)
+                    | Token::True
+                    | Token::False
+                    | Token::Null
+                    | Token::This
+                    | Token::Super
+                    | Token::Case
+                    | Token::Default
+            )
+        )
+        && matches!(it.next(), Some(Token::Ident("let")))
 }
 
 #[derive(Debug, Clone, PartialEq)]

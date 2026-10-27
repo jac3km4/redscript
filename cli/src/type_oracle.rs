@@ -9,13 +9,13 @@
 use std::str::FromStr;
 
 use hashbrown::{HashMap, HashSet};
-use redscript::ast::{BinOp, Pos, UnOp};
+use redscript::ast::{BinOp, Expr, Pos, Seq, SourceAst, UnOp};
 use redscript::bundle::{ConstantPool, PoolIndex};
 use redscript::definition::{AnyDefinition, Class, Definition, Enum, Function, Type};
 use redscript_ast::{FileId, SourceMap, Span};
 use redscript_compiler::diagnostics::Diagnostic;
 use redscript_compiler::error::{Cause, Error};
-use redscript_compiler::parser::parse_file;
+use redscript_compiler::parser::{MemberSource, SourceEntry, SourceModule, parse_file};
 use redscript_compiler::scope::TypeId;
 use redscript_compiler::source_map::Files;
 use redscript_compiler::symbol::FunctionSignature;
@@ -54,20 +54,179 @@ pub fn type_check(
         }
     }
 
+    let mut method_calls = vec![];
+    for module in &modules {
+        module_method_calls(module, &mut method_calls);
+    }
+
     let output = CompilationUnit::new(&mut pool, vec![])?
         .with_type_records()
         .typecheck(modules, &files, false, true)?;
     let (_, diagnostics, records) = output.into_parts();
 
+    let (guessed, guessed_args) = guessed_calls(&method_calls, records.as_ref(), &pool);
     let mut types = HashMap::new();
     for (key, recorded) in records.iter().flat_map(TypeRecords::iter) {
         if let Some(span) = layout.key_span(key) {
-            types.insert(span, Recorded::new(recorded, &pool));
+            let mut recorded = Recorded::new(recorded, &pool);
+            if guessed.contains(key) {
+                recorded.inferred = None;
+            }
+            if guessed_args.contains(key) {
+                recorded.expected = None;
+            }
+            types.insert(span, recorded);
         }
     }
     let summary = type_check_summary(&diagnostics, &layout);
     let oracle = TypeOracle::new(pool, types, first_source);
     Ok((oracle, summary))
+}
+
+/// A method call of the sources: its key, the key of its receiver, the name of the method and
+/// the keys of its arguments.
+type MethodCall = (RecordKey, RecordKey, String, Vec<RecordKey>);
+
+/// The key of the types recorded for `expr`, like `RecordKey::of` in the compiler.
+fn record_key(expr: &Expr<SourceAst>) -> RecordKey {
+    match expr {
+        Expr::UnOp(inner, _, _) => {
+            let key = record_key(inner);
+            RecordKey {
+                prefixes: key.prefixes.saturating_add(1),
+                ..key
+            }
+        }
+        other => {
+            let span = other.span();
+            RecordKey {
+                low: span.low,
+                high: span.high,
+                prefixes: 0,
+            }
+        }
+    }
+}
+
+/// Collects the method calls of the function bodies and field initializers of `module`.
+fn module_method_calls(module: &SourceModule, out: &mut Vec<MethodCall>) {
+    for entry in &module.entries {
+        match entry {
+            SourceEntry::Function(func) => func.body.iter().for_each(|body| seq_method_calls(body, out)),
+            SourceEntry::GlobalLet(field) => field.default.iter().for_each(|expr| method_calls(expr, out)),
+            SourceEntry::Class(class) | SourceEntry::Struct(class) => {
+                for member in &class.members {
+                    match member {
+                        MemberSource::Function(func) => func.body.iter().for_each(|body| seq_method_calls(body, out)),
+                        MemberSource::Field(field) => field.default.iter().for_each(|expr| method_calls(expr, out)),
+                    }
+                }
+            }
+            SourceEntry::Enum(_) => {}
+        }
+    }
+}
+
+fn seq_method_calls(seq: &Seq<SourceAst>, out: &mut Vec<MethodCall>) {
+    seq.exprs.iter().for_each(|expr| method_calls(expr, out));
+}
+
+/// Collects the method calls in `expr`.
+fn method_calls(expr: &Expr<SourceAst>, out: &mut Vec<MethodCall>) {
+    let each = |exprs: &[Expr<SourceAst>], out: &mut Vec<MethodCall>| exprs.iter().for_each(|e| method_calls(e, out));
+    match expr {
+        Expr::MethodCall(receiver, name, args, _) => {
+            let keys = args.iter().map(record_key).collect();
+            out.push((record_key(expr), record_key(receiver), name.to_string(), keys));
+            method_calls(receiver, out);
+            each(args, out);
+        }
+        Expr::ArrayLit(elems, _, _) => each(elems, out),
+        Expr::InterpolatedString(_, parts, _) => parts.iter().for_each(|(part, _)| method_calls(part, out)),
+        Expr::Declare(_, _, init, _) => init.iter().for_each(|init| method_calls(init, out)),
+        Expr::Cast(_, inner, _) | Expr::Member(inner, _, _) | Expr::UnOp(inner, _, _) => method_calls(inner, out),
+        Expr::Assign(lhs, rhs, _) | Expr::ArrayElem(lhs, rhs, _) | Expr::BinOp(lhs, rhs, _, _) => {
+            method_calls(lhs, out);
+            method_calls(rhs, out);
+        }
+        Expr::Call(_, _, args, _) | Expr::New(_, args, _) => each(args, out),
+        Expr::Return(value, _) => value.iter().for_each(|value| method_calls(value, out)),
+        Expr::Seq(seq) => seq_method_calls(seq, out),
+        Expr::Switch(scrutinee, cases, default, _) => {
+            method_calls(scrutinee, out);
+            for case in cases {
+                method_calls(&case.matcher, out);
+                seq_method_calls(&case.body, out);
+            }
+            default.iter().for_each(|default| seq_method_calls(default, out));
+        }
+        Expr::If(cond, then, else_, _) => {
+            method_calls(cond, out);
+            seq_method_calls(then, out);
+            else_.iter().for_each(|else_| seq_method_calls(else_, out));
+        }
+        Expr::Conditional(cond, then, else_, _) => {
+            method_calls(cond, out);
+            method_calls(then, out);
+            method_calls(else_, out);
+        }
+        Expr::While(cond, body, _) | Expr::ForIn(_, cond, body, _) => {
+            method_calls(cond, out);
+            seq_method_calls(body, out);
+        }
+        Expr::Ident(..)
+        | Expr::Constant(..)
+        | Expr::Goto(..)
+        | Expr::This(_)
+        | Expr::Super(_)
+        | Expr::Break(_)
+        | Expr::Null(_) => {}
+    }
+}
+
+/// The calls whose recorded type is a guess. A receiver whose type could not be resolved has the
+/// placeholder type `ref<IScriptable>` and no recorded type, and a method called on it resolves
+/// to the method of `IScriptable` with the same name, which says nothing about the method of the
+/// actual type. Returns the keys of these calls, and of their arguments, whose expected types
+/// are the parameter types of the guessed method.
+fn guessed_calls(
+    calls: &[MethodCall],
+    records: Option<&TypeRecords>,
+    pool: &ConstantPool,
+) -> (HashSet<RecordKey>, HashSet<RecordKey>) {
+    let Some(records) = records else {
+        return Default::default();
+    };
+    let root = pool.roots().find_map(|(index, def)| {
+        (matches!(def.value, AnyDefinition::Class(_)) && pool.names.get(def.name).is_ok_and(|n| &*n == "IScriptable"))
+            .then(|| pool.class(index.cast()).ok())
+            .flatten()
+    });
+    let Some(root) = root else {
+        return Default::default();
+    };
+    let root_methods: HashSet<String> = root
+        .functions
+        .iter()
+        .filter_map(|&index| {
+            let raw = pool.def_name(index).ok()?;
+            Some(FunctionSignature::from_raw(&raw).name().to_owned())
+        })
+        .collect();
+    let typed: HashSet<RecordKey> = records
+        .iter()
+        .filter(|(_, recorded)| recorded.inferred.is_some())
+        .map(|(key, _)| *key)
+        .collect();
+    let mut guessed = HashSet::new();
+    let mut guessed_args = HashSet::new();
+    for (call, receiver, name, args) in calls {
+        if root_methods.contains(name) && !typed.contains(receiver) {
+            guessed.insert(*call);
+            guessed_args.extend(args.iter().copied());
+        }
+    }
+    (guessed, guessed_args)
 }
 
 /// Adds `ref<IScriptable>` to `pool` if missing (the game scripts have it): the type checker
@@ -314,12 +473,32 @@ impl TypeOracle {
     }
 
     fn methods<'a>(&'a self, class: &'a Class, name: &'a str) -> impl Iterator<Item = &'a Function> + 'a {
+        self.indexed_methods(class, name).map(|(_, func)| func)
+    }
+
+    /// Like [`Self::methods`], with the index of each method.
+    fn indexed_methods<'a>(
+        &'a self,
+        class: &'a Class,
+        name: &'a str,
+    ) -> impl Iterator<Item = (PoolIndex<Function>, &'a Function)> + 'a {
         class.functions.iter().filter_map(move |&index| {
             let raw = self.pool.def_name(index).ok()?;
             (FunctionSignature::from_raw(&raw).name() == name)
-                .then(|| self.pool.function(index).ok())
+                .then(|| Some((index, self.pool.function(index).ok()?)))
                 .flatten()
         })
+    }
+
+    /// The names of the types of the parameters of `func`.
+    fn param_types(&self, func: &Function) -> Vec<Option<String>> {
+        func.parameters
+            .iter()
+            .map(|&param| {
+                let param = self.pool.parameter(param).ok()?;
+                Some(self.pool.def_name(param.type_).ok()?.to_string())
+            })
+            .collect()
     }
 
     /// Whether `class` declares a method `name` that can be overridden.
@@ -327,14 +506,32 @@ impl TypeOracle {
         self.methods(class, name).any(Self::is_overridable)
     }
 
-    /// Whether `func` takes a `TweakDBID` parameter.
+    /// Whether `func` takes a `TweakDBID` parameter, possibly inside an array or a reference.
     fn has_tweakdbid_param(&self, func: &Function) -> bool {
         func.parameters.iter().any(|&param| {
-            self.pool.parameter(param).is_ok_and(|param| {
-                matches!(self.pool.type_(param.type_), Ok(Type::Prim))
-                    && self.pool.def_name(param.type_).is_ok_and(|name| &*name == "TweakDBID")
-            })
+            self.pool
+                .parameter(param)
+                .is_ok_and(|param| self.contains_tweakdbid(param.type_))
         })
+    }
+
+    /// Whether `typ` is `TweakDBID`, an array of it or a reference to it, at any depth.
+    fn contains_tweakdbid(&self, mut typ: PoolIndex<Type>) -> bool {
+        // the types of the pool are not recursive, the bound only guards against a broken pool
+        for _ in 0..32 {
+            match self.pool.type_(typ) {
+                Ok(Type::Prim) => return self.pool.def_name(typ).is_ok_and(|name| &*name == "TweakDBID"),
+                Ok(
+                    Type::Ref(inner)
+                    | Type::WeakRef(inner)
+                    | Type::ScriptRef(inner)
+                    | Type::Array(inner)
+                    | Type::StaticArray(inner, _),
+                ) => typ = *inner,
+                Ok(Type::Class) | Err(_) => return false,
+            }
+        }
+        false
     }
 
     /// Whether `typ` is the class `class`, possibly through a strong reference.
@@ -420,16 +617,48 @@ impl TypeQuery for TypeOracle {
 
     fn base_method_info(&self, class: &str, method: &str) -> Option<BaseMethodInfo> {
         let id = self.class_id(class)?;
-        self.hierarchy(id).skip(1).find_map(|(base, class)| {
+        // the parameter types of the override, when the class declares a single method `method`
+        let own: Vec<_> = self
+            .pool
+            .class(id)
+            .ok()
+            .map(|class| {
+                self.methods(class, method)
+                    .filter(|func| Self::is_overridable(func))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let signature = match own[..] {
+            [func] => Some(self.param_types(func)),
+            _ => None,
+        };
+        self.hierarchy(id).skip(1).find_map(|(_, class)| {
             let overloads: Vec<_> = self
-                .methods(class, method)
-                .filter(|func| Self::is_overridable(func))
+                .indexed_methods(class, method)
+                .filter(|(_, func)| Self::is_overridable(func))
                 .collect();
-            (!overloads.is_empty()).then(|| BaseMethodInfo {
-                is_native: overloads.iter().any(|func| func.flags.is_native()),
+            if overloads.is_empty() {
+                return None;
+            }
+            // the overload the override overrides, when it can be told apart from the others;
+            // otherwise all the overloads, a game one among them makes the method a game one
+            let matching: Vec<_> = signature
+                .as_ref()
+                .map(|signature| {
+                    overloads
+                        .iter()
+                        .filter(|(_, func)| self.param_types(func) == *signature)
+                        .copied()
+                        .collect()
+                })
+                .unwrap_or_default();
+            let overloads = if matching.is_empty() { overloads } else { matching };
+            Some(BaseMethodInfo {
+                is_native: overloads.iter().any(|(_, func)| func.flags.is_native()),
                 class_is_native: class.flags.is_native() || class.flags.is_import_only(),
-                has_tweakdbid_param: overloads.iter().any(|func| self.has_tweakdbid_param(func)),
-                from_sources: self.is_from_sources(base),
+                has_tweakdbid_param: overloads.iter().any(|(_, func)| self.has_tweakdbid_param(func)),
+                // the declaring function, e.g. an `@addMethod` of the sources on a game class
+                from_sources: overloads.iter().all(|&(index, _)| self.is_from_sources(index)),
             })
         })
     }
@@ -530,9 +759,12 @@ mod tests {
     /// Stands for the game scripts.
     const GAME: &str = "public abstract native class IScriptable {
   public native func Root();
+  public native func Kind() -> CName;
+  public native func IsA(name: CName) -> Bool;
 }
 
 public native class GameObject extends IScriptable {
+  public native func Name() -> CName;
   public native func Base();
   public const native func IsDone() -> Bool;
 }
@@ -772,6 +1004,38 @@ func Take(m: ref<Missing>) -> ref<Missing> {
     }
 
     #[test]
+    fn methods_of_placeholder_receivers_are_not_typed() {
+        let src = "class Own {
+  func F(u: ref<Missing>, g: ref<GameObject>) {
+    let a = u.Kind();
+    let b = g.Kind();
+    let c = this.Kind();
+    let d = u.Kind().Other();
+    let e = (u as GameObject).Kind();
+    let f = u.IsA(n\"Name\");
+    let h = g.IsA(n\"Name\");
+  }
+}
+";
+        let (oracle, _, ids) = check(&[src]);
+        let file = ids[0];
+        let cname = || prim("CName");
+        // the receiver has the placeholder type: `IScriptable.Kind` is only a guess
+        assert_eq!(oracle.type_of(span_of(file, src, "u.Kind()")), None);
+        assert_eq!(oracle.expected_type_of(span_of(file, src, "u.Kind()")), None);
+        assert_eq!(oracle.type_of(span_at(file, src, "u.Kind()", 1)), None);
+        // receivers of known types
+        assert_eq!(oracle.type_of(span_of(file, src, "g.Kind()")), cname());
+        assert_eq!(oracle.type_of(span_of(file, src, "this.Kind()")), cname());
+        // so are the parameter types of the guessed method
+        assert_eq!(oracle.type_of(span_of(file, src, "u.IsA(n\"Name\")")), None);
+        assert_eq!(oracle.expected_type_of(span_at(file, src, "n\"Name\"", 0)), None);
+        assert_eq!(oracle.expected_type_of(span_at(file, src, "n\"Name\"", 1)), cname());
+        // a cast receiver (the 0.5 span of the call starts after the parenthesis)
+        assert_eq!(oracle.type_of(span_of(file, src, "u as GameObject).Kind()")), cname());
+    }
+
+    #[test]
     fn operator_mismatches_are_not_unsupported_apis() {
         let src = "func T() {
   let fl: Float = 1.0;
@@ -935,6 +1199,47 @@ class Sub extends Base {
         assert_eq!(info("Sub", "Missing"), None);
         assert_eq!(info("Base", "Tweak"), None);
         assert_eq!(info("Missing", "Plain"), None);
+    }
+
+    #[test]
+    fn base_method_infos_follow_the_overridden_overload() {
+        let src = "native func OperatorAdd(a: Int32, b: Int32) -> Int32;
+
+@addMethod(GameObject)
+public func Added() {}
+
+class Base extends GameObject {
+  func Over(a: Int32) {}
+  func Over(id: TweakDBID) {}
+  func Arr(ids: array<TweakDBID>) {}
+  func Out(id: script_ref<TweakDBID>) {}
+}
+
+class Sub extends Base {
+  func Added() {}
+  func Over(a: Int32) {}
+  func Arr(ids: array<TweakDBID>) {}
+  func Out(id: script_ref<TweakDBID>) {}
+}
+
+class Both extends Base {
+  func Over(a: Int32) {}
+  func Over(id: TweakDBID) {}
+}
+";
+        let (oracle, summary, _) = check(&[src]);
+        assert!(summary.diagnostics.is_empty(), "{:?}", summary.diagnostics);
+        let info = |class, method| oracle.base_method_info(class, method).unwrap();
+        // an `@addMethod` of the sources on a game class is the mod's own
+        let added = info("Sub", "Added");
+        assert!(added.from_sources && !added.is_native && added.class_is_native);
+        // the overload with the same parameters
+        assert!(!info("Sub", "Over").has_tweakdbid_param);
+        // several overrides: all the overloads
+        assert!(info("Both", "Over").has_tweakdbid_param);
+        // `TweakDBID` inside an array or a reference
+        assert!(info("Sub", "Arr").has_tweakdbid_param);
+        assert!(info("Sub", "Out").has_tweakdbid_param);
     }
 
     #[test]

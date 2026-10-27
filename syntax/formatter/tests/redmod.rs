@@ -230,3 +230,40 @@ function F() {}
 fn file_id() -> FileId {
     SourceMap::new().push_back("test.script", "")
 }
+
+#[test]
+fn nested_assignments_keep_their_parentheses() {
+    let src = "func F() {\n  let x = (a = b) + 1;\n  let y = 1 + (a = b);\n  let z = (a = b).c;\n  let w = -(a = b);\n  let v = (a = b) ? 1 : 2;\n  let u = (a = b) as C;\n  G(a = b);\n  a = b;\n}\n";
+    for dialect in [Dialect::Community, Dialect::Redmod] {
+        let settings = FormatSettings {
+            dialect,
+            ..FormatSettings::default()
+        };
+        let (document, errors) = parse_document(src, file_id(), Dialect::Community);
+        assert!(errors.is_empty(), "{errors:?}");
+        let mut document = document.unwrap();
+        document.module.dialect = dialect;
+        let out = print_document(&document, &settings).to_string();
+        for expected in [
+            "(a = b) + 1;",
+            "1 + (a = b);",
+            "(a = b).c;",
+            "-(a = b);",
+            "(a = b) ? 1 : 2;",
+            "(a = b) as C;",
+            "G(a = b);",
+            "a = b;
+}",
+        ] {
+            assert!(out.contains(expected), "{expected} in {out}");
+        }
+    }
+    // the community output parses back to the same tree
+    let settings = FormatSettings::default();
+    let (module, errors) = format_document(src, file_id(), &settings);
+    assert!(errors.is_empty(), "{errors:?}");
+    let out = module.unwrap().to_string();
+    let (again, errors) = format_document(&out, file_id(), &settings);
+    assert!(errors.is_empty(), "{errors:?}");
+    assert_eq!(again.unwrap().to_string(), out);
+}

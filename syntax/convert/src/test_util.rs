@@ -230,7 +230,11 @@ pub fn run_pass_with_types(
     types: Option<&dyn TypeQuery>,
     pass: impl for<'a, 'src> FnOnce(&mut SourceModule<'src>, &mut Cx<'a, 'src>),
 ) -> (String, Vec<ConvertDiagnostic>) {
-    run_pass_impl(src, from, to, types, None, pass)
+    let opts = ConvertOptions {
+        types,
+        ..ConvertOptions::default()
+    };
+    run_pass_impl(src, from, to, opts, pass)
 }
 
 /// Runs a pass converting community code to REDmod with the given options.
@@ -240,22 +244,28 @@ pub fn run_pass_with_options(
     fields: Option<&SourceFields>,
     pass: impl for<'a, 'src> FnOnce(&mut SourceModule<'src>, &mut Cx<'a, 'src>),
 ) -> (String, Vec<ConvertDiagnostic>) {
-    run_pass_impl(
-        src,
-        Dialect::Community,
-        Dialect::Redmod,
+    let opts = ConvertOptions {
         types,
         fields,
-        pass,
-    )
+        conditionals: None,
+    };
+    run_pass_with_convert_options(src, opts, pass)
+}
+
+/// Runs a pass converting community code to REDmod with the given conversion options.
+pub fn run_pass_with_convert_options(
+    src: &str,
+    opts: ConvertOptions<'_>,
+    pass: impl for<'a, 'src> FnOnce(&mut SourceModule<'src>, &mut Cx<'a, 'src>),
+) -> (String, Vec<ConvertDiagnostic>) {
+    run_pass_impl(src, Dialect::Community, Dialect::Redmod, opts, pass)
 }
 
 fn run_pass_impl(
     src: &str,
     from: Dialect,
     to: Dialect,
-    types: Option<&dyn TypeQuery>,
-    fields: Option<&SourceFields>,
+    opts: ConvertOptions<'_>,
     pass: impl for<'a, 'src> FnOnce(&mut SourceModule<'src>, &mut Cx<'a, 'src>),
 ) -> (String, Vec<ConvertDiagnostic>) {
     let arena = NameArena::new();
@@ -265,7 +275,6 @@ fn run_pass_impl(
     assert!(errors.is_empty(), "{errors:?}");
     let mut doc = doc.unwrap();
     let mut diagnostics = vec![];
-    let opts = ConvertOptions { types, fields };
     let mut cx = Cx {
         arena: &arena,
         diagnostics: &mut diagnostics,
