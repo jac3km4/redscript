@@ -1098,9 +1098,9 @@ impl<'a> CompilationUnit<'a> {
         let checked = match checked {
             Ok(checked) => checked,
             Err(err) => {
-                // in permissive mode, the errors reported before the one that stopped the checking
-                // are kept too
-                if permissive {
+                // when recording types in permissive mode, the errors reported before the one that
+                // stopped the checking are kept too
+                if permissive && records.is_some() {
                     reported.extend(checker.into_diagnostics());
                 }
                 return Err(err);

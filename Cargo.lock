@@ -292,6 +292,7 @@ version = "1.0.0-alpha.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c7b80276986f86789dc56ca6542d53bba9cda3c66091ebbe7bd96fc1bdf20f1f"
 dependencies = [
+ "either",
  "hashbrown 0.14.5",
  "regex-automata 0.3.9",
  "serde",
@@ -347,6 +348,29 @@ dependencies = [
  "core-graphics-types",
  "libc",
  "objc",
+]
+
+[[package]]
+name = "console"
+version = "0.15.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "054ccb5b10f9f2cbf51eb355ca1d05c2d279ce1804688d0db74b4733a5aeafd8"
+dependencies = [
+ "encode_unicode",
+ "libc",
+ "once_cell",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "console"
+version = "0.16.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e96a4956774c13c126a8b5af4daa79384f4d826534c95a02d76afb39e2ab64e3"
+dependencies = [
+ "encode_unicode",
+ "libc",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -463,6 +487,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "encode_unicode"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
+
+[[package]]
 name = "enum-as-inner"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -497,7 +527,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1027,6 +1057,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "insta"
+version = "1.43.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "46fdb647ebde000f43b5b53f773c30cf9b0cb4300453208713fa38b2c70935a0"
+dependencies = [
+ "console 0.15.11",
+ "globset",
+ "once_cell",
+ "similar 2.7.0",
+ "walkdir",
+]
+
+[[package]]
 name = "itertools"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1191,7 +1234,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1479,8 +1522,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-ast"
-version = "1.0.0-preview.22"
-source = "git+file:///D:/development/redscript?rev=5a43f7a#5a43f7a028330392f55d9bdfccc4f265a83e8249"
+version = "0.5.32"
 dependencies = [
  "bitflags 2.13.2",
  "chumsky",
@@ -1526,11 +1568,12 @@ dependencies = [
 
 [[package]]
 name = "redscript-convert"
-version = "1.0.0-preview.22"
-source = "git+file:///D:/development/redscript?rev=5a43f7a#5a43f7a028330392f55d9bdfccc4f265a83e8249"
+version = "0.5.32"
 dependencies = [
  "elsa",
  "hashbrown 0.17.1",
+ "ignore",
+ "insta",
  "log",
  "redscript-ast",
  "redscript-formatter",
@@ -1549,10 +1592,10 @@ dependencies = [
 
 [[package]]
 name = "redscript-formatter"
-version = "1.0.0-preview.22"
-source = "git+file:///D:/development/redscript?rev=5a43f7a#5a43f7a028330392f55d9bdfccc4f265a83e8249"
+version = "0.5.32"
 dependencies = [
  "hashbrown 0.17.1",
+ "insta",
  "pretty_dtoa",
  "redscript-ast",
  "redscript-parser",
@@ -1560,11 +1603,12 @@ dependencies = [
 
 [[package]]
 name = "redscript-parser"
-version = "1.0.0-preview.22"
-source = "git+file:///D:/development/redscript?rev=5a43f7a#5a43f7a028330392f55d9bdfccc4f265a83e8249"
+version = "0.5.32"
 dependencies = [
  "chumsky",
+ "either",
  "redscript-ast",
+ "similar-asserts",
 ]
 
 [[package]]
@@ -1685,7 +1729,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1834,6 +1878,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
+name = "similar"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbbb5d9659141646ae647b42fe094daf6c6192d1620870b449d9557f748b2daa"
+
+[[package]]
+name = "similar"
+version = "3.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2f8bec09ae8fae0f4f265a4559a9334be3929d8504e9b536df0a41302bd1733"
+dependencies = [
+ "bstr",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "similar-asserts"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "997e6ca38e97437973fc9f7f50a50d1274cacd874341a4960fea90067291038c"
+dependencies = [
+ "console 0.16.6",
+ "similar 3.2.1",
+]
+
+[[package]]
 name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1958,7 +2028,7 @@ dependencies = [
  "fastrand",
  "once_cell",
  "rustix",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2105,6 +2175,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
 
 [[package]]
+name = "unicode-segmentation"
+version = "1.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
+
+[[package]]
 name = "unicode-width"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2225,7 +2301,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

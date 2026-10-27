@@ -838,19 +838,28 @@ impl<'a> TypeChecker<'a> {
                 Ok(match_)
             }
             Err(err) if self.permissive => {
+                // without recording, the error is reported before the arguments are checked
+                let deferred = if self.records.is_some() {
+                    Some(err)
+                } else {
+                    self.report(err)?;
+                    None
+                };
                 // the parameters are known when there is a single candidate
                 if let [index] = overloads.functions[..] {
                     self.record_param_types(index, args.clone(), receiver, scope, span);
                 }
                 let dummy_args: Vec<_> = args.map(|expr| self.check(expr, None, scope)).try_collect()?;
                 // a placeholder type is already reported as unresolved
-                if !dummy_args.iter().any(|arg| self.has_placeholder_type(arg)) {
+                if let Some(err) = deferred
+                    && !dummy_args.iter().any(|arg| self.has_placeholder_type(arg))
+                {
                     self.report(err)?;
                 }
 
                 let convs = std::iter::repeat_n(ArgConversion::identity(), dummy_args.len()).collect();
                 // the type of the call is known when there is a single candidate
-                self.unresolved_call = overloads.functions.len() != 1;
+                self.unresolved_call = self.records.is_some() && overloads.functions.len() != 1;
                 Ok(FunctionMatch::new(overloads.functions[0], dummy_args, convs, false))
             }
             Err(err) => Err(err),

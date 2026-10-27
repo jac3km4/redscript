@@ -1,0 +1,44 @@
+---
+source: crates/syntax/convert/tests/convert.rs
+expression: snapshot
+---
+// Syntax accepted by redscript 0.5.x, parsed in the compatibility mode
+// a doc comment before the module
+@module "MyMod.Compat"
+
+enum ESize {
+  Small = 1,
+  Large = 10,
+}
+
+/// A documented class
+public class Holder extends IScriptable {
+  /// a documented field
+  public let values: array<Int32>;
+  public static let count: Int32;
+
+  /// a doc comment after an annotation
+  @if(true)
+  public final function Read(obj: IScriptable, flag: Bool) -> Int32 {
+    // a doc comment inside a body
+    let total: Int32 = 7;
+    // between statements
+    total += (flag ? 1 : 2);
+    let ratio: Float = 0.5;
+    let min: Int32 = (-2147483647 - 1);
+    let ok: Bool = !(obj as Holder).IsEmpty();
+    let n: Int32 = (obj as Holder).values[0];
+    // last in a body
+    return total;
+  }
+
+  public function IsEmpty() -> Bool {
+    return this.values.Size() == 0;
+  }
+}
+
+// last in a class
+// end of file
+
+// diagnostics:
+info[field-initializer]: REDmod only accepts literals in field initializers, the empty array initializer of `values` was dropped
