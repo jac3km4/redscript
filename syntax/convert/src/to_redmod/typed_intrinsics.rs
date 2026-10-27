@@ -260,6 +260,25 @@ mod tests {
     }
 
     #[test]
+    fn is_defined_of_unknown_types_stays() {
+        let src = "func F(a: ref<A>, b: ref<A>) {
+  if !IsDefined(a) {
+  }
+  if IsDefined(b) && !IsDefined(a) {
+  }
+}
+";
+        // no type for either argument
+        let types = MapTypeQuery::new();
+        let (out, diags) = to_redmod_with_types(src, &types, run_with_diagnostics);
+        let out = squash(&out);
+        for expected in ["if (!IsDefined(a))", "if (IsDefined(b) && !IsDefined(a))"] {
+            assert!(out.contains(expected), "{expected}: {out}");
+        }
+        assert_eq!(codes(&diags), ["is-defined"; 3]);
+    }
+
+    #[test]
     fn is_defined_on_objects_in_condition_operands() {
         // Radio_Volume_Control: `IsDefined(RadioCon) && ..` failed REDmod's final stage with
         // "Could not find valid function 'IsDefined'"

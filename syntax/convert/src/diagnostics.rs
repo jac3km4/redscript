@@ -9,7 +9,7 @@ use redscript_ast::{
 
 use crate::Cx;
 use crate::index::ModuleIndex;
-use crate::to_redmod::{fields, to_string};
+use crate::to_redmod::{fields, struct_constructor, to_string};
 use crate::walk::{PATCH_ANNOTATIONS, REDMOD_RESERVED, SExpr, free_call_name};
 
 const UNSUPPORTED_MATH: [&str; 5] = [
@@ -75,12 +75,22 @@ impl<'src> Community<'_, '_, 'src> {
                 ),
                 _ => {}
             },
-            Expr::New { args, .. } if !args.is_empty() => self.cx.warn(
-                span,
-                "new-with-args",
-                "REDmod has no constructor arguments, create the object with `new X` and \
-                 assign the fields",
-            ),
+            Expr::New { args, .. }
+                if !args.is_empty()
+                    && !struct_constructor::is_struct_constructor(
+                        expr,
+                        self.index,
+                        self.cx.opts.types,
+                    ) =>
+            {
+                self.cx.warn(
+                    span,
+                    "new-with-args",
+                    "REDmod has no constructor arguments: write a struct as `S(a, b, ..)` with \
+                     one argument per field in declaration order, or create the object with \
+                     `new X` and assign the fields",
+                );
+            }
             Expr::Lambda { .. } => self.cx.warn(
                 span,
                 "lambda",

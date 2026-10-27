@@ -22,6 +22,8 @@ pub struct ClassInfo<'src> {
     /// The name of the base class, when declared in the module.
     pub base: Option<&'src str>,
     pub fields: HashMap<&'src str, SType<'src>>,
+    /// The names of the fields declared in the body of the class, in declaration order.
+    pub own_fields: Vec<&'src str>,
     pub methods: HashMap<&'src str, Option<SType<'src>>>,
 }
 
@@ -75,15 +77,24 @@ impl<'src> ModuleIndex<'src> {
             }
             Item::Let(field) => {
                 if let Some(owner) = owner {
-                    self.classes
-                        .entry(owner)
-                        .or_default()
-                        .fields
-                        .insert(field.name.0, (*field.typ).clone());
+                    let info = self.classes.entry(owner).or_default();
+                    info.fields.insert(field.name.0, (*field.typ).clone());
+                    if class.is_some() && annotation_target(&decl.annotations).is_none() {
+                        info.own_fields.push(field.name.0);
+                    }
                 }
             }
             Item::Import(_) => {}
         }
+    }
+
+    /// The names of the fields of the struct `name` declared in the module, in declaration order.
+    pub fn struct_fields(&self, name: &str) -> Option<&[&'src str]> {
+        let info = self
+            .classes
+            .get(name)
+            .filter(|c| c.declared && c.is_struct)?;
+        Some(&info.own_fields)
     }
 
     pub fn is_declared_class(&self, name: &str) -> bool {
@@ -157,6 +168,11 @@ impl<'src> LocalTypes<'src> {
 
     pub fn get(&self, name: &str) -> Option<&SType<'src>> {
         self.types.get(name)?.0.as_ref()
+    }
+
+    /// How many times `name` is declared, as a parameter or a local.
+    pub fn declarations(&self, name: &str) -> usize {
+        self.types.get(name).map_or(0, |(_, count)| *count)
     }
 }
 

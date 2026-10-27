@@ -4,8 +4,11 @@
 //! REDmod field initializers only accept literals, so there the suffix is dropped instead
 //! (`0u` -> `0`, a plain literal is accepted for any integer field), empty array initializers
 //! are dropped (arrays start empty) and other initializers are reported.
+//!
+//! REDmod does not compile initializers on `@addField` fields at all: those with the default
+//! value of their type are dropped, others are reported.
 
-use redscript_ast::{Constant, Expr, Item, SourceModule, UnOp};
+use redscript_ast::{Constant, Expr, Item, SourceExpr, SourceModule, UnOp};
 
 use crate::Cx;
 use crate::walk::{
@@ -20,13 +23,76 @@ pub fn run<'src>(module: &mut SourceModule<'src>, cx: &mut Cx<'_, 'src>) {
         }
     });
     for_each_decl(module, |(decl, _)| {
+        let added = decl
+            .annotations
+            .iter()
+            .any(|(ann, _)| ann.name == "addField");
         if let Item::Let(field) = &mut decl.item
             && let Some(default) = &mut field.default
-            && !field_default(cx, field.name.0, default)
         {
-            field.default = None;
+            let keep = if added {
+                added_field_default(cx, field.name.0, default)
+            } else {
+                field_default(cx, field.name.0, default)
+            };
+            if !keep {
+                field.default = None;
+            }
         }
     });
+}
+
+/// Handles the initializer of a field added with `@addField`, returns whether it should be kept.
+///
+/// REDmod fails to compile a mod with any initializer on an `@addField` field, and reports no
+/// error for it (only `Compile mod scripts failed!`). A field starts with the default value of
+/// its type, so an initializer with that value is dropped; others are reported.
+fn added_field_default<'src>(cx: &mut Cx<'_, 'src>, name: &str, default: &mut SExpr<'src>) -> bool {
+    if is_default_value(&default.0) {
+        cx.info(
+            default.1,
+            "added-field-initializer",
+            format!(
+                "REDmod does not compile initializers on @addField fields, the initializer of \
+                 `{name}` is the default value of its type and was dropped"
+            ),
+        );
+        return false;
+    }
+    field_default(cx, name, default);
+    cx.warn(
+        default.1,
+        "added-field-initializer",
+        format!(
+            "REDmod does not compile initializers on @addField fields (the compile fails with \
+             no error message): remove it and initialize `{name}` in a method instead"
+        ),
+    );
+    true
+}
+
+/// Whether `expr` is a literal of the default value of its type: a zero, `false`, `""` or `[]`.
+fn is_default_value(expr: &SourceExpr<'_>) -> bool {
+    let is_zero = |constant: &Constant<'_>| match constant {
+        Constant::I32(v) => *v == 0,
+        Constant::I64(v) => *v == 0,
+        Constant::U32(v) => *v == 0,
+        Constant::U64(v) => *v == 0,
+        Constant::F32(v) => *v == 0.0,
+        Constant::F64(v) => *v == 0.0,
+        _ => false,
+    };
+    match expr {
+        Expr::UnOp {
+            op: UnOp::Neg,
+            expr,
+        } => matches!(&expr.0, Expr::Constant(constant) if is_zero(constant)),
+        Expr::Constant(Constant::Bool(value)) => !value,
+        Expr::Constant(Constant::String(value)) => value.is_empty(),
+        Expr::Constant(constant) => is_zero(constant),
+        Expr::ArrayLit(elems) => elems.is_empty(),
+        _ => false,
+    }
 }
 
 /// Rewrites the initializer of a field, returns whether it should be kept.
@@ -156,7 +222,7 @@ mod tests {
     #[test]
     fn field_initializers_keep_plain_literals() {
         let (out, diags) = to_redmod(
-            "class C {\n  let a: Uint32 = 0u;\n  let b: Int64 = -2l;\n  let c: Uint64 = 4294967296ul;\n  let d: Bool = false;\n  let e: array<Int32> = [];\n  let f: E = E.A;\n  let g: Float = -1.0;\n}\n\n@addField(D)\nlet h: Uint32 = 1u;\n",
+            "class C {\n  let a: Uint32 = 0u;\n  let b: Int64 = -2l;\n  let c: Uint64 = 4294967296ul;\n  let d: Bool = false;\n  let e: array<Int32> = [];\n  let f: E = E.A;\n  let g: Float = -1.0;\n}\n",
             run,
         );
         let out = squash(&out);
@@ -167,7 +233,6 @@ mod tests {
         assert!(out.contains("let e: array<Int32>;"), "{out}");
         assert!(out.contains("let f: E = E.A;"), "{out}");
         assert!(out.contains("let g: Float = -1.0;"), "{out}");
-        assert!(out.contains("let h: Uint32 = 1;"), "{out}");
         assert_eq!(
             codes(&diags),
             [
@@ -177,6 +242,69 @@ mod tests {
             ]
         );
         assert_eq!(diags[2].severity, crate::Severity::Warning);
+    }
+
+    #[test]
+    fn added_field_initializers() {
+        // Retrothrusters_QoL: `@addField(AirThrustersDecisions) let m_lastThrusterRefireTime:
+        // Float = 0.0;` made REDmod's whole-mod compile fail with no error message
+        let (out, diags) = to_redmod(
+            r#"@addField(A)
+let a: Float = 0.0;
+
+@addField(A)
+let b: Uint32 = 0u;
+
+@addField(A)
+let c: Bool = false;
+
+@addField(A)
+let d: array<Int32> = [];
+
+@addField(A)
+let e: String = "";
+
+@addField(A)
+let f: Float = -0.0;
+
+@addField(A)
+let g: Uint32 = 1u;
+
+@addField(A)
+let h: Bool = true;
+
+@addField(A)
+let i: CName = n"";
+
+class C {
+  let j: Float = 0.0;
+}
+"#,
+            run,
+        );
+        let out = squash(&out);
+        for expected in [
+            "let a: Float;",
+            "let b: Uint32;",
+            "let c: Bool;",
+            "let d: array<Int32>;",
+            "let e: String;",
+            "let f: Float;",
+            // not the default value: kept, with a warning
+            "let g: Uint32 = 1;",
+            "let h: Bool = true;",
+            r#"let i: CName = n"";"#,
+            // the classes of the mod accept literal initializers
+            "let j: Float = 0.0;",
+        ] {
+            assert!(out.contains(expected), "{expected}: {out}");
+        }
+        assert_eq!(codes(&diags), ["added-field-initializer"; 9]);
+        let warnings = diags
+            .iter()
+            .filter(|d| d.severity == crate::Severity::Warning)
+            .count();
+        assert_eq!(warnings, 3, "{diags:?}");
     }
 
     #[test]

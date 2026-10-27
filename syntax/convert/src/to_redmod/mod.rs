@@ -6,6 +6,7 @@ use crate::Cx;
 
 mod array_methods;
 mod chained_assign;
+mod const_params;
 mod empty_array;
 mod event_return;
 pub(crate) mod fields;
@@ -23,6 +24,7 @@ mod locals;
 mod loop_locals;
 mod overrides;
 mod safe_enum_return;
+pub(crate) mod struct_constructor;
 mod system_name;
 mod temporaries;
 pub(crate) mod to_string;
@@ -67,6 +69,10 @@ pub fn run<'src>(module: &mut SourceModule<'src>, cx: &mut Cx<'_, 'src>) {
     temporaries::run(module, cx);
     empty_array::run(module, cx);
     overrides::run(module, cx);
+    // late, so that the passes above still see `new S(..)`, whose type they know
+    struct_constructor::run(module, cx);
+    // before the locals, which account for the local it adds
+    const_params::run(module, cx);
     // last, so that every local introduced by the passes above is accounted for
     locals::run(module, cx);
 }

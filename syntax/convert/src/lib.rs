@@ -221,6 +221,18 @@ pub trait TypeQuery {
     fn is_import_only(&self, _class: &str) -> Option<bool> {
         None
     }
+    /// The names of the fields of the struct `name` (as named in the sources, with or without its
+    /// module path), in declaration order. `None` when the struct is unknown or is a class.
+    fn struct_fields(&self, _name: &str) -> Option<Vec<String>> {
+        None
+    }
+    /// Whether the non-static method `method` that the class `class` (as named in the sources,
+    /// with or without its module path) declares or inherits is `const`, from the nearest class
+    /// that declares it; with several overloads, whether they all are. `None` when the class or
+    /// the method is unknown.
+    fn method_is_const(&self, _class: &str, _method: &str) -> Option<bool> {
+        None
+    }
 }
 
 #[derive(Default, Clone, Copy)]

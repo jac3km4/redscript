@@ -55,6 +55,10 @@ pub struct MapTypeQuery {
     method_infos: HashMap<(String, String), BaseMethodInfo>,
     /// What [`TypeQuery::is_import_only`] says about classes, by name.
     import_only: HashMap<String, bool>,
+    /// What [`TypeQuery::struct_fields`] says about structs, by name.
+    struct_fields: HashMap<String, Vec<String>>,
+    /// What [`TypeQuery::method_is_const`] says about methods, by class and name.
+    method_consts: HashMap<(String, String), bool>,
 }
 
 impl MapTypeQuery {
@@ -130,6 +134,20 @@ impl MapTypeQuery {
         self
     }
 
+    /// Declares a struct with its fields, in declaration order.
+    pub fn with_struct(mut self, name: &str, fields: &[&str]) -> Self {
+        let fields = fields.iter().map(|&f| f.to_owned()).collect();
+        self.struct_fields.insert(name.to_owned(), fields);
+        self
+    }
+
+    /// Declares whether the method `method` of `class` is `const`.
+    pub fn with_method_const(mut self, class: &str, method: &str, is_const: bool) -> Self {
+        self.method_consts
+            .insert((class.to_owned(), method.to_owned()), is_const);
+        self
+    }
+
     /// The bases of `class`, nearest first, if it's known.
     fn bases(&self, class: &str) -> Option<Vec<&str>> {
         let mut base = self.classes.get(class)?.0.as_deref();
@@ -200,6 +218,16 @@ impl TypeQuery for MapTypeQuery {
 
     fn is_import_only(&self, class: &str) -> Option<bool> {
         self.import_only.get(class).copied()
+    }
+
+    fn struct_fields(&self, name: &str) -> Option<Vec<String>> {
+        self.struct_fields.get(name).cloned()
+    }
+
+    fn method_is_const(&self, class: &str, method: &str) -> Option<bool> {
+        self.method_consts
+            .get(&(class.to_owned(), method.to_owned()))
+            .copied()
     }
 
     fn type_of(&self, span: Span) -> Option<TypeHint> {

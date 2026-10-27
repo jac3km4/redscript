@@ -676,6 +676,30 @@ impl TypeQuery for TypeOracle {
         let id = self.class_named(class)?;
         Some(self.pool.class(id).ok()?.flags.is_import_only())
     }
+
+    fn struct_fields(&self, name: &str) -> Option<Vec<String>> {
+        let class = self.pool.class(self.class_named(name)?).ok()?;
+        if !class.flags.is_struct() {
+            return None;
+        }
+        class
+            .fields
+            .iter()
+            .map(|&index| self.pool.def_name(index).ok().map(|name| name.to_string()))
+            .collect()
+    }
+
+    fn method_is_const(&self, class: &str, method: &str) -> Option<bool> {
+        let id = self.class_named(class)?;
+        self.hierarchy(id).find_map(|(_, class)| {
+            let mut overloads = self
+                .methods(class, method)
+                .filter(|func| !func.flags.is_static())
+                .peekable();
+            overloads.peek()?;
+            Some(overloads.all(|func| func.flags.is_const()))
+        })
+    }
 }
 
 /// The name of the symbol a diagnostic reports as missing, `Type.member` for members.
@@ -1253,5 +1277,45 @@ class Own {}
         assert_eq!(oracle.is_import_only("Mod.M.Own"), Some(false));
         assert_eq!(oracle.is_import_only("Own"), Some(false));
         assert_eq!(oracle.is_import_only("Missing"), None);
+    }
+
+    #[test]
+    fn struct_fields_are_found_in_order() {
+        let src = "module Mod.M
+public struct Pair {
+  let second: Int32;
+  let first: String;
+}
+class Own {
+  let x: Int32;
+}
+";
+        let (oracle, _, _) = check(&[src]);
+        let pair = Some(vec!["second".to_owned(), "first".to_owned()]);
+        assert_eq!(oracle.struct_fields("Pair"), pair);
+        assert_eq!(oracle.struct_fields("Mod.M.Pair"), pair);
+        assert_eq!(oracle.struct_fields("GameTime"), Some(vec![]));
+        assert_eq!(oracle.struct_fields("Own"), None);
+        assert_eq!(oracle.struct_fields("Missing"), None);
+    }
+
+    #[test]
+    fn method_constness_is_found_in_the_hierarchy() {
+        let src = "module Mod.M
+class Own extends GameObject {
+  public const func Peek() -> Bool = true
+  public func Poke() {}
+}
+";
+        let (oracle, _, _) = check(&[src]);
+        assert_eq!(oracle.method_is_const("GameObject", "IsDone"), Some(true));
+        assert_eq!(oracle.method_is_const("GameObject", "Name"), Some(false));
+        // inherited from IScriptable
+        assert_eq!(oracle.method_is_const("GameObject", "Kind"), Some(false));
+        assert_eq!(oracle.method_is_const("Own", "Peek"), Some(true));
+        assert_eq!(oracle.method_is_const("Mod.M.Own", "Poke"), Some(false));
+        assert_eq!(oracle.method_is_const("Own", "IsDone"), Some(true));
+        assert_eq!(oracle.method_is_const("Own", "Missing"), None);
+        assert_eq!(oracle.method_is_const("Missing", "IsDone"), None);
     }
 }
