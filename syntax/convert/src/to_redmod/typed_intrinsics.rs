@@ -1,7 +1,8 @@
 //! Intrinsics whose REDmod form depends on the type of their argument, rewritten only when type
 //! information answers for the argument:
-//! - `IsDefined(x)` used directly as an `if`/`else if`/`while` condition, with `x` an object or a
-//!   `wref`: `if (x)`
+//! - `IsDefined(x)` used as an `if`/`else if`/`while` condition, or as an operand of `&&`, `||` or
+//!   `!` within one, with `x` an object or a `wref`: `if (x)`, `if (x && y)`, `if (!x)` (the forms
+//!   the game's own `.script` sources use)
 //! - `IsDefined(x)` anywhere, with `x` an `EntityID`, a `GlobalNodeRef` or a `TweakDBID`:
 //!   `EntityID.IsDefined(x)`, `GlobalNodeRef.IsDefined(x)`, `TDBID.IsValid(x)`
 //! - `ToString(x)`, by the type of `x` (see [`super::to_string`]): `IntToString(x)`,
@@ -13,7 +14,7 @@
 //! Rewritten calls keep their span, so the type recorded for the call (rather than the one of its
 //! argument) stays attached to the node replacing it.
 
-use redscript_ast::{Expr, LetCondition, SourceModule, Stmt};
+use redscript_ast::{BinOp, Expr, LetCondition, SourceModule, Stmt, UnOp};
 
 use super::to_string::{self, Plan};
 use crate::walk::{
@@ -92,10 +93,32 @@ impl<'src> TypedIntrinsics<'_, '_, 'src> {
     }
 
     fn rewrite_condition(&self, cond: &mut LetCondition<'_, redscript_ast::WithSpan>) {
-        if let LetCondition::Expr(expr) = cond
-            && sole_arg(expr, "IsDefined").is_some_and(|arg| self.is_object(arg))
-        {
-            unwrap_call(expr);
+        if let LetCondition::Expr(expr) = cond {
+            self.rewrite_truthy(expr);
+        }
+    }
+
+    /// Rewrites `IsDefined(obj)` into `obj` in an expression whose value is only used as a
+    /// condition: the expression itself and the operands of `&&`, `||` and `!` within it.
+    fn rewrite_truthy(&self, expr: &mut SExpr<'_>) {
+        match &mut expr.0 {
+            Expr::BinOp {
+                lhs,
+                op: BinOp::And | BinOp::Or,
+                rhs,
+            } => {
+                self.rewrite_truthy(lhs);
+                self.rewrite_truthy(rhs);
+            }
+            Expr::UnOp {
+                op: UnOp::Not,
+                expr: inner,
+            } => self.rewrite_truthy(inner),
+            _ => {
+                if sole_arg(expr, "IsDefined").is_some_and(|arg| self.is_object(arg)) {
+                    unwrap_call(expr);
+                }
+            }
         }
     }
 
@@ -225,15 +248,60 @@ mod tests {
         for expected in [
             "if (a) { } else if (b) { }",
             "while (c) { }",
-            // the truthiness of `!obj` is not documented for REDmod
-            "if (!IsDefined(d))",
+            // `!obj` is how the game's own sources test for a null object
+            "if (!d)",
             // only conditions
             "let x = IsDefined(e);",
             "if (IsDefined(s))",
         ] {
             assert!(out.contains(expected), "{expected}: {out}");
         }
-        assert_eq!(codes(&diags), ["is-defined"; 3]);
+        assert_eq!(codes(&diags), ["is-defined"; 2]);
+    }
+
+    #[test]
+    fn is_defined_on_objects_in_condition_operands() {
+        // Radio_Volume_Control: `IsDefined(RadioCon) && ..` failed REDmod's final stage with
+        // "Could not find valid function 'IsDefined'"
+        let src = "func F(a: ref<A>, b: wref<A>, c: ref<A>, d: ref<A>, e: ref<A>, i: EntityID, s: script_ref<A>) -> Bool {
+  if IsDefined(a) && a.IsOn() {
+  }
+  while IsDefined(b) || !IsDefined(c) {
+  }
+  if (IsDefined(d) && IsDefined(i)) || IsDefined(s) {
+  }
+  return IsDefined(e) && true;
+}
+";
+        let types = MapTypeQuery::new()
+            .with_type(span_in(src, "(a)", 0, "a"), class("A"))
+            .with_type(
+                span_in(src, "(b)", 0, "b"),
+                TypeHint::Ref(RefKind::Weak, class("A").into()),
+            )
+            .with_type(span_in(src, "(c)", 0, "c"), class("A"))
+            .with_type(span_in(src, "(d)", 0, "d"), class("A"))
+            .with_type(span_in(src, "(e)", 0, "e"), class("A"))
+            .with_type(
+                span_in(src, "(i)", 0, "i"),
+                TypeHint::Struct("EntityID".to_owned()),
+            )
+            .with_type(
+                span_in(src, "(s)", 0, "s"),
+                TypeHint::Ref(RefKind::Script, class("A").into()),
+            );
+        let (out, diags) = to_redmod_with_types(src, &types, run_with_diagnostics);
+        let out = squash(&out);
+        for expected in [
+            "if (a && a.IsOn())",
+            "while (b || !c)",
+            "if (d && EntityID.IsDefined(i) || IsDefined(s))",
+            // not a condition: the value of `obj && ..` is not documented for REDmod
+            "return IsDefined(e) && true;",
+        ] {
+            assert!(out.contains(expected), "{expected}: {out}");
+        }
+        assert_eq!(codes(&diags), ["is-defined"; 2]);
     }
 
     #[test]
