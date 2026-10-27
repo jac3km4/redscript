@@ -1,10 +1,10 @@
 //! Diagnostic-only checks: constructs that are not rewritten, either because the right rewrite
 //! depends on type information or because they need a manual decision.
 
-use hashbrown::HashSet;
+use hashbrown::{HashMap, HashSet};
 use redscript_ast::{
-    AstNode, AstVisitor, Constant, Expr, Item, ItemQualifiers, SourceAstNode, SourceModule, Span,
-    WithSpan,
+    AstNode, AstVisitor, Constant, Expr, Item, ItemQualifiers, SourceAstNode, SourceExpr,
+    SourceModule, Span, UnOp, WithSpan,
 };
 
 use crate::Cx;
@@ -20,8 +20,12 @@ const UNSUPPORTED_MATH: [&str; 5] = [
     "LerpAngleF",
 ];
 
+/// Annotations adding a member to a class, which REDmod silently drops on `importonly` classes.
+const ADDING_ANNOTATIONS: [&str; 2] = ["addField", "addMethod"];
+
 /// Checks community code about to be converted to REDmod.
 pub fn community<'src>(module: &SourceModule<'src>, cx: &mut Cx<'_, 'src>) {
+    conditional_limits(module, cx);
     let index = ModuleIndex::new(module);
     let renamed_fields = fields::renamed_field_spans(module);
     let mut visitor = Community {
@@ -140,6 +144,26 @@ impl<'src> AstVisitor<'src, WithSpan> for Community<'_, '_, 'src> {
                             ),
                         );
                     }
+                    if let Some((Expr::Ident(target), _)) = ann.args.first()
+                        && ADDING_ANNOTATIONS.contains(&ann.name)
+                        && self
+                            .cx
+                            .opts
+                            .types
+                            .and_then(|types| types.is_import_only(target))
+                            == Some(true)
+                    {
+                        self.cx.warn(
+                            span,
+                            "importonly-target",
+                            format!(
+                                "@{} on `{target}`, an `importonly` class: REDmod silently drops \
+                                 this member (every use of it then fails with `is not a member`), \
+                                 add it to another class",
+                                ann.name
+                            ),
+                        );
+                    }
                 }
                 match &decl.item {
                     Item::Let(field) if decl.qualifiers.contains(ItemQualifiers::PERSISTENT) => {
@@ -197,10 +221,123 @@ impl<'src> AstVisitor<'src, WithSpan> for Community<'_, '_, 'src> {
     }
 }
 
+/// The limits of REDmod on the versions of a conditional function, each of which aborts the
+/// compile without an error message:
+/// - at most two versions of a conditional function,
+/// - not two versions with a positive `ModuleExists(..)` condition,
+/// - a single version of a conditional `@addMethod`.
+///
+/// The versions of a function are the functions of the module with the same name, parameter
+/// types and, for `@addMethod`, target class, when one of them at least has a condition. Only
+/// the versions declared in the same file are seen. `@if` on imports and types is reported
+/// elsewhere.
+fn conditional_limits<'src>(module: &SourceModule<'src>, cx: &mut Cx<'_, 'src>) {
+    type Key<'src> = (Option<&'src str>, &'src str, String);
+    let mut groups: HashMap<Key<'src>, Vec<(Span, Option<&SourceExpr<'src>>)>> = HashMap::new();
+    let mut order = vec![];
+    for (decl, span) in &module.items {
+        let Item::Function(func) = &decl.item else {
+            continue;
+        };
+        let patch = decl
+            .annotations
+            .iter()
+            .find(|(ann, _)| PATCH_ANNOTATIONS.contains(&ann.name));
+        let target = match patch {
+            None => None,
+            Some((ann, _)) if ann.name == "addMethod" => match ann.args.first() {
+                Some((Expr::Ident(target), _)) => Some(*target),
+                _ => continue,
+            },
+            // wraps chain and replacements supersede each other: they are not versions
+            Some(_) => continue,
+        };
+        let params = func
+            .params
+            .iter()
+            .map(|(param, _)| format!("{:?}", param.typ.clone().map(|t| t.0.unwrapped())))
+            .collect::<Vec<_>>()
+            .join(",");
+        let condition = decl
+            .annotations
+            .iter()
+            .find(|(ann, _)| ann.name == "if")
+            .and_then(|(ann, _)| ann.args.first())
+            .map(|(cond, _)| cond);
+        let key = (target, func.name.0, params);
+        let versions = groups.entry(key.clone()).or_default();
+        if versions.is_empty() {
+            order.push(key);
+        }
+        versions.push((*span, condition));
+    }
+
+    for key in order {
+        let versions = &groups[&key];
+        if versions.iter().all(|(_, cond)| cond.is_none()) {
+            continue;
+        }
+        let (target, name, _) = key;
+        if let Some(target) = target {
+            for (span, _) in versions.iter().skip(1) {
+                cx.warn(
+                    *span,
+                    "conditional-limit",
+                    format!(
+                        "REDmod allows a single version of a conditional @addMethod, this other \
+                         version of `{target}.{name}` aborts the REDmod compile without an \
+                         error: keep one version"
+                    ),
+                );
+            }
+            continue;
+        }
+        for (span, _) in versions.iter().skip(2) {
+            cx.warn(
+                *span,
+                "conditional-limit",
+                format!(
+                    "REDmod allows at most two versions of a conditional function, this third \
+                     version of `{name}` aborts the REDmod compile without an error: merge the \
+                     versions"
+                ),
+            );
+        }
+        let second_positive = versions
+            .iter()
+            .filter(|(_, cond)| cond.is_some_and(has_positive_module_exists))
+            .nth(1);
+        if let Some((span, _)) = second_positive {
+            cx.warn(
+                *span,
+                "conditional-limit",
+                format!(
+                    "REDmod rejects two versions of a conditional function that both use a \
+                     positive ModuleExists(..), this version of `{name}` aborts the REDmod \
+                     compile without an error: pair a positive condition with a negated one \
+                     (`!ModuleExists(..)`)"
+                ),
+            );
+        }
+    }
+}
+
+/// Whether `cond` contains a `ModuleExists(..)` call that is not negated.
+fn has_positive_module_exists(cond: &SourceExpr<'_>) -> bool {
+    match cond {
+        Expr::UnOp { op: UnOp::Not, .. } => false,
+        Expr::BinOp { lhs, rhs, .. } => {
+            has_positive_module_exists(&lhs.0) || has_positive_module_exists(&rhs.0)
+        }
+        expr => free_call_name(expr) == Some("ModuleExists"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{codes, to_redmod};
+    use crate::Severity;
+    use crate::test_util::{MapTypeQuery, codes, to_redmod, to_redmod_with_types};
 
     #[test]
     fn community_diagnostics() {
@@ -246,5 +383,134 @@ mod tests {
             ]
         );
         assert!(diags[0].message.contains("`event`"), "{}", diags[0]);
+    }
+
+    #[test]
+    fn members_added_to_importonly_classes() {
+        let src = "@addField(inkISystemRequestsHandler)
+let counter: Int32;
+
+@addMethod(inkISystemRequestsHandler)
+func Added() {}
+
+@wrapMethod(inkISystemRequestsHandler)
+func Wrapped() { wrappedMethod(); }
+
+@addField(ModdingSystem)
+let key: Int32;
+
+@addMethod(Unknown)
+func Other() {}
+";
+        let types = MapTypeQuery::new()
+            .with_import_only("inkISystemRequestsHandler", true)
+            .with_import_only("ModdingSystem", false);
+        let (_, diags) = to_redmod_with_types(src, &types, |m, cx| community(m, cx));
+        assert_eq!(codes(&diags), ["importonly-target", "importonly-target"]);
+        assert!(diags[0].message.contains("@addField"), "{}", diags[0]);
+        assert!(diags[1].message.contains("@addMethod"), "{}", diags[1]);
+        assert!(diags.iter().all(|d| d.severity == Severity::Warning));
+
+        // nothing is known without type information
+        let (_, diags) = to_redmod(src, |m, cx| community(m, cx));
+        assert!(diags.is_empty(), "{diags:?}");
+    }
+
+    #[test]
+    fn at_most_two_versions_of_a_conditional_function() {
+        let src = "@if(ModuleExists(\"A\"))
+func F() {}
+
+@if(!ModuleExists(\"A\") && ModuleExists(\"B\"))
+func F() {}
+
+@if(!ModuleExists(\"A\") && !ModuleExists(\"B\"))
+func F() {}
+
+@if(ModuleExists(\"A\"))
+func G(x: Int32) {}
+
+@if(!ModuleExists(\"A\"))
+func G(x: Int32) {}
+
+@if(!ModuleExists(\"A\"))
+func G(x: Float) {}
+";
+        let (_, diags) = to_redmod(src, |m, cx| community(m, cx));
+        // `F` also has two versions with a positive condition, the second one
+        assert_eq!(codes(&diags), ["conditional-limit"; 2]);
+        assert!(diags[0].message.contains("third"), "{}", diags[0]);
+        assert!(diags[0].message.contains("`F`"), "{}", diags[0]);
+        assert!(diags[1].message.contains("positive"), "{}", diags[1]);
+        assert!(diags[0].span.start > diags[1].span.start);
+    }
+
+    #[test]
+    fn two_positive_conditions() {
+        let src = "@if(ModuleExists(\"A\"))
+func F() {}
+
+@if(ModuleExists(\"B\"))
+func F() {}
+
+@if(ModuleExists(\"A\"))
+func G() {}
+
+@if(!ModuleExists(\"A\"))
+func G() {}
+
+@if(!ModuleExists(\"A\"))
+func H() {}
+
+@if(!ModuleExists(\"B\"))
+func H() {}
+
+@if(ModuleExists(\"A\"))
+func K() {}
+
+func K() {}
+";
+        let (_, diags) = to_redmod(src, |m, cx| community(m, cx));
+        assert_eq!(codes(&diags), ["conditional-limit"]);
+        assert!(diags[0].message.contains("positive"), "{}", diags[0]);
+        assert!(diags[0].message.contains("`F`"), "{}", diags[0]);
+    }
+
+    #[test]
+    fn a_single_version_of_a_conditional_add_method() {
+        let src = "@if(ModuleExists(\"A\"))
+@addMethod(PlayerPuppet)
+func M() {}
+
+@if(!ModuleExists(\"A\"))
+@addMethod(PlayerPuppet)
+func M() {}
+
+@if(ModuleExists(\"A\"))
+@addMethod(GameObject)
+func M() {}
+
+@if(ModuleExists(\"A\"))
+@wrapMethod(PlayerPuppet)
+func W() { wrappedMethod(); }
+
+@if(!ModuleExists(\"A\"))
+@wrapMethod(PlayerPuppet)
+func W() { wrappedMethod(); }
+
+@addMethod(PlayerPuppet)
+func N() {}
+
+@addMethod(PlayerPuppet)
+func N(x: Int32) {}
+";
+        let (_, diags) = to_redmod(src, |m, cx| community(m, cx));
+        assert_eq!(codes(&diags), ["conditional-limit"]);
+        assert!(
+            diags[0].message.contains("`PlayerPuppet.M`"),
+            "{}",
+            diags[0]
+        );
+        assert!(diags[0].message.contains("@addMethod"), "{}", diags[0]);
     }
 }

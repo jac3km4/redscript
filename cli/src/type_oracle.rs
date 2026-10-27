@@ -442,6 +442,11 @@ impl TypeQuery for TypeOracle {
         });
         Some(res)
     }
+
+    fn is_import_only(&self, class: &str) -> Option<bool> {
+        let id = self.class_named(class)?;
+        Some(self.pool.class(id).ok()?.flags.is_import_only())
+    }
 }
 
 /// The name of the symbol a diagnostic reports as missing, `Type.member` for members.
@@ -537,6 +542,8 @@ public native struct GameTime {
 }
 
 public enum GameMode { A = 0 }
+
+public abstract importonly class inkISystemRequestsHandler extends IScriptable {}
 ";
 
     /// Type-checks `sources` against the predefined types and [`GAME`], returns the oracle, the
@@ -928,5 +935,18 @@ class Sub extends Base {
         assert_eq!(info("Sub", "Missing"), None);
         assert_eq!(info("Base", "Tweak"), None);
         assert_eq!(info("Missing", "Plain"), None);
+    }
+
+    #[test]
+    fn import_only_classes_are_found() {
+        let src = "module Mod.M
+class Own {}
+";
+        let (oracle, _, _) = check(&[src]);
+        assert_eq!(oracle.is_import_only("inkISystemRequestsHandler"), Some(true));
+        assert_eq!(oracle.is_import_only("GameObject"), Some(false));
+        assert_eq!(oracle.is_import_only("Mod.M.Own"), Some(false));
+        assert_eq!(oracle.is_import_only("Own"), Some(false));
+        assert_eq!(oracle.is_import_only("Missing"), None);
     }
 }

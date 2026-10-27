@@ -212,6 +212,11 @@ pub trait TypeQuery {
     fn base_method_info(&self, _class: &str, _method: &str) -> Option<BaseMethodInfo> {
         None
     }
+    /// Whether the class `class` (as named in the sources, with or without its module path) is
+    /// `importonly`, which REDmod cannot add members to. `None` when the class is unknown.
+    fn is_import_only(&self, _class: &str) -> Option<bool> {
+        None
+    }
 }
 
 #[derive(Default, Clone, Copy)]

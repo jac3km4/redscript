@@ -22,6 +22,7 @@ mod let_types;
 mod locals;
 mod loop_locals;
 mod overrides;
+mod safe_enum_return;
 mod system_name;
 mod temporaries;
 pub(crate) mod to_string;
@@ -47,6 +48,9 @@ pub fn run<'src>(module: &mut SourceModule<'src>, cx: &mut Cx<'_, 'src>) {
     event_return::run(module, cx);
     // before the passes that track locals, the bindings become plain locals
     let_patterns::run(module, cx);
+    // before the intrinsics, while `IntEnum(..)` still says that its target is an enum, and after
+    // the inline bodies, which become returns
+    safe_enum_return::run(module, cx);
     intrinsics::run(module, cx);
     int_suffix::run(module, cx);
     float_literals::run(module, cx);

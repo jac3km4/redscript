@@ -53,6 +53,8 @@ pub struct MapTypeQuery {
     const_methods: HashSet<(String, String)>,
     /// What [`TypeQuery::base_method_info`] says about methods, by declaring class and name.
     method_infos: HashMap<(String, String), BaseMethodInfo>,
+    /// What [`TypeQuery::is_import_only`] says about classes, by name.
+    import_only: HashMap<String, bool>,
 }
 
 impl MapTypeQuery {
@@ -122,6 +124,12 @@ impl MapTypeQuery {
         self
     }
 
+    /// Declares whether the class `class` is `importonly`.
+    pub fn with_import_only(mut self, class: &str, import_only: bool) -> Self {
+        self.import_only.insert(class.to_owned(), import_only);
+        self
+    }
+
     /// The bases of `class`, nearest first, if it's known.
     fn bases(&self, class: &str) -> Option<Vec<&str>> {
         let mut base = self.classes.get(class)?.0.as_deref();
@@ -188,6 +196,10 @@ impl TypeQuery for MapTypeQuery {
                 .get(&((*base).to_owned(), method.to_owned()))
                 .copied()
         })
+    }
+
+    fn is_import_only(&self, class: &str) -> Option<bool> {
+        self.import_only.get(class).copied()
     }
 
     fn type_of(&self, span: Span) -> Option<TypeHint> {
