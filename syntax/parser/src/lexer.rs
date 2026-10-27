@@ -4,7 +4,6 @@ use std::{fmt, mem, ops};
 use chumsky::container::Container;
 use chumsky::input::InputRef;
 use chumsky::prelude::*;
-
 use redscript_ast::Dialect;
 
 use crate::{Branch, Span};

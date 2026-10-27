@@ -16,6 +16,11 @@
 //! functions alike: they get a body returning the default value of their type. Native functions
 //! keep no body.
 //!
+//! REDmod cannot override some methods of the game at all: native methods ("has no virtual
+//! function in base class to override") and methods taking a `TweakDBID` parameter ("parameter
+//! has different type 'TweakDBID' than in base function"), even with the exact signature of the
+//! game. Overrides of such methods get a warning when the type information knows about them.
+//!
 //! Callbacks (`event`s) need neither qualifier. Patches (`@wrapMethod`, `@replaceMethod`,
 //! `@addMethod`) are left as they are: they keep the qualifiers of the method they patch.
 
@@ -24,9 +29,9 @@ use redscript_ast::{
     Block, FunctionBody, Item, ItemQualifiers, SourceFunction, SourceModule, Span, Stmt,
 };
 
-use crate::Cx;
 use crate::index::Names;
 use crate::walk::{annotation_target, ident, let_stmt, synth, type_name};
+use crate::{BaseMethodInfo, Cx};
 
 /// Classes without methods to override, as far as REDmod is concerned.
 const ROOTS: [&str; 1] = ["IScriptable"];
@@ -95,6 +100,9 @@ pub fn run<'src>(module: &mut SourceModule<'src>, cx: &mut Cx<'_, 'src>) {
                     }
                     Err(base) => unknown_base = unknown_base.or(Some(base)),
                     _ => {}
+                }
+                if overrides == Ok(true) {
+                    class.check_supported(method, *member_span, cx);
                 }
                 if overrides == Ok(true)
                     && !member.qualifiers.contains(ItemQualifiers::CONST)
@@ -277,6 +285,27 @@ impl<'src> Class<'src> {
             .unwrap_or(false)
     }
 
+    /// Warns about an override of a method of the game that REDmod cannot override.
+    fn check_supported(&self, method: &str, span: Span, cx: &mut Cx<'_, 'src>) {
+        let Some(info) = cx
+            .opts
+            .types
+            .and_then(|types| types.base_method_info(&self.qualified, method))
+        else {
+            return;
+        };
+        if let Some(reason) = unsupported_override(&info) {
+            cx.warn(
+                span,
+                "redmod-unsupported-override",
+                format!(
+                    "`{method}` overrides {reason}, which REDmod cannot override: the class does \
+                     not compile in REDmod, move this logic out of the override"
+                ),
+            );
+        }
+    }
+
     /// Whether a subclass declared in the sources overrides `method`.
     fn is_overridden(&self, hierarchy: &Hierarchy<'src>, method: &str, cx: &Cx<'_, 'src>) -> bool {
         let local = hierarchy.classes.iter().any(|(name, class)| {
@@ -293,10 +322,24 @@ impl<'src> Class<'src> {
     }
 }
 
+/// Why REDmod cannot override the method described by `info`, if it cannot.
+fn unsupported_override(info: &BaseMethodInfo) -> Option<&'static str> {
+    if info.from_sources {
+        None
+    } else if info.is_native {
+        Some("a native method of the game")
+    } else if info.has_tweakdbid_param {
+        Some("a method of the game taking a `TweakDBID` parameter")
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_util::{MapTypeQuery, codes, squash, to_redmod, to_redmod_with_types};
+    use crate::{BaseMethodInfo, Severity};
 
     #[test]
     fn same_file_hierarchy() {
@@ -538,5 +581,114 @@ class B extends A {
         assert!(!out.contains("virtual"), "{out}");
         assert!(out.contains("public override function F()"), "{out}");
         assert_eq!(codes(&diags), ["override-unknown", "override-added"]);
+    }
+
+    #[test]
+    fn unsupported_overrides_of_game_methods() {
+        let src = "module Mod.M
+class P extends IScriptablePrereq {
+  public func IsFulfilled(game: GameInstance, context: ref<IScriptable>) -> Bool { return true; }
+  protected func Initialize(record: TweakDBID) -> Void {}
+  protected func OnRegister(game: GameInstance) -> Bool { return false; }
+}
+class E extends Effector {
+  protected func Initialize(record: TweakDBID, game: GameInstance, parentRecord: TweakDBID) -> Void {}
+}
+class S extends E {
+  protected func Initialize(record: TweakDBID, game: GameInstance, parentRecord: TweakDBID) -> Void {}
+}
+";
+        let native = BaseMethodInfo {
+            is_native: true,
+            class_is_native: true,
+            ..BaseMethodInfo::default()
+        };
+        let tweak = BaseMethodInfo {
+            class_is_native: true,
+            has_tweakdbid_param: true,
+            ..BaseMethodInfo::default()
+        };
+        let types = MapTypeQuery::new()
+            .with_class("IScriptable", None, &[], true)
+            .with_class("IPrereq", Some("IScriptable"), &["IsFulfilled"], true)
+            .with_class(
+                "IScriptablePrereq",
+                Some("IPrereq"),
+                &["Initialize", "OnRegister"],
+                true,
+            )
+            .with_class("Effector", Some("IScriptable"), &["Initialize"], true)
+            .with_method_info("IPrereq", "IsFulfilled", native)
+            .with_method_info("IScriptablePrereq", "Initialize", tweak)
+            .with_method_info(
+                "IScriptablePrereq",
+                "OnRegister",
+                BaseMethodInfo {
+                    class_is_native: true,
+                    ..BaseMethodInfo::default()
+                },
+            )
+            .with_method_info("Effector", "Initialize", tweak)
+            .with_class(
+                "Mod.M.P",
+                Some("IScriptablePrereq"),
+                &["IsFulfilled", "Initialize", "OnRegister"],
+                false,
+            )
+            .with_class("Mod.M.E", Some("Effector"), &["Initialize"], false)
+            .with_class("Mod.M.S", Some("Mod.M.E"), &["Initialize"], false)
+            // an override of a method of the sources is fine, even with a TweakDBID parameter
+            .with_method_info(
+                "Mod.M.E",
+                "Initialize",
+                BaseMethodInfo {
+                    has_tweakdbid_param: true,
+                    from_sources: true,
+                    ..BaseMethodInfo::default()
+                },
+            );
+        let (out, diags) = to_redmod_with_types(src, &types, run);
+        let out = squash(&out);
+        // the qualifiers are added as usual
+        assert!(
+            out.contains("public override function IsFulfilled("),
+            "{out}"
+        );
+        let unsupported: Vec<_> = diags
+            .iter()
+            .filter(|d| d.code == "redmod-unsupported-override")
+            .collect();
+        assert_eq!(unsupported.len(), 3, "{diags:?}");
+        assert!(unsupported.iter().all(|d| d.severity == Severity::Warning));
+        assert!(
+            unsupported[0].message.contains("`IsFulfilled`")
+                && unsupported[0].message.contains("native"),
+            "{}",
+            unsupported[0]
+        );
+        assert!(
+            unsupported[1].message.contains("`Initialize`")
+                && unsupported[1].message.contains("`TweakDBID`"),
+            "{}",
+            unsupported[1]
+        );
+        assert!(unsupported[2].message.contains("`Initialize`"));
+        assert_eq!(
+            codes(&diags)
+                .iter()
+                .filter(|c| **c == "redmod-unsupported-override")
+                .count(),
+            3
+        );
+    }
+
+    #[test]
+    fn no_unsupported_override_warning_without_types() {
+        let src = "class P extends IScriptablePrereq {
+  public func IsFulfilled(game: GameInstance, context: ref<IScriptable>) -> Bool { return true; }
+}
+";
+        let (_, diags) = to_redmod(src, run);
+        assert_eq!(codes(&diags), ["override-unknown"]);
     }
 }

@@ -10,16 +10,16 @@
 //! })
 //! ```
 
-use hashbrown::HashMap;
 use std::path::{Path, PathBuf};
 use std::{fmt, fs, io};
 
+use hashbrown::HashMap;
 use redscript_ast::{Dialect, FileId, SourceMap};
 use redscript_formatter::{
     FormatSettings, ParseOptions, parse_document_with_options, print_document,
 };
 
-use crate::{ConvertDiagnostic, ConvertOptions, NameArena, TypeQuery};
+use crate::{ConvertDiagnostic, ConvertOptions, NameArena, SourceFields, TypeQuery};
 
 const FROM: Dialect = Dialect::Community;
 const TO: Dialect = Dialect::Redmod;
@@ -154,7 +154,23 @@ impl<'a> Converter<'a> {
             Some(TypeCheck { query, summary }) => (Some(query), summary),
             None => (None, TypeCheckSummary::default()),
         };
-        let convert_opts = ConvertOptions { types: query };
+        // the fields with reserved names are renamed in every file, which needs the classes of
+        // all the files first
+        let mut modules = vec![];
+        for (_, ids) in &groups {
+            for &id in ids {
+                let file = map.get(id).ok_or_else(unknown_source)?;
+                let (doc, errors) =
+                    parse_document_with_options(file.source(), id, ParseOptions::compat(FROM));
+                modules.extend(doc.filter(|_| errors.is_empty()).map(|doc| doc.module));
+            }
+        }
+        let fields = SourceFields::collect(&modules);
+        drop(modules);
+        let convert_opts = ConvertOptions {
+            types: query,
+            fields: Some(&fields),
+        };
         let mut failed = false;
 
         for (root, ids) in &groups {

@@ -755,7 +755,7 @@ impl<'a> TypeChecker<'a> {
         to: &TypeId,
         scope: &mut Scope,
     ) -> Result<TypedExpr, Error> {
-        if !mem::take(&mut self.skip_expected) {
+        if !mem::take(&mut self.skip_expected) && self.records.is_some() {
             self.record(expr, |types| &mut types.expected, to.clone());
         }
         let checked = self.check(expr, Some(to), scope)?;

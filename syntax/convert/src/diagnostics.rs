@@ -1,14 +1,15 @@
 //! Diagnostic-only checks: constructs that are not rewritten, either because the right rewrite
 //! depends on type information or because they need a manual decision.
 
+use hashbrown::HashSet;
 use redscript_ast::{
-    AstNode, AstVisitor, BinOp, Constant, Expr, Item, ItemQualifiers, SourceAstNode, SourceModule,
+    AstNode, AstVisitor, Constant, Expr, Item, ItemQualifiers, SourceAstNode, SourceModule, Span,
     WithSpan,
 };
 
 use crate::Cx;
 use crate::index::ModuleIndex;
-use crate::to_redmod::to_string;
+use crate::to_redmod::{fields, to_string};
 use crate::walk::{PATCH_ANNOTATIONS, REDMOD_RESERVED, SExpr, free_call_name};
 
 const UNSUPPORTED_MATH: [&str; 5] = [
@@ -22,13 +23,20 @@ const UNSUPPORTED_MATH: [&str; 5] = [
 /// Checks community code about to be converted to REDmod.
 pub fn community<'src>(module: &SourceModule<'src>, cx: &mut Cx<'_, 'src>) {
     let index = ModuleIndex::new(module);
-    let mut visitor = Community { cx, index: &index };
+    let renamed_fields = fields::renamed_field_spans(module);
+    let mut visitor = Community {
+        cx,
+        index: &index,
+        renamed_fields: &renamed_fields,
+    };
     visitor.visit_module(module).ok();
 }
 
 struct Community<'a, 'b, 'src> {
     cx: &'a mut Cx<'b, 'src>,
     index: &'a ModuleIndex<'src>,
+    /// The declarations of the fields renamed by [`fields`].
+    renamed_fields: &'a HashSet<Span>,
 }
 
 impl<'src> Community<'_, '_, 'src> {
@@ -69,17 +77,6 @@ impl<'src> Community<'_, '_, 'src> {
                 "REDmod has no constructor arguments, create the object with `new X` and \
                  assign the fields",
             ),
-            // only parsed in the 0.5.x compatibility mode
-            Expr::Assign { rhs, .. } | Expr::BinOp { rhs, .. }
-                if is_assignment(expr) && is_assignment(&rhs.0) =>
-            {
-                self.cx.warn(
-                    span,
-                    "chained-assignment",
-                    "REDmod has no chained assignments, split this into one assignment per \
-                     statement",
-                );
-            }
             Expr::Lambda { .. } => self.cx.warn(
                 span,
                 "lambda",
@@ -115,22 +112,6 @@ impl<'src> Community<'_, '_, 'src> {
             _ => {}
         }
     }
-}
-
-fn is_assignment(expr: &Expr<'_, WithSpan>) -> bool {
-    matches!(
-        expr,
-        Expr::Assign { .. }
-            | Expr::BinOp {
-                op: BinOp::AssignAdd
-                    | BinOp::AssignSub
-                    | BinOp::AssignMul
-                    | BinOp::AssignDiv
-                    | BinOp::AssignBitOr
-                    | BinOp::AssignBitAnd,
-                ..
-            }
-    )
 }
 
 impl<'src> AstVisitor<'src, WithSpan> for Community<'_, '_, 'src> {
@@ -173,14 +154,19 @@ impl<'src> AstVisitor<'src, WithSpan> for Community<'_, '_, 'src> {
                             ),
                         );
                     }
-                    Item::Let(field) if REDMOD_RESERVED.contains(&field.name.0) => self.cx.warn(
-                        span,
-                        "reserved-field-name",
-                        format!(
-                            "`{}` is a reserved word in REDmod, rename this field",
-                            field.name.0
-                        ),
-                    ),
+                    Item::Let(field)
+                        if REDMOD_RESERVED.contains(&field.name.0)
+                            && !self.renamed_fields.contains(&span) =>
+                    {
+                        self.cx.warn(
+                            span,
+                            "reserved-field-name",
+                            format!(
+                                "`{}` is a reserved word in REDmod, rename this field",
+                                field.name.0
+                            ),
+                        );
+                    }
                     Item::Class(_) | Item::Struct(_) | Item::Enum(_)
                         if decl.annotations.iter().any(|(ann, _)| ann.name == "if") =>
                     {
@@ -219,7 +205,7 @@ mod tests {
     #[test]
     fn community_diagnostics() {
         let (_, diags) = to_redmod(
-            "class Own {\n  persistent let p: Int32;\n  let name: String;\n}\n\n@addField(Own)\nlet extra: Int32;\n\nnative func ScriptLog(text: String);\n\nfunc F(o: ref<Own>, r: script_ref<Int32>) {\n  let a = IsDefined(o);\n  let b: String = ToString(1);\n  let c: Int32 = Deref(r);\n  let d: Float = RoundF(1.5);\n  let e: Int32 = Cast<Int32>(1 + 2);\n  let f: ref<Own> = new Own(1);\n  let g: String = \"say \\\"hi\\\"\";\n  let h: [Int32] = [EnumInt(E.A), 1];\n  let l = (x) -> x;\n}\n",
+            "class Own {\n  persistent let p: Int32;\n  let name: String;\n}\n\n@addField(Own)\nlet extra: Int32;\n\n@addField(GameObject)\nlet name: CName;\n\nnative func ScriptLog(text: String);\n\nfunc F(o: ref<Own>, r: script_ref<Int32>) {\n  let a = IsDefined(o);\n  let b: String = ToString(1);\n  let c: Int32 = Deref(r);\n  let d: Float = RoundF(1.5);\n  let e: Int32 = Cast<Int32>(1 + 2);\n  let f: ref<Own> = new Own(1);\n  let g: String = \"say \\\"hi\\\"\";\n  let h: [Int32] = [EnumInt(E.A), 1];\n  let l = (x) -> x;\n}\n",
             |m, cx| community(m, cx),
         );
         let mut codes = codes(&diags);
@@ -246,7 +232,7 @@ mod tests {
     #[test]
     fn reserved_field_names_and_conditional_types() {
         let (_, diags) = to_redmod(
-            "class C {\n  let event: Int32;\n  let hint: Int32;\n  let ok: Int32;\n}\n\n@if(ModuleExists(\"A\"))\nclass D {}\n\n@if(ModuleExists(\"A\"))\nstruct S {}\n\n@if(ModuleExists(\"A\"))\nenum E {\n  A = 0,\n}\n\n@if(ModuleExists(\"A\"))\nfunc F() {}\n",
+            "native class C {\n  native let event: Int32;\n  let hint: Int32;\n  let ok: Int32;\n}\n\nclass Renamed {\n  let event: Int32;\n}\n\n@if(ModuleExists(\"A\"))\nclass D {}\n\n@if(ModuleExists(\"A\"))\nstruct S {}\n\n@if(ModuleExists(\"A\"))\nenum E {\n  A = 0,\n}\n\n@if(ModuleExists(\"A\"))\nfunc F() {}\n",
             |m, cx| community(m, cx),
         );
         assert_eq!(
@@ -260,21 +246,5 @@ mod tests {
             ]
         );
         assert!(diags[0].message.contains("`event`"), "{}", diags[0]);
-    }
-
-    #[test]
-    fn chained_assignments() {
-        let (_, diags) = to_redmod(
-            "func F() {
-  let a: Int32;
-  let b: Int32;
-  a = b = 1;
-  a += b -= 1;
-  a = b + 1;
-}
-",
-            |m, cx| community(m, cx),
-        );
-        assert_eq!(codes(&diags), ["chained-assignment", "chained-assignment"]);
     }
 }

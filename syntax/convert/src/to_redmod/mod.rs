@@ -5,8 +5,10 @@ use redscript_ast::SourceModule;
 use crate::Cx;
 
 mod array_methods;
+mod chained_assign;
 mod empty_array;
 mod event_return;
+pub(crate) mod fields;
 mod float_literals;
 mod for_in;
 mod hoist;
@@ -32,6 +34,11 @@ pub fn run<'src>(module: &mut SourceModule<'src>, cx: &mut Cx<'_, 'src>) {
     typed_intrinsics::run(module, cx);
     // diagnostics are reported on the original AST, before any other rewrite
     crate::diagnostics::community(module, cx);
+
+    // first, the other passes see one assignment per statement
+    chained_assign::run(module, cx);
+    // while the receivers of the fields have their original spans and declared types
+    fields::run(module, cx);
 
     imports::run(module, cx);
     inline_body::run(module, cx);

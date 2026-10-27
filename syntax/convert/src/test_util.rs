@@ -4,7 +4,10 @@ use redscript_formatter::{
     FormatSettings, ParseOptions, parse_document_with_options, print_document,
 };
 
-use crate::{ConvertDiagnostic, ConvertOptions, Cx, NameArena, TypeHint, TypeQuery};
+use crate::{
+    BaseMethodInfo, ConvertDiagnostic, ConvertOptions, Cx, NameArena, SourceFields, TypeHint,
+    TypeQuery,
+};
 
 /// The id of the file the test sources are parsed as.
 pub fn test_file_id() -> FileId {
@@ -48,6 +51,8 @@ pub struct MapTypeQuery {
     source_classes: HashSet<String>,
     /// `const` methods, by class and name.
     const_methods: HashSet<(String, String)>,
+    /// What [`TypeQuery::base_method_info`] says about methods, by declaring class and name.
+    method_infos: HashMap<(String, String), BaseMethodInfo>,
 }
 
 impl MapTypeQuery {
@@ -106,6 +111,14 @@ impl MapTypeQuery {
     pub fn with_const_method(mut self, class: &str, method: &str) -> Self {
         self.const_methods
             .insert((class.to_owned(), method.to_owned()));
+        self
+    }
+
+    /// Declares what [`TypeQuery::base_method_info`] says about the method `method` of `class`,
+    /// for the overrides in its subclasses.
+    pub fn with_method_info(mut self, class: &str, method: &str, info: BaseMethodInfo) -> Self {
+        self.method_infos
+            .insert((class.to_owned(), method.to_owned()), info);
         self
     }
 
@@ -169,6 +182,14 @@ impl TypeQuery for MapTypeQuery {
         }))
     }
 
+    fn base_method_info(&self, class: &str, method: &str) -> Option<BaseMethodInfo> {
+        self.bases(class)?.iter().find_map(|base| {
+            self.method_infos
+                .get(&((*base).to_owned(), method.to_owned()))
+                .copied()
+        })
+    }
+
     fn type_of(&self, span: Span) -> Option<TypeHint> {
         self.types.get(&span).cloned()
     }
@@ -197,6 +218,34 @@ pub fn run_pass_with_types(
     types: Option<&dyn TypeQuery>,
     pass: impl for<'a, 'src> FnOnce(&mut SourceModule<'src>, &mut Cx<'a, 'src>),
 ) -> (String, Vec<ConvertDiagnostic>) {
+    run_pass_impl(src, from, to, types, None, pass)
+}
+
+/// Runs a pass converting community code to REDmod with the given options.
+pub fn run_pass_with_options(
+    src: &str,
+    types: Option<&dyn TypeQuery>,
+    fields: Option<&SourceFields>,
+    pass: impl for<'a, 'src> FnOnce(&mut SourceModule<'src>, &mut Cx<'a, 'src>),
+) -> (String, Vec<ConvertDiagnostic>) {
+    run_pass_impl(
+        src,
+        Dialect::Community,
+        Dialect::Redmod,
+        types,
+        fields,
+        pass,
+    )
+}
+
+fn run_pass_impl(
+    src: &str,
+    from: Dialect,
+    to: Dialect,
+    types: Option<&dyn TypeQuery>,
+    fields: Option<&SourceFields>,
+    pass: impl for<'a, 'src> FnOnce(&mut SourceModule<'src>, &mut Cx<'a, 'src>),
+) -> (String, Vec<ConvertDiagnostic>) {
     let arena = NameArena::new();
     let id = test_file_id();
     // like the driver, community sources are parsed in the 0.5.x compatibility mode
@@ -204,7 +253,7 @@ pub fn run_pass_with_types(
     assert!(errors.is_empty(), "{errors:?}");
     let mut doc = doc.unwrap();
     let mut diagnostics = vec![];
-    let opts = ConvertOptions { types };
+    let opts = ConvertOptions { types, fields };
     let mut cx = Cx {
         arena: &arena,
         diagnostics: &mut diagnostics,

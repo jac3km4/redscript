@@ -30,6 +30,8 @@ mod index;
 mod to_redmod;
 mod walk;
 
+pub use to_redmod::fields::SourceFields;
+
 #[cfg(test)]
 mod test_util;
 
@@ -146,6 +148,20 @@ impl TypeHint {
     }
 }
 
+/// What the type information knows about the method of a base class that a method overrides.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct BaseMethodInfo {
+    /// Whether the overridden method is native (`import` in REDmod sources).
+    pub is_native: bool,
+    /// Whether the class declaring the overridden method is native or `importonly`.
+    pub class_is_native: bool,
+    /// Whether the overridden method takes a `TweakDBID` parameter.
+    pub has_tweakdbid_param: bool,
+    /// Whether the class declaring the overridden method is declared by the converted sources
+    /// rather than by the game scripts.
+    pub from_sources: bool,
+}
+
 /// Type information for the source being converted, keyed by the exact span of each expression
 /// in the original source.
 pub trait TypeQuery {
@@ -189,6 +205,13 @@ pub trait TypeQuery {
     fn is_overridden_in_sources(&self, _class: &str, _method: &str) -> Option<bool> {
         None
     }
+    /// The non-static method `method` of the nearest base class of the class `class`
+    /// (qualified) that declares one, i.e. the method an override of `method` in `class`
+    /// overrides. When the base class declares several overloads, the flags are set when one of
+    /// them has them. `None` when the class is unknown or no base class declares the method.
+    fn base_method_info(&self, _class: &str, _method: &str) -> Option<BaseMethodInfo> {
+        None
+    }
 }
 
 #[derive(Default, Clone, Copy)]
@@ -196,12 +219,16 @@ pub struct ConvertOptions<'a> {
     /// Type information used in preference to the types recovered from the declarations of the
     /// module.
     pub types: Option<&'a dyn TypeQuery>,
+    /// The classes declared by all the files converted together, whose fields with reserved
+    /// names are renamed in every file. Only the classes of the module are known without it.
+    pub fields: Option<&'a SourceFields>,
 }
 
 impl fmt::Debug for ConvertOptions<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ConvertOptions")
             .field("types", &self.types.is_some())
+            .field("fields", &self.fields)
             .finish()
     }
 }

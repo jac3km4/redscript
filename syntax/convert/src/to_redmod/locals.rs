@@ -17,6 +17,7 @@ use redscript_ast::{
 
 use crate::Cx;
 use crate::index::{ModuleIndex, Names};
+use crate::to_redmod::fields::Resolver;
 use crate::walk::{
     MutVisitor, REDMOD_RESERVED, SExpr, SParam, SStmt, for_each_function, pattern_bindings_mut,
     walk_body, walk_expr, walk_stmt, walk_stmts,
@@ -24,12 +25,20 @@ use crate::walk::{
 
 pub fn run<'src>(module: &mut SourceModule<'src>, cx: &mut Cx<'_, 'src>) {
     let index = ModuleIndex::new(module);
+    // the fields renamed in the other files, unknown to the index and to the type information
+    let fields = cx.opts.fields.filter(|fields| !fields.is_empty());
+    let resolver = fields.map(|_| Resolver::of(module));
     for_each_function(module, |info, func| {
         let names = Names::of(func, cx.arena);
+        let renamed_fields = match (fields, &resolver, info.class) {
+            (Some(fields), Some(resolver), Some(class)) => fields.new_names_in(resolver, class),
+            _ => HashSet::new(),
+        };
         let mut renamer = Renamer {
             cx: &mut *cx,
             index: &index,
             class: info.class,
+            renamed_fields,
             names,
             scopes: vec![HashMap::new()],
             declared: HashSet::new(),
@@ -48,6 +57,8 @@ struct Renamer<'a, 'b, 'src> {
     index: &'a ModuleIndex<'src>,
     /// The class whose fields the variables of the function cannot shadow.
     class: Option<&'src str>,
+    /// The new names of the renamed fields of the class and of its bases.
+    renamed_fields: HashSet<String>,
     names: Names<'src>,
     scopes: Vec<HashMap<&'src str, &'src str>>,
     declared: HashSet<&'src str>,
@@ -119,6 +130,7 @@ impl<'src> Renamer<'_, '_, 'src> {
                 .types
                 .and_then(|types| types.class_has_field(class, name))
                 == Some(true)
+            || self.renamed_fields.contains(name)
     }
 
     fn lookup(&self, name: &str) -> Option<&'src str> {
@@ -363,5 +375,34 @@ mod tests {
             "{out}"
         );
         assert!(diags.is_empty(), "{diags:?}");
+    }
+
+    #[test]
+    fn locals_do_not_shadow_fields_renamed_in_other_files() {
+        use redscript_ast::Dialect;
+        use redscript_formatter::{ParseOptions, parse_document_with_options};
+
+        use crate::SourceFields;
+        use crate::test_util::{run_pass_with_options, test_file_id};
+
+        let base = "module Mod.A\npublic class Base {\n  public let hint: Int32;\n}\n";
+        let src = "module Mod.B\nimport Mod.A.*\n\nclass Sub extends Base {\n  func F(hint: Int32) -> Int32 {\n    let hint_ = 1;\n    return hint + hint_;\n  }\n}\n\nclass Other {\n  func G(hint: Int32) -> Int32 = hint;\n}\n";
+        let opts = ParseOptions::compat(Dialect::Community);
+        let (base_doc, _) = parse_document_with_options(base, test_file_id(), opts);
+        let (src_doc, _) = parse_document_with_options(src, test_file_id(), opts);
+        let fields = SourceFields::collect([&base_doc.unwrap().module, &src_doc.unwrap().module]);
+        let (out, _) = run_pass_with_options(src, None, Some(&fields), run);
+        let out = squash(&out);
+        assert!(
+            out.contains(
+                "function F(hint__1: Int32) -> Int32 { let hint__2 = 1; return hint__1 + hint__2; }"
+            ),
+            "{out}"
+        );
+        // the field is not inherited
+        assert!(
+            out.contains("function G(hint_: Int32) -> Int32 = hint_;"),
+            "{out}"
+        );
     }
 }

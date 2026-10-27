@@ -22,7 +22,7 @@ use redscript_compiler::symbol::FunctionSignature;
 use redscript_compiler::typechecker::{RecordKey, RecordedTypes, TypeRecords};
 use redscript_compiler::unit::CompilationUnit;
 use redscript_convert::driver::TypeCheckSummary;
-use redscript_convert::{ConvertDiagnostic, RefKind, Severity, TypeHint, TypeQuery};
+use redscript_convert::{BaseMethodInfo, ConvertDiagnostic, RefKind, Severity, TypeHint, TypeQuery};
 
 /// Type-checks the files `ids` of `map` against `pool` (the game scripts), which is modified.
 /// Files the 0.5 parser rejects are left out, their expressions have no types.
@@ -327,6 +327,16 @@ impl TypeOracle {
         self.methods(class, name).any(Self::is_overridable)
     }
 
+    /// Whether `func` takes a `TweakDBID` parameter.
+    fn has_tweakdbid_param(&self, func: &Function) -> bool {
+        func.parameters.iter().any(|&param| {
+            self.pool.parameter(param).is_ok_and(|param| {
+                matches!(self.pool.type_(param.type_), Ok(Type::Prim))
+                    && self.pool.def_name(param.type_).is_ok_and(|name| &*name == "TweakDBID")
+            })
+        })
+    }
+
     /// Whether `typ` is the class `class`, possibly through a strong reference.
     fn is_type_of(&self, typ: PoolIndex<Type>, class: PoolIndex<Class>) -> bool {
         let typ = match self.pool.type_(typ) {
@@ -406,6 +416,22 @@ impl TypeQuery for TypeOracle {
                 .any(|func| Self::is_overridable(func) && func.flags.is_const())
         });
         Some(res)
+    }
+
+    fn base_method_info(&self, class: &str, method: &str) -> Option<BaseMethodInfo> {
+        let id = self.class_id(class)?;
+        self.hierarchy(id).skip(1).find_map(|(base, class)| {
+            let overloads: Vec<_> = self
+                .methods(class, method)
+                .filter(|func| Self::is_overridable(func))
+                .collect();
+            (!overloads.is_empty()).then(|| BaseMethodInfo {
+                is_native: overloads.iter().any(|func| func.flags.is_native()),
+                class_is_native: class.flags.is_native() || class.flags.is_import_only(),
+                has_tweakdbid_param: overloads.iter().any(|func| self.has_tweakdbid_param(func)),
+                from_sources: self.is_from_sources(base),
+            })
+        })
     }
 
     fn is_overridden_in_sources(&self, class: &str, method: &str) -> Option<bool> {
@@ -868,5 +894,39 @@ class X {
         assert_eq!(oracle.class_has_field("A.X", "a"), Some(true));
         assert_eq!(oracle.class_has_field("B.X", "a"), Some(false));
         assert_eq!(oracle.class_has_field("X", "a"), None);
+    }
+
+    #[test]
+    fn base_method_infos_are_found() {
+        let src = "native func OperatorAdd(a: Int32, b: Int32) -> Int32;
+
+class Base extends GameObject {
+  func Plain() {}
+  func Tweak(id: TweakDBID) {}
+}
+
+class Sub extends Base {
+  func IsDone() -> Bool = true;
+  func Plain() {}
+  func Tweak(id: TweakDBID) {}
+  func Root() {}
+}
+";
+        let (oracle, _, _) = check(&[src]);
+        let info = |class, method| oracle.base_method_info(class, method);
+        let native = info("Sub", "IsDone").unwrap();
+        assert!(native.is_native && native.class_is_native && !native.from_sources);
+        assert!(!native.has_tweakdbid_param);
+        let tweak = info("Sub", "Tweak").unwrap();
+        assert!(tweak.has_tweakdbid_param && tweak.from_sources && !tweak.is_native);
+        assert!(!tweak.class_is_native);
+        let plain = info("Sub", "Plain").unwrap();
+        assert!(!plain.has_tweakdbid_param && !plain.is_native && plain.from_sources);
+        // the nearest base declaring the method
+        let root = info("Sub", "Root").unwrap();
+        assert!(root.is_native && !root.from_sources);
+        assert_eq!(info("Sub", "Missing"), None);
+        assert_eq!(info("Base", "Tweak"), None);
+        assert_eq!(info("Missing", "Plain"), None);
     }
 }

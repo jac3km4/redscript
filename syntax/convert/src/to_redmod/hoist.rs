@@ -58,6 +58,13 @@ impl<'src> Hoist<'src> {
             .push(let_stmt(local, Some((typ, syn)), Some(value), syn));
         ident(local, syn)
     }
+
+    /// Moves `expr` into a statement of its own before the statement, for its side effects. The
+    /// caller checks that the expression can move.
+    pub fn hoist_stmt(&mut self, expr: SExpr<'src>) {
+        let syn = synth(expr.1);
+        self.hoisted.push((Stmt::Expr(Box::new(expr)), syn));
+    }
 }
 
 /// Whether evaluating `expr` reads or changes state, beyond what its subexpressions do: the
