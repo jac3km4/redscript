@@ -66,10 +66,13 @@ fn format(source: &str, dialect: Dialect) -> String {
 fn trailing_comments_round_trip() {
     for &(src, dialect) in FIXTURES {
         let printed = format(src, dialect);
-        #[cfg(not(target_os = "windows"))]
+        if printed.contains('\r') {
+            eprintln!("Input contains CRLF: {}", src.contains("\r\n"));
+            eprintln!("Output contains CRLF: {}", printed.contains("\r\n"));
+            eprintln!("Input:  {src:?}");
+            eprintln!("Output: {printed:?}");
+        }
         assert!(!printed.contains('\r'));
-        #[cfg(target_os = "windows")]
-        assert!(!printed.contains("\r\n"));
 
         // each comment is printed exactly once
         assert_eq!(comments_of(src), comments_of(&printed), "{printed}");
