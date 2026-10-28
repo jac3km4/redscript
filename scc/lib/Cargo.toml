@@ -22,12 +22,6 @@ normpath = "1"
 fd-lock = "4"
 msgbox = { version = "0.7", optional = true }
 
-[dev-dependencies]
-pretty_assertions = "1"
-assert_fs = "1"
-assert_cmd = "2"
-predicates = "3"
-
 [features]
 popup = ["msgbox"]
 mmap = ["vmap"]
