@@ -66,7 +66,10 @@ fn format(source: &str, dialect: Dialect) -> String {
 fn trailing_comments_round_trip() {
     for &(src, dialect) in FIXTURES {
         let printed = format(src, dialect);
+        #[cfg(not(target_os = "windows"))]
         assert!(!printed.contains('\r'));
+        #[cfg(target_os = "windows")]
+        assert!(!printed.contains("\r\n"));
 
         // each comment is printed exactly once
         assert_eq!(comments_of(src), comments_of(&printed), "{printed}");
