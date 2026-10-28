@@ -26,7 +26,7 @@ use crate::source_map::{Files, SourceLoc};
 use crate::sugar::Desugar;
 use crate::symbol::{FunctionSignature, Import, ModulePath, Symbol, SymbolMap};
 use crate::transform::ExprTransformer;
-use crate::typechecker::{Callable, TypeChecker, TypedAst, collect_supertypes};
+use crate::typechecker::{Callable, TypeChecker, TypeRecords, TypedAst, collect_supertypes};
 
 type ProxyMap = HashMap<PoolIndex<Function>, PoolIndex<Function>>;
 
@@ -43,6 +43,7 @@ pub struct CompilationUnit<'a> {
     diagnostics: Vec<Diagnostic>,
     file_map: HashMap<PathBuf, PoolIndex<SourceFile>>,
     diagnostic_passes: Vec<Box<dyn DiagnosticPass + Send>>,
+    records: Option<TypeRecords>,
 }
 
 impl<'a> CompilationUnit<'a> {
@@ -78,7 +79,15 @@ impl<'a> CompilationUnit<'a> {
             diagnostics: vec![],
             file_map: HashMap::new(),
             diagnostic_passes: passes,
+            records: None,
         })
+    }
+
+    /// Records the types of the expressions of the function bodies while type-checking them,
+    /// they are returned in [`TypecheckOutput::type_records`].
+    pub fn with_type_records(mut self) -> Self {
+        self.records = Some(TypeRecords::default());
+        self
     }
 
     pub fn compile(mut self, modules: Vec<SourceModule>, files: &Files) -> Result<CompilationOutput, Error> {
@@ -100,6 +109,7 @@ impl<'a> CompilationUnit<'a> {
         let functions = self.check_modules(modules, files, desugar, permissive)?;
         Ok(TypecheckOutput {
             functions,
+            records: self.records,
             diagnostics: self.diagnostics,
             source_refs: self
                 .source_refs
@@ -286,7 +296,14 @@ impl<'a> CompilationUnit<'a> {
         // compile function bodies
         for item in self.function_bodies.drain(..) {
             let was_callback = item.was_callback;
-            match Self::compile_function(item, self.pool, desugar, permissive) {
+            match Self::compile_function(
+                item,
+                self.pool,
+                desugar,
+                permissive,
+                &mut self.records,
+                &mut self.diagnostics,
+            ) {
                 Ok((func, diagnostics)) => {
                     self.diagnostics.extend(diagnostics);
 
@@ -578,6 +595,7 @@ impl<'a> CompilationUnit<'a> {
             Some(type_) if type_ == TypeName::VOID => None,
             Some(type_) => {
                 let type_ = self.try_resolve_type(&type_, scope, decl.span)?;
+                self.mark_if_placeholder(&type_, spec.fun_idx);
                 match scope.get_type_index(&type_, self.pool) {
                     Ok(idx) => Some(idx),
                     Err(err) => {
@@ -608,6 +626,7 @@ impl<'a> CompilationUnit<'a> {
             let idx = self
                 .pool
                 .add_definition(Definition::param(name, spec.fun_idx.cast(), param));
+            self.mark_if_placeholder(&type_, idx);
             parameters.push(idx);
         }
 
@@ -689,6 +708,7 @@ impl<'a> CompilationUnit<'a> {
         }
 
         let type_ = self.try_resolve_type(&source.type_, scope, decl.span)?;
+        self.mark_if_placeholder(&type_, field_idx);
         let type_idx = match scope.get_type_index(&type_, self.pool) {
             Ok(idx) => idx,
             // permit invalid types here until the next release to avoid breaking existing code
@@ -1049,6 +1069,8 @@ impl<'a> CompilationUnit<'a> {
         pool: &mut ConstantPool,
         desugar: bool,
         permissive: bool,
+        records: &mut Option<TypeRecords>,
+        reported: &mut Vec<Diagnostic>,
     ) -> Result<(CompiledFunction, Vec<Diagnostic>), Error> {
         let fun = pool.function(item.index)?;
 
@@ -1069,7 +1091,21 @@ impl<'a> CompilationUnit<'a> {
         }
 
         let mut checker = TypeChecker::new(pool, permissive);
-        let checked = checker.check_seq(&item.code, &mut local_scope)?;
+        checker.set_records(records.take());
+        let checked = checker.check_seq(&item.code, &mut local_scope);
+        // the types recorded before an error are kept
+        *records = checker.take_records();
+        let checked = match checked {
+            Ok(checked) => checked,
+            Err(err) => {
+                // when recording types in permissive mode, the errors reported before the one that
+                // stopped the checking are kept too
+                if permissive && records.is_some() {
+                    reported.extend(checker.into_diagnostics());
+                }
+                return Err(err);
+            }
+        };
         let (diagnostics, mut locals) = checker.into_inner();
 
         let ast = if desugar {
@@ -1295,6 +1331,16 @@ impl<'a> CompilationUnit<'a> {
         }
     }
 
+    /// Remembers that the type of `index` is the placeholder of a type that could not be
+    /// resolved (see [`Self::try_resolve_type`]), when recording types.
+    fn mark_if_placeholder<A>(&mut self, type_: &TypeId, index: PoolIndex<A>) {
+        if let Some(records) = &mut self.records
+            && *type_ == TypeId::Null
+        {
+            records.mark_placeholder(index);
+        }
+    }
+
     fn report(&mut self, err: Error) -> Result<(), Error> {
         self.diagnostics.push(Diagnostic::from_error(err)?);
         Ok(())
@@ -1410,6 +1456,7 @@ impl CompilationOutput {
 #[derive(Debug, Default)]
 pub struct TypecheckOutput {
     functions: Vec<CompiledFunction>,
+    records: Option<TypeRecords>,
     diagnostics: Vec<Diagnostic>,
     source_refs: Vec<SourceRef>,
 }
@@ -1425,6 +1472,15 @@ impl TypecheckOutput {
 
     pub fn source_refs(&self) -> &[SourceRef] {
         &self.source_refs
+    }
+
+    /// The types recorded when enabled with [`CompilationUnit::with_type_records`].
+    pub fn type_records(&self) -> Option<&TypeRecords> {
+        self.records.as_ref()
+    }
+
+    pub fn into_parts(self) -> (Vec<CompiledFunction>, Vec<Diagnostic>, Option<TypeRecords>) {
+        (self.functions, self.diagnostics, self.records)
     }
 }
 

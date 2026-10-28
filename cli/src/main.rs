@@ -1,6 +1,9 @@
 use std::fs::{self, File};
 use std::io;
+use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
+use std::time::Instant;
 
 use anyhow::Context;
 use argh::FromArgs;
@@ -9,9 +12,12 @@ use redscript::bundle::ScriptBundle;
 use redscript::definition::AnyDefinition;
 use redscript_compiler::source_map::Files;
 use redscript_compiler::unit::CompilationUnit;
+use redscript_convert::driver::{self, DriverOptions, TypeCheck};
 use redscript_decompiler::files::FileIndex;
 use redscript_decompiler::print::{OutputMode, write_definition};
 use vmap::Map;
+
+mod type_oracle;
 
 /// redscript command line interface
 #[derive(Debug, FromArgs)]
@@ -26,6 +32,7 @@ enum Command {
     Decompile(DecompileOpts),
     Compile(CompileOpts),
     Lint(LintOpts),
+    Convert(ConvertOpts),
 }
 
 /// decompile a .redscripts file
@@ -77,6 +84,47 @@ struct LintOpts {
     bundle: Option<PathBuf>,
 }
 
+/// convert community (.reds) source code to the REDmod (.script) dialect
+#[derive(Debug, FromArgs)]
+#[argh(subcommand, name = "convert")]
+struct ConvertOpts {
+    /// path to an input source file or directory, can be repeated
+    #[argh(option, short = 's')]
+    src: Vec<PathBuf>,
+    /// target dialect, only `script` (REDmod, the default) is supported: converting `.script`
+    /// back to `.reds` is not supported
+    #[argh(option, long = "to")]
+    _to: Option<TargetDialect>,
+    /// output directory, files are written next to their sources by default
+    #[argh(option, short = 'o')]
+    output: Option<PathBuf>,
+    /// print the converted code to stdout instead of writing files
+    #[argh(switch)]
+    dry_run: bool,
+    /// overwrite output files that already exist
+    #[argh(switch)]
+    force: bool,
+    /// path to the game's .redscripts bundle (r6/cache/final.redscripts), the sources are
+    /// type-checked against it for a type-aware conversion to .script
+    #[argh(option, short = 'b')]
+    bundle: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TargetDialect;
+
+impl FromStr for TargetDialect {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "script" | "redmod" => Ok(Self),
+            "reds" | "community" => Err("converting .script back to .reds is not supported".to_owned()),
+            _ => Err(format!("unknown dialect: {s}, expected `script`")),
+        }
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     setup_logger();
 
@@ -100,6 +148,7 @@ fn run() -> anyhow::Result<()> {
         Command::Decompile(opts) => Ok(decompile(opts)?),
         Command::Compile(opts) => Ok(compile(opts)?),
         Command::Lint(opts) => Ok(lint(opts)?),
+        Command::Convert(opts) => convert(&opts),
     }
 }
 
@@ -188,6 +237,55 @@ fn lint(opts: LintOpts) -> anyhow::Result<()> {
         }
         None => Ok(()),
     }
+}
+
+fn convert(opts: &ConvertOpts) -> anyhow::Result<()> {
+    let driver_opts = DriverOptions {
+        src: &opts.src,
+        output: opts.output.as_deref(),
+        dry_run: opts.dry_run,
+        force: opts.force,
+    };
+    let outcome = driver::run(&driver_opts, |converter| -> anyhow::Result<_> {
+        let Some(bundle) = &opts.bundle else {
+            return Ok(converter.convert(None)?);
+        };
+        // the conversion does not depend on the type checking, it only loses the types
+        let bundle = match load_bundle(bundle) {
+            Ok(bundle) => bundle,
+            Err(err) => {
+                log::error!("{err:#}, converting without types");
+                return Ok(converter.convert(None)?);
+            }
+        };
+        let start = Instant::now();
+        let (map, files) = (converter.map(), converter.files());
+        // a failure of the 0.5 type checker, even a panic, only costs the types
+        let checked = panic::catch_unwind(AssertUnwindSafe(|| type_oracle::type_check(map, &files, bundle.pool)));
+        match checked {
+            Ok(Ok((oracle, summary))) => {
+                log::info!("type-checked the sources in {:.2?}", start.elapsed());
+                let types = TypeCheck {
+                    query: &oracle,
+                    summary,
+                };
+                Ok(converter.convert(Some(types))?)
+            }
+            Ok(Err(err)) => {
+                log::error!("failed to type-check the sources: {err}, converting without types");
+                Ok(converter.convert(None)?)
+            }
+            Err(_) => {
+                log::error!("the type checker failed, converting without types");
+                Ok(converter.convert(None)?)
+            }
+        }
+    })?;
+
+    if outcome.failed {
+        anyhow::bail!("Some sources could not be converted");
+    }
+    Ok(())
 }
 
 fn load_bundle(path: &Path) -> anyhow::Result<ScriptBundle> {

@@ -1,0 +1,9 @@
+max_width = 100
+unstable_features = true
+use_field_init_shorthand = true
+imports_granularity = "Module"
+reorder_imports = true
+group_imports = "StdExternalCrate"
+reorder_impl_items = true
+reorder_modules = true
+edition = "2024"

@@ -1,0 +1,120 @@
+// leading file comment
+@module "MyMod.Runtime"
+
+@using "OtherMod.Utils"
+@using "Third.Party"
+
+/// A documented enum
+enum EState {
+  Idle = 0,
+  Running = 1,
+  Done
+}
+
+import function ScriptLog(const text : string);
+
+/* block comment before a struct */
+struct Point {
+  // x coordinate
+  let x : Float;
+  var y : Float = 1.5;
+  var fixed : Int32[3];
+}
+
+/// Documented class
+class Widget extends inkWidget {
+  // fields
+  let name : String = "a\u{22}quoted\u{22} \\ string\n\ttab";
+  let tag : CName = n"Plain";
+  let rich : CName = 'say "hi"';
+  let id : TweakDBID = T"Items.Foo";
+  let res : ResRef = R"base\\gamedata\\foo.json";
+  let items : array<Int32>;
+  let nested : array<array<wref<Widget>>>;
+  let weak : wref<Widget>;
+  let sref : script_ref<String>;
+
+  // event handler
+  event OnHoverOver(e : inkPointerEvent, optional extra : Int32) {
+    // set the state
+    this.SetHovered(true);
+  }
+
+  /// override documentation
+  private override function OnAttach() -> Void {
+    super.OnAttach();
+  }
+
+  public static function Make(out result : Widget, const count : Int32) -> Widget {
+    let w : Widget = new Widget;
+    let v : Widget = new Widget(1, 2);
+    return w;
+  }
+
+  @wrapMethod(Widget)
+  function GetItems() -> array<Int32> {
+    let list : array<Int32> = GetItems();
+    return list;
+  }
+
+  protected final function Control(a : Int32, b : Int32) -> Int32 {
+    // locals
+    let i : Int32 = 0;
+    var total : Int32 = (Int32)a + b;
+    let flag : Bool = a > b && !(b == 0);
+    let obj : Widget = NULL;
+
+    /* condition with block comment */
+    if (a > 0) {
+      // positive
+      total += a;
+    } else if (a < 0) {
+      total -= a;
+    } else {
+      total = 0;
+    }
+
+    while (i < 10) {
+      i += 1;
+      if (i == 5) {
+        continue;
+      }
+      if (i == 8) {
+        break;
+      }
+    }
+
+    for (i = 0; i < b; i += 1) {
+      // loop body
+      total += i * 2;
+    }
+
+    for (let j : Int32 = 0; j < 3; j += 1) {
+      total += j;
+    }
+
+    switch (a) {
+      case 1:
+        // one
+        total = 1;
+        break;
+      case 2:
+        total = 2;
+        break;
+      default:
+        total = 3;
+    }
+
+    let arr : array<Int32> = [1, 2, 3];
+    let first : Int32 = arr[0];
+    let cast : Widget = obj as Widget;
+    let ternary : Int32 = a > b ? a : b;
+    let neg : Int32 = -a;
+    let key : EInputKey = (EInputKey)(1);
+    let len : Int32 = ArraySize(arr) + /* inline comment */ 1;
+
+    return total /* trailing */;
+  }
+}
+
+// trailing comment at the end

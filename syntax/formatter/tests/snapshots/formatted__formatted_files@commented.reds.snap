@@ -1,0 +1,7 @@
+---
+source: crates/syntax/formatter/tests/formatted.rs
+expression: module
+input_file: crates/syntax/formatter/tests/data/commented.reds
+snapshot_kind: text
+---
+// the entire file is commented out
