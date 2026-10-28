@@ -1,3 +1,6 @@
 /target
 /debug
 /.vscode/launch.json
+/workflow
+modioErrorLog.json
+REDmodLog.txt
