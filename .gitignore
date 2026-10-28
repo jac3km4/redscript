@@ -1,6 +1,10 @@
 /target
 /debug
 /.vscode/launch.json
+/.claude
 /workflow
 modioErrorLog.json
 REDmodLog.txt
+/reds
+/sandbox
+justfile
