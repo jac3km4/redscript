@@ -159,6 +159,8 @@ method forms on the right.
 | `ArrayErase(a, i)` | `a.Erase(i)` |
 | `ArrayLast(a)` | `a.Last()` |
 
+An object also works as an operand of `&&`, `||` and `!` in a condition: `if (obj && obj.IsOn())`, `if (!obj)`.
+
 ### `Cast<T>`
 
 - The generic argument is always required.
