@@ -1,8 +1,10 @@
+use redscript_ast::Span;
 use thiserror::Error;
 
 use crate::lower::InferredTypeApp;
 use crate::symbols::AnyBaseType;
 use crate::utils::ScopedMap;
+use crate::visitor::Visitor;
 use crate::{
     CoalesceError, FieldId, FreeFunctionIndex, FunctionType, LoweredFunction, MethodId, PolyType,
     Symbols, Type, TypeApp, TypeError, TypeId, ir, predef,
@@ -56,7 +58,8 @@ impl<'ctx> From<TypeError<'ctx>> for QueryError<'ctx> {
 /// Returns the type of a lowered expression using its function's local table.
 ///
 /// The expression and function must come from the supplied symbol table. Expressions
-/// inside a closure require that closure's local table, not the enclosing function's.
+/// inside closures use the outermost enclosing function, including for captures,
+/// parameters, and locals of nested closures.
 /// Conditional types use the same least-upper-bound operation as lowering. A null
 /// literal has no retained contextual type; it can only be resolved here when a
 /// conditional's other branch supplies one. Coalescing may populate IR type caches.
@@ -116,8 +119,7 @@ pub fn expr_type<'ctx>(
                 .map_err(QueryError::from);
         }
         &ir::Expr::Local(local, _) | &ir::Expr::Capture(local, _) => {
-            return function
-                .find_local(local)
+            return find_local(function, local)
                 .ok_or(QueryError::MissingLocal(local))?
                 .coalesce(symbols)
                 .map_err(QueryError::from);
@@ -126,6 +128,30 @@ pub fn expr_type<'ctx>(
         ir::Expr::Null { .. } => return Err(QueryError::UnknownNullType),
     };
     Ok(typ.coalesced(symbols)?.into_type())
+}
+
+fn find_local<'ctx>(function: &LoweredFunction<'ctx>, local: ir::Local) -> Option<PolyType<'ctx>> {
+    if let Some(typ) = function.find_local(local) {
+        return Some(typ.clone());
+    }
+    struct FindLocal<'ctx> {
+        local: ir::Local,
+        typ: Option<PolyType<'ctx>>,
+    }
+    impl<'ctx> Visitor<'ctx> for FindLocal<'ctx> {
+        fn visit_new_closure(&mut self, closure: &ir::Closure<'ctx>, _: Span) {
+            // Lowering shares the local ID counter across the function and all
+            // nested closures, so a capture retains its original local's ID.
+            if let Some(info) = closure.locals.iter().find(|info| info.id == self.local) {
+                self.typ = Some(info.typ.clone());
+            } else if self.typ.is_none() {
+                self.visit_block(&closure.block);
+            }
+        }
+    }
+    let mut finder = FindLocal { local, typ: None };
+    finder.visit_block(&function.block);
+    finder.typ
 }
 
 fn reference_type<'ctx>(

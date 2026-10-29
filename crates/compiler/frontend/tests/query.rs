@@ -295,6 +295,49 @@ fn substitutes_generic_calls_and_inherited_fields() {
 }
 
 #[test]
+fn closure_queries_use_the_enclosing_function() {
+    let source = r#"
+        func Captured(value: Int32) -> () -> Int32 { return () -> value; }
+        func Parameter(outer: Int32) -> (String) -> String { return (inner: String) -> inner; }
+        func Local() -> () -> Int32 { return () -> { let local = 1; return local; }; }
+        func Nested(value: Int32) -> (String) -> () -> String {
+          return (inner: String) -> () -> inner;
+        }
+        func Deep(value: Int32) -> () -> () -> Int32 { return () -> () -> value; }
+        class Holder {
+          public func CaptureThis() -> () -> Holder { return () -> this; }
+        }
+    "#;
+    let sources = SourceMap::new();
+    sources.push_back("query.reds", source);
+    let interner = TypeInterner::default();
+    let (unit, symbols) = lower(&sources, &interner);
+    for (marker, name, expected) in [
+        ("() -> value;", "value", Type::nullary(predef::INT32)),
+        ("-> inner;", "inner", Type::nullary(predef::STRING)),
+        ("return local;", "local", Type::nullary(predef::INT32)),
+        ("() -> inner;", "inner", Type::nullary(predef::STRING)),
+        ("() -> () -> value;", "value", Type::nullary(predef::INT32)),
+        (
+            "() -> this;",
+            "this",
+            Type::nullary(interner.intern("Holder")),
+        ),
+    ] {
+        let pos = (source.find(marker).unwrap() + marker.find(name).unwrap()) as u32;
+        let (function, expr) = unit
+            .all_functions()
+            .find_map(|function| Some((function, function.block.find_at(pos)?)))
+            .unwrap();
+        assert_eq!(
+            expr_type(expr, function, &symbols).unwrap(),
+            expected,
+            "{marker}"
+        );
+    }
+}
+
+#[test]
 fn invalid_queries_return_errors() {
     let sources = SourceMap::new();
     let file = sources.push_back("query.reds", " ");
