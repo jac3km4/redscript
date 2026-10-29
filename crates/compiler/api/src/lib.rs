@@ -68,6 +68,13 @@ impl<'ctx> CheckedSources<'ctx> {
         &self.diagnostics
     }
 
+    /// Whether source diagnostics block emission under the configured policy.
+    /// Code generation may still fail independently.
+    pub fn has_fatal_errors(&self) -> bool {
+        self.diagnostics
+            .has_fatal_errors(self.fatal_diagnostic_level)
+    }
+
     pub fn fatal_diagnostic_level(&self) -> DiagnosticLevel {
         self.fatal_diagnostic_level
     }
@@ -129,10 +136,7 @@ impl<'ctx> Compilation<'ctx> {
 
     /// Generates the output bundle without performing filesystem I/O.
     pub fn emit(mut self) -> Result<CompilationArtifact<'ctx>, EmitError<'ctx>> {
-        if self
-            .diagnostics
-            .has_fatal_errors(self.fatal_diagnostic_level)
-        {
+        if self.has_fatal_errors() {
             return Err(EmitError::FatalErrors(self.diagnostics, self.symbols));
         }
 
@@ -180,6 +184,17 @@ impl<'ctx> Compilation<'ctx> {
 
     pub fn diagnostics(&self) -> &Diagnostics<'ctx> {
         &self.diagnostics
+    }
+
+    /// Whether source diagnostics block emission under the configured policy.
+    /// Code generation may still fail independently.
+    pub fn has_fatal_errors(&self) -> bool {
+        self.diagnostics
+            .has_fatal_errors(self.fatal_diagnostic_level)
+    }
+
+    pub fn fatal_diagnostic_level(&self) -> DiagnosticLevel {
+        self.fatal_diagnostic_level
     }
 }
 
@@ -391,6 +406,44 @@ mod tests {
             [5, 3, 2, 4, 1, 0].map(|i| diagnostics.0[i].to_string())
         );
         assert_eq!(diagnostics.0[0].span().file, z);
+    }
+
+    #[test]
+    fn fatal_policy_is_shared_by_checking_compilation_and_emission() {
+        for (threshold, fatal) in [
+            (DiagnosticLevel::ErrorAllowedAtRuntime, true),
+            (DiagnosticLevel::Error, false),
+        ] {
+            let sources = SourceMap::new();
+            let file = sources.push_back("policy.reds", "func Test() {}\n");
+            let interner = TypeInterner::default();
+            let diagnostic = || {
+                Diagnostic::Other(
+                    Box::new(std::io::Error::other("runtime-allowed error")),
+                    DiagnosticLevel::ErrorAllowedAtRuntime,
+                    ast::Span::new(0, 1, file),
+                )
+            };
+            let mut checked = CheckedSources::builder()
+                .sources(&sources)
+                .symbols(Symbols::with_default_types())
+                .type_interner(&interner)
+                .fatal_diagnostic_level(threshold)
+                .check();
+            checked.diagnostics.push(diagnostic());
+            assert_eq!(checked.has_fatal_errors(), fatal);
+            assert_eq!(checked.fatal_diagnostic_level(), threshold);
+
+            let mut compilation = compile(&sources, &interner);
+            compilation.fatal_diagnostic_level = threshold;
+            compilation.diagnostics.push(diagnostic());
+            assert_eq!(compilation.has_fatal_errors(), fatal);
+            assert_eq!(compilation.fatal_diagnostic_level(), threshold);
+            assert_eq!(
+                matches!(compilation.emit(), Err(EmitError::FatalErrors(..))),
+                fatal
+            );
+        }
     }
 
     #[test]

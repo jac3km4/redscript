@@ -274,10 +274,7 @@ fn lint(opts: LintOpts) -> anyhow::Result<ExitCode> {
     comp.diagnostics()
         .dump(&sources, DiagnosticLevel::from(opts.warn_level))?;
 
-    if comp
-        .diagnostics()
-        .has_fatal_errors(DiagnosticLevel::ErrorAllowedAtRuntime)
-    {
+    if comp.has_fatal_errors() {
         log::info!("Compilation failed");
         Ok(ExitCode::FAILURE)
     } else {
