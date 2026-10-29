@@ -1,0 +1,17 @@
+---
+source: crates/compiler/backend/tests/bytecode.rs
+expression: "BytecodePrinter::new(&bundle, bundle_len)"
+input_file: crates/compiler/backend/tests/data/weak-cast-receiver.reds
+---
+// Leaf::Method; (f0)
+
+// Test;Base (f1)
+ctx 49
+wref.to_ref
+ctx 29
+wref.to_ref
+wref.dyncast 0
+param 0
+object.field 0
+invoke.virtual j16 l12 f0 0000000000000000
+param.end
