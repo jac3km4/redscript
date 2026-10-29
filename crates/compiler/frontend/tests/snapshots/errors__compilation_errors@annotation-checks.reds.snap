@@ -3,22 +3,26 @@ source: crates/compiler/frontend/tests/errors.rs
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/annotation-checks.reds
 ---
-[INVALID_ANN_USE] At tests/data/annotation-checks.reds:6:13
-@wrapMethod(UserClass)
-            ^^^^^^^^^
-this annotation attempts to modify a user-defined symbol, which is not allowed
+error[INVALID_ANN_USE]: this annotation attempts to modify a user-defined symbol, which is not allowed
+ --> tests/data/annotation-checks.reds:6:13
+  |
+6 | @wrapMethod(UserClass)
+  |             ^^^^^^^^^
 
-[UNRESOLVED_TYPE] At tests/data/annotation-checks.reds:10:13
-@wrapMethod(NonExistingClass)
-            ^^^^^^^^^^^^^^^^
-`NonExistingClass` is not a known type
+error[UNRESOLVED_TYPE]: `NonExistingClass` is not a known type
+ --> tests/data/annotation-checks.reds:10:13
+   |
+10 | @wrapMethod(NonExistingClass)
+   |             ^^^^^^^^^^^^^^^^
 
-[INVALID_ANN_USE] At tests/data/annotation-checks.reds:11:6
-func HelloWorld(x: String) {
-     ^^^^^^^^^^
-could not find a method with a matching signature for the `@wrapMethod(NonExistingClass)` annotation
+error[INVALID_ANN_USE]: could not find a method with a matching signature for the `@wrapMethod(NonExistingClass)` annotation
+ --> tests/data/annotation-checks.reds:11:6
+   |
+11 | func HelloWorld(x: String) {
+   |      ^^^^^^^^^^
 
-[INVALID_ANN_USE] At tests/data/annotation-checks.reds:15:6
-func ForbiddenGenericAnnotatedMethod<A>(a: A) {
-     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-annotated methods cannot be generic
+error[INVALID_ANN_USE]: annotated methods cannot be generic
+ --> tests/data/annotation-checks.reds:15:6
+   |
+15 | func ForbiddenGenericAnnotatedMethod<A>(a: A) {
+   |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

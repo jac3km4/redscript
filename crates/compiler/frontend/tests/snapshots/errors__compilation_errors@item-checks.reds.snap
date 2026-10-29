@@ -3,12 +3,14 @@ source: crates/compiler/frontend/tests/errors.rs
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/item-checks.reds
 ---
-[UNRESOLVED_IMPORT] At tests/data/item-checks.reds:1:1
-import NonExisting
-^^^^^^^^^^^^^^^^^^
-`NonExisting` could not be found
+error[UNRESOLVED_IMPORT]: `NonExisting` could not be found
+ --> tests/data/item-checks.reds:1:1
+  |
+1 | import NonExisting
+  | ^^^^^^^^^^^^^^^^^^
 
-[UNEXPECTED_ITEM] At tests/data/item-checks.reds:3:5
-let badTopLevelField: CName;
-    ^^^^^^^^^^^^^^^^
-items of this type are not allowed here
+error[UNEXPECTED_ITEM]: items of this type are not allowed here
+ --> tests/data/item-checks.reds:3:5
+  |
+3 | let badTopLevelField: CName;
+  |     ^^^^^^^^^^^^^^^^

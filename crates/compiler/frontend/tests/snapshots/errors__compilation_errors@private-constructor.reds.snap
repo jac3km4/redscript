@@ -3,7 +3,8 @@ source: crates/compiler/frontend/tests/errors.rs
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/private-constructor.reds
 ---
-[PRIVATE_CONSTRUCTOR] At tests/data/private-constructor.reds:10:11
-  let _ = new PrivateConstructor(); // Error
-          ^^^^^^^^^^^^^^^^^^^^^^^^
-use `PrivateConstructor.New` instead of the `new` operator
+error[PRIVATE_CONSTRUCTOR]: use `PrivateConstructor.New` instead of the `new` operator
+ --> tests/data/private-constructor.reds:10:11
+   |
+10 |   let _ = new PrivateConstructor(); // Error
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^

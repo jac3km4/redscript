@@ -132,10 +132,10 @@ impl<'ctx> Diagnostics<'ctx> {
             }
 
             if diagnostic.is_error() {
-                log::error!("{}", diagnostic.display(sources)?);
+                log::error!(target: "redscript::diagnostic", "{}", diagnostic.display(sources)?);
                 errors += 1;
             } else {
-                log::warn!("{}", diagnostic.display(sources)?);
+                log::warn!(target: "redscript::diagnostic", "{}", diagnostic.display(sources)?);
                 warnings += 1;
             }
         }

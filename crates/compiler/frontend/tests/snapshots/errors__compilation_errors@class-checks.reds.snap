@@ -3,134 +3,160 @@ source: crates/compiler/frontend/tests/errors.rs
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/class-checks.reds
 ---
-[SYM_REDEFINITION] At tests/data/class-checks.reds:25:7
-class ClassDefinedTwice {}
-      ^^^^^^^^^^^^^^^^^
-this name is already defined in the scope
+error[SYM_REDEFINITION]: this name is already defined in the scope
+ --> tests/data/class-checks.reds:25:7
+   |
+25 | class ClassDefinedTwice {}
+   |       ^^^^^^^^^^^^^^^^^
 
-[INVALID_ANN_USE] At tests/data/class-checks.reds:21:1
-@badAnnotation()
-^^^^^^^^^^^^^^^^
-`badAnnotation` is not a valid annotation in this context
+error[INVALID_ANN_USE]: `badAnnotation` is not a valid annotation in this context
+ --> tests/data/class-checks.reds:21:1
+   |
+21 | @badAnnotation()
+   | ^^^^^^^^^^^^^^^^
 
-[UNEXPECTED_NATIVE] At tests/data/class-checks.reds:51:14
-  native let field: Int32;
-             ^^^^^
-scripted types are not allowed to have native members
+error[UNEXPECTED_NATIVE]: scripted types are not allowed to have native members
+ --> tests/data/class-checks.reds:51:14
+   |
+51 |   native let field: Int32;
+   |              ^^^^^
 
-[UNEXPECTED_NATIVE] At tests/data/class-checks.reds:53:15
-  native func NativeMethod()
-              ^^^^^^^^^^^^
-scripted types are not allowed to have native members
+error[UNEXPECTED_NATIVE]: scripted types are not allowed to have native members
+ --> tests/data/class-checks.reds:53:15
+   |
+53 |   native func NativeMethod()
+   |               ^^^^^^^^^^^^
 
-[INVALID_PERSISTENT] At tests/data/class-checks.reds:57:18
-  persistent let string: String;
-                 ^^^^^^
-strings, variants and resources cannot be marked as persistent
+error[INVALID_PERSISTENT]: strings, variants and resources cannot be marked as persistent
+ --> tests/data/class-checks.reds:57:18
+   |
+57 |   persistent let string: String;
+   |                  ^^^^^^
 
-[INVALID_PERSISTENT] At tests/data/class-checks.reds:58:18
-  persistent let variant: Variant;
-                 ^^^^^^^
-strings, variants and resources cannot be marked as persistent
+error[INVALID_PERSISTENT]: strings, variants and resources cannot be marked as persistent
+ --> tests/data/class-checks.reds:58:18
+   |
+58 |   persistent let variant: Variant;
+   |                  ^^^^^^^
 
-[INVALID_PERSISTENT] At tests/data/class-checks.reds:59:18
-  persistent let res: ResRef;
-                 ^^^
-strings, variants and resources cannot be marked as persistent
+error[INVALID_PERSISTENT]: strings, variants and resources cannot be marked as persistent
+ --> tests/data/class-checks.reds:59:18
+   |
+59 |   persistent let res: ResRef;
+   |                  ^^^
 
-[MISSING_BODY] At tests/data/class-checks.reds:67:8
-  func MethodA(a: A)
-       ^^^^^^^
-this function must have a body
+error[MISSING_BODY]: this function must have a body
+ --> tests/data/class-checks.reds:67:8
+   |
+67 |   func MethodA(a: A)
+   |        ^^^^^^^
 
-[MISSING_BODY] At tests/data/class-checks.reds:68:8
-  func MethodB() -> B
-       ^^^^^^^
-this function must have a body
+error[MISSING_BODY]: this function must have a body
+ --> tests/data/class-checks.reds:68:8
+   |
+68 |   func MethodB() -> B
+   |        ^^^^^^^
 
-[NON_STATIC_STRUCT_FN] At tests/data/class-checks.reds:47:8
-  func Method() {}
-       ^^^^^^
-struct methods must be static
+error[NON_STATIC_STRUCT_FN]: struct methods must be static
+ --> tests/data/class-checks.reds:47:8
+   |
+47 |   func Method() {}
+   |        ^^^^^^
 
-[SYM_REDEFINITION] At tests/data/class-checks.reds:87:21
-@nameImplementation(ClashingIntStruct as GenericStruct<Int32>)
-                    ^^^^^^^^^^^^^^^^^
-this name is already defined in the scope
+error[SYM_REDEFINITION]: this name is already defined in the scope
+ --> tests/data/class-checks.reds:87:21
+   |
+87 | @nameImplementation(ClashingIntStruct as GenericStruct<Int32>)
+   |                     ^^^^^^^^^^^^^^^^^
 
-[DUP_IMPL] At tests/data/class-checks.reds:89:46
-@nameImplementation(DuplicateStringStruct as GenericStruct<String>)
-                                             ^^^^^^^^^^^^^^^^^^^^^
-this implementation is a duplicate of a previous one
+error[DUP_IMPL]: this implementation is a duplicate of a previous one
+ --> tests/data/class-checks.reds:89:46
+   |
+89 | @nameImplementation(DuplicateStringStruct as GenericStruct<String>)
+   |                                              ^^^^^^^^^^^^^^^^^^^^^
 
-[INVALID_BASE] At tests/data/class-checks.reds:4:7
-class ClassExtendingStruct extends Struct {}
-      ^^^^^^^^^^^^^^^^^^^^
-this type cannot inherit from a struct
+error[INVALID_BASE]: this type cannot inherit from a struct
+ --> tests/data/class-checks.reds:4:7
+  |
+4 | class ClassExtendingStruct extends Struct {}
+  |       ^^^^^^^^^^^^^^^^^^^^
 
-[INVALID_BASE] At tests/data/class-checks.reds:19:7
-class ClassExtendingPrimitive extends Int32 {}
-      ^^^^^^^^^^^^^^^^^^^^^^^
-this type cannot inherit from a primitive
+error[INVALID_BASE]: this type cannot inherit from a primitive
+ --> tests/data/class-checks.reds:19:7
+   |
+19 | class ClassExtendingPrimitive extends Int32 {}
+   |       ^^^^^^^^^^^^^^^^^^^^^^^
 
-[INVALID_TYPE_ARG_COUNT] At tests/data/class-checks.reds:37:7
-class ClassWithInvalidTypeArgCounts extends AbstractClass<Int32, Int32> {
-      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-type `AbstractClass` expects 1 type arguments
+error[INVALID_TYPE_ARG_COUNT]: type `AbstractClass` expects 1 type arguments
+ --> tests/data/class-checks.reds:37:7
+   |
+37 | class ClassWithInvalidTypeArgCounts extends AbstractClass<Int32, Int32> {
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-[INVALID_TYPE_ARG_COUNT] At tests/data/class-checks.reds:38:7
-  let field: AbstractClass;
-      ^^^^^
-type `AbstractClass` expects 1 type arguments
+error[INVALID_TYPE_ARG_COUNT]: type `AbstractClass` expects 1 type arguments
+ --> tests/data/class-checks.reds:38:7
+   |
+38 |   let field: AbstractClass;
+   |       ^^^^^
 
-[INVALID_TYPE_ARG_COUNT] At tests/data/class-checks.reds:40:15
-  func Method(a: AbstractClass) -> AbstractClass<String, String> {}
-              ^^^^^^^^^^^^^^^^
-type `AbstractClass` expects 1 type arguments
+error[INVALID_TYPE_ARG_COUNT]: type `AbstractClass` expects 1 type arguments
+ --> tests/data/class-checks.reds:40:15
+   |
+40 |   func Method(a: AbstractClass) -> AbstractClass<String, String> {}
+   |               ^^^^^^^^^^^^^^^^
 
-[INVALID_BASE] At tests/data/class-checks.reds:43:7
-class CircularClassA extends CircularClassB {}
-      ^^^^^^^^^^^^^^
-this class circularly extends itself
+error[INVALID_BASE]: this class circularly extends itself
+ --> tests/data/class-checks.reds:43:7
+   |
+43 | class CircularClassA extends CircularClassB {}
+   |       ^^^^^^^^^^^^^^
 
-[INVALID_VARIANCE] At tests/data/class-checks.reds:67:16
-  func MethodA(a: A)
-               ^^^^
-the type `A` appears in contravariant position, which is incompatible with its declaration
+error[INVALID_VARIANCE]: the type `A` appears in contravariant position, which is incompatible with its declaration
+ --> tests/data/class-checks.reds:67:16
+   |
+67 |   func MethodA(a: A)
+   |                ^^^^
 
-[INVALID_VARIANCE] At tests/data/class-checks.reds:68:8
-  func MethodB() -> B
-       ^^^^^^^
-the type `B` appears in covariant position, which is incompatible with its declaration
+error[INVALID_VARIANCE]: the type `B` appears in covariant position, which is incompatible with its declaration
+ --> tests/data/class-checks.reds:68:8
+   |
+68 |   func MethodB() -> B
+   |        ^^^^^^^
 
-[UNSASTISFIED_BOUND] At tests/data/class-checks.reds:80:7
-class ClassViolatingBound extends ClassWithBound<Chair> {}
-      ^^^^^^^^^^^^^^^^^^^
-type `Chair` does not satisfy expected bound `Animal`
+error[UNSASTISFIED_BOUND]: type `Chair` does not satisfy expected bound `Animal`
+ --> tests/data/class-checks.reds:80:7
+   |
+80 | class ClassViolatingBound extends ClassWithBound<Chair> {}
+   |       ^^^^^^^^^^^^^^^^^^^
 
-[DUP_METHOD] At tests/data/class-checks.reds:27:7
-class ClassWithDuplicateMethod {
-      ^^^^^^^^^^^^^^^^^^^^^^^^
-this class contains a duplicated implementation of the `Method` method
+error[DUP_METHOD]: this class contains a duplicated implementation of the `Method` method
+ --> tests/data/class-checks.reds:27:7
+   |
+27 | class ClassWithDuplicateMethod {
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^
 
-[MISSING_IMPL] At tests/data/class-checks.reds:13:7
-class IncompleteClass extends AbstractClass<Int32> {}
-      ^^^^^^^^^^^^^^^
-this class is missing some required method implementation(s):
+error[MISSING_IMPL]: this class is missing some required method implementation(s):
   func UnimplementedMethod(a: Int32) -> Void
+ --> tests/data/class-checks.reds:13:7
+   |
+13 | class IncompleteClass extends AbstractClass<Int32> {}
+   |       ^^^^^^^^^^^^^^^
 
-[FINAL_FN_OVERRIDE] At tests/data/class-checks.reds:32:7
-class ClassOverridingFinalMethod extends AbstractClass<Int32> {
-      ^^^^^^^^^^^^^^^^^^^^^^^^^^
-this class overrides a final method `FinalMethod`
+warning[FINAL_FN_OVERRIDE]: this class overrides a final method `FinalMethod`
+ --> tests/data/class-checks.reds:32:7
+   |
+32 | class ClassOverridingFinalMethod extends AbstractClass<Int32> {
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-[MISSING_IMPL] At tests/data/class-checks.reds:37:7
-class ClassWithInvalidTypeArgCounts extends AbstractClass<Int32, Int32> {
-      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-this class is missing some required method implementation(s):
+error[MISSING_IMPL]: this class is missing some required method implementation(s):
   func UnimplementedMethod(a: Int32) -> Void
+ --> tests/data/class-checks.reds:37:7
+   |
+37 | class ClassWithInvalidTypeArgCounts extends AbstractClass<Int32, Int32> {
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-[CALLING_BASE_STATIC_METHOD] At tests/data/class-checks.reds:93:3
-  CompleteClass.StaticMethod(42);
-  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-calling a static method of `AbstractClass` from its subclass, use `AbstractClass.StaticMethod` instead
+warning[CALLING_BASE_STATIC_METHOD]: calling a static method of `AbstractClass` from its subclass, use `AbstractClass.StaticMethod` instead
+ --> tests/data/class-checks.reds:93:3
+   |
+93 |   CompleteClass.StaticMethod(42);
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -157,7 +157,11 @@ impl Error {
         let span = self.span();
         let file = sources.get(span.file)?;
         let snippet = ast::SourceSnippet::new(file, span)?;
-        Some(ErrorDisplay { file, snippet, err: self })
+        Some(ErrorDisplay {
+            file,
+            snippet,
+            err: self,
+        })
     }
 
     pub fn span(&self) -> Span {
@@ -198,16 +202,16 @@ struct ErrorDisplay<'a> {
 impl fmt::Display for ErrorDisplay<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let start = self.snippet.start();
+        writeln!(f, "error: {}", self.err)?;
         writeln!(
             f,
-            "At {}:{}:{}",
+            " --> {}:{}:{}",
             self.file.path().display(),
             start.line + 1,
             start.col + 1
         )?;
 
-        write!(f, "{}", self.snippet)?;
-        writeln!(f, "{}", self.err)
+        write!(f, "{}", self.snippet)
     }
 }
 

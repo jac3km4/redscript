@@ -202,8 +202,12 @@ fn main() -> anyhow::Result<ExitCode> {
     let colors = fern::colors::ColoredLevelConfig::default();
     fern::Dispatch::new()
         .format(move |out, message, record| {
-            let level = colors.color(record.level());
-            out.finish(format_args!("[{level}] {message}"));
+            if record.target() == "redscript::diagnostic" {
+                out.finish(format_args!("{message}"));
+            } else {
+                let level = colors.color(record.level());
+                out.finish(format_args!("[{level}] {message}"));
+            }
         })
         .chain(std::io::stdout())
         .apply()?;

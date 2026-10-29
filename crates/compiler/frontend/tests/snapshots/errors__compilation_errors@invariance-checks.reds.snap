@@ -3,8 +3,9 @@ source: crates/compiler/frontend/tests/errors.rs
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/invariance-checks.reds
 ---
-[TYPE_ERR] At tests/data/invariance-checks.reds:12:21
-  AcceptsClassArray(arr);
-                    ^^^
-type mismatch: found `Class` when expected `Subclass`
+error[TYPE_ERR]: type mismatch: found `Class` when expected `Subclass`
   when comparing `array<Subclass>` and `array<Class>`
+ --> tests/data/invariance-checks.reds:12:21
+   |
+12 |   AcceptsClassArray(arr);
+   |                     ^^^

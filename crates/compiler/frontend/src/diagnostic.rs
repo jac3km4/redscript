@@ -247,15 +247,19 @@ impl<'ctx> Diagnostic<'ctx> {
         Ok(DisplayFn::new(move |f: &mut fmt::Formatter<'_>| {
             writeln!(
                 f,
-                "[{}] At {}:{}:{}",
-                self.code(),
+                "{}[{}]: {self}",
+                if self.is_error() { "error" } else { "warning" },
+                self.code()
+            )?;
+            writeln!(
+                f,
+                " --> {}:{}:{}",
                 file.path().display(),
                 start.line + 1,
                 start.col + 1
             )?;
 
-            write!(f, "{snippet}")?;
-            writeln!(f, "{self}")
+            write!(f, "{snippet}")
         }))
     }
 }

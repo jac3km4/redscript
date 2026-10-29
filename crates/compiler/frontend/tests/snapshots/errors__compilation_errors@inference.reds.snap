@@ -3,7 +3,8 @@ source: crates/compiler/frontend/tests/errors.rs
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/inference.reds
 ---
-[TYPE_ERR] At tests/data/inference.reds:11:10
-  return i;
-         ^
-type mismatch: found `String` when expected `Int32`
+error[TYPE_ERR]: type mismatch: found `String` when expected `Int32`
+ --> tests/data/inference.reds:11:10
+   |
+11 |   return i;
+   |          ^

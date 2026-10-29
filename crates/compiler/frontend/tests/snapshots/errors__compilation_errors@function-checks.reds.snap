@@ -3,22 +3,26 @@ source: crates/compiler/frontend/tests/errors.rs
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/function-checks.reds
 ---
-[UNEXPECTED_BODY] At tests/data/function-checks.reds:4:13
-native func NativeFuncWithUnexpectedBody(x: Int32) -> Int32 {
-            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-this function cannot have a body
+error[UNEXPECTED_BODY]: this function cannot have a body
+ --> tests/data/function-checks.reds:4:13
+  |
+4 | native func NativeFuncWithUnexpectedBody(x: Int32) -> Int32 {
+  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-[MISSING_BODY] At tests/data/function-checks.reds:8:6
-func FreeFunctionWithMissingBody(x: Int32) -> Int32
-     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-this function must have a body
+error[MISSING_BODY]: this function must have a body
+ --> tests/data/function-checks.reds:8:6
+  |
+8 | func FreeFunctionWithMissingBody(x: Int32) -> Int32
+  |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-[UNUSED_ITEM_QUALIFIERS] At tests/data/function-checks.reds:10:19
-final static func UnusedFinalStaticQualifiers(s: String) -> String {
-                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-`final`, `static` qualifiers have no effect on this item
+warning[UNUSED_ITEM_QUALIFIERS]: `final`, `static` qualifiers have no effect on this item
+ --> tests/data/function-checks.reds:10:19
+   |
+10 | final static func UnusedFinalStaticQualifiers(s: String) -> String {
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-[NON_DATA_VARIANCE] At tests/data/function-checks.reds:14:28
-func FunctionWithVariance<+A>() -> A {}
-                           ^
-non-data types cannot have variance
+error[NON_DATA_VARIANCE]: non-data types cannot have variance
+ --> tests/data/function-checks.reds:14:28
+   |
+14 | func FunctionWithVariance<+A>() -> A {}
+   |                            ^

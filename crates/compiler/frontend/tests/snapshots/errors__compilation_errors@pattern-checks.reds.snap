@@ -3,12 +3,14 @@ source: crates/compiler/frontend/tests/errors.rs
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/pattern-checks.reds
 ---
-[TYPE_ERR] At tests/data/pattern-checks.reds:3:10
-  if let Struct { field } = Struct(1) {
-         ^^^^^^
-type mismatch: found `Struct` when expected `IScriptable`
+error[TYPE_ERR]: type mismatch: found `Struct` when expected `IScriptable`
+ --> tests/data/pattern-checks.reds:3:10
+  |
+3 |   if let Struct { field } = Struct(1) {
+  |          ^^^^^^
 
-[MISSING_BREAK] At tests/data/pattern-checks.reds:7:14
-    case let [a]:
-             ^^^
-`case let` block must end with a `break` or `return` statement
+error[MISSING_BREAK]: `case let` block must end with a `break` or `return` statement
+ --> tests/data/pattern-checks.reds:7:14
+  |
+7 |     case let [a]:
+  |              ^^^

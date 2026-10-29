@@ -3,22 +3,26 @@ source: crates/compiler/frontend/tests/errors.rs
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/mixed-ref.reds
 ---
-[INVALID_NEW_USE] At tests/data/mixed-ref.reds:10:11
-  let _ = new NeverRef(); // Error
-          ^^^^^^^^^^^^^^
-`NeverRef` cannot be constructed with the `new` operator, use `NeverRef()` instead
+error[INVALID_NEW_USE]: `NeverRef` cannot be constructed with the `new` operator, use `NeverRef()` instead
+ --> tests/data/mixed-ref.reds:10:11
+   |
+10 |   let _ = new NeverRef(); // Error
+   |           ^^^^^^^^^^^^^^
 
-[UNEXPECTED_NON_REF] At tests/data/mixed-ref.reds:15:32
-  let withRef: ref<MixedRef> = MixedRef(); // Error
-                               ^^^^^^^^^^
-attempting to use a type with no `ref` where one is expected
+error[UNEXPECTED_NON_REF]: attempting to use a type with no `ref` where one is expected
+ --> tests/data/mixed-ref.reds:15:32
+   |
+15 |   let withRef: ref<MixedRef> = MixedRef(); // Error
+   |                                ^^^^^^^^^^
 
-[UNEXPECTED_REF] At tests/data/mixed-ref.reds:18:30
-  let withoutRef: MixedRef = new MixedRef(); // Error
-                             ^^^^^^^^^^^^^^
-attempting to use a type with `ref` where none is expected
+error[UNEXPECTED_REF]: attempting to use a type with `ref` where none is expected
+ --> tests/data/mixed-ref.reds:18:30
+   |
+18 |   let withoutRef: MixedRef = new MixedRef(); // Error
+   |                              ^^^^^^^^^^^^^^
 
-[UNEXPECTED_REF] At tests/data/mixed-ref.reds:22:21
-  let _: MixedRef = val as MixedRef; // Error
-                    ^^^^^^^^^^^^^^^
-attempting to use a type with `ref` where none is expected
+error[UNEXPECTED_REF]: attempting to use a type with `ref` where none is expected
+ --> tests/data/mixed-ref.reds:22:21
+   |
+22 |   let _: MixedRef = val as MixedRef; // Error
+   |                     ^^^^^^^^^^^^^^^

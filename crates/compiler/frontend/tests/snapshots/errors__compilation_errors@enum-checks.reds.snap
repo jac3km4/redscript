@@ -1,14 +1,16 @@
 ---
 source: crates/compiler/frontend/tests/errors.rs
-expression: "DisplayDiagnostics(diagnostics, &sources)"
+expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/enum-checks.reds
 ---
-[DUP_VARIANT_VAL] At tests/data/enum-checks.reds:6:3
-  DuplicateOne = 1,
-  ^^^^^^^^^^^^^^^^
-duplicate variant value
+warning[DUP_VARIANT_VAL]: duplicate variant value
+ --> tests/data/enum-checks.reds:6:3
+  |
+6 |   DuplicateOne = 1,
+  |   ^^^^^^^^^^^^^^^^
 
-[DUP_VARIANT_NAME] At tests/data/enum-checks.reds:9:3
-  DuplicatedName = 4,
-  ^^^^^^^^^^^^^^^^^^
-duplicate variant name
+warning[DUP_VARIANT_NAME]: duplicate variant name
+ --> tests/data/enum-checks.reds:9:3
+  |
+9 |   DuplicatedName = 4,
+  |   ^^^^^^^^^^^^^^^^^^

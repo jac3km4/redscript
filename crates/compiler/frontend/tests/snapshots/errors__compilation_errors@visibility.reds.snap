@@ -3,62 +3,74 @@ source: crates/compiler/frontend/tests/errors.rs
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/visibility.reds
 ---
-[INACCESSIBLE_FIELD] At tests/data/visibility.reds:34:13
-    let _ = this.privateField; // Error: private field cannot be accessed from subclass
-            ^^^^^^^^^^^^^^^^^
-private member `privateField` of `Class` is not accessible here
+error[INACCESSIBLE_FIELD]: private member `privateField` of `Class` is not accessible here
+ --> tests/data/visibility.reds:34:13
+   |
+34 |     let _ = this.privateField; // Error: private field cannot be accessed from subclass
+   |             ^^^^^^^^^^^^^^^^^
 
-[INACCESSIBLE_FIELD] At tests/data/visibility.reds:35:13
-    let _ = this.field; // Error: field should be private by default
-            ^^^^^^^^^^
-private member `field` of `Class` is not accessible here
+error[INACCESSIBLE_FIELD]: private member `field` of `Class` is not accessible here
+ --> tests/data/visibility.reds:35:13
+   |
+35 |     let _ = this.field; // Error: field should be private by default
+   |             ^^^^^^^^^^
 
-[INACCESSIBLE_METHOD] At tests/data/visibility.reds:39:5
-    this.PrivateMethod(); // Error: private method cannot be accessed from subclass
-    ^^^^^^^^^^^^^^^^^^^^
-private member `PrivateMethod` of `Class` is not accessible here
+error[INACCESSIBLE_METHOD]: private member `PrivateMethod` of `Class` is not accessible here
+ --> tests/data/visibility.reds:39:5
+   |
+39 |     this.PrivateMethod(); // Error: private method cannot be accessed from subclass
+   |     ^^^^^^^^^^^^^^^^^^^^
 
-[INACCESSIBLE_METHOD] At tests/data/visibility.reds:40:5
-    this.Method(); // Error: method should be private by default
-    ^^^^^^^^^^^^^
-private member `Method` of `Class` is not accessible here
+error[INACCESSIBLE_METHOD]: private member `Method` of `Class` is not accessible here
+ --> tests/data/visibility.reds:40:5
+   |
+40 |     this.Method(); // Error: method should be private by default
+   |     ^^^^^^^^^^^^^
 
-[INACCESSIBLE_METHOD] At tests/data/visibility.reds:44:5
-    Class.PrivateStaticMethod(); // Error: private static method cannot be accessed from subclass
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-private member `PrivateStaticMethod` of `Class` is not accessible here
+error[INACCESSIBLE_METHOD]: private member `PrivateStaticMethod` of `Class` is not accessible here
+ --> tests/data/visibility.reds:44:5
+   |
+44 |     Class.PrivateStaticMethod(); // Error: private static method cannot be accessed from subclass
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-[INACCESSIBLE_FIELD] At tests/data/visibility.reds:52:11
-  let _ = inst.privateField; // Error: private field cannot be accessed outside the class
-          ^^^^^^^^^^^^^^^^^
-private member `privateField` of `Class` is not accessible here
+error[INACCESSIBLE_FIELD]: private member `privateField` of `Class` is not accessible here
+ --> tests/data/visibility.reds:52:11
+   |
+52 |   let _ = inst.privateField; // Error: private field cannot be accessed outside the class
+   |           ^^^^^^^^^^^^^^^^^
 
-[INACCESSIBLE_FIELD] At tests/data/visibility.reds:53:11
-  let _ = inst.field; // Error: field should be private by default
-          ^^^^^^^^^^
-private member `field` of `Class` is not accessible here
+error[INACCESSIBLE_FIELD]: private member `field` of `Class` is not accessible here
+ --> tests/data/visibility.reds:53:11
+   |
+53 |   let _ = inst.field; // Error: field should be private by default
+   |           ^^^^^^^^^^
 
-[INACCESSIBLE_FIELD] At tests/data/visibility.reds:54:11
-  let _ = inst.protectedField; // Error: protected field cannot be accessed outside the class
-          ^^^^^^^^^^^^^^^^^^^
-protected member `protectedField` of `Class` is not accessible here
+error[INACCESSIBLE_FIELD]: protected member `protectedField` of `Class` is not accessible here
+ --> tests/data/visibility.reds:54:11
+   |
+54 |   let _ = inst.protectedField; // Error: protected field cannot be accessed outside the class
+   |           ^^^^^^^^^^^^^^^^^^^
 
-[INACCESSIBLE_METHOD] At tests/data/visibility.reds:57:3
-  inst.PrivateMethod(); // Error: private method cannot be accessed outside the class
-  ^^^^^^^^^^^^^^^^^^^^
-private member `PrivateMethod` of `Class` is not accessible here
+error[INACCESSIBLE_METHOD]: private member `PrivateMethod` of `Class` is not accessible here
+ --> tests/data/visibility.reds:57:3
+   |
+57 |   inst.PrivateMethod(); // Error: private method cannot be accessed outside the class
+   |   ^^^^^^^^^^^^^^^^^^^^
 
-[INACCESSIBLE_METHOD] At tests/data/visibility.reds:58:3
-  inst.Method(); // Error: method should be private by default
-  ^^^^^^^^^^^^^
-private member `Method` of `Class` is not accessible here
+error[INACCESSIBLE_METHOD]: private member `Method` of `Class` is not accessible here
+ --> tests/data/visibility.reds:58:3
+   |
+58 |   inst.Method(); // Error: method should be private by default
+   |   ^^^^^^^^^^^^^
 
-[INACCESSIBLE_METHOD] At tests/data/visibility.reds:59:3
-  inst.ProtectedMethod(); // Error: protected method cannot be accessed outside the class
-  ^^^^^^^^^^^^^^^^^^^^^^
-protected member `ProtectedMethod` of `Class` is not accessible here
+error[INACCESSIBLE_METHOD]: protected member `ProtectedMethod` of `Class` is not accessible here
+ --> tests/data/visibility.reds:59:3
+   |
+59 |   inst.ProtectedMethod(); // Error: protected method cannot be accessed outside the class
+   |   ^^^^^^^^^^^^^^^^^^^^^^
 
-[INACCESSIBLE_METHOD] At tests/data/visibility.reds:62:3
-  Class.PrivateStaticMethod(); // Error: private static method cannot be accessed outside the class
-  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-private member `PrivateStaticMethod` of `Class` is not accessible here
+error[INACCESSIBLE_METHOD]: private member `PrivateStaticMethod` of `Class` is not accessible here
+ --> tests/data/visibility.reds:62:3
+   |
+62 |   Class.PrivateStaticMethod(); // Error: private static method cannot be accessed outside the class
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^

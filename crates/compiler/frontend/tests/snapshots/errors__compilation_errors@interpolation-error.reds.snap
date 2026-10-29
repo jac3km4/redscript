@@ -3,7 +3,8 @@ source: crates/compiler/frontend/tests/errors.rs
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/interpolation-error.reds
 ---
-[UNRESOLVED_REF] At tests/data/interpolation-error.reds:3:18
-  return s"asd \(unresolved)";
-                 ^^^^^^^^^^
-`unresolved` is not defined
+error[UNRESOLVED_REF]: `unresolved` is not defined
+ --> tests/data/interpolation-error.reds:3:18
+  |
+3 |   return s"asd \(unresolved)";
+  |                  ^^^^^^^^^^

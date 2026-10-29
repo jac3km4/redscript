@@ -3,17 +3,20 @@ source: crates/compiler/frontend/tests/errors.rs
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/dyn-cast-checks.reds
 ---
-[IMPOSSIBLE_DYN_CAST] At tests/data/dyn-cast-checks.reds:14:11
-  let _ = a as ClassC; // Impossible
-          ^^^^^^^^^^^
-this cast can never succeed, because the types are not related (type mismatch: found `ClassC` when expected `ClassA`)
+error[IMPOSSIBLE_DYN_CAST]: this cast can never succeed, because the types are not related (type mismatch: found `ClassC` when expected `ClassA`)
+ --> tests/data/dyn-cast-checks.reds:14:11
+   |
+14 |   let _ = a as ClassC; // Impossible
+   |           ^^^^^^^^^^^
 
-[REDUNDANT_DYN_CAST] At tests/data/dyn-cast-checks.reds:15:11
-  let _ = b as ClassA; // Redundant
-          ^^^^^^^^^^^
-this cast is redundant, you should remove it
+error[REDUNDANT_DYN_CAST]: this cast is redundant, you should remove it
+ --> tests/data/dyn-cast-checks.reds:15:11
+   |
+15 |   let _ = b as ClassA; // Redundant
+   |           ^^^^^^^^^^^
 
-[INVALID_DYN_CAST] At tests/data/dyn-cast-checks.reds:16:16
-  let _ = b as Int32; // Invalid
-               ^^^^^
-this type cannot be usedd with the `as` operator, the target type must be a class
+error[INVALID_DYN_CAST]: this type cannot be usedd with the `as` operator, the target type must be a class
+ --> tests/data/dyn-cast-checks.reds:16:16
+   |
+16 |   let _ = b as Int32; // Invalid
+   |                ^^^^^

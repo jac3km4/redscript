@@ -31,7 +31,14 @@ impl fmt::Display for SourceSnippet<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let line = self.file.line_contents(self.start.line).ok_or(fmt::Error)?;
         let line = line.trim_end_matches(['\r', '\n']);
-        writeln!(f, "{}", expand_tabs(line))?;
+        let gutter = (self.start.line + 1).to_string().len();
+        writeln!(f, "{:gutter$} |", "")?;
+        writeln!(
+            f,
+            "{:>gutter$} | {}",
+            self.start.line + 1,
+            expand_tabs(line)
+        )?;
         let pad = display_column(line, self.start.col);
         let length = if self.start.line == self.end.line {
             display_column(line, self.end.col)
@@ -40,7 +47,7 @@ impl fmt::Display for SourceSnippet<'_> {
         } else {
             3
         };
-        writeln!(f, "{:pad$}{:^>length$}", "", "")
+        writeln!(f, "{:gutter$} | {:pad$}{:^>length$}", "", "", "")
     }
 }
 
@@ -83,28 +90,34 @@ mod tests {
 
     #[test]
     fn expands_tabs_at_tab_stops() {
-        assert_eq!(render("\tbad", "bad"), "    bad\n    ^^^\n");
-        assert_eq!(render("a\tbad", "bad"), "a   bad\n    ^^^\n");
-        assert_eq!(render("\t\tbad", "bad"), "        bad\n        ^^^\n");
+        assert_eq!(render("\tbad", "bad"), "  |\n1 |     bad\n  |     ^^^\n");
+        assert_eq!(render("a\tbad", "bad"), "  |\n1 | a   bad\n  |     ^^^\n");
+        assert_eq!(
+            render("\t\tbad", "bad"),
+            "  |\n1 |         bad\n  |         ^^^\n"
+        );
     }
 
     #[test]
     fn aligns_wide_and_combining_characters() {
         assert_eq!(
             render("界😀e\u{301} bad", "bad"),
-            "界😀e\u{301} bad\n      ^^^\n"
+            "  |\n1 | 界😀e\u{301} bad\n  |       ^^^\n"
         );
-        assert_eq!(render("a界e\u{301}", "界e\u{301}"), "a界e\u{301}\n ^^^\n");
+        assert_eq!(
+            render("a界e\u{301}", "界e\u{301}"),
+            "  |\n1 | a界e\u{301}\n  |  ^^^\n"
+        );
     }
 
     #[test]
     fn marks_zero_width_and_empty_source_spans() {
-        assert_eq!(render("", ""), "\n^\n");
+        assert_eq!(render("", ""), "  |\n1 | \n  | ^\n");
         let file = File::new("test.reds", "a\t");
         let span = Span::new(2, 2, FileId::from_i32(0));
         assert_eq!(
             SourceSnippet::new(&file, span).unwrap().to_string(),
-            "a   \n    ^\n"
+            "  |\n1 | a   \n  |     ^\n"
         );
     }
 }

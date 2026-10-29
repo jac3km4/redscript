@@ -3,27 +3,32 @@ source: crates/compiler/frontend/tests/errors.rs
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/implicit-visibility.reds
 ---
-[LESS_VISIBLE_OVERRIDE] At tests/data/implicit-visibility.reds:9:16
-  private func Public() {} // Error
-               ^^^^^^
-method overrides cannot be less visibile than the method they override (public)
+error[LESS_VISIBLE_OVERRIDE]: method overrides cannot be less visibile than the method they override (public)
+ --> tests/data/implicit-visibility.reds:9:16
+  |
+9 |   private func Public() {} // Error
+  |                ^^^^^^
 
-[LESS_VISIBLE_OVERRIDE] At tests/data/implicit-visibility.reds:10:16
-  private func Protected() {} // Error
-               ^^^^^^^^^
-method overrides cannot be less visibile than the method they override (protected)
+error[LESS_VISIBLE_OVERRIDE]: method overrides cannot be less visibile than the method they override (protected)
+ --> tests/data/implicit-visibility.reds:10:16
+   |
+10 |   private func Protected() {} // Error
+   |                ^^^^^^^^^
 
-[LESS_VISIBLE_OVERRIDE] At tests/data/implicit-visibility.reds:15:18
-  protected func Public() {} // Error
-                 ^^^^^^
-method overrides cannot be less visibile than the method they override (public)
+error[LESS_VISIBLE_OVERRIDE]: method overrides cannot be less visibile than the method they override (public)
+ --> tests/data/implicit-visibility.reds:15:18
+   |
+15 |   protected func Public() {} // Error
+   |                  ^^^^^^
 
-[INACCESSIBLE_METHOD] At tests/data/implicit-visibility.reds:36:3
-  class.Protected(); // Error
-  ^^^^^^^^^^^^^^^^^
-protected member `Protected` of `ChildWithImplicit` is not accessible here
+error[INACCESSIBLE_METHOD]: protected member `Protected` of `ChildWithImplicit` is not accessible here
+ --> tests/data/implicit-visibility.reds:36:3
+   |
+36 |   class.Protected(); // Error
+   |   ^^^^^^^^^^^^^^^^^
 
-[INACCESSIBLE_METHOD] At tests/data/implicit-visibility.reds:37:3
-  class.Private(); // Error
-  ^^^^^^^^^^^^^^^
-private member `Private` of `ChildWithImplicit` is not accessible here
+error[INACCESSIBLE_METHOD]: private member `Private` of `ChildWithImplicit` is not accessible here
+ --> tests/data/implicit-visibility.reds:37:3
+   |
+37 |   class.Private(); // Error
+   |   ^^^^^^^^^^^^^^^
