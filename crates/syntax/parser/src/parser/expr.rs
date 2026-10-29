@@ -228,13 +228,23 @@ fn expr_with_span_impl<'tok, 'src: 'tok>(
         )))
         .erased();
 
-    let unops = unop
-        .repeated()
-        .foldr_with(member, |op, expr, e| {
-            let expr = Box::new(expr);
-            (Expr::UnOp { op, expr }, e.span())
+    let signed_min = just(Token::Minus)
+        .ignore_then(select! {
+            Token::IntMinMagnitude => Expr::Constant(Constant::I32(i32::MIN)),
+            Token::LongMinMagnitude => Expr::Constant(Constant::I64(i64::MIN)),
         })
-        .erased();
+        .map_with(|expr, e| (expr, e.span()));
+
+    let unops = recursive(|unary| {
+        signed_min.or(unop
+            .then(unary)
+            .map_with(|(op, expr), e| {
+                let expr = Box::new(expr);
+                (Expr::UnOp { op, expr }, e.span())
+            })
+            .or(member))
+    })
+    .erased();
 
     let as_ = unops
         .foldl_with(
@@ -340,6 +350,100 @@ mod tests {
 
     use super::*;
     use crate::parse_expr;
+
+    #[test]
+    fn signed_integer_minima() {
+        let file = FileId::from_i32(7);
+        for (literal, expected) in [
+            ("2147483648", Constant::I32(i32::MIN)),
+            ("9223372036854775808l", Constant::I64(i64::MIN)),
+        ] {
+            for separator in ["", " ", " /* minimum */ "] {
+                let source = format!("-{separator}{literal}");
+                let (tokens, errors) = crate::lex(&source, file);
+                assert!(errors.is_empty(), "{source}: {errors:?}");
+                let tokens = tokens.unwrap();
+                let (expr, errors) = crate::parse(super::super::expr_with_span(), &tokens, file);
+                assert!(errors.is_empty(), "{source}: {errors:?}");
+                let (expr, span) = expr.unwrap();
+                assert_eq!(expr.unwrapped(), Expr::Constant(expected.clone()));
+                assert_eq!(span, Span::new(0, source.len() as u32, file));
+            }
+        }
+        let (_, errors) = crate::parse_stmt("data.sortingPriority = -2147483648;", file);
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn signed_integer_negation_and_subtraction() {
+        let file = FileId::from_i32(0);
+        for (source, expected) in [
+            ("-42", Constant::I32(42)),
+            ("-9223372036854775807l", Constant::I64(i64::MAX)),
+        ] {
+            let (expr, errors) = parse_expr(source, file);
+            assert!(errors.is_empty(), "{source}: {errors:?}");
+            assert_eq!(
+                expr.unwrap().unwrapped(),
+                Expr::UnOp {
+                    op: UnOp::Neg,
+                    expr: Expr::Constant(expected).into(),
+                }
+            );
+        }
+        for (source, rhs) in [
+            ("x-1", Expr::Constant(Constant::I32(1))),
+            ("x--2147483648", Expr::Constant(Constant::I32(i32::MIN))),
+            (
+                "x - -9223372036854775808l",
+                Expr::Constant(Constant::I64(i64::MIN)),
+            ),
+        ] {
+            let (expr, errors) = parse_expr(source, file);
+            assert!(errors.is_empty(), "{source}: {errors:?}");
+            assert_eq!(
+                expr.unwrap().unwrapped(),
+                Expr::BinOp {
+                    lhs: Expr::Ident("x").into(),
+                    op: BinOp::Sub,
+                    rhs: rhs.into(),
+                }
+            );
+        }
+        for (source, equivalent) in [
+            ("-x.Member", "-(x.Member)"),
+            ("-x * y", "(-x) * y"),
+            ("!-2147483648", "!(-2147483648)"),
+            ("- -9223372036854775808l", "-(-9223372036854775808l)"),
+        ] {
+            let (actual, errors) = parse_expr(source, file);
+            assert!(errors.is_empty(), "{source}: {errors:?}");
+            let (expected, errors) = parse_expr(equivalent, file);
+            assert!(errors.is_empty(), "{equivalent}: {errors:?}");
+            assert_eq!(actual.unwrap().unwrapped(), expected.unwrap().unwrapped());
+        }
+    }
+
+    #[test]
+    fn signed_integer_overflow_is_rejected() {
+        for source in [
+            "2147483648",
+            "2147483649",
+            "9223372036854775808l",
+            "9223372036854775809l",
+            "18446744073709551616",
+            "-2147483649",
+            "-9223372036854775809l",
+            "x-2147483648",
+            "x-9223372036854775808l",
+            "-(2147483648)",
+            "~2147483648",
+            "-2147483648.Member",
+        ] {
+            let (_, errors) = parse_expr(source, FileId::from_i32(0));
+            assert!(!errors.is_empty(), "{source} must be rejected");
+        }
+    }
 
     #[test]
     fn operators() {

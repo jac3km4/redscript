@@ -4,6 +4,26 @@ use common::assert_preserved;
 use redscript_formatter::FormatSettings;
 
 #[test]
+fn signed_integer_minima_roundtrip() {
+    for statement in [
+        "data.sortingPriority = -2147483648;",
+        "data.priority = -9223372036854775808l;",
+        "return - /* minimum */ 2147483648;",
+        "return x - -2147483648;",
+        "return x - -9223372036854775808l;",
+        "return -42 + x * -2l;",
+        "return -(-2147483648);",
+        "return (-2147483648).Member;",
+        "return (-9223372036854775808l).Method();",
+        "return (-2147483648)[0];",
+        "return (-9223372036854775808l)(x);",
+    ] {
+        let source = format!("func F() {{ {statement} }}");
+        assert_preserved(&source, &FormatSettings::default(), "test.reds");
+    }
+}
+
+#[test]
 fn zero_sized_array_parameters_do_not_panic() {
     assert_preserved(
         "func F(value: [Int32; 0]) {}",

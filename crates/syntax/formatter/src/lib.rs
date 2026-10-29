@@ -522,7 +522,19 @@ fn format_expr_body<K: AstKind>(
 ) -> fmt::Result {
     match expression {
         Expr::Ident(name) => write!(f, "{name}"),
-        Expr::Constant(value) => format_constant(value, f, ctx.settings),
+        Expr::Constant(value) => {
+            let parenthesize = matches!(ctx.parent, Some(ParentOp::TopPrec))
+                && (matches!(value, Constant::I32(v) if *v < 0)
+                    || matches!(value, Constant::I64(v) if *v < 0));
+            if parenthesize {
+                write!(f, "(")?;
+            }
+            format_constant(value, f, ctx.settings)?;
+            if parenthesize {
+                write!(f, ")")?;
+            }
+            Ok(())
+        }
         Expr::ArrayLit(elems) => {
             let ctx = ctx.without_parent_op();
             write!(
@@ -1092,6 +1104,12 @@ fn format_chain<K: AstKind>(
                 break matches!(parent_op, Some(ParentOp::TopPrec | ParentOp::Unary));
             }
             Expr::UnOp { .. } | Expr::New { .. } => {
+                break matches!(parent_op, Some(ParentOp::TopPrec));
+            }
+            Expr::Constant(Constant::I32(v)) if *v < 0 => {
+                break matches!(parent_op, Some(ParentOp::TopPrec));
+            }
+            Expr::Constant(Constant::I64(v)) if *v < 0 => {
                 break matches!(parent_op, Some(ParentOp::TopPrec));
             }
             Expr::BinOp { lhs, op, rhs } => {
