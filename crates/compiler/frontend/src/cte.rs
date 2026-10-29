@@ -54,20 +54,20 @@ impl<'a> Evaluator<'a> {
                     return Err(Error::UnknownFunction(callee_name(&expr.0), expr.1));
                 }
                 if let Some((_, span)) = type_args.first() {
-                    return Err(Error::MalformedModuleExists(*span));
+                    return Err(Error::ModuleExistsTypeArguments(*span));
                 }
                 match &**args {
                     [(ast::Expr::Constant(ast::Constant::String(str)), _)] => {
                         let path = str.split('.').collect::<Vec<_>>();
                         Value::Bool(self.modules.contains(&path[..]))
                     }
-                    [(_, span)] => return Err(Error::MalformedModuleExists(*span)),
+                    [(_, span)] => return Err(Error::ModuleExistsExpectedStringLiteral(*span)),
                     _ => {
                         let span = match (args.first(), args.last()) {
                             (Some((_, first)), Some((_, last))) => first.merge(last),
                             _ => *span,
                         };
-                        return Err(Error::MalformedModuleExists(span));
+                        return Err(Error::ModuleExistsArgumentCount(args.len(), span));
                     }
                 }
             }
@@ -91,8 +91,16 @@ pub enum Error {
     UnsupportedBinaryOperator(ast::BinOp, Span),
     #[error("unknown compile-time function{}; only `ModuleExists` is supported", .0.as_ref().map(|name| format!(" `{name}`")).unwrap_or_default())]
     UnknownFunction(Option<String>, Span),
-    #[error("`ModuleExists` requires exactly one string literal argument and no type arguments")]
-    MalformedModuleExists(Span),
+    #[error(
+        "`ModuleExists` requires exactly one argument, got {0}; usage: ModuleExists(\"Module.Name\")"
+    )]
+    ModuleExistsArgumentCount(usize, Span),
+    #[error(
+        "`ModuleExists` requires a string literal argument; usage: ModuleExists(\"Module.Name\")"
+    )]
+    ModuleExistsExpectedStringLiteral(Span),
+    #[error("`ModuleExists` does not accept type arguments; usage: ModuleExists(\"Module.Name\")")]
+    ModuleExistsTypeArguments(Span),
 }
 
 impl Error {
@@ -102,7 +110,9 @@ impl Error {
             | Self::UnsupportedUnaryOperator(_, span)
             | Self::UnsupportedBinaryOperator(_, span)
             | Self::UnknownFunction(_, span)
-            | Self::MalformedModuleExists(span) => *span,
+            | Self::ModuleExistsArgumentCount(_, span)
+            | Self::ModuleExistsExpectedStringLiteral(span)
+            | Self::ModuleExistsTypeArguments(span) => *span,
         }
     }
 }
@@ -311,31 +321,74 @@ mod tests {
     }
 
     #[test]
-    fn rejects_malformed_module_exists_at_invalid_arguments() {
+    fn rejects_module_exists_argument_count_at_arguments_or_call() {
+        for (source, highlighted, count) in [
+            ("ModuleExists()", "ModuleExists()", 0),
+            ("true && ModuleExists()", "ModuleExists()", 0),
+            (r#"ModuleExists("A", "B")"#, r#""A", "B""#, 2),
+            ("ModuleExists(42, true, name)", "42, true, name", 3),
+        ] {
+            let message = format!(
+                "`ModuleExists` requires exactly one argument, got {count}; usage: ModuleExists(\"Module.Name\")"
+            );
+            assert!(matches!(
+                assert_error(source, highlighted, &message),
+                Error::ModuleExistsArgumentCount(actual, _) if actual == count
+            ));
+        }
+    }
+
+    #[test]
+    fn rejects_module_exists_non_string_literal_at_argument() {
         for (source, highlighted) in [
-            ("ModuleExists()", "ModuleExists()"),
             ("ModuleExists(42)", "42"),
             ("ModuleExists(true)", "true"),
             ("ModuleExists(name)", "name"),
             (r#"ModuleExists("A" + "B")"#, r#""A" + "B""#),
-            (r#"ModuleExists("A", "B")"#, r#""A", "B""#),
-            (r#"ModuleExists<Int32>("A")"#, "Int32"),
-            ("ModuleExists<Int32>()", "Int32"),
+            ("true && ModuleExists(name)", "name"),
         ] {
             assert!(matches!(
                 assert_error(
                     source,
                     highlighted,
-                    "`ModuleExists` requires exactly one string literal argument and no type arguments"
+                    "`ModuleExists` requires a string literal argument; usage: ModuleExists(\"Module.Name\")"
                 ),
-                Error::MalformedModuleExists(_)
+                Error::ModuleExistsExpectedStringLiteral(_)
+            ));
+        }
+    }
+
+    #[test]
+    fn rejects_module_exists_type_arguments_before_value_arguments() {
+        for (source, highlighted) in [
+            (r#"ModuleExists<Int32>("A")"#, "Int32"),
+            ("ModuleExists<Int32>()", "Int32"),
+            ("ModuleExists<Int32>(42)", "Int32"),
+            ("ModuleExists<Int32, Bool>(42, true)", "Int32"),
+        ] {
+            assert!(matches!(
+                assert_error(
+                    source,
+                    highlighted,
+                    "`ModuleExists` does not accept type arguments; usage: ModuleExists(\"Module.Name\")"
+                ),
+                Error::ModuleExistsTypeArguments(_)
             ));
         }
     }
 
     #[test]
     fn diagnostic_preserves_cte_code_and_error_span() {
-        for source in ["value", "-42", "1 + 2", "Other()", "ModuleExists(42)"] {
+        for source in [
+            "value",
+            "-42",
+            "1 + 2",
+            "Other()",
+            "ModuleExists()",
+            r#"ModuleExists("A", "B")"#,
+            "ModuleExists(42)",
+            r#"ModuleExists<Int32>("A")"#,
+        ] {
             let error = Evaluator::new(HashSet::new())
                 .eval(&parse(source))
                 .err()
