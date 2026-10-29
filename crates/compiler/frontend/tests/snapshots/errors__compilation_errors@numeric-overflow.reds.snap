@@ -1,0 +1,44 @@
+---
+source: crates/compiler/frontend/tests/errors.rs
+expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
+input_file: crates/compiler/frontend/tests/data/numeric-overflow.reds
+---
+[LIT_OUT_OF_RANGE] At tests/data/numeric-overflow.reds:2:29
+  let belowMinimum: Int8 = -129;
+                            ^^^
+this literal is out of range for Int8, provide a value between -128 and 127
+
+[TYPE_ERR] At tests/data/numeric-overflow.reds:2:28
+  let belowMinimum: Int8 = -129;
+                           ^^^^
+type mismatch: found `Int32` when expected `Int8`
+
+[LIT_OUT_OF_RANGE] At tests/data/numeric-overflow.reds:3:28
+  let aboveMaximum: Int8 = 128;
+                           ^^^
+this literal is out of range for Int8, provide a value between -128 and 127
+
+[TYPE_ERR] At tests/data/numeric-overflow.reds:3:28
+  let aboveMaximum: Int8 = 128;
+                           ^^^
+type mismatch: found `Int32` when expected `Int8`
+
+[LIT_OUT_OF_RANGE] At tests/data/numeric-overflow.reds:9:30
+  let belowMinimum: Uint8 = -1;
+                             ^
+this literal is out of range for Uint8, provide a value between 0 and 255
+
+[TYPE_ERR] At tests/data/numeric-overflow.reds:9:29
+  let belowMinimum: Uint8 = -1;
+                            ^^
+type mismatch: found `Int32` when expected `Uint8`
+
+[LIT_OUT_OF_RANGE] At tests/data/numeric-overflow.reds:10:29
+  let aboveMaximum: Uint8 = 256;
+                            ^^^
+this literal is out of range for Uint8, provide a value between 0 and 255
+
+[TYPE_ERR] At tests/data/numeric-overflow.reds:10:29
+  let aboveMaximum: Uint8 = 256;
+                            ^^^
+type mismatch: found `Int32` when expected `Uint8`
