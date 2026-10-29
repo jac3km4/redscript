@@ -111,12 +111,13 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             match body {
                 ast::FunctionBody::Block(block) => {
                     let mut lower = Lower::new(locals, ret_t.clone(), context, symbols, reporter);
+                    let block = lower.lower_block(&block.stmts, env);
                     if !lower.does_return_value && ret_t.is_fresh() {
                         ret_t
                             .constrain_base(&PolyType::nullary(predef::VOID), symbols)
                             .ok();
                     }
-                    (lower.lower_block(&block.stmts, env), lower.into_output())
+                    (block, lower.into_output())
                 }
                 ast::FunctionBody::Inline(expr) => {
                     let result = Lower::expr(expr, locals, env, ret_t, context, symbols, reporter);
