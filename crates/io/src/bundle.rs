@@ -37,6 +37,16 @@ impl<'i> BundleReader<'i> {
                 err: "unsupported version",
             });
         };
+        header.string_data.validate_range(1, bytes.len())?;
+        for table in [
+            &header.cnames,
+            &header.tweakdb_ids,
+            &header.resources,
+            &header.strings,
+        ] {
+            table.validate_range(4, bytes.len())?;
+        }
+        header.definitions.validate_range(20, bytes.len())?;
         Ok(BundleReader {
             header,
             contents: bytes,
@@ -95,6 +105,22 @@ struct TableHeader {
 }
 
 impl TableHeader {
+    fn validate_range(&self, item_size: u32, len: usize) -> byte::Result<()> {
+        let end = self
+            .count
+            .checked_mul(item_size)
+            .and_then(|size| self.offset.checked_add(size))
+            .ok_or(byte::Error::BadInput {
+                err: "table range overflow",
+            })?;
+        if end as usize > len {
+            return Err(byte::Error::BadInput {
+                err: "table range exceeds bundle",
+            });
+        }
+        Ok(())
+    }
+
     fn new(offset: u32, count: u32, bytes: &[u8]) -> Self {
         TableHeader {
             offset,
@@ -696,10 +722,29 @@ impl<'r, 'i, Item> ItemReader<'r, 'i, Item> {
     where
         Item: BundleItem<'i>,
     {
-        let header_pos = self.offset + index.into() * Item::HEADER_SIZE;
+        let index = index.into();
+        if index >= self.count {
+            return Err(byte::Error::BadInput {
+                err: "item index out of bounds",
+            });
+        }
+        let header_pos = index
+            .checked_mul(Item::HEADER_SIZE)
+            .and_then(|size| self.offset.checked_add(size))
+            .ok_or(byte::Error::BadInput {
+                err: "item header address overflow",
+            })?;
         let header: Item::Header = self.parent.contents.read_at(header_pos as _, ENDIANESS)?;
-        let pos = Item::pos(&self.parent.header, &header);
-        self.parent.contents.read_at(pos as _, Item::ctx(&header))
+        let pos = Item::pos(&self.parent.header, &header)?;
+        let end = Item::end(&self.parent.header, self.parent.contents.len())?;
+        let bytes = self
+            .parent
+            .contents
+            .get(pos as usize..end)
+            .ok_or(byte::Error::BadInput {
+                err: "item range exceeds bundle",
+            })?;
+        bytes.read_at(0, Item::ctx(&header))
     }
 }
 
@@ -751,13 +796,77 @@ impl<'i, Item> iter::ExactSizeIterator for ItemIter<'_, 'i, Item> where Item: Bu
 
 impl<'i, Item> iter::FusedIterator for ItemIter<'_, 'i, Item> where Item: BundleItem<'i> {}
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn bundle_bytes() -> Vec<u8> {
+        let mut bundle = ScriptBundle::default();
+        bundle.cnames_mut().add("test");
+        bundle.into_writeable().to_bytes().unwrap()
+    }
+
+    #[test]
+    fn reject_invalid_table_ranges() {
+        for (offset, count) in [(u32::MAX, 1), (104, u32::MAX), (u32::MAX, 0)] {
+            let mut bytes = bundle_bytes();
+            let mut header: Header = bytes.read_at(0, ENDIANESS).unwrap();
+            header.cnames.offset = offset;
+            header.cnames.count = count;
+            bytes.write_at(0, &header, ENDIANESS).unwrap();
+            assert!(BundleReader::new(&bytes).is_err());
+        }
+        let mut bytes = bundle_bytes();
+        let mut header: Header = bytes.read_at(0, ENDIANESS).unwrap();
+        header.string_data.offset = u32::MAX;
+        header.string_data.count = 2;
+        bytes.write_at(0, &header, ENDIANESS).unwrap();
+        assert!(BundleReader::new(&bytes).is_err());
+    }
+
+    #[test]
+    fn reject_invalid_item_indices_and_addresses() {
+        let bytes = bundle_bytes();
+        let reader = BundleReader::new(&bytes).unwrap();
+        assert_eq!(reader.cnames().get(0u32).unwrap(), "test");
+        assert!(reader.cnames().get(1u32).is_err());
+        assert!(reader.cnames().get(u32::MAX).is_err());
+        let mut items = reader.cnames();
+        items.offset = u32::MAX;
+        assert!(items.get(0u32).is_err());
+        items.count = u32::MAX;
+        assert!(items.get(u32::MAX - 1).is_err());
+    }
+
+    #[test]
+    fn reject_strings_outside_section() {
+        for relative in [5, u32::MAX] {
+            let mut bytes = bundle_bytes();
+            let header: Header = bytes.read_at(0, ENDIANESS).unwrap();
+            bytes
+                .write_at(header.cnames.offset as usize, &relative, ENDIANESS)
+                .unwrap();
+            let reader = BundleReader::new(&bytes).unwrap();
+            assert!(reader.cnames().get(0u32).is_err());
+        }
+        let mut bytes = bundle_bytes();
+        let header: Header = bytes.read_at(0, ENDIANESS).unwrap();
+        bytes[(header.string_data.offset + header.string_data.count - 1) as usize] = b'x';
+        let reader = BundleReader::new(&bytes).unwrap();
+        assert!(reader.cnames().get(0u32).is_err());
+    }
+}
+
 pub trait BundleItem<'i>: TryRead<'i, Self::Ctx> {
     type Ctx: Copy;
     type Header: TryRead<'i, LittleEndian>;
 
     const HEADER_SIZE: u32;
 
-    fn pos(parent: &Header, header: &Self::Header) -> u32;
+    fn pos(parent: &Header, header: &Self::Header) -> byte::Result<u32>;
+    fn end(_parent: &Header, len: usize) -> byte::Result<usize> {
+        Ok(len)
+    }
     fn ctx(header: &Self::Header) -> Self::Ctx;
 }
 
@@ -768,8 +877,30 @@ impl<'i> BundleItem<'i> for &'i str {
     const HEADER_SIZE: u32 = 4;
 
     #[inline]
-    fn pos(parent: &Header, header: &Self::Header) -> u32 {
-        parent.string_data.offset + *header
+    fn pos(parent: &Header, header: &Self::Header) -> byte::Result<u32> {
+        if *header >= parent.string_data.count {
+            return Err(byte::Error::BadInput {
+                err: "string offset outside string data",
+            });
+        }
+        parent
+            .string_data
+            .offset
+            .checked_add(*header)
+            .ok_or(byte::Error::BadInput {
+                err: "string address overflow",
+            })
+    }
+
+    fn end(parent: &Header, _len: usize) -> byte::Result<usize> {
+        parent
+            .string_data
+            .offset
+            .checked_add(parent.string_data.count)
+            .map(|end| end as usize)
+            .ok_or(byte::Error::BadInput {
+                err: "string data range overflow",
+            })
     }
 
     #[inline]
@@ -785,8 +916,8 @@ impl<'i> BundleItem<'i> for Definition<'i> {
     const HEADER_SIZE: u32 = 20;
 
     #[inline]
-    fn pos(_parent: &Header, header: &Self::Header) -> u32 {
-        header.offset()
+    fn pos(_parent: &Header, header: &Self::Header) -> byte::Result<u32> {
+        Ok(header.offset())
     }
 
     #[inline]
