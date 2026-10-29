@@ -24,6 +24,22 @@ fn assert_preserved(source: &str, settings: &FormatSettings) -> String {
 }
 
 #[test]
+fn chain_wrapping_counts_the_base_expression() {
+    for (max_width, breaks) in [(24, false), (23, true)] {
+        let settings = FormatSettings {
+            max_width,
+            ..FormatSettings::default()
+        };
+        let formatted = assert_preserved("func F() { abcdefghijklmnop.Value; }", &settings);
+        assert_eq!(
+            formatted.contains("abcdefghijklmnop\n    .Value"),
+            breaks,
+            "{formatted}"
+        );
+    }
+}
+
+#[test]
 fn parenthesized_chain_prefixes_are_emitted_once() {
     for expression in [
         "a && /* keep */ (b || c)",

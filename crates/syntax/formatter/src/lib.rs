@@ -1095,8 +1095,14 @@ fn format_chain<K: AstKind>(
         write!(f, "{base}")?;
     }
 
-    let width = chain.iter().map(Chain::approx_width).sum::<u16>();
-    let break_line = ctx.current_indent() + width > ctx.settings.max_width
+    let width = usize::from(cur.approx_width())
+        + if parenthesize { 2 } else { 0 }
+        + chain
+            .iter()
+            .map(|part| usize::from(part.approx_width()))
+            .sum::<usize>();
+    let break_line = usize::from(ctx.current_indent()) + width
+        > usize::from(ctx.settings.max_width)
         || chain_fields > usize::from(ctx.settings.max_chain_fields)
         || chain_calls > usize::from(ctx.settings.max_chain_calls)
         || chain_ops > usize::from(ctx.settings.max_chain_operators)
