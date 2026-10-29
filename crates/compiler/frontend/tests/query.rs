@@ -76,7 +76,28 @@ fn constants_locals_and_assignment() {
     };
     assert_eq!(
         expr_type(expr, assigned, &symbols).unwrap(),
-        Type::nullary(predef::INT32)
+        Type::nullary(predef::VOID)
+    );
+    let ir::Expr::Assign { place, .. } = &**expr else {
+        panic!("expected assignment");
+    };
+    let ir::Expr::Local(local, span) = &**place else {
+        panic!("expected local destination");
+    };
+    let assignment = || ir::Expr::Assign {
+        place: ir::Expr::Local(*local, *span).into(),
+        expr: ir::Expr::Const(ir::Const::I32(1), *span).into(),
+        span: *span,
+    };
+    let conditional = ir::Expr::Conditional {
+        condition: ir::Expr::Const(ir::Const::Bool(true), expr.span()).into(),
+        then: assignment().into(),
+        else_: assignment().into(),
+        span: expr.span(),
+    };
+    assert_eq!(
+        expr_type(&conditional, assigned, &symbols).unwrap(),
+        Type::nullary(predef::VOID)
     );
 }
 

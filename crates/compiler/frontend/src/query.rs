@@ -81,7 +81,7 @@ pub fn expr_type<'ctx>(
             return reference_type(target_type.coalesced(symbols)?, weak, symbols);
         }
         ir::Expr::Call { call, .. } => return call_type(call, symbols),
-        ir::Expr::Assign { place, .. } => return expr_type(place, function, symbols),
+        ir::Expr::Assign { .. } => return Ok(Type::nullary(predef::VOID)),
         ir::Expr::Field {
             receiver_type,
             field,
