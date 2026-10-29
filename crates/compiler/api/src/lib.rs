@@ -76,15 +76,16 @@ impl<'ctx> Compilation<'ctx> {
         }
 
         let mut monomorph = self.mappings.into_monomorphizer(self.sources);
-        if let Err(err) = monomorph.monomorphize(&self.unit, &self.symbols, &mut self.bundle)
-            && let Some(span) = err.span()
-        {
-            self.diagnostics.push(Diagnostic::Other(
-                Box::new(err),
-                DiagnosticLevel::Error,
-                span,
-            ));
-            return Err(FlushError::FatalErrors(self.diagnostics, self.symbols));
+        if let Err(err) = monomorph.monomorphize(&self.unit, &self.symbols, &mut self.bundle) {
+            if let Some(span) = err.span() {
+                self.diagnostics.push(Diagnostic::Other(
+                    Box::new(err),
+                    DiagnosticLevel::Error,
+                    span,
+                ));
+                return Err(FlushError::FatalErrors(self.diagnostics, self.symbols));
+            }
+            return Err(FlushError::Assemble(err));
         }
 
         self.bundle.into_writeable().save(path)?;
@@ -243,5 +244,81 @@ impl SourceMapExt for SourceMap {
             "boot.reds",
             include_str!("../../../../assets/reds/boot.reds"),
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn flush_propagates_spanless_assembly_errors_without_writing() {
+        let sources = SourceMap::default();
+        sources.push_front(
+            "large.reds",
+            format!(
+                "func Test() {{ while true {{ {} }} }}\n",
+                "true;".repeat(33_000)
+            ),
+        );
+        let interner = TypeInterner::default();
+        let compilation = compile(&sources, &interner);
+        let path = std::env::temp_dir().join(format!(
+            "redscript-flush-{}-{}.redscripts",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::write(&path, b"unchanged").unwrap();
+
+        let result = compilation.flush(&path);
+        let contents = std::fs::read(&path).unwrap();
+        std::fs::remove_file(path).unwrap();
+
+        assert!(matches!(
+            result,
+            Err(FlushError::Assemble(AssembleError::LabelTooDistant))
+        ));
+        assert_eq!(contents, b"unchanged");
+    }
+
+    #[test]
+    fn flush_reports_spanned_assembly_errors() {
+        let sources = SourceMap::default();
+        sources.push_front("invalid.reds", "func Test() { continue; }\n");
+        let interner = TypeInterner::default();
+        let compilation = compile(&sources, &interner);
+        let result = compilation.flush(std::env::temp_dir());
+        let Err(FlushError::FatalErrors(diagnostics, _)) = result else {
+            panic!("expected fatal diagnostics");
+        };
+        assert!(diagnostics.has_fatal_errors(DiagnosticLevel::Error));
+        assert!(diagnostics.to_string().contains("invalid control flow"));
+    }
+
+    fn compile<'ctx>(sources: &'ctx SourceMap, interner: &'ctx TypeInterner) -> Compilation<'ctx> {
+        let bundle = ScriptBundle::default();
+        let (symbols, mappings) =
+            CompilationInputs::load(&bundle, interner, &TypeFlagRegistry::default())
+                .unwrap()
+                .into_inner();
+        let mut reporter = CompileErrorReporter::default();
+        let (unit, symbols) = infer_from_sources(sources, symbols, &mut reporter, interner);
+        let diagnostics = Diagnostics::from(reporter.into_reported());
+        assert!(
+            !diagnostics.has_fatal_errors(DiagnosticLevel::Error),
+            "{diagnostics}"
+        );
+        Compilation {
+            sources,
+            symbols,
+            mappings,
+            unit,
+            bundle,
+            diagnostics,
+            fatal_diagnostic_level: DiagnosticLevel::Error,
+        }
     }
 }
