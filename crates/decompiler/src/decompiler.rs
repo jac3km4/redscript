@@ -96,6 +96,9 @@ impl<'scope, 'ctx: 'i, 'i> Decompiler<'scope, 'ctx, 'i> {
         cf_block: &ControlFlowBlock,
         end: Location,
     ) -> Result<Option<ast::Stmt<'i>>> {
+        if self.position() >= end {
+            return Ok(None);
+        }
         let Some(instr) = self.code.clone().next() else {
             return Ok(None);
         };

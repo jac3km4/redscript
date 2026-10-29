@@ -12,5 +12,8 @@ redscript-formatter.workspace = true
 thiserror.workspace = true
 hashbrown.workspace = true
 
+[dev-dependencies]
+insta.workspace = true
+
 [lints]
 workspace = true

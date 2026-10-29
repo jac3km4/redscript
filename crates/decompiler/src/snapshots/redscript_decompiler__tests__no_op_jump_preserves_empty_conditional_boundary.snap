@@ -1,0 +1,10 @@
+---
+source: crates/decompiler/src/tests.rs
+expression: format_block(&block)
+---
+{
+  if true {
+  }
+  1;
+  return;
+}

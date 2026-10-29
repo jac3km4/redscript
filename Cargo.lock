@@ -1053,6 +1053,7 @@ name = "redscript-decompiler"
 version = "1.0.0-preview.22"
 dependencies = [
  "hashbrown 0.17.0",
+ "insta",
  "redscript-ast",
  "redscript-formatter",
  "redscript-io",

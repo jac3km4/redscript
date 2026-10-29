@@ -14,6 +14,8 @@ mod control_flow;
 mod decompiler;
 mod error;
 mod location;
+#[cfg(test)]
+mod tests;
 
 #[derive(Debug, Default)]
 pub struct Settings {

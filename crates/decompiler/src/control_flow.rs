@@ -137,7 +137,7 @@ impl<'ctx, 'i> ControlFlowBuilder<'ctx, 'i> {
     fn consume(mut self, end: Location) -> Result<ControlFlowBlock, Error> {
         let start = self.position();
 
-        loop {
+        while self.position() < end {
             let pos = self.position();
             let Some(instr) = self.it.next() else {
                 break;
