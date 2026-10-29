@@ -187,6 +187,66 @@ fn assignment_expression_keeps_hoisted_local_type() {
 }
 
 #[test]
+fn adjacent_conditionals_without_shared_exit_remain_separate() {
+    let mut bundle = ScriptBundle::default();
+    let function = function(&mut bundle);
+    let code = resolve_labels(vec![
+        Instr::JumpIfFalse(Jump::new(3)),
+        Instr::TrueConst,
+        Instr::I32One,
+        Instr::JumpIfFalse(Jump::new(7)),
+        Instr::FalseConst,
+        Instr::Return,
+        Instr::I32Zero,
+        Instr::Return,
+        Instr::I32Const(2),
+    ]);
+    let block = decompile(&bundle, &function, &code);
+    insta::assert_snapshot!(format_block(&block));
+}
+
+#[test]
+fn adjacent_conditionals_with_no_op_exits_remain_separate() {
+    let mut bundle = ScriptBundle::default();
+    let function = function(&mut bundle);
+    let code = resolve_labels(vec![
+        Instr::JumpIfFalse(Jump::new(4)),
+        Instr::TrueConst,
+        Instr::I32One,
+        Instr::Jump(Jump::new(4)),
+        Instr::JumpIfFalse(Jump::new(8)),
+        Instr::FalseConst,
+        Instr::I32Zero,
+        Instr::Jump(Jump::new(8)),
+        Instr::Return,
+        Instr::Nop,
+    ]);
+    let block = decompile(&bundle, &function, &code);
+    insta::assert_snapshot!(format_block(&block));
+}
+
+#[test]
+fn conditional_chain_with_shared_exit_remains_combined() {
+    let mut bundle = ScriptBundle::default();
+    let function = function(&mut bundle);
+    let code = resolve_labels(vec![
+        Instr::JumpIfFalse(Jump::new(4)),
+        Instr::TrueConst,
+        Instr::I32One,
+        Instr::Jump(Jump::new(9)),
+        Instr::JumpIfFalse(Jump::new(8)),
+        Instr::FalseConst,
+        Instr::I32Zero,
+        Instr::Jump(Jump::new(9)),
+        Instr::I32Const(2),
+        Instr::Return,
+        Instr::Nop,
+    ]);
+    let block = decompile(&bundle, &function, &code);
+    insta::assert_snapshot!(format_block(&block));
+}
+
+#[test]
 fn returning_switch_cases_preserve_remaining_cases_and_default() {
     let mut bundle = ScriptBundle::default();
     let function = function(&mut bundle);

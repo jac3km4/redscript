@@ -246,7 +246,7 @@ impl<'scope, 'ctx: 'i, 'i> Decompiler<'scope, 'ctx, 'i> {
                         }
                         _ => break,
                     }
-                    if nested.exit() == Some(self.position()) {
+                    if nested.exit().is_none() || nested.exit() == Some(self.position()) {
                         break;
                     }
                 }
