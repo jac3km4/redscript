@@ -1,0 +1,14 @@
+---
+source: crates/compiler/frontend/tests/errors.rs
+expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
+input_file: crates/compiler/frontend/tests/data/struct-variance.reds
+---
+[INVALID_STRUCT_VARIANCE] At tests/data/struct-variance.reds:1:8
+struct CovariantStruct<+T> {}
+       ^^^^^^^^^^^^^^^
+structures cannot have variance annotations
+
+[INVALID_STRUCT_VARIANCE] At tests/data/struct-variance.reds:3:8
+struct ContravariantStruct<-T> {}
+       ^^^^^^^^^^^^^^^^^^^
+structures cannot have variance annotations
