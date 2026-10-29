@@ -24,6 +24,22 @@ fn assert_preserved(source: &str, settings: &FormatSettings) -> String {
 }
 
 #[test]
+fn conditional_conditions_keep_parentheses() {
+    for expression in [
+        "(a ? b : c) ? d : e",
+        "((a ? b : c) ? d : e) ? f : g",
+        "a ? (b ? c : d) : e",
+        "a ? b : (c ? d : e)",
+        "a + b ? c : d",
+        "a as Bool ? b : c",
+        "!a ? b : c",
+    ] {
+        let source = format!("func F() {{ return {expression}; }}");
+        assert_preserved(&source, &FormatSettings::default());
+    }
+}
+
+#[test]
 fn chain_wrapping_counts_the_base_expression() {
     for (max_width, breaks) in [(24, false), (23, true)] {
         let settings = FormatSettings {

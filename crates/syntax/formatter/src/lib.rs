@@ -598,7 +598,9 @@ impl<K: AstKind> ExprFormat for Expr<'_, K> {
             Expr::Conditional { cond, then, else_ } => {
                 let parenthesize = ctx.parent.is_some();
                 let ctx = ctx.without_parent_op();
-                let cond = (**cond).as_wrapped().as_fmt(ctx);
+                let cond = (**cond)
+                    .as_wrapped()
+                    .as_fmt(ctx.with_parent_op(ParentOp::ConditionalCondition));
                 let then = (**then).as_wrapped().as_fmt(ctx);
                 let else_ = (**else_).as_wrapped().as_fmt(ctx);
                 if parenthesize {
@@ -1197,6 +1199,7 @@ fn format_call_args<K: AstKind>(
 
 #[derive(Debug, Clone, Copy)]
 enum ParentOp {
+    ConditionalCondition,
     Unary,
     BinaryLhs(BinOp),
     BinaryRhs(BinOp),
@@ -1206,6 +1209,7 @@ enum ParentOp {
 impl ParentOp {
     fn can_assoc(&self, op: BinOp) -> bool {
         match self {
+            ParentOp::ConditionalCondition => true,
             ParentOp::TopPrec | ParentOp::Unary => false,
             ParentOp::BinaryLhs(parent) | ParentOp::BinaryRhs(parent)
                 if parent.precedence() < op.precedence() =>
