@@ -406,11 +406,11 @@ impl<'ctx> PolyType<'ctx> {
             (Self::Mono(l), Self::Mono(r)) => l.constrain_invariant(r, symbols),
             (Self::Mono(l), Self::Var(r)) => {
                 r.add_lower(l, symbols)?;
-                r.constrain_lower(l, symbols)
+                r.add_upper(l, symbols)
             }
             (Self::Var(l), Self::Mono(r)) => {
                 l.add_upper(r, symbols)?;
-                l.constrain_by_upper(r, symbols)
+                l.add_lower(r, symbols)
             }
             (Self::Var(l), Self::Var(r)) => l.unify(r, symbols),
         }
@@ -565,18 +565,6 @@ impl<'ctx> Var<'ctx> {
         repr.lower.constrain::<AnySupertype>(ub, symbols)
     }
 
-    fn constrain_lower(
-        &self,
-        ub: &InferredType<'ctx>,
-        symbols: &Symbols<'ctx>,
-    ) -> InferResult<'ctx, ()> {
-        self.repr()
-            .0
-            .borrow()
-            .lower
-            .constrain::<AnySupertype>(ub, symbols)
-    }
-
     fn add_lower(&self, lb: &InferredType<'ctx>, symbols: &Symbols<'ctx>) -> InferResult<'ctx, ()> {
         // TODO: occurs check
         let repr = self.repr();
@@ -586,19 +574,6 @@ impl<'ctx> Var<'ctx> {
             lb.constrain::<AnySupertype>(ub, symbols)?;
         }
         Ok(())
-    }
-
-    fn constrain_by_upper(
-        &self,
-        lb: &InferredType<'ctx>,
-        symbols: &Symbols<'ctx>,
-    ) -> InferResult<'ctx, ()> {
-        self.repr()
-            .0
-            .borrow()
-            .upper
-            .iter()
-            .try_for_each(|ub| lb.constrain::<AnySupertype>(ub, symbols))
     }
 
     fn unify(&self, other: &Var<'ctx>, symbols: &Symbols<'ctx>) -> InferResult<'ctx, ()> {
@@ -654,4 +629,127 @@ pub enum Coercion {
     FromRef(RefType),
     IntoRef(RefType),
     IntoVariant,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::symbols::{Aggregate, TypeDef, TypeSchema};
+    use crate::types::TypeInterner;
+
+    fn hierarchy(interner: &TypeInterner) -> Symbols<'_> {
+        let mut symbols = Symbols::with_default_types();
+        for (name, base) in [
+            ("Base", None),
+            ("Middle", Some("Base")),
+            ("Leaf", Some("Middle")),
+        ] {
+            let mut aggregate = Aggregate::default();
+            aggregate.set_base(base.map(|name| TypeApp::nullary(interner.intern(name))));
+            symbols.add_type(
+                interner.intern(name),
+                TypeDef::new([], TypeSchema::Aggregate(aggregate.into()), []),
+            );
+        }
+        symbols
+    }
+
+    #[test]
+    fn invariant_mixed_constraints_reject_later_widening() {
+        let interner = TypeInterner::default();
+        let symbols = hierarchy(&interner);
+        let middle = PolyType::nullary(interner.intern("Middle"));
+        let base = PolyType::nullary(interner.intern("Base"));
+
+        for mono_first in [true, false] {
+            let var = PolyType::fresh();
+            let (lhs, rhs) = if mono_first {
+                (&middle, &var)
+            } else {
+                (&var, &middle)
+            };
+            lhs.constrain_invariant(rhs, &symbols).unwrap();
+
+            assert!(base.constrain::<AnySupertype>(&var, &symbols).is_err());
+        }
+    }
+
+    #[test]
+    fn invariant_mixed_constraints_reject_later_narrowing() {
+        let interner = TypeInterner::default();
+        let symbols = hierarchy(&interner);
+        let middle = PolyType::nullary(interner.intern("Middle"));
+        let leaf = PolyType::nullary(interner.intern("Leaf"));
+
+        for mono_first in [true, false] {
+            let var = PolyType::fresh();
+            let (lhs, rhs) = if mono_first {
+                (&middle, &var)
+            } else {
+                (&var, &middle)
+            };
+            lhs.constrain_invariant(rhs, &symbols).unwrap();
+
+            assert!(var.constrain::<AnySupertype>(&leaf, &symbols).is_err());
+        }
+    }
+
+    #[test]
+    fn invariant_mixed_constraints_accept_compatible_bounds() {
+        let interner = TypeInterner::default();
+        let symbols = hierarchy(&interner);
+        let base = PolyType::nullary(interner.intern("Base"));
+        let middle = PolyType::nullary(interner.intern("Middle"));
+        let leaf = PolyType::nullary(interner.intern("Leaf"));
+
+        for mono_first in [true, false] {
+            let var = PolyType::fresh();
+            leaf.constrain::<AnySupertype>(&var, &symbols).unwrap();
+            var.constrain::<AnySupertype>(&base, &symbols).unwrap();
+            let (lhs, rhs) = if mono_first {
+                (&middle, &var)
+            } else {
+                (&var, &middle)
+            };
+            lhs.constrain_invariant(rhs, &symbols).unwrap();
+
+            middle.constrain::<AnySupertype>(&var, &symbols).unwrap();
+            var.constrain::<AnySupertype>(&middle, &symbols).unwrap();
+            leaf.constrain::<AnySupertype>(&var, &symbols).unwrap();
+            var.constrain::<AnySupertype>(&base, &symbols).unwrap();
+            rhs.constrain_invariant(lhs, &symbols).unwrap();
+        }
+    }
+
+    #[test]
+    fn nested_invariant_generics_retain_both_bounds() {
+        let interner = TypeInterner::default();
+        let symbols = hierarchy(&interner);
+        let middle = PolyType::nullary(interner.intern("Middle"));
+        let nested_array = |typ| {
+            Type::app(predef::ARRAY, [Type::app(predef::ARRAY, [typ]).into_poly()]).into_poly()
+        };
+        let concrete = nested_array(middle.clone());
+
+        for mono_first in [true, false] {
+            for (name, widen) in [("Base", true), ("Leaf", false)] {
+                let var = PolyType::fresh();
+                let inferred = nested_array(var.clone());
+                let (lhs, rhs) = if mono_first {
+                    (&concrete, &inferred)
+                } else {
+                    (&inferred, &concrete)
+                };
+                lhs.constrain_base(rhs, &symbols).unwrap();
+
+                let incompatible = PolyType::nullary(interner.intern(name));
+                let result = if widen {
+                    incompatible.constrain::<AnySupertype>(&var, &symbols)
+                } else {
+                    var.constrain::<AnySupertype>(&incompatible, &symbols)
+                };
+                assert!(result.is_err());
+            }
+        }
+    }
 }
