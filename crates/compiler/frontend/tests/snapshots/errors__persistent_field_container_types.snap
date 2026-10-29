@@ -1,0 +1,6 @@
+---
+source: crates/compiler/frontend/tests/errors.rs
+expression: "diagnostics.iter().map(|(_, message, _)|\nmessage.as_str()).collect::<Vec<_>>().join(\"\n\")"
+---
+fields of type `String` cannot be marked as persistent
+fields of type `array<array<String>>` cannot be marked as persistent

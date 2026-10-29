@@ -27,19 +27,19 @@ error[UNEXPECTED_NATIVE]: scripted types are not allowed to have native members
 53 |   native func NativeMethod()
    |               ^^^^^^^^^^^^
 
-error[INVALID_PERSISTENT]: strings, variants and resources cannot be marked as persistent
+error[INVALID_PERSISTENT]: fields of type `String` cannot be marked as persistent
  --> tests/data/class-checks.reds:57:18
    |
 57 |   persistent let string: String;
    |                  ^^^^^^
 
-error[INVALID_PERSISTENT]: strings, variants and resources cannot be marked as persistent
+error[INVALID_PERSISTENT]: fields of type `Variant` cannot be marked as persistent
  --> tests/data/class-checks.reds:58:18
    |
 58 |   persistent let variant: Variant;
    |                  ^^^^^^^
 
-error[INVALID_PERSISTENT]: strings, variants and resources cannot be marked as persistent
+error[INVALID_PERSISTENT]: fields of type `ResRef` cannot be marked as persistent
  --> tests/data/class-checks.reds:59:18
    |
 59 |   persistent let res: ResRef;
@@ -87,25 +87,25 @@ error[INVALID_BASE]: this type cannot inherit from a primitive
 19 | class ClassExtendingPrimitive extends Int32 {}
    |       ^^^^^^^^^^^^^^^^^^^^^^^
 
-error[INVALID_TYPE_ARG_COUNT]: type `AbstractClass` expects 1 type argument
+error[INVALID_TYPE_ARG_COUNT]: type `AbstractClass` expects 1 type argument, but found 2
  --> tests/data/class-checks.reds:37:7
    |
 37 | class ClassWithInvalidTypeArgCounts extends AbstractClass<Int32, Int32> {
    |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-error[INVALID_TYPE_ARG_COUNT]: type `AbstractClass` expects 1 type argument
+error[INVALID_TYPE_ARG_COUNT]: type `AbstractClass` expects 1 type argument, but found 0
  --> tests/data/class-checks.reds:38:7
    |
 38 |   let field: AbstractClass;
    |       ^^^^^
 
-error[INVALID_TYPE_ARG_COUNT]: type `AbstractClass` expects 1 type argument
+error[INVALID_TYPE_ARG_COUNT]: type `AbstractClass` expects 1 type argument, but found 0
  --> tests/data/class-checks.reds:40:15
    |
 40 |   func Method(a: AbstractClass) -> AbstractClass<String, String> {}
    |               ^^^^^^^^^^^^^^^^
 
-error[INVALID_BASE]: this class circularly extends itself
+error[INVALID_BASE]: inheritance cycle detected
  --> tests/data/class-checks.reds:43:7
    |
 43 | class CircularClassA extends CircularClassB {}
@@ -123,7 +123,7 @@ error[INVALID_VARIANCE]: the type `B` appears in covariant position, which is in
 68 |   func MethodB() -> B
    |        ^^^^^^^
 
-error[UNSASTISFIED_BOUND]: type `Chair` does not satisfy expected bound `Animal`
+error[UNSATISFIED_BOUND]: type `Chair` does not satisfy expected bound `Animal` for type parameter `A`
  --> tests/data/class-checks.reds:80:7
    |
 80 | class ClassViolatingBound extends ClassWithBound<Chair> {}
@@ -142,11 +142,11 @@ error[MISSING_IMPL]: this class is missing required method implementations:
 13 | class IncompleteClass extends AbstractClass<Int32> {}
    |       ^^^^^^^^^^^^^^^
 
-warning[FINAL_FN_OVERRIDE]: this class overrides a final method `FinalMethod`
- --> tests/data/class-checks.reds:32:7
+warning[FINAL_FN_OVERRIDE]: this method overrides the final method `FinalMethod`
+ --> tests/data/class-checks.reds:34:14
    |
-32 | class ClassOverridingFinalMethod extends AbstractClass<Int32> {
-   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^
+34 |   final func FinalMethod(a: Int32) {}
+   |              ^^^^^^^^^^^
 
 error[MISSING_IMPL]: this class is missing required method implementations:
   func UnimplementedMethod(a: Int32) -> Void
@@ -155,7 +155,7 @@ error[MISSING_IMPL]: this class is missing required method implementations:
 37 | class ClassWithInvalidTypeArgCounts extends AbstractClass<Int32, Int32> {
    |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-warning[CALLING_BASE_STATIC_METHOD]: calling a static method of `AbstractClass` from its subclass, use `AbstractClass.StaticMethod` instead
+warning[CALLING_BASE_STATIC_METHOD]: static method `StaticMethod` is declared on `AbstractClass`; qualify the call with `AbstractClass.StaticMethod(...)` instead of its subclass
  --> tests/data/class-checks.reds:93:3
    |
 93 |   CompleteClass.StaticMethod(42);

@@ -207,7 +207,24 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         field_items.push(FieldItem::new(field_idx, Some(default)));
                     }
                 }
-                _ => self.reporter.report(Diagnostic::UnexpectedItem(item_span)),
+                ast::Item::Import(_) => self.reporter.report(Diagnostic::UnexpectedItem(
+                    if is_struct {
+                        "imports cannot be declared inside a struct"
+                    } else {
+                        "imports cannot be declared inside a class"
+                    },
+                    item_span,
+                )),
+                ast::Item::Class(_) | ast::Item::Struct(_) | ast::Item::Enum(_) => {
+                    self.reporter.report(Diagnostic::UnexpectedItem(
+                        if is_struct {
+                            "nested type declarations are not allowed inside a struct"
+                        } else {
+                            "nested type declarations are not allowed inside a class"
+                        },
+                        item_span,
+                    ));
+                }
             }
         }
 
@@ -338,7 +355,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
 
         if flags.is_persistent() && !matches!(typ, Type::Data(app) if can_be_persisted(app)) {
             self.reporter
-                .report(Diagnostic::InvalidPersistentField(span));
+                .report(Diagnostic::InvalidPersistentField(typ.clone().into(), span));
         }
 
         if !parent_flags.is_native() && flags.is_native() {

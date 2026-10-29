@@ -15,12 +15,6 @@ error[UNRESOLVED_TYPE]: `NonExistingClass` is not a known type
 10 | @wrapMethod(NonExistingClass)
    |             ^^^^^^^^^^^^^^^^
 
-error[INVALID_ANN_USE]: could not find a method with a matching signature for the `@wrapMethod(NonExistingClass)` annotation
- --> tests/data/annotation-checks.reds:11:6
-   |
-11 | func HelloWorld(x: String) {
-   |      ^^^^^^^^^^
-
 error[INVALID_ANN_USE]: annotated methods cannot be generic
  --> tests/data/annotation-checks.reds:15:6
    |

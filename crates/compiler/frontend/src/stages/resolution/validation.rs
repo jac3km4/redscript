@@ -183,7 +183,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         if base.func().flags().is_final() {
                             self.reporter.report(Diagnostic::FinalMethodOverride(
                                 method.name(),
-                                class.name_span(),
+                                method.func().span().unwrap_or(class.name_span()),
                             ));
                         };
                         implemented.insert(*base.key(), *method.key());
@@ -238,6 +238,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
             }
 
             if !missing.is_empty() {
+                missing.sort_by_cached_key(ToString::to_string);
                 self.reporter.report(Diagnostic::MissingMethodImpls(
                     missing.into(),
                     class.name_span(),
@@ -297,9 +298,10 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
 
         match (typ.upper_bound(), upper.upper_bound()) {
             (Some(x), Some(y)) if self.symbols.is_subtype(x.id(), y.id()) => Ok(()),
-            (_, _) => Err(Diagnostic::UnsastisfiedBound(
+            (_, _) => Err(Diagnostic::UnsatisfiedBound(
                 typ.clone().into(),
                 upper.clone().into(),
+                var.name(),
                 span,
             )),
         }
@@ -322,6 +324,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
             Err(Diagnostic::InvalidTypeArgCount(
                 type_app.id(),
                 params.len(),
+                type_app.args().len(),
                 span,
             ))
         }

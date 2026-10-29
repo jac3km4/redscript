@@ -21,7 +21,7 @@ warning[UNUSED_ITEM_QUALIFIERS]: `final`, `static` qualifiers have no effect on 
 10 | final static func UnusedFinalStaticQualifiers(s: String) -> String {
    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-error[NON_DATA_VARIANCE]: non-data types cannot have variance
+error[NON_DATA_VARIANCE]: function type parameters cannot have variance annotations
  --> tests/data/function-checks.reds:14:28
    |
 14 | func FunctionWithVariance<+A>() -> A {}

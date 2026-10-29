@@ -9,7 +9,7 @@ error[UNRESOLVED_IMPORT]: `NonExisting` could not be found
 1 | import NonExisting
   | ^^^^^^^^^^^^^^^^^^
 
-error[UNEXPECTED_ITEM]: items of this type are not allowed here
+error[UNEXPECTED_ITEM]: fields cannot be declared at module scope
  --> tests/data/item-checks.reds:3:5
   |
 3 | let badTopLevelField: CName;

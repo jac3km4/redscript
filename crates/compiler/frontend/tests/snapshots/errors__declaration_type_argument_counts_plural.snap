@@ -1,0 +1,5 @@
+---
+source: crates/compiler/frontend/tests/errors.rs
+expression: "diagnostics[0].1"
+---
+type `Pair` expects 2 type arguments, but found 1

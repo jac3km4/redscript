@@ -21,23 +21,23 @@ pub enum Diagnostic<'ctx> {
     LoweringError(LowerError<'ctx>),
     #[error("{0}")]
     CoalesceError(Box<CoalesceError<'ctx>>, Span),
-    #[error("duplicate variant name")]
-    DuplicateVariantName(Span),
-    #[error("duplicate variant value")]
-    DuplicateVariantValue(Span),
-    #[error("value overflow")]
+    #[error("enum `{0}` has a duplicate variant name `{1}`")]
+    DuplicateVariantName(&'ctx str, &'ctx str, Span),
+    #[error("variant `{0}.{1}` has duplicate value {2}")]
+    DuplicateVariantValue(&'ctx str, &'ctx str, i64, Span),
+    #[error("implicit enum value exceeds the i64 range when incrementing the maximum value")]
     ValueOverflow(Span),
     #[error("this function must have a body")]
     MissingFunctionBody(Span),
     #[error("this function cannot have a body")]
     UnexpectedFunctionBody(Span),
-    #[error("{} qualifiers have no effect on this item", sep_by(.0.iter_names().map(|(name,_)| surrounded_by(lowercase(name), "`", "`")), ", "))]
+    #[error("{} {noun} {verb} no effect on this item", sep_by(.0.iter_names().map(|(name,_)| surrounded_by(lowercase(name), "`", "`")), ", "), noun = if .0.iter_names().count() == 1 { "qualifier" } else { "qualifiers" }, verb = if .0.iter_names().count() == 1 { "has" } else { "have" })]
     UnusedItemQualifiers(ast::ItemQualifiers, Span),
     #[error("`{0}` is not a known intrinsic")]
     UnknownIntrinsic(&'ctx str, Span),
-    #[error("items of this type are not allowed here")]
-    UnexpectedItem(Span),
-    #[error("base type must be a valid known type")]
+    #[error("{0}")]
+    UnexpectedItem(&'static str, Span),
+    #[error("base type must be a class or struct type")]
     InvalidBaseType(Span),
     #[error("`{0}` is not a valid annotation in this context")]
     UnknownAnnotation(&'ctx str, Span),
@@ -57,14 +57,14 @@ pub enum Diagnostic<'ctx> {
     MissingMethodImpls(Box<[FunctionSignature<'ctx, Poly>]>, Span),
     #[error("this class contains a duplicated implementation of the `{0}` method")]
     DuplicateMethod(&'ctx str, Span),
-    #[error("this class overrides a final method `{0}`")]
+    #[error("this method overrides the final method `{0}`")]
     FinalMethodOverride(&'ctx str, Span),
-    #[error("this class circularly extends itself")]
+    #[error("inheritance cycle detected")]
     CircularInheritance(Span),
-    #[error("type `{0}` expects {1} type {noun}", noun = if *.1 == 1 { "argument" } else { "arguments" })]
-    InvalidTypeArgCount(TypeId<'ctx>, usize, Span),
-    #[error("type `{0}` does not satisfy expected bound `{1}`")]
-    UnsastisfiedBound(Box<Type<'ctx>>, Box<Type<'ctx>>, Span),
+    #[error("type `{0}` expects {1} type {noun}, but found {2}", noun = if *.1 == 1 { "argument" } else { "arguments" })]
+    InvalidTypeArgCount(TypeId<'ctx>, usize, usize, Span),
+    #[error("type `{0}` does not satisfy expected bound `{1}` for type parameter `{2}`")]
+    UnsatisfiedBound(Box<Type<'ctx>>, Box<Type<'ctx>>, &'ctx str, Span),
     #[error("this annotation attempts to modify a user-defined symbol, which is not allowed")]
     UserSymbolAnnotation(Span),
     #[error("the type `{0}` appears in {1} position, which is incompatible with its declaration")]
@@ -75,14 +75,14 @@ pub enum Diagnostic<'ctx> {
     DuplicateMethodAnnotation(Span),
     #[error("annotated methods cannot be generic")]
     GenericMethodAnnotation(Span),
-    #[error("non-data types cannot have variance")]
+    #[error("function type parameters cannot have variance annotations")]
     NonDataVariance(Span),
     #[error("struct methods must be static")]
     NonStaticStructMethod(Span),
     #[error("scripted types are not allowed to have native members")]
     NativeMemberOfScriptedType(Span),
-    #[error("strings, variants and resources cannot be marked as persistent")]
-    InvalidPersistentField(Span),
+    #[error("fields of type `{0}` cannot be marked as persistent")]
+    InvalidPersistentField(Box<Type<'ctx>>, Span),
     #[error("`@addField` cannot be used with native types that are known to be fully defined")]
     FullyDefinedNativeTypeFieldAddition(Span),
     #[error("`@addField` cannot be used with scripted structs")]
@@ -98,10 +98,10 @@ pub enum Diagnostic<'ctx> {
     #[error("unused variable")]
     UnusedLocal(Span),
     #[error(
-        "this `@addField` conflicts with an existing field, this operation will have no effect"
+        "this `@addField` conflicts with an existing field; this operation will have no effect"
     )]
     AddFieldConflict(Span),
-    #[error("structures cannot have variance annotations")]
+    #[error("structs cannot have variance annotations")]
     InvalidStructVariance(Span),
     #[error("method overrides cannot be less visible than the method they override ({0})")]
     LessVisibleOverride(Visibility, Span),
@@ -113,11 +113,11 @@ impl<'ctx> Diagnostic<'ctx> {
     pub fn level(&self) -> DiagnosticLevel {
         match self {
             Self::LoweringError(err) => err.level(),
-            Self::DuplicateVariantValue(_) | Self::FinalMethodOverride(_, _) => {
+            Self::DuplicateVariantValue(_, _, _, _) | Self::FinalMethodOverride(_, _) => {
                 DiagnosticLevel::Pedantic
             }
             Self::UnusedItemQualifiers(_, _)
-            | Self::DuplicateVariantName(_)
+            | Self::DuplicateVariantName(_, _, _)
             | Self::UnusedLocal(_)
             | Self::AddFieldConflict(_) => DiagnosticLevel::Warning,
             Self::ImportIsPrivate(_, _) | Self::LessVisibleOverride(_, _) => {
@@ -141,14 +141,14 @@ impl<'ctx> Diagnostic<'ctx> {
             Self::LoweringError(err) => err.span(),
             Self::Cte(err) => err.span(),
             Self::CoalesceError(_, span)
-            | Self::DuplicateVariantName(span)
-            | Self::DuplicateVariantValue(span)
+            | Self::DuplicateVariantName(_, _, span)
+            | Self::DuplicateVariantValue(_, _, _, span)
             | Self::ValueOverflow(span)
             | Self::MissingFunctionBody(span)
             | Self::UnexpectedFunctionBody(span)
             | Self::UnusedItemQualifiers(_, span)
             | Self::UnknownIntrinsic(_, span)
-            | Self::UnexpectedItem(span)
+            | Self::UnexpectedItem(_, span)
             | Self::InvalidBaseType(span)
             | Self::UnknownAnnotation(_, span)
             | Self::ImportNotFound(_, span)
@@ -161,8 +161,8 @@ impl<'ctx> Diagnostic<'ctx> {
             | Self::DuplicateMethod(_, span)
             | Self::FinalMethodOverride(_, span)
             | Self::CircularInheritance(span)
-            | Self::InvalidTypeArgCount(_, _, span)
-            | Self::UnsastisfiedBound(_, _, span)
+            | Self::InvalidTypeArgCount(_, _, _, span)
+            | Self::UnsatisfiedBound(_, _, _, span)
             | Self::UserSymbolAnnotation(span)
             | Self::InvalidVariance(_, _, span)
             | Self::IncompatibleBaseType(_, span)
@@ -171,7 +171,7 @@ impl<'ctx> Diagnostic<'ctx> {
             | Self::NonDataVariance(span)
             | Self::NonStaticStructMethod(span)
             | Self::NativeMemberOfScriptedType(span)
-            | Self::InvalidPersistentField(span)
+            | Self::InvalidPersistentField(_, span)
             | Self::FullyDefinedNativeTypeFieldAddition(span)
             | Self::ScriptedStructFieldAddition(span)
             | Self::InvalidImplName(span)
@@ -190,14 +190,14 @@ impl<'ctx> Diagnostic<'ctx> {
             Self::SyntaxError(_) => "SYNTAX_ERR",
             Self::LoweringError(err) => err.code(),
             Self::CoalesceError(_, _) => "COALESCE_ERR",
-            Self::DuplicateVariantName(_) => "DUP_VARIANT_NAME",
-            Self::DuplicateVariantValue(_) => "DUP_VARIANT_VAL",
+            Self::DuplicateVariantName(_, _, _) => "DUP_VARIANT_NAME",
+            Self::DuplicateVariantValue(_, _, _, _) => "DUP_VARIANT_VAL",
             Self::ValueOverflow(_) => "VAL_OVERFLOW",
             Self::MissingFunctionBody(_) => "MISSING_BODY",
             Self::UnexpectedFunctionBody(_) => "UNEXPECTED_BODY",
             Self::UnusedItemQualifiers(_, _) => "UNUSED_ITEM_QUALIFIERS",
             Self::UnknownIntrinsic(_, _) => "INVALID_INTRINSIC",
-            Self::UnexpectedItem(_) => "UNEXPECTED_ITEM",
+            Self::UnexpectedItem(_, _) => "UNEXPECTED_ITEM",
             Self::InvalidBaseType(_)
             | Self::CircularInheritance(_)
             | Self::IncompatibleBaseType(_, _) => "INVALID_BASE",
@@ -213,14 +213,14 @@ impl<'ctx> Diagnostic<'ctx> {
             Self::MissingMethodImpls(_, _) => "MISSING_IMPL",
             Self::DuplicateMethod(_, _) => "DUP_METHOD",
             Self::FinalMethodOverride(_, _) => "FINAL_FN_OVERRIDE",
-            Self::InvalidTypeArgCount(_, _, _) => "INVALID_TYPE_ARG_COUNT",
-            Self::UnsastisfiedBound(_, _, _) => "UNSASTISFIED_BOUND",
+            Self::InvalidTypeArgCount(_, _, _, _) => "INVALID_TYPE_ARG_COUNT",
+            Self::UnsatisfiedBound(_, _, _, _) => "UNSATISFIED_BOUND",
             Self::InvalidVariance(_, _, _) => "INVALID_VARIANCE",
             Self::DuplicateMethodAnnotation(_) => "DUP_FN_ANN",
             Self::NonDataVariance(_) => "NON_DATA_VARIANCE",
             Self::NonStaticStructMethod(_) => "NON_STATIC_STRUCT_FN",
             Self::NativeMemberOfScriptedType(_) => "UNEXPECTED_NATIVE",
-            Self::InvalidPersistentField(_) => "INVALID_PERSISTENT",
+            Self::InvalidPersistentField(_, _) => "INVALID_PERSISTENT",
             Self::FullyDefinedNativeTypeFieldAddition(_) => "FULLY_DEFINED_NATIVE_FIELD_ADDITION",
             Self::ScriptedStructFieldAddition(_) => "SCRIPTED_STRUCT_FIELD_ADDITION",
             Self::Cte(_) => "CTE_ERR",

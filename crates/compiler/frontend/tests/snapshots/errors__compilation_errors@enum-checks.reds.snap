@@ -3,13 +3,13 @@ source: crates/compiler/frontend/tests/errors.rs
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/enum-checks.reds
 ---
-warning[DUP_VARIANT_VAL]: duplicate variant value
+warning[DUP_VARIANT_VAL]: variant `Enum.DuplicateOne` has duplicate value 1
  --> tests/data/enum-checks.reds:6:3
   |
 6 |   DuplicateOne = 1,
   |   ^^^^^^^^^^^^^^^^
 
-warning[DUP_VARIANT_NAME]: duplicate variant name
+warning[DUP_VARIANT_NAME]: enum `Enum` has a duplicate variant name `DuplicatedName`
  --> tests/data/enum-checks.reds:9:3
   |
 9 |   DuplicatedName = 4,

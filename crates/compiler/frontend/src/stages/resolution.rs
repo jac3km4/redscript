@@ -380,7 +380,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
     }
 
     fn process_enum(&mut self, entry: ParsedEnum<'ctx>) {
-        let (_, name_span) = entry.enum_.name;
+        let (enum_name, name_span) = entry.enum_.name;
 
         let qs = entry.meta.qualifiers;
         if !qs.is_empty() {
@@ -406,12 +406,19 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
             };
 
             if by_name.insert(variant.name, val).is_some() {
-                self.reporter
-                    .report(Diagnostic::DuplicateVariantName(*span));
+                self.reporter.report(Diagnostic::DuplicateVariantName(
+                    enum_name,
+                    variant.name,
+                    *span,
+                ));
             }
             if !by_val.insert(val) {
-                self.reporter
-                    .report(Diagnostic::DuplicateVariantValue(*span));
+                self.reporter.report(Diagnostic::DuplicateVariantValue(
+                    enum_name,
+                    variant.name,
+                    val,
+                    *span,
+                ));
             }
         }
 
@@ -444,16 +451,14 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                 intrinsic = Some(i);
             }
             Some(ann @ FunctionAnnotation::Replace(class)) => {
-                if let Some(id) = self.resolve_existing_annotated_method(
+                replaced = Some(self.resolve_existing_annotated_method(
                     function.name,
                     *class,
                     &meta.qualifiers,
                     &func_t,
                     ann,
                     types,
-                ) {
-                    replaced = Some(id);
-                }
+                )?);
             }
             &Some(FunctionAnnotation::Add((cls_name, cls_span))) => {
                 let cls_id = self.resolve_annotated_type(cls_name, types, cls_span)?;
@@ -529,16 +534,14 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                 return Some(FuncItemKind::AddMethod(item));
             }
             Some(ann @ FunctionAnnotation::Wrap(class)) => {
-                if let Some(wrapped_id) = self.resolve_existing_annotated_method(
+                wrapped = Some(self.resolve_existing_annotated_method(
                     function.name,
                     *class,
                     &meta.qualifiers,
                     &func_t,
                     ann,
                     types,
-                ) {
-                    wrapped = Some(wrapped_id);
-                }
+                )?);
             }
             _ => {}
         }
@@ -676,7 +679,10 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
         }
 
         if id.is_none() {
-            self.reporter.report(Diagnostic::UnexpectedItem(name_span));
+            self.reporter.report(Diagnostic::UnexpectedItem(
+                "fields cannot be declared at module scope",
+                name_span,
+            ));
         }
 
         Some(FieldItem::new(id?, field.default))
@@ -817,21 +823,21 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
         annotation: &FunctionAnnotation<'ctx>,
         types: &TypeEnv<'_, 'ctx>,
     ) -> Option<MethodId<'ctx>> {
-        let res =
-            match self.resolve_annotated_method(func_name, cls_name, func_type, types, cls_span) {
-                Some(res) => Some(res),
-                // Retry in case the user marked a cb method that returns Bool as Void.
-                // This enables backward compatibility for some mods.
-                None if qualifiers.contains(ast::ItemQualifiers::CALLBACK)
-                    && func_type.return_type() == &Type::nullary(predef::VOID) =>
-                {
-                    let fallback = func_type
-                        .clone()
-                        .with_return_type(Type::nullary(predef::BOOL));
-                    self.resolve_annotated_method(func_name, cls_name, &fallback, types, cls_span)
-                }
-                _ => None,
-            };
+        let (cls_id, aggregate) = self.resolve_annotated_aggregate(cls_name, types, cls_span)?;
+        let res = match Self::resolve_annotated_method(func_name, cls_id, aggregate, func_type) {
+            Some(res) => Some(res),
+            // Retry in case the user marked a cb method that returns Bool as Void.
+            // This enables backward compatibility for some mods.
+            None if qualifiers.contains(ast::ItemQualifiers::CALLBACK)
+                && func_type.return_type() == &Type::nullary(predef::VOID) =>
+            {
+                let fallback = func_type
+                    .clone()
+                    .with_return_type(Type::nullary(predef::BOOL));
+                Self::resolve_annotated_method(func_name, cls_id, aggregate, &fallback)
+            }
+            _ => None,
+        };
 
         let Some((id, method)) = res else {
             self.reporter.report(Diagnostic::AnnotatedMethodNotFound(
@@ -848,15 +854,12 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
         Some(id)
     }
 
-    fn resolve_annotated_method(
-        &mut self,
+    fn resolve_annotated_method<'a>(
         func_name: &str,
-        cls_name: &'ctx str,
+        id: TypeId<'ctx>,
+        agg: &'a Aggregate<'ctx>,
         func_type: &FunctionType<'ctx>,
-        types: &TypeEnv<'_, 'ctx>,
-        cls_span: Span,
-    ) -> Option<(MethodId<'ctx>, &Method<'ctx>)> {
-        let (id, agg) = self.resolve_annotated_aggregate(cls_name, types, cls_span)?;
+    ) -> Option<(MethodId<'ctx>, &'a Method<'ctx>)> {
         let entry = agg.methods().by_name(func_name).find(|entry| {
             entry
                 .func()

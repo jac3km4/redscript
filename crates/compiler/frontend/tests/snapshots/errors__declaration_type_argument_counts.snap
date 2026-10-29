@@ -1,0 +1,6 @@
+---
+source: crates/compiler/frontend/tests/errors.rs
+expression: "diagnostics.iter().map(|(_, message, _)|\nmessage.as_str()).collect::<Vec<_>>().join(\"\n\")"
+---
+type `Generic` expects 1 type argument, but found 0
+type `Generic` expects 1 type argument, but found 2

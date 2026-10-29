@@ -3,13 +3,13 @@ source: crates/compiler/frontend/tests/errors.rs
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/struct-variance.reds
 ---
-error[INVALID_STRUCT_VARIANCE]: structures cannot have variance annotations
+error[INVALID_STRUCT_VARIANCE]: structs cannot have variance annotations
  --> tests/data/struct-variance.reds:1:8
   |
 1 | struct CovariantStruct<+T> {}
   |        ^^^^^^^^^^^^^^^
 
-error[INVALID_STRUCT_VARIANCE]: structures cannot have variance annotations
+error[INVALID_STRUCT_VARIANCE]: structs cannot have variance annotations
  --> tests/data/struct-variance.reds:3:8
   |
 3 | struct ContravariantStruct<-T> {}
