@@ -22,3 +22,18 @@ func TestOrAnd(lhs: Bool, out state: Bool) -> Bool {
 func TestNestedLhs(lhs: Bool, out state: Bool) -> Bool {
   return (lhs && SideEffect(state, true)) || SideEffect(state, false);
 }
+
+abstract class Scriptable {
+  public func IsA(name: CName) -> Bool {}
+}
+
+class Class extends Scriptable {
+  public let nested: Class;
+}
+
+func TestNested(inst: Class) -> Class {
+  if let Class { nested: Class { nested: nested? } } = inst {
+    return nested;
+  }
+  return null;
+}

@@ -2,85 +2,129 @@
 source: crates/compiler/backend/tests/bytecode.rs
 expression: bytecode
 ---
-// SideEffect;OutBoolBool (f0)
+// Scriptable::IsA;CName (f0)
+
+// SideEffect;OutBoolBool (f1)
 assign
 param 0 "state": "Bool"
 param 1 "value": "Bool"
 return
 param 0 "state": "Bool"
 
-// TestAnd;BoolOutBool (f1)
+// TestAnd;BoolOutBool (f2)
 return
-invoke.static j54 l7 f2 OperatorLogicAnd 0000000000000000
+invoke.static j54 l7 f3 OperatorLogicAnd 0000000000000000
 param 2 "lhs": "Bool"
 skip 26
-invoke.static j26 l7 f0 SideEffect;OutBoolBool 0000000000000000
+invoke.static j26 l7 f1 SideEffect;OutBoolBool 0000000000000000
 param 3 "state": "Bool"
 true.const
 param.end
 param.end
 
-// TestOr;BoolOutBool (f3)
+// TestOr;BoolOutBool (f4)
 return
-invoke.static j54 l11 f4 OperatorLogicOr 0000000000000000
+invoke.static j54 l11 f5 OperatorLogicOr 0000000000000000
 param 4 "lhs": "Bool"
 skip 26
-invoke.static j26 l11 f0 SideEffect;OutBoolBool 0000000000000000
+invoke.static j26 l11 f1 SideEffect;OutBoolBool 0000000000000000
 param 5 "state": "Bool"
 false.const
 param.end
 param.end
 
-// TestAndOr;BoolOutBool (f5)
+// TestAndOr;BoolOutBool (f6)
 return
-invoke.static j99 l15 f2 OperatorLogicAnd 0000000000000000
+invoke.static j99 l15 f3 OperatorLogicAnd 0000000000000000
 param 6 "lhs": "Bool"
 skip 71
-invoke.static j71 l15 f4 OperatorLogicOr 0000000000000000
-invoke.static j26 l15 f0 SideEffect;OutBoolBool 0000000000000000
+invoke.static j71 l15 f5 OperatorLogicOr 0000000000000000
+invoke.static j26 l15 f1 SideEffect;OutBoolBool 0000000000000000
 param 7 "state": "Bool"
 false.const
 param.end
 skip 26
-invoke.static j26 l15 f0 SideEffect;OutBoolBool 0000000000000000
+invoke.static j26 l15 f1 SideEffect;OutBoolBool 0000000000000000
 param 7 "state": "Bool"
 true.const
 param.end
 param.end
 param.end
 
-// TestOrAnd;BoolOutBool (f6)
+// TestOrAnd;BoolOutBool (f7)
 return
-invoke.static j99 l19 f4 OperatorLogicOr 0000000000000000
+invoke.static j99 l19 f5 OperatorLogicOr 0000000000000000
 param 8 "lhs": "Bool"
 skip 71
-invoke.static j71 l19 f2 OperatorLogicAnd 0000000000000000
-invoke.static j26 l19 f0 SideEffect;OutBoolBool 0000000000000000
+invoke.static j71 l19 f3 OperatorLogicAnd 0000000000000000
+invoke.static j26 l19 f1 SideEffect;OutBoolBool 0000000000000000
 param 9 "state": "Bool"
 true.const
 param.end
 skip 26
-invoke.static j26 l19 f0 SideEffect;OutBoolBool 0000000000000000
+invoke.static j26 l19 f1 SideEffect;OutBoolBool 0000000000000000
 param 9 "state": "Bool"
 false.const
 param.end
 param.end
 param.end
 
-// TestNestedLhs;BoolOutBool (f7)
+// TestNestedLhs;BoolOutBool (f8)
 return
-invoke.static j99 l23 f4 OperatorLogicOr 0000000000000000
-invoke.static j54 l23 f2 OperatorLogicAnd 0000000000000000
+invoke.static j99 l23 f5 OperatorLogicOr 0000000000000000
+invoke.static j54 l23 f3 OperatorLogicAnd 0000000000000000
 param 10 "lhs": "Bool"
 skip 26
-invoke.static j26 l23 f0 SideEffect;OutBoolBool 0000000000000000
+invoke.static j26 l23 f1 SideEffect;OutBoolBool 0000000000000000
 param 11 "state": "Bool"
 true.const
 param.end
 param.end
 skip 26
-invoke.static j26 l23 f0 SideEffect;OutBoolBool 0000000000000000
+invoke.static j26 l23 f1 SideEffect;OutBoolBool 0000000000000000
 param 11 "state": "Bool"
 false.const
 param.end
 param.end
+
+// TestNested;Class (f9)
+assign
+local 0 "var$1": "ref:Class"
+param 12 "inst": "ref:Class"
+jump.if_not 214
+invoke.static j158 l35 f3 OperatorLogicAnd 0000000000000000
+invoke.static j105 l35 f3 OperatorLogicAnd 0000000000000000
+ctx 34
+local 0 "var$1": "ref:Class"
+invoke.virtual j25 l35 f0 "IsA;CName" 0000000000000000
+cname.const 1 "Class"
+param.end
+skip 49
+ctx 46
+ctx 18
+local 0 "var$1": "ref:Class"
+object.field 0 Class::nested: "ref:Class"
+invoke.virtual j25 l35 f0 "IsA;CName" 0000000000000000
+cname.const 1 "Class"
+param.end
+param.end
+skip 34
+ref.to_bool
+ctx 30
+ctx 18
+local 0 "var$1": "ref:Class"
+object.field 0 Class::nested: "ref:Class"
+object.field 0 Class::nested: "ref:Class"
+param.end
+assign
+local 1 "nested$2": "ref:Class"
+ctx 30
+ctx 18
+local 0 "var$1": "ref:Class"
+object.field 0 Class::nested: "ref:Class"
+object.field 0 Class::nested: "ref:Class"
+return
+local 1 "nested$2": "ref:Class"
+jump 0
+return
+ref.null
