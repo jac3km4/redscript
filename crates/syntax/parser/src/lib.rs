@@ -132,7 +132,19 @@ fn parse_with_eof<'tok, 'src: 'tok, A>(
     let (output, errors) = parser
         .parse(parser_input(tokens, file, eof))
         .into_output_errors();
-    let errors = errors.into_iter().map(Error::new_parse).collect();
+    let errors = errors
+        .into_iter()
+        .map(|error| {
+            if matches!(
+                error.reason(),
+                chumsky::error::RichReason::ExpectedFound { found: None, .. }
+            ) {
+                Error::Parse(FormattedError(error).to_string(), Span::new(eof, eof, file))
+            } else {
+                Error::new_parse(error)
+            }
+        })
+        .collect();
     (output, errors)
 }
 
@@ -263,6 +275,38 @@ mod eof_tests {
     }
 
     #[test]
+    fn incomplete_sources_use_true_eof() {
+        let file = FileId::from_i32(12);
+        for trailing in [" \n\t", " //comment", " /* comment */ \n"] {
+            let src = format!("1 +{trailing}");
+            let (_, errors) = parse_expr(&src, file);
+            assert_parse_error_at(&errors, Span::new(src.len() as u32, src.len() as u32, file));
+
+            let src = format!("func Test({trailing}");
+            let eof = Span::new(src.len() as u32, src.len() as u32, file);
+            assert_parse_error_at(&parse_item(&src, file).1, eof);
+            assert_parse_error_at(&parse_item_decl(&src, file).1, eof);
+            assert_parse_error_at(&parse_module(&src, file).1, eof);
+            assert_parse_error_at(&parse_modules([(file, src.as_str())]).1, eof);
+        }
+    }
+
+    #[test]
+    fn custom_errors_and_actual_tokens_keep_their_spans() {
+        let file = FileId::from_i32(13);
+        let (_, errors) = parse_expr("value. //comment", file);
+        assert_parse_error_at(&errors, Span::new(5, 6, file));
+        assert!(
+            errors
+                .iter()
+                .all(|error| error.span() != Span::new(16, 16, file))
+        );
+
+        let (_, errors) = parse_expr("1 + ) //comment", file);
+        assert_parse_error_at(&errors, Span::new(4, 5, file));
+    }
+
+    #[test]
     fn trivia_only_expression_uses_source_eof() {
         let file = FileId::from_i32(8);
         for src in ["", " \n\t", "// comment", " /* comment */ \n"] {
@@ -279,7 +323,7 @@ mod eof_tests {
         let tokens = tokens.unwrap();
         let eof_parser = any().repeated().ignore_then(just(Token::Null));
         let (_, errors) = parse(eof_parser, &tokens, file);
-        assert_parse_error_at(&errors, Span::new(0, 3, file));
+        assert_parse_error_at(&errors, Span::new(3, 3, file));
 
         use chumsky::input::ExactSizeInput;
         // SAFETY: zero is a valid starting token offset for this input.
