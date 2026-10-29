@@ -1,6 +1,6 @@
 mod common;
 
-use common::{assert_preserved, format};
+use common::assert_preserved;
 use redscript_formatter::FormatSettings;
 
 #[test]
@@ -32,18 +32,18 @@ fn large_expression_widths_do_not_overflow_or_wrap() {
 }
 
 #[test]
-fn overflowing_float_chain_bases_do_not_panic() {
+fn overflowing_float_chain_bases_are_preserved() {
     for trunc_sig_digits in [None, Some(3)] {
         let settings = FormatSettings {
             trunc_sig_digits,
             ..FormatSettings::default()
         };
-        for (literal, rendered) in [("1.0e100", "inf"), ("1.0e400d", "infd")] {
+        for literal in ["1.0e100", "1.0e400d"] {
             for suffix in [".Member", ".Method()", "[0].Member"] {
                 let source = format!("func F() {{ return {literal}{suffix}; }}");
-                let formatted = format(&source, &settings, "test.reds");
+                let formatted = assert_preserved(&source, &settings, "test.reds");
                 assert!(
-                    formatted.contains(&format!("return {rendered}{suffix};")),
+                    formatted.contains(&format!("return {literal}{suffix};")),
                     "{formatted}"
                 );
             }
@@ -52,21 +52,22 @@ fn overflowing_float_chain_bases_do_not_panic() {
 }
 
 #[test]
-fn overflowing_floats_in_lists_do_not_panic() {
+fn overflowing_floats_in_lists_are_preserved() {
     for trunc_sig_digits in [None, Some(3)] {
         let settings = FormatSettings {
             trunc_sig_digits,
             ..FormatSettings::default()
         };
-        for (expression, expected) in [
-            ("[1.0e100, 1.0e400d]", "[inf, infd]"),
-            ("Call(1.0e100, 1.0e400d)", "Call(inf, infd)"),
-            ("value.Method(1.0e100, 1.0e400d)", "value.Method(inf, infd)"),
+        for expression in [
+            "[1.0e100, 1.0e400d]",
+            "Call(1.0e100, 1.0e400d)",
+            "value.Method(1.0e100, 1.0e400d)",
+            "[-1.0e100, -1.0e400d]",
         ] {
             let source = format!("func F() {{ return {expression}; }}");
-            let formatted = format(&source, &settings, "test.reds");
+            let formatted = assert_preserved(&source, &settings, "test.reds");
             assert!(
-                formatted.contains(&format!("return {expected};")),
+                formatted.contains(&format!("return {expression};")),
                 "{formatted}"
             );
         }

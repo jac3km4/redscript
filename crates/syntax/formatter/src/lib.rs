@@ -491,6 +491,13 @@ fn format_constant(
         Constant::CName(s) => write!(f, "n\"{}\"", str::escape_default(s)),
         Constant::Resource(s) => write!(f, "r\"{}\"", str::escape_default(s)),
         Constant::TweakDbId(s) => write!(f, "t\"{}\"", str::escape_default(s)),
+        // `inf` is an identifier in redscript, so retain infinity as an overflowing literal.
+        &Constant::F32(v) if v.is_infinite() => {
+            write!(f, "{}1.0e100", if v.is_sign_negative() { "-" } else { "" })
+        }
+        &Constant::F64(v) if v.is_infinite() => {
+            write!(f, "{}1.0e400d", if v.is_sign_negative() { "-" } else { "" })
+        }
         &Constant::F32(v) => write!(f, "{}", ftoa(v, config)),
         &Constant::F64(v) => write!(f, "{}d", dtoa(v, config)),
         Constant::I32(v) => write!(f, "{v}"),
