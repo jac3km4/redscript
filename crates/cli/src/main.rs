@@ -209,7 +209,7 @@ fn main() -> anyhow::Result<ExitCode> {
                 out.finish(format_args!("[{level}] {message}"));
             }
         })
-        .chain(std::io::stdout())
+        .chain(std::io::stderr())
         .apply()?;
 
     let args: Args = argh::from_env();
@@ -358,9 +358,8 @@ fn format(opts: FormatOpts) -> anyhow::Result<ExitCode> {
     let map = SourceMap::from_paths_recursively([opts.src])?;
     for (id, file) in map.files() {
         let (module, e) = format_document(file.source(), id, &settings);
-        errors.extend(e);
-
-        if !errors.is_empty() {
+        if !e.is_empty() {
+            errors.extend(e);
             failed = true;
             continue;
         }
@@ -387,7 +386,7 @@ fn format(opts: FormatOpts) -> anyhow::Result<ExitCode> {
     }
 
     for err in &errors {
-        eprintln!("[ERROR] {}", err.display(&map).context("unknown source")?);
+        eprintln!("{}", err.display(&map).context("unknown source")?);
     }
 
     if failed {
