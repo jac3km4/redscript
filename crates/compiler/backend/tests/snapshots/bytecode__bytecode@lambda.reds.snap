@@ -12,48 +12,62 @@ local 1
 invoke.static j25 l0 f1 0000000000000000
 local 0
 param.end
+assign
+local 2
+ctx 9
+local 1
+invoke.virtual j21 l5 f0 0000000000000000
+i32.const 2
+param.end
+assign
+local 3
+ctx 9
+local 2
+invoke.virtual j21 l6 f0 0000000000000000
+i32.const 3
+param.end
 
 // Function1<Int32,Int32>::Call;Int32 (f2)
 
 // Function1<Int32,Function1<Int32,Int32>>::Call;Int32 (f3)
 
-// lambda$13::Instantiate (f1)
+// lambda$15::Instantiate (f1)
 assign
-local 2
+local 4
 object.new 0
 assign
 ctx 15
-local 2
+local 4
 object.field 0
 param 0
 return
-local 2
+local 4
 
-// lambda$13::Call;Int32 (f4)
+// lambda$15::Call;Int32 (f4)
 return
 invoke.static j34 l0 f5 0000000000000000
 object.field 0
 param 1
 param.end
 
-// lambda$18::Instantiate (f5)
+// lambda$20::Instantiate (f5)
 assign
-local 3
+local 5
 object.new 1
 assign
 ctx 15
-local 3
+local 5
 object.field 1
 param 2
 assign
 ctx 15
-local 3
+local 5
 object.field 2
 param 3
 return
-local 3
+local 5
 
-// lambda$18::Call;Int32 (f6)
+// lambda$20::Call;Int32 (f6)
 return
 invoke.static j59 l4 f7 0000000000000000
 invoke.static j34 l4 f7 0000000000000000
