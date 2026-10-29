@@ -323,9 +323,15 @@ impl<'scope, 'ctx: 'i, 'i> Decompiler<'scope, 'ctx, 'i> {
 
                         let local = self.bundle.try_get_item(local_idx)?;
                         let name = self.bundle.try_get_item_hint(local.name(), "local name")?;
+                        let typ = extract_type(local.type_(), self.bundle)?;
                         let value = self.consume_expr()?.into_expr();
 
-                        return Ok(Node::Decl { id, name, value });
+                        return Ok(Node::Decl {
+                            id,
+                            name,
+                            typ,
+                            value,
+                        });
                     }
                     ast::Expr::Assign {
                         lhs: self.consume_expr()?.into_expr().into(),
@@ -644,6 +650,7 @@ enum Node<'i> {
     Expr(ast::Expr<'i>),
     Decl {
         name: &'i str,
+        typ: ast::Type<'i>,
         value: ast::Expr<'i>,
         id: Declaration,
     },
@@ -663,11 +670,16 @@ impl<'i> Node<'i> {
     fn into_stmt(self) -> ast::Stmt<'i> {
         match self {
             Node::Expr(expr) => ast::Stmt::Expr(expr.into()),
-            Node::Decl { name, value, id } => {
+            Node::Decl {
+                name,
+                typ,
+                value,
+                id,
+            } => {
                 id.statement.replace(true);
                 ast::Stmt::Let {
                     name,
-                    typ: None,
+                    typ: Some(typ.into()),
                     value: Some(value.into()),
                 }
             }

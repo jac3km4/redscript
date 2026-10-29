@@ -2,8 +2,8 @@ use hashbrown::HashMap;
 use redscript_ast as ast;
 use redscript_formatter::{FormatCtx, FormatSettings, SyntaxOps};
 use redscript_io::{
-    CodeIter, Function, FunctionFlags, Instr, Jump, ScriptBundle, Switch, SwitchLabel, Type,
-    TypeKind, Visibility,
+    CodeIter, Function, FunctionFlags, Instr, Jump, Local, LocalFlags, ScriptBundle, Switch,
+    SwitchLabel, Type, TypeKind, Visibility,
 };
 
 use crate::control_flow::{BlockType, build_control_flow};
@@ -49,6 +49,76 @@ fn format_block(block: &ast::Block<'_>) -> String {
             &HashMap::default(),
         ))
         .to_string()
+}
+
+#[test]
+fn initialized_locals_preserve_declared_types() {
+    for (type_name, value) in [
+        ("Int8", Instr::I8Const(1)),
+        ("Int16", Instr::I16Const(1)),
+        ("Uint8", Instr::U8Const(1)),
+        ("Uint16", Instr::U16Const(1)),
+        ("Foo", Instr::Null),
+    ] {
+        let mut bundle = ScriptBundle::default();
+        let mut function = function(&mut bundle);
+        let function_idx = bundle.define(function.clone());
+        let name = bundle.cnames_mut().add(type_name);
+        let inner = bundle.define(Type::new(name, TypeKind::Primitive));
+        let typ = if type_name == "Foo" {
+            let name = bundle.cnames_mut().add("ref:Foo");
+            bundle.define(Type::new(name, TypeKind::Ref(inner)))
+        } else {
+            inner
+        };
+        let name = bundle.cnames_mut().add("x");
+        let local = bundle.define(Local::new(name, function_idx, typ, LocalFlags::default()));
+        function.set_locals([local]);
+        let code = vec![
+            Instr::Assign,
+            Instr::Local(local),
+            value,
+            Instr::Return,
+            Instr::Nop,
+        ];
+        let block = decompile(&bundle, &function, &code);
+        assert_eq!(block.stmts.len(), 2);
+        let ast::Stmt::Let {
+            typ: Some(typ),
+            value: Some(_),
+            ..
+        } = &block.stmts[0]
+        else {
+            panic!("expected a typed initialized local: {block:?}");
+        };
+        assert_eq!(typ.as_ref(), &ast::Type::plain(type_name));
+    }
+}
+
+#[test]
+fn assignment_expression_keeps_hoisted_local_type() {
+    let mut bundle = ScriptBundle::default();
+    let mut function = function(&mut bundle);
+    let function_idx = bundle.define(function.clone());
+    let name = bundle.cnames_mut().add("Int8");
+    let typ = bundle.define(Type::new(name, TypeKind::Primitive));
+    let name = bundle.cnames_mut().add("x");
+    let local = bundle.define(Local::new(name, function_idx, typ, LocalFlags::default()));
+    function.set_locals([local]);
+    let code = vec![
+        Instr::Return,
+        Instr::Assign,
+        Instr::Local(local),
+        Instr::I8Const(1),
+    ];
+    let block = decompile(&bundle, &function, &code);
+    assert_eq!(block.stmts.len(), 2);
+    assert!(
+        matches!(&block.stmts[0], ast::Stmt::Let { typ: Some(typ), value: None, .. }
+        if typ.as_ref() == &ast::Type::plain("Int8"))
+    );
+    assert!(matches!(&block.stmts[1], ast::Stmt::Return(Some(expr))
+        if matches!(expr.as_ref(), ast::Expr::Assign { .. })));
 }
 
 #[test]
