@@ -1,0 +1,10 @@
+---
+source: crates/compiler/frontend/tests/annotation_errors.rs
+expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
+input_file: crates/compiler/frontend/tests/data/annotations/duplicate-field.reds
+---
+warning[ADD_FIELD_CONFLICT]: this `@addField` conflicts with an existing field; this operation will have no effect
+ --> tests/data/annotations/duplicate-field.reds:2:5
+  |
+2 | let existing: Int32;
+  |     ^^^^^^^^

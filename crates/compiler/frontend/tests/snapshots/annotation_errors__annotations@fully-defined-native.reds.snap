@@ -1,0 +1,10 @@
+---
+source: crates/compiler/frontend/tests/annotation_errors.rs
+expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
+input_file: crates/compiler/frontend/tests/data/annotations/fully-defined-native.reds
+---
+error[FULLY_DEFINED_NATIVE_FIELD_ADDITION]: `@addField` cannot be used with native types that are known to be fully defined
+ --> tests/data/annotations/fully-defined-native.reds:2:5
+  |
+2 | let added: Int32;
+  |     ^^^^^
