@@ -1,0 +1,17 @@
+---
+source: crates/decompiler/src/tests.rs
+expression: format_block(&block)
+---
+{
+  switch 0 {
+    case 0:
+      break;
+    case 1:
+      1;
+    default:
+      2;
+      3;
+  }
+  4;
+  return;
+}

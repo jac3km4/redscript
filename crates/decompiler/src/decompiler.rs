@@ -134,7 +134,9 @@ impl<'scope, 'ctx: 'i, 'i> Decompiler<'scope, 'ctx, 'i> {
                             let nested = cf_block.get_block(Bounds::new(body, next_case));
                             // keep track of where the switch breaks out to in order to be able
                             // to determine where the final case ends
-                            if let Some(e) = nested.exit() {
+                            if let Some(e) = nested.exit()
+                                && e > next_case
+                            {
                                 switch_exit = Some(e);
                             }
 

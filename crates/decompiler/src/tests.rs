@@ -1,7 +1,10 @@
 use hashbrown::HashMap;
 use redscript_ast as ast;
 use redscript_formatter::{FormatCtx, FormatSettings, SyntaxOps};
-use redscript_io::{CodeIter, Function, FunctionFlags, Instr, Jump, ScriptBundle, Visibility};
+use redscript_io::{
+    CodeIter, Function, FunctionFlags, Instr, Jump, ScriptBundle, Switch, SwitchLabel, Type,
+    TypeKind, Visibility,
+};
 
 use crate::control_flow::{BlockType, build_control_flow};
 use crate::decompiler::{Verbosity, decompile_block};
@@ -46,6 +49,32 @@ fn format_block(block: &ast::Block<'_>) -> String {
             &HashMap::default(),
         ))
         .to_string()
+}
+
+#[test]
+fn switch_fallthrough_preserves_default_body() {
+    let mut bundle = ScriptBundle::default();
+    let function = function(&mut bundle);
+    let name = bundle.cnames_mut().add("Int32");
+    let typ = bundle.define(Type::new(name, TypeKind::Primitive));
+    let code = resolve_labels(vec![
+        Instr::Switch(Switch::new(typ, 2)),
+        Instr::I32Zero,
+        Instr::SwitchLabel(SwitchLabel::new(5, 4)),
+        Instr::I32Zero,
+        Instr::Jump(Jump::new(11)),
+        Instr::SwitchLabel(SwitchLabel::new(8, 7)),
+        Instr::I32One,
+        Instr::I32One,
+        Instr::SwitchDefault,
+        Instr::I32Const(2),
+        Instr::I32Const(3),
+        Instr::I32Const(4),
+        Instr::Return,
+        Instr::Nop,
+    ]);
+    let block = decompile(&bundle, &function, &code);
+    insta::assert_snapshot!(format_block(&block));
 }
 
 #[test]
