@@ -55,13 +55,18 @@ fn expr_with_span_impl<'tok, 'src: 'tok>(
     }
     .labelled("unary operator");
 
+    let assignment_op = select! {
+        Token::Assign => None,
+        Token::AssignAdd => Some(BinOp::AssignAdd),
+        Token::AssignSub => Some(BinOp::AssignSub),
+        Token::AssignMul => Some(BinOp::AssignMul),
+        Token::AssignDiv => Some(BinOp::AssignDiv),
+        Token::AssignBitOr => Some(BinOp::AssignBitOr),
+        Token::AssignBitAnd => Some(BinOp::AssignBitAnd),
+    }
+    .labelled("assignment operator");
+
     let binop = select! {
-        Token::AssignAdd => BinOp::AssignAdd,
-        Token::AssignSub => BinOp::AssignSub,
-        Token::AssignMul => BinOp::AssignMul,
-        Token::AssignDiv => BinOp::AssignDiv,
-        Token::AssignBitOr => BinOp::AssignBitOr,
-        Token::AssignBitAnd => BinOp::AssignBitAnd,
         Token::Plus => BinOp::Add,
         Token::Minus => BinOp::Sub,
         Token::Star => BinOp::Mul,
@@ -253,7 +258,7 @@ fn expr_with_span_impl<'tok, 'src: 'tok>(
             just(Token::Question)
                 .ignore_then(expr.clone())
                 .then_ignore(just(Token::Colon))
-                .then(expr)
+                .then(expr.clone())
                 .or_not(),
         )
         .map_with(|(cond, tern), e| match tern {
@@ -268,13 +273,16 @@ fn expr_with_span_impl<'tok, 'src: 'tok>(
         .erased();
 
     let assign = ternary
-        .clone()
-        .then(just(Token::Assign).ignore_then(ternary).or_not())
+        .then(assignment_op.then(expr).or_not())
         .map_with(|(lhs, rhs), e| match rhs {
-            Some(rhs) => {
+            Some((op, rhs)) => {
                 let lhs = Box::new(lhs);
                 let rhs = Box::new(rhs);
-                (Expr::Assign { lhs, rhs }, e.span())
+                let expr = match op {
+                    Some(op) => Expr::BinOp { lhs, op, rhs },
+                    None => Expr::Assign { lhs, rhs },
+                };
+                (expr, e.span())
             }
             None => lhs,
         })
@@ -372,6 +380,27 @@ mod tests {
                 rhs: Expr::Constant(Constant::I32(2)).into()
             }
         );
+    }
+
+    #[test]
+    fn assignment_precedence_and_associativity() {
+        for op in ["=", "+=", "-=", "*=", "/=", "|=", "&="] {
+            for (source, expected) in [
+                (
+                    format!("x {op} flag ? 1 : 2"),
+                    format!("x {op} (flag ? 1 : 2)"),
+                ),
+                (format!("x {op} y {op} z"), format!("x {op} (y {op} z)")),
+                (format!("x {op} y + z * 2"), format!("x {op} (y + (z * 2))")),
+                (format!("x = y {op} z"), format!("x = (y {op} z)")),
+            ] {
+                let (actual, errors) = parse_expr(&source, FileId::from_i32(0));
+                assert!(errors.is_empty(), "{source}: {errors:?}");
+                let (expected, errors) = parse_expr(&expected, FileId::from_i32(0));
+                assert!(errors.is_empty(), "{errors:?}");
+                assert_eq!(actual.unwrap().unwrapped(), expected.unwrap().unwrapped());
+            }
+        }
     }
 
     #[test]
