@@ -548,7 +548,7 @@ impl<'ctx> Monomorphizer<'ctx> {
             // annoying workaround which is necessary to prevent a game crash which occurs when
             // the function locals and params appear before the function that defines them in
             // the pool
-            let params = mem::take(bundle[index].parameters_mut());
+            let params = mem::take(&mut *bundle[index].parameters_mut());
             let locals = wrapped
                 .locals()
                 .iter()

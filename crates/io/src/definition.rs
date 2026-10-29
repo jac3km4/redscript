@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::{iter, mem};
+use std::{iter, mem, ops};
 
 use bitfield_struct::bitfield;
 use byte::ctx::Endianess;
@@ -393,9 +393,12 @@ impl Class {
     }
 
     #[inline]
-    /// Gets a mutable list of fields.
-    pub fn fields_mut(&mut self) -> &mut Vec<FieldIndex> {
-        &mut self.fields
+    /// Gets a mutable list of fields, synchronizing its presence flag when dropped.
+    pub fn fields_mut(&mut self) -> impl ops::DerefMut<Target = Vec<FieldIndex>> + '_ {
+        FlaggedVecMut {
+            values: &mut self.fields,
+            update: |present| self.flags.set_has_fields(present),
+        }
     }
 
     #[inline]
@@ -691,9 +694,12 @@ impl<'i> Function<'i> {
     }
 
     #[inline]
-    /// Gets a mutable list of parameters.
-    pub fn parameters_mut(&mut self) -> &mut Vec<ParameterIndex> {
-        &mut self.parameters
+    /// Gets a mutable list of parameters, synchronizing its presence flag when dropped.
+    pub fn parameters_mut(&mut self) -> impl ops::DerefMut<Target = Vec<ParameterIndex>> + '_ {
+        FlaggedVecMut {
+            values: &mut self.parameters,
+            update: |present| self.flags.set_has_parameters(present),
+        }
     }
 
     #[inline]
@@ -1653,9 +1659,88 @@ impl<'i> DefinitionIndex<'i> for SourceFile<'i> {
     type Index = SourceFileIndex;
 }
 
+struct FlaggedVecMut<'a, T, F: FnMut(bool)> {
+    values: &'a mut Vec<T>,
+    update: F,
+}
+
+impl<T, F: FnMut(bool)> ops::Deref for FlaggedVecMut<'_, T, F> {
+    type Target = Vec<T>;
+
+    fn deref(&self) -> &Self::Target {
+        self.values
+    }
+}
+
+impl<T, F: FnMut(bool)> ops::DerefMut for FlaggedVecMut<'_, T, F> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.values
+    }
+}
+
+impl<T, F: FnMut(bool)> Drop for FlaggedVecMut<'_, T, F> {
+    fn drop(&mut self) {
+        (self.update)(!self.values.is_empty());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn roundtrip(def: &Definition<'_>) -> Definition<'static> {
+        let mut bytes = vec![0; def.measure(ENDIANESS)];
+        let size = def.try_write(&mut bytes, ENDIANESS).unwrap();
+        let header = DefinitionHeader::from_defintion(def, size as u32, 0);
+        Definition::try_read(&bytes, (ENDIANESS, header))
+            .unwrap()
+            .0
+            .into_owned()
+    }
+
+    #[test]
+    fn synchronize_mutated_field_flags() {
+        let mut class = Class::default();
+        let field = FieldIndex::new(1).unwrap();
+        class.fields_mut().push(field);
+        assert!(class.flags().has_fields());
+        assert_eq!(roundtrip(&class.clone().into()), class.clone().into());
+
+        class.fields_mut().retain(|_| false);
+        assert!(!class.flags().has_fields());
+        assert_eq!(roundtrip(&class.clone().into()), class.clone().into());
+
+        class.fields_mut().extend([field]);
+        assert!(class.flags().has_fields());
+        assert_eq!(mem::take(&mut *class.fields_mut()), vec![field]);
+        assert!(!class.flags().has_fields());
+    }
+
+    #[test]
+    fn synchronize_mutated_parameter_flags() {
+        let mut function = Function::new(
+            CNameIndex::UNDEFINED,
+            Visibility::Public,
+            FunctionFlags::default(),
+        );
+        function.body = FunctionBody::Raw {
+            max_offset: 0,
+            bytes: Cow::Borrowed(&[]),
+        };
+        let parameter = ParameterIndex::new(1).unwrap();
+        function.parameters_mut().push(parameter);
+        assert!(function.flags().has_parameters());
+        assert_eq!(roundtrip(&function.clone().into()), function.clone().into());
+
+        function.parameters_mut().clear();
+        assert!(!function.flags().has_parameters());
+        assert_eq!(roundtrip(&function.clone().into()), function.clone().into());
+
+        function.parameters_mut().extend([parameter]);
+        assert!(function.flags().has_parameters());
+        assert_eq!(mem::take(&mut *function.parameters_mut()), vec![parameter]);
+        assert!(!function.flags().has_parameters());
+    }
 
     #[test]
     fn reject_truncated_definition_payload() {
