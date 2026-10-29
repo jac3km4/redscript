@@ -1040,7 +1040,7 @@ fn format_chain<K: AstKind>(
     let parenthesize = loop {
         match cur {
             // handle expressions that might require parentheses first
-            Expr::Assign { .. } | Expr::Conditional { .. } => {
+            Expr::Assign { .. } | Expr::Conditional { .. } | Expr::Lambda { .. } => {
                 break cur_parent.is_some();
             }
             Expr::DynCast { .. } => {

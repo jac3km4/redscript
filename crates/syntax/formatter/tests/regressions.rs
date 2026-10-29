@@ -24,6 +24,22 @@ fn assert_preserved(source: &str, settings: &FormatSettings) -> String {
 }
 
 #[test]
+fn lambda_chain_bases_keep_parentheses() {
+    for expression in [
+        "((x) -> x).Member",
+        "((x) -> x).Method()",
+        "((x) -> x).Member.Other",
+        "((x) -> x)[index].Member",
+        "((x) -> x)(value)",
+        "((x) -> x) + other",
+        "((x) -> { return x; }).Member",
+    ] {
+        let source = format!("func F() {{ return {expression}; }}");
+        assert_preserved(&source, &FormatSettings::default());
+    }
+}
+
+#[test]
 fn nested_assignments_keep_parentheses() {
     for expression in [
         "(a = b) + c",
