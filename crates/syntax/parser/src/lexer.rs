@@ -18,7 +18,7 @@ pub fn lex<'src>(
         .then_ignore(
             one_of("eE")
                 .ignore_then(one_of("+-").or_not())
-                .ignore_then(text::int(10))
+                .ignore_then(text::digits(10))
                 .or_not(),
         )
         .to_slice()
@@ -628,6 +628,30 @@ mod tests {
                     .any(|(tok, _)| matches!(tok, Token::BlockComment(_))),
                 keep_comments
             );
+        }
+    }
+
+    #[test]
+    fn exponents_allow_leading_zeroes() {
+        let file = FileId::from_i32(7);
+        for (src, expected) in [
+            ("1.0e01", Token::Float(10.0)),
+            ("1.0e-01", Token::Float(0.1)),
+            ("1.0e00d", Token::Double(1.0)),
+            ("1.0E+001d", Token::Double(10.0)),
+        ] {
+            for lex in [crate::lex, crate::lex_with_lf_and_comments] {
+                let (tokens, errors) = lex(src, file);
+                assert!(errors.is_empty(), "{src}: {errors:?}");
+                assert_eq!(
+                    tokens.unwrap(),
+                    vec![(expected.clone(), Span::new(0, src.len() as u32, file))],
+                    "{src}"
+                );
+            }
+            let (expr, errors) = crate::parse_expr(src, file);
+            assert!(errors.is_empty(), "{src}: {errors:?}");
+            assert!(expr.is_some(), "{src}");
         }
     }
 
