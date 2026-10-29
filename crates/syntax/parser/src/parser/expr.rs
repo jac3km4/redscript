@@ -83,12 +83,18 @@ fn expr_with_span_impl<'tok, 'src: 'tok>(
 
     let interp_str = expr
         .clone()
-        .nested_in(select_ref! { Token::Group(tok) = ex => parser_input(tok, *ex.ctx()) })
+        .nested_in(select_ref! { Token::Group(tok) = ex => {
+            let span: Span = ex.span();
+            parser_input(tok, *ex.ctx(), span.end)
+        } })
         .map(StrPart::Expr)
         .or(select! { Token::StrFrag(str) => StrPart::Str(str) })
         .repeated()
         .collect::<Vec<_>>()
-        .nested_in(select_ref! { Token::InterpStr(tok) = ex => parser_input(tok, *ex.ctx()) })
+        .nested_in(select_ref! { Token::InterpStr(tok) = ex => {
+            let span: Span = ex.span();
+            parser_input(tok, *ex.ctx(), span.end - 1)
+        } })
         .map(|parts| Expr::InterpolatedString(parts.into()))
         .erased();
 
