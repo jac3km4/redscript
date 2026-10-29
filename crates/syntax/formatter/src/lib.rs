@@ -528,13 +528,21 @@ impl<K: AstKind> ExprFormat for Expr<'_, K> {
                 Ok(())
             }
             Expr::Assign { lhs, rhs } => {
-                let ctx = ctx.without_parent_op();
+                let parenthesize = ctx.parent.is_some();
+                let ctx = ctx.with_parent_op(ParentOp::AssignmentOperand);
+                if parenthesize {
+                    write!(f, "(")?;
+                }
                 write!(
                     f,
                     "{} = {}",
                     (**lhs).as_wrapped().as_fmt(ctx),
                     (**rhs).as_wrapped().as_fmt(ctx)
-                )
+                )?;
+                if parenthesize {
+                    write!(f, ")")?;
+                }
+                Ok(())
             }
             Expr::Member { .. } | Expr::BinOp { .. } => format_chain(self, f, ctx),
             Expr::UnOp { op, expr } => {
@@ -1032,7 +1040,7 @@ fn format_chain<K: AstKind>(
     let parenthesize = loop {
         match cur {
             // handle expressions that might require parentheses first
-            Expr::Conditional { .. } => {
+            Expr::Assign { .. } | Expr::Conditional { .. } => {
                 break cur_parent.is_some();
             }
             Expr::DynCast { .. } => {
@@ -1199,6 +1207,7 @@ fn format_call_args<K: AstKind>(
 
 #[derive(Debug, Clone, Copy)]
 enum ParentOp {
+    AssignmentOperand,
     ConditionalCondition,
     Unary,
     BinaryLhs(BinOp),
@@ -1209,7 +1218,7 @@ enum ParentOp {
 impl ParentOp {
     fn can_assoc(&self, op: BinOp) -> bool {
         match self {
-            ParentOp::ConditionalCondition => true,
+            ParentOp::AssignmentOperand | ParentOp::ConditionalCondition => true,
             ParentOp::TopPrec | ParentOp::Unary => false,
             ParentOp::BinaryLhs(parent) | ParentOp::BinaryRhs(parent)
                 if parent.precedence() < op.precedence() =>

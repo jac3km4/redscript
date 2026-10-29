@@ -24,6 +24,27 @@ fn assert_preserved(source: &str, settings: &FormatSettings) -> String {
 }
 
 #[test]
+fn nested_assignments_keep_parentheses() {
+    for expression in [
+        "(a = b) + c",
+        "a + (b = c)",
+        "(a = b).Member",
+        "(a = b).Method()",
+        "(a = b)[c]",
+        "(a = b)(c)",
+        "!(a = b)",
+        "(a = b) as Bool",
+        "(a = b) ? c : d",
+        "(a = b) = c",
+        "a = (b = c)",
+        "a = b ? c : d",
+    ] {
+        let source = format!("func F() {{ return {expression}; }}");
+        assert_preserved(&source, &FormatSettings::default());
+    }
+}
+
+#[test]
 fn conditional_conditions_keep_parentheses() {
     for expression in [
         "(a ? b : c) ? d : e",
