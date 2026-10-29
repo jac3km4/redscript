@@ -69,7 +69,10 @@ where
 {
     fn try_write(&self, bytes: &mut [u8], Prefixed(ctx): Prefixed<Ctx>) -> byte::Result<usize> {
         let offset = &mut 0;
-        bytes.write(offset, &(self.len() as u16), ctx)?;
+        let len = u16::try_from(self.len()).map_err(|_| byte::Error::BadInput {
+            err: "prefixed string exceeds u16 byte length",
+        })?;
+        bytes.write(offset, &len, ctx)?;
         bytes.write(offset, self.as_ref(), Len(self.len()))?;
         Ok(*offset)
     }
@@ -189,3 +192,31 @@ macro_rules! impl_bitfield_read_write {
 }
 
 pub(crate) use impl_bitfield_read_write;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prefixed_string_length_boundaries() {
+        for string in ["a".repeat(u16::MAX as usize), "é".repeat(32767)] {
+            let string = Str::Owned(string);
+            let mut bytes = vec![0; string.measure(Prefixed(byte::LE))];
+            let size = string.try_write(&mut bytes, Prefixed(byte::LE)).unwrap();
+            assert_eq!(size, bytes.len());
+            let (decoded, consumed) = Str::try_read(&bytes, Prefixed(byte::LE)).unwrap();
+            assert_eq!(decoded, string);
+            assert_eq!(consumed, size);
+        }
+    }
+
+    #[test]
+    fn reject_oversized_prefixed_strings_before_writing() {
+        for string in ["a".repeat(65536), "é".repeat(32768)] {
+            let string = Str::Owned(string);
+            let mut bytes = vec![0xAB; string.measure(Prefixed(byte::LE))];
+            assert!(string.try_write(&mut bytes, Prefixed(byte::LE)).is_err());
+            assert!(bytes.iter().all(|&byte| byte == 0xAB));
+        }
+    }
+}
