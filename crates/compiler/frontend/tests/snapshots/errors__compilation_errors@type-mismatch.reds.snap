@@ -3,64 +3,52 @@ source: crates/compiler/frontend/tests/errors.rs
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/type-mismatch.reds
 ---
-error[TYPE_ERR]: type mismatch: found `String` when expected `Int32`
- --> tests/data/type-mismatch.reds:11:18
+error[TYPE_ERR]: type mismatch: found `Void` when expected `Int32`
+ --> tests/data/type-mismatch.reds:11:3
    |
-11 |   let _: Int32 = "";
+11 |   return;
+   |   ^^^^^^^
+
+error[TYPE_ERR]: type mismatch: found `String` when expected `Int32`
+ --> tests/data/type-mismatch.reds:15:18
+   |
+15 |   let _: Int32 = "";
    |                  ^^
 
 error[WRONG_STRING_LIT]: expected `CName`; use a `CName` literal, e.g. `n"text"`
- --> tests/data/type-mismatch.reds:12:18
+ --> tests/data/type-mismatch.reds:16:18
    |
-12 |   let _: CName = "";
-   |                  ^^
-
-error[TYPE_ERR]: type mismatch: found `String` when expected `CName`
- --> tests/data/type-mismatch.reds:12:18
-   |
-12 |   let _: CName = "";
+16 |   let _: CName = "";
    |                  ^^
 
 error[WRONG_STRING_LIT]: expected `TweakDBID`; use a `TweakDBID` literal, e.g. `t"text"`
- --> tests/data/type-mismatch.reds:13:22
+ --> tests/data/type-mismatch.reds:17:22
    |
-13 |   let _: TweakDBID = "";
-   |                      ^^
-
-error[TYPE_ERR]: type mismatch: found `String` when expected `TweakDBID`
- --> tests/data/type-mismatch.reds:13:22
-   |
-13 |   let _: TweakDBID = "";
+17 |   let _: TweakDBID = "";
    |                      ^^
 
 error[WRONG_STRING_LIT]: expected `ResRef`; use a `ResRef` literal, e.g. `r"text"`
- --> tests/data/type-mismatch.reds:14:19
+ --> tests/data/type-mismatch.reds:18:19
    |
-14 |   let _: ResRef = "";
-   |                   ^^
-
-error[TYPE_ERR]: type mismatch: found `String` when expected `ResRef`
- --> tests/data/type-mismatch.reds:14:19
-   |
-14 |   let _: ResRef = "";
+18 |   let _: ResRef = "";
    |                   ^^
 
 error[TYPE_ERR]: type mismatch: found `Animal` when expected `Pet`
- --> tests/data/type-mismatch.reds:16:16
+ --> tests/data/type-mismatch.reds:20:16
    |
-16 |   let _: Pet = new Animal();
+20 |   let _: Pet = new Animal();
    |                ^^^^^^^^^^^^
 
-error[TYPE_ERR]: type mismatch: found `Animal` when expected `Pet`
-  when comparing `List<Animal>` and `List<Pet>`
- --> tests/data/type-mismatch.reds:21:22
+error[TYPE_ERR]: type mismatch: found `List<Animal>` when expected `List<Pet>`
+  caused by: type mismatch: found `Animal` when expected `Pet`
+ --> tests/data/type-mismatch.reds:25:22
    |
-21 |   let c: List<Pet> = new List<Animal>();
+25 |   let c: List<Pet> = new List<Animal>();
    |                      ^^^^^^^^^^^^^^^^^^
 
-error[TYPE_ERR]: type mismatch: found `Animal` when expected `Pet`
-  when comparing `Predicate<Pet>` and `Predicate<Animal>`
- --> tests/data/type-mismatch.reds:25:30
+error[TYPE_ERR]: type mismatch: found `Predicate<Pet>` when expected `Predicate<Animal>`
+  caused by: type mismatch: found `Animal` when expected `Pet`
+ --> tests/data/type-mismatch.reds:29:30
    |
-25 |   let _: Predicate<Animal> = new Predicate<Pet>();
+29 |   let _: Predicate<Animal> = new Predicate<Pet>();
    |                              ^^^^^^^^^^^^^^^^^^^^

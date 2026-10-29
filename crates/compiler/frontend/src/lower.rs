@@ -311,7 +311,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         let result = match expr {
             &ast::Expr::Ident(name) => self.resolve_local(name, env, *span)?,
             ast::Expr::Constant(cn) => {
-                let const_ = self.lower_constant(cn, hint, *span);
+                let const_ = self.lower_constant(cn, hint, *span)?;
                 let const_t = PolyType::nullary(const_.type_id());
                 (ir::Expr::Const(const_, *span), const_t)
             }
@@ -396,7 +396,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 if matches!(op, ast::UnOp::Neg)
                     && let &(ast::Expr::Constant(ast::Constant::I32(i)), _) = &**expr
                 {
-                    let const_ = self.lower_constant(&ast::Constant::I32(-i), hint, *span);
+                    let const_ = self.lower_constant(&ast::Constant::I32(-i), hint, *span)?;
                     let typ = PolyType::nullary(const_.type_id());
                     return Ok((ir::Expr::Const(const_, *span), typ));
                 }
@@ -1142,9 +1142,9 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         cn: &ast::Constant<'ctx>,
         hint: Option<&PolyType<'ctx>>,
         span: Span,
-    ) -> ir::Const<'ctx> {
+    ) -> LowerResult<'ctx, ir::Const<'ctx>> {
         let Some(PolyType::Mono(Type::Data(app))) = hint else {
-            return ir::Const::from(cn);
+            return Ok(ir::Const::from(cn));
         };
 
         let res = match (cn, app.id()) {
@@ -1184,37 +1184,25 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 ast::Constant::String(_) | ast::Constant::Resource(_) | ast::Constant::TweakDbId(_),
                 id,
             ) if id == predef::CNAME => {
-                self.reporter
-                    .report(Error::WrongStringLiteral(id, 'n', span));
-                return ir::Const::from(cn);
+                return Err(Error::WrongStringLiteral(id, 'n', span));
             }
             (
                 ast::Constant::String(_) | ast::Constant::CName(_) | ast::Constant::TweakDbId(_),
                 id,
             ) if id == predef::RES_REF => {
-                self.reporter
-                    .report(Error::WrongStringLiteral(id, 'r', span));
-                return ir::Const::from(cn);
+                return Err(Error::WrongStringLiteral(id, 'r', span));
             }
             (
                 ast::Constant::String(_) | ast::Constant::CName(_) | ast::Constant::Resource(_),
                 id,
             ) if id == predef::TWEAK_DB_ID => {
-                self.reporter
-                    .report(Error::WrongStringLiteral(id, 't', span));
-                return ir::Const::from(cn);
+                return Err(Error::WrongStringLiteral(id, 't', span));
             }
 
             _ => Some(ir::Const::from(cn)),
         };
 
-        if let Some(const_) = res {
-            const_
-        } else {
-            self.reporter
-                .report(Error::LiteralOutOfRange(app.id(), span));
-            ir::Const::from(cn)
-        }
+        res.ok_or(Error::LiteralOutOfRange(app.id(), span))
     }
 
     fn resolve_field(

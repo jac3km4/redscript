@@ -36,6 +36,35 @@ fn diagnostic_messages(source: &str) -> Vec<(String, String)> {
 }
 
 #[test]
+fn literal_errors_do_not_cascade_into_type_mismatches() {
+    for body in [
+        "let value: Int8 = 128;",
+        "let value: Uint8 = -1;",
+        "let value: CName = \"text\";",
+        "let value: ResRef = n\"text\";",
+        "let value: TweakDBID = r\"text\";",
+        "let values: [Int8] = [128];",
+        "let value = Holder(128);",
+        "return 128;",
+    ] {
+        let diagnostics = diagnostic_messages(&format!(
+            "struct Holder {{ let value: Int8; }} func Test() -> Int8 {{ {body} }}"
+        ));
+        assert_eq!(diagnostics.len(), 1, "{body}: {diagnostics:?}");
+        assert!(
+            matches!(
+                diagnostics[0].0.as_str(),
+                "LIT_OUT_OF_RANGE" | "WRONG_STRING_LIT"
+            ),
+            "{body}: {diagnostics:?}"
+        );
+    }
+    let diagnostics =
+        diagnostic_messages("func Test() { let value: Int8 = 128; let other: CName = \"text\"; }");
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+}
+
+#[test]
 fn bare_return_reports_void_as_found() {
     let diagnostics = diagnostic_messages("func Test() -> Int32 { return; }");
     assert_eq!(

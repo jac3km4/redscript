@@ -7,6 +7,10 @@ class List<+A> {}
 
 class Predicate<-A> {}
 
+func BareReturn() -> Int32 {
+  return;
+}
+
 func Testing() {
   let _: Int32 = "";
   let _: CName = "";

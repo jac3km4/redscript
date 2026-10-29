@@ -71,7 +71,7 @@ pub enum Error<'ctx> {
     InvalidCaseLabel(Span),
     #[error("invalid cyclic type reference")]
     CyclicType(Span),
-    #[error("this literal is out of range for {0}{hint}", hint = NumberTypeRangeHint(*.0))]
+    #[error("this literal is out of range for `{0}`{hint}", hint = NumberTypeRangeHint(*.0))]
     LiteralOutOfRange(TypeId<'ctx>, Span),
     #[error(r#"expected `{0}`; use a `{0}` literal, e.g. `{1}"text"`"#)]
     WrongStringLiteral(TypeId<'ctx>, char, Span),
@@ -244,7 +244,10 @@ struct NumberTypeRangeHint<'ctx>(TypeId<'ctx>);
 impl fmt::Display for NumberTypeRangeHint<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fn write_range<T: fmt::Display>(f: &mut fmt::Formatter<'_>, min: T, max: T) -> fmt::Result {
-            write!(f, ", provide a value between {min} and {max}")
+            write!(
+                f,
+                "; provide a value in the inclusive range `{min}..={max}`"
+            )
         }
         match self.0 {
             id if id == predef::UINT8 => write_range(f, u8::MIN, u8::MAX),
