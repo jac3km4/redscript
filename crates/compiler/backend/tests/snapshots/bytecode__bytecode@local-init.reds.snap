@@ -5,56 +5,56 @@ input_file: crates/compiler/backend/tests/data/local-init.reds
 ---
 // Test; (f0)
 assign
-local 0
-struct.new 0 0
+local 0 "_$0": "Struct"
+struct.new 0 0 "Struct"
 assign
-local 1
+local 1 "_$1": "ref:Class"
 ref.null
 assign
-local 2
+local 2 "_$2": "wref:Class"
 wref.null
 assign
-local 3
-enum.from_int 0 1
+local 3 "_$3": "TestEnum"
+enum.from_int 0 "TestEnum" 1
 i8.const 0
 assign
-local 4
+local 4 "_$4": "String"
 string.const 0 ""
 assign
-local 5
+local 5 "_$5": "CName"
 cname.const 0 "None"
 assign
-local 6
+local 6 "_$6": "TweakDBID"
 tweakdb.const 0 ""
-array.clear 1
-local 7
+array.clear 1 "array:Int32"
+local 7 "_$7": "array:Int32"
 assign
-local 8
+local 8 "_$8": "Int8"
 i8.const 0
 assign
-local 9
+local 9 "_$9": "Int16"
 i16.const 0
 assign
-local 10
+local 10 "_$10": "Int32"
 i32.zero
 assign
-local 11
+local 11 "_$11": "Int64"
 i64.const 0
 assign
-local 12
+local 12 "_$12": "Uint8"
 u8.const 0
 assign
-local 13
+local 13 "_$13": "Uint16"
 u16.const 0
 assign
-local 14
+local 14 "_$14": "Uint32"
 u32.const 0
 assign
-local 15
+local 15 "_$15": "Uint64"
 u64.const 0
 assign
-local 16
+local 16 "_$16": "Float"
 f32.const 0
 assign
-local 17
+local 17 "_$17": "Double"
 f64.const 0

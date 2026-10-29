@@ -5,12 +5,12 @@ input_file: crates/compiler/backend/tests/data/enum-equals.reds
 ---
 // Test; (f0)
 assign
-local 0
-eq 0
-enum.const 0 0
-enum.const 0 1
+local 0 "_$0": "Bool"
+eq 0 "Enum"
+enum.const 0 "Enum" 0 "Enum"::A = 0
+enum.const 0 "Enum" 1 "Enum"::B = 1
 assign
-local 1
-neq 0
-enum.const 0 0
-enum.const 0 1
+local 1 "_$1": "Bool"
+neq 0 "Enum"
+enum.const 0 "Enum" 0 "Enum"::A = 0
+enum.const 0 "Enum" 1 "Enum"::B = 1

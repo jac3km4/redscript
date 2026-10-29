@@ -5,25 +5,25 @@ input_file: crates/compiler/backend/tests/data/generic-struct.reds
 ---
 // Test; (f0)
 assign
-local 0
-struct.new 2 0
+local 0 "a$0": "Tuple<Int32,String>"
+struct.new 2 0 "Tuple<Int32,String>"
 i32.one
 string.const 0 "a"
 assign
-local 1
-struct.new 2 1
+local 1 "b$1": "Tuple<String,Int32>"
+struct.new 2 1 "Tuple<String,Int32>"
 string.const 1 "b"
 i32.const 2
 assign
-local 0
-invoke.static j25 l13 f1 0000000000000000
-local 1
+local 0 "a$0": "Tuple<Int32,String>"
+invoke.static j25 l13 f1 Tuple<String,Int32>::Swap;Tuple<String,Int32> 0000000000000000
+local 1 "b$1": "Tuple<String,Int32>"
 param.end
 
 // Tuple<String,Int32>::Swap;Tuple<String,Int32> (f1)
 return
-struct.new 2 0
-struct.field 0
-param 0
-struct.field 1
-param 0
+struct.new 2 0 "Tuple<Int32,String>"
+struct.field 0 Tuple<String,Int32>::b: "Int32"
+param 0 "self": "Tuple<String,Int32>"
+struct.field 1 Tuple<String,Int32>::a: "String"
+param 0 "self": "Tuple<String,Int32>"

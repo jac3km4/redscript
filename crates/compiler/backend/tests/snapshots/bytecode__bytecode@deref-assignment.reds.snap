@@ -5,9 +5,9 @@ input_file: crates/compiler/backend/tests/data/deref-assignment.reds
 ---
 // Store;Int32 (f0)
 assign
-deref 0
-param 0
-invoke.static j16 l4 f1 0000000000000000
+deref 0 "Int32"
+param 0 "slot": "script_ref:Int32"
+invoke.static j16 l4 f1 NextValue 0000000000000000
 param.end
 
 // NextValue (f1)

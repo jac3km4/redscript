@@ -5,23 +5,23 @@ input_file: crates/compiler/backend/tests/data/variant.reds
 ---
 // Test; (f0)
 assign
-local 0
-variant.new 0
+local 0 "x$0": "Variant"
+variant.new 0 "Int32"
 i32.one
 assign
-local 1
+local 1 "_$1": "Bool"
 variant.is_defined
-local 0
+local 0 "x$0": "Variant"
 assign
-local 2
-variant.extract 0
-local 0
+local 2 "y$2": "Int32"
+variant.extract 0 "Int32"
+local 0 "x$0": "Variant"
 assign
-local 3
+local 3 "_$3": "String"
 variant.type_name
-local 0
-invoke.static j30 l10 f1 0000000000000000
-variant.new 0
+local 0 "x$0": "Variant"
+invoke.static j30 l10 f1 TakesVariant 0000000000000000
+variant.new 0 "Int32"
 i32.const 2
 param.end
 

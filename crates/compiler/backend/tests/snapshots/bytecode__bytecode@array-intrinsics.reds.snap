@@ -4,50 +4,50 @@ expression: "BytecodePrinter::new(&bundle, bundle_len)"
 input_file: crates/compiler/backend/tests/data/array-intrinsics.reds
 ---
 // Test; (f0)
-array.resize 0
-local 0
+array.resize 0 "array:Int32"
+local 0 "var$0": "array:Int32"
 u64.const 3
 assign
-array.element 0
-local 0
+array.element 0 "array:Int32"
+local 0 "var$0": "array:Int32"
 u64.const 0
 i32.one
 assign
-array.element 0
-local 0
+array.element 0 "array:Int32"
+local 0 "var$0": "array:Int32"
 u64.const 1
 i32.const 2
 assign
-array.element 0
-local 0
+array.element 0 "array:Int32"
+local 0 "var$0": "array:Int32"
 u64.const 2
 i32.const 3
 assign
-local 1
-local 0
+local 1 "values$1": "array:Int32"
+local 0 "var$0": "array:Int32"
 assign
-local 2
-array.find_first 0
-local 1
+local 2 "first$2": "Int32"
+array.find_first 0 "array:Int32"
+local 1 "values$1": "array:Int32"
 i32.const 2
 assign
-local 3
-array.contains 0
-local 1
+local 3 "contains$3": "Bool"
+array.contains 0 "array:Int32"
+local 1 "values$1": "array:Int32"
 i32.const 2
 assign
-local 4
-array.count 0
-local 1
+local 4 "count$4": "Int32"
+array.count 0 "array:Int32"
+local 1 "values$1": "array:Int32"
 i32.const 2
-array.insert 0
-local 1
+array.insert 0 "array:Int32"
+local 1 "values$1": "array:Int32"
 i32.one
 i32.const 4
 assign
-local 5
-array.remove 0
-local 1
+local 5 "removed$5": "Bool"
+array.remove 0 "array:Int32"
+local 1 "values$1": "array:Int32"
 i32.const 2
-array.sort 0
-local 1
+array.sort 0 "array:Int32"
+local 1 "values$1": "array:Int32"

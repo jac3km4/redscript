@@ -4,40 +4,40 @@ expression: "BytecodePrinter::new(&bundle, bundle_len)"
 input_file: crates/compiler/backend/tests/data/break.reds
 ---
 // Test; (f0)
-array.resize 0
-local 0
+array.resize 0 "array:Int32"
+local 0 "var$0": "array:Int32"
 u64.const 2
 assign
-array.element 0
-local 0
+array.element 0 "array:Int32"
+local 0 "var$0": "array:Int32"
 u64.const 0
 i32.zero
 assign
-array.element 0
-local 0
+array.element 0 "array:Int32"
+local 0 "var$0": "array:Int32"
 u64.const 1
 i32.one
 assign
-local 1
+local 1 "var$1": "Int32"
 i32.zero
 jump.if_not 144
-invoke.static j43 l8 f1 0000000000000000
-local 1
-array.size 0
-local 0
+invoke.static j43 l8 f1 OperatorLess;Int32Int32 0000000000000000
+local 1 "var$1": "Int32"
+array.size 0 "array:Int32"
+local 0 "var$0": "array:Int32"
 param.end
 assign
-local 2
-array.element 0
-local 0
-local 1
-invoke.static j26 l8 f2 0000000000000000
-local 1
+local 2 "var$2": "Int32"
+array.element 0 "array:Int32"
+local 0 "var$0": "array:Int32"
+local 1 "var$1": "Int32"
+invoke.static j26 l8 f2 OperatorAssignAdd;OutInt32Int32 0000000000000000
+local 1 "var$1": "Int32"
 i32.one
 param.end
 jump.if_not 32
-invoke.static j26 l9 f3 0000000000000000
-local 2
+invoke.static j26 l9 f3 OperatorEqual;Int32Int32 0000000000000000
+local 2 "var$2": "Int32"
 i32.zero
 param.end
 jump 6

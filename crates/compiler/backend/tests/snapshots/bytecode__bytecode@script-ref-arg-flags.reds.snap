@@ -7,24 +7,24 @@ input_file: crates/compiler/backend/tests/data/script-ref-arg-flags.reds
 
 // Test;Receiverarray<String>Int32 (f1)
 assign
-local 0
+local 0 "local$3": "String"
 string.const 0 "local"
 ctx 134
-param 0
-invoke.virtual j125 l16 f0 0000000000000010
-as_ref 0
-local 0
-as_ref 0
-invoke.static j16 l16 f2 0000000000000000
+param 0 "receiver": "ref:Receiver"
+invoke.virtual j125 l16 f0 "Take;StringStringStringString" 0000000000000010
+as_ref 0 "String"
+local 0 "local$3": "String"
+as_ref 0 "String"
+invoke.static j16 l16 f2 MakeString 0000000000000000
 param.end
-as_ref 0
+as_ref 0 "String"
 ctx 18
-param 0
-object.field 0
-as_ref 0
-array.element 1
-param 1
-param 2
+param 0 "receiver": "ref:Receiver"
+object.field 0 Receiver::text: "String"
+as_ref 0 "String"
+array.element 1 "array:String"
+param 1 "strings": "array:String"
+param 2 "i": "Int32"
 param.end
 
 // MakeString (f2)

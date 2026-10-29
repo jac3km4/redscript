@@ -5,15 +5,15 @@ input_file: crates/compiler/backend/tests/data/composed-assignment.reds
 ---
 // Test; (f0)
 assign
-struct.field 0
-array.element 0
+struct.field 0 Cell::value: "Int32"
+array.element 0 "array:Cell"
 ctx 25
-invoke.static j16 l14 f1 0000000000000000
+invoke.static j16 l14 f1 GetHolder 0000000000000000
 param.end
-object.field 1
-invoke.static j16 l14 f2 0000000000000000
+object.field 1 Holder::items: "array:Cell"
+invoke.static j16 l14 f2 NextIndex 0000000000000000
 param.end
-invoke.static j16 l14 f3 0000000000000000
+invoke.static j16 l14 f3 NextValue 0000000000000000
 param.end
 
 // GetHolder (f1)

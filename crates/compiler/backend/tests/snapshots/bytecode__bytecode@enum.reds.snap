@@ -4,15 +4,15 @@ expression: "BytecodePrinter::new(&bundle, bundle_len)"
 input_file: crates/compiler/backend/tests/data/enum.reds
 ---
 // Testing;Direction (f0)
-switch 10
-param 0
+switch 10 j20
+param 0 "dir": "Direction"
 switch.label 39 17
-enum.const 0 0
+enum.const 0 "Direction" 0 "Direction"::Left = 0
 return
-enum.to_int 0 4
-param 0
+enum.to_int 0 "Direction" 4
+param 0 "dir": "Direction"
 switch.label 39 17
-enum.const 0 1
+enum.const 0 "Direction" 1 "Direction"::Right = 1
 return
-enum.to_int 0 4
-param 0
+enum.to_int 0 "Direction" 4
+param 0 "dir": "Direction"

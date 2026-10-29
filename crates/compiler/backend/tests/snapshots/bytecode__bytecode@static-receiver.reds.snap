@@ -9,12 +9,12 @@ input_file: crates/compiler/backend/tests/data/static-receiver.reds
 
 // Test; (f2)
 assign
-local 0
-struct.new 0 0
-invoke.static j25 l4 f0 0000000000000000
-local 0
+local 0 "self$0": "Dummy"
+struct.new 0 0 "Dummy"
+invoke.static j25 l4 f0 Dummy::TakesSelf;Dummy 0000000000000000
+local 0 "self$0": "Dummy"
 param.end
-invoke.static j34 l5 f1 0000000000000000
-as_ref 0
-local 0
+invoke.static j34 l5 f1 Dummy::TakesScriptRef;Dummy 0000000000000000
+as_ref 0 "Dummy"
+local 0 "self$0": "Dummy"
 param.end

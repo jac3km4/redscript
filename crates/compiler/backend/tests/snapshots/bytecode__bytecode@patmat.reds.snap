@@ -6,442 +6,442 @@ input_file: crates/compiler/backend/tests/data/patmat.reds
 // Scriptable::IsA;CName (f0)
 
 // TestArray;array<Int32> (f1)
-switch 5
+switch 5 j12
 true.const
 switch.label 248 39
-invoke.static j39 l4 f2 0000000000000000
-array.size 0
-param 0
+invoke.static j39 l4 f2 OperatorGreaterEqual;Int32Int32 0000000000000000
+array.size 0 "array:Int32"
+param 0 "array": "array:Int32"
 i32.const 3
 param.end
 assign
-local 0
-array.element 0
-param 0
-invoke.static j39 l4 f3 0000000000000000
-array.size 0
-param 0
+local 0 "a$1": "Int32"
+array.element 0 "array:Int32"
+param 0 "array": "array:Int32"
+invoke.static j39 l4 f3 OperatorSubtract;Int32Int32 0000000000000000
+array.size 0 "array:Int32"
+param 0 "array": "array:Int32"
 i32.const 3
 param.end
 assign
-local 1
-array.element 0
-param 0
-invoke.static j39 l4 f3 0000000000000000
-array.size 0
-param 0
+local 1 "b$2": "Int32"
+array.element 0 "array:Int32"
+param 0 "array": "array:Int32"
+invoke.static j39 l4 f3 OperatorSubtract;Int32Int32 0000000000000000
+array.size 0 "array:Int32"
+param 0 "array": "array:Int32"
 i32.const 2
 param.end
 assign
-local 2
-array.element 0
-param 0
-invoke.static j35 l4 f3 0000000000000000
-array.size 0
-param 0
+local 2 "c$3": "Int32"
+array.element 0 "array:Int32"
+param 0 "array": "array:Int32"
+invoke.static j35 l4 f3 OperatorSubtract;Int32Int32 0000000000000000
+array.size 0 "array:Int32"
+param 0 "array": "array:Int32"
 i32.one
 param.end
 return
-local 0
+local 0 "a$1": "Int32"
 switch.label 109 39
-invoke.static j39 l6 f2 0000000000000000
-array.size 0
-param 0
+invoke.static j39 l6 f2 OperatorGreaterEqual;Int32Int32 0000000000000000
+array.size 0 "array:Int32"
+param 0 "array": "array:Int32"
 i32.const 2
 param.end
 assign
-local 3
-array.element 0
-param 0
+local 3 "a$4": "Int32"
+array.element 0 "array:Int32"
+param 0 "array": "array:Int32"
 i32.zero
 assign
-local 4
-array.element 0
-param 0
+local 4 "b$5": "Int32"
+array.element 0 "array:Int32"
+param 0 "array": "array:Int32"
 i32.one
 return
-local 4
+local 4 "b$5": "Int32"
 switch.label 76 35
-invoke.static j35 l8 f4 0000000000000000
-array.size 0
-param 0
+invoke.static j35 l8 f4 OperatorEqual;Int32Int32 0000000000000000
+array.size 0 "array:Int32"
+param 0 "array": "array:Int32"
 i32.one
 param.end
 assign
-local 5
-array.element 0
-param 0
+local 5 "a$6": "Int32"
+array.element 0 "array:Int32"
+param 0 "array": "array:Int32"
 i32.zero
 return
-local 5
+local 5 "a$6": "Int32"
 switch.default
 return
 i32.zero
 assign
-local 6
-param 0
+local 6 "var$7": "array:Int32"
+param 0 "array": "array:Int32"
 jump.if_not 249
-invoke.static j39 l14 f2 0000000000000000
-array.size 0
-local 6
+invoke.static j39 l14 f2 OperatorGreaterEqual;Int32Int32 0000000000000000
+array.size 0 "array:Int32"
+local 6 "var$7": "array:Int32"
 i32.const 3
 param.end
 assign
-local 7
-array.element 0
-local 6
-invoke.static j39 l14 f3 0000000000000000
-array.size 0
-local 6
+local 7 "a$8": "Int32"
+array.element 0 "array:Int32"
+local 6 "var$7": "array:Int32"
+invoke.static j39 l14 f3 OperatorSubtract;Int32Int32 0000000000000000
+array.size 0 "array:Int32"
+local 6 "var$7": "array:Int32"
 i32.const 3
 param.end
 assign
-local 8
-array.element 0
-local 6
-invoke.static j39 l14 f3 0000000000000000
-array.size 0
-local 6
+local 8 "b$9": "Int32"
+array.element 0 "array:Int32"
+local 6 "var$7": "array:Int32"
+invoke.static j39 l14 f3 OperatorSubtract;Int32Int32 0000000000000000
+array.size 0 "array:Int32"
+local 6 "var$7": "array:Int32"
 i32.const 2
 param.end
 assign
-local 9
-array.element 0
-local 6
-invoke.static j35 l14 f3 0000000000000000
-array.size 0
-local 6
+local 9 "c$10": "Int32"
+array.element 0 "array:Int32"
+local 6 "var$7": "array:Int32"
+invoke.static j35 l14 f3 OperatorSubtract;Int32Int32 0000000000000000
+array.size 0 "array:Int32"
+local 6 "var$7": "array:Int32"
 i32.one
 param.end
 return
-local 7
+local 7 "a$8": "Int32"
 jump 233
 assign
-local 10
-param 0
+local 10 "var$11": "array:Int32"
+param 0 "array": "array:Int32"
 jump.if_not 110
-invoke.static j39 l16 f2 0000000000000000
-array.size 0
-local 10
+invoke.static j39 l16 f2 OperatorGreaterEqual;Int32Int32 0000000000000000
+array.size 0 "array:Int32"
+local 10 "var$11": "array:Int32"
 i32.const 2
 param.end
 assign
-local 11
-array.element 0
-local 10
+local 11 "a$12": "Int32"
+array.element 0 "array:Int32"
+local 10 "var$11": "array:Int32"
 i32.zero
 assign
-local 12
-array.element 0
-local 10
+local 12 "b$13": "Int32"
+array.element 0 "array:Int32"
+local 10 "var$11": "array:Int32"
 i32.one
 return
-local 12
+local 12 "b$13": "Int32"
 jump 101
 assign
-local 13
-param 0
+local 13 "var$14": "array:Int32"
+param 0 "array": "array:Int32"
 jump.if_not 77
-invoke.static j35 l18 f4 0000000000000000
-array.size 0
-local 13
+invoke.static j35 l18 f4 OperatorEqual;Int32Int32 0000000000000000
+array.size 0 "array:Int32"
+local 13 "var$14": "array:Int32"
 i32.one
 param.end
 assign
-local 14
-array.element 0
-local 13
+local 14 "a$15": "Int32"
+array.element 0 "array:Int32"
+local 13 "var$14": "array:Int32"
 i32.zero
 return
-local 14
+local 14 "a$15": "Int32"
 jump 2
 return
 i32.zero
 
 // TestNullable;Class (f5)
-switch 5
+switch 5 j12
 true.const
 switch.label 41 10
 ref.to_bool
-param 1
+param 1 "inst": "ref:Class"
 assign
-local 15
-param 1
+local 15 "inst$1": "ref:Class"
+param 1 "inst": "ref:Class"
 return
-local 15
+local 15 "inst$1": "ref:Class"
 switch.default
 return
 ref.null
 assign
-local 16
-param 1
+local 16 "var$2": "ref:Class"
+param 1 "inst": "ref:Class"
 jump.if_not 42
 ref.to_bool
-local 16
+local 16 "var$2": "ref:Class"
 assign
-local 17
-local 16
+local 17 "inst$3": "ref:Class"
+local 16 "var$2": "ref:Class"
 return
-local 17
+local 17 "inst$3": "ref:Class"
 jump 2
 return
 ref.null
 
 // TestNullableWref;Class (f6)
-switch 5
+switch 5 j12
 true.const
 switch.label 43 11
 ref.to_bool
 wref.to_ref
-param 2
+param 2 "inst": "wref:Class"
 assign
-local 18
-param 2
+local 18 "inst$1": "wref:Class"
+param 2 "inst": "wref:Class"
 return
 wref.to_ref
-local 18
+local 18 "inst$1": "wref:Class"
 switch.default
 return
 ref.null
 assign
-local 19
-param 2
+local 19 "var$2": "wref:Class"
+param 2 "inst": "wref:Class"
 jump.if_not 44
 ref.to_bool
 wref.to_ref
-local 19
+local 19 "var$2": "wref:Class"
 assign
-local 20
-local 19
+local 20 "inst$3": "wref:Class"
+local 19 "var$2": "wref:Class"
 return
 wref.to_ref
-local 20
+local 20 "inst$3": "wref:Class"
 jump 2
 return
 ref.null
 
 // TestDestructure;Class (f7)
-switch 5
+switch 5 j12
 true.const
 switch.label 80 37
 ctx 34
-param 3
-invoke.virtual j25 l57 f0 0000000000000000
+param 3 "inst": "ref:Class"
+invoke.virtual j25 l57 f0 "IsA;CName" 0000000000000000
 cname.const 1 "SubclassA"
 param.end
 assign
-local 21
+local 21 "fieldA$1": "Int32"
 ctx 18
-param 3
-object.field 0
+param 3 "inst": "ref:Class"
+object.field 0 SubclassA::fieldA: "Int32"
 return
-local 21
+local 21 "fieldA$1": "Int32"
 switch.label 90 37
 ctx 34
-param 3
-invoke.virtual j25 l59 f0 0000000000000000
+param 3 "inst": "ref:Class"
+invoke.virtual j25 l59 f0 "IsA;CName" 0000000000000000
 cname.const 2 "SubclassB"
 param.end
 assign
-local 22
+local 22 "fieldB$2": "array:Int32"
 ctx 18
-param 3
-object.field 1
+param 3 "inst": "ref:Class"
+object.field 1 SubclassB::fieldB: "array:Int32"
 return
-array.element 0
-local 22
+array.element 0 "array:Int32"
+local 22 "fieldB$2": "array:Int32"
 i32.zero
 switch.default
 return
 i32.zero
 assign
-local 23
-param 3
+local 23 "var$3": "ref:Class"
+param 3 "inst": "ref:Class"
 jump.if_not 81
 ctx 34
-local 23
-invoke.virtual j25 l65 f0 0000000000000000
+local 23 "var$3": "ref:Class"
+invoke.virtual j25 l65 f0 "IsA;CName" 0000000000000000
 cname.const 1 "SubclassA"
 param.end
 assign
-local 24
+local 24 "fieldA$4": "Int32"
 ctx 18
-local 23
-object.field 0
+local 23 "var$3": "ref:Class"
+object.field 0 SubclassA::fieldA: "Int32"
 return
-local 24
+local 24 "fieldA$4": "Int32"
 jump 115
 assign
-local 25
-param 3
+local 25 "var$5": "ref:Class"
+param 3 "inst": "ref:Class"
 jump.if_not 91
 ctx 34
-local 25
-invoke.virtual j25 l67 f0 0000000000000000
+local 25 "var$5": "ref:Class"
+invoke.virtual j25 l67 f0 "IsA;CName" 0000000000000000
 cname.const 2 "SubclassB"
 param.end
 assign
-local 26
+local 26 "fieldB$6": "array:Int32"
 ctx 18
-local 25
-object.field 1
+local 25 "var$5": "ref:Class"
+object.field 1 SubclassB::fieldB: "array:Int32"
 return
-array.element 0
-local 26
+array.element 0 "array:Int32"
+local 26 "fieldB$6": "array:Int32"
 i32.zero
 jump 2
 return
 i32.zero
 
 // TestDestructureWref;Class (f8)
-switch 5
+switch 5 j12
 true.const
 switch.label 82 38
 ctx 35
 wref.to_ref
-param 4
-invoke.virtual j25 l76 f0 0000000000000000
+param 4 "inst": "wref:Class"
+invoke.virtual j25 l76 f0 "IsA;CName" 0000000000000000
 cname.const 1 "SubclassA"
 param.end
 assign
-local 27
+local 27 "fieldA$1": "Int32"
 ctx 19
 wref.to_ref
-param 4
-object.field 0
+param 4 "inst": "wref:Class"
+object.field 0 SubclassA::fieldA: "Int32"
 return
-local 27
+local 27 "fieldA$1": "Int32"
 switch.label 92 38
 ctx 35
 wref.to_ref
-param 4
-invoke.virtual j25 l78 f0 0000000000000000
+param 4 "inst": "wref:Class"
+invoke.virtual j25 l78 f0 "IsA;CName" 0000000000000000
 cname.const 2 "SubclassB"
 param.end
 assign
-local 28
+local 28 "fieldB$2": "array:Int32"
 ctx 19
 wref.to_ref
-param 4
-object.field 1
+param 4 "inst": "wref:Class"
+object.field 1 SubclassB::fieldB: "array:Int32"
 return
-array.element 0
-local 28
+array.element 0 "array:Int32"
+local 28 "fieldB$2": "array:Int32"
 i32.zero
 switch.default
 return
 i32.zero
 assign
-local 29
-param 4
+local 29 "var$3": "wref:Class"
+param 4 "inst": "wref:Class"
 jump.if_not 83
 ctx 35
 wref.to_ref
-local 29
-invoke.virtual j25 l84 f0 0000000000000000
+local 29 "var$3": "wref:Class"
+invoke.virtual j25 l84 f0 "IsA;CName" 0000000000000000
 cname.const 1 "SubclassA"
 param.end
 assign
-local 30
+local 30 "fieldA$4": "Int32"
 ctx 19
 wref.to_ref
-local 29
-object.field 0
+local 29 "var$3": "wref:Class"
+object.field 0 SubclassA::fieldA: "Int32"
 return
-local 30
+local 30 "fieldA$4": "Int32"
 jump 117
 assign
-local 31
-param 4
+local 31 "var$5": "wref:Class"
+param 4 "inst": "wref:Class"
 jump.if_not 93
 ctx 35
 wref.to_ref
-local 31
-invoke.virtual j25 l86 f0 0000000000000000
+local 31 "var$5": "wref:Class"
+invoke.virtual j25 l86 f0 "IsA;CName" 0000000000000000
 cname.const 2 "SubclassB"
 param.end
 assign
-local 32
+local 32 "fieldB$6": "array:Int32"
 ctx 19
 wref.to_ref
-local 31
-object.field 1
+local 31 "var$5": "wref:Class"
+object.field 1 SubclassB::fieldB: "array:Int32"
 return
-array.element 0
-local 32
+array.element 0 "array:Int32"
+local 32 "fieldB$6": "array:Int32"
 i32.zero
 jump 2
 return
 i32.zero
 
 // TestCast;Class (f9)
-switch 5
+switch 5 j12
 true.const
 switch.label 80 37
 ctx 34
-param 5
-invoke.virtual j25 l95 f0 0000000000000000
+param 5 "inst": "ref:Class"
+invoke.virtual j25 l95 f0 "IsA;CName" 0000000000000000
 cname.const 1 "SubclassA"
 param.end
 assign
-local 33
-param 5
+local 33 "a$1": "ref:SubclassA"
+param 5 "inst": "ref:Class"
 return
 ctx 18
-local 33
-object.field 0
+local 33 "a$1": "ref:SubclassA"
+object.field 0 SubclassA::fieldA: "Int32"
 switch.label 90 37
 ctx 34
-param 5
-invoke.virtual j25 l97 f0 0000000000000000
+param 5 "inst": "ref:Class"
+invoke.virtual j25 l97 f0 "IsA;CName" 0000000000000000
 cname.const 2 "SubclassB"
 param.end
 assign
-local 34
-param 5
+local 34 "b$2": "ref:SubclassB"
+param 5 "inst": "ref:Class"
 return
-array.element 0
+array.element 0 "array:Int32"
 ctx 18
-local 34
-object.field 1
+local 34 "b$2": "ref:SubclassB"
+object.field 1 SubclassB::fieldB: "array:Int32"
 i32.zero
 switch.default
 return
 i32.zero
 assign
-local 35
-param 5
+local 35 "var$3": "ref:Class"
+param 5 "inst": "ref:Class"
 jump.if_not 81
 ctx 34
-local 35
-invoke.virtual j25 l103 f0 0000000000000000
+local 35 "var$3": "ref:Class"
+invoke.virtual j25 l103 f0 "IsA;CName" 0000000000000000
 cname.const 1 "SubclassA"
 param.end
 assign
-local 36
-local 35
+local 36 "a$4": "ref:SubclassA"
+local 35 "var$3": "ref:Class"
 return
 ctx 18
-local 36
-object.field 0
+local 36 "a$4": "ref:SubclassA"
+object.field 0 SubclassA::fieldA: "Int32"
 jump 115
 assign
-local 37
-param 5
+local 37 "var$5": "ref:Class"
+param 5 "inst": "ref:Class"
 jump.if_not 91
 ctx 34
-local 37
-invoke.virtual j25 l105 f0 0000000000000000
+local 37 "var$5": "ref:Class"
+invoke.virtual j25 l105 f0 "IsA;CName" 0000000000000000
 cname.const 2 "SubclassB"
 param.end
 assign
-local 38
-local 37
+local 38 "b$6": "ref:SubclassB"
+local 37 "var$5": "ref:Class"
 return
-array.element 0
+array.element 0 "array:Int32"
 ctx 18
-local 38
-object.field 1
+local 38 "b$6": "ref:SubclassB"
+object.field 1 SubclassB::fieldB: "array:Int32"
 i32.zero
 jump 2
 return
@@ -449,62 +449,62 @@ i32.zero
 
 // TestWhile;Class (f10)
 assign
-local 39
-param 6
+local 39 "cur$1": "ref:Class"
+param 6 "class": "ref:Class"
 jump.if_not 157
 true.const
 assign
-local 40
-local 39
+local 40 "var$2": "ref:Class"
+local 39 "cur$1": "ref:Class"
 jump.if_not 128
-invoke.static j75 l114 f11 0000000000000000
+invoke.static j75 l114 f11 OperatorLogicAnd;BoolBool 0000000000000000
 ctx 34
-local 40
-invoke.virtual j25 l114 f0 0000000000000000
+local 40 "var$2": "ref:Class"
+invoke.virtual j25 l114 f0 "IsA;CName" 0000000000000000
 cname.const 3 "Class"
 param.end
 ref.to_bool
 ctx 18
-local 40
-object.field 2
+local 40 "var$2": "ref:Class"
+object.field 2 Class::nested: "ref:Class"
 param.end
 assign
-local 41
+local 41 "nested$3": "ref:Class"
 ctx 18
-local 40
-object.field 2
+local 40 "var$2": "ref:Class"
+object.field 2 Class::nested: "ref:Class"
 assign
-local 39
-local 41
+local 39 "cur$1": "ref:Class"
+local 41 "nested$3": "ref:Class"
 jump 3
 jump 3
 jump -160
 return
-local 39
+local 39 "cur$1": "ref:Class"
 
 // TestWhileArray;array<Int32> (f12)
 jump.if_not 148
 true.const
 assign
-local 42
-param 7
+local 42 "var$1": "array:Int32"
+param 7 "array": "array:Int32"
 jump.if_not 119
-invoke.static j35 l121 f2 0000000000000000
-array.size 0
-local 42
+invoke.static j35 l121 f2 OperatorGreaterEqual;Int32Int32 0000000000000000
+array.size 0 "array:Int32"
+local 42 "var$1": "array:Int32"
 i32.one
 param.end
 assign
-local 43
-array.element 0
-local 42
-invoke.static j35 l121 f3 0000000000000000
-array.size 0
-local 42
+local 43 "last$2": "Int32"
+array.element 0 "array:Int32"
+local 42 "var$1": "array:Int32"
+invoke.static j35 l121 f3 OperatorSubtract;Int32Int32 0000000000000000
+array.size 0 "array:Int32"
+local 42 "var$1": "array:Int32"
 i32.one
 param.end
-array.pop 0
-param 7
+array.pop 0 "array:Int32"
+param 7 "array": "array:Int32"
 jump 3
 jump 3
 jump -151

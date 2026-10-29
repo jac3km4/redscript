@@ -8,77 +8,77 @@ input_file: crates/compiler/backend/tests/data/result-type.reds
 // Test; (f1)
 return
 ctx 49
-invoke.static j17 l3 f2 0000000000000000
+invoke.static j17 l3 f2 Ok<Int32,String>::New;Int32 0000000000000000
 i32.one
 param.end
-invoke.virtual j32 l3 f0 0000000000000000
-invoke.static j16 l0 f3 0000000000000000
+invoke.virtual j32 l3 f0 "Map<Int32>;Function1<Int32,Int32>" 0000000000000000
+invoke.static j16 l0 f3 lambda$23::Instantiate 0000000000000000
 param.end
 param.end
 
 // Ok<Int32,String>::New;Int32 (f2)
 assign
-local 0
-object.new 0
+local 0 "self$1": "ref:Ok<Int32,String>"
+object.new 0 "Ok<Int32,String>"
 assign
 ctx 18
-local 0
-object.field 0
-param 0
+local 0 "self$1": "ref:Ok<Int32,String>"
+object.field 0 Ok<Int32,String>::value: "Int32"
+param 0 "value": "Int32"
 return
-local 0
+local 0 "self$1": "ref:Ok<Int32,String>"
 
 // Result<Int32,String>::Map<Int32>;Function1<Int32,Int32> (f4)
-switch 5
+switch 5 j12
 true.const
 switch.label 108 29
 ctx 26
 this
-invoke.virtual j25 l13 f1 0000000000000000
+invoke.virtual j25 l13 f1 "IsA;CName" 0000000000000000
 cname.const 2 "Ok<Int32,String>"
 param.end
 assign
-local 1
+local 1 "value$1": "Int32"
 ctx 10
 this
-object.field 0
+object.field 0 Ok<Int32,String>::value: "Int32"
 return
-invoke.static j53 l14 f2 0000000000000000
+invoke.static j53 l14 f2 Ok<Int32,String>::New;Int32 0000000000000000
 ctx 9
-param 1
-invoke.virtual j25 l14 f3 0000000000000000
-local 1
+param 1 "f": "ref:Function1<Int32,Int32>"
+invoke.virtual j25 l14 f3 "Call;Int32" 0000000000000000
+local 1 "value$1": "Int32"
 param.end
 param.end
 switch.label 80 29
 ctx 26
 this
-invoke.virtual j25 l15 f1 0000000000000000
+invoke.virtual j25 l15 f1 "IsA;CName" 0000000000000000
 cname.const 4 "Err<Int32,String>"
 param.end
 assign
-local 2
+local 2 "error$2": "String"
 ctx 10
 this
-object.field 1
+object.field 1 Err<Int32,String>::error: "String"
 return
-invoke.static j25 l16 f5 0000000000000000
-local 2
+invoke.static j25 l16 f5 Err<Int32,String>::New;String 0000000000000000
+local 2 "error$2": "String"
 param.end
 
 // Function1<Int32,Int32>::Call;Int32 (f6)
 
 // lambda$23::Instantiate (f3)
 assign
-local 3
-object.new 1
+local 3 "self": "ref:Function1<Int32,Int32>"
+object.new 1 "lambda$23"
 return
-local 3
+local 3 "self": "ref:Function1<Int32,Int32>"
 
 // lambda$23::Call;Int32 (f7)
 return
-invoke.static j26 l3 f8 0000000000000000
-param 2
+invoke.static j26 l3 f8 OperatorAdd;Int32Int32 0000000000000000
+param 2 "arg$0": "Int32"
 i32.one
 param.end
 
@@ -86,12 +86,12 @@ param.end
 
 // Err<Int32,String>::New;String (f5)
 assign
-local 4
-object.new 2
+local 4 "self$1": "ref:Err<Int32,String>"
+object.new 2 "Err<Int32,String>"
 assign
 ctx 18
-local 4
-object.field 1
-param 3
+local 4 "self$1": "ref:Err<Int32,String>"
+object.field 1 Err<Int32,String>::error: "String"
+param 3 "error": "String"
 return
-local 4
+local 4 "self$1": "ref:Err<Int32,String>"

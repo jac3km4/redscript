@@ -4,9 +4,9 @@ expression: "BytecodePrinter::new(&bundle, bundle_len)"
 input_file: crates/compiler/backend/tests/data/switch.reds
 ---
 // Test;Int32 (f0)
-switch 7
-invoke.static j30 l5 f1 0000000000000000
-param 0
+switch 7 j41
+invoke.static j30 l5 f1 OperatorModulo;Int32Int32 0000000000000000
+param 0 "val": "Int32"
 i32.const 4
 param.end
 switch.label 7 31

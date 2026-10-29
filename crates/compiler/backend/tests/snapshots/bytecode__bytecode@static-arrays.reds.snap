@@ -5,9 +5,9 @@ input_file: crates/compiler/backend/tests/data/static-arrays.reds
 ---
 // Test; (f0)
 assign
-local 0
+local 0 "static_arr$0": "Int32[10]"
 assign
-static_array.element 0
-local 0
+static_array.element 0 "Int32[10]"
+local 0 "static_arr$0": "Int32[10]"
 i32.zero
 i32.one

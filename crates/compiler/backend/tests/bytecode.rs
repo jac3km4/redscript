@@ -55,7 +55,7 @@ fn bytecode() {
 struct BytecodePrinter<'a> {
     bundle: &'a ScriptBundle<'a>,
     offset: usize,
-    indices: RefCell<Indices>,
+    indices: RefCell<Indices<'a>>,
 }
 
 impl<'a> BytecodePrinter<'a> {
@@ -63,7 +63,7 @@ impl<'a> BytecodePrinter<'a> {
         Self {
             bundle,
             offset,
-            indices: RefCell::new(Indices::default()),
+            indices: RefCell::new(Indices::new(bundle)),
         }
     }
 }
@@ -81,7 +81,12 @@ impl fmt::Display for BytecodePrinter<'_> {
             if let Some(class) = func.class() {
                 write!(f, "{}::", self.bundle[self.bundle[class].name()])?;
             }
-            writeln!(f, "{} (f{})", self.bundle[func.name()], indices.function(i))?;
+            writeln!(
+                f,
+                "{} (f{})",
+                self.bundle[func.name()],
+                indices.functions.insert_full(i).0
+            )?;
 
             for instr in func.body().code_iter() {
                 match instr.unwrap() {
@@ -89,7 +94,7 @@ impl fmt::Display for BytecodePrinter<'_> {
                         writeln!(
                             f,
                             "cname.const {} {:?}",
-                            indices.name(idx),
+                            indices.names.insert_full(idx).0,
                             self.bundle[idx]
                         )?;
                     }
@@ -133,6 +138,14 @@ impl fmt::Display for BytecodePrinter<'_> {
                     }
                     Instr::ObjectField(idx) => {
                         writeln!(f, "object.field {}", indices.field(idx))?;
+                    }
+                    Instr::Switch(switch) => {
+                        writeln!(
+                            f,
+                            "{} j{}",
+                            Instr::Switch(switch.clone()),
+                            switch.first_case()
+                        )?;
                     }
                     Instr::Construct { arg_count, class } => {
                         writeln!(f, "struct.new {} {}", arg_count, indices.class(class))?;
@@ -307,8 +320,9 @@ impl fmt::Display for BytecodePrinter<'_> {
     }
 }
 
-#[derive(Debug, Default)]
-struct Indices {
+#[derive(Debug)]
+struct Indices<'a> {
+    bundle: &'a ScriptBundle<'a>,
     names: IndexSet<CNameIndex>,
     enums: IndexSet<EnumIndex>,
     enum_values: IndexSet<EnumValueIndex>,
@@ -323,17 +337,50 @@ struct Indices {
     types: IndexSet<TypeIndex>,
 }
 
-impl Indices {
-    fn name(&mut self, index: CNameIndex) -> usize {
-        self.names.insert_full(index).0
+impl<'a> Indices<'a> {
+    fn new(bundle: &'a ScriptBundle<'a>) -> Self {
+        Self {
+            bundle,
+            names: IndexSet::default(),
+            enums: IndexSet::default(),
+            enum_values: IndexSet::default(),
+            strings: IndexSet::default(),
+            tweakdb_ids: IndexSet::default(),
+            resouces: IndexSet::default(),
+            locals: IndexSet::default(),
+            params: IndexSet::default(),
+            fields: IndexSet::default(),
+            classes: IndexSet::default(),
+            functions: IndexSet::default(),
+            types: IndexSet::default(),
+        }
     }
 
-    fn enum_(&mut self, index: EnumIndex) -> usize {
-        self.enums.insert_full(index).0
+    fn name(&mut self, index: CNameIndex) -> String {
+        format!(
+            "{} {:?}",
+            self.names.insert_full(index).0,
+            self.bundle[index]
+        )
     }
 
-    fn enum_value(&mut self, index: EnumValueIndex) -> usize {
-        self.enum_values.insert_full(index).0
+    fn enum_(&mut self, index: EnumIndex) -> String {
+        format!(
+            "{} {:?}",
+            self.enums.insert_full(index).0,
+            self.bundle[self.bundle[index].name()]
+        )
+    }
+
+    fn enum_value(&mut self, index: EnumValueIndex) -> String {
+        let member = &self.bundle[index];
+        format!(
+            "{} {:?}::{} = {}",
+            self.enum_values.insert_full(index).0,
+            self.bundle[self.bundle[member.enum_()].name()],
+            self.bundle[member.name()],
+            member.value()
+        )
     }
 
     fn string(&mut self, index: StringIndex) -> usize {
@@ -348,27 +395,64 @@ impl Indices {
         self.resouces.insert_full(index).0
     }
 
-    fn local(&mut self, index: LocalIndex) -> usize {
-        self.locals.insert_full(index).0
+    fn local(&mut self, index: LocalIndex) -> String {
+        let local = &self.bundle[index];
+        format!(
+            "{} {:?}: {:?}",
+            self.locals.insert_full(index).0,
+            self.bundle[local.name()],
+            self.bundle[self.bundle[local.type_()].name()]
+        )
     }
 
-    fn param(&mut self, index: ParameterIndex) -> usize {
-        self.params.insert_full(index).0
+    fn param(&mut self, index: ParameterIndex) -> String {
+        let param = &self.bundle[index];
+        format!(
+            "{} {:?}: {:?}",
+            self.params.insert_full(index).0,
+            self.bundle[param.name()],
+            self.bundle[self.bundle[param.type_()].name()]
+        )
     }
 
-    fn field(&mut self, index: FieldIndex) -> usize {
-        self.fields.insert_full(index).0
+    fn field(&mut self, index: FieldIndex) -> String {
+        let field = &self.bundle[index];
+        format!(
+            "{} {}::{}: {:?}",
+            self.fields.insert_full(index).0,
+            self.bundle[self.bundle[field.class()].name()],
+            self.bundle[field.name()],
+            self.bundle[self.bundle[field.type_()].name()]
+        )
     }
 
-    fn class(&mut self, index: ClassIndex) -> usize {
-        self.classes.insert_full(index).0
+    fn class(&mut self, index: ClassIndex) -> String {
+        format!(
+            "{} {:?}",
+            self.classes.insert_full(index).0,
+            self.bundle[self.bundle[index].name()]
+        )
     }
 
-    fn function(&mut self, index: FunctionIndex) -> usize {
-        self.functions.insert_full(index).0
+    fn function(&mut self, index: FunctionIndex) -> String {
+        let function = &self.bundle[index];
+        let owner = function
+            .class()
+            .map(|class| format!("{}::", self.bundle[self.bundle[class].name()]))
+            .unwrap_or_default();
+        format!(
+            "{} {}{}",
+            self.functions.insert_full(index).0,
+            owner,
+            self.bundle[function.name()]
+        )
     }
 
-    fn type_(&mut self, index: TypeIndex) -> usize {
-        self.types.insert_full(index).0
+    fn type_(&mut self, index: TypeIndex) -> String {
+        format!(
+            "{} {:?}",
+            self.types.insert_full(index).0,
+            self.bundle[self.bundle[index].name()]
+        )
     }
 }

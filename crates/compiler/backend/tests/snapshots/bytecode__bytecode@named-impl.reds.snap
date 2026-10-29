@@ -2,12 +2,11 @@
 source: crates/compiler/backend/tests/bytecode.rs
 expression: "BytecodePrinter::new(&bundle, bundle_len)"
 input_file: crates/compiler/backend/tests/data/named-impl.reds
-snapshot_kind: text
 ---
 // CurveData.Test; (f0)
 assign
-local 0
-invoke.static j16 l9 f1 0000000000000000
+local 0 "_$0": "CurveData.CurveData<Float>"
+invoke.static j16 l9 f1 CurveData.CurveDataFloat::Create 0000000000000000
 param.end
 
 // CurveData.CurveDataFloat::Create (f1)

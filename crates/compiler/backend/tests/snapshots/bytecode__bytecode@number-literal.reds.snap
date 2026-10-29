@@ -2,54 +2,53 @@
 source: crates/compiler/backend/tests/bytecode.rs
 expression: "BytecodePrinter::new(&bundle, bundle_len)"
 input_file: crates/compiler/backend/tests/data/number-literal.reds
-snapshot_kind: text
 ---
 // Test; (f0)
 assign
-local 0
+local 0 "a$0": "Float"
 f32.const 1
 assign
-local 0
+local 0 "a$0": "Float"
 f32.const 2
 assign
-local 1
+local 1 "b$1": "Double"
 f64.const 3
 assign
-local 1
+local 1 "b$1": "Double"
 f64.const 4
 assign
-local 1
+local 1 "b$1": "Double"
 f64.const 5
 assign
-local 2
+local 2 "_$2": "Int8"
 i8.const 6
 assign
-local 3
+local 3 "_$3": "Int16"
 i16.const 7
 assign
-local 4
+local 4 "_$4": "Int32"
 i32.const 8
 assign
-local 5
+local 5 "c$5": "Int64"
 i64.const 7
 assign
-local 5
+local 5 "c$5": "Int64"
 i64.const 8
 assign
-local 6
+local 6 "_$6": "Uint8"
 u8.const 9
 assign
-local 7
+local 7 "_$7": "Uint16"
 u16.const 10
 assign
-local 8
+local 8 "d$8": "Uint32"
 u32.const 11
 assign
-local 8
+local 8 "d$8": "Uint32"
 u32.const 12
 assign
-local 9
+local 9 "e$9": "Uint64"
 u64.const 13
 assign
-local 9
+local 9 "e$9": "Uint64"
 u64.const 14

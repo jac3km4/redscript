@@ -4,15 +4,15 @@ expression: "BytecodePrinter::new(&bundle, bundle_len)"
 input_file: crates/compiler/backend/tests/data/optional-args.reds
 ---
 // Test; (f0)
-invoke.static j18 l4 f1 0000000000000000
+invoke.static j18 l4 f1 OptionalArgs 0000000000000000
 nop
 nop
 param.end
-invoke.static j18 l5 f1 0000000000000000
+invoke.static j18 l5 f1 OptionalArgs 0000000000000000
 i32.one
 nop
 param.end
-invoke.static j22 l6 f1 0000000000000000
+invoke.static j22 l6 f1 OptionalArgs 0000000000000000
 i32.one
 i32.const 2
 param.end

@@ -5,7 +5,7 @@ input_file: crates/compiler/backend/tests/data/struct.reds
 ---
 // Test; (f0)
 assign
-local 0
-struct.new 2 0
+local 0 "a$0": "Struct"
+struct.new 2 0 "Struct"
 i32.const 10
 string.const 0 ""

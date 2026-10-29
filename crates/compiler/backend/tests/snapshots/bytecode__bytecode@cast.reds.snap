@@ -5,13 +5,13 @@ input_file: crates/compiler/backend/tests/data/cast.reds
 ---
 // Test; (f0)
 assign
-local 0
-invoke.static j17 l6 f1 0000000000000000
+local 0 "_$0": "Float"
+invoke.static j17 l6 f1 Cast;Int32;Float 0000000000000000
 i32.one
 param.end
 assign
-local 1
-invoke.static j21 l7 f2 0000000000000000
+local 1 "_$1": "String"
+invoke.static j21 l7 f2 Cast;Int32;String 0000000000000000
 i32.const 2
 param.end
 

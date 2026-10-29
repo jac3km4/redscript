@@ -5,14 +5,14 @@ input_file: crates/compiler/backend/tests/data/string-literal.reds
 ---
 // Test; (f0)
 assign
-local 0
+local 0 "_$0": "String"
 string.const 0 "💩"
 assign
-local 1
+local 1 "_$1": "CName"
 cname.const 0 "back"
 assign
-local 2
+local 2 "_$2": "ResRef"
 resource.const 0 "base\\gameplay\\gui\\common\\buttonhints.inkwidget"
 assign
-local 3
+local 3 "_$3": "TweakDBID"
 tweakdb.const 0 "MappinIcons.QuestMappin"

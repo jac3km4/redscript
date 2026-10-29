@@ -2,17 +2,16 @@
 source: crates/compiler/backend/tests/bytecode.rs
 expression: "BytecodePrinter::new(&bundle, bundle_len)"
 input_file: crates/compiler/backend/tests/data/dyn-cast.reds
-snapshot_kind: text
 ---
 // Test; (f0)
 assign
-local 0
-object.new 0
-ref.dyncast 0
-local 0
+local 0 "x$0": "ref:Base"
+object.new 0 "Class"
+ref.dyncast 0 "Class"
+local 0 "x$0": "ref:Base"
 assign
-local 1
+local 1 "y$1": "wref:Base"
 ref.to_wref
-local 0
-wref.dyncast 0
-local 1
+local 0 "x$0": "ref:Base"
+wref.dyncast 0 "Class"
+local 1 "y$1": "wref:Base"

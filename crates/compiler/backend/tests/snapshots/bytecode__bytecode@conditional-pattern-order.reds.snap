@@ -5,126 +5,126 @@ input_file: crates/compiler/backend/tests/data/conditional-pattern-order.reds
 ---
 // Test;Bool (f0)
 jump.if_not 14
-param 0
+param 0 "skip": "Bool"
 return
 i32.zero
 jump 352
-array.resize 0
-local 0
+array.resize 0 "array:Int32"
+local 0 "var$1": "array:Int32"
 u64.const 1
 assign
-array.element 0
-local 0
+array.element 0 "array:Int32"
+local 0 "var$1": "array:Int32"
 u64.const 0
 i32.one
 assign
-local 1
-invoke.static j25 l4 f1 0000000000000000
-local 0
+local 1 "var$2": "array:Int32"
+invoke.static j25 l4 f1 Next 0000000000000000
+local 0 "var$1": "array:Int32"
 param.end
 jump.if_not 77
-invoke.static j35 l4 f2 0000000000000000
-array.size 0
-local 1
+invoke.static j35 l4 f2 OperatorEqual;Int32Int32 0000000000000000
+array.size 0 "array:Int32"
+local 1 "var$2": "array:Int32"
 i32.one
 param.end
 assign
-local 2
-array.element 0
-local 1
+local 2 "first$3": "Int32"
+array.element 0 "array:Int32"
+local 1 "var$2": "array:Int32"
 i32.zero
 return
-local 2
+local 2 "first$3": "Int32"
 jump 181
-array.resize 0
-local 3
+array.resize 0 "array:Int32"
+local 3 "var$4": "array:Int32"
 u64.const 1
 assign
-array.element 0
-local 3
+array.element 0 "array:Int32"
+local 3 "var$4": "array:Int32"
 u64.const 0
 i32.const 2
 assign
-local 4
-invoke.static j25 l6 f1 0000000000000000
-local 3
+local 4 "var$5": "array:Int32"
+invoke.static j25 l6 f1 Next 0000000000000000
+local 3 "var$4": "array:Int32"
 param.end
 jump.if_not 77
-invoke.static j35 l6 f2 0000000000000000
-array.size 0
-local 4
+invoke.static j35 l6 f2 OperatorEqual;Int32Int32 0000000000000000
+array.size 0 "array:Int32"
+local 4 "var$5": "array:Int32"
 i32.one
 param.end
 assign
-local 5
-array.element 0
-local 4
+local 5 "second$6": "Int32"
+array.element 0 "array:Int32"
+local 4 "var$5": "array:Int32"
 i32.zero
 return
-local 5
+local 5 "second$6": "Int32"
 jump 6
 return
 i32.const 3
 
 // TestFirstPattern; (f3)
-array.resize 0
-local 6
+array.resize 0 "array:Int32"
+local 6 "var$0": "array:Int32"
 u64.const 1
 assign
-array.element 0
-local 6
+array.element 0 "array:Int32"
+local 6 "var$0": "array:Int32"
 u64.const 0
 i32.one
 assign
-local 7
-invoke.static j25 l14 f1 0000000000000000
-local 6
+local 7 "var$1": "array:Int32"
+invoke.static j25 l14 f1 Next 0000000000000000
+local 6 "var$0": "array:Int32"
 param.end
 jump.if_not 77
-invoke.static j35 l14 f2 0000000000000000
-array.size 0
-local 7
+invoke.static j35 l14 f2 OperatorEqual;Int32Int32 0000000000000000
+array.size 0 "array:Int32"
+local 7 "var$1": "array:Int32"
 i32.one
 param.end
 assign
-local 8
-array.element 0
-local 7
+local 8 "first$2": "Int32"
+array.element 0 "array:Int32"
+local 7 "var$1": "array:Int32"
 i32.zero
 return
-local 8
+local 8 "first$2": "Int32"
 jump 184
 jump.if_not 6
 false.const
 return
 i32.zero
 jump 175
-array.resize 0
-local 9
+array.resize 0 "array:Int32"
+local 9 "var$3": "array:Int32"
 u64.const 1
 assign
-array.element 0
-local 9
+array.element 0 "array:Int32"
+local 9 "var$3": "array:Int32"
 u64.const 0
 i32.const 2
 assign
-local 10
-invoke.static j25 l18 f1 0000000000000000
-local 9
+local 10 "var$4": "array:Int32"
+invoke.static j25 l18 f1 Next 0000000000000000
+local 9 "var$3": "array:Int32"
 param.end
 jump.if_not 77
-invoke.static j35 l18 f2 0000000000000000
-array.size 0
-local 10
+invoke.static j35 l18 f2 OperatorEqual;Int32Int32 0000000000000000
+array.size 0 "array:Int32"
+local 10 "var$4": "array:Int32"
 i32.one
 param.end
 assign
-local 11
-array.element 0
-local 10
+local 11 "last$5": "Int32"
+array.element 0 "array:Int32"
+local 10 "var$4": "array:Int32"
 i32.zero
 return
-local 11
+local 11 "last$5": "Int32"
 jump 0
 return
 i32.const 3
@@ -132,29 +132,29 @@ i32.const 3
 // TestWhile; (f4)
 jump.if_not 171
 true.const
-array.resize 0
-local 12
+array.resize 0 "array:Int32"
+local 12 "var$0": "array:Int32"
 u64.const 1
 assign
-array.element 0
-local 12
+array.element 0 "array:Int32"
+local 12 "var$0": "array:Int32"
 u64.const 0
 i32.one
 assign
-local 13
-invoke.static j25 l25 f1 0000000000000000
-local 12
+local 13 "var$1": "array:Int32"
+invoke.static j25 l25 f1 Next 0000000000000000
+local 12 "var$0": "array:Int32"
 param.end
 jump.if_not 70
-invoke.static j35 l25 f2 0000000000000000
-array.size 0
-local 13
+invoke.static j35 l25 f2 OperatorEqual;Int32Int32 0000000000000000
+array.size 0 "array:Int32"
+local 13 "var$1": "array:Int32"
 i32.one
 param.end
 assign
-local 14
-array.element 0
-local 13
+local 14 "value$2": "Int32"
+array.element 0 "array:Int32"
+local 13 "var$1": "array:Int32"
 i32.zero
 jump -165
 jump 3

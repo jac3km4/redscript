@@ -5,36 +5,36 @@ input_file: crates/compiler/backend/tests/data/string-interp.reds
 ---
 // Test;Int32 (f0)
 assign
-local 0
+local 0 "birthYear$1": "Int32"
 i32.const 1990
 assign
-local 1
+local 1 "name$2": "String"
 string.const 0 "John"
 return
-invoke.static j212 l5 f1 0000000000000011
-as_ref 0
-invoke.static j173 l5 f1 0000000000000011
-as_ref 0
-invoke.static j96 l5 f1 0000000000000011
-as_ref 0
-invoke.static j57 l5 f1 0000000000000011
-as_ref 0
+invoke.static j212 l5 f1 OperatorAdd;StringString 0000000000000011
+as_ref 0 "String"
+invoke.static j173 l5 f1 OperatorAdd;StringString 0000000000000011
+as_ref 0 "String"
+invoke.static j96 l5 f1 OperatorAdd;StringString 0000000000000011
+as_ref 0 "String"
+invoke.static j57 l5 f1 OperatorAdd;StringString 0000000000000011
+as_ref 0 "String"
 string.const 1 "My name is "
-as_ref 0
-to_string 0
-local 1
+as_ref 0 "String"
+to_string 0 "String"
+local 1 "name$2": "String"
 param.end
-as_ref 0
+as_ref 0 "String"
 string.const 2 " and I am "
 param.end
-as_ref 0
-to_string 1
-invoke.static j34 l5 f2 0000000000000000
-param 0
-local 0
+as_ref 0 "String"
+to_string 1 "Int32"
+invoke.static j34 l5 f2 OperatorSubtract;Int32Int32 0000000000000000
+param 0 "year": "Int32"
+local 0 "birthYear$1": "Int32"
 param.end
 param.end
-as_ref 0
+as_ref 0 "String"
 string.const 3 " years old"
 param.end
 

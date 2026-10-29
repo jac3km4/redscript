@@ -5,48 +5,48 @@ input_file: crates/compiler/backend/tests/data/derive-new.reds
 ---
 // Pair::New;StringInt32 (f0)
 assign
-local 0
-object.new 0
+local 0 "self$2": "ref:Pair"
+object.new 0 "Pair"
 assign
 ctx 18
-local 0
-object.field 0
-param 0
+local 0 "self$2": "ref:Pair"
+object.field 0 Pair::first: "String"
+param 0 "first": "String"
 assign
 ctx 18
-local 0
-object.field 1
-param 1
+local 0 "self$2": "ref:Pair"
+object.field 1 Pair::second: "Int32"
+param 1 "second": "Int32"
 return
-local 0
+local 0 "self$2": "ref:Pair"
 
 // Test; (f1)
 assign
-local 1
-invoke.static j22 l15 f0 0000000000000000
+local 1 "a$0": "ref:Pair"
+invoke.static j22 l15 f0 Pair::New;StringInt32 0000000000000000
 string.const 0 "a"
 i32.one
 param.end
 assign
-local 2
-invoke.static j26 l16 f2 0000000000000000
+local 2 "b$1": "ref:GenericPair<String,Int32>"
+invoke.static j26 l16 f2 GenericPair<String,Int32>::New;StringInt32 0000000000000000
 string.const 1 "b"
 i32.const 2
 param.end
 
 // GenericPair<String,Int32>::New;StringInt32 (f2)
 assign
-local 3
-object.new 1
+local 3 "self$2": "ref:GenericPair<String,Int32>"
+object.new 1 "GenericPair<String,Int32>"
 assign
 ctx 18
-local 3
-object.field 2
-param 2
+local 3 "self$2": "ref:GenericPair<String,Int32>"
+object.field 2 GenericPair<String,Int32>::first: "String"
+param 2 "first": "String"
 assign
 ctx 18
-local 3
-object.field 3
-param 3
+local 3 "self$2": "ref:GenericPair<String,Int32>"
+object.field 3 GenericPair<String,Int32>::second: "Int32"
+param 3 "second": "Int32"
 return
-local 3
+local 3 "self$2": "ref:GenericPair<String,Int32>"

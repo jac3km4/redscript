@@ -6,9 +6,9 @@ input_file: crates/compiler/backend/tests/data/ternary.reds
 // Test1;Int32 (f0)
 return
 cond 50 49
-invoke.static j47 l2 f1 0000000000000000
-invoke.static j30 l2 f2 0000000000000000
-param 0
+invoke.static j47 l2 f1 OperatorEqual;Int32Int32 0000000000000000
+invoke.static j30 l2 f2 OperatorModulo;Int32Int32 0000000000000000
+param 0 "val": "Int32"
 i32.const 2
 param.end
 i32.zero
@@ -21,8 +21,8 @@ return
 cond 22 21
 ref.to_bool
 wref.to_ref
-param 1
-param 1
+param 1 "val": "wref:Dummy"
+param 1 "val": "wref:Dummy"
 wref.null
 
 // OperatorEqual;Int32Int32 (f1)

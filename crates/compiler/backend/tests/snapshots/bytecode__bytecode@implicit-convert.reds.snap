@@ -6,27 +6,27 @@ input_file: crates/compiler/backend/tests/data/implicit-convert.reds
 // Class::Method; (f0)
 
 // Test; (f1)
-invoke.static j30 l12 f2 0000000000000001
-as_ref 0
+invoke.static j30 l12 f2 TakeScriptRef 0000000000000001
+as_ref 0 "String"
 string.const 0 "test"
 param.end
 assign
-local 0
+local 0 "a$0": "wref:Class"
 ref.to_wref
-object.new 0
-invoke.static j26 l15 f3 0000000000000000
+object.new 0 "Class"
+invoke.static j26 l15 f3 TakeRef 0000000000000000
 wref.to_ref
-local 0
+local 0 "a$0": "wref:Class"
 param.end
 ctx 26
 wref.to_ref
-local 0
-invoke.virtual j16 l17 f0 0000000000000000
+local 0 "a$0": "wref:Class"
+invoke.virtual j16 l17 f0 "Method;" 0000000000000000
 param.end
 ctx 19
 wref.to_ref
-local 0
-object.field 0
+local 0 "a$0": "wref:Class"
+object.field 0 Class::field: "String"
 
 // TakeScriptRef (f2)
 

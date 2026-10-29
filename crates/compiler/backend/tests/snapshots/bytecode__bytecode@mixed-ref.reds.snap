@@ -5,11 +5,11 @@ input_file: crates/compiler/backend/tests/data/mixed-ref.reds
 ---
 // Test; (f0)
 assign
-local 0
-struct.new 0 0
+local 0 "_$0": "NeverRef"
+struct.new 0 0 "NeverRef"
 assign
-local 1
-struct.new 0 1
+local 1 "_$1": "MixedRef"
+struct.new 0 1 "MixedRef"
 assign
-local 2
-object.new 1
+local 2 "_$2": "ref:MixedRef"
+object.new 1 "MixedRef"

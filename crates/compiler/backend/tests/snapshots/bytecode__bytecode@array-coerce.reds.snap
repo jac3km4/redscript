@@ -4,50 +4,50 @@ expression: "BytecodePrinter::new(&bundle, bundle_len)"
 input_file: crates/compiler/backend/tests/data/array-coerce.reds
 ---
 // Test; (f0)
-array.resize 0
-local 0
+array.resize 0 "array:Int32"
+local 0 "var$0": "array:Int32"
 u64.const 3
 assign
-array.element 0
-local 0
+array.element 0 "array:Int32"
+local 0 "var$0": "array:Int32"
 u64.const 0
 i32.one
 assign
-array.element 0
-local 0
+array.element 0 "array:Int32"
+local 0 "var$0": "array:Int32"
 u64.const 1
 i32.const 2
 assign
-array.element 0
-local 0
+array.element 0 "array:Int32"
+local 0 "var$0": "array:Int32"
 u64.const 2
 i32.const 3
 assign
-local 1
-local 0
-array.resize 1
-local 2
+local 1 "variants$1": "array:Int32"
+local 0 "var$0": "array:Int32"
+array.resize 1 "array:Variant"
+local 2 "var$2": "array:Variant"
 u64.const 3
 assign
-array.element 1
-local 2
+array.element 1 "array:Variant"
+local 2 "var$2": "array:Variant"
 u64.const 0
-variant.new 2
+variant.new 2 "Int32"
 i32.one
 assign
-array.element 1
-local 2
+array.element 1 "array:Variant"
+local 2 "var$2": "array:Variant"
 u64.const 1
-variant.new 2
+variant.new 2 "Int32"
 i32.const 2
 assign
-array.element 1
-local 2
+array.element 1 "array:Variant"
+local 2 "var$2": "array:Variant"
 u64.const 2
-variant.new 2
+variant.new 2 "Int32"
 i32.const 3
-invoke.static j25 l4 f1 0000000000000000
-local 2
+invoke.static j25 l4 f1 AcceptsVariants;array<Variant> 0000000000000000
+local 2 "var$2": "array:Variant"
 param.end
 
 // AcceptsVariants;array<Variant> (f1)

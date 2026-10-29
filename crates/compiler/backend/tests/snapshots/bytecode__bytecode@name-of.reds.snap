@@ -5,15 +5,15 @@ input_file: crates/compiler/backend/tests/data/name-of.reds
 ---
 // Test; (f0)
 assign
-local 0
+local 0 "_$0": "CName"
 cname.const 0 "Int32"
 assign
-local 1
+local 1 "_$1": "CName"
 cname.const 0 "Int32"
-invoke.static j16 l6 f1 0000000000000000
+invoke.static j16 l6 f1 Generic<Int32>; 0000000000000000
 param.end
 
 // Generic<Int32>; (f1)
 assign
-local 2
+local 2 "_$0": "CName"
 cname.const 0 "Int32"
