@@ -33,6 +33,10 @@ To compile your scripts automatically on game startup, follow the instructions f
 
 REDscript provides extensive editor tooling, including a language server and a debugger that integrate with many popular editors such as VSCode, neovim, IntelliJ IDEA, Zed, and Helix. For detailed setup instructions, check out the [REDscript IDE repository](https://github.com/jac3km4/redscript-ide).
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for validation commands, regression tests, and correctness rules.
+
 ## Project Structure
 
 This project includes various tools for working with REDscript, such as a compiler, a decompiler, and a formatter. These are organized as modular Rust crates located in the `crates` directory:
@@ -45,11 +49,12 @@ This project includes various tools for working with REDscript, such as a compil
 - **`io`** - Reads and writes binary files in the native REDengine format.
 - **`scc/cli`** - Exposes a CLI that acts as a drop-in replacement for the original compiler made by CD Projekt.
 - **`scc/capi`** - Exposes a C API with an interface similar to the `scc` CLI, but with some additional capabilities like source mapping.
-- **`scc/shared`** - Contains common code used across the scc C API and CLI.
+- **`scc/core`** - Contains common code used across the scc C API and CLI.
 - **`syntax/ast`** - Defines the Abstract Syntax Tree (AST) for REDscript.
 - **`syntax/formatter`** - Formats REDscript source code according to configuration.
 - **`syntax/parser`** - Parses REDscript source code into the AST.
 - **`dotfile`** - Parses the configuration `.redscript` file.
+- **`code-edit`** - Provides source code edits used by tooling and migrations.
 
 ### Component Diagram
 <img width="100%" height="750px" src="https://mermaid.ink/svg/pako:eNqtlFGPmkAQx78Kmb5wicciIgpNmiiI-tCk6fl04MMKq1KBJbtLojV-9y5LtXfN0TZeH0iWYf7_38yyO2dIaErAgx3D1V5bBXGpaZMoBl-GNX1FjuIhhrX2-PhJm-rRF8w4YeuHj03aVEX9aPK0WquArwKBruRFleWEaSGjpSBlKk1aVaCSZtHyayuaqffwlWiKk8NLTahy5tH0JEhTb6ucq-hCjwIZbJU_8xdtZS-KWupRSFmBhbglLdWHiVo3T5JnyUE2FcNeiIp7CO0ysa83hjRH33AyOBQ2YiTlCcsqgQQjBPUN0ziihGFBOOKnUuAjqtQexSCNnmjNEhJDY8_FKSfSPqE5Zd4H03Td7fYX1383F3PRAfW7oMH90OuOo-3tB7_JDrrYs39lb3K6-QsbcZagjBmMd1Qx66oi_A87sLme1jfRYRd6fv8GZLTtuOTiD03Pu8iL-5tOb1etA7rogi7ffcC31wvcgV7-joaeHGtZCt4W55z0oCDSoHmHs7r0IPakkBaeXKaYHRqzixRVuHymtABPsFrKGK13-5tJXaWyqCDDcmIWtyiTB4Awn9alAG8wspQJeGc4gmePjb5jjhzHMftDxxr24ASeMzYcyxpZjm2btuU67qUH3xXUNMa2PRi5tpT0zfHQGvSApJmg7HM7qtXEvvwAQCLa_g"/>
