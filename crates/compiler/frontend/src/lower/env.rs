@@ -147,11 +147,14 @@ impl<'scope, 'ctx> TypeEnv<'scope, 'ctx> {
                         .collect::<Result<Rc<_>, _>>()?;
                     Ok(Type::app(id, args))
                 }
-                (Some(TypeRef::Var(var)), _) => Ok(Type::Ctx(var.clone())),
-                (Some(TypeRef::LazyVar(stub)), _) => Ok(Type::Ctx(
+                (Some(TypeRef::Var(var)), []) => Ok(Type::Ctx(var.clone())),
+                (Some(TypeRef::LazyVar(stub)), []) => Ok(Type::Ctx(
                     stub.get((self, symbols))
                         .map_err(|_| Error::CyclicType(span))??,
                 )),
+                (Some(TypeRef::Var(_) | TypeRef::LazyVar(_)), _) => {
+                    Err(Error::InvalidTypeArgCount(0, span))
+                }
                 (None, _) => Err(Error::UnresolvedType(name, span)),
             },
             ast::Type::Array(elem) => {
@@ -312,6 +315,60 @@ impl<'ctx> TypeRef<'_, 'ctx> {
         match self {
             &Self::Id(id) => Some(id),
             _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::Variance;
+
+    #[test]
+    fn plain_type_vars_are_accepted() {
+        let sources = ast::SourceMap::new();
+        let file = sources.push_back("test.reds", "T");
+        let span = Span::new(0, 1, file);
+        let symbols = Symbols::with_default_types();
+        let var = Rc::new(CtxVar::new("T", Variance::Invariant, None, None));
+        let lazy_var = var.clone();
+        let refs = [
+            TypeRef::Var(var.clone()),
+            TypeRef::LazyVar(Rc::new(Lazy::new(Box::new(move |_| Ok(lazy_var.clone()))))),
+        ];
+
+        for type_ref in refs {
+            let mut env = TypeEnv::default();
+            env.add("T", type_ref);
+            let resolved = env.resolve(&ast::Type::plain("T"), &symbols, span).unwrap();
+            assert!(matches!(resolved, Type::Ctx(resolved) if Rc::ptr_eq(&resolved, &var)));
+        }
+    }
+
+    #[test]
+    fn applied_type_vars_are_rejected() {
+        let sources = ast::SourceMap::new();
+        let file = sources.push_back("test.reds", "T<T>");
+        let span = Span::new(0, 4, file);
+        let arg_span = Span::new(2, 3, file);
+        let symbols = Symbols::with_default_types();
+        let var = Rc::new(CtxVar::new("T", Variance::Invariant, None, None));
+        let refs = [
+            TypeRef::Var(var),
+            TypeRef::LazyVar(Rc::new(Lazy::new(Box::new(|_| {
+                panic!("applied type variables must be rejected without forcing the stub")
+            })))),
+        ];
+        let typ = ast::Type::Named {
+            name: "T",
+            args: Box::new([(ast::Type::plain("T"), arg_span)]),
+        };
+
+        for type_ref in refs {
+            let mut env = TypeEnv::default();
+            env.add("T", type_ref);
+            let error = env.resolve(&typ, &symbols, span).unwrap_err();
+            assert!(matches!(error, Error::InvalidTypeArgCount(0, actual) if actual == span));
         }
     }
 }
