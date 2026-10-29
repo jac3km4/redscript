@@ -286,7 +286,22 @@ pub trait AstVisitor<'src, K: AstKind> {
 
     fn visit_pattern(&mut self, condition: &PatternT<'src, K>) -> Result<(), Self::Error> {
         self.visit_node(AstNode::Pattern(condition))?;
+        self.visit_pattern_inner(condition.as_wrapped())?;
         self.post_visit_node(AstNode::Pattern(condition))
+    }
+
+    fn visit_pattern_inner(&mut self, pattern: &Pattern<'src, K>) -> Result<(), Self::Error> {
+        match pattern {
+            Pattern::Name(_) => Ok(()),
+            Pattern::As(inner, _) | Pattern::Nullable(inner) => self.visit_pattern(inner),
+            Pattern::Aggregate(_, fields) => fields
+                .iter()
+                .try_for_each(|(_, pattern)| self.visit_pattern_inner(pattern)),
+            Pattern::Array(_, elements) => elements
+                .as_wrapped()
+                .iter()
+                .try_for_each(|pattern| self.visit_pattern_inner(pattern)),
+        }
     }
 
     fn visit_item_decl(&mut self, item_decl: &ItemDeclT<'src, K>) -> Result<(), Self::Error> {
