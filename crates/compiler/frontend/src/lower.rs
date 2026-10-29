@@ -1759,7 +1759,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 .span(call_span)
                 .resolve()?;
 
-            let method_id = resolved.resulution.function;
+            let method_id = resolved.resolution.function;
             let method = &self.symbols[method_id];
             if !self.check_visibility(method_id.parent(), method.flags().visibility()) {
                 self.reporter.report(Error::InaccessibleMethod(
@@ -1768,7 +1768,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 ));
             }
 
-            let parent = resolved.resulution.function.parent();
+            let parent = resolved.resolution.function.parent();
             if parent != id {
                 self.reporter.report(Error::CallingBaseStaticMethod {
                     type_id: parent,
@@ -1829,7 +1829,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             .span(call_span)
             .resolve()?;
 
-        let method_id = resolved.resulution.function;
+        let method_id = resolved.resolution.function;
         let method = &self.symbols[method_id];
         if !self.check_visibility(method_id.parent(), method.flags().visibility()) {
             self.reporter.report(Error::InaccessibleMethod(
@@ -2479,7 +2479,7 @@ impl<'ctx, K> FunctionResolution<'ctx, K> {
 
     fn with_args(self, args: impl Into<Box<[ir::Expr<'ctx>]>>) -> FunctionResultWithArgs<'ctx, K> {
         FunctionResultWithArgs {
-            resulution: self,
+            resolution: self,
             args: args.into(),
         }
     }
@@ -2487,7 +2487,7 @@ impl<'ctx, K> FunctionResolution<'ctx, K> {
 
 #[derive(Debug)]
 struct FunctionResultWithArgs<'ctx, K> {
-    resulution: FunctionResolution<'ctx, K>,
+    resolution: FunctionResolution<'ctx, K>,
     args: Box<[ir::Expr<'ctx>]>,
 }
 
@@ -2495,18 +2495,18 @@ impl<'ctx> FunctionResultWithArgs<'ctx, FreeFunctionIndex> {
     #[inline]
     fn into_call(self) -> (ir::Call<'ctx>, PolyType<'ctx>) {
         let call = ir::Call::FreeFunction {
-            function: self.resulution.function,
-            type_args: self.resulution.type_args,
+            function: self.resolution.function,
+            type_args: self.resolution.type_args,
             args: self.args,
         };
-        (call, self.resulution.return_type)
+        (call, self.resolution.return_type)
     }
 }
 
 impl<'ctx> FunctionResultWithArgs<'ctx, MethodId<'ctx>> {
     pub fn with_method(self, method: MethodId<'ctx>) -> Self {
         Self {
-            resulution: self.resulution.with_function(method),
+            resolution: self.resolution.with_function(method),
             ..self
         }
     }
@@ -2516,7 +2516,7 @@ impl<'ctx> FunctionResultWithArgs<'ctx, MethodId<'ctx>> {
         F: FnOnce(Box<[ir::Expr<'ctx>]>) -> Box<[ir::Expr<'ctx>]>,
     {
         Self {
-            resulution: self.resulution,
+            resolution: self.resolution,
             args: f(self.args),
         }
     }
@@ -2533,12 +2533,12 @@ impl<'ctx> FunctionResultWithArgs<'ctx, MethodId<'ctx>> {
             receiver: receiver.into(),
             receiver_type: receiver_type.into(),
             receiver_ref,
-            method: self.resulution.function,
-            type_args: self.resulution.type_args,
+            method: self.resolution.function,
+            type_args: self.resolution.type_args,
             args: self.args,
             mode,
         };
-        (call, self.resulution.return_type)
+        (call, self.resolution.return_type)
     }
 
     #[inline]
@@ -2550,11 +2550,11 @@ impl<'ctx> FunctionResultWithArgs<'ctx, MethodId<'ctx>> {
         let call = ir::Call::Static {
             parent_id,
             parent_type_args: parent_type_args.into_iter().map(Into::into).collect(),
-            method: self.resulution.function,
-            type_args: self.resulution.type_args,
+            method: self.resolution.function,
+            type_args: self.resolution.type_args,
             args: self.args,
         };
-        (call, self.resulution.return_type)
+        (call, self.resolution.return_type)
     }
 }
 
