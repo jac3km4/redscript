@@ -6,7 +6,7 @@ use redscript_ast::{
     SourcePattern, SourceStmt, SourceType, Span, Stmt,
 };
 
-use super::{Parse, ident_with_span, type_with_span};
+use super::{Parse, extended_ident_with_span, ident_with_span, type_with_span};
 use crate::lexer::Token;
 
 pub fn stmt_rec<'tok, 'src: 'tok>(
@@ -59,7 +59,7 @@ pub fn stmt_rec<'tok, 'src: 'tok>(
             })
             .erased();
 
-        let fields = ident_with_span()
+        let fields = extended_ident_with_span()
             .then(just(Token::Colon).ignore_then(this).or_not())
             .map(|(name, pat)| (name, pat.unwrap_or(Pattern::Name(name))))
             .separated_by(just(Token::Comma))
@@ -214,6 +214,23 @@ mod tests {
 
     use super::*;
     use crate::{Error, Span, parse_stmt};
+
+    #[test]
+    fn keyword_named_pattern_fields() {
+        for field in ["default", "true", "false", "normal"] {
+            let source = format!("if let Foo {{ {field}: x }} = value {{}}");
+            let (stmt, errors) = parse_stmt(&source, FileId::from_i32(0));
+            assert!(errors.is_empty(), "{source}: {errors:?}");
+            let Stmt::If { blocks, .. } = stmt.unwrap().unwrapped() else {
+                panic!("expected if statement");
+            };
+            let LetCondition::LetPattern(Pattern::Aggregate(_, fields), _) = &blocks[0].condition
+            else {
+                panic!("expected aggregate pattern");
+            };
+            assert_eq!(&fields[..], &[(field, Pattern::Name("x"))]);
+        }
+    }
 
     #[test]
     fn if_else_chain() {
