@@ -29,8 +29,12 @@ pub enum Error<'ctx> {
     MultipleMatchingOverloads(Rc<[FunctionSignature<'ctx, Immutable>]>, Span),
     #[error("there's no matching `{0}` function")]
     UnresolvedFunction(&'ctx str, Span),
-    #[error("invalid number of arguments, expected {}", DisplayRangeInclusive(.0))]
-    InvalidArgCount(RangeInclusive<usize>, Span),
+    #[error(
+        "invalid number of arguments, expected {expected} arguments, found {found}",
+        expected = DisplayArgCounts(.0),
+        found = .1
+    )]
+    InvalidArgCount(Vec<RangeInclusive<usize>>, usize, Span),
     #[error(
         "insufficient type information available for member lookup, consider adding \
          type annotations"
@@ -126,7 +130,7 @@ impl Error<'_> {
             | Self::UnresolvedMember(_, _, span)
             | Self::MultipleMatchingOverloads(_, span)
             | Self::UnresolvedFunction(_, span)
-            | Self::InvalidArgCount(_, span)
+            | Self::InvalidArgCount(_, _, span)
             | Self::InsufficientTypeInformation(span)
             | Self::InvalidNewType(span)
             | Self::InvalidConstructType(span)
@@ -169,7 +173,7 @@ impl Error<'_> {
             Self::UnresolvedMember(_, _, _) => "UNRESOLVED_MEMBER",
             Self::MultipleMatchingOverloads(_, _) => "MULTIPLE_MATCHING_OVERLOADS",
             Self::UnresolvedFunction(_, _) => "UNRESOLVED_FN",
-            Self::InvalidArgCount(_, _) => "INVALID_ARG_COUNT",
+            Self::InvalidArgCount(_, _, _) => "INVALID_ARG_COUNT",
             Self::InsufficientTypeInformation(_) => "CANNOT_LOOKUP_MEMBER",
             Self::InvalidNewType(_)
             | Self::ClassConstructorHasArguments(_)
@@ -243,17 +247,35 @@ impl fmt::Display for NumberTypeRangeHint<'_> {
     }
 }
 
-struct DisplayRangeInclusive<'a, T>(&'a RangeInclusive<T>);
+struct DisplayArgCounts<'a>(&'a [RangeInclusive<usize>]);
 
-impl<T: fmt::Display + PartialEq> fmt::Display for DisplayRangeInclusive<'_, T> {
+impl fmt::Display for DisplayArgCounts<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let start = self.0.start();
-        let end = self.0.end();
-        if start == end {
-            write!(f, "{start}")
-        } else {
-            write!(f, "between {start} and {end}")
+        let mut ranges = self.0.to_vec();
+        ranges.sort_unstable_by_key(|range| (*range.start(), *range.end()));
+        let mut merged: Vec<RangeInclusive<usize>> = Vec::new();
+        for range in ranges {
+            if let Some(last) = merged.last_mut()
+                && *range.start() <= last.end().saturating_add(1)
+            {
+                *last = *last.start()..=*last.end().max(range.end());
+            } else {
+                merged.push(range);
+            }
         }
+        for (index, range) in merged.iter().enumerate() {
+            if index > 0 {
+                write!(f, " or ")?;
+            }
+            let start = range.start();
+            let end = range.end();
+            if start == end {
+                write!(f, "{start}")?;
+            } else {
+                write!(f, "between {start} and {end}")?;
+            }
+        }
+        Ok(())
     }
 }
 

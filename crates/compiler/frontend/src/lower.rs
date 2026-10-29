@@ -1,6 +1,5 @@
 use std::cell::Cell;
 use std::fmt::Debug;
-use std::ops::RangeInclusive;
 use std::rc::Rc;
 use std::{iter, mem, slice};
 
@@ -1151,8 +1150,11 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     .report(Error::NonFullyDefinedNativeStructConstruction { type_id: id, span });
             }
         } else if args.len() != field_count {
-            self.reporter
-                .report(Error::InvalidArgCount(field_count..=field_count, span));
+            self.reporter.report(Error::InvalidArgCount(
+                iter::once(field_count..=field_count).collect(),
+                args.len(),
+                span,
+            ));
         }
 
         let type_env = typ.type_env(self.symbols);
@@ -1872,23 +1874,22 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         let args = args.into_iter();
         let argc = args.len();
 
-        let mut arg_bounds: Option<RangeInclusive<usize>> = None;
+        let mut arg_ranges = Vec::new();
         let mut filtered = candidates
             .into_iter()
             .filter(|f| {
                 let range = f.func().type_().min_args()..=f.func().type_().max_args();
-                arg_bounds = Some(arg_bounds.as_ref().map_or(range.clone(), |other| {
-                    *other.start().min(range.start())..=*other.end().max(range.end())
-                }));
+                arg_ranges.push(range.clone());
                 range.contains(&argc)
             })
             .peekable();
 
         let Some(primary) = filtered.next() else {
-            match arg_bounds {
-                Some(bounds) => return Err(Error::InvalidArgCount(bounds, span)),
-                None => return Err(Error::UnresolvedFunction(name, span)),
-            }
+            return if arg_ranges.is_empty() {
+                Err(Error::UnresolvedFunction(name, span))
+            } else {
+                Err(Error::InvalidArgCount(arg_ranges, argc, span))
+            };
         };
 
         let type_args = type_args
