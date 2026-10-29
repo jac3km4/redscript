@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::fmt;
+use std::path::Path;
 
 use indexmap::IndexSet;
 use redscript_compiler_api::ast::SourceMap;
@@ -9,46 +10,79 @@ use redscript_compiler_api::{
 use redscript_compiler_backend::CompilationInputs;
 use redscript_compiler_frontend::infer_from_sources;
 use redscript_io::{
-    CNameIndex, Class, ClassFlags, ClassIndex, EnumIndex, EnumValueIndex, FieldIndex,
-    FunctionIndex, IndexedDefinition, Instr, LocalIndex, ParameterIndex, ResourceIndex,
-    ScriptBundle, StringIndex, TweakDbIndex, TypeIndex, Visibility,
+    CNameIndex, Class, ClassFlags, ClassIndex, EnumIndex, EnumValueIndex, FieldIndex, Function,
+    FunctionFlags, FunctionIndex, IndexedDefinition, Instr, LocalIndex, Parameter, ParameterFlags,
+    ParameterIndex, ResourceIndex, ScriptBundle, StringIndex, TweakDbIndex, Type, TypeIndex,
+    TypeKind, Visibility,
 };
 
 #[test]
 fn bytecode() {
     insta::glob!("data/*.reds", |path| {
-        let sources = SourceMap::from_files([path]).unwrap();
-        sources.populate_boot_lib();
-
-        let interner = TypeInterner::default();
-        let mut bundle = ScriptBundle::default();
-
-        let name = bundle.cnames_mut().add("IScriptable");
-        bundle.define(Class::new(name, Visibility::Public, ClassFlags::default()));
-
-        let (symbols, mappings) =
-            CompilationInputs::load(&bundle, &interner, &TypeFlagRegistry::default())
-                .unwrap()
-                .into_inner();
-        let mut reporter = CompileErrorReporter::default();
-        let (unit, symbols) = infer_from_sources(&sources, symbols, &mut reporter, &interner);
-        let diagnostics = reporter.into_reported();
-        assert_eq!(
-            diagnostics.iter().filter(|d| d.is_error()).count(),
-            0,
-            "{}: {}",
-            Diagnostics::from(diagnostics),
-            path.display()
-        );
-
-        let bundle_len = bundle.definitions().len();
-
-        mappings
-            .into_monomorphizer(&sources)
-            .monomorphize(&unit, &symbols, &mut bundle)
-            .unwrap();
-        insta::assert_snapshot!(BytecodePrinter::new(&bundle, bundle_len));
+        insta::assert_snapshot!(compile(path, |_| {}));
     });
+}
+
+#[test]
+fn short_circuit() {
+    let path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/short-circuit/operators.reds");
+    let bytecode = compile(&path, |bundle| {
+        let name = bundle.cnames_mut().add("Bool");
+        let bool_type = bundle.define(Type::new(name, TypeKind::Primitive));
+        for name in ["OperatorLogicAnd", "OperatorLogicOr"] {
+            let name = bundle.cnames_mut().add(name);
+            let flags = FunctionFlags::default()
+                .with_is_native(true)
+                .with_is_static(true)
+                .with_is_final(true);
+            let function = Function::new(name, Visibility::Public, flags)
+                .with_source(None)
+                .with_return_type(Some(bool_type));
+            bundle.define_and_init(function, |bundle, index, function| {
+                let parameters = [("lhs", false), ("rhs", true)].map(|(name, short_circuit)| {
+                    let name = bundle.cnames_mut().add(name);
+                    let flags = ParameterFlags::default().with_is_short_circuit(short_circuit);
+                    bundle.define(Parameter::new(name, index, bool_type, flags))
+                });
+                function.with_parameters(parameters)
+            });
+        }
+    });
+    insta::assert_snapshot!(bytecode);
+}
+
+fn compile(path: &Path, seed: impl FnOnce(&mut ScriptBundle<'_>)) -> String {
+    let sources = SourceMap::from_files([path]).unwrap();
+    sources.populate_boot_lib();
+
+    let interner = TypeInterner::default();
+    let mut bundle = ScriptBundle::default();
+    seed(&mut bundle);
+    let name = bundle.cnames_mut().add("IScriptable");
+    bundle.define(Class::new(name, Visibility::Public, ClassFlags::default()));
+
+    let (symbols, mappings) =
+        CompilationInputs::load(&bundle, &interner, &TypeFlagRegistry::default())
+            .unwrap()
+            .into_inner();
+    let mut reporter = CompileErrorReporter::default();
+    let (unit, symbols) = infer_from_sources(&sources, symbols, &mut reporter, &interner);
+    let diagnostics = reporter.into_reported();
+    assert_eq!(
+        diagnostics.iter().filter(|d| d.is_error()).count(),
+        0,
+        "{}: {}",
+        Diagnostics::from(diagnostics),
+        path.display()
+    );
+
+    let bundle_len = bundle.definitions().len();
+    mappings
+        .into_monomorphizer(&sources)
+        .monomorphize(&unit, &symbols, &mut bundle)
+        .unwrap();
+    BytecodePrinter::new(&bundle, bundle_len).to_string()
 }
 
 #[derive(Debug)]

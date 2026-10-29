@@ -1,0 +1,86 @@
+---
+source: crates/compiler/backend/tests/bytecode.rs
+expression: bytecode
+---
+// SideEffect;OutBoolBool (f0)
+assign
+param 0 "state": "Bool"
+param 1 "value": "Bool"
+return
+param 0 "state": "Bool"
+
+// TestAnd;BoolOutBool (f1)
+return
+invoke.static j54 l7 f2 OperatorLogicAnd 0000000000000000
+param 2 "lhs": "Bool"
+skip 26
+invoke.static j26 l7 f0 SideEffect;OutBoolBool 0000000000000000
+param 3 "state": "Bool"
+true.const
+param.end
+param.end
+
+// TestOr;BoolOutBool (f3)
+return
+invoke.static j54 l11 f4 OperatorLogicOr 0000000000000000
+param 4 "lhs": "Bool"
+skip 26
+invoke.static j26 l11 f0 SideEffect;OutBoolBool 0000000000000000
+param 5 "state": "Bool"
+false.const
+param.end
+param.end
+
+// TestAndOr;BoolOutBool (f5)
+return
+invoke.static j99 l15 f2 OperatorLogicAnd 0000000000000000
+param 6 "lhs": "Bool"
+skip 71
+invoke.static j71 l15 f4 OperatorLogicOr 0000000000000000
+invoke.static j26 l15 f0 SideEffect;OutBoolBool 0000000000000000
+param 7 "state": "Bool"
+false.const
+param.end
+skip 26
+invoke.static j26 l15 f0 SideEffect;OutBoolBool 0000000000000000
+param 7 "state": "Bool"
+true.const
+param.end
+param.end
+param.end
+
+// TestOrAnd;BoolOutBool (f6)
+return
+invoke.static j99 l19 f4 OperatorLogicOr 0000000000000000
+param 8 "lhs": "Bool"
+skip 71
+invoke.static j71 l19 f2 OperatorLogicAnd 0000000000000000
+invoke.static j26 l19 f0 SideEffect;OutBoolBool 0000000000000000
+param 9 "state": "Bool"
+true.const
+param.end
+skip 26
+invoke.static j26 l19 f0 SideEffect;OutBoolBool 0000000000000000
+param 9 "state": "Bool"
+false.const
+param.end
+param.end
+param.end
+
+// TestNestedLhs;BoolOutBool (f7)
+return
+invoke.static j99 l23 f4 OperatorLogicOr 0000000000000000
+invoke.static j54 l23 f2 OperatorLogicAnd 0000000000000000
+param 10 "lhs": "Bool"
+skip 26
+invoke.static j26 l23 f0 SideEffect;OutBoolBool 0000000000000000
+param 11 "state": "Bool"
+true.const
+param.end
+param.end
+skip 26
+invoke.static j26 l23 f0 SideEffect;OutBoolBool 0000000000000000
+param 11 "state": "Bool"
+false.const
+param.end
+param.end
