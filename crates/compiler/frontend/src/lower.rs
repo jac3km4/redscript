@@ -226,7 +226,8 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         block: &ast::SourceConditionalBlock<'ctx>,
         env: &Env<'_, 'ctx>,
     ) -> LowerResult<'ctx, (ir::ConditionalBlock<'ctx>, Option<ir::Stmt<'ctx>>)> {
-        match &block.condition {
+        self.stmt_prefix.push(vec![]);
+        let result = (|| match &block.condition {
             ast::LetCondition::Expr(expr) => {
                 let (_, span) = expr;
                 let (condition, expr_t) = self.lower_expr(expr, env)?;
@@ -260,7 +261,17 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     ),
                 ))
             }
-        }
+        })();
+        let mut prefix = self
+            .stmt_prefix
+            .pop()
+            .expect("condition prefix scope exists");
+        result.map(|(block, assignment)| {
+            prefix.extend(assignment);
+            let prefix = (!prefix.is_empty())
+                .then(|| ir::Stmt::Block(ir::Block::new(prefix), block.condition.span()));
+            (block, prefix)
+        })
     }
 
     fn lower_projection(
@@ -869,21 +880,31 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 }
             }
             ast::Stmt::If { blocks, else_ } => {
-                let branches = blocks
+                let blocks = blocks
                     .iter()
-                    .map(|block| {
-                        let (block, prefix) = self.lower_conditional_block(block, env)?;
-                        if let Some(prefix) = prefix {
-                            self.push_prefix(prefix);
-                        }
-                        Ok(block)
-                    })
-                    .collect::<Result<_, _>>()?;
-                let default = else_
+                    .map(|block| self.lower_conditional_block(block, env))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let mut default = else_
                     .as_ref()
                     .map(|block| self.lower_scoped_block(&block.stmts, env));
+                let mut branches = Vec::new();
+                for (index, (block, prefix)) in blocks.into_iter().enumerate().rev() {
+                    branches.insert(0, block);
+                    if let Some(prefix) = prefix {
+                        if index == 0 {
+                            self.push_prefix(prefix);
+                        } else {
+                            let branch = ir::Stmt::Branches {
+                                branches: mem::take(&mut branches).into(),
+                                default: default.take(),
+                                span,
+                            };
+                            default = Some(ir::Block::new([prefix, branch]));
+                        }
+                    }
+                }
                 ir::Stmt::Branches {
-                    branches,
+                    branches: branches.into(),
                     default,
                     span,
                 }

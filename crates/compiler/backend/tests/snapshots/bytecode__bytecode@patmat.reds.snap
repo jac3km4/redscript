@@ -80,12 +80,6 @@ i32.zero
 assign
 local 6
 param 0
-assign
-local 7
-param 0
-assign
-local 8
-param 0
 jump.if_not 249
 invoke.static j39 l14 f2 0000000000000000
 array.size 0
@@ -93,7 +87,7 @@ local 6
 i32.const 3
 param.end
 assign
-local 9
+local 7
 array.element 0
 local 6
 invoke.static j39 l14 f3 0000000000000000
@@ -102,7 +96,7 @@ local 6
 i32.const 3
 param.end
 assign
-local 10
+local 8
 array.element 0
 local 6
 invoke.static j39 l14 f3 0000000000000000
@@ -111,7 +105,7 @@ local 6
 i32.const 2
 param.end
 assign
-local 11
+local 9
 array.element 0
 local 6
 invoke.static j35 l14 f3 0000000000000000
@@ -120,37 +114,43 @@ local 6
 i32.one
 param.end
 return
-local 9
-jump 195
+local 7
+jump 233
+assign
+local 10
+param 0
 jump.if_not 110
 invoke.static j39 l16 f2 0000000000000000
 array.size 0
-local 7
+local 10
 i32.const 2
 param.end
 assign
-local 12
+local 11
 array.element 0
-local 7
+local 10
 i32.zero
 assign
-local 13
+local 12
 array.element 0
-local 7
+local 10
 i32.one
 return
+local 12
+jump 101
+assign
 local 13
-jump 82
+param 0
 jump.if_not 77
 invoke.static j35 l18 f4 0000000000000000
 array.size 0
-local 8
+local 13
 i32.one
 param.end
 assign
 local 14
 array.element 0
-local 8
+local 13
 i32.zero
 return
 local 14
@@ -257,9 +257,6 @@ i32.zero
 assign
 local 23
 param 3
-assign
-local 24
-param 3
 jump.if_not 81
 ctx 34
 local 23
@@ -267,23 +264,26 @@ invoke.virtual j25 l65 f0 0000000000000000
 cname.const 1
 param.end
 assign
-local 25
+local 24
 ctx 18
 local 23
 object.field 0
 return
+local 24
+jump 115
+assign
 local 25
-jump 96
+param 3
 jump.if_not 91
 ctx 34
-local 24
+local 25
 invoke.virtual j25 l67 f0 0000000000000000
 cname.const 2
 param.end
 assign
 local 26
 ctx 18
-local 24
+local 25
 object.field 1
 return
 array.element 0
@@ -334,9 +334,6 @@ i32.zero
 assign
 local 29
 param 4
-assign
-local 30
-param 4
 jump.if_not 83
 ctx 35
 wref.to_ref
@@ -345,18 +342,21 @@ invoke.virtual j25 l84 f0 0000000000000000
 cname.const 1
 param.end
 assign
-local 31
+local 30
 ctx 19
 wref.to_ref
 local 29
 object.field 0
 return
+local 30
+jump 117
+assign
 local 31
-jump 98
+param 4
 jump.if_not 93
 ctx 35
 wref.to_ref
-local 30
+local 31
 invoke.virtual j25 l86 f0 0000000000000000
 cname.const 2
 param.end
@@ -364,7 +364,7 @@ assign
 local 32
 ctx 19
 wref.to_ref
-local 30
+local 31
 object.field 1
 return
 array.element 0
@@ -411,9 +411,6 @@ i32.zero
 assign
 local 35
 param 5
-assign
-local 36
-param 5
 jump.if_not 81
 ctx 34
 local 35
@@ -421,22 +418,25 @@ invoke.virtual j25 l103 f0 0000000000000000
 cname.const 1
 param.end
 assign
-local 37
+local 36
 local 35
 return
 ctx 18
-local 37
+local 36
 object.field 0
-jump 96
+jump 115
+assign
+local 37
+param 5
 jump.if_not 91
 ctx 34
-local 36
+local 37
 invoke.virtual j25 l105 f0 0000000000000000
 cname.const 2
 param.end
 assign
 local 38
-local 36
+local 37
 return
 array.element 0
 ctx 18

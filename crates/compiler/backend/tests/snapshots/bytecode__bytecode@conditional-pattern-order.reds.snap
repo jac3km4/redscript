@@ -1,0 +1,166 @@
+---
+source: crates/compiler/backend/tests/bytecode.rs
+expression: "BytecodePrinter::new(&bundle, bundle_len)"
+input_file: crates/compiler/backend/tests/data/conditional-pattern-order.reds
+---
+// Test;Bool (f0)
+jump.if_not 14
+param 0
+return
+i32.zero
+jump 352
+array.resize 0
+local 0
+u64.const 1
+assign
+array.element 0
+local 0
+u64.const 0
+i32.one
+assign
+local 1
+invoke.static j25 l4 f1 0000000000000000
+local 0
+param.end
+jump.if_not 77
+invoke.static j35 l4 f2 0000000000000000
+array.size 0
+local 1
+i32.one
+param.end
+assign
+local 2
+array.element 0
+local 1
+i32.zero
+return
+local 2
+jump 181
+array.resize 0
+local 3
+u64.const 1
+assign
+array.element 0
+local 3
+u64.const 0
+i32.const 2
+assign
+local 4
+invoke.static j25 l6 f1 0000000000000000
+local 3
+param.end
+jump.if_not 77
+invoke.static j35 l6 f2 0000000000000000
+array.size 0
+local 4
+i32.one
+param.end
+assign
+local 5
+array.element 0
+local 4
+i32.zero
+return
+local 5
+jump 6
+return
+i32.const 3
+
+// TestFirstPattern; (f3)
+array.resize 0
+local 6
+u64.const 1
+assign
+array.element 0
+local 6
+u64.const 0
+i32.one
+assign
+local 7
+invoke.static j25 l14 f1 0000000000000000
+local 6
+param.end
+jump.if_not 77
+invoke.static j35 l14 f2 0000000000000000
+array.size 0
+local 7
+i32.one
+param.end
+assign
+local 8
+array.element 0
+local 7
+i32.zero
+return
+local 8
+jump 184
+jump.if_not 6
+false.const
+return
+i32.zero
+jump 175
+array.resize 0
+local 9
+u64.const 1
+assign
+array.element 0
+local 9
+u64.const 0
+i32.const 2
+assign
+local 10
+invoke.static j25 l18 f1 0000000000000000
+local 9
+param.end
+jump.if_not 77
+invoke.static j35 l18 f2 0000000000000000
+array.size 0
+local 10
+i32.one
+param.end
+assign
+local 11
+array.element 0
+local 10
+i32.zero
+return
+local 11
+jump 0
+return
+i32.const 3
+
+// TestWhile; (f4)
+jump.if_not 171
+true.const
+array.resize 0
+local 12
+u64.const 1
+assign
+array.element 0
+local 12
+u64.const 0
+i32.one
+assign
+local 13
+invoke.static j25 l25 f1 0000000000000000
+local 12
+param.end
+jump.if_not 70
+invoke.static j35 l25 f2 0000000000000000
+array.size 0
+local 13
+i32.one
+param.end
+assign
+local 14
+array.element 0
+local 13
+i32.zero
+jump -165
+jump 3
+jump 3
+jump -174
+
+// Next (f1)
+
+// OperatorEqual;Int32Int32 (f2)
