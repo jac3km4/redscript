@@ -52,6 +52,30 @@ impl UnusedLocalVisitor {
     }
 }
 
+impl<'ctx> Visitor<'ctx> for UnusedLocalVisitor {
+    fn visit_init_default(&mut self, _local: ir::Local, _typ: &ir::Type<'ctx>, _span: Span) {}
+
+    fn visit_assign(&mut self, place: &ir::Expr<'ctx>, value: &ir::Expr<'ctx>, _span: Span) {
+        match place {
+            ir::Expr::Local(_, _) => {}
+            other => self.visit_expr(other),
+        }
+        self.visit_expr(value);
+    }
+
+    fn visit_new_closure(&mut self, closure: &ir::Closure<'ctx>, _span: Span) {
+        for local in &closure.locals {
+            self.register_local(local);
+        }
+        self.used.extend(closure.captures.iter().copied());
+        self.visit_block(&closure.block);
+    }
+
+    fn visit_local(&mut self, local: ir::Local, _span: Span) {
+        self.used.insert(local);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -76,29 +100,5 @@ mod tests {
                 (ir::Local::Var(0), Span::new(20, 25, file)),
             ]
         );
-    }
-}
-
-impl<'ctx> Visitor<'ctx> for UnusedLocalVisitor {
-    fn visit_init_default(&mut self, _local: ir::Local, _typ: &ir::Type<'ctx>, _span: Span) {}
-
-    fn visit_assign(&mut self, place: &ir::Expr<'ctx>, value: &ir::Expr<'ctx>, _span: Span) {
-        match place {
-            ir::Expr::Local(_, _) => {}
-            other => self.visit_expr(other),
-        }
-        self.visit_expr(value);
-    }
-
-    fn visit_new_closure(&mut self, closure: &ir::Closure<'ctx>, _span: Span) {
-        for local in &closure.locals {
-            self.register_local(local);
-        }
-        self.used.extend(closure.captures.iter().copied());
-        self.visit_block(&closure.block);
-    }
-
-    fn visit_local(&mut self, local: ir::Local, _span: Span) {
-        self.used.insert(local);
     }
 }

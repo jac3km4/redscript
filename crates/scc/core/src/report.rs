@@ -64,6 +64,62 @@ pub struct CompilationFailure {
     hints: Vec<String>,
 }
 
+impl CompilationFailure {
+    pub fn new(
+        diagnostics: Diagnostics<'_>,
+        sources: &SourceMap,
+        settings: &SccSettings,
+    ) -> anyhow::Result<Self> {
+        let fatal = diagnostics
+            .into_iter()
+            .filter(|d| d.level() == DiagnosticLevel::Error)
+            .collect::<Vec<_>>();
+
+        let mut failing_files = fatal
+            .iter()
+            .map(|d| d.span().file)
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .filter_map(|f| {
+                let path = sources.get(f)?.path();
+                let path = path.strip_prefix(settings.root_dir()).unwrap_or(path);
+                Some(path.to_owned())
+            })
+            .collect::<Vec<_>>();
+        failing_files.sort();
+
+        let hints_config = UserHints::load(settings.user_hints_dir()).unwrap_or_else(|err| {
+            log::warn!("Failed to parse one of the user hints TOML files: {err}");
+            UserHints::default()
+        });
+
+        let mut hints = HashMap::new();
+        for hint in fatal.iter().filter_map(|d| {
+            let candidates = hints_config.get_by_code(d.code())?;
+            let span = d.span();
+            let file = sources.get(span.file)?;
+            let source = file.span_contents(span);
+            let (line, _) = file.line_and_offset(span.start);
+            let line_source = file.line_contents(line)?;
+            candidates
+                .iter()
+                .find(|hint| hint.does_match(file.path().file_name(), source, line_source))
+        }) {
+            hints
+                .entry(hint.id())
+                .or_insert_with(|| hint.message().to_owned());
+        }
+
+        let mut hints = hints.into_iter().collect::<Vec<_>>();
+        hints.sort_by(|(left, _), (right, _)| left.cmp(right));
+
+        Ok(Self {
+            failing_files,
+            hints: hints.into_iter().map(|(_, message)| message).collect(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use redscript_compiler_api::{Diagnostic, ast::Span};
@@ -120,61 +176,5 @@ span_starts_with = "a"
             );
         }
         std::fs::remove_dir_all(root).unwrap();
-    }
-}
-
-impl CompilationFailure {
-    pub fn new(
-        diagnostics: Diagnostics<'_>,
-        sources: &SourceMap,
-        settings: &SccSettings,
-    ) -> anyhow::Result<Self> {
-        let fatal = diagnostics
-            .into_iter()
-            .filter(|d| d.level() == DiagnosticLevel::Error)
-            .collect::<Vec<_>>();
-
-        let mut failing_files = fatal
-            .iter()
-            .map(|d| d.span().file)
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .filter_map(|f| {
-                let path = sources.get(f)?.path();
-                let path = path.strip_prefix(settings.root_dir()).unwrap_or(path);
-                Some(path.to_owned())
-            })
-            .collect::<Vec<_>>();
-        failing_files.sort();
-
-        let hints_config = UserHints::load(settings.user_hints_dir()).unwrap_or_else(|err| {
-            log::warn!("Failed to parse one of the user hints TOML files: {err}");
-            UserHints::default()
-        });
-
-        let mut hints = HashMap::new();
-        for hint in fatal.iter().filter_map(|d| {
-            let candidates = hints_config.get_by_code(d.code())?;
-            let span = d.span();
-            let file = sources.get(span.file)?;
-            let source = file.span_contents(span);
-            let (line, _) = file.line_and_offset(span.start);
-            let line_source = file.line_contents(line)?;
-            candidates
-                .iter()
-                .find(|hint| hint.does_match(file.path().file_name(), source, line_source))
-        }) {
-            hints
-                .entry(hint.id())
-                .or_insert_with(|| hint.message().to_owned());
-        }
-
-        let mut hints = hints.into_iter().collect::<Vec<_>>();
-        hints.sort_by(|(left, _), (right, _)| left.cmp(right));
-
-        Ok(Self {
-            failing_files,
-            hints: hints.into_iter().map(|(_, message)| message).collect(),
-        })
     }
 }
