@@ -75,17 +75,22 @@ pub fn stmt_rec<'tok, 'src: 'tok>(
             });
         let atom = choice((array, binding));
 
-        atom.foldl_with(
-            just(Token::Ident("as"))
-                .ignore_then(typ)
-                .map(|(typ, span)| PatternSuffix::As(typ, span))
-                .or(just(Token::Question).to(PatternSuffix::Nullable))
-                .repeated(),
-            |inner, typ, e| match typ {
-                PatternSuffix::As(typ, span) => Pattern::As((inner, e.span()).into(), (typ, span)),
-                PatternSuffix::Nullable => Pattern::Nullable((inner, e.span()).into()),
-            },
-        )
+        atom.map_with(|pat, e| (pat, e.span()))
+            .foldl_with(
+                just(Token::Ident("as"))
+                    .ignore_then(typ)
+                    .map(|(typ, span)| PatternSuffix::As(typ, span))
+                    .or(just(Token::Question).to(PatternSuffix::Nullable))
+                    .repeated(),
+                |inner, typ, e| {
+                    let pat = match typ {
+                        PatternSuffix::As(typ, span) => Pattern::As(inner.into(), (typ, span)),
+                        PatternSuffix::Nullable => Pattern::Nullable(inner.into()),
+                    };
+                    (pat, e.span())
+                },
+            )
+            .map(|(pat, _)| pat)
     })
     .map_with(|stmt, e| (stmt, e.span()))
     .erased();
@@ -214,6 +219,42 @@ mod tests {
 
     use super::*;
     use crate::{Error, Span, parse_stmt};
+
+    #[test]
+    fn pattern_suffixes_preserve_inner_spans() {
+        let file = FileId::from_i32(0);
+        for source in [
+            "if let x as Foo = value {}",
+            "if let x as Foo? = value {}",
+            "if let x? as Foo = value {}",
+            "if let x as Bar as Foo = value {}",
+        ] {
+            let (stmt, errors) = parse_stmt(source, file);
+            assert!(errors.is_empty(), "{source}: {errors:?}");
+            let Stmt::If { blocks, .. } = stmt.unwrap() else {
+                panic!("expected if statement");
+            };
+            let LetCondition::LetPattern((pat, _), _) = &blocks[0].condition else {
+                panic!("expected let pattern");
+            };
+            let pos = source.find("Foo").unwrap() as u32;
+            assert!(
+                matches!(pat.find_at(pos), Some(redscript_ast::QueryResult::Type(_))),
+                "{source}"
+            );
+            let mut inner = pat;
+            while let Pattern::As(nested, _) | Pattern::Nullable(nested) = inner {
+                let (pat, span) = &**nested;
+                match pat {
+                    Pattern::Name(_) => assert_eq!(*span, Span::new(7, 8, file)),
+                    Pattern::Nullable(_) => assert_eq!(*span, Span::new(7, 9, file)),
+                    Pattern::As(_, _) => assert_eq!(*span, Span::new(7, 15, file)),
+                    _ => panic!("unexpected inner pattern"),
+                }
+                inner = pat;
+            }
+        }
+    }
 
     #[test]
     fn keyword_named_pattern_fields() {
