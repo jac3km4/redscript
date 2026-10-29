@@ -1,0 +1,23 @@
+---
+source: crates/compiler/backend/tests/bytecode.rs
+expression: "BytecodePrinter::new(&bundle, bundle_len)"
+input_file: crates/compiler/backend/tests/data/composed-assignment.reds
+---
+// Test; (f0)
+assign
+struct.field 0
+array.element 0
+ctx 25
+invoke.static j16 l14 f1 0000000000000000
+param.end
+object.field 1
+invoke.static j16 l14 f2 0000000000000000
+param.end
+invoke.static j16 l14 f3 0000000000000000
+param.end
+
+// GetHolder (f1)
+
+// NextIndex (f2)
+
+// NextValue (f3)
