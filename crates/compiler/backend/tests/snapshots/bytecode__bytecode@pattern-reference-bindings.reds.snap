@@ -1,0 +1,99 @@
+---
+source: crates/compiler/backend/tests/bytecode.rs
+expression: "compile(path, |_| {})"
+input_file: crates/compiler/backend/tests/data/pattern-reference-bindings.reds
+---
+// Scriptable::IsA;CName (f0)
+
+// WeakBinding;Base (f1)
+assign
+local 0 "var$1": "wref:Base"
+param 0 "input": "wref:Base"
+jump.if_not 71
+ctx 35
+wref.to_ref
+local 0 "var$1": "wref:Base"
+invoke.virtual j25 l12 f0 "IsA;CName" 0000000000000000
+cname.const 1 "Derived"
+param.end
+assign
+local 1 "narrowed$2": "wref:Derived"
+local 0 "var$1": "wref:Base"
+return
+wref.to_ref
+local 1 "narrowed$2": "wref:Derived"
+jump 0
+return
+ref.null
+
+// ScriptBinding;Base (f2)
+assign
+local 2 "var$1": "script_ref:ref:Base"
+param 1 "input": "script_ref:ref:Base"
+jump.if_not 78
+ctx 34
+local 2 "var$1": "script_ref:ref:Base"
+invoke.virtual j25 l19 f0 "IsA;CName" 0000000000000000
+cname.const 1 "Derived"
+param.end
+assign
+local 3 "narrowed$2": "script_ref:ref:Derived"
+local 2 "var$1": "script_ref:ref:Base"
+return
+deref 0 "ref:Derived"
+local 3 "narrowed$2": "script_ref:ref:Derived"
+jump 0
+return
+ref.null
+
+// StrongBinding;Base (f3)
+assign
+local 4 "var$1": "ref:Base"
+param 2 "input": "ref:Base"
+jump.if_not 69
+ctx 34
+local 4 "var$1": "ref:Base"
+invoke.virtual j25 l26 f0 "IsA;CName" 0000000000000000
+cname.const 1 "Derived"
+param.end
+assign
+local 5 "narrowed$2": "ref:Derived"
+local 4 "var$1": "ref:Base"
+return
+local 5 "narrowed$2": "ref:Derived"
+jump 0
+return
+ref.null
+
+// NestedWeakBinding;Base (f4)
+assign
+local 6 "var$1": "wref:Base"
+param 3 "input": "wref:Base"
+jump.if_not 137
+invoke.static j92 l33 f5 OperatorLogicAnd;BoolBool 0000000000000000
+ctx 35
+wref.to_ref
+local 6 "var$1": "wref:Base"
+invoke.virtual j25 l33 f0 "IsA;CName" 0000000000000000
+cname.const 1 "Derived"
+param.end
+ctx 35
+wref.to_ref
+local 6 "var$1": "wref:Base"
+invoke.virtual j25 l33 f0 "IsA;CName" 0000000000000000
+cname.const 1 "Derived"
+param.end
+param.end
+assign
+local 7 "value$2": "Int32"
+ctx 19
+wref.to_ref
+local 6 "var$1": "wref:Base"
+object.field 0 Derived::value: "Int32"
+return
+local 7 "value$2": "Int32"
+jump 0
+return
+i32.zero
+
+// OperatorLogicAnd;BoolBool (f5)

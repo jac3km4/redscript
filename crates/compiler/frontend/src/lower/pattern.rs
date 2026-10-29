@@ -104,10 +104,21 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     .constrain_base(&unref_t, self.symbols)
                     .with_span(*pattern_span)?;
 
+                let binding_t = match ref_type {
+                    Some(ref_type) => {
+                        let wrapper = match ref_type {
+                            RefType::Strong => predef::REF,
+                            RefType::Weak => predef::WREF,
+                            RefType::Script => predef::SCRIPT_REF,
+                        };
+                        Type::app(wrapper, [as_type.clone()]).into_poly()
+                    }
+                    None => as_type.clone(),
+                };
                 let Pattern {
                     mut conditions,
                     prologue,
-                } = self.lower_pattern(pattern, projection, &as_type, env)?;
+                } = self.lower_pattern(pattern, projection, &binding_t, env)?;
 
                 let projected = self.lower_projection(projection, env, *type_span)?;
                 let type_check = self
