@@ -24,6 +24,19 @@ fn assert_preserved(source: &str, settings: &FormatSettings) -> String {
 }
 
 #[test]
+fn inline_line_comments_keep_their_delimiters() {
+    for comment in [
+        "// literal */ marker",
+        "// unmatched /* marker",
+        "// ordinary comment",
+    ] {
+        let source = format!("func F() {{ return {comment}\n true; }}");
+        let formatted = assert_preserved(&source, &FormatSettings::default());
+        assert!(formatted.contains(&format!("{comment}\n")), "{formatted}");
+    }
+}
+
+#[test]
 fn aggregate_patterns_keep_explicit_fields() {
     for pattern in [
         "Outer { inner: Inner { value } }",
