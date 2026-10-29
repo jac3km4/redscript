@@ -1,0 +1,13 @@
+---
+source: crates/compiler/backend/tests/bytecode.rs
+expression: "BytecodePrinter::new(&bundle, bundle_len)"
+input_file: crates/compiler/backend/tests/data/deref-assignment.reds
+---
+// Store;Int32 (f0)
+assign
+deref 0
+param 0
+invoke.static j16 l4 f1 0000000000000000
+param.end
+
+// NextValue (f1)
