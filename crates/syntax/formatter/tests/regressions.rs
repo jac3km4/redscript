@@ -1,31 +1,15 @@
-use redscript_ast::SourceMap;
-use redscript_formatter::{FormatSettings, format_document};
-use redscript_parser::parse_module;
+mod common;
 
-fn format(source: &str, settings: &FormatSettings) -> String {
-    let sources = SourceMap::new();
-    let id = sources.push_back("test.reds", source.to_owned());
-    let (formatted, errors) = format_document(source, id, settings);
-    assert!(errors.is_empty(), "formatting failed: {errors:?}");
-    formatted.expect("missing formatted document").to_string()
-}
-
-fn assert_preserved(source: &str, settings: &FormatSettings) -> String {
-    let formatted = format(source, settings);
-    assert_eq!(formatted, format(&formatted, settings));
-    let sources = SourceMap::new();
-    let id = sources.push_back("test.reds", source.to_owned());
-    let (original, errors) = parse_module(source, id);
-    assert!(errors.is_empty(), "original failed to parse: {errors:?}");
-    let (result, errors) = parse_module(&formatted, id);
-    assert!(errors.is_empty(), "formatted failed to parse: {errors:?}");
-    assert_eq!(original.unwrap().unwrapped(), result.unwrap().unwrapped());
-    formatted
-}
+use common::assert_preserved;
+use redscript_formatter::FormatSettings;
 
 #[test]
 fn zero_sized_array_parameters_do_not_panic() {
-    assert_preserved("func F(value: [Int32; 0]) {}", &FormatSettings::default());
+    assert_preserved(
+        "func F(value: [Int32; 0]) {}",
+        &FormatSettings::default(),
+        "test.reds",
+    );
 }
 
 #[test]
@@ -38,7 +22,7 @@ fn large_expression_widths_do_not_overflow_or_wrap() {
             format!("value.Method(\"{value}\")"),
         ] {
             let source = format!("func F() {{ return {expression}; }}");
-            let formatted = assert_preserved(&source, &FormatSettings::default());
+            let formatted = assert_preserved(&source, &FormatSettings::default(), "test.reds");
             assert!(
                 formatted.contains("\n      \"") || formatted.contains("\n    \""),
                 "large expression should wrap"
@@ -53,7 +37,7 @@ fn large_indentation_does_not_overflow() {
         indent: u16::MAX,
         ..FormatSettings::default()
     };
-    let formatted = assert_preserved("func F() { if true { return 1; } }", &settings);
+    let formatted = assert_preserved("func F() { if true { return 1; } }", &settings, "test.reds");
     assert!(formatted.contains(&format!(
         "{}return 1;",
         " ".repeat(2 * usize::from(u16::MAX))
@@ -72,7 +56,7 @@ fn lambda_chain_bases_keep_parentheses() {
         "((x) -> { return x; }).Member",
     ] {
         let source = format!("func F() {{ return {expression}; }}");
-        assert_preserved(&source, &FormatSettings::default());
+        assert_preserved(&source, &FormatSettings::default(), "test.reds");
     }
 }
 
@@ -93,7 +77,7 @@ fn nested_assignments_keep_parentheses() {
         "a = b ? c : d",
     ] {
         let source = format!("func F() {{ return {expression}; }}");
-        assert_preserved(&source, &FormatSettings::default());
+        assert_preserved(&source, &FormatSettings::default(), "test.reds");
     }
 }
 
@@ -109,7 +93,7 @@ fn conditional_conditions_keep_parentheses() {
         "!a ? b : c",
     ] {
         let source = format!("func F() {{ return {expression}; }}");
-        assert_preserved(&source, &FormatSettings::default());
+        assert_preserved(&source, &FormatSettings::default(), "test.reds");
     }
 }
 
@@ -120,7 +104,11 @@ fn chain_wrapping_counts_the_base_expression() {
             max_width,
             ..FormatSettings::default()
         };
-        let formatted = assert_preserved("func F() { abcdefghijklmnop.Value; }", &settings);
+        let formatted = assert_preserved(
+            "func F() { abcdefghijklmnop.Value; }",
+            &settings,
+            "test.reds",
+        );
         assert_eq!(
             formatted.contains("abcdefghijklmnop\n    .Value"),
             breaks,
@@ -138,7 +126,7 @@ fn parenthesized_chain_prefixes_are_emitted_once() {
         "/* keep */ a.Member.Method()",
     ] {
         let source = format!("func F() {{ return {expression}; }}");
-        let formatted = assert_preserved(&source, &FormatSettings::default());
+        let formatted = assert_preserved(&source, &FormatSettings::default(), "test.reds");
         assert_eq!(formatted.matches("/* keep */").count(), 1, "{formatted}");
     }
 }
@@ -148,6 +136,7 @@ fn pattern_prefixes_are_preserved() {
     let formatted = assert_preserved(
         "func F() { if let /* binding explanation */ bound = value {} }",
         &FormatSettings::default(),
+        "test.reds",
     );
     assert_eq!(formatted.matches("/* binding explanation */").count(), 1);
 }
@@ -160,7 +149,7 @@ fn inline_line_comments_keep_their_delimiters() {
         "// ordinary comment",
     ] {
         let source = format!("func F() {{ return {comment}\n true; }}");
-        let formatted = assert_preserved(&source, &FormatSettings::default());
+        let formatted = assert_preserved(&source, &FormatSettings::default(), "test.reds");
         assert!(formatted.contains(&format!("{comment}\n")), "{formatted}");
     }
 }
@@ -176,7 +165,7 @@ fn aggregate_patterns_keep_explicit_fields() {
         "Outer { inner }",
     ] {
         let source = format!("func F() {{ if let {pattern} = value {{}} }}");
-        let formatted = assert_preserved(&source, &FormatSettings::default());
+        let formatted = assert_preserved(&source, &FormatSettings::default(), "test.reds");
         assert!(formatted.contains(pattern), "{formatted}");
     }
 }
@@ -188,7 +177,7 @@ fn doubles_keep_their_suffix() {
             trunc_sig_digits,
             ..FormatSettings::default()
         };
-        let formatted = assert_preserved("func F() { let value = 1.25d; }", &settings);
+        let formatted = assert_preserved("func F() { let value = 1.25d; }", &settings, "test.reds");
         assert!(formatted.contains("1.25d"), "{formatted}");
     }
 }

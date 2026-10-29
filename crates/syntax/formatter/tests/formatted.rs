@@ -1,30 +1,12 @@
+mod common;
+
 use std::env;
 
-use redscript_ast::{FileId, SourceMap};
-use redscript_formatter::{FormatSettings, format_document};
-use redscript_parser::{Token, lex_with_lf_and_comments, parse_module};
+use common::{assert_preserved, ordered_comments};
+use redscript_ast::SourceMap;
+use redscript_formatter::FormatSettings;
 
-fn ordered_comments(source: &str, id: FileId) -> Vec<&str> {
-    fn collect<'src, S>(tokens: &[(Token<'src, S>, S)], comments: &mut Vec<&'src str>) {
-        for (token, _) in tokens {
-            match token {
-                Token::LineComment(text) | Token::DocComment(text) | Token::BlockComment(text) => {
-                    comments.push(text);
-                }
-                Token::Group(tokens) | Token::InterpStr(tokens) => collect(tokens, comments),
-                _ => {}
-            }
-        }
-    }
-
-    let (tokens, errors) = lex_with_lf_and_comments(source, id);
-    assert!(errors.is_empty(), "failed to lex comments: {errors:?}");
-    let tokens = tokens.expect("missing tokens when collecting comments");
-    let mut comments = Vec::new();
-    collect(&tokens, &mut comments);
-    comments
-}
-
+#[track_caller]
 fn assert_comments_differ(original: &str, changed: &str) {
     let sources = SourceMap::new();
     let id = sources.push_back("test.reds", original.to_owned());
@@ -44,15 +26,7 @@ func F() {
 
 #[test]
 fn formatting_preserves_chain_and_closing_brace_comments() {
-    let sources = SourceMap::new();
-    let id = sources.push_back("test.reds", COMMENTED_CHAIN.to_owned());
-    let (formatted, errors) = format_document(COMMENTED_CHAIN, id, &FormatSettings::DEFAULT);
-    assert!(errors.is_empty(), "failed to format comments: {errors:?}");
-    let formatted = formatted.expect("missing formatted document").to_string();
-    assert_eq!(
-        ordered_comments(COMMENTED_CHAIN, id),
-        ordered_comments(&formatted, id),
-    );
+    assert_preserved(COMMENTED_CHAIN, &FormatSettings::DEFAULT, "test.reds");
 }
 
 #[test]
@@ -123,51 +97,9 @@ fn formatted_files() {
         let sources = SourceMap::from_files([relative]).unwrap();
 
         let settings = FormatSettings::default();
-        for (id, file) in sources.files() {
-            let (module, errors) = format_document(file.source(), id, &settings);
-            if let (Some(module), []) = (module, &errors[..]) {
-                let formatted = module.to_string();
-                assert_eq!(
-                    ordered_comments(file.source(), id),
-                    ordered_comments(&formatted, id),
-                    "formatting changed the ordered comment text for {}",
-                    file.path().display()
-                );
-                let (original_ast, errors) = parse_module(file.source(), id);
-                let (Some(original_ast), []) = (original_ast, &errors[..]) else {
-                    panic!(
-                        "failed to parse original {}: {errors:?}",
-                        file.path().display()
-                    );
-                };
-                let (formatted_ast, errors) = parse_module(&formatted, id);
-                let (Some(formatted_ast), []) = (formatted_ast, &errors[..]) else {
-                    panic!(
-                        "failed to parse formatted {}: {errors:?}",
-                        file.path().display()
-                    );
-                };
-
-                let (reformatted, errors) = format_document(&formatted, id, &settings);
-                let (Some(reformatted), []) = (reformatted, &errors[..]) else {
-                    panic!("failed to reformat {}: {errors:?}", file.path().display());
-                };
-                assert_eq!(
-                    formatted,
-                    reformatted.to_string(),
-                    "formatting is not idempotent for {}",
-                    file.path().display()
-                );
-                assert_eq!(
-                    original_ast.unwrapped(),
-                    formatted_ast.unwrapped(),
-                    "formatting changed the AST for {}",
-                    file.path().display()
-                );
-                insta::assert_snapshot!(formatted);
-            } else {
-                panic!("failed to parse {}: {errors:?}", file.path().display());
-            }
+        for (_, file) in sources.files() {
+            let formatted = assert_preserved(file.source(), &settings, file.path());
+            insta::assert_snapshot!(formatted);
         }
     });
 }
