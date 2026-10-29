@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::fmt;
+use std::io;
 use std::path::Path;
 
 use bon::bon;
@@ -7,7 +8,7 @@ pub use redscript_ast as ast;
 use redscript_ast::SourceMap;
 use redscript_compiler_backend::{AssembleError, PoolError, PoolMappings};
 pub use redscript_compiler_backend::{CompilationInputs, TypeFlagRegistry, TypeFlags};
-use redscript_compiler_frontend::UnknownSource;
+pub use redscript_compiler_frontend::UnknownSource;
 use redscript_compiler_frontend::pass::{DiagnosticPass, UnusedLocals};
 pub use redscript_compiler_frontend::{
     Aggregate, CompileErrorReporter, Diagnostic, DiagnosticLevel, Enum, Evaluator, Field, FieldId,
@@ -230,20 +231,23 @@ impl<'ctx> Diagnostics<'ctx> {
         self.0.iter().any(|d| d.level() >= fatal_diagnostic_level)
     }
 
-    pub fn dump(
+    /// Selects diagnostics and orders them by path, span, code, and message.
+    /// Storage order is unchanged. The predicate is called in storage order,
+    /// before calculating sort keys, and only selected diagnostics are formatted.
+    pub fn source_ordered(
         &self,
         sources: &SourceMap,
         filter: impl Into<DiagnosticFilter>,
-    ) -> Result<(), UnknownSource> {
-        let mut warnings = 0;
-        let mut errors = 0;
+    ) -> Vec<&Diagnostic<'ctx>> {
         let filter = filter.into();
-
-        let mut diagnostics = self.into_iter().collect::<Vec<_>>();
+        let mut diagnostics = self
+            .into_iter()
+            .filter(|diagnostic| filter.check(diagnostic))
+            .collect::<Vec<_>>();
         diagnostics.sort_by_cached_key(|diagnostic| {
             let span = diagnostic.span();
             (
-                sources.get(span.file).map(|file| file.path()),
+                sources.get(span.file).map(ast::File::path),
                 span.start,
                 span.end,
                 diagnostic.code(),
@@ -251,20 +255,42 @@ impl<'ctx> Diagnostics<'ctx> {
             )
         });
 
-        for diagnostic in diagnostics {
-            if !filter.check(diagnostic) {
-                continue;
-            }
+        diagnostics
+    }
 
+    /// Renders source-ordered diagnostics and their summary without global logging.
+    /// Counts include only diagnostics selected by the filter.
+    pub fn write_to(
+        &self,
+        mut writer: impl io::Write,
+        sources: &SourceMap,
+        filter: impl Into<DiagnosticFilter>,
+    ) -> Result<DiagnosticSummary, DiagnosticRenderError> {
+        let mut summary = DiagnosticSummary::default();
+        for diagnostic in self.source_ordered(sources, filter) {
+            writeln!(writer, "{}", diagnostic.display(sources)?)?;
+            summary.record(diagnostic);
+        }
+        writeln!(writer, "{summary}")?;
+        Ok(summary)
+    }
+
+    pub fn dump(
+        &self,
+        sources: &SourceMap,
+        filter: impl Into<DiagnosticFilter>,
+    ) -> Result<(), UnknownSource> {
+        let mut summary = DiagnosticSummary::default();
+        for diagnostic in self.source_ordered(sources, filter) {
             if diagnostic.is_error() {
                 log::error!(target: "redscript::diagnostic", "{}", diagnostic.display(sources)?);
-                errors += 1;
+                summary.errors += 1;
             } else {
                 log::warn!(target: "redscript::diagnostic", "{}", diagnostic.display(sources)?);
-                warnings += 1;
+                summary.warnings += 1;
             }
         }
-        log::info!("Completed with {warnings} warnings and {errors} errors");
+        log::info!("{summary}");
         Ok(())
     }
 
@@ -307,6 +333,40 @@ impl<'ctx> AsRef<[Diagnostic<'ctx>]> for Diagnostics<'ctx> {
     fn as_ref(&self) -> &[Diagnostic<'ctx>] {
         &self.0
     }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct DiagnosticSummary {
+    pub warnings: usize,
+    pub errors: usize,
+}
+
+impl DiagnosticSummary {
+    fn record(&mut self, diagnostic: &Diagnostic<'_>) {
+        if diagnostic.is_error() {
+            self.errors += 1;
+        } else {
+            self.warnings += 1;
+        }
+    }
+}
+
+impl fmt::Display for DiagnosticSummary {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Completed with {} warnings and {} errors",
+            self.warnings, self.errors
+        )
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum DiagnosticRenderError {
+    #[error("{0}")]
+    UnknownSource(#[from] UnknownSource),
+    #[error("diagnostic output error: {0}")]
+    Write(#[from] io::Error),
 }
 
 pub enum DiagnosticFilter {
@@ -377,10 +437,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn dump_sorts_by_path_span_code_and_message_without_reordering_storage() {
-        use std::cell::RefCell;
-        use std::rc::Rc;
-
+    fn source_order_sorts_by_path_span_code_and_message_without_reordering_storage() {
         let sources = SourceMap::new();
         let z = sources.push_back("z.reds", "test");
         let a = sources.push_back("a.reds", "test");
@@ -392,20 +449,76 @@ mod tests {
             Diagnostic::MissingFunctionBody(ast::Span::new(0, 2, a)),
             Diagnostic::UnusedLocal(ast::Span::new(0, 1, a)),
         ]);
-        let observed = Rc::new(RefCell::new(Vec::new()));
-        let output = observed.clone();
-        let filter = DiagnosticFilter::Predicate(Box::new(move |diagnostic| {
-            output.borrow_mut().push(diagnostic.to_string());
-            false
-        }));
-
-        diagnostics.dump(&sources, filter).unwrap();
-
+        let ordered = diagnostics.source_ordered(&sources, DiagnosticLevel::Pedantic);
         assert_eq!(
-            *observed.borrow(),
+            ordered.iter().map(ToString::to_string).collect::<Vec<_>>(),
             [5, 3, 2, 4, 1, 0].map(|i| diagnostics.0[i].to_string())
         );
         assert_eq!(diagnostics.0[0].span().file, z);
+    }
+
+    #[test]
+    fn rendering_filters_before_formatting_and_counts_selected_diagnostics() {
+        #[derive(Debug)]
+        struct NeverFormat;
+        impl fmt::Display for NeverFormat {
+            fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
+                panic!("filtered diagnostic must not be formatted");
+            }
+        }
+        impl std::error::Error for NeverFormat {}
+
+        let sources = SourceMap::new();
+        let z = sources.push_back("z.reds", "test");
+        let a = sources.push_back("a.reds", "test");
+        let diagnostics = Diagnostics::from(vec![
+            Diagnostic::MissingFunctionBody(ast::Span::new(0, 1, z)),
+            Diagnostic::UnusedLocal(ast::Span::new(0, 1, a)),
+            Diagnostic::Other(
+                Box::new(NeverFormat),
+                DiagnosticLevel::Pedantic,
+                ast::Span::new(0, 1, a),
+            ),
+        ]);
+        let mut output = Vec::new();
+        let summary = diagnostics
+            .write_to(&mut output, &sources, DiagnosticLevel::Warning)
+            .unwrap();
+        assert_eq!(
+            summary,
+            DiagnosticSummary {
+                warnings: 1,
+                errors: 1
+            }
+        );
+        let output = String::from_utf8(output).unwrap();
+        assert!(output.find("a.reds").unwrap() < output.find("z.reds").unwrap());
+        assert!(output.contains("warning[UNUSED_LOCAL]"));
+        assert!(output.ends_with("Completed with 1 warnings and 1 errors\n"));
+    }
+
+    #[test]
+    fn rendering_propagates_source_and_writer_errors() {
+        let sources = SourceMap::new();
+        let file = sources.push_back("test.reds", "test");
+        let diagnostics =
+            Diagnostics::from(vec![Diagnostic::UnusedLocal(ast::Span::new(0, 1, file))]);
+        let mut output = Vec::new();
+        assert!(matches!(
+            diagnostics.write_to(&mut output, &SourceMap::new(), DiagnosticLevel::Warning),
+            Err(DiagnosticRenderError::UnknownSource(_))
+        ));
+        let no_space: &mut [u8] = &mut [];
+        assert!(matches!(
+            diagnostics.write_to(no_space, &sources, DiagnosticLevel::Warning),
+            Err(DiagnosticRenderError::Write(_))
+        ));
+        let mut output = Vec::new();
+        let summary = diagnostics
+            .write_to(&mut output, &sources, DiagnosticLevel::Error)
+            .unwrap();
+        assert_eq!(summary, DiagnosticSummary::default());
+        assert_eq!(output, b"Completed with 0 warnings and 0 errors\n");
     }
 
     #[test]
