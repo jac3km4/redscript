@@ -148,7 +148,7 @@ impl File {
     }
 
     pub fn line_and_offset(&self, offset: u32) -> (usize, u32) {
-        if self.lines.first().is_some_and(|&p| p > offset) {
+        if self.lines.first().is_none_or(|&p| p > offset) {
             (0, 0)
         } else {
             let line = self
@@ -158,6 +158,52 @@ impl File {
                 .unwrap_or_else(|i| i);
             (line, self.lines[line - 1])
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::File;
+
+    #[test]
+    fn empty_source_location() {
+        let file = File::new("empty.reds", "");
+
+        assert_eq!(file.line_and_offset(0), (0, 0));
+        assert_eq!(file.lookup(0).to_string(), "1:1");
+        assert_eq!(file.line_contents(0), Some(""));
+    }
+
+    #[test]
+    fn single_line_source_locations() {
+        let file = File::new("single.reds", "aéz");
+
+        for (offset, col) in [(0, 0), (1, 1), (3, 2), (4, 3)] {
+            assert_eq!(file.line_and_offset(offset), (0, 0));
+            let loc = file.lookup(offset);
+            assert_eq!((loc.line, loc.col), (0, col));
+            assert_eq!(loc.to_string(), format!("1:{}", col + 1));
+        }
+        assert_eq!(file.line_contents(0), Some("aéz"));
+    }
+
+    #[test]
+    fn multiline_source_locations() {
+        let file = File::new("multi.reds", "ab\nc");
+
+        for (offset, expected) in [(0, (0, 0)), (2, (0, 0)), (3, (1, 3)), (4, (1, 3))] {
+            assert_eq!(file.line_and_offset(offset), expected);
+        }
+        assert_eq!(file.lookup(4).to_string(), "2:2");
+    }
+
+    #[test]
+    fn eof_after_trailing_newline() {
+        let file = File::new("trailing.reds", "ab\n");
+
+        assert_eq!(file.line_and_offset(3), (1, 3));
+        assert_eq!(file.lookup(3).to_string(), "2:1");
+        assert_eq!(file.line_contents(1), Some(""));
     }
 }
 
