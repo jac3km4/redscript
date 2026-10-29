@@ -1,4 +1,4 @@
-use std::{fmt, mem};
+use std::{convert::Infallible, fmt, mem};
 
 use hashbrown::HashMap;
 use pretty_dtoa::{FmtFloatConfig, dtoa, ftoa};
@@ -64,7 +64,10 @@ pub fn format_document<'a>(
     };
 
     let mut collector = PrefixCollector::new(&ws);
-    collector.visit_module(&module).ok();
+    match collector.visit_module(&module) {
+        Ok(()) => {}
+        Err(never) => match never {},
+    }
     let (prefixes, remainder) = collector.into_inner();
     let remainder = remainder
         .iter()
@@ -1610,7 +1613,7 @@ impl<'ctx, 'src> PrefixCollector<'ctx, 'src> {
 }
 
 impl<'src> AstVisitor<'src, WithSpan> for PrefixCollector<'_, 'src> {
-    type Error = Never;
+    type Error = Infallible;
 
     fn visit_node(&mut self, node: SourceAstNode<'_, 'src>) -> Result<(), Self::Error> {
         let mut prefixes = vec![];
@@ -1681,4 +1684,3 @@ impl<'src> AstVisitor<'src, WithSpan> for PrefixCollector<'_, 'src> {
     }
 }
 
-enum Never {}
