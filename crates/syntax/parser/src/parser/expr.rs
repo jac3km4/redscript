@@ -16,10 +16,10 @@ pub fn expr_with_span_rec<'tok, 'src: 'tok>(
 ) -> impl Parse<'tok, 'src, (SourceExpr<'src>, Span)> {
     expr_with_span_impl(expr, block)
         // handle trailing period explicitly because it's a common error
-        .then(just(Token::Period).or_not())
-        .validate(|(exp, period), ctx, errs| {
-            if period.is_some() {
-                errs.emit(Rich::custom(ctx.span(), "unexpected '.'"));
+        .then(just(Token::Period).map_with(|_, e| e.span()).or_not())
+        .validate(|(exp, period), _, errs| {
+            if let Some(span) = period {
+                errs.emit(Rich::custom(span, "unexpected '.'"));
             };
             exp
         })

@@ -5,7 +5,7 @@ input_file: crates/compiler/frontend/tests/data/expr-checks.reds
 ---
 [INVALID_PLACE] At tests/data/expr-checks.reds:11:3
   ReturnsInt() = 2;
-  ^^^^^^^^^^^^^^^^
+  ^^^^^^^^^^^^
 this expression is not a place that can be written to
 
 [INVALID_TEMP] At tests/data/expr-checks.reds:13:4

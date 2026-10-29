@@ -16,17 +16,10 @@ pub fn stmt_rec<'tok, 'src: 'tok>(
 ) -> impl Parse<'tok, 'src, SourceStmt<'src>> {
     let typ = type_with_span();
 
-    let semicolon = just(Token::Semicolon).or_not().validate(|semi, ctx, errs| {
-        if semi.is_none() {
-            errs.emit(Rich::custom(ctx.span(), "expected ';' after expression"));
-        }
-    });
-
     let let_ = just(Token::Ident("let"))
         .ignore_then(ident_with_span())
         .then(just(Token::Colon).ignore_then(typ.clone()).or_not())
         .then(just(Token::Assign).ignore_then(expr.clone()).or_not())
-        .then_ignore(semicolon.clone())
         .map(|((name, typ), value)| {
             let value = value.map(Box::new);
             let typ = typ.map(Box::new);
@@ -178,36 +171,28 @@ pub fn stmt_rec<'tok, 'src: 'tok>(
 
     let return_stmt = just(Token::Ident("return"))
         .ignore_then(expr.clone().or_not())
-        .then_ignore(semicolon.clone())
         .map(|e| Stmt::Return(e.map(Box::new)))
         .erased();
 
-    let break_stmt = just(Token::Ident("break"))
-        .ignore_then(semicolon.clone())
-        .map(|_| Stmt::Break)
-        .erased();
+    let break_stmt = just(Token::Ident("break")).to(Stmt::Break);
+    let continue_stmt = just(Token::Ident("continue")).to(Stmt::Continue);
+    let expr_stmt = expr.map(|e| Stmt::Expr(e.into()));
 
-    let continue_stmt = just(Token::Ident("continue"))
-        .ignore_then(semicolon.clone())
-        .map(|_| Stmt::Continue)
-        .erased();
+    let terminated_stmt = choice((let_, return_stmt, break_stmt, continue_stmt, expr_stmt))
+        .map_with(|stmt, e| (stmt, e.span()))
+        .then(just(Token::Semicolon).or_not())
+        .validate(|((stmt, span), semi), _, errs| {
+            if semi.is_none() {
+                let insertion = Span::new(span.end, span.end, span.file);
+                errs.emit(Rich::custom(insertion, "expected ';' after statement"));
+            }
+            stmt
+        });
 
-    let expr_stmt = expr.then_ignore(semicolon).map(|e| Stmt::Expr(e.into()));
-
-    choice((
-        let_,
-        switch,
-        if_stmt,
-        while_stmt,
-        for_stmt,
-        return_stmt,
-        break_stmt,
-        continue_stmt,
-        expr_stmt,
-    ))
-    .labelled("statement")
-    .as_context()
-    .erased()
+    choice((switch, if_stmt, while_stmt, for_stmt, terminated_stmt))
+        .labelled("statement")
+        .as_context()
+        .erased()
 }
 
 #[derive(Debug, Clone)]
@@ -384,8 +369,8 @@ mod tests {
         assert_eq!(
             errors,
             vec![Error::Parse(
-                "expected ';' after expression in statement".into(),
-                Span::from((file, 0..1))
+                "expected ';' after statement in statement".into(),
+                Span::from((file, 1..1))
             )]
         );
         assert_eq!(
@@ -395,7 +380,48 @@ mod tests {
     }
 
     #[test]
-    fn trailing_comma() {
+    fn missing_semicolon_before_whitespace() {
+        let file = FileId::from_i32(7);
+        for statement in [
+            "a",
+            "(a)",
+            "let a = 1",
+            "return",
+            "return 1",
+            "break",
+            "continue",
+        ] {
+            let code = format!("{statement} \n // trailing comment\n");
+            let (stmt, errors) = parse_stmt(&code, file);
+            assert!(stmt.is_some(), "{statement}");
+            assert_eq!(
+                errors,
+                vec![Error::Parse(
+                    "expected ';' after statement in statement".into(),
+                    Span::new(statement.len() as u32, statement.len() as u32, file)
+                )],
+                "{statement}"
+            );
+        }
+    }
+
+    #[test]
+    fn missing_semicolon_before_next_statement() {
+        let file = FileId::from_i32(7);
+        let code = "func Test() { let a = 1\n return; }";
+        let (item, errors) = crate::parse_item(code, file);
+        assert!(item.is_some());
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].span(), Span::from((file, 23..23)));
+        assert!(
+            errors[0]
+                .to_string()
+                .starts_with("expected ';' after statement")
+        );
+    }
+
+    #[test]
+    fn trailing_period() {
         let code = "a.";
         let file = FileId::from_i32(0);
         let (stmt, errors) = parse_stmt(code, file);
@@ -405,11 +431,11 @@ mod tests {
             vec![
                 Error::Parse(
                     "unexpected '.' in statement".into(),
-                    Span::from((file, 0..2))
+                    Span::from((file, 1..2))
                 ),
                 Error::Parse(
-                    "expected ';' after expression in statement".into(),
-                    Span::from((file, 0..2))
+                    "expected ';' after statement in statement".into(),
+                    Span::from((file, 2..2))
                 )
             ]
         );

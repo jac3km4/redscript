@@ -652,12 +652,14 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 self.lower_interpolated_string(elems, env, *span)?
             }
             ast::Expr::Assign { lhs, rhs } => {
+                let lhs_span = lhs.1;
+                let rhs_span = rhs.1;
                 let (lhs, lhs_t) = self.lower_expr(lhs, env)?;
                 let (mut rhs, rhs_t) = self.lower_expr_with(rhs, Some(&lhs_t), env)?;
-                self.coerce(&mut rhs, rhs_t, lhs_t, env, *span)?;
+                self.coerce(&mut rhs, rhs_t, lhs_t, env, rhs_span)?;
 
                 if lhs.is_prvalue(self.symbols) {
-                    self.reporter.report(Error::InvalidPlaceExpr(*span));
+                    self.reporter.report(Error::InvalidPlaceExpr(lhs_span));
                 }
 
                 let ir = ir::Expr::Assign {
@@ -724,11 +726,11 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             }
             ast::Expr::UnOp { op, expr } => {
                 if matches!(op, ast::UnOp::Neg)
-                    && let &(ast::Expr::Constant(ast::Constant::I32(i)), span) = &**expr
+                    && let &(ast::Expr::Constant(ast::Constant::I32(i)), _) = &**expr
                 {
-                    let const_ = self.lower_constant(&ast::Constant::I32(-i), hint, span);
+                    let const_ = self.lower_constant(&ast::Constant::I32(-i), hint, *span);
                     let typ = PolyType::nullary(const_.type_id());
-                    return Ok((ir::Expr::Const(const_, span), typ));
+                    return Ok((ir::Expr::Const(const_, *span), typ));
                 }
 
                 let arg = self.lower_expr(expr, env)?;
