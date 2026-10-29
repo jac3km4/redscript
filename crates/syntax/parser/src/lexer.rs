@@ -23,29 +23,52 @@ pub fn lex<'src>(
         )
         .to_slice()
         .then(choice([just("ul"), just("u"), just("l"), just("d")]).or_not())
-        .try_map(|(str, suffix): (&str, _), span| match suffix {
-            Some("ul") => Ok(Token::Ulong(
-                str.parse().map_err(|e| Rich::custom(span, e))?,
-            )),
-            Some("u") => Ok(Token::Uint(str.parse().map_err(|e| Rich::custom(span, e))?)),
-            Some("l") => Ok(Token::Long(str.parse().map_err(|e| Rich::custom(span, e))?)),
-            Some("d") => Ok(Token::Double(
-                str.parse().map_err(|e| Rich::custom(span, e))?,
-            )),
-            _ if str.contains('.') => Ok(Token::Float(
-                str.parse().map_err(|e| Rich::custom(span, e))?,
-            )),
-            _ => Ok(Token::Int(str.parse().map_err(|e| Rich::custom(span, e))?)),
+        .validate(|(str, suffix): (&str, _), e, emitter| {
+            let span = e.span();
+            let error = |ty, hint| {
+                let hint = if matches!(suffix, Some("u" | "l" | "ul"))
+                    && str.contains(['.', 'e', 'E'])
+                {
+                    "integer literals cannot have a decimal point or exponent; remove the integer suffix and use a decimal point or `d` suffix for floating-point values"
+                } else {
+                    hint
+                };
+                Rich::custom(span, format!("invalid {ty} literal; {hint}"))
+            };
+            let result = match suffix {
+                Some("ul") => str.parse().map(Token::Ulong).map_err(|_| {
+                    error("Uint64", "use a value between 0 and 18446744073709551615")
+                }),
+                Some("u") => str.parse().map(Token::Uint).map_err(|_| {
+                    error("Uint32", "use the `ul` suffix for a larger unsigned integer")
+                }),
+                Some("l") => str.parse().map(Token::Long).map_err(|_| {
+                    error("Int64", "use the `ul` suffix for a larger nonnegative integer")
+                }),
+                Some("d") => str.parse().map(Token::Double).map_err(|_| {
+                    error("Double", "use a decimal number with the `d` suffix")
+                }),
+                _ if str.contains('.') => str.parse().map(Token::Float).map_err(|_| {
+                    error("Float", "use the `d` suffix for a Double literal")
+                }),
+                _ => str.parse().map(Token::Int).map_err(|_| {
+                    error("Int32", "use the `l` suffix for Int64 or `ul` for Uint64; use a decimal point or `d` suffix for floating-point values")
+                }),
+            };
+            result.unwrap_or_else(|err| {
+                emitter.emit(err);
+                Token::Int(0)
+            })
         });
 
     let str = one_of("nrt")
         .or_not()
         .then(
-            str_elem()
+            str_elem(false)
                 .clone()
                 .repeated()
                 .collect::<StrParts<'_>>()
-                .delimited_by(just('"'), just('"')),
+                .delimited_by(just('"'), string_end()),
         )
         .map(|(prefix, parts)| match prefix {
             Some('n') => Token::CName(parts.str),
@@ -86,7 +109,13 @@ pub fn lex<'src>(
                     .or(any().and_is(just("*/").not()).ignored())
                     .repeated(),
             )
-            .then_ignore(just("*/"))
+            .then_ignore(just("*/").or(end().validate(|(), e, emitter| {
+                emitter.emit(Rich::custom(
+                    e.span(),
+                    "unterminated block comment; add `*/`",
+                ));
+                "*/"
+            })))
     })
     .to_slice()
     .map(Token::BlockComment);
@@ -97,7 +126,7 @@ pub fn lex<'src>(
         let lf = text::newline().to(Token::LineFeed);
         let ws = text::inline_whitespace().at_least(1).to(Token::Whitespace);
 
-        choice((lf, ws, comment, str, interp_str(this), num, symbol(), word))
+        choice((lf, ws, comment, str, interp_str(this), num, word, symbol()))
             .recover_with(skip_then_retry_until(any().ignored(), end()))
             .map_with(|tok, e| (tok, e.span()))
             .repeated()
@@ -111,7 +140,19 @@ pub fn lex<'src>(
     })
 }
 
-fn str_elem<'src>() -> impl Parser<'src, &'src str, Cow<'src, str>, LexExtra<'src>> + Clone {
+fn string_end<'src>() -> impl Parser<'src, &'src str, char, LexExtra<'src>> + Clone {
+    just('"').or(end().validate(|(), e, emitter| {
+        emitter.emit(Rich::custom(
+            e.span(),
+            "unterminated string literal; add a closing `\"`",
+        ));
+        '"'
+    }))
+}
+
+fn str_elem<'src>(
+    interpolated: bool,
+) -> impl Parser<'src, &'src str, Cow<'src, str>, LexExtra<'src>> + Clone {
     let unicode_escape = any()
         .filter(char::is_ascii_hexdigit)
         .repeated()
@@ -119,12 +160,28 @@ fn str_elem<'src>() -> impl Parser<'src, &'src str, Cow<'src, str>, LexExtra<'sr
         .at_most(6)
         .to_slice()
         .delimited_by(just('{'), just('}'))
-        .try_map(|str, span| {
-            let n = u32::from_str_radix(str, 16).map_err(|err| Rich::custom(span, err))?;
-            let c = std::char::from_u32(n)
-                .ok_or_else(|| Rich::custom(span, "invalid unicode escape"))?;
-            Ok(Cow::Owned(c.into()))
-        });
+        .validate(|str, e, emitter| {
+            // The parser limits the value to six hex digits, so it always fits in u32.
+            let n = u32::from_str_radix(str, 16).unwrap();
+            let c = char::from_u32(n).unwrap_or_else(|| {
+                emitter.emit(Rich::custom(
+                    e.span(),
+                    "invalid Unicode escape; use a Unicode scalar value (not a surrogate, at most 10FFFF)",
+                ));
+                char::REPLACEMENT_CHARACTER
+            });
+            Cow::Owned(c.into())
+        })
+        .or(none_of("\"\\}")
+            .repeated()
+            .then_ignore(just('}').or_not())
+            .validate(|(), e, emitter| {
+                emitter.emit(Rich::custom(
+                    e.span(),
+                    "invalid Unicode escape; use `\\u{HEX}` with 1 to 6 hex digits and a Unicode scalar value (not a surrogate, at most 10FFFF)",
+                ));
+                Cow::Owned(char::REPLACEMENT_CHARACTER.into())
+            }));
 
     choice((
         none_of("\"\\")
@@ -140,6 +197,25 @@ fn str_elem<'src>() -> impl Parser<'src, &'src str, Cow<'src, str>, LexExtra<'sr
             just('"').to("\"".into()),
             just('\\').to("\\".into()),
             just('u').ignore_then(unicode_escape),
+            any()
+                .filter(move |c: &char| *c != 'u' && (!interpolated || *c != '('))
+                .validate(|c, e, emitter| {
+                    emitter.emit(Rich::custom(
+                        e.span(),
+                        format!(
+                            "invalid escape `\\{}`; use \\n, \\r, \\t, \\', \\\", \\\\ or \\u{{HEX}}; escape a literal backslash as \\\\",
+                            c.escape_default()
+                        ),
+                    ));
+                    Cow::Owned(c.into())
+                }),
+            end().validate(|(), e, emitter| {
+                emitter.emit(Rich::custom(
+                    e.span(),
+                    "incomplete escape; add an escape character such as `n`, or escape a literal backslash as `\\\\`",
+                ));
+                Cow::Borrowed("")
+            }),
         ))),
     ))
 }
@@ -156,7 +232,7 @@ fn interp_str<'src>(
 
     just('s').ignore_then(
         choice((
-            str_elem()
+            str_elem(true)
                 .repeated()
                 .at_least(1)
                 .collect::<StrParts<'_>>()
@@ -168,7 +244,7 @@ fn interp_str<'src>(
         .map_with(|tok, e| (tok, e.span()))
         .repeated()
         .collect::<Vec<_>>()
-        .delimited_by(just('"'), just('"'))
+        .delimited_by(just('"'), string_end())
         .map(|ps| Token::InterpStr(ps.into())),
     )
 }
@@ -220,13 +296,28 @@ fn symbol<'src>() -> impl Parser<'src, &'src str, Token<'src, LexSpan>, LexExtra
             Some('=') => Token::Assign,
             Some('?') => Token::Question,
             Some('@') => Token::At,
-            _ => {
+            found => {
+                let span = inp.span(pos..inp.offset());
                 inp.rewind(before);
-                return Err(Rich::custom(inp.span(pos..pos), "invalid symbol"));
+                return Err(Rich::custom(
+                    span,
+                    match found {
+                        Some(c) => format!("invalid symbol `{}`", c.escape_debug()),
+                        None => "unexpected end of input; expected a token".into(),
+                    },
+                ));
             }
         };
         Ok(res)
     })
+    .or(any().validate(|c: char, e, emitter| {
+        emitter.emit(Rich::custom(
+            e.span(),
+            format!("invalid symbol `{}`", c.escape_debug()),
+        ));
+        // Treat the invalid character as trivia during recovery.
+        Token::Whitespace
+    }))
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -411,10 +502,10 @@ impl fmt::Display for Token<'_> {
             Self::Long(n) => write!(f, "{n}l"),
             Self::Float(n) => write!(f, "{n}"),
             Self::Double(n) => write!(f, "{n}d"),
-            Self::Str(s) => write!(f, "\"{s}\""),
-            Self::CName(s) => write!(f, "n\"{s}\""),
-            Self::ResRef(s) => write!(f, "r\"{s}\""),
-            Self::TdbId(s) => write!(f, "t\"{s}\""),
+            Self::Str(s) => write!(f, "\"{}\"", s.escape_default()),
+            Self::CName(s) => write!(f, "n\"{}\"", s.escape_default()),
+            Self::ResRef(s) => write!(f, "r\"{}\"", s.escape_default()),
+            Self::TdbId(s) => write!(f, "t\"{}\"", s.escape_default()),
             Self::InterpStr(s) => {
                 write!(f, "s\"")?;
                 for (tok, _) in s {
@@ -425,12 +516,22 @@ impl fmt::Display for Token<'_> {
             Self::Whitespace => write!(f, " "),
             Self::LineFeed => writeln!(f),
             Self::Group(s) => {
-                for (tok, _) in s {
-                    write!(f, "\\({tok})")?;
+                write!(f, "\\(")?;
+                let contents =
+                    if let [(Self::LParen, _), contents @ .., (Self::RParen, _)] = s.as_ref() {
+                        contents
+                    } else {
+                        s.as_ref()
+                    };
+                for (i, (tok, _)) in contents.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, " ")?;
+                    }
+                    write!(f, "{tok}")?;
                 }
-                Ok(())
+                write!(f, ")")
             }
-            Self::StrFrag(s) => write!(f, "{s}"),
+            Self::StrFrag(s) => write!(f, "{}", s.escape_default()),
             Self::AssignAdd => write!(f, "+="),
             Self::AssignSub => write!(f, "-="),
             Self::AssignMul => write!(f, "*="),
@@ -491,6 +592,171 @@ impl<'src> Container<Cow<'src, str>> for StrParts<'src> {
             self.str = c;
         } else {
             self.str = Cow::Owned(mem::take(&mut self.str).into_owned() + &c);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use redscript_ast::FileId;
+
+    use super::*;
+
+    #[test]
+    fn valid_literals_escapes_and_comments_are_unchanged() {
+        let src = r#"2147483647 4294967295u 9223372036854775807l 18446744073709551615ul
+            1.5 2.d "\n\r\t\'\"\\\u{E9}\u{10FFFF}" n"name" r"res" t"id"
+            /* outer /* nested */ comment */ // line
+            s"value: \(foo + 1)""#;
+        for keep_comments in [false, true] {
+            let (tokens, errors) = lex(keep_comments).parse(src).into_output_errors();
+            assert!(errors.is_empty(), "{errors:?}");
+            let tokens = tokens.unwrap();
+            assert!(
+                tokens
+                    .iter()
+                    .any(|(tok, _)| matches!(tok, Token::Ulong(u64::MAX)))
+            );
+            assert!(
+                tokens
+                    .iter()
+                    .any(|(tok, _)| matches!(tok, Token::Str(s) if s == "\n\r\t'\"\\é\u{10FFFF}"))
+            );
+            assert_eq!(
+                tokens
+                    .iter()
+                    .any(|(tok, _)| matches!(tok, Token::BlockComment(_))),
+                keep_comments
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_numbers_name_the_literal_type_and_hint() {
+        for (src, ty, hint) in [
+            ("2147483648", "Int32", "`l`"),
+            ("4294967296u", "Uint32", "`ul`"),
+            ("9223372036854775808l", "Int64", "`ul`"),
+            ("18446744073709551616ul", "Uint64", "18446744073709551615"),
+            ("1.5u", "Uint32", "remove the integer suffix"),
+            ("1e3", "Int32", "decimal point"),
+        ] {
+            let (_, errors) = lex(false).parse(src).into_output_errors();
+            assert!(
+                errors.iter().any(|err| {
+                    let message = err.to_string();
+                    message.contains(ty) && message.contains(hint)
+                }),
+                "{src}: {errors:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_symbols_have_the_actual_character_and_byte_span() {
+        for c in ['$', 'é', '💥', '\0'] {
+            let src = format!("ok {c} next");
+            let (tokens, errors) = lex(false).parse(&src).into_output_errors();
+            let err = errors
+                .iter()
+                .find(|err| err.to_string().contains("invalid symbol"))
+                .expect("invalid symbol diagnostic");
+            assert_eq!(*err.span(), LexSpan::from(3..3 + c.len_utf8()));
+            assert!(err.to_string().contains(&c.escape_debug().to_string()));
+            assert!(
+                tokens
+                    .unwrap()
+                    .iter()
+                    .any(|(tok, _)| *tok == Token::Ident("next"))
+            );
+        }
+    }
+
+    #[test]
+    fn unterminated_literals_have_closing_delimiter_guidance() {
+        for (src, message, delimiter) in [
+            ("\"unfinished", "unterminated string", "closing"),
+            ("n\"unfinished", "unterminated string", "closing"),
+            ("s\"unfinished", "unterminated string", "closing"),
+            ("/* unfinished", "unterminated block comment", "*/"),
+            ("/* outer /* inner */", "unterminated block comment", "*/"),
+        ] {
+            let (_, errors) = lex(false).parse(src).into_output_errors();
+            assert!(
+                errors.iter().any(|err| {
+                    let text = err.to_string();
+                    text.contains(message) && text.contains(delimiter)
+                }),
+                "{src}: {errors:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_escapes_have_guidance() {
+        for (src, message, hint) in [
+            (r#""\q""#, "invalid escape", "backslash"),
+            (r#"s"\q""#, "invalid escape", "backslash"),
+            (r#""\u{}""#, "invalid Unicode escape", "hex digits"),
+            (r#""\u{xyz}""#, "invalid Unicode escape", "hex digits"),
+            (r#""\u{1234567}""#, "invalid Unicode escape", "hex digits"),
+            (r#""\u1234""#, "invalid Unicode escape", "hex digits"),
+            ("\"unfinished\\", "incomplete escape", "backslash"),
+            (r#""\u{D800}""#, "invalid Unicode escape", "scalar"),
+            (r#""\u{110000}""#, "invalid Unicode escape", "10FFFF"),
+        ] {
+            let (_, errors) = lex(false).parse(src).into_output_errors();
+            assert!(
+                errors.iter().any(|err| {
+                    let text = err.to_string();
+                    text.contains(message) && text.contains(hint)
+                }),
+                "{src}: {errors:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn string_token_display_escapes_contents() {
+        let contents = "line\n\r\t\0\"\\é";
+        for (token, prefix) in [
+            (Token::Str(contents.into()), ""),
+            (Token::CName(contents.into()), "n"),
+            (Token::ResRef(contents.into()), "r"),
+            (Token::TdbId(contents.into()), "t"),
+        ] {
+            assert_eq!(
+                token.to_string(),
+                format!("{prefix}\"{}\"", contents.escape_default())
+            );
+        }
+        let fragment: Token<'_> = Token::StrFrag(contents.into());
+        assert_eq!(fragment.to_string(), contents.escape_default().to_string());
+    }
+
+    #[test]
+    fn interpolation_display_keeps_expression_in_one_group() {
+        let src = r#"s"line\n\"\\ \(foo + "a\tb")""#;
+        let (tokens, errors) = crate::lex(src, FileId::from_i32(0));
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(tokens.unwrap()[0].0.to_string(), src);
+    }
+
+    #[test]
+    fn unexpected_string_tokens_are_safe_in_diagnostics() {
+        for literal in [
+            r#""a\n\r\t\u{0}\"\\b""#,
+            r#"n"a\n\"b""#,
+            r#"r"a\n\"b""#,
+            r#"t"a\n\"b""#,
+            r#"s"a\n\"\(foo + "b\tc")""#,
+        ] {
+            let src = format!("1 {literal}");
+            let (_, errors) = crate::parse_expr(&src, FileId::from_i32(0));
+            assert!(!errors.is_empty(), "{src}");
+            let message = errors[0].to_string();
+            assert!(message.contains("\\n"), "{message}");
+            assert!(!message.chars().any(char::is_control), "{message:?}");
         }
     }
 }
