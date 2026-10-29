@@ -1,3 +1,7 @@
+// See core/src/definition.rs for why this is here: the #[bitfield] macro (modular_bitfield)
+// triggers a false-positive "unnecessary parentheses" lint on this rustc version.
+#![allow(unused_parens)]
+
 use std::hash::Hash;
 use std::io::Seek;
 use std::marker::PhantomData;

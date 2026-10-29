@@ -64,9 +64,26 @@ pub extern "C" fn scc_settings_disable_error_popup(settings: &mut SccSettings) {
     settings.show_error_popup = false;
 }
 
+// A panic deep in the compiler (e.g. triggered by a script that doesn't match the current
+// game version) used to unwind straight across this extern "C" boundary into the native host
+// (RED4ext) - that's undefined behavior and crashed the whole game for us, instead of just
+// failing the compilation with an error message. catch_unwind stops it here and turns it into
+// a normal SccResult::Error.
 #[unsafe(no_mangle)]
 pub extern "C" fn scc_compile(settings: Box<SccSettings>) -> Box<SccResult> {
-    compile(&settings)
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| compile(&settings))) {
+        Ok(result) => result,
+        Err(panic) => {
+            let message = panic
+                .downcast_ref::<&str>()
+                .map(|s| (*s).to_string())
+                .or_else(|| panic.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "unknown internal error".to_string());
+            Box::new(SccResult::Error(anyhow::anyhow!(
+                "internal compiler error (this is a bug, please report it): {message}"
+            )))
+        }
+    }
 }
 
 #[unsafe(no_mangle)]
