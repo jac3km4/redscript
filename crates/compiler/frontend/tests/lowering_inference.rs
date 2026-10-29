@@ -24,6 +24,29 @@ fn infer<'ctx>(
     (unit, symbols, reporter.into_reported())
 }
 
+fn diagnostic_messages(source: &str) -> Vec<(String, String)> {
+    let sources = SourceMap::new();
+    sources.push_back("diagnostics.reds", source);
+    let interner = TypeInterner::default();
+    let (_, _, diagnostics) = infer(&sources, &interner);
+    diagnostics
+        .iter()
+        .map(|diagnostic| (diagnostic.code().to_owned(), diagnostic.to_string()))
+        .collect()
+}
+
+#[test]
+fn bare_return_reports_void_as_found() {
+    let diagnostics = diagnostic_messages("func Test() -> Int32 { return; }");
+    assert_eq!(
+        diagnostics,
+        [(
+            "TYPE_ERR".into(),
+            "type mismatch: found `Void` when expected `Int32`".into()
+        )]
+    );
+}
+
 #[test]
 fn explicit_type_arguments_cannot_widen_to_fit_values() {
     let sources = SourceMap::new();

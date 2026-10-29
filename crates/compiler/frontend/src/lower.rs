@@ -611,8 +611,8 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 ir::Stmt::Return(Some(val.into()), span)
             }
             ast::Stmt::Return(None) => {
-                self.return_type
-                    .constrain_base(&PolyType::nullary(predef::VOID), self.symbols)
+                PolyType::nullary(predef::VOID)
+                    .constrain_base(&self.return_type, self.symbols)
                     .with_span(span)?;
                 ir::Stmt::Return(None, span)
             }
