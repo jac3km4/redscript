@@ -24,6 +24,43 @@ fn assert_preserved(source: &str, settings: &FormatSettings) -> String {
 }
 
 #[test]
+fn zero_sized_array_parameters_do_not_panic() {
+    assert_preserved("func F(value: [Int32; 0]) {}", &FormatSettings::default());
+}
+
+#[test]
+fn large_expression_widths_do_not_overflow_or_wrap() {
+    for length in [65_533, 65_536] {
+        let value = "x".repeat(length);
+        for expression in [
+            format!("[\"{value}\"]"),
+            format!("Call(\"{value}\")"),
+            format!("value.Method(\"{value}\")"),
+        ] {
+            let source = format!("func F() {{ return {expression}; }}");
+            let formatted = assert_preserved(&source, &FormatSettings::default());
+            assert!(
+                formatted.contains("\n      \"") || formatted.contains("\n    \""),
+                "large expression should wrap"
+            );
+        }
+    }
+}
+
+#[test]
+fn large_indentation_does_not_overflow() {
+    let settings = FormatSettings {
+        indent: u16::MAX,
+        ..FormatSettings::default()
+    };
+    let formatted = assert_preserved("func F() { if true { return 1; } }", &settings);
+    assert!(formatted.contains(&format!(
+        "{}return 1;",
+        " ".repeat(2 * usize::from(u16::MAX))
+    )));
+}
+
+#[test]
 fn lambda_chain_bases_keep_parentheses() {
     for expression in [
         "((x) -> x).Member",

@@ -84,7 +84,7 @@ pub fn format_document<'a>(
 pub struct FormatCtx<'a> {
     settings: &'a FormatSettings,
     prefixes: &'a HashMap<NodeId, Vec<Prefix<'a>>>,
-    depth: u16,
+    depth: usize,
     parent: Option<ParentOp>,
 }
 
@@ -102,10 +102,10 @@ impl<'a> FormatCtx<'a> {
     }
 
     fn ws(&self) -> Indent {
-        Indent(self.depth * self.settings.indent)
+        Indent(self.current_indent())
     }
 
-    fn bump(&self, n: u16) -> Self {
+    fn bump(&self, n: usize) -> Self {
         Self {
             depth: self.depth + n,
             ..*self
@@ -119,8 +119,8 @@ impl<'a> FormatCtx<'a> {
         }
     }
 
-    fn current_indent(&self) -> u16 {
-        self.depth * self.settings.indent
+    fn current_indent(&self) -> usize {
+        self.depth * usize::from(self.settings.indent)
     }
 
     fn with_parent_op(&self, parent: ParentOp) -> Self {
@@ -905,11 +905,18 @@ impl<A: Formattable> fmt::Display for DisplayProxy<'_, &A> {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct Indent(u16);
+struct Indent(usize);
 
 impl fmt::Display for Indent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:w$}", "", w = usize::from(self.0))
+        // Formatting widths have a runtime limit, even though they accept usize.
+        let mut remaining = self.0;
+        while remaining > 0 {
+            let width = remaining.min(1024);
+            write!(f, "{:width$}", "")?;
+            remaining -= width;
+        }
+        Ok(())
     }
 }
 
@@ -964,10 +971,10 @@ where
             ctx,
             padding,
         } = self;
-        let width = iter.clone().map(|e| e.approx_width()).sum::<u16>()
-            + (separator.len() * (iter.len().max(1) - 1)) as u16;
+        let width = iter.clone().map(|e| e.approx_width()).sum::<usize>()
+            + separator.len() * (iter.len().max(1) - 1);
 
-        if ctx.current_indent() + width > ctx.settings.max_width {
+        if ctx.current_indent() + width > usize::from(ctx.settings.max_width) {
             let sep = separator.trim_end();
             let ctx = ctx.bump(1);
             for (i, elem) in iter.clone().enumerate() {
@@ -1105,14 +1112,10 @@ fn format_chain<K: AstKind>(
         write!(f, "{base}")?;
     }
 
-    let width = usize::from(cur.approx_width())
+    let width = cur.approx_width()
         + if parenthesize { 2 } else { 0 }
-        + chain
-            .iter()
-            .map(|part| usize::from(part.approx_width()))
-            .sum::<usize>();
-    let break_line = usize::from(ctx.current_indent()) + width
-        > usize::from(ctx.settings.max_width)
+        + chain.iter().map(Chain::approx_width).sum::<usize>();
+    let break_line = ctx.current_indent() + width > usize::from(ctx.settings.max_width)
         || chain_fields > usize::from(ctx.settings.max_chain_fields)
         || chain_calls > usize::from(ctx.settings.max_chain_calls)
         || chain_ops > usize::from(ctx.settings.max_chain_operators)
@@ -1236,29 +1239,29 @@ impl ParentOp {
 }
 
 trait ApproxWidth {
-    fn approx_width(&self) -> u16;
+    fn approx_width(&self) -> usize;
 }
 
 impl<A: ApproxWidth, B: ApproxWidth> ApproxWidth for (A, B) {
-    fn approx_width(&self) -> u16 {
+    fn approx_width(&self) -> usize {
         self.0.approx_width() + self.1.approx_width()
     }
 }
 
 impl<A: ApproxWidth, B: ApproxWidth, C: ApproxWidth> ApproxWidth for (A, B, C) {
-    fn approx_width(&self) -> u16 {
+    fn approx_width(&self) -> usize {
         self.0.approx_width() + self.1.approx_width() + self.2.approx_width()
     }
 }
 
 impl<A: ?Sized + ApproxWidth> ApproxWidth for &A {
-    fn approx_width(&self) -> u16 {
+    fn approx_width(&self) -> usize {
         (**self).approx_width()
     }
 }
 
 impl<A: ApproxWidth> ApproxWidth for Option<A> {
-    fn approx_width(&self) -> u16 {
+    fn approx_width(&self) -> usize {
         match self {
             Some(value) => value.approx_width(),
             None => 0,
@@ -1267,8 +1270,8 @@ impl<A: ApproxWidth> ApproxWidth for Option<A> {
 }
 
 impl ApproxWidth for str {
-    fn approx_width(&self) -> u16 {
-        self.len() as u16
+    fn approx_width(&self) -> usize {
+        self.len()
     }
 }
 
@@ -1276,35 +1279,35 @@ impl<K> ApproxWidth for Expr<'_, K>
 where
     K: AstKind,
 {
-    fn approx_width(&self) -> u16 {
+    fn approx_width(&self) -> usize {
         match self {
-            Expr::Ident(ident) => ident.len() as u16,
+            Expr::Ident(ident) => ident.len(),
             Expr::Constant(constant) => match constant {
-                Constant::String(s) => s.len() as u16 + 2,
-                Constant::CName(s) => s.len() as u16 + 3,
-                Constant::Resource(r) => r.len() as u16 + 3,
-                Constant::TweakDbId(t) => t.len() as u16 + 3,
-                Constant::F32(f) => f.abs().log10().floor() as u16 + 1,
-                Constant::F64(f) => f.abs().log10().floor() as u16 + 1,
+                Constant::String(s) => s.len() + 2,
+                Constant::CName(s) => s.len() + 3,
+                Constant::Resource(r) => r.len() + 3,
+                Constant::TweakDbId(t) => t.len() + 3,
+                Constant::F32(f) => f.abs().log10().floor() as usize + 1,
+                Constant::F64(f) => f.abs().log10().floor() as usize + 1,
                 &Constant::I32(0) | &Constant::I64(0) | &Constant::U32(0) | &Constant::U64(0) => 1,
-                Constant::I32(i) => i.abs().ilog10() as u16 + 1,
-                Constant::I64(i) => i.abs().ilog10() as u16 + 1,
-                Constant::U32(u) => u.ilog10() as u16 + 1,
-                Constant::U64(u) => u.ilog10() as u16 + 1,
+                Constant::I32(i) => i.unsigned_abs().ilog10() as usize + 1,
+                Constant::I64(i) => i.unsigned_abs().ilog10() as usize + 1,
+                Constant::U32(u) => u.ilog10() as usize + 1,
+                Constant::U64(u) => u.ilog10() as usize + 1,
                 Constant::Bool(_) => 4,
             },
             Expr::ArrayLit(elems) => elems
                 .iter()
                 .map(|el| el.as_wrapped().approx_width() + 2)
-                .sum::<u16>(),
+                .sum::<usize>(),
             Expr::InterpolatedString(parts) => {
                 parts
                     .iter()
                     .map(|part| match part {
                         StrPart::Expr(expr) => expr.as_wrapped().approx_width() + 3,
-                        StrPart::Str(s) => s.len() as u16,
+                        StrPart::Str(s) => s.len(),
                     })
-                    .sum::<u16>()
+                    .sum::<usize>()
                     + 3
             }
             Expr::Assign { lhs, rhs } => {
@@ -1326,14 +1329,14 @@ where
                     + args
                         .iter()
                         .map(|arg| arg.as_wrapped().approx_width() + 2)
-                        .sum::<u16>()
+                        .sum::<usize>()
                     + type_args
                         .iter()
                         .map(|arg| arg.as_wrapped().approx_width() + 2)
-                        .sum::<u16>()
+                        .sum::<usize>()
             }
             Expr::Member { expr, member } => {
-                (**expr).as_wrapped().approx_width() + member.len() as u16 + 1
+                (**expr).as_wrapped().approx_width() + member.len() + 1
             }
             Expr::Index { expr, index } => {
                 (**expr).as_wrapped().approx_width() + (**index).as_wrapped().approx_width() + 2
@@ -1346,7 +1349,7 @@ where
                     + args
                         .iter()
                         .map(|arg| arg.as_wrapped().approx_width() + 2)
-                        .sum::<u16>()
+                        .sum::<usize>()
                     + 4
             }
             Expr::Conditional { cond, then, else_ } => {
@@ -1358,8 +1361,8 @@ where
             Expr::Lambda { params, body } => {
                 params
                     .iter()
-                    .map(|param| param.as_wrapped().name.len() as u16 + 2)
-                    .sum::<u16>()
+                    .map(|param| param.as_wrapped().name.len() + 2)
+                    .sum::<usize>()
                     + body.approx_width()
                     + 4
             }
@@ -1371,11 +1374,11 @@ where
 }
 
 impl<K: AstKind> ApproxWidth for FunctionBody<'_, K> {
-    fn approx_width(&self) -> u16 {
+    fn approx_width(&self) -> usize {
         match self {
             FunctionBody::Block(block) => {
                 // TODO: come up with something better
-                block.stmts.len() as u16 * 10 + 4
+                block.stmts.len() * 10 + 4
             }
             FunctionBody::Inline(expr) => (**expr).as_wrapped().approx_width(),
         }
@@ -1383,8 +1386,8 @@ impl<K: AstKind> ApproxWidth for FunctionBody<'_, K> {
 }
 
 impl<K: AstKind> ApproxWidth for Param<'_, K> {
-    fn approx_width(&self) -> u16 {
-        self.name.len() as u16
+    fn approx_width(&self) -> usize {
+        self.name.len()
             + self
                 .typ
                 .as_ref()
@@ -1395,19 +1398,19 @@ impl<K: AstKind> ApproxWidth for Param<'_, K> {
 }
 
 impl<K: AstKind> ApproxWidth for Type<'_, K> {
-    fn approx_width(&self) -> u16 {
+    fn approx_width(&self) -> usize {
         match self {
-            Type::Named { name, args } if args.is_empty() => name.len() as u16,
+            Type::Named { name, args } if args.is_empty() => name.len(),
             Type::Named { name, args } => {
-                name.len() as u16
+                name.len()
                     + args
                         .iter()
                         .map(|arg| arg.as_wrapped().approx_width() + 2)
-                        .sum::<u16>()
+                        .sum::<usize>()
             }
             Type::Array(el) => (**el).as_wrapped().approx_width() + 2,
             Type::StaticArray(el, size) => {
-                (**el).as_wrapped().approx_width() + size.ilog10() as u16 + 4
+                (**el).as_wrapped().approx_width() + size.checked_ilog10().unwrap_or(0) as usize + 4
             }
             Type::Fn {
                 params,
@@ -1416,7 +1419,7 @@ impl<K: AstKind> ApproxWidth for Type<'_, K> {
                 params
                     .iter()
                     .map(|param| param.as_wrapped().approx_width() + 2)
-                    .sum::<u16>()
+                    .sum::<usize>()
                     + (**return_type).as_wrapped().approx_width()
                     + 6
             }
@@ -1425,7 +1428,7 @@ impl<K: AstKind> ApproxWidth for Type<'_, K> {
 }
 
 impl<K: AstKind> ApproxWidth for Condition<'_, K> {
-    fn approx_width(&self) -> u16 {
+    fn approx_width(&self) -> usize {
         match self {
             Self::Expr(expr) => expr.as_wrapped().approx_width(),
             Self::Pattern(pattern) => pattern.as_wrapped().approx_width() + 4,
@@ -1434,7 +1437,7 @@ impl<K: AstKind> ApproxWidth for Condition<'_, K> {
 }
 
 impl<K: AstKind> ApproxWidth for LetCondition<'_, K> {
-    fn approx_width(&self) -> u16 {
+    fn approx_width(&self) -> usize {
         match self {
             Self::Expr(expr) => expr.as_wrapped().approx_width(),
             Self::LetPattern(pattern, val) => {
@@ -1445,20 +1448,20 @@ impl<K: AstKind> ApproxWidth for LetCondition<'_, K> {
 }
 
 impl<K: AstKind> ApproxWidth for Pattern<'_, K> {
-    fn approx_width(&self) -> u16 {
+    fn approx_width(&self) -> usize {
         match self {
-            Pattern::Name(name) => name.as_wrapped().len() as u16,
+            Pattern::Name(name) => name.as_wrapped().len(),
             Pattern::As(inner, typ) => {
                 (**inner).as_wrapped().approx_width() + typ.as_wrapped().approx_width() + 2
             }
             Pattern::Aggregate(name, items) => {
-                name.as_wrapped().len() as u16
+                name.as_wrapped().len()
                     + items
                         .iter()
                         .map(|(name, pat)| {
-                            (*name).as_wrapped().len() as u16 + pat.as_wrapped().approx_width() + 2
+                            (*name).as_wrapped().len() + pat.as_wrapped().approx_width() + 2
                         })
-                        .sum::<u16>()
+                        .sum::<usize>()
                     + 4
             }
             Pattern::Nullable(inner) => (**inner).as_wrapped().approx_width() + 1,
@@ -1467,7 +1470,7 @@ impl<K: AstKind> ApproxWidth for Pattern<'_, K> {
                     .as_wrapped()
                     .iter()
                     .map(|el| el.approx_width() + 2)
-                    .sum::<u16>()
+                    .sum::<usize>()
                     + match spread {
                         ArraySpread::End | ArraySpread::Start => 4,
                         ArraySpread::None => 0,
@@ -1478,7 +1481,7 @@ impl<K: AstKind> ApproxWidth for Pattern<'_, K> {
 }
 
 impl ApproxWidth for BinOp {
-    fn approx_width(&self) -> u16 {
+    fn approx_width(&self) -> usize {
         match self {
             BinOp::AssignAdd
             | BinOp::AssignSub
@@ -1507,7 +1510,7 @@ impl ApproxWidth for BinOp {
 }
 
 impl ApproxWidth for UnOp {
-    fn approx_width(&self) -> u16 {
+    fn approx_width(&self) -> usize {
         match self {
             UnOp::BitNot | UnOp::Not | UnOp::Neg => 1,
         }
@@ -1515,19 +1518,19 @@ impl ApproxWidth for UnOp {
 }
 
 impl<K: AstKind> ApproxWidth for Chain<'_, '_, K> {
-    fn approx_width(&self) -> u16 {
+    fn approx_width(&self) -> usize {
         match self {
-            Chain::Member(member) => member.len() as u16 + 1,
+            Chain::Member(member) => member.len() + 1,
             Chain::Call(member, type_args, args) => {
-                member.len() as u16
+                member.len()
                     + type_args
                         .iter()
                         .map(|arg| arg.as_wrapped().approx_width() + 2)
-                        .sum::<u16>()
+                        .sum::<usize>()
                     + args
                         .iter()
                         .map(|arg| arg.as_wrapped().approx_width() + 2)
-                        .sum::<u16>()
+                        .sum::<usize>()
                     + 2
             }
             Chain::Op(op, rhs) => op.approx_width() + rhs.as_wrapped().approx_width() + 1,
