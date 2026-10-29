@@ -16,7 +16,7 @@ pub use redscript_compiler_frontend::{
     parse_file, parse_files, pass, process_sources, types,
 };
 use redscript_io::byte;
-pub use redscript_io::{SaveError, ScriptBundle};
+pub use redscript_io::{SaveError, ScriptBundle, WriteableBundle};
 use thiserror::Error;
 
 const DEFAULT_DIAGNOSTICS: &[&'static dyn DiagnosticPass] = &[&UnusedLocals];
@@ -64,15 +64,13 @@ impl<'ctx> Compilation<'ctx> {
         })
     }
 
-    pub fn flush(
-        mut self,
-        path: impl AsRef<Path>,
-    ) -> Result<(Symbols<'ctx>, Diagnostics<'ctx>), FlushError<'ctx>> {
+    /// Generates the output bundle without performing filesystem I/O.
+    pub fn emit(mut self) -> Result<CompilationArtifact<'ctx>, EmitError<'ctx>> {
         if self
             .diagnostics
             .has_fatal_errors(self.fatal_diagnostic_level)
         {
-            return Err(FlushError::FatalErrors(self.diagnostics, self.symbols));
+            return Err(EmitError::FatalErrors(self.diagnostics, self.symbols));
         }
 
         let mut monomorph = self.mappings.into_monomorphizer(self.sources);
@@ -83,13 +81,26 @@ impl<'ctx> Compilation<'ctx> {
                     DiagnosticLevel::Error,
                     span,
                 ));
-                return Err(FlushError::FatalErrors(self.diagnostics, self.symbols));
+                return Err(EmitError::FatalErrors(self.diagnostics, self.symbols));
             }
-            return Err(FlushError::Assemble(err));
+            return Err(EmitError::Assemble(err));
         }
 
-        self.bundle.into_writeable().save(path)?;
-        Ok((self.symbols, self.diagnostics))
+        Ok(CompilationArtifact {
+            bundle: self.bundle.into_writeable(),
+            symbols: self.symbols,
+            diagnostics: self.diagnostics,
+        })
+    }
+
+    /// Generates and saves the output bundle.
+    pub fn flush(
+        self,
+        path: impl AsRef<Path>,
+    ) -> Result<(Symbols<'ctx>, Diagnostics<'ctx>), FlushError<'ctx>> {
+        let artifact = self.emit()?;
+        artifact.bundle.save(path)?;
+        Ok((artifact.symbols, artifact.diagnostics))
     }
 
     pub fn symbols(&self) -> &Symbols<'ctx> {
@@ -106,6 +117,30 @@ impl<'ctx> Compilation<'ctx> {
 
     pub fn diagnostics(&self) -> &Diagnostics<'ctx> {
         &self.diagnostics
+    }
+}
+
+/// Generated output and the semantic results that produced it.
+pub struct CompilationArtifact<'ctx> {
+    pub bundle: WriteableBundle<'ctx>,
+    pub symbols: Symbols<'ctx>,
+    pub diagnostics: Diagnostics<'ctx>,
+}
+
+#[derive(Debug, Error)]
+pub enum EmitError<'ctx> {
+    #[error("fatal errors found")]
+    FatalErrors(Diagnostics<'ctx>, Symbols<'ctx>),
+    #[error("code generation error: {0}")]
+    Assemble(AssembleError<'ctx>),
+}
+
+impl<'ctx> From<EmitError<'ctx>> for FlushError<'ctx> {
+    fn from(error: EmitError<'ctx>) -> Self {
+        match error {
+            EmitError::FatalErrors(diagnostics, symbols) => Self::FatalErrors(diagnostics, symbols),
+            EmitError::Assemble(error) => Self::Assemble(error),
+        }
     }
 }
 
@@ -293,6 +328,22 @@ mod tests {
             [5, 3, 2, 4, 1, 0].map(|i| diagnostics.0[i].to_string())
         );
         assert_eq!(diagnostics.0[0].span().file, z);
+    }
+
+    #[test]
+    fn emit_produces_roundtrippable_bytes_without_saving() {
+        let sources = SourceMap::new();
+        sources.push_back("valid.reds", "func Test() {}\n");
+        let interner = TypeInterner::default();
+        let artifact = compile(&sources, &interner).emit().unwrap();
+        let bytes = artifact.bundle.to_bytes().unwrap();
+        let bundle = ScriptBundle::from_bytes(&bytes).unwrap();
+        assert!(bundle.indexed_definitions().count() > 0);
+        assert!(
+            !artifact
+                .diagnostics
+                .has_fatal_errors(DiagnosticLevel::Error)
+        );
     }
 
     #[test]

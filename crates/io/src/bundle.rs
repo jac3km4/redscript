@@ -528,14 +528,16 @@ pub struct WriteableBundle<'i> {
 impl WriteableBundle<'_> {
     #[cfg(feature = "mmap")]
     pub fn save(&self, path: impl AsRef<std::path::Path>) -> Result<(), SaveError> {
+        // Validate and encode before opening the destination: encoding errors must
+        // not truncate an existing bundle.
+        let bytes = self.to_bytes().map_err(SaveError::Encoding)?;
         let (mut out, _) = vmap::MapMut::with_options()
             .create(true)
             .truncate(true)
-            .resize(self.measure(()))
+            .resize(bytes.len())
             .open(path)
             .map_err(SaveError::Mmap)?;
-        self.try_write(&mut out, ENDIANESS)
-            .map_err(SaveError::Encoding)?;
+        out.copy_from_slice(&bytes);
         Ok(())
     }
 

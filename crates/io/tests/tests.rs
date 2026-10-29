@@ -33,6 +33,27 @@ fn reject_embedded_nul_in_all_string_pools() {
     }
 }
 
+#[cfg(feature = "mmap")]
+#[test]
+fn failed_encoding_preserves_existing_file() {
+    let path = std::env::temp_dir().join(format!(
+        "redscript-encoding-{}-{}.redscripts",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::write(&path, b"unchanged").unwrap();
+    let mut bundle = ScriptBundle::default();
+    bundle.strings_mut().add("invalid\0string");
+    let result = bundle.into_writeable().save(&path);
+    let contents = std::fs::read(&path).unwrap();
+    std::fs::remove_file(path).unwrap();
+    assert!(matches!(result, Err(redscript_io::SaveError::Encoding(_))));
+    assert_eq!(contents, b"unchanged");
+}
+
 #[test]
 fn roundtrip_empty_and_unicode_pooled_strings() {
     let mut bundle = ScriptBundle::default();
