@@ -405,13 +405,30 @@ impl<'src, S1> Token<'src, S1> {
     where
         S2: Copy + ops::Add<u8, Output = S2> + ops::Add<S2, Output = S2>,
     {
+        self.map_span_with_offset(base, None, f)
+    }
+
+    fn map_span_with_offset<S2>(
+        self,
+        base: S2,
+        offset: Option<S2>,
+        f: impl Fn(S1) -> S2 + Clone,
+    ) -> Token<'src, S2>
+    where
+        S2: Copy + ops::Add<u8, Output = S2> + ops::Add<S2, Output = S2>,
+    {
         match self {
             Self::Group(s) => Token::Group(
                 s.into_vec()
                     .into_iter()
                     .map(|(tok, nested)| {
-                        let span = f(nested);
-                        (tok.map_span(span, f.clone()), base + 1u8 + span)
+                        // nested_in lexes the parenthesized slice after the backslash.
+                        let offset = base + 1u8;
+                        let span = offset + f(nested);
+                        (
+                            tok.map_span_with_offset(span, Some(offset), f.clone()),
+                            span,
+                        )
                     })
                     .collect(),
             ),
@@ -431,8 +448,10 @@ impl<'src, S1> Token<'src, S1> {
                 s.into_vec()
                     .into_iter()
                     .map(|(tok, nested)| {
+                        // String parts share their containing input's coordinates.
                         let span = f(nested);
-                        (tok.map_span(span, f.clone()), base + span)
+                        let span = offset.map_or(span, |offset| offset + span);
+                        (tok.map_span_with_offset(span, offset, f.clone()), span)
                     })
                     .collect(),
             ),
@@ -798,6 +817,123 @@ mod tests {
         }
         let fragment: Token<'_> = Token::StrFrag(contents.into());
         assert_eq!(fragment.to_string(), contents.escape_default().to_string());
+    }
+
+    #[test]
+    fn interpolation_spans_use_the_containing_input_coordinates() {
+        let src = r#"prefix s"text \(value)""#;
+        let (tokens, errors) = lex(false).parse(src).into_output_errors();
+        assert!(errors.is_empty(), "{errors:?}");
+        let tokens = tokens.unwrap();
+        let Token::InterpStr(parts) = &tokens[1].0 else {
+            panic!("expected interpolated string");
+        };
+        assert_eq!(tokens[1].1, LexSpan::from(7..23));
+        assert_eq!(parts[0], (Token::StrFrag("text ".into()), (9..14).into()));
+        assert_eq!(parts[1].1, LexSpan::from(14..22));
+        let Token::Group(group) = &parts[1].0 else {
+            panic!("expected interpolation group");
+        };
+        // Only nested_in starts a new coordinate system, including its parentheses.
+        assert_eq!(
+            group.as_ref(),
+            &[
+                (Token::LParen, (0..1).into()),
+                (Token::Ident("value"), (1..6).into()),
+                (Token::RParen, (6..7).into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn nested_interpolation_spans_are_absolute() {
+        use redscript_ast::{Expr, StrPart};
+
+        let file = FileId::from_i32(7);
+        let inner = r#"s"inner \(leaf) end""#;
+        let middle = format!(r#"s"middle \({inner}) tail""#);
+        let outer = format!(r#"s"outer \({middle}) after \(other) done""#);
+        for prefix in ["", "/* é prefix */ "] {
+            let src = format!("{prefix}{outer}");
+            let span = |text: &str| {
+                let start = src.find(text).unwrap() as u32;
+                Span::new(start, start + text.len() as u32, file)
+            };
+            let group = |body: Token<'static, Span>, text: &str| {
+                Token::Group(
+                    vec![
+                        (Token::LParen, {
+                            let start = span(text).start;
+                            Span::new(start - 1, start, file)
+                        }),
+                        (body, span(text)),
+                        (Token::RParen, {
+                            let end = span(text).end;
+                            Span::new(end, end + 1, file)
+                        }),
+                    ]
+                    .into(),
+                )
+            };
+            let inner_token = Token::InterpStr(
+                vec![
+                    (Token::StrFrag("inner ".into()), span("inner ")),
+                    (group(Token::Ident("leaf"), "leaf"), span(r"\(leaf)")),
+                    (Token::StrFrag(" end".into()), span(" end")),
+                ]
+                .into(),
+            );
+            let middle_token = Token::InterpStr(
+                vec![
+                    (Token::StrFrag("middle ".into()), span("middle ")),
+                    (group(inner_token, inner), span(&format!(r"\({inner})"))),
+                    (Token::StrFrag(" tail".into()), span(" tail")),
+                ]
+                .into(),
+            );
+            let expected = Token::InterpStr(
+                vec![
+                    (Token::StrFrag("outer ".into()), span("outer ")),
+                    (group(middle_token, &middle), span(&format!(r"\({middle})"))),
+                    (Token::StrFrag(" after ".into()), span(" after ")),
+                    (group(Token::Ident("other"), "other"), span(r"\(other)")),
+                    (Token::StrFrag(" done".into()), span(" done")),
+                ]
+                .into(),
+            );
+            for lex in [crate::lex, crate::lex_with_lf_and_comments] {
+                let (tokens, errors) = lex(&src, file);
+                assert!(errors.is_empty(), "{src}: {errors:?}");
+                let tokens = tokens.unwrap();
+                assert_eq!(tokens.last().unwrap(), &(expected.clone(), span(&outer)));
+            }
+
+            let (expr, errors) = crate::parse_expr(&src, file);
+            assert!(errors.is_empty(), "{src}: {errors:?}");
+            let Expr::InterpolatedString(outer_parts) = expr.unwrap() else {
+                panic!("expected outer string");
+            };
+            let StrPart::Expr((Expr::InterpolatedString(middle_parts), middle_span)) =
+                &outer_parts[1]
+            else {
+                panic!("expected middle string");
+            };
+            assert_eq!(*middle_span, span(&middle));
+            let StrPart::Expr((Expr::InterpolatedString(inner_parts), inner_span)) =
+                &middle_parts[1]
+            else {
+                panic!("expected inner string");
+            };
+            assert_eq!(*inner_span, span(inner));
+            assert_eq!(
+                inner_parts[1],
+                StrPart::Expr((Expr::Ident("leaf"), span("leaf")))
+            );
+            assert_eq!(
+                outer_parts[3],
+                StrPart::Expr((Expr::Ident("other"), span("other")))
+            );
+        }
     }
 
     #[test]
