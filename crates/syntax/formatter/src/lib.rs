@@ -490,7 +490,7 @@ impl<K: AstKind> Formattable for Expr<'_, K> {
                     write!(f, "{}d", dtoa(v, conf))
                 }
                 (&Constant::F64(v), _) => {
-                    write!(f, "{}", dtoa(v, FmtFloatConfig::default()))
+                    write!(f, "{}d", dtoa(v, FmtFloatConfig::default()))
                 }
                 (Constant::I32(v), _) => write!(f, "{v}"),
                 (Constant::I64(v), _) => write!(f, "{v}l"),
