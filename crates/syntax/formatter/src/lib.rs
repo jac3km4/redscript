@@ -735,10 +735,10 @@ impl<K: AstKind> Formattable for Pattern<'_, K> {
             ),
             Self::Aggregate(name, items) => {
                 let items = items.iter().map(|(name, pat)| {
-                    if matches!(pat, Pattern::Name(n) if name.as_wrapped() != n.as_wrapped()) {
-                        (name.as_wrapped(), Some((": ", pat.as_wrapped())))
-                    } else {
+                    if matches!(pat, Pattern::Name(n) if name.as_wrapped() == n.as_wrapped()) {
                         (name.as_wrapped(), None)
+                    } else {
+                        (name.as_wrapped(), Some((": ", pat.as_wrapped())))
                     }
                 });
                 write!(

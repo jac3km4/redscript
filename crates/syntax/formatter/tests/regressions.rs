@@ -24,6 +24,22 @@ fn assert_preserved(source: &str, settings: &FormatSettings) -> String {
 }
 
 #[test]
+fn aggregate_patterns_keep_explicit_fields() {
+    for pattern in [
+        "Outer { inner: Inner { value } }",
+        "Outer { inner: value? }",
+        "Outer { inner: [first, second] }",
+        "Outer { inner: value as Int32 }",
+        "Outer { inner: renamed }",
+        "Outer { inner }",
+    ] {
+        let source = format!("func F() {{ if let {pattern} = value {{}} }}");
+        let formatted = assert_preserved(&source, &FormatSettings::default());
+        assert!(formatted.contains(pattern), "{formatted}");
+    }
+}
+
+#[test]
 fn doubles_keep_their_suffix() {
     for trunc_sig_digits in [None, Some(3)] {
         let settings = FormatSettings {
