@@ -103,15 +103,22 @@ pub extern "C" fn scc_get_success(output: &SccResult) -> Option<&SccOutput> {
     }
 }
 
+/// Copies the error message, returning the number of bytes copied excluding the null terminator.
+/// On error, a nonempty buffer is null-terminated and the message is truncated to fit.
+/// Returns zero without touching the buffer on success or when `buffer_size` is zero.
+///
 /// # Safety
-/// The caller must ensure that `buffer` is a valid pointer to a buffer of at least `buffer_size`
-/// bytes.
+/// If `buffer_size` is nonzero, `buffer` must be writable for at least `buffer_size` bytes.
+/// If `buffer_size` is zero, `buffer` may be null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn scc_copy_error(
     output: &SccResult,
     buffer: *mut u8,
     buffer_size: usize,
 ) -> usize {
+    if buffer_size == 0 {
+        return 0;
+    }
     match output {
         SccResult::Success(_) => 0,
         SccResult::Error(error) => {
@@ -224,6 +231,54 @@ impl Default for StrWithLen<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn copy_error_accepts_null_zero_sized_buffer() {
+        let result = SccResult::Error(anyhow::anyhow!("test error"));
+        assert_eq!(unsafe { scc_copy_error(&result, ptr::null_mut(), 0) }, 0);
+    }
+
+    #[test]
+    fn copy_error_leaves_zero_sized_buffer_untouched() {
+        let result = SccResult::Error(anyhow::anyhow!("test error"));
+        let mut buffer = [0xff];
+        assert_eq!(
+            unsafe { scc_copy_error(&result, buffer.as_mut_ptr(), 0) },
+            0
+        );
+        assert_eq!(buffer, [0xff]);
+    }
+
+    #[test]
+    fn copy_error_terminates_one_byte_buffer() {
+        let result = SccResult::Error(anyhow::anyhow!("test error"));
+        let mut buffer = [0xff; 2];
+        assert_eq!(
+            unsafe { scc_copy_error(&result, buffer.as_mut_ptr(), 1) },
+            0
+        );
+        assert_eq!(buffer, [0, 0xff]);
+    }
+
+    #[test]
+    fn copy_error_copies_message_and_terminator() {
+        let result = SccResult::Error(anyhow::anyhow!("test error"));
+        let mut buffer = [0xff; 12];
+        let copied = unsafe { scc_copy_error(&result, buffer.as_mut_ptr(), buffer.len()) };
+        assert_eq!(copied, 10);
+        assert_eq!(&buffer[..11], b"test error\0");
+        assert_eq!(buffer[11], 0xff);
+    }
+
+    #[test]
+    fn copy_error_truncates_and_terminates_message() {
+        let result = SccResult::Error(anyhow::anyhow!("test error"));
+        let mut buffer = [0xff; 6];
+        let copied = unsafe { scc_copy_error(&result, buffer.as_mut_ptr(), 5) };
+        assert_eq!(copied, 4);
+        assert_eq!(&buffer[..5], b"test\0");
+        assert_eq!(buffer[5], 0xff);
+    }
 
     #[test]
     fn str_with_len_has_correct_layout() {
