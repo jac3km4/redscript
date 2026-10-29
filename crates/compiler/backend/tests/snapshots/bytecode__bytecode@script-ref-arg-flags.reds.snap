@@ -1,0 +1,30 @@
+---
+source: crates/compiler/backend/tests/bytecode.rs
+expression: "BytecodePrinter::new(&bundle, bundle_len)"
+input_file: crates/compiler/backend/tests/data/script-ref-arg-flags.reds
+---
+// Receiver::Take;StringStringStringString (f0)
+
+// Test;Receiverarray<String>Int32 (f1)
+assign
+local 0
+string.const 0 "local"
+ctx 134
+param 0
+invoke.virtual j125 l16 f0 0000000000000010
+as_ref 0
+local 0
+as_ref 0
+invoke.static j16 l16 f2 0000000000000000
+param.end
+as_ref 0
+ctx 18
+param 0
+object.field 0
+as_ref 0
+array.element 1
+param 1
+param 2
+param.end
+
+// MakeString (f2)
