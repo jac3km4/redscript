@@ -2,8 +2,8 @@ use hashbrown::HashMap;
 use redscript_ast as ast;
 use redscript_formatter::{FormatCtx, FormatSettings, SyntaxOps};
 use redscript_io::{
-    CodeIter, Function, FunctionFlags, Instr, Jump, Local, LocalFlags, ScriptBundle, Switch,
-    SwitchLabel, Type, TypeKind, Visibility,
+    Class, ClassFlags, CodeIter, Function, FunctionFlags, Instr, InvokeFlags, Jump, Local,
+    LocalFlags, ScriptBundle, Switch, SwitchLabel, Type, TypeKind, Visibility,
 };
 
 use crate::control_flow::{BlockType, build_control_flow};
@@ -49,6 +49,71 @@ fn format_block(block: &ast::Block<'_>) -> String {
             &HashMap::default(),
         ))
         .to_string()
+}
+
+#[test]
+fn static_instance_calls_preserve_receivers() {
+    let mut bundle = ScriptBundle::default();
+    let name = bundle.cnames_mut().add("Base");
+    let base = bundle.define(Class::new(name, Visibility::Public, ClassFlags::default()));
+    let name = bundle.cnames_mut().add("Middle");
+    let middle = bundle
+        .define(Class::new(name, Visibility::Public, ClassFlags::default()).with_base(Some(base)));
+    let name = bundle.cnames_mut().add("Derived");
+    let derived = bundle.define(
+        Class::new(name, Visibility::Public, ClassFlags::default()).with_base(Some(middle)),
+    );
+    let name = bundle.cnames_mut().add("Other");
+    let other = bundle.define(Class::new(name, Visibility::Public, ClassFlags::default()));
+    let name = bundle.cnames_mut().add("G;");
+    let function =
+        Function::new(name, Visibility::Public, FunctionFlags::default()).with_class(Some(derived));
+    for (owner, method_name, context, expected) in [
+        (base, "F;", None, "super"),
+        (base, "F;", Some(Instr::This), "super"),
+        (middle, "F;", Some(Instr::This), "super"),
+        (base, "G;", Some(Instr::This), "super"),
+        (derived, "G;", None, "this"),
+        (derived, "F;", Some(Instr::This), "this"),
+        (other, "G;", None, "this"),
+        (base, "F;", Some(Instr::Null), "null"),
+    ] {
+        let name = bundle.cnames_mut().add(method_name);
+        let target = bundle.define(
+            Function::new(name, Visibility::Public, FunctionFlags::default())
+                .with_class(Some(owner)),
+        );
+        let mut code = vec![];
+        if let Some(context) = context {
+            code.push(Instr::Context(Jump::new(4)));
+            code.push(context);
+        }
+        let exit = code.len() + 2;
+        code.push(Instr::InvokeStatic {
+            function: target,
+            exit: Jump::new(exit),
+            line: 0,
+            flags: InvokeFlags::default(),
+        });
+        code.extend([Instr::ParamEnd, Instr::Return, Instr::Nop]);
+        let block = decompile(&bundle, &function, &resolve_labels(code));
+        let ast::Stmt::Expr(expr) = &block.stmts[0] else {
+            panic!("expected a call statement: {block:?}");
+        };
+        let ast::Expr::Call { expr, .. } = expr.as_ref() else {
+            panic!("expected a call: {expr:?}");
+        };
+        let ast::Expr::Member { expr, .. } = expr.as_ref() else {
+            panic!("expected a method receiver: {expr:?}");
+        };
+        let receiver = match expr.as_ref() {
+            ast::Expr::Super => "super",
+            ast::Expr::This => "this",
+            ast::Expr::Null => "null",
+            other => panic!("unexpected receiver: {other:?}"),
+        };
+        assert_eq!(receiver, expected);
+    }
 }
 
 #[test]

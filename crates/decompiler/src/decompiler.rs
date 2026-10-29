@@ -413,7 +413,14 @@ impl<'scope, 'ctx: 'i, 'i> Decompiler<'scope, 'ctx, 'i> {
                     .bundle
                     .try_get_item_hint(function.name(), "function name")?;
                 let name = extract_mangled_name(mangled_name);
-                let receiver = if let Some(ctx) = ctx {
+                let receiver = if matches!(ctx, None | Some(ast::Expr::This))
+                    && self.is_base_method(function)?
+                {
+                    ast::Expr::Member {
+                        expr: ast::Expr::Super.into(),
+                        member: name,
+                    }
+                } else if let Some(ctx) = ctx {
                     ast::Expr::Member {
                         expr: ctx.into(),
                         member: name,
@@ -450,13 +457,6 @@ impl<'scope, 'ctx: 'i, 'i> Decompiler<'scope, 'ctx, 'i> {
                         return Ok(Node::Expr(ast::Expr::UnOp { op, expr }));
                     } else {
                         ast::Expr::Ident(name)
-                    }
-                } else if self.function.name() == function.name()
-                    && self.function.class() != function.class()
-                {
-                    ast::Expr::Member {
-                        expr: ast::Expr::Super.into(),
-                        member: name,
                     }
                 } else {
                     ast::Expr::Member {
@@ -580,6 +580,27 @@ impl<'scope, 'ctx: 'i, 'i> Decompiler<'scope, 'ctx, 'i> {
             instr => todo!("{instr:?}"),
         };
         Ok(Node::Expr(expr))
+    }
+
+    fn is_base_method(&self, function: &Function<'_>) -> Result<bool> {
+        if function.flags().is_static() || function.class().is_none() {
+            return Ok(false);
+        }
+        let Some(class) = self.function.class() else {
+            return Ok(false);
+        };
+        let mut base = self.bundle.try_get_item(class)?.base();
+        let mut visited = HashSet::new();
+        while let Some(class) = base {
+            if !visited.insert(class) {
+                break;
+            }
+            if Some(class) == function.class() {
+                return Ok(true);
+            }
+            base = self.bundle.try_get_item(class)?.base();
+        }
+        Ok(false)
     }
 
     fn consume_args(&mut self) -> Result<Vec<ast::Expr<'i>>> {
