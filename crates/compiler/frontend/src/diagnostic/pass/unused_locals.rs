@@ -63,6 +63,8 @@ impl<'ctx> Visitor<'ctx> for UnusedLocalVisitor {
         for local in &closure.locals {
             self.register_local(local);
         }
+        self.used.extend(closure.captures.iter().copied());
+        self.visit_block(&closure.block);
     }
 
     fn visit_local(&mut self, local: ir::Local, _span: Span) {
