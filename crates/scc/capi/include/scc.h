@@ -9,11 +9,35 @@
 #include <windows.h>
 #endif
 
+/**
+ * Ownership contract for all API functions:
+ *
+ * - All handle arguments must be non-NULL and live. Settings mutations require
+ *   exclusive access. Input strings must be valid NUL-terminated UTF-8; they are
+ *   copied during the call and remain owned by the caller.
+ * - settings_new returns owned settings. Setters only borrow them. compile
+ *   consumes and frees settings on both success and failure: never reuse or free
+ *   the settings pointer after calling compile.
+ * - compile returns an owned result, which must be passed to free_result exactly
+ *   once. Do not free API allocations with free() or another allocator.
+ * - Outputs, source references, and string views are read-only borrows from the
+ *   result, valid only until free_result. Do not modify or free them separately,
+ *   or use them after freeing the result. Source reference functions require a
+ *   reference obtained from the same output argument.
+ *
+ * copy_error's buffer is caller-owned; see its zero-size NULL exception below.
+ */
 typedef struct SccSettings SccSettings;
 typedef struct SccOutput SccOutput;
 typedef struct SccResult SccResult;
 typedef struct SccSourceRef SccSourceRef;
 
+/**
+ * Borrowed UTF-8 bytes, not NUL-terminated. Read exactly len bytes. An empty view
+ * may have a NULL str; do not dereference it when len is zero. The bytes remain
+ * valid only until the owning result is passed to free_result. Do not modify or
+ * free str; copying this struct does not extend the bytes' lifetime.
+ */
 typedef struct StrWithLen {
   const char *str;
   size_t len;
@@ -75,7 +99,8 @@ typedef size_t scc_source_ref_line(SccOutput *output, SccSourceRef *ref);
 
 typedef struct SccApi {
   /**
-   * Creates new compilation settings.
+   * Creates owned compilation settings. r6_dir is copied and remains owned by
+   * the caller. Pass the settings to compile exactly once to consume them.
    */
   scc_settings_new *settings_new;
   /**
@@ -119,15 +144,21 @@ typedef struct SccApi {
    */
   scc_settings_register_mixed_ref_type *settings_register_mixed_ref_type;
   /**
-   * Runs the compiler with the given settings.
+   * Runs the compiler, consuming and freeing settings on both success and
+   * failure. The settings pointer is invalid after this call. Returns an owned
+   * result that the caller must release with free_result exactly once.
    */
   scc_compile *compile;
   /**
-   * Frees the memory allocated for the result.
+   * Consumes and frees a non-NULL result returned by compile, exactly once.
+   * Invalidates all outputs, source references, and string views borrowed from
+   * that result. None may be used afterward.
    */
   scc_free_result *free_result;
   /**
-   * Returns the output for a successful compilation and NULL otherwise.
+   * Returns a borrowed output for a successful compilation and NULL otherwise.
+   * The output is read-only, must not be freed separately, and remains valid
+   * only until the owning result is passed to free_result.
    */
   scc_get_success *get_success;
   /**
@@ -136,10 +167,14 @@ typedef struct SccApi {
    * message is truncated to fit. Returns zero without touching the buffer on
    * success or when buffer_size is zero. The buffer may be NULL when buffer_size
    * is zero; otherwise it must be writable for at least buffer_size bytes.
+   * The result is only borrowed; copied bytes belong to the caller and remain
+   * valid after free_result.
    */
   scc_copy_error *copy_error;
   /**
-   * Returns the source reference at the given index.
+   * Returns a borrowed, read-only source reference at the given index, which
+   * must be less than output_source_ref_count(output). Do not free it separately;
+   * it remains valid only until the owning result is passed to free_result.
    */
   scc_output_get_source_ref *output_get_source_ref;
   /**
@@ -155,16 +190,18 @@ typedef struct SccApi {
    */
   scc_source_ref_is_native *source_ref_is_native;
   /**
-   * Returns the name of the entity behind the reference.
+   * Returns a borrowed string view of the entity name, valid only until the
+   * owning result is passed to free_result. Do not modify or free its bytes.
    */
   scc_source_ref_name *source_ref_name;
   /**
-   * Returns the name of the parent of the entity behind the reference.
+   * Returns a borrowed string view of the parent name, valid only until the
+   * owning result is passed to free_result. Do not modify or free its bytes.
    */
   scc_source_ref_parent_name *source_ref_parent_name;
   /**
-   * Returns the path to a file where the entity behind the reference is
-   * defined.
+   * Returns a borrowed string view of the source file path, valid only until
+   * the owning result is passed to free_result. Do not modify or free its bytes.
    */
   scc_source_ref_path *source_ref_path;
   /**

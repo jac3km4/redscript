@@ -1,3 +1,16 @@
+//! C API ownership contracts.
+//!
+//! Settings are owned handles: [`scc_compile`] consumes and frees them on both success and failure.
+//! Setting functions only borrow settings and copy their input strings; callers retain ownership
+//! of those strings and may release them after the call.
+//!
+//! A compilation result is owned by the caller and must be passed to [`scc_free_result`] exactly
+//! once. Outputs, source references, and strings obtained from it are read-only borrows, valid
+//! only until that result is freed. They must not be freed separately. Source reference functions
+//! require a reference from the same output. All C handle arguments must be non-null and live;
+//! settings mutations require exclusive access. No handles or borrows may be used after being
+//! consumed or freed. See [`scc_copy_error`] for its zero-sized buffer exception.
+
 use std::ffi::{CStr, CString};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
@@ -9,6 +22,9 @@ use scc_core::{SccOutput, SccSettings, SourceRef, SourceRefType};
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
+/// Creates owned settings to be consumed exactly once by [`scc_compile`].
+/// The input string is copied and remains owned by the caller.
+///
 /// # Safety
 /// The caller must ensure that `r6_dir` is a valid null-terminated UTF-8 string.
 #[unsafe(no_mangle)]
@@ -48,6 +64,7 @@ pub unsafe extern "C" fn scc_settings_add_script_path(settings: &mut SccSettings
     settings.add_script_path(unsafe { c_path(path) });
 }
 
+/// Borrows settings exclusively to disable error popups; ownership stays with the caller.
 #[unsafe(no_mangle)]
 pub extern "C" fn scc_settings_disable_error_popup(settings: &mut SccSettings) {
     settings.set_show_error_report(false);
@@ -83,6 +100,10 @@ pub unsafe extern "C" fn scc_settings_register_mixed_ref_type(
     );
 }
 
+/// Runs the compiler, consuming and freeing `settings` on both success and failure.
+/// C callers must pass an owned, non-null handle from [`scc_settings_new`] exactly once
+/// and must not access it afterward. The returned result is owned by the caller and must
+/// be released exactly once with [`scc_free_result`].
 #[unsafe(no_mangle)]
 pub extern "C" fn scc_compile(settings: Box<SccSettings>) -> Box<SccResult> {
     let res = match scc_core::compile(&settings) {
@@ -92,9 +113,14 @@ pub extern "C" fn scc_compile(settings: Box<SccSettings>) -> Box<SccResult> {
     Box::new(res)
 }
 
+/// Consumes and frees an owned result returned by [`scc_compile`].
+/// C callers must pass a live, non-null result exactly once. All outputs, source references,
+/// and string views borrowed from it become invalid and must not be accessed afterward.
 #[unsafe(no_mangle)]
 pub extern "C" fn scc_free_result(_: Box<SccResult>) {}
 
+/// Borrows the successful output, or returns `None` (NULL in C) on failure.
+/// The output must not be modified or freed separately and is valid until [`scc_free_result`].
 #[unsafe(no_mangle)]
 pub extern "C" fn scc_get_success(output: &SccResult) -> Option<&SccOutput> {
     match output {
@@ -103,7 +129,9 @@ pub extern "C" fn scc_get_success(output: &SccResult) -> Option<&SccOutput> {
     }
 }
 
-/// Copies the error message, returning the number of bytes copied excluding the null terminator.
+/// Copies the error message into caller-owned storage without consuming `output`.
+/// The copied bytes remain valid independently of the result.
+/// Returns the number of bytes copied excluding the null terminator.
 /// On error, a nonempty buffer is null-terminated and the message is truncated to fit.
 /// Returns zero without touching the buffer on success or when `buffer_size` is zero.
 ///
@@ -133,26 +161,34 @@ pub unsafe extern "C" fn scc_copy_error(
     }
 }
 
+/// Borrows the source reference at `i`, which must be less than the source reference count.
+/// The reference must not be modified or freed and is valid until [`scc_free_result`].
 #[unsafe(no_mangle)]
 pub extern "C" fn scc_output_get_source_ref(output: &SccOutput, i: usize) -> *const SourceRef {
     &output.refs()[i]
 }
 
+/// Returns the source reference count for a live, borrowed output.
 #[unsafe(no_mangle)]
 pub extern "C" fn scc_output_source_ref_count(output: &SccOutput) -> usize {
     output.refs().len()
 }
 
+/// Returns the entity type. `link` must be a live reference borrowed from `output`.
 #[unsafe(no_mangle)]
 pub extern "C" fn scc_source_ref_type(_output: &SccOutput, link: &SourceRef) -> SourceRefType {
     link.type_()
 }
 
+/// Reports whether the entity is native. Both arguments must be live borrows from the same result.
 #[unsafe(no_mangle)]
 pub extern "C" fn scc_source_ref_is_native(_output: &SccOutput, _link: &SourceRef) -> bool {
     true
 }
 
+/// Borrows the entity name as UTF-8 bytes without a null terminator.
+/// `link` must belong to `output`; the view must not be modified or freed and is valid only
+/// until the owning result is passed to [`scc_free_result`].
 #[unsafe(no_mangle)]
 pub extern "C" fn scc_source_ref_name<'a>(
     output: &'a SccOutput,
@@ -161,6 +197,9 @@ pub extern "C" fn scc_source_ref_name<'a>(
     output.name(link).unwrap_or_default().into()
 }
 
+/// Borrows the parent name as UTF-8 bytes without a null terminator.
+/// `link` must belong to `output`; the view must not be modified or freed and is valid only
+/// until the owning result is passed to [`scc_free_result`].
 #[unsafe(no_mangle)]
 pub extern "C" fn scc_source_ref_parent_name<'a>(
     output: &'a SccOutput,
@@ -169,6 +208,9 @@ pub extern "C" fn scc_source_ref_parent_name<'a>(
     output.parent_name(link).unwrap_or_default().into()
 }
 
+/// Borrows the source path as UTF-8 bytes without a null terminator.
+/// `link` must belong to `output`; the view must not be modified or freed and is valid only
+/// until the owning result is passed to [`scc_free_result`].
 #[unsafe(no_mangle)]
 pub extern "C" fn scc_source_ref_path<'a>(
     output: &'a SccOutput,
@@ -181,6 +223,7 @@ pub extern "C" fn scc_source_ref_path<'a>(
         .into()
 }
 
+/// Returns the source line. `link` must be a live reference borrowed from `output`.
 #[unsafe(no_mangle)]
 pub extern "C" fn scc_source_ref_line(output: &SccOutput, link: &SourceRef) -> usize {
     output.line(link).unwrap_or(0)
@@ -195,11 +238,16 @@ unsafe fn c_path(r6_dir: *const i8) -> PathBuf {
     PathBuf::from(cstr.to_string_lossy().as_ref())
 }
 
+/// An owned compilation result. C callers must release it with [`scc_free_result`].
 pub enum SccResult {
     Success(Box<SccOutput>),
     Error(anyhow::Error),
 }
 
+/// A borrowed UTF-8 string view, not null-terminated. Read exactly `len` bytes from `ptr`.
+/// An empty view may have a null pointer; do not dereference it when `len` is zero.
+/// Views returned by the C API are read-only and valid until [`scc_free_result`] frees their
+/// owning result. Neither the pointer nor the view owns an allocation to free.
 #[derive(Debug)]
 #[repr(C)]
 pub struct StrWithLen<'a> {
