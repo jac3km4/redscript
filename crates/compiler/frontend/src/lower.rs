@@ -771,7 +771,11 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 .collect::<Rc<_>>()
         } else if typ.args().len() != def.params().len() {
             let expected = def.params().len();
-            return Err(Error::InvalidTypeArgCount(expected, *type_span));
+            return Err(Error::InvalidTypeArgCount(
+                expected,
+                typ.args().len(),
+                *type_span,
+            ));
         } else {
             typ.args().iter().map(PolyType::from_type).collect()
         };
@@ -812,7 +816,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 .collect::<Rc<_>>()
         } else if type_args.len() != def.params().len() {
             let expected = def.params().len();
-            return Err(Error::InvalidTypeArgCount(expected, span));
+            return Err(Error::InvalidTypeArgCount(expected, type_args.len(), span));
         } else {
             type_args
                 .iter()
@@ -920,12 +924,17 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         span: Span,
     ) -> LowerResult<'ctx, (ir::Expr<'ctx>, PolyType<'ctx>)> {
         let (expr, expr_t) = self.lower_expr(expr, env)?;
-        let Type::Data(typ) = env.types().resolve(typ, self.symbols, *type_span)? else {
-            return Err(Error::InvalidDynCastType(*type_span));
+        let resolved = env.types().resolve(typ, self.symbols, *type_span)?;
+        let Type::Data(typ) = resolved else {
+            return Err(Error::InvalidDynCastType(expr_t, resolved, *type_span));
         };
         let target = InferredTypeApp::from_type(&typ);
         let Some(agg) = self.symbols[target.id()].schema().as_aggregate() else {
-            return Err(Error::InvalidDynCastType(*type_span));
+            return Err(Error::InvalidDynCastType(
+                expr_t,
+                typ.into_type(),
+                *type_span,
+            ));
         };
         let expected = target.clone().into_type().into_poly();
         let (ref_t, inner) = expr_t.strip_ref(self.symbols).unzip();
@@ -940,15 +949,14 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         };
         let inferred = expected
             .constrain_base(&constraint, self.symbols)
-            .map(|_| result_t)
-            .map_err(|err| (err, constraint));
+            .map(|_| result_t);
 
         match inferred {
-            Err((err, inner)) => {
-                if inner.constrain_base(&expected, self.symbols).is_ok() {
+            Err(_) => {
+                if constraint.constrain_base(&expected, self.symbols).is_ok() {
                     Err(Error::RedundantDynCast(span))
                 } else {
-                    Err(Error::ImpossibleDynCast(err.into(), span))
+                    Err(Error::ImpossibleDynCast(expr_t, expected, span))
                 }
             }
             Ok(inferred) => {
@@ -1014,7 +1022,8 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         let captured = captures.iter().map(|cap| cap.captured).collect::<Box<_>>();
         self.captures.extend(captures);
 
-        let type_id = TypeId::fn_with_arity(params.len()).ok_or(Error::UnsupportedArity(span))?;
+        let type_id = TypeId::fn_with_arity(params.len())
+            .ok_or(Error::UnsupportedArity(params.len(), span))?;
         let typ = TypeApp::new(type_id, func_t_args);
         let closure = ir::Closure::new(typ.clone(), locals, captured, block);
         let ir = ir::Expr::NewClosure {
@@ -1355,7 +1364,11 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
     fn check_type_app(&self, typ: &InferredTypeApp<'ctx>, span: Span) -> LowerResult<'ctx, ()> {
         let sym = &self.symbols[typ.id()];
         if sym.params().len() != typ.args().len() {
-            return Err(Error::InvalidTypeArgCount(sym.params().len(), span));
+            return Err(Error::InvalidTypeArgCount(
+                sym.params().len(),
+                typ.args().len(),
+                span,
+            ));
         }
         typ.args()
             .iter()

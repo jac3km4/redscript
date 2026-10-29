@@ -132,7 +132,7 @@ impl<'scope, 'ctx> TypeEnv<'scope, 'ctx> {
                         .map(Aggregate::flags)
                         .unwrap_or_default();
                     if flags.is_never_ref() {
-                        return Err(Error::RefOnNeverRefType(*span));
+                        return Err(Error::RefOnNeverRefType(id, arg, *span));
                     }
                     if flags.is_mixed_ref() || id == predef::WREF {
                         Ok(Type::app(id, [arg]))
@@ -153,7 +153,7 @@ impl<'scope, 'ctx> TypeEnv<'scope, 'ctx> {
                         .map_err(|_| Error::CyclicType(span))??,
                 )),
                 (Some(TypeRef::Var(_) | TypeRef::LazyVar(_)), _) => {
-                    Err(Error::InvalidTypeArgCount(0, span))
+                    Err(Error::InvalidTypeArgCount(0, args.len(), span))
                 }
                 (None, _) => Err(Error::UnresolvedType(name, span)),
             },
@@ -166,7 +166,7 @@ impl<'scope, 'ctx> TypeEnv<'scope, 'ctx> {
                 let (elem, elem_span) = &**elem;
                 let elem = self.resolve(elem, symbols, *elem_span)?;
                 let id = TypeId::array_with_size(*size)
-                    .ok_or(Error::UnsupportedStaticArraySize(span))?;
+                    .ok_or(Error::UnsupportedStaticArraySize(*size, span))?;
                 Ok(Type::app(id, [elem]))
             }
             ast::Type::Fn {
@@ -178,8 +178,8 @@ impl<'scope, 'ctx> TypeEnv<'scope, 'ctx> {
                     .chain([&**return_type])
                     .map(|(typ, span)| self.resolve(typ, symbols, *span))
                     .collect::<Result<Rc<_>, _>>()?;
-                let id =
-                    TypeId::fn_with_arity(params.len()).ok_or(Error::UnsupportedArity(span))?;
+                let id = TypeId::fn_with_arity(params.len())
+                    .ok_or(Error::UnsupportedArity(params.len(), span))?;
                 Ok(Type::app(id, args))
             }
         }
@@ -368,7 +368,7 @@ mod tests {
             let mut env = TypeEnv::default();
             env.add("T", type_ref);
             let error = env.resolve(&typ, &symbols, span).unwrap_err();
-            assert!(matches!(error, Error::InvalidTypeArgCount(0, actual) if actual == span));
+            assert!(matches!(error, Error::InvalidTypeArgCount(0, 1, actual) if actual == span));
         }
     }
 }

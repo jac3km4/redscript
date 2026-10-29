@@ -7,7 +7,7 @@ use redscript_ast::Span;
 use thiserror::Error;
 
 use crate::diagnostic::{DiagnosticLevel, FunctionSignature};
-use crate::lower::types::{InferredType, InferredTypeApp};
+use crate::lower::types::{InferredType, InferredTypeApp, PolyType};
 use crate::types::{MAX_FN_ARITY, MAX_STATIC_ARRAY_SIZE, TypeId, predef};
 use crate::utils::fmt::sep_by;
 use crate::{FieldId, Immutable, MethodId, Visibility};
@@ -36,10 +36,7 @@ pub enum Error<'ctx> {
         found = .1
     )]
     InvalidArgCount(Vec<RangeInclusive<usize>>, usize, Span),
-    #[error(
-        "insufficient type information available for member lookup, consider adding \
-         type annotations"
-    )]
+    #[error("cannot infer the type of this expression; consider adding type annotations")]
     InsufficientTypeInformation(Span),
     #[error("this type does not support the `new` operator")]
     InvalidNewType(Span),
@@ -49,24 +46,26 @@ pub enum Error<'ctx> {
         "`{type_id}` cannot be constructed with the `new` operator; remove `new` and keep the constructor arguments"
     )]
     NewWithConstructible { type_id: TypeId<'ctx>, span: Span },
-    #[error("this type cannot be used with the `as` operator, the target type must be a class")]
-    InvalidDynCastType(Span),
-    #[error("the target type of this cast is not known, consider specifying it")]
+    #[error("cannot cast from `{0}` to `{1}` with `as`: the target type must be a class")]
+    InvalidDynCastType(PolyType<'ctx>, crate::types::Type<'ctx>, Span),
+    #[error(
+        "cannot infer the target type of this cast; specify it with `Cast<T>(value)` or a type annotation"
+    )]
     UnknownStaticCastType(Span),
-    #[error("invalid number of type arguments, expected {0}")]
-    InvalidTypeArgCount(usize, Span),
+    #[error("invalid number of type arguments: expected {0}, found {1}")]
+    InvalidTypeArgCount(usize, usize, Span),
     #[error("class constructors do not accept positional arguments")]
     ClassConstructorHasArguments(Span),
     #[error(
-        "unsupported arity, functions can only have up to {} parameters",
-        MAX_FN_ARITY
+        "function arity {0} exceeds maximum {max}",
+        max = MAX_FN_ARITY
     )]
-    UnsupportedArity(Span),
+    UnsupportedArity(usize, Span),
     #[error(
-        "unsupported static array size, static arrays can only have up to {} elements",
-        MAX_STATIC_ARRAY_SIZE
+        "unsupported static array size: found {0} elements, maximum is {max}",
+        max = MAX_STATIC_ARRAY_SIZE
     )]
-    UnsupportedStaticArraySize(Span),
+    UnsupportedStaticArraySize(usize, Span),
     #[error("this expression cannot be used as a case label")]
     InvalidCaseLabel(Span),
     #[error("invalid cyclic type reference")]
@@ -82,17 +81,17 @@ pub enum Error<'ctx> {
     #[error("cannot assign to this expression")]
     InvalidPlaceExpr(Span),
     #[error(
-        "the highlighted temporary value cannot be used in this expression, consider extracting it \
+        "the highlighted temporary value cannot be used in this expression; consider extracting it \
         to a local"
     )]
     InvalidTemporary(Span),
     #[error("only constants can be used here")]
     UnexpectedNonConstant(Span),
-    #[error("the `NameOf(Type)` syntax is deprecated, use `NameOf<Type>()` instead")]
+    #[error("the `NameOf(Type)` syntax is deprecated; use `NameOf<Type>()` instead")]
     DeprecatedNameOf(Span),
     #[error(
-        "`{type_id}` is a native struct with an incomplete script definition, passing arguments to its \
-        constructor might result in undefined behavior, it can however still be safely \
+        "`{type_id}` is a native struct with an incomplete script definition; passing arguments to its \
+        constructor might result in undefined behavior. It can still be safely \
         constructed without arguments: `{}()`"
     , .type_id.simple_name())]
     NonFullyDefinedNativeStructConstruction { type_id: TypeId<'ctx>, span: Span },
@@ -100,21 +99,23 @@ pub enum Error<'ctx> {
     MissingBreakInCaseLet(Span),
     #[error("case before a `case let` must end with a `break` or `return` statement")]
     FallthroughIntoPatternCase(Span),
-    #[error("this type cannot be wrapped with a ref")]
-    RefOnNeverRefType(Span),
-    #[error("this cast can never succeed, because the types are not related ({0})")]
-    ImpossibleDynCast(Box<TypeError<'ctx>>, Span),
-    #[error("this cast is redundant, you should remove it")]
+    #[error("cannot wrap `{1}` with `{0}`: this type does not support references")]
+    RefOnNeverRefType(TypeId<'ctx>, crate::types::Type<'ctx>, Span),
+    #[error("cannot cast from `{0}` to `{1}`: the types are not related")]
+    ImpossibleDynCast(PolyType<'ctx>, PolyType<'ctx>, Span),
+    #[error("this cast is redundant; remove it")]
     RedundantDynCast(Span),
     #[error("{0}")]
     InaccessibleMethod(Box<InaccessibleMember<'ctx, MethodId<'ctx>>>, Span),
     #[error("{0}")]
     InaccessibleField(Box<InaccessibleMember<'ctx, FieldId<'ctx>>>, Span),
-    #[error("attempting to use a type with `ref` where none is expected")]
-    UnexpectedRef(Span),
-    #[error("attempting to use a type with no `ref` where one is expected")]
-    UnexpectedNonRef(Span),
-    #[error("calling a static method of `{type_id}` from its subclass, use `{}.{name}` instead", .type_id.simple_name())]
+    #[error("expected `{1}`, found `{0}`: a `ref` is not expected here")]
+    UnexpectedRef(PolyType<'ctx>, PolyType<'ctx>, Span),
+    #[error("expected `{1}`, found `{0}`: a `ref` is required here")]
+    UnexpectedNonRef(PolyType<'ctx>, PolyType<'ctx>, Span),
+    #[error(
+        "static method `{name}` is declared on `{type_id}`; qualify the call with `{type_id}.{name}(...)` instead of its subclass"
+    )]
     CallingBaseStaticMethod {
         type_id: TypeId<'ctx>,
         name: &'ctx str,
@@ -138,12 +139,12 @@ impl Error<'_> {
             | Self::InvalidNewType(span)
             | Self::InvalidConstructType(span)
             | Self::NewWithConstructible { span, .. }
-            | Self::InvalidDynCastType(span)
+            | Self::InvalidDynCastType(_, _, span)
             | Self::UnknownStaticCastType(span)
-            | Self::InvalidTypeArgCount(_, span)
+            | Self::InvalidTypeArgCount(_, _, span)
             | Self::ClassConstructorHasArguments(span)
-            | Self::UnsupportedArity(span)
-            | Self::UnsupportedStaticArraySize(span)
+            | Self::UnsupportedArity(_, span)
+            | Self::UnsupportedStaticArraySize(_, span)
             | Self::InvalidCaseLabel(span)
             | Self::CyclicType(span)
             | Self::LiteralOutOfRange(_, span)
@@ -157,13 +158,13 @@ impl Error<'_> {
             | Self::NonFullyDefinedNativeStructConstruction { span, .. }
             | Self::MissingBreakInCaseLet(span)
             | Self::FallthroughIntoPatternCase(span)
-            | Self::RefOnNeverRefType(span)
-            | Self::ImpossibleDynCast(_, span)
+            | Self::RefOnNeverRefType(_, _, span)
+            | Self::ImpossibleDynCast(_, _, span)
             | Self::RedundantDynCast(span)
             | Self::InaccessibleMethod(_, span)
             | Self::InaccessibleField(_, span)
-            | Self::UnexpectedRef(span)
-            | Self::UnexpectedNonRef(span)
+            | Self::UnexpectedRef(_, _, span)
+            | Self::UnexpectedNonRef(_, _, span)
             | Self::CallingBaseStaticMethod { span, .. }
             | Self::PrivateConstructor(_, _, span) => *span,
         }
@@ -184,11 +185,11 @@ impl Error<'_> {
             | Self::InstantiatingAbstract(_, _)
             | Self::NewWithConstructible { .. } => "INVALID_NEW_USE",
             Self::InvalidConstructType(_) => "INVALID_CONSTRUCT",
-            Self::InvalidDynCastType(_) => "INVALID_DYN_CAST",
+            Self::InvalidDynCastType(_, _, _) => "INVALID_DYN_CAST",
             Self::UnknownStaticCastType(_) => "INVALID_STATIC_CAST",
-            Self::InvalidTypeArgCount(_, _) => "INVALID_TYPE_ARG_COUNT",
-            Self::UnsupportedArity(_) => "UNSUPPORTED_ARITY",
-            Self::UnsupportedStaticArraySize(_) => "UNSUPPORTED_ARRAY_SIZE",
+            Self::InvalidTypeArgCount(_, _, _) => "INVALID_TYPE_ARG_COUNT",
+            Self::UnsupportedArity(_, _) => "UNSUPPORTED_ARITY",
+            Self::UnsupportedStaticArraySize(_, _) => "UNSUPPORTED_ARRAY_SIZE",
             Self::InvalidCaseLabel(_) => "INVALID_CASE_LABEL",
             Self::CyclicType(_) => "CYCLIC_TYPE",
             Self::LiteralOutOfRange(_, _) => "LIT_OUT_OF_RANGE",
@@ -200,13 +201,13 @@ impl Error<'_> {
             Self::DeprecatedNameOf(_) => "DEPRECATED_SYNTAX",
             Self::NonFullyDefinedNativeStructConstruction { .. } => "NON_FULLY_DEFINED_CTR",
             Self::MissingBreakInCaseLet(_) | Self::FallthroughIntoPatternCase(_) => "MISSING_BREAK",
-            Self::RefOnNeverRefType(_) => "REF_ON_NEVER_REF",
-            Self::ImpossibleDynCast(_, _) => "IMPOSSIBLE_DYN_CAST",
+            Self::RefOnNeverRefType(_, _, _) => "REF_ON_NEVER_REF",
+            Self::ImpossibleDynCast(_, _, _) => "IMPOSSIBLE_DYN_CAST",
             Self::RedundantDynCast(_) => "REDUNDANT_DYN_CAST",
             Self::InaccessibleMethod { .. } => "INACCESSIBLE_METHOD",
             Self::InaccessibleField { .. } => "INACCESSIBLE_FIELD",
-            Self::UnexpectedRef(_) => "UNEXPECTED_REF",
-            Self::UnexpectedNonRef(_) => "UNEXPECTED_NON_REF",
+            Self::UnexpectedRef(_, _, _) => "UNEXPECTED_REF",
+            Self::UnexpectedNonRef(_, _, _) => "UNEXPECTED_NON_REF",
             Self::CallingBaseStaticMethod { .. } => "CALLING_BASE_STATIC_METHOD",
             Self::PrivateConstructor(_, _, _) => "PRIVATE_CONSTRUCTOR",
         }
@@ -306,7 +307,7 @@ pub enum TypeError<'ctx> {
     Incompatible(InferredTypeApp<'ctx>, InferredTypeApp<'ctx>),
     #[error("type error: cannot unify `{0}` and `{1}`")]
     CannotUnify(InferredType<'ctx>, InferredType<'ctx>),
-    #[error("{0}\n  when comparing `{1}` and `{2}`")]
+    #[error("type mismatch: found `{1}` when expected `{2}`\n  caused by: {0}")]
     Nested(Box<Self>, InferredType<'ctx>, InferredType<'ctx>),
 }
 
@@ -341,16 +342,41 @@ impl fmt::Display for CoalesceError<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::CannotCoalesce(lower, upper) => {
-                write!(f, "type is too broad (`{lower}` <: T <: ")?;
+                write!(
+                    f,
+                    "cannot infer a single type; consider adding type annotations\n  inferred bounds: the type must be a supertype of `{lower}`"
+                )?;
                 if let Some(upper) = upper {
-                    write!(f, "`{upper}`")?;
+                    write!(f, " and a subtype of `{upper}`")
                 } else {
-                    write!(f, "`Any`")?;
+                    write!(f, "; no upper bound is known")
                 }
-                write!(f, ") for some type T; consider adding type annotations")
             }
         }
     }
 }
 
 impl std::error::Error for CoalesceError<'_> {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::Type;
+
+    #[test]
+    fn coalesce_errors_explain_inference_bounds() {
+        let lower = Type::nullary(predef::NOTHING);
+        let upper = Type::nullary(predef::INT32);
+        insta::assert_snapshot!(
+            CoalesceError::CannotCoalesce(lower.clone(), Some(upper)),
+            @r"
+        cannot infer a single type; consider adding type annotations
+          inferred bounds: the type must be a supertype of `Nothing` and a subtype of `Int32`
+        "
+        );
+        insta::assert_snapshot!(CoalesceError::CannotCoalesce(lower, None), @r"
+        cannot infer a single type; consider adding type annotations
+          inferred bounds: the type must be a supertype of `Nothing`; no upper bound is known
+        ");
+    }
+}

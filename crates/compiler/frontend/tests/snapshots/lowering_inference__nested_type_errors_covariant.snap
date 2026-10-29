@@ -1,0 +1,6 @@
+---
+source: crates/compiler/frontend/tests/lowering_inference.rs
+expression: "diagnostics[0].1"
+---
+type mismatch: found `Container<Animal>` when expected `Container<Dog>`
+  caused by: type mismatch: found `Animal` when expected `Dog`

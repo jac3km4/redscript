@@ -3,22 +3,22 @@ source: crates/compiler/frontend/tests/errors.rs
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/struct-subtyping.reds
 ---
-error[TYPE_ERR]: type mismatch: found `Super` when expected `Sub`
-  when comparing `Function1<Sub, Super>` and `Function1<Super, Sub>`
+error[TYPE_ERR]: type mismatch: found `Function1<Sub, Super>` when expected `Function1<Super, Sub>`
+  caused by: type mismatch: found `Super` when expected `Sub`
  --> tests/data/struct-subtyping.reds:25:12
    |
 25 |   AcceptFn(subToSuper); // Error
    |            ^^^^^^^^^^
 
-error[TYPE_ERR]: type mismatch: found `Super` when expected `Sub`
-  when comparing `Function1<Sub, Sub>` and `Function1<Super, Sub>`
+error[TYPE_ERR]: type mismatch: found `Function1<Sub, Sub>` when expected `Function1<Super, Sub>`
+  caused by: type mismatch: found `Super` when expected `Sub`
  --> tests/data/struct-subtyping.reds:27:12
    |
 27 |   AcceptFn(subToSub); // Error
    |            ^^^^^^^^
 
-error[TYPE_ERR]: type mismatch: found `Super` when expected `Sub`
-  when comparing `Function1<Super, Super>` and `Function1<Super, Sub>`
+error[TYPE_ERR]: type mismatch: found `Function1<Super, Super>` when expected `Function1<Super, Sub>`
+  caused by: type mismatch: found `Super` when expected `Sub`
  --> tests/data/struct-subtyping.reds:28:12
    |
 28 |   AcceptFn(superToSuper); // Error

@@ -12,7 +12,6 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         call_span: Span,
     ) -> LowerResult<'ctx, (ir::Expr<'ctx>, PolyType<'ctx>)> {
         if let &(ast::Expr::Ident("Cast"), _) = expr
-            && let [] | [_] = type_args
             && args.len() == 1
         {
             return self.lower_static_cast(args, type_args, hint, env, *expr_span);
@@ -80,8 +79,8 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             self.lower_expr(expr, env)?
         };
 
-        let type_id =
-            TypeId::fn_with_arity(args.len()).ok_or(Error::UnsupportedArity(call_span))?;
+        let type_id = TypeId::fn_with_arity(args.len())
+            .ok_or(Error::UnsupportedArity(args.len(), call_span))?;
         let mut checked_args = Vec::with_capacity(args.len());
         let mut arg_types = Vec::with_capacity(args.len());
         for arg in args {
@@ -120,7 +119,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             ([(target, target_span)], _) => self.resolve_type(target, env, *target_span)?,
             ([], Some(hint)) => hint.clone(),
             ([], None) => return Err(Error::UnknownStaticCastType(span)),
-            _ => return Err(Error::InvalidTypeArgCount(1, span)),
+            _ => return Err(Error::InvalidTypeArgCount(1, type_args.len(), span)),
         };
         let candidates = env
             .query_free_functions("Cast", self.symbols)
@@ -573,12 +572,13 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     .and_then(|t| self.symbols[t.id()].schema().as_aggregate())
                     .is_none_or(|agg| agg.flags().is_mixed_ref())
                 {
-                    self.reporter.report(Error::UnexpectedRef(span));
+                    self.reporter.report(Error::UnexpectedRef(lhs, rhs, span));
                 }
                 return Ok(());
             }
             Some(Coercion::IntoRef(RefType::Strong)) => {
-                self.reporter.report(Error::UnexpectedNonRef(span));
+                self.reporter
+                    .report(Error::UnexpectedNonRef(lhs, rhs, span));
                 return Ok(());
             }
             None => return Ok(()),
@@ -677,7 +677,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
     ) -> LowerResult<'ctx, ScopedMap<'scope, &'ctx str, PolyType<'ctx>>> {
         if !type_args.is_empty() && type_args.len() != type_.type_params().len() {
             let expected = type_.type_params().len();
-            return Err(Error::InvalidTypeArgCount(expected, span));
+            return Err(Error::InvalidTypeArgCount(expected, type_args.len(), span));
         }
 
         let map: ScopedMap<'_, _, _> = type_

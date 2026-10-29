@@ -9,25 +9,25 @@ error[INVALID_PLACE]: cannot assign to this expression
 11 |   ReturnsInt() = 2;
    |   ^^^^^^^^^^^^
 
-error[INVALID_TEMP]: the highlighted temporary value cannot be used in this expression, consider extracting it to a local
+error[INVALID_TEMP]: the highlighted temporary value cannot be used in this expression; consider extracting it to a local
  --> tests/data/expr-checks.reds:13:4
    |
 13 |   (Struct(2)).x;
    |    ^^^^^^^^^
 
-error[INVALID_TEMP]: the highlighted temporary value cannot be used in this expression, consider extracting it to a local
+error[INVALID_TEMP]: the highlighted temporary value cannot be used in this expression; consider extracting it to a local
  --> tests/data/expr-checks.reds:15:13
    |
 15 |   ArraySize(ReturnsArray());
    |             ^^^^^^^^^^^^^^
 
-error[INVALID_TEMP]: the highlighted temporary value cannot be used in this expression, consider extracting it to a local
+error[INVALID_TEMP]: the highlighted temporary value cannot be used in this expression; consider extracting it to a local
  --> tests/data/expr-checks.reds:16:3
    |
 16 |   ReturnsArray()[0] = 2;
    |   ^^^^^^^^^^^^^^
 
-error[INVALID_TEMP]: the highlighted temporary value cannot be used in this expression, consider extracting it to a local
+error[INVALID_TEMP]: the highlighted temporary value cannot be used in this expression; consider extracting it to a local
  --> tests/data/expr-checks.reds:18:15
    |
 18 |   HasOutParam(2);
