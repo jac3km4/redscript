@@ -137,7 +137,9 @@ impl<'i, Ctx: Endianess> TryRead<'i, (Ctx, DefinitionHeader)> for Definition<'i>
             ..
         } = header;
 
-        let in_bytes = &bytes[..size as _];
+        let in_bytes = bytes.get(..size as usize).ok_or(byte::Error::BadInput {
+            err: "definition size exceeds available bytes",
+        })?;
         let offset = &mut 0;
 
         const BAD_INDEX: byte::Error = byte::Error::BadInput {
@@ -1649,4 +1651,20 @@ impl<'i> DefinitionIndex<'i> for Field<'i> {
 
 impl<'i> DefinitionIndex<'i> for SourceFile<'i> {
     type Index = SourceFileIndex;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reject_truncated_definition_payload() {
+        for size in [1, u32::MAX] {
+            let header = DefinitionHeader {
+                size,
+                ..DefinitionHeader::default()
+            };
+            assert!(Definition::try_read(&[], (ENDIANESS, header)).is_err());
+        }
+    }
 }
