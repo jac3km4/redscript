@@ -1458,7 +1458,10 @@ impl Iterator for FunctionBodyIter<'_> {
                         *bytes = &bytes[size..];
                         Some(Ok(instr))
                     }
-                    Err(err) => Some(Err(err)),
+                    Err(err) => {
+                        *max_offset = *offset;
+                        Some(Err(err))
+                    }
                 }
             }
             FunctionBodyIter::Code(code) => Some(Ok(code.next()?.clone())),
@@ -1740,6 +1743,41 @@ mod tests {
         assert!(function.flags().has_parameters());
         assert_eq!(mem::take(&mut *function.parameters_mut()), vec![parameter]);
         assert!(!function.flags().has_parameters());
+    }
+
+    #[test]
+    fn exhaust_raw_body_after_decode_error() {
+        for bytes in [&[][..], &[0xFF][..], &[0x06, 0x01][..]] {
+            let body = FunctionBody::Raw {
+                max_offset: 10,
+                bytes: Cow::Borrowed(bytes),
+            };
+            let mut iter = body.code_iter();
+            assert!(iter.next().unwrap().is_err());
+            assert_eq!(iter.virtual_offset(), 0);
+            assert!(iter.next().is_none());
+            assert!(iter.next().is_none());
+            assert_eq!(body.code_iter().count(), 1);
+        }
+    }
+
+    #[test]
+    fn exhaust_raw_body_after_valid_instruction_then_error() {
+        let body = FunctionBody::Raw {
+            max_offset: 10,
+            bytes: Cow::Borrowed(&[0x00, 0xFF]),
+        };
+        let mut iter = body.code_iter();
+        assert_eq!(iter.next().unwrap().unwrap(), Instr::Nop);
+        assert_eq!(iter.virtual_offset(), 1);
+        assert!(iter.next().unwrap().is_err());
+        assert_eq!(iter.virtual_offset(), 1);
+        assert!(iter.next().is_none());
+        assert!(iter.next().is_none());
+        let offsets: Vec<_> = body.code_iter().with_offsets().collect();
+        assert_eq!(offsets.len(), 2);
+        assert_eq!(offsets[0].0, 0);
+        assert_eq!(offsets[1].0, 1);
     }
 
     #[test]
