@@ -102,7 +102,7 @@ fn assert_static_array(
     let TypeKind::StaticArray { element_type, size } = bundle[type_].kind() else {
         panic!("expected static array, got {:?}", bundle[type_]);
     };
-    assert_eq!(size, expected_size, "{}", &bundle[bundle[type_].name()]);
+    assert_eq!(size, expected_size, "{}", bundle[bundle[type_].name()]);
     element_type
 }
 
