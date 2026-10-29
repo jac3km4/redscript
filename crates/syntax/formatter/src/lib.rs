@@ -1,4 +1,5 @@
-use std::{convert::Infallible, fmt, mem};
+use std::convert::Infallible;
+use std::{fmt, mem};
 
 use hashbrown::HashMap;
 use pretty_dtoa::{FmtFloatConfig, dtoa, ftoa};
@@ -275,7 +276,11 @@ impl<K: AstKind> Formattable for Aggregate<'_, K> {
             write!(f, " extends {}", (**extends).as_wrapped().as_fmt(ctx))?;
         }
         writeln!(f, " {{")?;
-        format_items(self.items.iter().map(Wrapper::as_wrapped), f, ctx.indented())?;
+        format_items(
+            self.items.iter().map(Wrapper::as_wrapped),
+            f,
+            ctx.indented(),
+        )?;
         write!(f, "{}}}", ctx.indent())
     }
 }
@@ -356,7 +361,11 @@ impl<K: AstKind> Formattable for Block<'_, K> {
 
 impl<K: AstKind> Formattable for Stmt<'_, K> {
     fn format(&self, f: &mut fmt::Formatter<'_>, ctx: FormatCtx<'_>) -> fmt::Result {
-        write!(f, "{}", ctx.node_prefix(NodeId::stmt(self), Some(ctx.indent())))?;
+        write!(
+            f,
+            "{}",
+            ctx.node_prefix(NodeId::stmt(self), Some(ctx.indent()))
+        )?;
 
         match self {
             Stmt::Let { name, typ, value } => {
@@ -1683,4 +1692,3 @@ impl<'src> AstVisitor<'src, WithSpan> for PrefixCollector<'_, 'src> {
         stmts.iter().try_for_each(|stmt| self.visit_stmt(stmt))
     }
 }
-

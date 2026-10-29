@@ -90,7 +90,7 @@ impl fmt::Display for BytecodePrinter<'_> {
                             f,
                             "cname.const {} {:?}",
                             indices.name(idx),
-                            &self.bundle[idx]
+                            self.bundle[idx]
                         )?;
                     }
                     Instr::EnumConst { enum_, value } => {
@@ -106,7 +106,7 @@ impl fmt::Display for BytecodePrinter<'_> {
                             f,
                             "string.const {} {:?}",
                             indices.string(idx),
-                            &self.bundle[idx]
+                            self.bundle[idx]
                         )?;
                     }
                     Instr::TweakDbIdConst(idx) => {
@@ -114,7 +114,7 @@ impl fmt::Display for BytecodePrinter<'_> {
                             f,
                             "tweakdb.const {} {:?}",
                             indices.tweakdb(idx),
-                            &self.bundle[idx]
+                            self.bundle[idx]
                         )?;
                     }
                     Instr::ResourceConst(idx) => {
@@ -122,7 +122,7 @@ impl fmt::Display for BytecodePrinter<'_> {
                             f,
                             "resource.const {} {:?}",
                             indices.resource(idx),
-                            &self.bundle[idx]
+                            self.bundle[idx]
                         )?;
                     }
                     Instr::Local(idx) => {

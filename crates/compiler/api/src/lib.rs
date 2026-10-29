@@ -1,20 +1,19 @@
 use std::borrow::Cow;
-use std::fmt;
-use std::io;
 use std::path::Path;
+use std::{fmt, io};
 
 use bon::bon;
 pub use redscript_ast as ast;
 use redscript_ast::SourceMap;
 use redscript_compiler_backend::{AssembleError, PoolError, PoolMappings};
 pub use redscript_compiler_backend::{CompilationInputs, TypeFlagRegistry, TypeFlags};
-pub use redscript_compiler_frontend::UnknownSource;
 use redscript_compiler_frontend::pass::{DiagnosticPass, UnusedLocals};
 pub use redscript_compiler_frontend::{
     Aggregate, CompileErrorReporter, Diagnostic, DiagnosticLevel, Enum, Evaluator, Field, FieldId,
     FunctionType, LowerError, LoweredCompilationUnit, LoweredFunction, MethodId, PolyType,
     QueryError, Symbols, TypeError, TypeId, TypeIndex, TypeInterner, TypeSchema, TypeScope,
-    expr_type, infer_from_sources, ir, parse_file, parse_files, pass, process_sources, types,
+    UnknownSource, expr_type, infer_from_sources, ir, parse_file, parse_files, pass,
+    process_sources, types,
 };
 use redscript_io::byte;
 pub use redscript_io::{SaveError, ScriptBundle, WriteableBundle};

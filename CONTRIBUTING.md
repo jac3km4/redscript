@@ -15,6 +15,23 @@ rustup toolchain install nightly-2026-10-15 --profile minimal --component rustfm
 cargo +nightly-2026-10-15 fmt --all -- --check
 ```
 
+Stable rustfmt does not honor all repository formatting options. To apply
+formatting rather than check it, run:
+
+```sh
+cargo +nightly-2026-10-15 fmt --all
+```
+
+Keep `--all-targets` in the Clippy commands: CI lints test code too, so plain
+`cargo clippy` is not equivalent.
+
+Also validate the release build and generated documentation:
+
+```sh
+cargo build --workspace --release --locked
+cargo doc --workspace --all-features --no-deps --locked
+```
+
 Also check affected packages independently (for example,
 `cargo check -p scc-core --locked`). Workspace feature unification can hide missing
 dependency features in standalone builds.

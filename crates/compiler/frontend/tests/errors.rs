@@ -30,7 +30,7 @@ fn compilation_errors() {
 
 #[test]
 fn implicit_enum_overflow() {
-    let sources = SourceMap::from_files(&["tests/data/enum-resolution/overflow.reds"]).unwrap();
+    let sources = SourceMap::from_files(["tests/data/enum-resolution/overflow.reds"]).unwrap();
     sources.populate_boot_lib();
     let interner = TypeInterner::default();
     let mut reporter = CompileErrorReporter::default();
@@ -73,7 +73,7 @@ fn implicit_enum_overflow() {
 
 #[test]
 fn unused_locals() {
-    let sources = SourceMap::from_files(&["tests/data/passes/unused-locals.reds"]).unwrap();
+    let sources = SourceMap::from_files(["tests/data/passes/unused-locals.reds"]).unwrap();
     sources.populate_boot_lib();
     let interner = TypeInterner::default();
     let mut reporter = CompileErrorReporter::default();

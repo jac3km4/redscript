@@ -10,9 +10,17 @@ fn assignment_diagnostics_highlight_the_offending_operand() {
     sources.populate_boot_lib();
     let interner = TypeInterner::default();
     let mut reporter = CompileErrorReporter::default();
-    infer_from_sources(&sources, Symbols::with_default_types(), &mut reporter, &interner);
+    infer_from_sources(
+        &sources,
+        Symbols::with_default_types(),
+        &mut reporter,
+        &interner,
+    );
     let diagnostics = reporter.into_reported();
-    let invalid_place = diagnostics.iter().find(|d| d.code() == "INVALID_PLACE").unwrap();
+    let invalid_place = diagnostics
+        .iter()
+        .find(|d| d.code() == "INVALID_PLACE")
+        .unwrap();
     let mismatch = diagnostics.iter().find(|d| d.code() == "TYPE_ERR").unwrap();
     let file = sources.get(file).unwrap();
     assert_eq!(file.span_contents(invalid_place.span()), "Value()");

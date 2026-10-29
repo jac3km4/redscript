@@ -122,7 +122,8 @@ impl CompilationFailure {
 
 #[cfg(test)]
 mod tests {
-    use redscript_compiler_api::{Diagnostic, ast::Span};
+    use redscript_compiler_api::Diagnostic;
+    use redscript_compiler_api::ast::Span;
 
     use super::*;
 
