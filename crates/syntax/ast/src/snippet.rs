@@ -25,29 +25,55 @@ impl<'a> SourceSnippet<'a> {
     pub fn start(&self) -> &SourceLoc {
         &self.start
     }
+
+    fn write_line(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+        number: usize,
+        last_line: usize,
+        gutter: usize,
+    ) -> fmt::Result {
+        let line = self.file.line_contents(number).ok_or(fmt::Error)?;
+        let line = line.trim_end_matches(['\r', '\n']);
+        writeln!(f, "{:>gutter$} | {}", number + 1, expand_tabs(line))?;
+        let pad = if number == self.start.line {
+            display_column(line, self.start.col)
+        } else {
+            0
+        };
+        let end = if number == self.end.line {
+            display_column(line, self.end.col)
+        } else {
+            expand_tabs(line).width()
+        };
+        let length = end.saturating_sub(pad).max(1);
+        let continuation = if number < last_line { " ..." } else { "" };
+        writeln!(
+            f,
+            "{:gutter$} | {:pad$}{:^>length$}{continuation}",
+            "", "", ""
+        )
+    }
 }
 
 impl fmt::Display for SourceSnippet<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let line = self.file.line_contents(self.start.line).ok_or(fmt::Error)?;
-        let line = line.trim_end_matches(['\r', '\n']);
-        let gutter = (self.start.line + 1).to_string().len();
-        writeln!(f, "{:gutter$} |", "")?;
-        writeln!(
-            f,
-            "{:>gutter$} | {}",
-            self.start.line + 1,
-            expand_tabs(line)
-        )?;
-        let pad = display_column(line, self.start.col);
-        let length = if self.start.line == self.end.line {
-            display_column(line, self.end.col)
-                .saturating_sub(pad)
-                .max(1)
+        // Spans are half-open: ending at column zero does not include that line.
+        let last_line = if self.end.line > self.start.line && self.end.col == 0 {
+            self.end.line - 1
         } else {
-            3
+            self.end.line
         };
-        writeln!(f, "{:gutter$} | {:pad$}{:^>length$}", "", "", "")
+        let gutter = (last_line + 1).to_string().len();
+        writeln!(f, "{:gutter$} |", "")?;
+        self.write_line(f, self.start.line, last_line, gutter)?;
+        if last_line > self.start.line {
+            if last_line > self.start.line + 1 {
+                writeln!(f, "{:gutter$} | ...", "")?;
+            }
+            self.write_line(f, last_line, last_line, gutter)?;
+        }
+        Ok(())
     }
 }
 
@@ -107,6 +133,36 @@ mod tests {
         assert_eq!(
             render("a界e\u{301}", "界e\u{301}"),
             "  |\n1 | a界e\u{301}\n  |  ^^^\n"
+        );
+    }
+
+    #[test]
+    fn multiline_spans_show_endpoints_and_ellipsis() {
+        assert_eq!(
+            render("abc\nmiddle\nxyz", "bc\nmiddle\nxy"),
+            "  |\n1 | abc\n  |  ^^ ...\n  | ...\n3 | xyz\n  | ^^\n"
+        );
+        assert_eq!(
+            render("a\nb", "a\nb"),
+            "  |\n1 | a\n  | ^ ...\n2 | b\n  | ^\n"
+        );
+    }
+
+    #[test]
+    fn half_open_multiline_end_excludes_next_line() {
+        assert_eq!(render("abc\nnext", "bc\n"), "  |\n1 | abc\n  |  ^^\n");
+        assert_eq!(
+            render("abc\nmiddle\nnext", "bc\nmiddle\n"),
+            "  |\n1 | abc\n  |  ^^ ...\n2 | middle\n  | ^^^^^^\n"
+        );
+    }
+
+    #[test]
+    fn multiline_crlf_and_gutters() {
+        let source = format!("{}a\r\nb\r\nc", "\n".repeat(8));
+        assert_eq!(
+            render(&source, "a\r\nb\r\nc"),
+            "   |\n 9 | a\n   | ^ ...\n   | ...\n11 | c\n   | ^\n"
         );
     }
 
