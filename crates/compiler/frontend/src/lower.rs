@@ -976,7 +976,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             elems
                 .iter()
                 .try_fold((vec![], PolyType::fresh()), |(mut acc, elem_typ), elem| {
-                    let (mut elem, typ) = self.lower_expr(elem, env)?;
+                    let (mut elem, typ) = self.lower_expr_with(elem, elem_hint.as_ref(), env)?;
                     let typ = if let Some(hint) = &elem_hint {
                         let span = elem.span();
                         self.coerce(&mut elem, typ.clone(), hint.clone(), env, span)?;

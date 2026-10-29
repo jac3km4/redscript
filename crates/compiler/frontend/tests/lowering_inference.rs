@@ -2,7 +2,7 @@ use redscript_ast::SourceMap;
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{
     CompileErrorReporter, Diagnostic, LoweredCompilationUnit, Symbols, Type, TypeInterner,
-    infer_from_sources, predef,
+    infer_from_sources, ir, predef,
 };
 
 fn infer<'ctx>(
@@ -96,6 +96,66 @@ fn explicit_type_arguments_can_reference_enclosing_type_parameters() {
     let interner = TypeInterner::default();
     let (_, _, diagnostics) = infer(&sources, &interner);
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+fn array_elements_receive_contextual_type_hints() {
+    let sources = SourceMap::new();
+    sources.push_back(
+        "array-hints.reds",
+        r#"
+        func Test() {
+          let numbers: [Int64] = [1, -2];
+          let nested: [[Int16]] = [[1], [2]];
+          let callbacks: [(Int64) -> Int64] = [(x) -> x];
+        }
+        "#,
+    );
+    let interner = TypeInterner::default();
+    let (unit, symbols, diagnostics) = infer(&sources, &interner);
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    let entry = symbols
+        .free_functions()
+        .find(|entry| entry.name().to_string() == "Test")
+        .unwrap();
+    let function = &unit.functions[entry.key()];
+    let arrays: Vec<_> = function
+        .block
+        .stmts
+        .iter()
+        .filter_map(|stmt| {
+            if let ir::Stmt::InitArray { elements, .. } = stmt {
+                Some(elements)
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(arrays.len(), 5);
+    assert!(matches!(
+        &arrays[0][0],
+        ir::Expr::Const(ir::Const::I64(1), _)
+    ));
+    assert!(matches!(
+        &arrays[0][1],
+        ir::Expr::Const(ir::Const::I64(-2), _)
+    ));
+    assert!(matches!(
+        &arrays[1][0],
+        ir::Expr::Const(ir::Const::I16(1), _)
+    ));
+    assert!(matches!(
+        &arrays[2][0],
+        ir::Expr::Const(ir::Const::I16(2), _)
+    ));
+    let ir::Expr::NewClosure { closure, .. } = &arrays[4][0] else {
+        panic!("expected callback closure");
+    };
+    let typ = closure.typ.coalesced(&symbols).unwrap();
+    assert_eq!(
+        typ.args(),
+        &[Type::nullary(predef::INT64), Type::nullary(predef::INT64)]
+    );
 }
 
 #[test]
