@@ -463,6 +463,32 @@ impl<K: AstKind> Formattable for Stmt<'_, K> {
     }
 }
 
+fn format_constant(
+    value: &Constant<'_>,
+    f: &mut fmt::Formatter<'_>,
+    settings: &FormatSettings,
+) -> fmt::Result {
+    let config = match settings.trunc_sig_digits {
+        Some(digits) => FmtFloatConfig::default()
+            .max_significant_digits(digits)
+            .round(),
+        None => FmtFloatConfig::default(),
+    };
+    match value {
+        Constant::String(s) => write!(f, "\"{}\"", str::escape_default(s)),
+        Constant::CName(s) => write!(f, "n\"{}\"", str::escape_default(s)),
+        Constant::Resource(s) => write!(f, "r\"{}\"", str::escape_default(s)),
+        Constant::TweakDbId(s) => write!(f, "t\"{}\"", str::escape_default(s)),
+        &Constant::F32(v) => write!(f, "{}", ftoa(v, config)),
+        &Constant::F64(v) => write!(f, "{}d", dtoa(v, config)),
+        Constant::I32(v) => write!(f, "{v}"),
+        Constant::I64(v) => write!(f, "{v}l"),
+        Constant::U32(v) => write!(f, "{v}u"),
+        Constant::U64(v) => write!(f, "{v}ul"),
+        Constant::Bool(v) => write!(f, "{v}"),
+    }
+}
+
 trait ExprFormat {
     fn format_body(&self, f: &mut fmt::Formatter<'_>, ctx: FormatCtx<'_>) -> fmt::Result;
 }
@@ -478,35 +504,7 @@ impl<K: AstKind> ExprFormat for Expr<'_, K> {
     fn format_body(&self, f: &mut fmt::Formatter<'_>, ctx: FormatCtx<'_>) -> fmt::Result {
         match self {
             Expr::Ident(name) => write!(f, "{name}"),
-            Expr::Constant(value) => match (value, ctx.settings.trunc_sig_digits) {
-                (Constant::String(s), _) => write!(f, "\"{}\"", str::escape_default(s)),
-                (Constant::CName(s), _) => write!(f, "n\"{}\"", str::escape_default(s)),
-                (Constant::Resource(s), _) => write!(f, "r\"{}\"", str::escape_default(s)),
-                (Constant::TweakDbId(s), _) => write!(f, "t\"{}\"", str::escape_default(s)),
-                (&Constant::F32(v), Some(max_sig_digits)) => {
-                    let conf = FmtFloatConfig::default()
-                        .max_significant_digits(max_sig_digits)
-                        .round();
-                    write!(f, "{}", ftoa(v, conf))
-                }
-                (&Constant::F32(v), _) => {
-                    write!(f, "{}", ftoa(v, FmtFloatConfig::default()))
-                }
-                (&Constant::F64(v), Some(max_sig_digits)) => {
-                    let conf = FmtFloatConfig::default()
-                        .max_significant_digits(max_sig_digits)
-                        .round();
-                    write!(f, "{}d", dtoa(v, conf))
-                }
-                (&Constant::F64(v), _) => {
-                    write!(f, "{}d", dtoa(v, FmtFloatConfig::default()))
-                }
-                (Constant::I32(v), _) => write!(f, "{v}"),
-                (Constant::I64(v), _) => write!(f, "{v}l"),
-                (Constant::U32(v), _) => write!(f, "{v}u"),
-                (Constant::U64(v), _) => write!(f, "{v}ul"),
-                (Constant::Bool(v), _) => write!(f, "{v}"),
-            },
+            Expr::Constant(value) => format_constant(value, f, ctx.settings),
             Expr::ArrayLit(elems) => {
                 let ctx = ctx.without_parent_op();
                 write!(
