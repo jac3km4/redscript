@@ -251,7 +251,7 @@ impl Formattable for Import<'_> {
                 f,
                 "import {}.{{{}}}",
                 path.as_fmt(ctx),
-                SepBy(items.iter().map(Wrapper::as_wrapped), ", ", ctx)
+                SepBy::new(items.iter().map(Wrapper::as_wrapped), ", ", ctx)
             ),
             Import::All(path) => write!(f, "import {}.*", path.as_fmt(ctx)),
         }
@@ -265,7 +265,7 @@ impl<K: AstKind> Formattable for Aggregate<'_, K> {
             write!(
                 f,
                 "<{}>",
-                SepBy(self.type_params.iter().map(Wrapper::as_wrapped), ", ", ctx)
+                SepBy::new(self.type_params.iter().map(Wrapper::as_wrapped), ", ", ctx)
             )?;
         }
         if let Some(extends) = &self.extends {
@@ -299,7 +299,7 @@ impl<K: AstKind> Formattable for Function<'_, K> {
             write!(
                 f,
                 "<{}>",
-                SepBy(self.type_params.iter().map(Wrapper::as_wrapped), ", ", ctx)
+                SepBy::new(self.type_params.iter().map(Wrapper::as_wrapped), ", ", ctx)
             )?;
         }
         write!(
@@ -623,11 +623,16 @@ fn format_expr_body<K: AstKind>(
                 write!(
                     f,
                     "(({}) -> {})",
-                    SepBy(params, ", ", ctx),
+                    SepBy::new(params, ", ", ctx),
                     body.as_fmt(ctx)
                 )
             } else {
-                write!(f, "({}) -> {}", SepBy(params, ", ", ctx), body.as_fmt(ctx))
+                write!(
+                    f,
+                    "({}) -> {}",
+                    SepBy::new(params, ", ", ctx),
+                    body.as_fmt(ctx)
+                )
             }
         }
         Expr::This => write!(f, "this"),
@@ -673,7 +678,7 @@ impl<K: AstKind> Formattable for Type<'_, K> {
                 f,
                 "{}<{}>",
                 name,
-                SepBy(args.iter().map(Wrapper::as_wrapped), ", ", ctx)
+                SepBy::new(args.iter().map(Wrapper::as_wrapped), ", ", ctx)
             ),
             Type::Array(el) => write!(f, "[{}]", (**el).as_wrapped().as_fmt(ctx)),
             Type::StaticArray(el, size) => {
@@ -686,7 +691,7 @@ impl<K: AstKind> Formattable for Type<'_, K> {
                 write!(
                     f,
                     "({}) -> {}",
-                    SepBy(params.iter().map(Wrapper::as_wrapped), ", ", ctx),
+                    SepBy::new(params.iter().map(Wrapper::as_wrapped), ", ", ctx),
                     (**return_type).as_wrapped().as_fmt(ctx)
                 )
             }
@@ -700,7 +705,7 @@ impl<K: AstKind> Formattable for Annotation<'_, K> {
             f,
             "@{}({})",
             self.name,
-            SepBy(self.args.iter().map(Wrapper::as_wrapped), ", ", ctx)
+            SepBy::new(self.args.iter().map(Wrapper::as_wrapped), ", ", ctx)
         )
     }
 }
@@ -710,7 +715,7 @@ impl Formattable for Path<'_> {
         write!(
             f,
             "{}",
-            SepBy(self.segments.iter().map(Wrapper::as_wrapped), ".", ctx)
+            SepBy::new(self.segments.iter().map(Wrapper::as_wrapped), ".", ctx)
         )
     }
 }
@@ -775,7 +780,7 @@ impl<K: AstKind> Formattable for Pattern<'_, K> {
                 write!(
                     f,
                     "{}",
-                    SepByMultiline::new(elems.as_wrapped().iter(), ", ", ctx).with_padding("")
+                    SepByMultiline::new(elems.as_wrapped().iter(), ", ", ctx)
                 )?;
                 if matches!(spread, ArraySpread::End) {
                     write!(f, ", ..")?;
@@ -916,18 +921,32 @@ impl fmt::Display for Indent {
     }
 }
 
-struct SepBy<'s, I>(I, &'static str, FormatCtx<'s>);
+struct SepBy<'s, I> {
+    iter: I,
+    separator: &'static str,
+    ctx: FormatCtx<'s>,
+}
+
+impl<'s, I> SepBy<'s, I> {
+    fn new(iter: I, separator: &'static str, ctx: FormatCtx<'s>) -> Self {
+        Self {
+            iter,
+            separator,
+            ctx,
+        }
+    }
+}
 
 impl<I: Iterator + Clone> fmt::Display for SepBy<'_, I>
 where
     I::Item: Formattable,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (i, item) in self.0.clone().enumerate() {
+        for (i, item) in self.iter.clone().enumerate() {
             if i > 0 {
-                write!(f, "{}", self.1)?;
+                write!(f, "{}", self.separator)?;
             }
-            write!(f, "{}", item.as_fmt(self.2))?;
+            write!(f, "{}", item.as_fmt(self.ctx))?;
         }
         Ok(())
     }
@@ -983,7 +1002,11 @@ where
             writeln!(f)?;
             write!(f, "{}", ctx.decrement().indent())
         } else {
-            write!(f, "{padding}{}{padding}", SepBy(iter.clone(), ", ", *ctx))
+            write!(
+                f,
+                "{padding}{}{padding}",
+                SepBy::new(iter.clone(), ", ", *ctx)
+            )
         }
     }
 }
@@ -1194,7 +1217,7 @@ fn format_call_args<K: AstKind>(
         write!(
             f,
             "<{}>",
-            SepBy(type_args.iter().map(Wrapper::as_wrapped), ", ", ctx)
+            SepBy::new(type_args.iter().map(Wrapper::as_wrapped), ", ", ctx)
         )?;
     }
     write!(
