@@ -27,33 +27,51 @@ impl<'a> Evaluator<'a> {
     pub fn eval(&self, (expr, span): &Spanned<ast::SourceExpr<'_>>) -> Result<Value, Error> {
         let res = match expr {
             ast::Expr::Constant(ast::Constant::Bool(b)) => Value::Bool(*b),
-            ast::Expr::BinOp { lhs, op, rhs } => match (self.eval(lhs)?, self.eval(rhs)?) {
-                (Value::Bool(lhs), Value::Bool(rhs)) => match op {
-                    ast::BinOp::And => Value::Bool(lhs && rhs),
-                    ast::BinOp::Or => Value::Bool(lhs || rhs),
-                    _ => return Err(Error::UnsupportedOperation(*span)),
-                },
-            },
-            ast::Expr::UnOp { op, expr } => match (op, self.eval(expr)?) {
-                (ast::UnOp::Not, Value::Bool(b)) => Value::Bool(!b),
-                _ => return Err(Error::UnsupportedOperation(*span)),
-            },
+            ast::Expr::BinOp { lhs, op, rhs } => {
+                if !matches!(op, ast::BinOp::And | ast::BinOp::Or) {
+                    return Err(Error::UnsupportedBinaryOperator(*op, *span));
+                }
+                let (Value::Bool(lhs), Value::Bool(rhs)) = (self.eval(lhs)?, self.eval(rhs)?);
+                Value::Bool(match op {
+                    ast::BinOp::And => lhs && rhs,
+                    ast::BinOp::Or => lhs || rhs,
+                    _ => unreachable!(),
+                })
+            }
+            ast::Expr::UnOp { op, expr } => {
+                if !matches!(op, ast::UnOp::Not) {
+                    return Err(Error::UnsupportedUnaryOperator(*op, *span));
+                }
+                let Value::Bool(b) = self.eval(expr)?;
+                Value::Bool(!b)
+            }
             ast::Expr::Call {
                 expr,
                 type_args,
                 args,
-            } => match (&**expr, &**type_args, &**args) {
-                (
-                    (ast::Expr::Ident("ModuleExists"), _),
-                    [],
-                    [(ast::Expr::Constant(ast::Constant::String(str)), _)],
-                ) => {
-                    let path = str.split('.').collect::<Vec<_>>();
-                    Value::Bool(self.modules.contains(&path[..]))
+            } => {
+                if !matches!(expr.0, ast::Expr::Ident("ModuleExists")) {
+                    return Err(Error::UnknownFunction(callee_name(&expr.0), expr.1));
                 }
-                _ => return Err(Error::UnsupportedOperation(*span)),
-            },
-            _ => return Err(Error::UnsupportedOperation(*span)),
+                if let Some((_, span)) = type_args.first() {
+                    return Err(Error::MalformedModuleExists(*span));
+                }
+                match &**args {
+                    [(ast::Expr::Constant(ast::Constant::String(str)), _)] => {
+                        let path = str.split('.').collect::<Vec<_>>();
+                        Value::Bool(self.modules.contains(&path[..]))
+                    }
+                    [(_, span)] => return Err(Error::MalformedModuleExists(*span)),
+                    _ => {
+                        let span = match (args.first(), args.last()) {
+                            (Some((_, first)), Some((_, last))) => first.merge(last),
+                            _ => *span,
+                        };
+                        return Err(Error::MalformedModuleExists(span));
+                    }
+                }
+            }
+            _ => return Err(Error::ExpectedBoolean(*span)),
         };
         Ok(res)
     }
@@ -65,14 +83,269 @@ pub enum Value {
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("unsupported operation")]
-    UnsupportedOperation(Span),
+    #[error("expected a compile-time boolean expression")]
+    ExpectedBoolean(Span),
+    #[error("unsupported compile-time unary operator `{}`; only `!` is supported", unary_symbol(.0))]
+    UnsupportedUnaryOperator(ast::UnOp, Span),
+    #[error("unsupported compile-time binary operator `{}`; only `&&` and `||` are supported", binary_symbol(.0))]
+    UnsupportedBinaryOperator(ast::BinOp, Span),
+    #[error("unknown compile-time function{}; only `ModuleExists` is supported", .0.as_ref().map(|name| format!(" `{name}`")).unwrap_or_default())]
+    UnknownFunction(Option<String>, Span),
+    #[error("`ModuleExists` requires exactly one string literal argument and no type arguments")]
+    MalformedModuleExists(Span),
 }
 
 impl Error {
     pub fn span(&self) -> Span {
         match self {
-            Self::UnsupportedOperation(span) => *span,
+            Self::ExpectedBoolean(span)
+            | Self::UnsupportedUnaryOperator(_, span)
+            | Self::UnsupportedBinaryOperator(_, span)
+            | Self::UnknownFunction(_, span)
+            | Self::MalformedModuleExists(span) => *span,
+        }
+    }
+}
+
+fn unary_symbol(op: &ast::UnOp) -> &'static str {
+    match op {
+        ast::UnOp::BitNot => "~",
+        ast::UnOp::Not => "!",
+        ast::UnOp::Neg => "-",
+    }
+}
+
+fn binary_symbol(op: &ast::BinOp) -> &'static str {
+    match op {
+        ast::BinOp::AssignAdd => "+=",
+        ast::BinOp::AssignSub => "-=",
+        ast::BinOp::AssignMul => "*=",
+        ast::BinOp::AssignDiv => "/=",
+        ast::BinOp::AssignBitOr => "|=",
+        ast::BinOp::AssignBitAnd => "&=",
+        ast::BinOp::Or => "||",
+        ast::BinOp::And => "&&",
+        ast::BinOp::BitOr => "|",
+        ast::BinOp::BitXor => "^",
+        ast::BinOp::BitAnd => "&",
+        ast::BinOp::Eq => "==",
+        ast::BinOp::Ne => "!=",
+        ast::BinOp::Lt => "<",
+        ast::BinOp::Le => "<=",
+        ast::BinOp::Gt => ">",
+        ast::BinOp::Ge => ">=",
+        ast::BinOp::Add => "+",
+        ast::BinOp::Sub => "-",
+        ast::BinOp::Mul => "*",
+        ast::BinOp::Div => "/",
+        ast::BinOp::Mod => "%",
+    }
+}
+
+fn callee_name(expr: &ast::SourceExpr<'_>) -> Option<String> {
+    match expr {
+        ast::Expr::Ident(name) => Some((*name).to_owned()),
+        ast::Expr::Member { expr, member } => {
+            callee_name(&expr.0).map(|name| format!("{name}.{member}"))
+        }
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Diagnostic;
+
+    fn parse(source: &str) -> Spanned<ast::SourceExpr<'_>> {
+        let file = ast::SourceMap::new().push_back("cte.reds", source);
+        let (expr, errors) = redscript_parser::parse_expr(source, file);
+        assert!(errors.is_empty(), "{source}: {errors:?}");
+        (
+            expr.expect("expected an expression"),
+            Span::new(0, source.len() as u32, file),
+        )
+    }
+
+    fn assert_error(source: &str, highlighted: &str, message: &str) -> Error {
+        let expr = parse(source);
+        let error = Evaluator::new(HashSet::new())
+            .eval(&expr)
+            .err()
+            .expect("expected an evaluation error");
+        let start = source.find(highlighted).unwrap() as u32;
+        assert_eq!(
+            error.span(),
+            Span::new(start, start + highlighted.len() as u32, expr.1.file),
+            "{source}"
+        );
+        assert_eq!(error.to_string(), message, "{source}");
+        error
+    }
+
+    #[test]
+    fn evaluates_boolean_expressions_and_module_exists() {
+        let evaluator = Evaluator::new(HashSet::from([Box::from(["Test", "Present"])]));
+        for (source, expected) in [
+            ("true", true),
+            ("false", false),
+            ("!true", false),
+            ("!false", true),
+            ("true && false", false),
+            ("true && true", true),
+            ("false || true", true),
+            ("false || false", false),
+            (r#"ModuleExists("Test.Present")"#, true),
+            (r#"ModuleExists("Test.Missing")"#, false),
+            (r#"!ModuleExists("Test.Missing") && (false || true)"#, true),
+        ] {
+            let Value::Bool(actual) = evaluator.eval(&parse(source)).unwrap();
+            assert_eq!(actual, expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn expects_compile_time_boolean_expression() {
+        for (source, highlighted) in [
+            ("42", "42"),
+            (r#""text""#, r#""text""#),
+            ("value", "value"),
+            ("!42", "42"),
+            ("true && value", "value"),
+            ("false || value", "value"),
+            // Keep evaluating both operands, even when the left determines the result.
+            ("false && value", "value"),
+            ("true || value", "value"),
+        ] {
+            assert!(matches!(
+                assert_error(
+                    source,
+                    highlighted,
+                    "expected a compile-time boolean expression"
+                ),
+                Error::ExpectedBoolean(_)
+            ));
+        }
+    }
+
+    #[test]
+    fn rejects_unsupported_unary_operators_before_operands() {
+        for (source, op, symbol) in [
+            ("-42", ast::UnOp::Neg, "-"),
+            ("~42", ast::UnOp::BitNot, "~"),
+        ] {
+            let message = format!(
+                "unsupported compile-time unary operator `{symbol}`; only `!` is supported"
+            );
+            assert!(matches!(
+                assert_error(source, source, &message),
+                Error::UnsupportedUnaryOperator(actual, _) if actual == op
+            ));
+        }
+    }
+
+    #[test]
+    fn rejects_unsupported_binary_operators_before_operands() {
+        for (source, op, symbol) in [
+            ("1 + 2", ast::BinOp::Add, "+"),
+            ("1 - 2", ast::BinOp::Sub, "-"),
+            ("1 * 2", ast::BinOp::Mul, "*"),
+            ("1 / 2", ast::BinOp::Div, "/"),
+            ("1 % 2", ast::BinOp::Mod, "%"),
+            ("1 | 2", ast::BinOp::BitOr, "|"),
+            ("1 & 2", ast::BinOp::BitAnd, "&"),
+            ("1 ^ 2", ast::BinOp::BitXor, "^"),
+            ("true == false", ast::BinOp::Eq, "=="),
+            ("true != false", ast::BinOp::Ne, "!="),
+            ("1 < 2", ast::BinOp::Lt, "<"),
+            ("1 <= 2", ast::BinOp::Le, "<="),
+            ("1 > 2", ast::BinOp::Gt, ">"),
+            ("1 >= 2", ast::BinOp::Ge, ">="),
+            ("value += 1", ast::BinOp::AssignAdd, "+="),
+            ("value -= 1", ast::BinOp::AssignSub, "-="),
+            ("value *= 1", ast::BinOp::AssignMul, "*="),
+            ("value /= 1", ast::BinOp::AssignDiv, "/="),
+            ("value |= 1", ast::BinOp::AssignBitOr, "|="),
+            ("value &= 1", ast::BinOp::AssignBitAnd, "&="),
+        ] {
+            let message = format!(
+                "unsupported compile-time binary operator `{symbol}`; only `&&` and `||` are supported"
+            );
+            assert!(matches!(
+                assert_error(source, source, &message),
+                Error::UnsupportedBinaryOperator(actual, _) if actual == op
+            ));
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_compile_time_functions_at_callee() {
+        for (source, highlighted, name) in [
+            ("Other()", "Other", Some("Other")),
+            ("Other<Int32>(42)", "Other", Some("Other")),
+            (
+                r#"moduleExists("Test")"#,
+                "moduleExists",
+                Some("moduleExists"),
+            ),
+            (
+                r#"object.ModuleExists("Test")"#,
+                "object.ModuleExists",
+                Some("object.ModuleExists"),
+            ),
+            ("true()", "true", None),
+        ] {
+            let message = match name {
+                Some(name) => format!(
+                    "unknown compile-time function `{name}`; only `ModuleExists` is supported"
+                ),
+                None => {
+                    "unknown compile-time function; only `ModuleExists` is supported".to_owned()
+                }
+            };
+            assert!(matches!(
+                assert_error(source, highlighted, &message),
+                Error::UnknownFunction(actual, _) if actual.as_deref() == name
+            ));
+        }
+    }
+
+    #[test]
+    fn rejects_malformed_module_exists_at_invalid_arguments() {
+        for (source, highlighted) in [
+            ("ModuleExists()", "ModuleExists()"),
+            ("ModuleExists(42)", "42"),
+            ("ModuleExists(true)", "true"),
+            ("ModuleExists(name)", "name"),
+            (r#"ModuleExists("A" + "B")"#, r#""A" + "B""#),
+            (r#"ModuleExists("A", "B")"#, r#""A", "B""#),
+            (r#"ModuleExists<Int32>("A")"#, "Int32"),
+            ("ModuleExists<Int32>()", "Int32"),
+        ] {
+            assert!(matches!(
+                assert_error(
+                    source,
+                    highlighted,
+                    "`ModuleExists` requires exactly one string literal argument and no type arguments"
+                ),
+                Error::MalformedModuleExists(_)
+            ));
+        }
+    }
+
+    #[test]
+    fn diagnostic_preserves_cte_code_and_error_span() {
+        for source in ["value", "-42", "1 + 2", "Other()", "ModuleExists(42)"] {
+            let error = Evaluator::new(HashSet::new())
+                .eval(&parse(source))
+                .err()
+                .expect("expected an evaluation error");
+            let span = error.span();
+            let message = error.to_string();
+            let diagnostic = Diagnostic::from(error);
+            assert_eq!(diagnostic.code(), "CTE_ERR");
+            assert_eq!(diagnostic.span(), span);
+            assert_eq!(diagnostic.to_string(), message);
         }
     }
 }
