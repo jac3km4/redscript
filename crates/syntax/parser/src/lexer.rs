@@ -90,7 +90,7 @@ pub fn lex<'src>(
 
     let line_comment = just("//")
         .ignored()
-        .then_ignore(any().and_is(just('\n').not()).repeated())
+        .then_ignore(any().and_is(text::newline().not()).repeated())
         .to_slice()
         .map(|str: &str| {
             if str.starts_with("///") && !str.starts_with("////") {
@@ -628,6 +628,48 @@ mod tests {
                     .any(|(tok, _)| matches!(tok, Token::BlockComment(_))),
                 keep_comments
             );
+        }
+    }
+
+    #[test]
+    fn line_comments_stop_at_lexer_newlines() {
+        let file = FileId::from_i32(7);
+        for newline in [
+            "\n", "\r\n", "\r", "\u{B}", "\u{C}", "\u{85}", "\u{2028}", "\u{2029}",
+        ] {
+            for comment in ["// comment", "/// doc", "//// ordinary"] {
+                let src = format!("{comment}{newline}42");
+                let end = comment.len() as u32;
+                let next = end + newline.len() as u32;
+                let expected = if comment == "/// doc" {
+                    Token::DocComment(comment)
+                } else {
+                    Token::LineComment(comment)
+                };
+                let (tokens, errors) = crate::lex_with_lf_and_comments(&src, file);
+                assert!(errors.is_empty(), "{src:?}: {errors:?}");
+                assert_eq!(
+                    tokens.unwrap(),
+                    vec![
+                        (expected, Span::new(0, end, file)),
+                        (Token::LineFeed, Span::new(end, next, file)),
+                        (Token::Int(42), Span::new(next, next + 2, file)),
+                    ],
+                    "{src:?}"
+                );
+            }
+            let src = format!("// comment{newline}42");
+            let start = src.len() as u32 - 2;
+            let (tokens, errors) = crate::lex(&src, file);
+            assert!(errors.is_empty(), "{src:?}: {errors:?}");
+            assert_eq!(
+                tokens.unwrap(),
+                vec![(Token::Int(42), Span::new(start, start + 2, file))],
+                "{src:?}"
+            );
+            let (expr, errors) = crate::parse_expr(&src, file);
+            assert!(errors.is_empty(), "{src:?}: {errors:?}");
+            assert!(expr.is_some(), "{src:?}");
         }
     }
 
