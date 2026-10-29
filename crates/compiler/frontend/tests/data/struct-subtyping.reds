@@ -23,7 +23,7 @@ func Test() {
   let sup: Super;
 
   AcceptFn(subToSuper); // Error
-  AcceptFn(superToSub); // Error
+  AcceptFn(superToSub); // OK
   AcceptFn(subToSub); // Error
   AcceptFn(superToSuper); // Error
 
