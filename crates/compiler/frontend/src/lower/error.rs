@@ -88,7 +88,7 @@ pub enum Error<'ctx> {
     #[error(
         "`{type_id}` is a native struct with an incomplete script definition, passing arguments to its \
         constructor might result in undefined behavior, it can however still be safely \
-        constructed without arguments: `new {}()`"
+        constructed without arguments: `{}()`"
     , .type_id.simple_name())]
     NonFullyDefinedNativeStructConstruction { type_id: TypeId<'ctx>, span: Span },
     #[error("`case let` block must end with a `break` or `return` statement")]
