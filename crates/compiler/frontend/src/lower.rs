@@ -2319,10 +2319,22 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         type_args: &[PolyType<'ctx>],
         span: Span,
     ) -> LowerResult<'ctx, ScopedMap<'scope, &'ctx str, PolyType<'ctx>>> {
+        if !type_args.is_empty() && type_args.len() != type_.type_params().len() {
+            let expected = type_.type_params().len();
+            return Err(Error::InvalidTypeArgCount(expected, span));
+        }
+
         let map: ScopedMap<'_, _, _> = type_
             .type_params()
             .iter()
-            .map(|var| (var.name(), PolyType::fresh()))
+            .enumerate()
+            .map(|(index, var)| {
+                let typ = type_args
+                    .get(index)
+                    .cloned()
+                    .unwrap_or_else(PolyType::fresh);
+                (var.name(), typ)
+            })
             .collect();
 
         for ((_, var), param) in map.top().iter().zip(type_.type_params()) {
@@ -2338,19 +2350,6 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     .constrain_base(var, self.symbols)
                     .with_span(span)?;
             }
-        }
-
-        if type_args.is_empty() {
-            return Ok(map);
-        }
-
-        if type_args.len() != type_.type_params().len() {
-            let expected = type_.type_params().len();
-            return Err(Error::InvalidTypeArgCount(expected, span));
-        }
-
-        for ((_, var), arg) in map.top().iter().zip(type_args) {
-            arg.constrain_base(var, self.symbols).with_span(span)?;
         }
 
         Ok(map)

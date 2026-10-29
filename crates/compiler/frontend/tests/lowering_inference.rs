@@ -25,6 +25,80 @@ fn infer<'ctx>(
 }
 
 #[test]
+fn explicit_type_arguments_cannot_widen_to_fit_values() {
+    let sources = SourceMap::new();
+    sources.push_back(
+        "explicit-type-arguments.reds",
+        r#"
+        class Animal {}
+        class Dog extends Animal {}
+        func Take<T>(value: T) {}
+        func Test(animal: Animal) { Take<Dog>(animal); }
+        "#,
+    );
+    let interner = TypeInterner::default();
+    let (_, _, diagnostics) = infer(&sources, &interner);
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics[0].code(), "TYPE_ERR");
+    let message = diagnostics[0].to_string();
+    assert!(
+        message.contains("Animal") && message.contains("Dog"),
+        "{message}"
+    );
+}
+
+#[test]
+fn explicit_type_arguments_accept_subtypes_and_check_declared_bounds() {
+    for (argument, expected_errors) in [("Animal", 0), ("Dog", 0), ("Chair", 1)] {
+        let sources = SourceMap::new();
+        sources.push_back(
+            "explicit-type-bounds.reds",
+            format!(
+                r#"
+                class Animal {{}}
+                class Dog extends Animal {{}}
+                class Chair {{}}
+                func Take<T extends Animal>(value: T) {{}}
+                func Test(value: Dog, chair: Chair) {{ Take<{argument}>({value}); }}
+                "#,
+                value = if argument == "Chair" {
+                    "chair"
+                } else {
+                    "value"
+                },
+            ),
+        );
+        let interner = TypeInterner::default();
+        let (_, _, diagnostics) = infer(&sources, &interner);
+        assert_eq!(
+            diagnostics.len(),
+            expected_errors,
+            "{argument}: {diagnostics:?}"
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code() == "TYPE_ERR")
+        );
+    }
+}
+
+#[test]
+fn explicit_type_arguments_can_reference_enclosing_type_parameters() {
+    let sources = SourceMap::new();
+    sources.push_back(
+        "explicit-context-type.reds",
+        r#"
+        func Identity<T>(value: T) -> T { return value; }
+        func Outer<U>(value: U) -> U { return Identity<U>(value); }
+        "#,
+    );
+    let interner = TypeInterner::default();
+    let (_, _, diagnostics) = infer(&sources, &interner);
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
 fn block_lambdas_infer_return_types_after_lowering_the_body() {
     let sources = SourceMap::new();
     sources.push_back(
