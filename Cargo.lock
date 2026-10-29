@@ -963,6 +963,7 @@ dependencies = [
  "derive-where",
  "elsa",
  "ignore",
+ "unicode-width",
 ]
 
 [[package]]

@@ -1,5 +1,6 @@
 mod ast;
 mod files;
+mod snippet;
 mod span;
 mod visitor;
 
@@ -10,6 +11,7 @@ pub use ast::{
     QueryResult, Stmt, StrPart, Type, TypeParam, UnOp, Variance, Visibility, WithSpan, Wrapper,
 };
 pub use files::{File, SourceLoc, SourceMap};
+pub use snippet::SourceSnippet;
 pub use span::{FileId, Span};
 pub use visitor::{AstNode, AstVisitor, NodeId};
 

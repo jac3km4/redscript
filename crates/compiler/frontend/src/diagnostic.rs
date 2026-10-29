@@ -241,9 +241,8 @@ impl<'ctx> Diagnostic<'ctx> {
     ) -> Result<impl fmt::Display + use<'a, 'ctx>, UnknownSource> {
         let span = self.span();
         let file = sources.get(span.file).ok_or(UnknownSource(span))?;
-        let start = file.lookup(span.start);
-        let end = file.lookup(span.end);
-        let line = file.line_contents(start.line).ok_or(UnknownSource(span))?;
+        let snippet = ast::SourceSnippet::new(file, span).ok_or(UnknownSource(span))?;
+        let start = snippet.start().clone();
 
         Ok(DisplayFn::new(move |f: &mut fmt::Formatter<'_>| {
             writeln!(
@@ -255,15 +254,7 @@ impl<'ctx> Diagnostic<'ctx> {
                 start.col + 1
             )?;
 
-            writeln!(f, "{}", line.trim_end())?;
-
-            let pad = start.col;
-            let underline_len = if start.line == end.line {
-                (end.col - start.col).max(1)
-            } else {
-                3
-            };
-            writeln!(f, "{:>pad$}{:^>underline_len$}", "", "")?;
+            write!(f, "{snippet}")?;
             writeln!(f, "{self}")
         }))
     }

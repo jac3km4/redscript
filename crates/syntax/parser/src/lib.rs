@@ -7,7 +7,7 @@ use chumsky::prelude::*;
 pub use lexer::Token;
 use parser::{Parse, ParserInput};
 use redscript_ast::{
-    self as ast, FileId, SourceExpr, SourceItem, SourceItemDecl, SourceLoc, SourceMap,
+    self as ast, FileId, SourceExpr, SourceItem, SourceItemDecl, SourceMap,
     SourceModule, SourceStmt, Span, Spanned,
 };
 
@@ -156,16 +156,8 @@ impl Error {
     pub fn display<'a>(&'a self, sources: &'a SourceMap) -> Option<impl fmt::Display + use<'a>> {
         let span = self.span();
         let file = sources.get(span.file)?;
-        let start = file.lookup(span.start);
-        let end = file.lookup(span.end);
-        let line = file.line_contents(start.line)?;
-        Some(ErrorDisplay {
-            file,
-            start,
-            end,
-            line,
-            err: self,
-        })
+        let snippet = ast::SourceSnippet::new(file, span)?;
+        Some(ErrorDisplay { file, snippet, err: self })
     }
 
     pub fn span(&self) -> Span {
@@ -199,31 +191,23 @@ impl<T: fmt::Display, S> fmt::Display for FormattedError<'_, T, S> {
 #[derive(Debug)]
 struct ErrorDisplay<'a> {
     file: &'a ast::File,
-    start: SourceLoc,
-    end: SourceLoc,
-    line: &'a str,
+    snippet: ast::SourceSnippet<'a>,
     err: &'a Error,
 }
 
 impl fmt::Display for ErrorDisplay<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let start = self.snippet.start();
         writeln!(
             f,
             "At {}:{}:{}",
             self.file.path().display(),
-            self.start.line + 1,
-            self.start.col + 1
+            start.line + 1,
+            start.col + 1
         )?;
 
-        writeln!(f, "{}", self.line.trim_end())?;
-
-        let pad = self.start.col;
-        let underline_len = if self.start.line == self.end.line {
-            (self.end.col - self.start.col).max(1)
-        } else {
-            3
-        };
-        writeln!(f, "{:>pad$}{:^>underline_len$}", "", "")?;
+        write!(f, "{}", self.snippet)?;
         writeln!(f, "{}", self.err)
     }
 }
+
