@@ -449,6 +449,7 @@ impl<'i, A> StringPool<'i, A> {
         }
     }
 
+    /// Adds a string to the pool. Embedded NUL bytes are rejected when encoding the bundle.
     #[inline]
     pub fn add(&mut self, string: impl Into<Str<'i>>) -> PoolIndex<A> {
         let (index, _) = self.strings.insert_full(string.into());
@@ -547,6 +548,16 @@ impl WriteableBundle<'_> {
 
 impl<Ctx: Endianess> TryWrite<Ctx> for WriteableBundle<'_> {
     fn try_write(&self, bytes: &mut [u8], ctx: Ctx) -> byte::Result<usize> {
+        if self
+            .string_data
+            .dedup
+            .keys()
+            .any(|string| string.as_bytes().contains(&0))
+        {
+            return Err(byte::Error::BadInput {
+                err: "pooled string contains an embedded NUL byte",
+            });
+        }
         let offset = &mut 0;
         // skip the header
         *offset += Header::SIZE as usize;
