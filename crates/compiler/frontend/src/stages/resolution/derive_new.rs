@@ -9,7 +9,7 @@ use crate::{
     CtxVar, FunctionIndex, FunctionType, Method, MethodFlags, Param, ParamFlags, Type, TypeId,
 };
 
-pub fn derive_new_method<'e, 'ctx: 'e>(
+pub(super) fn derive_new_method<'e, 'ctx: 'e>(
     cls_id: TypeId<'ctx>,
     vars: &[Rc<CtxVar<'ctx>>],
     fields: impl IntoIterator<Item = FieldEntry<'e, 'ctx>>,
@@ -39,10 +39,10 @@ pub fn derive_new_method<'e, 'ctx: 'e>(
     Method::new(flags, func_t, None, [], Some(span))
 }
 
-pub fn derive_new_method_item<'e, 'ctx: 'e>(
+pub(super) fn derive_new_method_item<'e, 'ctx: 'e>(
     func_idx: FunctionIndex,
     type_name: &'ctx str,
-    fields: impl IntoIterator<Item = FieldEntry<'e, 'ctx>> + Clone,
+    fields: impl IntoIterator<Item = FieldEntry<'e, 'ctx>>,
     span: Span,
 ) -> FuncItem<'static, 'ctx, FunctionIndex> {
     const SELF_NAME: &str = "self";
@@ -68,7 +68,9 @@ pub fn derive_new_method_item<'e, 'ctx: 'e>(
         span,
     )];
 
-    for field in fields.clone().into_iter() {
+    let mut param_names = vec![];
+    for field in fields {
+        param_names.push(field.name());
         let stmt = ast::Expr::Assign {
             lhs: (
                 ast::Expr::Member {
@@ -87,7 +89,6 @@ pub fn derive_new_method_item<'e, 'ctx: 'e>(
         span,
     ));
 
-    let param_names = fields.into_iter().map(|e| e.name()).collect::<Box<[_]>>();
     FuncItem::new(
         func_idx,
         span,

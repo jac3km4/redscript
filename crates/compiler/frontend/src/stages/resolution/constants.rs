@@ -1,4 +1,5 @@
 pub mod annotation {
+    pub const IF: &str = "if";
     pub const WRAP_METHOD: &str = "wrapMethod";
     pub const REPLACE_METHOD: &str = "replaceMethod";
     pub const ADD_METHOD: &str = "addMethod";
@@ -13,6 +14,7 @@ pub mod annotation {
 }
 
 pub mod ident {
+    pub const CAST: &str = "Cast";
     pub const THIS: &str = "this";
     pub const WRAPPED_METHOD: &str = "wrappedMethod";
     pub const NEW_METHOD: &str = "New";

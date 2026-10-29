@@ -371,9 +371,9 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
             }
         }
 
-        results
-            .iter()
-            .for_each(|module| self.validate_module(module));
+        for module in &results {
+            self.validate_module(module);
+        }
         self.process_inheritance(results.iter().flat_map(InferStageModule::classes));
 
         TypeInference::new(results, self.symbols)
@@ -530,8 +530,8 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         func_idx, item_span, name_span, params, body, type_scope,
                     ));
 
-                    if let Some(forwader) = forwarder {
-                        methods.add(name, forwader.with_aliased(MethodId::new(id, func_idx)));
+                    if let Some(forwarder) = forwarder {
+                        methods.add(name, forwarder.with_aliased(MethodId::new(id, func_idx)));
                     }
                 }
                 ast::Item::Let(let_) => {
@@ -548,7 +548,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         .process_field_flags(item.qualifiers, cls_flags, &typ, name_span)
                         .with_visibility(visibility);
 
-                    let properties = self.extract_field_properties(&mut item.annotations);
+                    let properties = extract_field_properties(&mut item.annotations);
                     for (ann, ann_span) in &item.annotations {
                         self.reporter
                             .report(Diagnostic::UnknownAnnotation(ann.name, *ann_span));
@@ -769,8 +769,8 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                     .methods_mut();
                 let func_idx = methods.add(name, member);
                 let method_id = MethodId::new(cls_id, func_idx);
-                if let Some(forwader) = forwarder {
-                    methods.add(name, forwader.with_aliased(method_id));
+                if let Some(forwarder) = forwarder {
+                    methods.add(name, forwarder.with_aliased(method_id));
                 }
 
                 let item = FuncItem::new(
@@ -809,7 +809,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                 if (body.is_some() && !qs.contains(ast::ItemQualifiers::NATIVE))
                     || (body.is_none() && qs.contains(ast::ItemQualifiers::NATIVE)) =>
             {
-                let is_cast = name == "Cast" && func_t.params().len() == 1;
+                let is_cast = name == ident::CAST && func_t.params().len() == 1;
                 let is_operator =
                     BinOp::from_name(name).is_some() || UnOp::from_name(name).is_some();
                 let flags = FreeFunctionFlags::default()
@@ -868,7 +868,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
         let mut id = None;
 
         let mut annotations = meta.annotations;
-        let mut properties = self.extract_field_properties(&mut annotations);
+        let mut properties = extract_field_properties(&mut annotations);
 
         for (ann, ann_span) in &annotations {
             match (ann.name, &ann.args[..]) {
@@ -1009,28 +1009,6 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
         }
 
         flags
-    }
-
-    fn extract_field_properties(
-        &mut self,
-        anns: &mut Vec<ast::Spanned<ast::SourceAnnotation<'ctx>>>,
-    ) -> Vec<(Cow<'ctx, str>, Cow<'ctx, str>)> {
-        let mut results = vec![];
-        anns.retain(|(ann, _)| match (ann.name, &*ann.args) {
-            (
-                annotation::RUNTIME_PROPERTY,
-                [
-                    (ast::Expr::Constant(ast::Constant::String(key)), _),
-                    (ast::Expr::Constant(ast::Constant::String(val)), _),
-                ],
-            ) => {
-                results.push((key.clone(), val.clone()));
-                false
-            }
-            _ => true,
-        });
-
-        results
     }
 
     fn validate_module(&mut self, module: &InferStageModule<'_, 'ctx>) {
@@ -1262,8 +1240,8 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                 ));
             }
 
-            for (overriden_id, idx) in implemented {
-                let overriden_flags = self.symbols[overriden_id].flags();
+            for (overridden_id, idx) in implemented {
+                let overridden_flags = self.symbols[overridden_id].flags();
                 let (_, method) = self
                     .symbols
                     .get_method_mut(MethodId::new(cls_id, idx))
@@ -1272,16 +1250,16 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                 if method.flags().has_implicit_visibility() {
                     method
                         .flags_mut()
-                        .set_visibility(overriden_flags.visibility());
-                } else if method.flags().visibility() < overriden_flags.visibility()
+                        .set_visibility(overridden_flags.visibility());
+                } else if method.flags().visibility() < overridden_flags.visibility()
                     && let Some(span) = method.span()
                 {
                     self.reporter.report(Diagnostic::LessVisibleOverride(
-                        overriden_flags.visibility(),
+                        overridden_flags.visibility(),
                         span,
                     ));
                 }
-                method.set_overriden(overriden_id);
+                method.set_overriden(overridden_id);
             }
         }
     }
@@ -1517,14 +1495,11 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
     ) -> Result<(), Diagnostic<'ctx>> {
         let params = self.symbols[type_app.id()].params();
         if type_app.args().len() == params.len() {
-            type_app
-                .args()
-                .iter()
-                .zip(params)
-                .try_for_each(|(arg, param)| {
-                    self.check_var(param, arg, span)?;
-                    self.check_type(arg, variance * param.variance(), span)
-                })
+            for (arg, param) in type_app.args().iter().zip(params) {
+                self.check_var(param, arg, span)?;
+                self.check_type(arg, variance * param.variance(), span)?;
+            }
+            Ok(())
         } else {
             Err(Diagnostic::InvalidTypeArgCount(
                 type_app.id(),
@@ -1547,6 +1522,27 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
         }
         self.check_type(func_type.return_type(), Variance::Covariant, span)
     }
+}
+
+fn extract_field_properties<'ctx>(
+    anns: &mut Vec<ast::Spanned<ast::SourceAnnotation<'ctx>>>,
+) -> Vec<(Cow<'ctx, str>, Cow<'ctx, str>)> {
+    let mut results = vec![];
+    anns.retain(|(ann, _)| match (ann.name, &*ann.args) {
+        (
+            annotation::RUNTIME_PROPERTY,
+            [
+                (ast::Expr::Constant(ast::Constant::String(key)), _),
+                (ast::Expr::Constant(ast::Constant::String(val)), _),
+            ],
+        ) => {
+            results.push((key.clone(), val.clone()));
+            false
+        }
+        _ => true,
+    });
+
+    results
 }
 
 fn extract_static_forwarder<'ctx>(
@@ -1578,7 +1574,7 @@ fn process_conditionals<'ctx>(
     let mut include = true;
 
     annotations.retain(|(ann, _)| match (ann.name, &*ann.args) {
-        ("if", [arg]) => {
+        (annotation::IF, [arg]) => {
             let result = reporter.unwrap_err(evaluator.eval(arg));
             include = include && !matches!(result, Some(cte::Value::Bool(false)));
             false
@@ -1589,8 +1585,8 @@ fn process_conditionals<'ctx>(
     include
 }
 
-fn convert_visibility(visiblity: ast::Visibility) -> Visibility {
-    match visiblity {
+fn convert_visibility(visibility: ast::Visibility) -> Visibility {
+    match visibility {
         ast::Visibility::Public => Visibility::Public,
         ast::Visibility::Private => Visibility::Private,
         ast::Visibility::Protected => Visibility::Protected,

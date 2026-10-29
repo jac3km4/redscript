@@ -55,7 +55,7 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
                     let method = &self.symbols[MethodId::new(class.id, item.id)];
                     let func = function_builder()
                         .type_(method.type_())
-                        .param_names(&item.params_names)
+                        .param_names(&item.param_names)
                         .body(&item.body)
                         .env(Env::new(&types.push_scope(item.scope), &scope.funcs))
                         .maybe_this_type(method.flags().is_static().not().then(|| this_t.clone()))
@@ -100,7 +100,7 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
                     FuncItemKind::FreeFunction(func) => {
                         let value = function_builder()
                             .type_(self.symbols[func.id].type_())
-                            .param_names(&func.params_names)
+                            .param_names(&func.param_names)
                             .body(&func.body)
                             .env(Env::new(&scope.types.push_scope(func.scope), &scope.funcs))
                             .symbols(&self.symbols)
@@ -118,7 +118,7 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
                             .then(|| PolyType::nullary(func.id.parent()));
                         let lowered = function_builder()
                             .type_(sym.type_())
-                            .param_names(&func.params_names)
+                            .param_names(&func.param_names)
                             .body(&func.body)
                             .env(Env::new(&scope.types.push_scope(func.scope), &scope.funcs))
                             .maybe_this_type(this_t)
@@ -139,7 +139,7 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
                                 .then(|| PolyType::nullary(func.id.parent()));
                             function_builder()
                                 .type_(sym.type_())
-                                .param_names(&func.params_names)
+                                .param_names(&func.param_names)
                                 .body(body)
                                 .env(Env::new(&scope.types.push_scope(func.scope), &scope.funcs))
                                 .maybe_this_type(this_t)
@@ -169,7 +169,7 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
                             .then(|| PolyType::nullary(func.id.parent()));
                         let lowered = function_builder()
                             .type_(sym.type_())
-                            .param_names(&func.params_names)
+                            .param_names(&func.param_names)
                             .body(&func.body)
                             .env(Env::new(&scope.types.push_scope(func.scope), &funcs))
                             .maybe_this_type(this_t)
@@ -330,7 +330,7 @@ pub struct FuncItem<'scope, 'ctx, K, B = ast::SourceFunctionBody<'ctx>> {
     id: K,
     span: Span,
     name_span: Span,
-    params_names: Box<[&'ctx str]>,
+    param_names: Box<[&'ctx str]>,
     body: B,
     scope: TypeScope<'scope, 'ctx>,
 }
@@ -340,7 +340,7 @@ impl<'scope, 'ctx, K, B> FuncItem<'scope, 'ctx, K, B> {
         id: K,
         span: Span,
         name_span: Span,
-        params_names: impl Into<Box<[&'ctx str]>>,
+        param_names: impl Into<Box<[&'ctx str]>>,
         body: B,
         scope: TypeScope<'scope, 'ctx>,
     ) -> Self {
@@ -348,7 +348,7 @@ impl<'scope, 'ctx, K, B> FuncItem<'scope, 'ctx, K, B> {
             id,
             span,
             name_span,
-            params_names: params_names.into(),
+            param_names: param_names.into(),
             body,
             scope,
         }
