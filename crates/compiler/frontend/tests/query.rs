@@ -81,6 +81,58 @@ fn constants_locals_and_assignment() {
 }
 
 #[test]
+fn preserves_reference_wrappers() {
+    let sources = SourceMap::new();
+    sources.push_back(
+        "query.reds",
+        r#"
+        class Base {}
+        class Left extends Base {}
+        @mixedRef()
+        class Mixed {}
+        func WeakCast(value: wref<Base>) -> wref<Left> { return value as Left; }
+        func Make() -> ref<Mixed> { return new Mixed(); }
+        func Cast(value: IScriptable) -> ref<Mixed> { return value as Mixed; }
+        func Plain() -> Base { return new Base(); }
+        func PlainCast(value: Base) -> Left { return value as Left; }
+        "#,
+    );
+    let interner = TypeInterner::default();
+    let (unit, symbols) = lower(&sources, &interner);
+    for (name, expected) in [
+        (
+            "WeakCast",
+            Type::app(predef::WREF, [Type::nullary(interner.intern("Left"))]),
+        ),
+        (
+            "Make",
+            Type::app(predef::REF, [Type::nullary(interner.intern("Mixed"))]),
+        ),
+        (
+            "Cast",
+            Type::app(predef::REF, [Type::nullary(interner.intern("Mixed"))]),
+        ),
+        ("Plain", Type::nullary(interner.intern("Base"))),
+        ("PlainCast", Type::nullary(interner.intern("Left"))),
+    ] {
+        let function = function(&unit, &symbols, name);
+        assert_eq!(
+            expr_type(return_expr(function), function, &symbols).unwrap(),
+            expected,
+            "{name}"
+        );
+        assert!(matches!(
+            expr_type(
+                return_expr(function),
+                function,
+                &Symbols::with_default_types()
+            ),
+            Err(QueryError::MissingType(_))
+        ));
+    }
+}
+
+#[test]
 fn conditionals_join_both_branches_and_handle_null() {
     let sources = SourceMap::new();
     sources.push_back(

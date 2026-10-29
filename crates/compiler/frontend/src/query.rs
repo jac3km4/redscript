@@ -66,10 +66,20 @@ pub fn expr_type<'ctx>(
     symbols: &Symbols<'ctx>,
 ) -> Result<Type<'ctx>, QueryError<'ctx>> {
     let typ = match expr {
-        ir::Expr::NewInstance { class_type, .. } => class_type,
+        ir::Expr::NewInstance { class_type, .. } => {
+            return reference_type(class_type.coalesced(symbols)?, false, symbols);
+        }
         ir::Expr::Construct { struct_type, .. } => struct_type,
         ir::Expr::NewClosure { closure, .. } => &closure.typ,
-        ir::Expr::DynCast { target_type, .. } => target_type,
+        ir::Expr::DynCast {
+            target_type,
+            expr_type,
+            ..
+        } => {
+            let source = expr_type.coalesced(symbols)?;
+            let weak = matches!(source, Type::Data(ref app) if app.id() == predef::WREF);
+            return reference_type(target_type.coalesced(symbols)?, weak, symbols);
+        }
         ir::Expr::Call { call, .. } => return call_type(call, symbols),
         ir::Expr::Assign { place, .. } => return expr_type(place, function, symbols),
         ir::Expr::Field {
@@ -116,6 +126,28 @@ pub fn expr_type<'ctx>(
         ir::Expr::Null { .. } => return Err(QueryError::UnknownNullType),
     };
     Ok(typ.coalesced(symbols)?.into_type())
+}
+
+fn reference_type<'ctx>(
+    target: TypeApp<'ctx>,
+    weak: bool,
+    symbols: &Symbols<'ctx>,
+) -> Result<Type<'ctx>, QueryError<'ctx>> {
+    let def = symbols
+        .get_type(target.id())
+        .ok_or(QueryError::MissingType(target.id()))?;
+    let mixed = def
+        .schema()
+        .as_aggregate()
+        .is_some_and(|agg| agg.flags().is_mixed_ref());
+    let target = target.into_type();
+    Ok(if weak {
+        Type::app(predef::WREF, [target])
+    } else if mixed {
+        Type::app(predef::REF, [target])
+    } else {
+        target
+    })
 }
 
 fn null_only(expr: &ir::Expr<'_>) -> bool {
