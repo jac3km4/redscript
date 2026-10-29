@@ -21,6 +21,68 @@ use thiserror::Error;
 
 const DEFAULT_DIAGNOSTICS: &[&'static dyn DiagnosticPass] = &[&UnusedLocals];
 
+/// Semantic checking results, without backend mappings or generated output.
+///
+/// This can be built from default symbols for standalone sources, or from symbols
+/// loaded with `CompilationInputs::load_without_mapping` for an existing bundle.
+pub struct CheckedSources<'ctx> {
+    unit: LoweredCompilationUnit<'ctx>,
+    symbols: Symbols<'ctx>,
+    diagnostics: Diagnostics<'ctx>,
+    fatal_diagnostic_level: DiagnosticLevel,
+}
+
+#[bon]
+impl<'ctx> CheckedSources<'ctx> {
+    #[builder(finish_fn = check)]
+    pub fn new(
+        sources: &'ctx SourceMap,
+        symbols: Symbols<'ctx>,
+        type_interner: &'ctx TypeInterner,
+        #[builder(default = DEFAULT_DIAGNOSTICS)] diagnostics: &[&'static dyn DiagnosticPass],
+        #[builder(default = DiagnosticLevel::ErrorAllowedAtRuntime)]
+        fatal_diagnostic_level: DiagnosticLevel,
+    ) -> Self {
+        let mut reporter = CompileErrorReporter::default();
+        let (unit, symbols) = infer_from_sources(sources, symbols, &mut reporter, type_interner);
+        unit.run_diagnostics(diagnostics, &mut reporter);
+        let mut diagnostics = reporter.into_reported();
+        diagnostics.sort_by_key(Diagnostic::is_error);
+        Self {
+            unit,
+            symbols,
+            diagnostics: Diagnostics(diagnostics),
+            fatal_diagnostic_level,
+        }
+    }
+
+    pub fn unit(&self) -> &LoweredCompilationUnit<'ctx> {
+        &self.unit
+    }
+
+    pub fn symbols(&self) -> &Symbols<'ctx> {
+        &self.symbols
+    }
+
+    pub fn diagnostics(&self) -> &Diagnostics<'ctx> {
+        &self.diagnostics
+    }
+
+    pub fn fatal_diagnostic_level(&self) -> DiagnosticLevel {
+        self.fatal_diagnostic_level
+    }
+
+    pub fn into_parts(
+        self,
+    ) -> (
+        LoweredCompilationUnit<'ctx>,
+        Symbols<'ctx>,
+        Diagnostics<'ctx>,
+    ) {
+        (self.unit, self.symbols, self.diagnostics)
+    }
+}
+
 pub struct Compilation<'ctx> {
     sources: &'ctx SourceMap,
     symbols: Symbols<'ctx>,
@@ -43,23 +105,24 @@ impl<'ctx> Compilation<'ctx> {
         #[builder(default = DiagnosticLevel::ErrorAllowedAtRuntime)]
         fatal_diagnostic_level: DiagnosticLevel,
     ) -> Result<Self, Error> {
-        let mut reporter = CompileErrorReporter::default();
         let bundle = ScriptBundle::from_bytes(bundle)?;
         let (symbols, mappings) =
             CompilationInputs::load(&bundle, type_interner, &type_flags)?.into_inner();
-        let (unit, symbols) = infer_from_sources(sources, symbols, &mut reporter, type_interner);
-        unit.run_diagnostics(diagnostics, &mut reporter);
-
-        let mut diagnostics = reporter.into_reported();
-        diagnostics.sort_by_key(Diagnostic::is_error);
+        let checked = CheckedSources::builder()
+            .sources(sources)
+            .symbols(symbols)
+            .type_interner(type_interner)
+            .diagnostics(diagnostics)
+            .fatal_diagnostic_level(fatal_diagnostic_level)
+            .check();
 
         Ok(Self {
             sources,
-            symbols,
+            symbols: checked.symbols,
             mappings,
-            unit,
+            unit: checked.unit,
             bundle,
-            diagnostics: Diagnostics(diagnostics),
+            diagnostics: checked.diagnostics,
             fatal_diagnostic_level,
         })
     }
@@ -328,6 +391,55 @@ mod tests {
             [5, 3, 2, 4, 1, 0].map(|i| diagnostics.0[i].to_string())
         );
         assert_eq!(diagnostics.0[0].span().file, z);
+    }
+
+    #[test]
+    fn check_without_a_bundle_runs_diagnostics_and_retains_semantic_results() {
+        let sources = SourceMap::new();
+        sources.populate_boot_lib();
+        sources.push_back("check.reds", "func Test() { let unused: Int32 = 1; }\n");
+        let interner = TypeInterner::default();
+        let checked = CheckedSources::builder()
+            .sources(&sources)
+            .symbols(Symbols::with_default_types())
+            .type_interner(&interner)
+            .check();
+        assert!(checked.unit().all_functions().next().is_some());
+        assert!(
+            checked
+                .symbols()
+                .free_functions()
+                .any(|f| f.name().to_string() == "Test")
+        );
+        assert!(
+            checked
+                .diagnostics()
+                .into_iter()
+                .any(|d| matches!(d, Diagnostic::UnusedLocal(_)))
+        );
+        assert!(
+            !checked
+                .diagnostics()
+                .has_fatal_errors(checked.fatal_diagnostic_level())
+        );
+    }
+
+    #[test]
+    fn check_returns_source_errors_without_failing_setup() {
+        let sources = SourceMap::new();
+        sources.push_back("invalid.reds", "func Test() { missing(); }\n");
+        let interner = TypeInterner::default();
+        let checked = CheckedSources::builder()
+            .sources(&sources)
+            .symbols(Symbols::with_default_types())
+            .type_interner(&interner)
+            .diagnostics(&[])
+            .check();
+        assert!(
+            checked
+                .diagnostics()
+                .has_fatal_errors(checked.fatal_diagnostic_level())
+        );
     }
 
     #[test]
