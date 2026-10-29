@@ -24,6 +24,29 @@ fn assert_preserved(source: &str, settings: &FormatSettings) -> String {
 }
 
 #[test]
+fn parenthesized_chain_prefixes_are_emitted_once() {
+    for expression in [
+        "a && /* keep */ (b || c)",
+        "a * /* keep */ (b + c)",
+        "/* keep */ (a + b).Method()",
+        "/* keep */ a.Member.Method()",
+    ] {
+        let source = format!("func F() {{ return {expression}; }}");
+        let formatted = assert_preserved(&source, &FormatSettings::default());
+        assert_eq!(formatted.matches("/* keep */").count(), 1, "{formatted}");
+    }
+}
+
+#[test]
+fn pattern_prefixes_are_preserved() {
+    let formatted = assert_preserved(
+        "func F() { if let /* binding explanation */ bound = value {} }",
+        &FormatSettings::default(),
+    );
+    assert_eq!(formatted.matches("/* binding explanation */").count(), 1);
+}
+
+#[test]
 fn inline_line_comments_keep_their_delimiters() {
     for comment in [
         "// literal */ marker",

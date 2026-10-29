@@ -463,10 +463,19 @@ impl<K: AstKind> Formattable for Stmt<'_, K> {
     }
 }
 
+trait ExprFormat {
+    fn format_body(&self, f: &mut fmt::Formatter<'_>, ctx: FormatCtx<'_>) -> fmt::Result;
+}
+
 impl<K: AstKind> Formattable for Expr<'_, K> {
     fn format(&self, f: &mut fmt::Formatter<'_>, ctx: FormatCtx<'_>) -> fmt::Result {
         write!(f, "{}", ctx.node_prefix(NodeId::expr(self), None))?;
+        self.format_body(f, ctx)
+    }
+}
 
+impl<K: AstKind> ExprFormat for Expr<'_, K> {
+    fn format_body(&self, f: &mut fmt::Formatter<'_>, ctx: FormatCtx<'_>) -> fmt::Result {
         match self {
             Expr::Ident(name) => write!(f, "{name}"),
             Expr::Constant(value) => match (value, ctx.settings.trunc_sig_digits) {
@@ -725,6 +734,7 @@ impl<K: AstKind> Formattable for LetCondition<'_, K> {
 
 impl<K: AstKind> Formattable for Pattern<'_, K> {
     fn format(&self, f: &mut fmt::Formatter<'_>, ctx: FormatCtx<'_>) -> fmt::Result {
+        write!(f, "{}", ctx.node_prefix(NodeId::condition(self), None))?;
         match self {
             Self::Name(name) => write!(f, "{}", name.as_wrapped()),
             Self::As(inner, typ) => write!(
@@ -1071,10 +1081,18 @@ fn format_chain<K: AstKind>(
         };
     };
 
+    let base = DisplayFn(|f: &mut fmt::Formatter<'_>| {
+        // The chain root's prefix was already emitted by Expr::format.
+        if std::ptr::eq(cur, expr) {
+            cur.format_body(f, ctx)
+        } else {
+            cur.format(f, ctx)
+        }
+    });
     if parenthesize {
-        write!(f, "({})", cur.as_fmt(ctx))?;
+        write!(f, "({base})")?;
     } else {
-        write!(f, "{}", cur.as_fmt(ctx))?;
+        write!(f, "{base}")?;
     }
 
     let width = chain.iter().map(Chain::approx_width).sum::<u16>();
