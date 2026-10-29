@@ -306,7 +306,13 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
                 Some(BlockSpan { break_target, .. }) => {
                     self.emit(Instr::Jump(Jump::new(break_target)));
                 }
-                _ => return Err(AssembleError::InvalidControlFlow(*span)),
+                _ => {
+                    return Err(AssembleError::InvalidControlFlow(
+                        "break",
+                        "a loop or switch is required",
+                        *span,
+                    ));
+                }
             },
             ir::Stmt::Continue(span) => {
                 if let Some(BlockSpan {
@@ -316,7 +322,11 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
                 {
                     self.emit(Instr::Jump(Jump::new(start)));
                 } else {
-                    return Err(AssembleError::InvalidControlFlow(*span));
+                    return Err(AssembleError::InvalidControlFlow(
+                        "continue",
+                        "a loop is required",
+                        *span,
+                    ));
                 }
             }
             ir::Stmt::Return(expr, _) if self.has_return_value => {
@@ -358,7 +368,7 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
                 let struct_t = self.monomorph.class(&struct_t, self.symbols, self.bundle);
                 self.emit(Instr::Construct {
                     arg_count: u8::try_from(args.len())
-                        .map_err(|_| AssembleError::TooManyArguments(*span))?,
+                        .map_err(|_| AssembleError::TooManyArguments(args.len(), *span))?,
                     class: struct_t,
                 });
                 for arg in args {
@@ -952,15 +962,19 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
 
 #[derive(Debug, Error)]
 pub enum AssembleError<'ctx> {
-    #[error("label too distant")]
+    #[error(
+        "jump offset exceeds the signed 16-bit bytecode limit; reduce the size of this function"
+    )]
     LabelTooDistant,
-    #[error("invalid control flow")]
-    InvalidControlFlow(Span),
-    #[error("too many arguments")]
-    TooManyArguments(Span),
-    #[error("invalid intrinsic")]
+    #[error("`{0}` cannot be used here; {1}")]
+    InvalidControlFlow(&'static str, &'static str, Span),
+    #[error("struct construction has {0} arguments; the bytecode limit is 255")]
+    TooManyArguments(usize, Span),
+    #[error("cannot generate code for intrinsic `{0:?}` with these arguments")]
     InvalidIntrinsic(ir::Intrinsic, Span),
-    #[error("the base function class is not defined correctly")]
+    #[error(
+        "function type must be a class with a `Call` method; check the function type definitions"
+    )]
     InvalidFunctionClass(Span),
     #[error("{0}")]
     Coalesce(Box<CoalesceError<'ctx>>, Span),
@@ -971,8 +985,8 @@ pub enum AssembleError<'ctx> {
 impl AssembleError<'_> {
     pub fn span(&self) -> Option<Span> {
         match self {
-            Self::InvalidControlFlow(span)
-            | Self::TooManyArguments(span)
+            Self::InvalidControlFlow(_, _, span)
+            | Self::TooManyArguments(_, span)
             | Self::InvalidIntrinsic(_, span)
             | Self::InvalidFunctionClass(span)
             | Self::Coalesce(_, span) => Some(*span),
@@ -994,4 +1008,35 @@ impl From<Label> for usize {
 struct BlockSpan {
     continue_target: Option<Label>,
     break_target: Label,
+}
+
+#[cfg(test)]
+mod diagnostic_tests {
+    use redscript_compiler_frontend::ast::SourceMap;
+
+    use super::*;
+
+    #[test]
+    fn backend_errors_explain_source_restrictions() {
+        let sources = SourceMap::new();
+        let file = sources.push_back("test.reds", "break;");
+        let span = Span::new(0, 6, file);
+        let error =
+            AssembleError::InvalidControlFlow("break", "a loop or switch is required", span);
+        assert_eq!(
+            error.to_string(),
+            "`break` cannot be used here; a loop or switch is required"
+        );
+        assert_eq!(error.span(), Some(span));
+        let error = AssembleError::TooManyArguments(256, span);
+        assert_eq!(
+            error.to_string(),
+            "struct construction has 256 arguments; the bytecode limit is 255"
+        );
+        assert_eq!(error.span(), Some(span));
+        assert_eq!(
+            AssembleError::LabelTooDistant.to_string(),
+            "jump offset exceeds the signed 16-bit bytecode limit; reduce the size of this function"
+        );
+    }
 }

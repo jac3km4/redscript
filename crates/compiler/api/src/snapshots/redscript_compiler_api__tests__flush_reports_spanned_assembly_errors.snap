@@ -1,0 +1,11 @@
+---
+source: crates/compiler/api/src/lib.rs
+expression: "String::from_utf8(output).unwrap()"
+---
+error[OTHER]: `continue` cannot be used here; a loop is required
+ --> invalid.reds:1:15
+  |
+1 | func Test() { continue; }
+  |               ^^^^^^^^^
+
+Completed with 0 warnings and 1 errors

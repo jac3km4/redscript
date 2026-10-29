@@ -667,7 +667,11 @@ mod tests {
             panic!("expected fatal diagnostics");
         };
         assert!(diagnostics.has_fatal_errors(DiagnosticLevel::Error));
-        assert!(diagnostics.to_string().contains("invalid control flow"));
+        let mut output = Vec::new();
+        diagnostics
+            .write_to(&mut output, &sources, DiagnosticLevel::Error)
+            .unwrap();
+        insta::assert_snapshot!(String::from_utf8(output).unwrap());
     }
 
     fn compile<'ctx>(sources: &'ctx SourceMap, interner: &'ctx TypeInterner) -> Compilation<'ctx> {

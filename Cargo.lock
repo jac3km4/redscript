@@ -998,6 +998,7 @@ name = "redscript-compiler-api"
 version = "1.0.0-preview.22"
 dependencies = [
  "bon",
+ "insta",
  "log",
  "redscript-ast",
  "redscript-compiler-backend",
