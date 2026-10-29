@@ -154,7 +154,7 @@ impl<'a> FormatCtx<'a> {
                     }
                     (Prefix::LineComment(comment), None) => {
                         // convert line comments to block comments for inline nodes
-                        write!(f, "/*{} */ ", &comment[2..].trim_end())
+                        write!(f, "/*{} */ ", comment[2..].trim_end())
                     }
                     (Prefix::BlockComment(comment), None) => {
                         write!(f, "{comment} ")
