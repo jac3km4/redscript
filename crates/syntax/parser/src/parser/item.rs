@@ -119,9 +119,10 @@ fn field<'tok, 'src: 'tok>(
 }
 
 fn enum_<'tok, 'src: 'tok>() -> impl Parse<'tok, 'src, SourceEnum<'src>> {
-    let int = just(Token::Minus)
-        .or_not()
-        .then(select! { Token::Int(i) => i });
+    let int = just(Token::Minus).or_not().then(select! {
+        Token::Int(i) => i64::from(i),
+        Token::Long(i) => i,
+    });
 
     let variants = extended_ident()
         .then(just(Token::Assign).ignore_then(int).or_not())
@@ -341,6 +342,25 @@ mod tests {
                 ]
             ))
         );
+    }
+
+    #[test]
+    fn enum_integer_initializers() {
+        for (literal, expected) in [
+            ("2147483648l", 2_147_483_648_i64),
+            ("-2147483649l", -2_147_483_649),
+            ("42", 42),
+            ("-42", -42),
+        ] {
+            let code = format!("enum Test {{ A = {literal} }}");
+            let (item, errors) = parse_item(&code, FileId::from_i32(0));
+
+            assert!(errors.is_empty(), "{literal}: {errors:?}");
+            assert_eq!(
+                item.unwrap().unwrapped(),
+                Item::Enum(Enum::new("Test", [EnumVariant::new("A", Some(expected))]))
+            );
+        }
     }
 
     #[test]
