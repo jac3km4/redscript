@@ -1,0 +1,53 @@
+---
+source: crates/compiler/backend/tests/bytecode.rs
+expression: "BytecodePrinter::new(&bundle, bundle_len)"
+input_file: crates/compiler/backend/tests/data/array-intrinsics.reds
+---
+// Test; (f0)
+array.resize 0
+local 0
+u64.const 3
+assign
+array.element 0
+local 0
+u64.const 0
+i32.one
+assign
+array.element 0
+local 0
+u64.const 1
+i32.const 2
+assign
+array.element 0
+local 0
+u64.const 2
+i32.const 3
+assign
+local 1
+local 0
+assign
+local 2
+array.find_first 0
+local 1
+i32.const 2
+assign
+local 3
+array.contains 0
+local 1
+i32.const 2
+assign
+local 4
+array.count 0
+local 1
+i32.const 2
+array.insert 0
+local 1
+i32.one
+i32.const 4
+assign
+local 5
+array.remove 0
+local 1
+i32.const 2
+array.sort 0
+local 1
