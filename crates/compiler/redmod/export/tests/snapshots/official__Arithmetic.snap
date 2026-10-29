@@ -1,0 +1,7 @@
+---
+source: crates/compiler/redmod/export/tests/official.rs
+expression: source.module.text
+---
+function OfficialExportSum(__rse_p0: Int32) -> Int32 {
+    return (__rse_p0 + 2);
+}

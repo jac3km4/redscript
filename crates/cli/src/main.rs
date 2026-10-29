@@ -8,14 +8,16 @@ use anyhow::Context;
 use argh::FromArgs;
 use hashbrown::HashMap;
 use mimalloc::MiMalloc;
+use redscript_community_formatter::{FormatCtx, FormatSettings, SyntaxOps, format_document};
 use redscript_compiler_api::ast::SourceMap;
 use redscript_compiler_api::{
     Compilation, DiagnosticLevel, FlushError, ScriptBundle, SourceMapExt, TypeInterner, pass,
 };
 use redscript_decompiler::{Settings, decompile_all};
 use redscript_dotfile::Dotfile;
-use redscript_formatter::{FormatCtx, FormatSettings, SyntaxOps, format_document};
 use vmap::Map;
+
+mod redmod;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -34,6 +36,7 @@ enum Command {
     Compile(CompileOpts),
     Lint(LintOpts),
     Format(FormatOpts),
+    ExportRedmod(redmod::ExportOpts),
 }
 
 /// decompile a .redscripts file
@@ -219,6 +222,7 @@ fn main() -> anyhow::Result<ExitCode> {
         Command::Compile(opts) => compile(opts),
         Command::Lint(opts) => lint(opts),
         Command::Format(opts) => format(opts),
+        Command::ExportRedmod(opts) => redmod::export(opts),
     }
 }
 

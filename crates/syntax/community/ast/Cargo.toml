@@ -1,0 +1,21 @@
+[package]
+name = "redscript-community-ast"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+derive-where.workspace = true
+bitflags.workspace = true
+elsa.workspace = true
+unicode-width = "0.1.14"
+chumsky = { workspace = true, optional = true }
+ignore = { workspace = true, optional = true }
+
+[lints]
+workspace = true
+
+[features]
+chumsky = ["dep:chumsky"]
+ignore = ["dep:ignore"]
+testing = []

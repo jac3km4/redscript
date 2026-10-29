@@ -1,0 +1,16 @@
+---
+source: crates/syntax/redmod/formatter/tests/constants.rs
+expression: snapshots
+---
+var value: String = "assets\widgets\button";
+var value: String = 'assets\widgets\button';
+var value: String = "assets\";
+var value: String = 'assets\';
+var value: String = "\n\t\u{22}\\";
+var value: String = '\n\t\u{22}\\';
+var value: String = "first
+  second";
+var value: String = 'first
+  second';
+var value: String = "café";
+var value: String = 'café';

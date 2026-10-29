@@ -7,7 +7,7 @@ use std::{fmt, iter, ops};
 use bitfield_struct::bitfield;
 use hashbrown::{HashMap, HashSet};
 use identity_hash::BuildIdentityHasher;
-use redscript_ast::Span;
+use redscript_community_ast::Span;
 use slab::Slab;
 use smallvec::SmallVec;
 
@@ -825,6 +825,7 @@ pub struct Field<'ctx> {
     flags: FieldFlags,
     typ: Type<'ctx>,
     properties: Box<[(Cow<'ctx, str>, Cow<'ctx, str>)]>,
+    hint: Option<Cow<'ctx, str>>,
     span: Option<Span>,
     doc: Box<[&'ctx str]>,
 }
@@ -841,6 +842,7 @@ impl<'ctx> Field<'ctx> {
             flags,
             typ,
             properties: properties.into(),
+            hint: None,
             doc: doc.into(),
             span,
         }
@@ -859,6 +861,17 @@ impl<'ctx> Field<'ctx> {
     #[inline]
     pub fn properties(&self) -> &[(Cow<'ctx, str>, Cow<'ctx, str>)] {
         &self.properties
+    }
+
+    #[inline]
+    pub fn hint(&self) -> Option<&Cow<'ctx, str>> {
+        self.hint.as_ref()
+    }
+
+    #[inline]
+    pub fn with_hint(mut self, hint: Option<Cow<'ctx, str>>) -> Self {
+        self.hint = hint;
+        self
     }
 
     #[inline]
@@ -896,7 +909,7 @@ impl<'ctx> FieldEntry<'_, 'ctx> {
     }
 }
 
-#[bitfield(u8)]
+#[bitfield(u16)]
 pub struct AggregateFlags {
     pub is_native: bool,
     pub is_abstract: bool,
@@ -906,6 +919,9 @@ pub struct AggregateFlags {
     pub is_never_ref: bool,
     pub is_mixed_ref: bool,
     pub is_fully_defined: bool,
+    pub is_test_only: bool,
+    #[bits(7)]
+    __: u8,
 }
 
 #[bitfield(u8)]
@@ -943,7 +959,7 @@ pub struct ParamFlags {
     __: u8,
 }
 
-#[bitfield(u8)]
+#[bitfield(u16)]
 pub struct FieldFlags {
     #[bits(2)]
     pub visibility: Visibility,
@@ -952,7 +968,10 @@ pub struct FieldFlags {
     pub is_inline: bool,
     pub is_const: bool,
     pub is_persistent: bool,
-    #[bits(1)]
+    pub is_instance_editable: bool,
+    pub is_replicated: bool,
+    pub is_test_only: bool,
+    #[bits(6)]
     __: u8,
 }
 

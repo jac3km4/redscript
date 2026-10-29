@@ -1,0 +1,14 @@
+class CorpusGaps {
+    public export function Exported() {}
+    private virtual function Virtual() {}
+    [ category = "Authored" ]
+    editable inlined var weight: Float;
+    editable var visible: Bool;
+    default weight = 2.5;
+    hint weight = "An authored hint";
+    function Retained() {}
+}
+import enum StorageChoice: Uint8 { First = 0, Second = 1 }
+operator+(left: StorageChoice, right: StorageChoice): StorageChoice;
+import implicit cast(value: StorageChoice): Int32;
+function AfterDeclarations() {}

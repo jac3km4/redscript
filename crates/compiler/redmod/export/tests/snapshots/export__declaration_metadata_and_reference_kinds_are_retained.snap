@@ -1,0 +1,17 @@
+---
+source: crates/compiler/redmod/export/tests/export.rs
+expression: output
+---
+@module "Example";
+
+@using "Example";
+class Widget extends IScriptable {
+public var weak: wref<Example.Widget>;
+public function Identity(__rse_p0: Example.Widget) -> Example.Widget {
+    return __rse_p0;
+}
+}
+@if(ModuleExists("Example"))
+function Conditional() -> String {
+    return "present";
+}

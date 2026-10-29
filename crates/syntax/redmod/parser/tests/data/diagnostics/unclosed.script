@@ -1,0 +1,4 @@
+function Before() {
+    Before();
+/// Retained after a missing block closer.
+static function After() {}

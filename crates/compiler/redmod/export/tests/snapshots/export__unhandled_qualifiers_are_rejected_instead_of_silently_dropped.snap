@@ -1,0 +1,9 @@
+---
+source: crates/compiler/redmod/export/tests/export.rs
+expression: "diagnostics[0].display(&sources).to_string()"
+---
+error[REDMOD_EXPORT]: editable, instanceeditable, inlined, replicated and testonly qualifiers are not supported by REDmod export
+ --> qualifiers.reds:1:16
+  |
+1 | class Widget { editable let value: Int32; }
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^

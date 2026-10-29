@@ -1,0 +1,14 @@
+---
+source: crates/compiler/redmod/export/tests/official.rs
+expression: source.module.text
+---
+function OfficialExportArray() -> Int32 {
+    var __rse_v0: array<Int32>;
+    var __rse_v1: array<Int32>;
+    __rse_v0.Resize(2);
+    __rse_v0[0] = 1;
+    __rse_v0[1] = 2;
+    __rse_v1 = __rse_v0;
+    __rse_v1.PushBack(3);
+    return __rse_v1.Size();
+}

@@ -1,0 +1,9 @@
+---
+source: crates/compiler/redmod/export/tests/export.rs
+expression: "result.iter().map(|d| d.display(&sources).to_string()).collect::<String>()"
+---
+error[REDMOD_EXPORT]: custom generic declarations are unsupported
+ --> rejected.reds:1:1
+  |
+1 | func Identity<Item>(value: Item) -> Item = value
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

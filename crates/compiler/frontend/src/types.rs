@@ -5,7 +5,7 @@ use std::rc::Rc;
 use std::{fmt, ops};
 
 use derive_where::derive_where;
-use redscript_ast as ast;
+use redscript_community_ast as ast;
 
 use crate::utils::ScopedMap;
 use crate::utils::fmt::{DisplayFn, sep_by};

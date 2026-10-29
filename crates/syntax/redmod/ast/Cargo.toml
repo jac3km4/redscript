@@ -1,0 +1,11 @@
+[package]
+name = "redscript-redmod-ast"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+redscript-community-ast.workspace = true
+
+[lints]
+workspace = true

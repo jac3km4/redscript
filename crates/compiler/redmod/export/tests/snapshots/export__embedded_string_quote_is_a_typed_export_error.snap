@@ -1,0 +1,5 @@
+---
+source: crates/compiler/redmod/export/tests/export.rs
+expression: "diagnostics[0].to_string()"
+---
+embedded delimiter has no verified REDmod literal spelling

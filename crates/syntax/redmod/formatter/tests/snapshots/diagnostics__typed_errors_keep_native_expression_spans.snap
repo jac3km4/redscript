@@ -1,0 +1,13 @@
+---
+source: crates/syntax/redmod/formatter/tests/diagnostics.rs
+expression: diagnostics
+---
+RecoveredExpression: cannot print a recovered error expression [20..22]
+InvalidOmittedArgument: omitted expressions require an argument slot [20..22]
+InvalidSequence: a comma sequence requires at least two discarded or for-header expressions [20..22]
+EmptyArrayLiteral: empty array literals are unsupported [20..22]
+InvalidIdentifier: invalid REDmod identifier in this syntax position [20..22]
+NonFiniteFloat: non-finite float literal [20..22]
+NonFiniteDouble: non-finite double literal [20..22]
+UnsignedLiteral: unsigned literals require type-aware lowering [20..22]
+UnsignedLiteral: unsigned literals require type-aware lowering [20..22]

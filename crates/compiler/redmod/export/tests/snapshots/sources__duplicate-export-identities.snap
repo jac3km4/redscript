@@ -1,0 +1,9 @@
+---
+source: crates/compiler/redmod/export/tests/sources.rs
+expression: "errors.iter().map(|e| e.display(&sources).to_string()).collect::<String>()"
+---
+error[REDMOD_EXPORT]: multiple declarations bound to the same resolved identity across export modules
+ --> b.reds:1:1
+  |
+1 | @replaceMethod(EngineWidget) public func Value() -> Int32 = 22;
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -1,0 +1,9 @@
+---
+source: crates/compiler/redmod/export/tests/export.rs
+expression: "result.iter().map(|d| d.display(&sources).to_string()).collect::<String>()"
+---
+error[REDMOD_EXPORT]: out arguments require local identity; copying a place is unsafe
+ --> rejected.reds:1:89
+  |
+1 | func Set(out value: Int32) {} class Widget { let value: Int32; public func Test() { Set(this.value); } }
+  |                                                                                         ^^^^^^^^^^

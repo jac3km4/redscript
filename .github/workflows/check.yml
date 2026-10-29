@@ -65,6 +65,6 @@ jobs:
       # Dotfile and SCC tests include Windows-specific path expectations.
       - run: >-
           cargo test --locked
-          -p redscript-ast -p redscript-parser -p redscript-formatter
+          -p redscript-community-ast -p redscript-community-parser -p redscript-community-formatter
           -p redscript-io -p redscript-compiler-frontend -p redscript-compiler-backend
           -p redscript-compiler-api -p redscript-decompiler -p redscript-code-edit

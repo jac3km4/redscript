@@ -1,0 +1,21 @@
+[package]
+name = "redscript-redmod-adapter"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+redscript-community-ast.workspace = true
+redscript-redmod-ast.workspace = true
+redscript-compiler-frontend.workspace = true
+redscript-redmod-parser.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+redscript-compiler-api.workspace = true
+redscript-compiler-backend.workspace = true
+redscript-io.workspace = true
+redscript-community-parser.workspace = true
+
+[lints]
+workspace = true

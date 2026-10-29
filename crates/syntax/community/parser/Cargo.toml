@@ -1,0 +1,19 @@
+[package]
+name = "redscript-community-parser"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+redscript-community-ast = { workspace = true, features = ["chumsky"] }
+
+chumsky.workspace = true
+
+[dev-dependencies]
+redscript-community-ast = { workspace = true, features = ["testing"] }
+
+similar-asserts.workspace = true
+insta.workspace = true
+
+[lints]
+workspace = true

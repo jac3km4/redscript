@@ -1,0 +1,18 @@
+[package]
+name = "redscript-community-formatter"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+redscript-community-ast.workspace = true
+redscript-community-parser.workspace = true
+
+hashbrown.workspace = true
+pretty_dtoa.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+
+[lints]
+workspace = true

@@ -1,4 +1,4 @@
-use redscript_ast as ast;
+use redscript_community_ast as ast;
 use sequence_trie::SequenceTrie;
 use smallvec::smallvec;
 

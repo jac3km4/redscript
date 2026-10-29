@@ -55,6 +55,16 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 .span(*expr_span)
                 .resolve()?
                 .into_call();
+            if let ir::Call::FreeFunction { function, .. } = &call
+                && let Some(intrinsic) = self.symbols[*function].intrinsic()
+                && env
+                    .types()
+                    .policy(call_span)
+                    .allow_explicit_intrinsic
+                    .is_some_and(|allow| !allow(intrinsic))
+            {
+                return Err(Error::UnresolvedFunction(name, *expr_span));
+            }
             return Ok((ir::Expr::call(call, call_span), typ));
         };
 
@@ -239,6 +249,34 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             .with_span(*expr_span)?
             .ok_or(Error::InsufficientTypeInformation(*expr_span))?
             .into_owned();
+
+        if let Some((intrinsic, requires_place)) = env
+            .types()
+            .policy(call_span)
+            .member_intrinsic
+            .and_then(|resolve| resolve(upper_bound.id(), member))
+        {
+            if !type_args.is_empty() {
+                return Err(Error::InvalidTypeArgCount(0, type_args.len(), call_span));
+            }
+            // Keep receiver identity and evaluate it once, before the arguments.
+            if requires_place && ir.is_prvalue(self.symbols) {
+                return Err(Error::InvalidTemporary(*expr_span));
+            }
+            let mut values = vec![(ir, typ)];
+            for arg in args {
+                values.push(self.lower_expr(arg, env)?);
+            }
+            let (call, typ) = self
+                .free_function_call_builder()
+                .name(intrinsic)
+                .expected_intrinsic(intrinsic)
+                .args(values)
+                .env(env)
+                .span(call_span)
+                .build()?;
+            return Ok((MemberCall::MethodCall(call), typ));
+        }
 
         let (upper_bound, mode) = if matches!(receiver, (ast::Expr::Super, _)) {
             (
@@ -558,6 +596,9 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         env: &Env<'_, 'ctx>,
         span: Span,
     ) -> LowerResult<'ctx, ()> {
+        if let Some(validate) = env.types().policy(span).validate_coercion {
+            validate(&lhs, &rhs, self.symbols, span)?;
+        }
         let name = match lhs.coerce(&rhs, self.symbols).with_span(span)? {
             Some(Coercion::FromRef(RefType::Weak)) => ir::Intrinsic::WeakRefToRef,
             Some(Coercion::IntoRef(RefType::Weak)) => ir::Intrinsic::RefToWeakRef,
@@ -597,6 +638,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
     pub(super) fn free_function_call_builder<'name: 'ctx>(
         &mut self,
         name: impl Into<&'name str>,
+        expected_intrinsic: Option<ir::Intrinsic>,
         args: impl IntoIterator<Item = (ir::Expr<'ctx>, PolyType<'ctx>)>,
         #[builder(default)] type_args: &[PolyType<'ctx>],
         env: &Env<'_, 'ctx>,
@@ -604,7 +646,12 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
     ) -> LowerResult<'ctx, (ir::Call<'ctx>, PolyType<'ctx>)> {
         let name = name.into();
         let (mut args, arg_types): (Vec<_>, Vec<_>) = args.into_iter().unzip();
-        let candidates = env.query_free_functions(name, self.symbols);
+        let candidates = env
+            .query_free_functions(name, self.symbols)
+            .filter(|entry| {
+                expected_intrinsic
+                    .is_none_or(|intrinsic| entry.func().intrinsic() == Some(intrinsic))
+            });
         let res = self
             .typed_overload_resolver()
             .name(name)

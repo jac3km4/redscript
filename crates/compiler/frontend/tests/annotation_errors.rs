@@ -1,6 +1,6 @@
 use std::env;
 
-use redscript_ast::SourceMap;
+use redscript_community_ast::SourceMap;
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{
     Aggregate, AggregateFlags, CompileErrorReporter, Diagnostic, DiagnosticLevel, Field,

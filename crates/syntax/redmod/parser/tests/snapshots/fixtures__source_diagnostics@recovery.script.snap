@@ -1,0 +1,203 @@
+---
+source: crates/syntax/redmod/parser/tests/fixtures.rs
+expression: output
+input_file: crates/syntax/redmod/parser/tests/data/diagnostics/recovery.script
+---
+error: found ; expected something else
+ --> recovery.script:2:18
+  |
+2 | function Broken( ;
+  |                  ^
+
+error: found = expected something else in statement
+ --> recovery.script:6:17
+  |
+6 |     var broken: = Call((1), [2, 3]);
+  |                 ^
+
+Recovered AST:
+Some(
+    Module {
+        path: None,
+        items: [
+            (
+                Declaration {
+                    annotations: [],
+                    visibility: None,
+                    modifiers: [],
+                    metadata: [],
+                    docs: [],
+                    item: Function {
+                        kind: Function(
+                            (
+                                "Before",
+                                Span {
+                                    start: 9,
+                                    end: 15,
+                                    file: FileId(
+                                        0,
+                                    ),
+                                },
+                            ),
+                        ),
+                        params: [],
+                        return_type: None,
+                        const_return: None,
+                        body: Some(
+                            [],
+                        ),
+                    },
+                },
+                Span {
+                    start: 0,
+                    end: 20,
+                    file: FileId(
+                        0,
+                    ),
+                },
+            ),
+            (
+                Declaration {
+                    annotations: [],
+                    visibility: None,
+                    modifiers: [],
+                    metadata: [],
+                    docs: [
+                        "/// Retained after an incomplete header.",
+                    ],
+                    item: Function {
+                        kind: Function(
+                            (
+                                "After",
+                                Span {
+                                    start: 90,
+                                    end: 95,
+                                    file: FileId(
+                                        0,
+                                    ),
+                                },
+                            ),
+                        ),
+                        params: [],
+                        return_type: None,
+                        const_return: None,
+                        body: Some(
+                            [
+                                (
+                                    Expr(
+                                        (
+                                            Call {
+                                                expr: (
+                                                    Ident(
+                                                        "Before",
+                                                    ),
+                                                    Span {
+                                                        start: 104,
+                                                        end: 110,
+                                                        file: FileId(
+                                                            0,
+                                                        ),
+                                                    },
+                                                ),
+                                                args: [],
+                                            },
+                                            Span {
+                                                start: 104,
+                                                end: 112,
+                                                file: FileId(
+                                                    0,
+                                                ),
+                                            },
+                                        ),
+                                    ),
+                                    Span {
+                                        start: 104,
+                                        end: 113,
+                                        file: FileId(
+                                            0,
+                                        ),
+                                    },
+                                ),
+                                (
+                                    Expr(
+                                        (
+                                            Error,
+                                            Span {
+                                                start: 118,
+                                                end: 150,
+                                                file: FileId(
+                                                    0,
+                                                ),
+                                            },
+                                        ),
+                                    ),
+                                    Span {
+                                        start: 118,
+                                        end: 150,
+                                        file: FileId(
+                                            0,
+                                        ),
+                                    },
+                                ),
+                                (
+                                    Expr(
+                                        (
+                                            Call {
+                                                expr: (
+                                                    Ident(
+                                                        "After",
+                                                    ),
+                                                    Span {
+                                                        start: 155,
+                                                        end: 160,
+                                                        file: FileId(
+                                                            0,
+                                                        ),
+                                                    },
+                                                ),
+                                                args: [],
+                                            },
+                                            Span {
+                                                start: 155,
+                                                end: 162,
+                                                file: FileId(
+                                                    0,
+                                                ),
+                                            },
+                                        ),
+                                    ),
+                                    Span {
+                                        start: 155,
+                                        end: 163,
+                                        file: FileId(
+                                            0,
+                                        ),
+                                    },
+                                ),
+                                (
+                                    Return(
+                                        None,
+                                    ),
+                                    Span {
+                                        start: 168,
+                                        end: 175,
+                                        file: FileId(
+                                            0,
+                                        ),
+                                    },
+                                ),
+                            ],
+                        ),
+                    },
+                },
+                Span {
+                    start: 40,
+                    end: 177,
+                    file: FileId(
+                        0,
+                    ),
+                },
+            ),
+        ],
+    },
+)

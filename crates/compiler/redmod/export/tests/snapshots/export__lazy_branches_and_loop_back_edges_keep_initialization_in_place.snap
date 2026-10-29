@@ -1,0 +1,40 @@
+---
+source: crates/compiler/redmod/export/tests/export.rs
+expression: output
+---
+import function OperatorLess(a: Int32, b: Int32) -> Bool;
+import function OperatorAssignAdd(out a: Int32, b: Int32) -> Int32;
+import function OperatorLogicAnd(a: Bool, b: Bool) -> Bool;
+function Tick() -> Bool {
+    return true;
+}
+function Check(__rse_p0: array<Int32>) -> Bool {
+    return true;
+}
+function Test(__rse_p0: Bool, __rse_p1: array<Int32>) -> Bool {
+    var __rse_v2: Int32;
+    var __rse_v3: array<Int32>;
+    var __rse_v4: Int32;
+    __rse_v2 = 0;
+    while (true) {
+        __rse_v3.Resize(1);
+        __rse_v3[0] = __rse_v2;
+        if (Check(__rse_v3)) {
+            __rse_v4 = Cast<Int32>(0);
+            (__rse_v2 += 1);
+            switch (__rse_v2) {
+                case 1:
+                    continue;
+                default:
+                    break;
+            }
+            if ((__rse_v2 < 3)) {
+                continue;
+            }
+            break;
+        } else {
+            break;
+        }
+    }
+    return (__rse_p0 && (Tick() ? Check(__rse_p1) : Tick()));
+}

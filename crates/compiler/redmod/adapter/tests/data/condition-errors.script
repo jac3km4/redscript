@@ -1,0 +1,8 @@
+@if(ModuleExists("A"))
+function Choice() {}
+@if(ModuleExists("B"))
+function Choice() {}
+@if(!ModuleExists("C"))
+function Choice() {}
+@if(ModuleExists("A") && ModuleExists("B"))
+function Complex() {}

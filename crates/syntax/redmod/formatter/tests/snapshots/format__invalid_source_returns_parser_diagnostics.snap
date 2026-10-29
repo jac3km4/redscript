@@ -1,0 +1,9 @@
+---
+source: crates/syntax/redmod/formatter/tests/format.rs
+expression: diagnostics
+---
+error: invalid symbol `#`
+ --> invalid.script:2:1
+  |
+2 | #
+  | ^

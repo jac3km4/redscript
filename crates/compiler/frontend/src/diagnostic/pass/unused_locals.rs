@@ -1,5 +1,5 @@
 use hashbrown::{HashMap, HashSet};
-use redscript_ast::Span;
+use redscript_community_ast::Span;
 
 use super::DiagnosticPass;
 use crate::visitor::Visitor;
@@ -82,7 +82,7 @@ mod tests {
 
     #[test]
     fn unused_locals_are_sorted_by_span() {
-        let sources = redscript_ast::SourceMap::new();
+        let sources = redscript_community_ast::SourceMap::new();
         let file = sources.push_back("test.reds", "");
         let mut visitor = UnusedLocalVisitor::default();
         for (id, start, end) in [(0, 20, 25), (1, 5, 10), (2, 5, 8), (3, 0, 1)] {

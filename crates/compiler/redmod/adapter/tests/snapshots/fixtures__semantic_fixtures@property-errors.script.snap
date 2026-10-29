@@ -1,0 +1,8 @@
+---
+source: crates/compiler/redmod/adapter/tests/fixtures.rs
+expression: output
+input_file: crates/compiler/redmod/adapter/tests/data/property-errors.script
+---
+REDMOD_SEMANTICS [25..53]: runtimeProperty requires a field and two string literals
+REDMOD_SEMANTICS [83..114]: runtimeProperty requires a field and two string literals
+REDMOD_SEMANTICS [143..183]: runtimeProperty requires a field and two string literals

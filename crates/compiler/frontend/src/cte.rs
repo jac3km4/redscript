@@ -1,5 +1,5 @@
 use hashbrown::HashSet;
-use redscript_ast::{self as ast, Span, Spanned};
+use redscript_community_ast::{self as ast, Span, Spanned};
 use thiserror::Error;
 
 #[derive(Debug)]
@@ -22,6 +22,12 @@ impl<'a> Evaluator<'a> {
             .map(|path| path.segments.clone())
             .collect::<HashSet<_>>();
         Self { modules }
+    }
+
+    /// Whether the supplied compilation inputs contain this exact module path.
+    pub fn module_exists(&self, path: &str) -> bool {
+        let path = path.split('.').collect::<Vec<_>>();
+        self.modules.contains(&path[..])
     }
 
     pub fn eval(&self, (expr, span): &Spanned<ast::SourceExpr<'_>>) -> Result<Value, Error> {
@@ -58,8 +64,7 @@ impl<'a> Evaluator<'a> {
                 }
                 match &**args {
                     [(ast::Expr::Constant(ast::Constant::String(str)), _)] => {
-                        let path = str.split('.').collect::<Vec<_>>();
-                        Value::Bool(self.modules.contains(&path[..]))
+                        Value::Bool(self.module_exists(str))
                     }
                     [(_, span)] => return Err(Error::ModuleExistsExpectedStringLiteral(*span)),
                     _ => {
@@ -169,7 +174,7 @@ mod tests {
 
     fn parse(source: &str) -> Spanned<ast::SourceExpr<'_>> {
         let file = ast::SourceMap::new().push_back("cte.reds", source);
-        let (expr, errors) = redscript_parser::parse_expr(source, file);
+        let (expr, errors) = redscript_community_parser::parse_expr(source, file);
         assert!(errors.is_empty(), "{source}: {errors:?}");
         (
             expr.expect("expected an expression"),
@@ -211,6 +216,32 @@ mod tests {
         ] {
             let Value::Bool(actual) = evaluator.eval(&parse(source)).unwrap();
             assert_eq!(actual, expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn module_lookup_matches_evaluation_for_exact_supplied_paths() {
+        let sources = ast::SourceMap::new();
+        sources.push_back("present.reds", "module Test.Present\n");
+        sources.push_back("duplicate.reds", "module Test.Present\n");
+        sources.push_back("unnamed.reds", "");
+        let mut reporter = crate::CompileErrorReporter::default();
+        let modules = crate::parse_files(&sources, &mut reporter);
+        assert!(reporter.reported().is_empty());
+        let evaluator = Evaluator::from_modules(&modules);
+        for (path, expected) in [
+            ("Test.Present", true),
+            ("Test", false),
+            ("Present", false),
+            ("Test.Missing", false),
+            ("test.Present", false),
+            ("Test.Present.", false),
+            ("", false),
+        ] {
+            assert_eq!(evaluator.module_exists(path), expected, "{path}");
+            let source = format!("ModuleExists(\"{path}\")");
+            let Value::Bool(value) = evaluator.eval(&parse(&source)).unwrap();
+            assert_eq!(value, expected, "{path}");
         }
     }
 

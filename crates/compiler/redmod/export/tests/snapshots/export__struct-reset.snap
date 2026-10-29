@@ -1,0 +1,9 @@
+---
+source: crates/compiler/redmod/export/tests/export.rs
+expression: "result.iter().map(|d| d.display(&sources).to_string()).collect::<String>()"
+---
+error[REDMOD_EXPORT]: no verified target default/reset operation for this type
+ --> rejected.reds:1:51
+  |
+1 | struct Record { let value: Int32; } func Test() { let record: Record; }
+  |                                                   ^^^^^^^^^^^^^^^^^^^

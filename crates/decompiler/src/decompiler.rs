@@ -3,7 +3,7 @@ use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
 use hashbrown::{HashMap, HashSet};
-use redscript_ast as ast;
+use redscript_community_ast as ast;
 use redscript_io::{CodeIter, Function, Instr, LocalIndex, Offset, ScriptBundle};
 
 use crate::control_flow::{BlockType, ControlFlowBlock};

@@ -940,18 +940,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
-name = "redscript-ast"
-version = "1.0.0-preview.22"
-dependencies = [
- "bitflags",
- "chumsky",
- "derive-where",
- "elsa",
- "ignore",
- "unicode-width",
-]
-
-[[package]]
 name = "redscript-cli"
 version = "1.0.0-preview.22"
 dependencies = [
@@ -959,12 +947,15 @@ dependencies = [
  "argh",
  "fern",
  "hashbrown 0.17.1",
+ "ignore",
+ "insta",
  "log",
  "mimalloc",
+ "redscript-community-formatter",
  "redscript-compiler-api",
  "redscript-decompiler",
  "redscript-dotfile",
- "redscript-formatter",
+ "redscript-redmod-export",
  "vmap",
 ]
 
@@ -979,17 +970,50 @@ dependencies = [
 ]
 
 [[package]]
+name = "redscript-community-ast"
+version = "1.0.0-preview.22"
+dependencies = [
+ "bitflags",
+ "chumsky",
+ "derive-where",
+ "elsa",
+ "ignore",
+ "unicode-width",
+]
+
+[[package]]
+name = "redscript-community-formatter"
+version = "1.0.0-preview.22"
+dependencies = [
+ "hashbrown 0.17.1",
+ "insta",
+ "pretty_dtoa",
+ "redscript-community-ast",
+ "redscript-community-parser",
+]
+
+[[package]]
+name = "redscript-community-parser"
+version = "1.0.0-preview.22"
+dependencies = [
+ "chumsky",
+ "insta",
+ "redscript-community-ast",
+ "similar-asserts",
+]
+
+[[package]]
 name = "redscript-compiler-api"
 version = "1.0.0-preview.22"
 dependencies = [
  "bon",
  "insta",
  "log",
- "redscript-ast",
+ "redscript-community-ast",
+ "redscript-community-parser",
  "redscript-compiler-backend",
  "redscript-compiler-frontend",
  "redscript-io",
- "redscript-parser",
  "thiserror 2.0.21",
 ]
 
@@ -1025,9 +1049,9 @@ dependencies = [
  "indexmap",
  "insta",
  "paste",
- "redscript-ast",
+ "redscript-community-ast",
+ "redscript-community-parser",
  "redscript-compiler-api",
- "redscript-parser",
  "sequence_trie",
  "slab",
  "smallvec",
@@ -1040,8 +1064,8 @@ version = "1.0.0-preview.22"
 dependencies = [
  "hashbrown 0.17.1",
  "insta",
- "redscript-ast",
- "redscript-formatter",
+ "redscript-community-ast",
+ "redscript-community-formatter",
  "redscript-io",
  "thiserror 2.0.21",
 ]
@@ -1055,17 +1079,6 @@ dependencies = [
  "leon",
  "serde",
  "toml",
-]
-
-[[package]]
-name = "redscript-formatter"
-version = "1.0.0-preview.22"
-dependencies = [
- "hashbrown 0.17.1",
- "insta",
- "pretty_dtoa",
- "redscript-ast",
- "redscript-parser",
 ]
 
 [[package]]
@@ -1083,12 +1096,58 @@ dependencies = [
 ]
 
 [[package]]
-name = "redscript-parser"
+name = "redscript-redmod-adapter"
+version = "1.0.0-preview.22"
+dependencies = [
+ "insta",
+ "redscript-community-ast",
+ "redscript-community-parser",
+ "redscript-compiler-api",
+ "redscript-compiler-backend",
+ "redscript-compiler-frontend",
+ "redscript-io",
+ "redscript-redmod-ast",
+ "redscript-redmod-parser",
+]
+
+[[package]]
+name = "redscript-redmod-ast"
+version = "1.0.0-preview.22"
+dependencies = [
+ "redscript-community-ast",
+]
+
+[[package]]
+name = "redscript-redmod-export"
+version = "1.0.0-preview.22"
+dependencies = [
+ "insta",
+ "redscript-community-ast",
+ "redscript-community-parser",
+ "redscript-compiler-api",
+ "redscript-compiler-frontend",
+ "redscript-redmod-parser",
+]
+
+[[package]]
+name = "redscript-redmod-formatter"
+version = "1.0.0-preview.22"
+dependencies = [
+ "insta",
+ "redscript-community-ast",
+ "redscript-redmod-ast",
+ "redscript-redmod-parser",
+]
+
+[[package]]
+name = "redscript-redmod-parser"
 version = "1.0.0-preview.22"
 dependencies = [
  "chumsky",
  "insta",
- "redscript-ast",
+ "redscript-community-ast",
+ "redscript-community-parser",
+ "redscript-redmod-ast",
  "similar-asserts",
 ]
 

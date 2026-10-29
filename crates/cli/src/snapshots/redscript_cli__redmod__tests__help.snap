@@ -1,0 +1,24 @@
+---
+source: crates/cli/src/redmod.rs
+expression: help.output
+---
+Usage: redscript-cli export-redmod [-s <src...>] [--dependency <dependency...>] [-b <bundle>] -o <output> [--redmod <redmod>] [--game-root <game-root>] [--timeout <timeout>]
+
+export community redscript sources as a new REDmod script package
+
+Options:
+  -s, --src         authored source file or directory to export (repeatable;
+                    honors .redscript roots)
+  --dependency      community source file or directory for analysis only
+                    (repeatable)
+  -b, --bundle      existing baseline .redscripts for engine symbols (replaces
+                    built-in boot sources)
+  -o, --output      new mod directory; parent must exist, name must not contain
+                    periods
+  --redmod          absolute path to a trusted official REDmod executable for
+                    optional validation
+  --game-root       absolute game installation root for base blobs (requires
+                    --redmod)
+  --timeout         official validation timeout in positive, finite seconds
+                    (default: 60)
+  --help, help      display usage information

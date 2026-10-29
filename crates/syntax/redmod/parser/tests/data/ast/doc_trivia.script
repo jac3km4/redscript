@@ -1,0 +1,12 @@
+/// Documented host.
+class AuthoredDocs {
+    /// Documented method.
+    public function Run() {
+        /// Explain next call.
+        Use(/// Explain argument.
+            1);
+        /// Trailing body comment.
+    }
+    /// Trailing class comment.
+}
+/// Trailing file comment.

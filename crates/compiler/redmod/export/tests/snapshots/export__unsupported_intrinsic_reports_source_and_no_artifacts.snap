@@ -1,0 +1,9 @@
+---
+source: crates/compiler/redmod/export/tests/export.rs
+expression: "result.iter().map(|d| d.display(&sources).to_string()).collect::<String>()"
+---
+error[REDMOD_EXPORT]: unsupported intrinsic ArrayCount
+ --> unsupported.reds:1:41
+  |
+1 | func Test(a: [Int32]) -> Int32 { return ArrayCount(a, 1); }
+  |                                         ^^^^^^^^^^^^^^^^

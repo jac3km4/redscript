@@ -1,0 +1,114 @@
+---
+source: crates/syntax/redmod/parser/tests/fixtures.rs
+expression: parsed
+input_file: crates/syntax/redmod/parser/tests/data/ast/unicode.script
+---
+Module {
+    path: None,
+    items: [
+        (
+            Declaration {
+                annotations: [],
+                visibility: None,
+                modifiers: [],
+                metadata: [],
+                docs: [],
+                item: Function {
+                    kind: Function(
+                        (
+                            "Unicode",
+                            Span {
+                                start: 9,
+                                end: 16,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                    ),
+                    params: [],
+                    return_type: None,
+                    const_return: None,
+                    body: Some(
+                        [
+                            (
+                                Local(
+                                    Local {
+                                        const_: None,
+                                        names: [
+                                            (
+                                                "text",
+                                                Span {
+                                                    start: 26,
+                                                    end: 30,
+                                                    file: FileId(
+                                                        0,
+                                                    ),
+                                                },
+                                            ),
+                                        ],
+                                        typ: (
+                                            Named {
+                                                name: "String",
+                                                args: [],
+                                            },
+                                            Span {
+                                                start: 32,
+                                                end: 38,
+                                                file: FileId(
+                                                    0,
+                                                ),
+                                            },
+                                        ),
+                                        value: Some(
+                                            (
+                                                Constant(
+                                                    String(
+                                                        "猫e\u{301}\\u{XYZ}",
+                                                    ),
+                                                ),
+                                                Span {
+                                                    start: 41,
+                                                    end: 56,
+                                                    file: FileId(
+                                                        0,
+                                                    ),
+                                                },
+                                            ),
+                                        ),
+                                    },
+                                ),
+                                Span {
+                                    start: 22,
+                                    end: 57,
+                                    file: FileId(
+                                        0,
+                                    ),
+                                },
+                            ),
+                            (
+                                Return(
+                                    None,
+                                ),
+                                Span {
+                                    start: 59,
+                                    end: 66,
+                                    file: FileId(
+                                        0,
+                                    ),
+                                },
+                            ),
+                        ],
+                    ),
+                },
+            },
+            Span {
+                start: 0,
+                end: 68,
+                file: FileId(
+                    0,
+                ),
+            },
+        ),
+    ],
+}

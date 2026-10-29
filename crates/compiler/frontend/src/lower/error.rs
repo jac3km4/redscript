@@ -3,7 +3,7 @@ use std::fmt;
 use std::ops::RangeInclusive;
 use std::rc::Rc;
 
-use redscript_ast::Span;
+use redscript_community_ast::Span;
 use thiserror::Error;
 
 use crate::diagnostic::{DiagnosticLevel, FunctionSignature};
@@ -21,8 +21,12 @@ pub enum Error<'ctx> {
     Type(Box<TypeError<'ctx>>, Span),
     #[error("`{0}` is not defined")]
     UnresolvedVar(&'ctx str, Span),
+    #[error("`{0}` is already declared in this function")]
+    LocalRedefinition(&'ctx str, Span),
     #[error("`{0}` is not a known type")]
     UnresolvedType(&'ctx str, Span),
+    #[error("type `{0}` is not supported in this source")]
+    UnsupportedType(PolyType<'ctx>, Span),
     #[error("`{0}` has no member named `{1}`")]
     UnresolvedMember(TypeId<'ctx>, &'ctx str, Span),
     #[error("multiple overloads match the types of the provided arguments:\n{}", sep_by(.0.iter(), "\n"))]
@@ -130,7 +134,9 @@ impl Error<'_> {
         match self {
             Self::Type(_, span)
             | Self::UnresolvedVar(_, span)
+            | Self::LocalRedefinition(_, span)
             | Self::UnresolvedType(_, span)
+            | Self::UnsupportedType(_, span)
             | Self::UnresolvedMember(_, _, span)
             | Self::MultipleMatchingOverloads(_, span)
             | Self::UnresolvedFunction(_, span)
@@ -174,7 +180,9 @@ impl Error<'_> {
         match self {
             Self::Type(_, _) => "TYPE_ERR",
             Self::UnresolvedVar(_, _) => "UNRESOLVED_REF",
+            Self::LocalRedefinition(_, _) => "SYM_REDEFINITION",
             Self::UnresolvedType(_, _) => "UNRESOLVED_TYPE",
+            Self::UnsupportedType(_, _) => "UNSUPPORTED_TYPE",
             Self::UnresolvedMember(_, _, _) => "UNRESOLVED_MEMBER",
             Self::MultipleMatchingOverloads(_, _) => "MULTIPLE_MATCHING_OVERLOADS",
             Self::UnresolvedFunction(_, _) => "UNRESOLVED_FN",

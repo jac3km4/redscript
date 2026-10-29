@@ -1,0 +1,11 @@
+---
+source: crates/compiler/redmod/export/tests/sources.rs
+expression: "errors.iter().map(|e| e.display(&sources).to_string()).collect::<String>()"
+---
+error[REDMOD_EXPORT]: automatic association rejects conditional declarations; inactive bodies have no resolved identity
+ --> conditional.reds:1:1
+  |
+1 | @if(false)
+  | ^^^^^^^^^^ ...
+2 | public func Missing() -> Int32 = 1;
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

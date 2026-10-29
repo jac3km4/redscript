@@ -5,8 +5,8 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-redscript-ast.workspace = true
-redscript-parser.workspace = true
+redscript-community-ast.workspace = true
+redscript-community-parser.workspace = true
 redscript-io = { workspace = true, features = ["mmap"] }
 redscript-compiler-frontend.workspace = true
 redscript-compiler-backend.workspace = true
@@ -22,4 +22,4 @@ insta.workspace = true
 workspace = true
 
 [features]
-ignore = ["redscript-ast/ignore"]
+ignore = ["redscript-community-ast/ignore"]

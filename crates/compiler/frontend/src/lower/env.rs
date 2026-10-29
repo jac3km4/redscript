@@ -1,8 +1,8 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
-use redscript_ast as ast;
-use redscript_ast::Span;
+use redscript_community_ast as ast;
+use redscript_community_ast::Span;
 
 use crate::lower::error::{Error, LowerResult};
 use crate::lower::types::PolyType;
@@ -69,8 +69,50 @@ impl<'scope, 'ctx> Env<'scope, 'ctx> {
     }
 }
 
+type ConditionPolicy = for<'ctx> fn(&PolyType<'ctx>, &Symbols<'ctx>) -> Option<ir::Intrinsic>;
+type MemberIntrinsicPolicy = for<'ctx> fn(TypeId<'ctx>, &str) -> Option<(ir::Intrinsic, bool)>;
+type TypePolicy = for<'ctx> fn(TypeId<'ctx>, &Symbols<'ctx>, Span) -> LowerResult<'ctx, ()>;
+type CoercionPolicy =
+    for<'ctx> fn(&PolyType<'ctx>, &PolyType<'ctx>, &Symbols<'ctx>, Span) -> LowerResult<'ctx, ()>;
+
+/// Optional per-file semantic hooks. [`Default`] preserves the standard semantics.
+///
+/// Hooks are stateless function pointers, selected by the source span's file even
+/// in nested scopes. They inspect resolved types without mutating shared symbols.
+/// They do not replace source-language capability validation.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SemanticPolicy {
+    /// Predeclare explicitly typed locals throughout each function body, with
+    /// default initialization at entry. Initializers stay at their source sites.
+    /// Duplicate hoisted names (including parameters) are errors; untyped locals retain
+    /// ordinary lexical scoping. Nested closures have independent declarations.
+    pub hoist_locals: bool,
+    /// Optionally convert a condition using a unary intrinsic returning `Bool`.
+    /// Applies to control-flow conditions, logical operators and ternaries.
+    /// `None` from the callback retains the ordinary `Bool` constraint.
+    pub condition: Option<ConditionPolicy>,
+    /// Map a resolved receiver type and member name to an intrinsic. The receiver
+    /// becomes its first argument; the boolean requires a non-temporary receiver.
+    /// Only overloads annotated with the exact returned intrinsic are eligible.
+    pub member_intrinsic: Option<MemberIntrinsicPolicy>,
+    /// Validate a named concrete type during type resolution. Type variables,
+    /// special `ref`/`wref` wrappers and implicit array/function constructors are
+    /// not passed to this callback; their explicit type arguments still are.
+    pub validate_type: Option<TypePolicy>,
+    /// Validate a coercion before the standard rules, with source then target type.
+    /// Returning `Ok(())` does not bypass ordinary type checking.
+    pub validate_coercion: Option<CoercionPolicy>,
+    /// Filter the intrinsic selected for an explicit free-function call.
+    /// This does not filter ordinary functions or compiler-generated calls.
+    /// Rejected calls report an unresolved-function error.
+    pub allow_explicit_intrinsic: Option<fn(ir::Intrinsic) -> bool>,
+}
+
 #[derive(Debug, Clone)]
-pub struct TypeEnv<'scope, 'ctx>(ScopedMap<'scope, &'ctx str, TypeRef<'scope, 'ctx>>);
+pub struct TypeEnv<'scope, 'ctx>(
+    ScopedMap<'scope, &'ctx str, TypeRef<'scope, 'ctx>>,
+    Rc<[(ast::FileId, SemanticPolicy)]>,
+);
 
 impl<'scope, 'ctx> TypeEnv<'scope, 'ctx> {
     pub fn with_default_types() -> Self {
@@ -80,12 +122,12 @@ impl<'scope, 'ctx> TypeEnv<'scope, 'ctx> {
         map.insert("wref", TypeRef::Id(predef::WREF));
         map.insert("script_ref", TypeRef::Id(predef::SCRIPT_REF));
 
-        Self(ScopedMap::from(map))
+        Self(ScopedMap::from(map), Rc::default())
     }
 
     #[inline]
     pub fn introduce_scope(&'scope self) -> Self {
-        Self(self.0.introduce_scope())
+        Self(self.0.introduce_scope(), self.1.clone())
     }
 
     #[inline]
@@ -95,7 +137,7 @@ impl<'scope, 'ctx> TypeEnv<'scope, 'ctx> {
 
     #[inline]
     pub fn push_scope(&'scope self, scope: IndexMap<&'ctx str, TypeRef<'scope, 'ctx>>) -> Self {
-        Self(self.0.push_scope(scope))
+        Self(self.0.push_scope(scope), self.1.clone())
     }
 
     #[inline]
@@ -111,6 +153,18 @@ impl<'scope, 'ctx> TypeEnv<'scope, 'ctx> {
     #[inline]
     pub fn add(&mut self, name: &'ctx str, typ: TypeRef<'scope, 'ctx>) {
         self.0.insert(name, typ);
+    }
+
+    pub(crate) fn set_policies(&mut self, policies: Rc<[(ast::FileId, SemanticPolicy)]>) {
+        self.1 = policies;
+    }
+
+    pub(crate) fn policy(&self, span: Span) -> SemanticPolicy {
+        self.1
+            .iter()
+            .find(|(file, _)| *file == span.file)
+            .map(|(_, policy)| *policy)
+            .unwrap_or_default()
     }
 
     pub fn resolve(
@@ -141,6 +195,9 @@ impl<'scope, 'ctx> TypeEnv<'scope, 'ctx> {
                     }
                 }
                 (Some(&TypeRef::Id(id)), _) => {
+                    if let Some(validate) = self.policy(span).validate_type {
+                        validate(id, symbols, span)?;
+                    }
                     let args = args
                         .iter()
                         .map(|(typ, span)| self.resolve(typ, symbols, *span))

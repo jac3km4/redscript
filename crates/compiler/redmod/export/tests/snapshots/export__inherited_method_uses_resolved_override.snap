@@ -1,0 +1,15 @@
+---
+source: crates/compiler/redmod/export/tests/export.rs
+assertion_line: 315
+expression: output
+---
+class Base extends IScriptable {
+public function Value() -> Int32 {
+    return 1;
+}
+}
+class Child extends Base {
+public override function Value() -> Int32 {
+    return 2;
+}
+}

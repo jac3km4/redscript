@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::VecDeque;
 
-use redscript_ast::{self as ast, Span};
+use redscript_community_ast::{self as ast, Span};
 
 use crate::lower::{InferredTypeApp, PolyType};
 use crate::symbols::{FieldId, FreeFunctionIndex, MethodId};
@@ -12,6 +12,8 @@ use crate::{CoalesceError, RefType, Symbols};
 mod intrinsic;
 
 pub use intrinsic::{Intrinsic, UnknownIntrinsic};
+
+pub use crate::visitor::Visitor;
 
 #[derive(Debug)]
 pub enum Stmt<'ctx> {
@@ -74,17 +76,8 @@ impl<'ctx> Stmt<'ctx> {
                 default,
                 span,
             } if span.contains(pos) => branches
-                .binary_search_by(|branch| {
-                    branch
-                        .block
-                        .span()
-                        .map_or(branch.condition.span(), |s| {
-                            branch.condition.span().merge(&s)
-                        })
-                        .cmp_pos(pos)
-                })
-                .ok()
-                .and_then(|idx| branches[idx].find_at(pos))
+                .iter()
+                .find_map(|branch| branch.find_at(pos))
                 .or_else(|| default.as_ref()?.find_at(pos)),
             Stmt::Switch {
                 scrutinee,
@@ -157,17 +150,17 @@ impl<'ctx> Block<'ctx> {
     }
 
     pub fn span(&self) -> Option<Span> {
-        let fst = self.stmts.front()?;
-        let lst = self.stmts.back()?;
-        Some(fst.span().merge(&lst.span()))
+        self.stmts
+            .iter()
+            .map(Stmt::span)
+            .reduce(|envelope, span| envelope.merge(&span))
     }
 
     pub fn find_at(&self, pos: u32) -> Option<&Expr<'ctx>> {
-        let idx = self
-            .stmts
-            .binary_search_by(|stmt| stmt.span().cmp_pos(pos))
-            .ok()?;
-        self.stmts[idx].find_at(pos)
+        // Lowering can lift prefixes or reorder statements into execution order.
+        // Their source spans may overlap; a containing structural statement that
+        // has no expression at this position must not hide later statements.
+        self.stmts.iter().find_map(|stmt| stmt.find_at(pos))
     }
 
     pub(crate) fn push_prologue(
@@ -624,4 +617,72 @@ pub enum CallMode {
 enum TypeAppState<'ctx> {
     Uninit(InferredTypeApp<'ctx>),
     Init(types::TypeApp<'ctx>),
+}
+
+#[cfg(test)]
+mod query_tests {
+    use super::*;
+
+    fn span(start: u32, end: u32) -> Span {
+        let sources = ast::SourceMap::new();
+        Span::new(start, end, sources.push_back("query.reds", ""))
+    }
+
+    fn value(start: u32) -> Expr<'static> {
+        Expr::Const(Const::I32(start as i32), span(start, start + 1))
+    }
+
+    fn assert_value(block: &Block<'_>, pos: u32) {
+        assert!(
+            matches!(block.find_at(pos), Some(Expr::Const(Const::I32(i), _)) if *i == pos as i32)
+        );
+    }
+
+    #[test]
+    fn block_queries_reordered_and_lifted_statements_without_sorting() {
+        let block = Block::new([
+            Stmt::Break(span(20, 20)),
+            value(80).into(),
+            value(10).into(),
+            value(40).into(),
+        ]);
+        assert_eq!(block.span(), Some(span(10, 81)));
+        for pos in [10, 40, 80] {
+            assert_value(&block, pos);
+        }
+        assert!(block.find_at(30).is_none());
+        // Querying must leave execution order unchanged.
+        assert_eq!(block.stmts[1].span(), span(80, 81));
+    }
+
+    #[test]
+    fn overlapping_branch_envelopes_do_not_hide_later_expressions() {
+        let empty = || {
+            ConditionalBlock::new(
+                Expr::Const(Const::Bool(true), span(0, 0)),
+                Block::new([Stmt::Break(span(0, 100))]),
+            )
+        };
+        let block = Block::new([
+            Stmt::Branches {
+                branches: vec![empty()].into(),
+                default: None,
+                span: span(0, 100),
+            },
+            Stmt::Branches {
+                branches: vec![
+                    empty(),
+                    ConditionalBlock::new(value(80), Block::new([value(10).into()])),
+                    ConditionalBlock::new(value(40), Block::default()),
+                ]
+                .into(),
+                default: Some(Block::new([value(60).into()])),
+                span: span(0, 100),
+            },
+        ]);
+        for pos in [10, 40, 60, 80] {
+            assert_value(&block, pos);
+        }
+        assert!(block.find_at(30).is_none());
+    }
 }

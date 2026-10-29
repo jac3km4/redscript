@@ -1,0 +1,15 @@
+---
+source: crates/cli/tests/export_redmod.rs
+expression: diagnostic
+---
+error[REDMOD_EXPORT]: community analysis [UNRESOLVED_TYPE]: `MissingType` is not a known type
+ --> [ROOT]/main.reds:1:25
+  |
+1 | public func Broken() -> MissingType { return 1; }
+  |                         ^^^^^^^^^^^
+
+error[REDMOD_EXPORT]: community analysis [TYPE_ERR]: type mismatch: found `Int32` when expected `Void`
+ --> [ROOT]/main.reds:1:46
+  |
+1 | public func Broken() -> MissingType { return 1; }
+  |                                              ^

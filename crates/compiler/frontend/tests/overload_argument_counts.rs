@@ -1,4 +1,4 @@
-use redscript_ast::SourceMap;
+use redscript_community_ast::SourceMap;
 use redscript_compiler_api::{CompileErrorReporter, SourceMapExt, Symbols, TypeInterner};
 use redscript_compiler_frontend::infer_from_sources;
 

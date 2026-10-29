@@ -1,0 +1,5 @@
+class Bad {
+  public event Visible() {}
+  static event StaticEvent() {}
+}
+event Global() {}

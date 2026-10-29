@@ -1,0 +1,15 @@
+---
+source: crates/compiler/redmod/export/tests/export.rs
+assertion_line: 291
+expression: output
+---
+function Test(__rse_p0: Int32) -> Int32 {
+    var __rse_v1: Int32;
+    var __rse_v2: Int32;
+    if (true) {
+        __rse_v1 = 1;
+    } else {
+        __rse_v2 = 2;
+    }
+    return __rse_p0;
+}

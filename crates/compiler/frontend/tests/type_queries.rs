@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use redscript_ast::SourceMap;
+use redscript_community_ast::SourceMap;
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{
     CompileErrorReporter, Symbols, TypeInterner, expr_type, infer_from_sources, ir,

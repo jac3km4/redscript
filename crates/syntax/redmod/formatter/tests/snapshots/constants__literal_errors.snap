@@ -1,0 +1,14 @@
+---
+source: crates/syntax/redmod/formatter/tests/constants.rs
+expression: failures
+---
+LiteralDelimiter: embedded delimiter has no verified REDmod literal spelling
+LiteralDelimiter: embedded delimiter has no verified REDmod literal spelling
+LiteralNul: NUL has no verified REDmod literal spelling
+LiteralNul: NUL has no verified REDmod literal spelling
+LiteralControl: unverified control character in REDmod literal
+LiteralControl: unverified control character in REDmod literal
+LiteralControl: unverified control character in REDmod literal
+LiteralControl: unverified control character in REDmod literal
+UnverifiedLiteral: raw backslashes or controls are unverified in R/T literals
+UnverifiedLiteral: raw backslashes or controls are unverified in R/T literals

@@ -1,0 +1,4 @@
+/// Written types remain navigable.
+function Convert(value: Source): Target {
+    return (Target)(ref<Source>)value;
+}

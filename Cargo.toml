@@ -1,13 +1,18 @@
 [workspace]
 resolver = "3"
 members = [
-    "crates/syntax/ast",
-    "crates/syntax/parser",
-    "crates/syntax/formatter",
+    "crates/syntax/community/ast",
+    "crates/syntax/community/parser",
+    "crates/syntax/community/formatter",
+    "crates/syntax/redmod/ast",
+    "crates/syntax/redmod/parser",
+    "crates/syntax/redmod/formatter",
     "crates/io",
     "crates/compiler/frontend",
     "crates/compiler/backend",
     "crates/compiler/api",
+    "crates/compiler/redmod/adapter",
+    "crates/compiler/redmod/export",
     "crates/decompiler",
     "crates/cli",
     "crates/scc/core",
@@ -23,9 +28,14 @@ authors = ["jekky"]
 edition = "2024"
 
 [workspace.dependencies]
-redscript-ast.path = "crates/syntax/ast"
-redscript-parser.path = "crates/syntax/parser"
-redscript-formatter.path = "crates/syntax/formatter"
+redscript-community-ast.path = "crates/syntax/community/ast"
+redscript-community-parser.path = "crates/syntax/community/parser"
+redscript-community-formatter.path = "crates/syntax/community/formatter"
+redscript-redmod-ast.path = "crates/syntax/redmod/ast"
+redscript-redmod-parser.path = "crates/syntax/redmod/parser"
+redscript-redmod-formatter.path = "crates/syntax/redmod/formatter"
+redscript-redmod-adapter.path = "crates/compiler/redmod/adapter"
+redscript-redmod-export.path = "crates/compiler/redmod/export"
 redscript-io.path = "crates/io"
 redscript-compiler-frontend.path = "crates/compiler/frontend"
 redscript-compiler-backend.path = "crates/compiler/backend"

@@ -2,12 +2,12 @@ use std::mem;
 use std::ops::Not;
 
 use hashbrown::HashMap;
-use redscript_ast::{self as ast, Span};
+use redscript_community_ast::{self as ast, Span};
 
 use super::constants::{annotation, ident};
 use super::{
     BitStructOps, NameResolution, ParsedAggregate, convert_visibility, derive_new,
-    extract_field_properties,
+    extract_field_hint, extract_field_properties,
 };
 use crate::lower::TypeEnv;
 use crate::stages::infer::{ClassItem, FieldItem, FuncItem};
@@ -47,6 +47,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
             .with_is_native(is_native)
             .with_is_final(qs.take_flag(ast::ItemQualifiers::FINAL))
             .with_is_abstract(qs.take_flag(ast::ItemQualifiers::ABSTRACT))
+            .with_is_test_only(qs.take_flag(ast::ItemQualifiers::TEST_ONLY))
             .with_is_struct(is_struct);
 
         if !qs.is_empty() {
@@ -139,6 +140,12 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
 
             match item.item {
                 ast::Item::Function(func) => {
+                    for (ann, ann_span) in &item.annotations {
+                        if ann.name == annotation::HINT {
+                            self.reporter
+                                .report(Diagnostic::UnknownAnnotation(ann.name, *ann_span));
+                        }
+                    }
                     let (name, name_span) = func.name;
                     let qs = item.qualifiers;
 
@@ -190,12 +197,14 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         .with_visibility(visibility);
 
                     let properties = extract_field_properties(&mut item.annotations);
+                    let hint = extract_field_hint(&mut item.annotations);
                     for (ann, ann_span) in &item.annotations {
                         self.reporter
                             .report(Diagnostic::UnknownAnnotation(ann.name, *ann_span));
                     }
 
-                    let field = Field::new(flags, typ, properties, item.doc, Some(name_span));
+                    let field = Field::new(flags, typ, properties, item.doc, Some(name_span))
+                        .with_hint(hint);
                     let res = fields
                         .add(name, field)
                         .map_err(|_| Diagnostic::NameRedefinition(name_span));
@@ -346,6 +355,11 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
         let flags = FieldFlags::default()
             .with_is_native(qs.take_flag(ast::ItemQualifiers::NATIVE))
             .with_is_const(qs.take_flag(ast::ItemQualifiers::CONST))
+            .with_is_editable(qs.take_flag(ast::ItemQualifiers::EDITABLE))
+            .with_is_instance_editable(qs.take_flag(ast::ItemQualifiers::INSTANCE_EDITABLE))
+            .with_is_inline(qs.take_flag(ast::ItemQualifiers::INLINE))
+            .with_is_replicated(qs.take_flag(ast::ItemQualifiers::REPLICATED))
+            .with_is_test_only(qs.take_flag(ast::ItemQualifiers::TEST_ONLY))
             .with_is_persistent(qs.take_flag(ast::ItemQualifiers::PERSISTENT));
 
         if !qs.is_empty() {

@@ -1,0 +1,9 @@
+class Base {
+  event OnAttach() {}
+}
+class Child extends Base {
+  event OnAttach() { return; }
+}
+class BadReturn {
+  event OnValue() { return true; }
+}

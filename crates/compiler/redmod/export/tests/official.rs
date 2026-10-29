@@ -1,0 +1,179 @@
+//! Opt-in conformance checks against a locally installed, trusted official compiler.
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+use redscript_community_ast::SourceMap;
+use redscript_compiler_api::SourceMapExt;
+use redscript_compiler_frontend::{Symbols, TypeInterner};
+use redscript_redmod_export::export_sources;
+use redscript_redmod_export::package::{ScriptArtifact, publish_mod_with_root};
+use redscript_redmod_export::validate::OfficialValidator;
+
+#[test]
+#[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]
+fn authored_exports_compile_with_official_compiler() {
+    let executable = PathBuf::from(std::env::var_os("REDMOD_EXE").expect("set REDMOD_EXE"));
+    let game_root =
+        PathBuf::from(std::env::var_os("REDMOD_GAME_ROOT").expect("set REDMOD_GAME_ROOT"));
+    let validator = OfficialValidator {
+        executable,
+        timeout: Duration::from_secs(60),
+    };
+    let parent = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../target/redmod-official")
+        .join(format!("integration-{}", std::process::id()));
+    std::fs::create_dir_all(&parent).unwrap();
+
+    let output = authored_exports();
+    for ((name, _), source) in FIXTURES.iter().zip(&output) {
+        let published = publish_mod_with_root(
+            &parent,
+            name,
+            &[ScriptArtifact {
+                path: Path::new("authored.script"),
+                source,
+            }],
+            &validator,
+            &game_root,
+        )
+        .unwrap();
+        let report = published.validation.unwrap();
+        println!("{name}: {}", published.directory.display());
+        println!(
+            "{}",
+            report.stdout.replace("\r\r\n", "\n").replace("\r\n", "\n")
+        );
+        let about = std::fs::read_to_string(published.directory.join("about.json")).unwrap();
+        assert!(
+            about.contains(&format!("\"ModName\": \"{name}\"")),
+            "{about}"
+        );
+        assert!(report.stderr.is_empty(), "{}", report.stderr);
+        for artifact in ["final.redscripts", "final.redscripts.h64"] {
+            let bytes = std::fs::metadata(published.directory.join("r6/cache").join(artifact))
+                .unwrap()
+                .len();
+            assert!(bytes > 0);
+            println!("{artifact}: {bytes} bytes");
+        }
+        if *name == "Literals" {
+            let bytes =
+                std::fs::read(published.directory.join("r6/cache/final.redscripts")).unwrap();
+            let strings = literal_pool(&bytes, 92);
+            for expected in [
+                r"assets\widgets\button",
+                r"assets\",
+                r"\n\t\u{22}\\",
+                "first\n  second",
+            ] {
+                assert!(strings.contains(&expected), "missing String {expected:?}");
+            }
+            let cnames = literal_pool(&bytes, 44);
+            assert!(cnames.contains(&r"raw\name\"));
+        }
+        assert_eq!(
+            validator
+                .validate_with_root(&published.directory, &game_root)
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::AlreadyExists
+        );
+    }
+    assert_eq!(std::fs::read_dir(&parent).unwrap().count(), FIXTURES.len());
+    // Keep evidence under target, but never accept output from an earlier run.
+}
+
+// Read only bounded version-14 literal tables, not definitions (which may use
+// official layouts unsupported by the full decompiler). Offsets follow io/bundle.rs.
+fn literal_pool(bytes: &[u8], table: usize) -> Vec<&str> {
+    fn word(bytes: &[u8], offset: usize) -> usize {
+        u32::from_le_bytes(bytes.get(offset..offset + 4).unwrap().try_into().unwrap()) as usize
+    }
+    assert_eq!(bytes.get(..4), Some(b"REDS".as_slice()));
+    assert_eq!(word(bytes, 4), 14);
+    let data_start = word(bytes, 32);
+    let data_end = data_start.checked_add(word(bytes, 36)).unwrap();
+    let data = bytes.get(data_start..data_end).unwrap();
+    let start = word(bytes, table);
+    let size = word(bytes, table + 4).checked_mul(4).unwrap();
+    bytes
+        .get(start..start.checked_add(size).unwrap())
+        .unwrap()
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|entry| {
+            let offset = word(entry, 0);
+            let remaining = data.get(offset..).unwrap();
+            let end = remaining.iter().position(|&b| b == 0).unwrap();
+            std::str::from_utf8(&remaining[..end]).unwrap()
+        })
+        .collect()
+}
+
+#[test]
+fn literal_pool_reader_decodes_relative_offsets() {
+    let mut bytes = vec![0_u8; 112];
+    bytes[..4].copy_from_slice(b"REDS");
+    for (offset, value) in [(4, 14_u32), (32, 108), (36, 4), (92, 104), (96, 1)] {
+        bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+    }
+    bytes[108..].copy_from_slice(b"a\\b\0");
+    assert_eq!(literal_pool(&bytes, 92), vec![r"a\b"]);
+}
+
+const FIXTURES: &[(&str, &str)] = &[
+    (
+        "Literals",
+        r#"public func OfficialExportPath() -> String = "assets\\widgets\\button";
+public func OfficialExportTrailingSlash() -> String = "assets\\";
+public func OfficialExportEscapeLooking() -> String = "\\n\\t\\u{22}\\\\";
+public func OfficialExportMultiline() -> String = "first\n  second";
+public func OfficialExportName() -> CName = n"raw\\name\\";"#,
+    ),
+    (
+        "Arithmetic",
+        "public func OfficialExportSum(value: Int32) -> Int32 { return value + 2; }",
+    ),
+    (
+        "Arrays",
+        "public func OfficialExportArray() -> Int32 { let values: [Int32] = [1, 2]; ArrayPush(values, 3); return ArraySize(values); }",
+    ),
+    (
+        "Floats",
+        "public func OfficialExportSmallFloat() -> Float = 0.00000001;\npublic func OfficialExportLargeFloat() -> Float = 100000000000000000000.0;\npublic func OfficialExportNegativeZero() -> Float = -0.0;",
+    ),
+    (
+        "Objects",
+        "class OfficialExportWidget { private let value: Int32; public func Read() -> Int32 { return this.value; } }\npublic func OfficialExportObject() -> ref<OfficialExportWidget> { return new OfficialExportWidget(); }",
+    ),
+];
+
+fn authored_exports() -> Vec<redscript_redmod_export::ExportedSource> {
+    let sources = SourceMap::new();
+    // Analysis-only: the official compiler already knows the native operator.
+    sources.push_back(
+        "operators.reds",
+        "native func OperatorAdd(a: Int32, b: Int32) -> Int32;\nnative func OperatorNeg(value: Float) -> Float;\n",
+    );
+    let selected: Vec<_> = FIXTURES
+        .iter()
+        .map(|(name, text)| sources.push_back(format!("{name}.reds"), *text))
+        .collect();
+    sources.populate_boot_lib();
+    let interner = TypeInterner::default();
+    export_sources(
+        &sources,
+        &selected,
+        Symbols::with_default_types(),
+        &interner,
+    )
+    .unwrap()
+}
+
+#[test]
+fn authored_export_snapshots() {
+    for ((name, _), source) in FIXTURES.iter().zip(authored_exports()) {
+        insta::assert_snapshot!(*name, source.module.text);
+    }
+}

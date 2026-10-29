@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use hashbrown::{HashMap, HashSet};
 use identity_hash::BuildIdentityHasher;
-use redscript_ast::Span;
+use redscript_community_ast::Span;
 
 use super::NameResolution;
 use crate::diagnostic::FunctionSignature;

@@ -1,4 +1,4 @@
-use redscript_ast::{SourceMap, Span};
+use redscript_community_ast::{SourceMap, Span};
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{
     CompileErrorReporter, LoweredCompilationUnit, LoweredFunction, PolyType, QueryError, Symbols,

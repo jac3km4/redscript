@@ -1,0 +1,3 @@
+class BadState {
+  persistent let text: String;
+}

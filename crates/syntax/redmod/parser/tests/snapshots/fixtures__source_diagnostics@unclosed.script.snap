@@ -1,0 +1,140 @@
+---
+source: crates/syntax/redmod/parser/tests/fixtures.rs
+expression: output
+input_file: crates/syntax/redmod/parser/tests/data/diagnostics/unclosed.script
+---
+error: unclosed block; expected '}'
+ --> unclosed.script:3:1
+  |
+3 | /// Retained after a missing block closer.
+  | ^
+
+Recovered AST:
+Some(
+    Module {
+        path: None,
+        items: [
+            (
+                Declaration {
+                    annotations: [],
+                    visibility: None,
+                    modifiers: [],
+                    metadata: [],
+                    docs: [],
+                    item: Function {
+                        kind: Function(
+                            (
+                                "Before",
+                                Span {
+                                    start: 9,
+                                    end: 15,
+                                    file: FileId(
+                                        0,
+                                    ),
+                                },
+                            ),
+                        ),
+                        params: [],
+                        return_type: None,
+                        const_return: None,
+                        body: Some(
+                            [
+                                (
+                                    Expr(
+                                        (
+                                            Call {
+                                                expr: (
+                                                    Ident(
+                                                        "Before",
+                                                    ),
+                                                    Span {
+                                                        start: 24,
+                                                        end: 30,
+                                                        file: FileId(
+                                                            0,
+                                                        ),
+                                                    },
+                                                ),
+                                                args: [],
+                                            },
+                                            Span {
+                                                start: 24,
+                                                end: 32,
+                                                file: FileId(
+                                                    0,
+                                                ),
+                                            },
+                                        ),
+                                    ),
+                                    Span {
+                                        start: 24,
+                                        end: 33,
+                                        file: FileId(
+                                            0,
+                                        ),
+                                    },
+                                ),
+                            ],
+                        ),
+                    },
+                },
+                Span {
+                    start: 0,
+                    end: 33,
+                    file: FileId(
+                        0,
+                    ),
+                },
+            ),
+            (
+                Declaration {
+                    annotations: [],
+                    visibility: None,
+                    modifiers: [
+                        (
+                            Static,
+                            Span {
+                                start: 77,
+                                end: 83,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                    ],
+                    metadata: [],
+                    docs: [
+                        "/// Retained after a missing block closer.",
+                    ],
+                    item: Function {
+                        kind: Function(
+                            (
+                                "After",
+                                Span {
+                                    start: 93,
+                                    end: 98,
+                                    file: FileId(
+                                        0,
+                                    ),
+                                },
+                            ),
+                        ),
+                        params: [],
+                        return_type: None,
+                        const_return: None,
+                        body: Some(
+                            [],
+                        ),
+                    },
+                },
+                Span {
+                    start: 34,
+                    end: 103,
+                    file: FileId(
+                        0,
+                    ),
+                },
+            ),
+        ],
+    },
+)

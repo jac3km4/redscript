@@ -1,0 +1,135 @@
+---
+source: crates/syntax/redmod/parser/tests/fixtures.rs
+expression: parsed
+input_file: crates/syntax/redmod/parser/tests/data/ast/doc_trivia.script
+---
+Module {
+    path: None,
+    items: [
+        (
+            Declaration {
+                annotations: [],
+                visibility: None,
+                modifiers: [],
+                metadata: [],
+                docs: [
+                    "/// Documented host.",
+                ],
+                item: Aggregate {
+                    is_struct: false,
+                    name: (
+                        "AuthoredDocs",
+                        Span {
+                            start: 27,
+                            end: 39,
+                            file: FileId(
+                                0,
+                            ),
+                        },
+                    ),
+                    extends: None,
+                    items: [
+                        (
+                            Declaration {
+                                annotations: [],
+                                visibility: Some(
+                                    Public,
+                                ),
+                                modifiers: [],
+                                metadata: [],
+                                docs: [
+                                    "/// Documented method.",
+                                ],
+                                item: Function {
+                                    kind: Function(
+                                        (
+                                            "Run",
+                                            Span {
+                                                start: 89,
+                                                end: 92,
+                                                file: FileId(
+                                                    0,
+                                                ),
+                                            },
+                                        ),
+                                    ),
+                                    params: [],
+                                    return_type: None,
+                                    const_return: None,
+                                    body: Some(
+                                        [
+                                            (
+                                                Expr(
+                                                    (
+                                                        Call {
+                                                            expr: (
+                                                                Ident(
+                                                                    "Use",
+                                                                ),
+                                                                Span {
+                                                                    start: 136,
+                                                                    end: 139,
+                                                                    file: FileId(
+                                                                        0,
+                                                                    ),
+                                                                },
+                                                            ),
+                                                            args: [
+                                                                (
+                                                                    Constant(
+                                                                        I32(
+                                                                            1,
+                                                                        ),
+                                                                    ),
+                                                                    Span {
+                                                                        start: 174,
+                                                                        end: 175,
+                                                                        file: FileId(
+                                                                            0,
+                                                                        ),
+                                                                    },
+                                                                ),
+                                                            ],
+                                                        },
+                                                        Span {
+                                                            start: 136,
+                                                            end: 176,
+                                                            file: FileId(
+                                                                0,
+                                                            ),
+                                                        },
+                                                    ),
+                                                ),
+                                                Span {
+                                                    start: 136,
+                                                    end: 177,
+                                                    file: FileId(
+                                                        0,
+                                                    ),
+                                                },
+                                            ),
+                                        ],
+                                    ),
+                                },
+                            },
+                            Span {
+                                start: 46,
+                                end: 218,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                    ],
+                },
+            },
+            Span {
+                start: 0,
+                end: 252,
+                file: FileId(
+                    0,
+                ),
+            },
+        ),
+    ],
+}

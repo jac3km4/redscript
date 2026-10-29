@@ -1,0 +1,190 @@
+---
+source: crates/syntax/redmod/parser/tests/fixtures.rs
+expression: parsed
+input_file: crates/syntax/redmod/parser/tests/data/ast/casts.script
+---
+Module {
+    path: None,
+    items: [
+        (
+            Declaration {
+                annotations: [],
+                visibility: None,
+                modifiers: [],
+                metadata: [],
+                docs: [
+                    "/// Written types remain navigable.",
+                ],
+                item: Function {
+                    kind: Function(
+                        (
+                            "Convert",
+                            Span {
+                                start: 45,
+                                end: 52,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                    ),
+                    params: [
+                        (
+                            ParamGroup {
+                                modifiers: [],
+                                names: [
+                                    (
+                                        "value",
+                                        Span {
+                                            start: 53,
+                                            end: 58,
+                                            file: FileId(
+                                                0,
+                                            ),
+                                        },
+                                    ),
+                                ],
+                                typ: (
+                                    Named {
+                                        name: "Source",
+                                        args: [],
+                                    },
+                                    Span {
+                                        start: 60,
+                                        end: 66,
+                                        file: FileId(
+                                            0,
+                                        ),
+                                    },
+                                ),
+                            },
+                            Span {
+                                start: 53,
+                                end: 66,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                    ],
+                    return_type: Some(
+                        (
+                            Named {
+                                name: "Target",
+                                args: [],
+                            },
+                            Span {
+                                start: 69,
+                                end: 75,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                    ),
+                    const_return: None,
+                    body: Some(
+                        [
+                            (
+                                Return(
+                                    Some(
+                                        (
+                                            Cast {
+                                                typ: (
+                                                    Named {
+                                                        name: "Target",
+                                                        args: [],
+                                                    },
+                                                    Span {
+                                                        start: 90,
+                                                        end: 96,
+                                                        file: FileId(
+                                                            0,
+                                                        ),
+                                                    },
+                                                ),
+                                                expr: (
+                                                    Cast {
+                                                        typ: (
+                                                            Named {
+                                                                name: "ref",
+                                                                args: [
+                                                                    (
+                                                                        Named {
+                                                                            name: "Source",
+                                                                            args: [],
+                                                                        },
+                                                                        Span {
+                                                                            start: 102,
+                                                                            end: 108,
+                                                                            file: FileId(
+                                                                                0,
+                                                                            ),
+                                                                        },
+                                                                    ),
+                                                                ],
+                                                            },
+                                                            Span {
+                                                                start: 98,
+                                                                end: 109,
+                                                                file: FileId(
+                                                                    0,
+                                                                ),
+                                                            },
+                                                        ),
+                                                        expr: (
+                                                            Ident(
+                                                                "value",
+                                                            ),
+                                                            Span {
+                                                                start: 110,
+                                                                end: 115,
+                                                                file: FileId(
+                                                                    0,
+                                                                ),
+                                                            },
+                                                        ),
+                                                        style: CStyle,
+                                                    },
+                                                    Span {
+                                                        start: 97,
+                                                        end: 115,
+                                                        file: FileId(
+                                                            0,
+                                                        ),
+                                                    },
+                                                ),
+                                                style: CStyle,
+                                            },
+                                            Span {
+                                                start: 89,
+                                                end: 115,
+                                                file: FileId(
+                                                    0,
+                                                ),
+                                            },
+                                        ),
+                                    ),
+                                ),
+                                Span {
+                                    start: 82,
+                                    end: 116,
+                                    file: FileId(
+                                        0,
+                                    ),
+                                },
+                            ),
+                        ],
+                    ),
+                },
+            },
+            Span {
+                start: 0,
+                end: 118,
+                file: FileId(
+                    0,
+                ),
+            },
+        ),
+    ],
+}

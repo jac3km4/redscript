@@ -1,0 +1,18 @@
+---
+source: crates/syntax/redmod/parser/tests/fixtures.rs
+expression: output
+input_file: crates/syntax/redmod/parser/tests/data/diagnostics/eof.script
+---
+error: found end of input expected identifier, or ')'
+ --> eof.script:4:1
+  |
+4 | 
+  | ^
+
+Recovered AST:
+Some(
+    Module {
+        path: None,
+        items: [],
+    },
+)

@@ -3,8 +3,8 @@ use std::path::Path;
 use std::{fmt, io};
 
 use bon::bon;
-pub use redscript_ast as ast;
-use redscript_ast::SourceMap;
+pub use redscript_community_ast as ast;
+use redscript_community_ast::SourceMap;
 use redscript_compiler_backend::{AssembleError, PoolError, PoolMappings};
 pub use redscript_compiler_backend::{CompilationInputs, TypeFlagRegistry, TypeFlags};
 use redscript_compiler_frontend::pass::{DiagnosticPass, UnusedLocals};
@@ -44,7 +44,34 @@ impl<'ctx> CheckedSources<'ctx> {
         fatal_diagnostic_level: DiagnosticLevel,
     ) -> Self {
         let mut reporter = CompileErrorReporter::default();
-        let (unit, symbols) = infer_from_sources(sources, symbols, &mut reporter, type_interner);
+        let modules = parse_files(sources, &mut reporter);
+        Self::from_modules()
+            .modules(modules)
+            .parse_diagnostics(reporter.into_reported())
+            .symbols(symbols)
+            .type_interner(type_interner)
+            .diagnostics(diagnostics)
+            .fatal_diagnostic_level(fatal_diagnostic_level)
+            .check()
+    }
+
+    /// Checks parsed modules, retaining parse diagnostics even for files without an AST.
+    /// Conditional compilation uses exactly the supplied modules.
+    #[builder(finish_fn = check)]
+    pub fn from_modules(
+        modules: Vec<ast::SourceModule<'ctx>>,
+        #[builder(default)] parse_diagnostics: Vec<Diagnostic<'ctx>>,
+        symbols: Symbols<'ctx>,
+        type_interner: &'ctx TypeInterner,
+        #[builder(default = DEFAULT_DIAGNOSTICS)] diagnostics: &[&'static dyn DiagnosticPass],
+        #[builder(default = DiagnosticLevel::ErrorAllowedAtRuntime)]
+        fatal_diagnostic_level: DiagnosticLevel,
+    ) -> Self {
+        let mut reporter = CompileErrorReporter::default();
+        reporter.report_many(parse_diagnostics);
+        let evaluator = Evaluator::from_modules(&modules);
+        let (unit, symbols) =
+            process_sources(modules, symbols, evaluator, &mut reporter, type_interner);
         unit.run_diagnostics(diagnostics, &mut reporter);
         let mut diagnostics = reporter.into_reported();
         diagnostics.sort_by_key(Diagnostic::is_error);
@@ -605,6 +632,188 @@ mod tests {
                 .diagnostics()
                 .has_fatal_errors(checked.fatal_diagnostic_level())
         );
+    }
+
+    #[test]
+    fn checking_sources_and_parsed_modules_is_equivalent() {
+        // Keep this fixture self-contained: boot-library closures contain inference
+        // variable identities that differ between otherwise equivalent compilations.
+        let sources = SourceMap::new();
+        sources.push_back("valid.reds", "func Valid() { let unused: Int32 = 1; }\n");
+        sources.push_back("invalid.reds", "func Invalid() { missing(); }\n");
+        sources.push_back("recovered.reds", "func Recovered() { return }\n");
+        let interner = TypeInterner::default();
+        for passes in [DEFAULT_DIAGNOSTICS, &[]] {
+            for threshold in [DiagnosticLevel::Warning, DiagnosticLevel::Error] {
+                let from_sources = CheckedSources::builder()
+                    .sources(&sources)
+                    .symbols(Symbols::with_default_types())
+                    .type_interner(&interner)
+                    .diagnostics(passes)
+                    .fatal_diagnostic_level(threshold)
+                    .check();
+                let mut reporter = CompileErrorReporter::default();
+                let modules = parse_files(&sources, &mut reporter);
+                assert!(!reporter.reported().is_empty());
+                let from_modules = CheckedSources::from_modules()
+                    .modules(modules)
+                    .parse_diagnostics(reporter.into_reported())
+                    .symbols(Symbols::with_default_types())
+                    .type_interner(&interner)
+                    .diagnostics(passes)
+                    .fatal_diagnostic_level(threshold)
+                    .check();
+                assert_eq!(
+                    format!("{:?}", from_sources.unit()),
+                    format!("{:?}", from_modules.unit())
+                );
+                assert_eq!(function_names(&from_sources), function_names(&from_modules));
+                let diagnostics = |checked: &CheckedSources<'_>| {
+                    checked
+                        .diagnostics()
+                        .into_iter()
+                        .map(|d| (d.code(), d.level(), d.span(), d.to_string()))
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(diagnostics(&from_sources), diagnostics(&from_modules));
+                assert_eq!(from_modules.fatal_diagnostic_level(), threshold);
+                assert_eq!(
+                    from_sources.has_fatal_errors(),
+                    from_modules.has_fatal_errors()
+                );
+                assert_eq!(
+                    from_modules
+                        .diagnostics()
+                        .into_iter()
+                        .any(|d| matches!(d, Diagnostic::UnusedLocal(_))),
+                    !passes.is_empty()
+                );
+                assert!(
+                    function_names(&from_modules)
+                        .iter()
+                        .any(|name| name == "Recovered")
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn checking_modules_retains_parse_errors_without_an_ast() {
+        let sources = SourceMap::new();
+        let file = sources.push_back("incomplete.reds", "func Test(");
+        let interner = TypeInterner::default();
+        let mut reporter = CompileErrorReporter::default();
+        let modules = parse_files(&sources, &mut reporter);
+        assert!(modules.is_empty());
+        let expected = reporter
+            .reported()
+            .iter()
+            .map(|d| (d.span(), d.to_string()))
+            .collect::<Vec<_>>();
+        assert!(!expected.is_empty());
+        let checked = CheckedSources::from_modules()
+            .modules(modules)
+            .parse_diagnostics(reporter.into_reported())
+            .symbols(Symbols::with_default_types())
+            .type_interner(&interner)
+            .check();
+        assert!(checked.unit().all_functions().next().is_none());
+        assert!(checked.has_fatal_errors());
+        assert_eq!(
+            checked
+                .diagnostics()
+                .into_iter()
+                .map(|d| {
+                    assert!(matches!(d, Diagnostic::SyntaxError(_)));
+                    assert_eq!(d.span().file, file);
+                    (d.span(), d.to_string())
+                })
+                .collect::<Vec<_>>(),
+            expected
+        );
+    }
+
+    #[test]
+    fn checking_empty_modules_preserves_symbols_without_diagnostics() {
+        let interner = TypeInterner::default();
+        let checked = CheckedSources::from_modules()
+            .modules(Vec::new())
+            .symbols(Symbols::with_default_types())
+            .type_interner(&interner)
+            .check();
+        assert!(checked.unit().all_functions().next().is_none());
+        assert!(checked.diagnostics().as_ref().is_empty());
+        assert!(!checked.has_fatal_errors());
+        assert_eq!(
+            checked.fatal_diagnostic_level(),
+            DiagnosticLevel::ErrorAllowedAtRuntime
+        );
+        assert_eq!(
+            format!("{:?}", checked.symbols()),
+            format!("{:?}", Symbols::with_default_types())
+        );
+    }
+
+    #[test]
+    fn module_conditions_use_only_the_supplied_modules_including_empty_ones() {
+        let sources = SourceMap::new();
+        sources.push_back("empty.reds", "module Active.Empty\n");
+        sources.push_back("stale.reds", "module Stale\n");
+        sources.push_back(
+            "conditions.reds",
+            r#"
+@if(ModuleExists("Active.Empty"))
+func Present() {}
+@if(!ModuleExists("Active.Empty"))
+func Absent() {}
+@if(ModuleExists("Stale"))
+func Stale() {}
+@if(true)
+func Always() {}
+@if(false)
+func Never() {}
+"#,
+        );
+        let interner = TypeInterner::default();
+        for include_empty in [true, false] {
+            let mut reporter = CompileErrorReporter::default();
+            let mut modules = parse_files(&sources, &mut reporter);
+            assert!(reporter.reported().is_empty());
+            modules.retain(|module| {
+                module.path.as_ref().is_none_or(|path| {
+                    include_empty && path.segments.as_ref() == ["Active", "Empty"]
+                })
+            });
+            let checked = CheckedSources::from_modules()
+                .modules(modules)
+                .symbols(Symbols::with_default_types())
+                .type_interner(&interner)
+                .check();
+            assert!(
+                checked.diagnostics().as_ref().is_empty(),
+                "{}",
+                checked.diagnostics()
+            );
+            let mut names = function_names(&checked);
+            names.sort();
+            assert_eq!(
+                names,
+                if include_empty {
+                    ["Always", "Present"]
+                } else {
+                    ["Absent", "Always"]
+                }
+            );
+            assert_eq!(checked.unit().all_functions().count(), 2);
+        }
+    }
+
+    fn function_names(checked: &CheckedSources<'_>) -> Vec<String> {
+        checked
+            .symbols()
+            .free_functions()
+            .map(|f| f.name().to_string())
+            .collect()
     }
 
     #[test]

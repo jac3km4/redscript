@@ -1,0 +1,9 @@
+---
+source: crates/compiler/redmod/adapter/tests/fixtures.rs
+expression: output
+input_file: crates/compiler/redmod/adapter/tests/data/events.script
+---
+TYPE_ERR: type mismatch: found `Bool` when expected `Void`
+method BadReturn.OnValue: callback=true, return=Void
+method Base.OnAttach: callback=true, return=Void
+method Child.OnAttach: callback=true, return=Void
