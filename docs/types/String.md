@@ -2,6 +2,6 @@ A dynamically allocated string. Instances of this type can be created using the 
 
 ### Example
 
-```
-let myString = "Hello " + "world!";
+```redscript
+let greeting: String = "Hello " + "world!";
 ```

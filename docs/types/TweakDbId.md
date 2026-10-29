@@ -1,7 +1,7 @@
-An identifier for a TweakDB record. Instances of this type can be created using the TweakDBID literal syntax, e.g. `t"AttachmentSlots.Head"`.
+An identifier for a TweakDB record or flat property. Instances of this type can be created using the TweakDBID literal syntax, e.g. `t"AttachmentSlots.Head"`.
 
 ### Example
 
-```
-let isIconic = TweakDBInterface.GetBool(id + t".isPresetIconic", false);
+```redscript
+let slot: TweakDBID = t"AttachmentSlots.Head";
 ```

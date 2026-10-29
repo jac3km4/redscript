@@ -1,7 +1,9 @@
-A 32-bit floating-point number. Instances of this type can be created using the float literal syntax, e.g. `1.23`.
+A 32-bit signed floating-point number.
+
+Create values using unsuffixed floating-point literals, which default to `Float`.
 
 ### Example
 
-```
-let x = 1.23;
+```redscript
+let value = 1.23;
 ```

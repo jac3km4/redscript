@@ -1,9 +1,9 @@
-Variant is a type that represents values that can hold a set of different types. You can create such instances with the `ToVariant` intrinsic. The inner value can later be retrieved using the `FromVariant` intrinsic (as long as `FromVariant` is called with precisely the correct type).
+A container for a single value whose type is determined at runtime. Create a variant with `ToVariant(value)` and retrieve its value with `FromVariant<T>(variant)`, where `T` must match the stored type exactly. Use `VariantTypeName(variant)` to inspect the stored type when it is not known.
 
 ### Example
 
-```
-let int: Int32 = 42;
-let variant = ToVariant(int);
+```redscript
+let number: Int32 = 42;
+let variant = ToVariant(number);
 let value = FromVariant<Int32>(variant);
 ```

@@ -1,1 +1,11 @@
-A strong reference to a value. This is the default reference type for newly created objects. It guarantees that the underlying value is kept alive as long as the reference exists (unlike a weak reference, `wref`).
+A strong reference to a class instance, written as `ref<T>`. Creating an instance with `new` produces a strong reference. The instance is kept alive as long as at least one strong reference exists, unlike a weak reference (`wref<T>`).
+
+### Example
+
+```redscript
+class Example {}
+
+func CreateExample() -> ref<Example> {
+  return new Example();
+}
+```

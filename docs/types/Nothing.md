@@ -1,1 +1,1 @@
-The nothing type.
+The bottom type, used by the compiler during type inference. It is a subtype of every type and has no values of its own. Unlike `Void`, it does not describe a function returning without a value, and it is not the type to use for a null reference.

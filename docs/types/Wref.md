@@ -1,8 +1,18 @@
-A weak reference is a type of reference that does not prevent the underlying value from being dropped. When no more strong references (`ref`s) exist, the value will be dropped and any remaining weak references (`wref`s) will no longer be able to access it.
+A weak reference to a class instance, written as `wref<T>`. It does not keep the instance alive. When the last strong reference (`ref<T>`) is released, the instance is destroyed and any remaining weak references can no longer access it. Use `IsDefined` to check whether the instance still exists.
 
 ### Example
 
+```redscript
+class Example {}
+
+func CheckLifetime() {
+  let owner: ref<Example> = new Example();
+  let observer: wref<Example> = owner;
+  IsDefined(observer); // true: owner keeps the instance alive
+
+  owner = null;
+  IsDefined(observer); // false: no strong references remain
+}
 ```
-let map: wref<inkHashMap> = new inkHashMap();
-IsDefined(map); // false
-```
+
+Assigning `new Example()` directly to a `wref<Example>` leaves no surviving strong owner, so the instance is destroyed after the assignment.

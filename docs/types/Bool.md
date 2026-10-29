@@ -2,6 +2,6 @@ A boolean value. Instances of this type can be created using the boolean literal
 
 ### Example
 
-```
-let bool = true;
+```redscript
+let enabled: Bool = true;
 ```

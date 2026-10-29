@@ -2,6 +2,6 @@ A resource reference. Instances of this type can be created using the resource p
 
 ### Example
 
-```
-counter.SetStyle(r"base\\gameplay\\gui\\common\\main_colors.inkstyle");
+```redscript
+let style: ResRef = r"base\\gameplay\\gui\\common\\main_colors.inkstyle";
 ```
