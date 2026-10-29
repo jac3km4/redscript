@@ -1,0 +1,11 @@
+---
+source: crates/compiler/frontend/tests/ambiguous_overloads.rs
+expression: diagnostic.display(&sources).unwrap()
+---
+error[MULTIPLE_MATCHING_OVERLOADS]: multiple overloads match the types of the provided arguments:
+  func Choose(value: First) -> Int32
+  func Choose(value: Second) -> Int32
+ --> tests/data/ambiguous-overloads/unrelated-classes.reds:15:18
+   |
+15 |   let _: Int32 = Choose(null);
+   |                  ^^^^^^
