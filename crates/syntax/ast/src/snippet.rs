@@ -101,14 +101,15 @@ fn expand_tabs(line: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::FileId;
+    use crate::SourceMap;
 
     fn render(source: &str, highlighted: &str) -> String {
-        let file = File::new("test.reds", source);
+        let files = SourceMap::new();
+        let file_id = files.push_back("test.reds", source);
         let start = source.find(highlighted).unwrap() as u32;
         SourceSnippet::new(
-            &file,
-            Span::new(start, start + highlighted.len() as u32, FileId::from_i32(0)),
+            files.get(file_id).unwrap(),
+            Span::new(start, start + highlighted.len() as u32, file_id),
         )
         .unwrap()
         .to_string()
@@ -169,10 +170,13 @@ mod tests {
     #[test]
     fn marks_zero_width_and_empty_source_spans() {
         assert_eq!(render("", ""), "  |\n1 | \n  | ^\n");
-        let file = File::new("test.reds", "a\t");
-        let span = Span::new(2, 2, FileId::from_i32(0));
+        let files = SourceMap::new();
+        let file_id = files.push_back("test.reds", "a\t");
+        let span = Span::new(2, 2, file_id);
         assert_eq!(
-            SourceSnippet::new(&file, span).unwrap().to_string(),
+            SourceSnippet::new(files.get(file_id).unwrap(), span)
+                .unwrap()
+                .to_string(),
             "  |\n1 | a   \n  |     ^\n"
         );
     }
