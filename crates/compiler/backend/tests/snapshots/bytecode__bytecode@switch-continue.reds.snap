@@ -1,0 +1,44 @@
+---
+source: crates/compiler/backend/tests/bytecode.rs
+expression: "BytecodePrinter::new(&bundle, bundle_len)"
+input_file: crates/compiler/backend/tests/data/switch-continue.reds
+---
+// Test;Int32Bool (f0)
+jump.if_not 94
+param 0
+switch 6
+param 1
+switch.label 6 1
+i32.zero
+jump -41
+switch.label 6 1
+i32.one
+jump 41
+switch.default
+switch 6
+param 1
+switch.label 10 5
+i32.const 2
+jump -84
+switch.default
+jump 0
+jump -91
+jump 3
+jump -97
+
+// TestInnerLoop;Int32Bool (f1)
+jump.if_not 66
+param 2
+switch 6
+param 3
+switch.label 24 1
+i32.zero
+jump.if_not 15
+param 2
+jump -15
+jump -18
+jump 4
+switch.default
+jump -63
+jump -66
+jump -69

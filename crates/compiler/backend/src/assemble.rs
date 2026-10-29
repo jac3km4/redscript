@@ -180,7 +180,13 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
                 self.mark_label(start);
                 self.emit(Instr::JumpIfFalse(Jump::new(end)));
                 self.assemble_expr(&block.condition)?;
-                self.assemble_block(&block.block, Some(BlockSpan::Loop { start, end }))?;
+                self.assemble_block(
+                    &block.block,
+                    Some(BlockSpan {
+                        continue_target: Some(start),
+                        break_target: end,
+                    }),
+                )?;
                 self.emit(Instr::Jump(Jump::new(start)));
                 self.mark_label(end);
             }
@@ -211,6 +217,10 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
                 span,
             } => {
                 let end = self.new_label();
+                let switch_span = Some(BlockSpan {
+                    continue_target: block_span.and_then(|span| span.continue_target),
+                    break_target: end,
+                });
                 let mut next_label = self.new_label();
 
                 let typ = self.mono_type(scrutinee_type, *span)?;
@@ -233,7 +243,7 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
 
                         self.mark_label(body_label);
                         if !case.block.stmts.is_empty() {
-                            self.assemble_block(&case.block, Some(BlockSpan::Switch { end }))?;
+                            self.assemble_block(&case.block, switch_span)?;
                             break;
                         }
                     }
@@ -242,7 +252,7 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
 
                 if let Some(default) = default {
                     self.emit(Instr::SwitchDefault);
-                    self.assemble_block(default, Some(BlockSpan::Switch { end }))?;
+                    self.assemble_block(default, switch_span)?;
                 }
                 self.mark_label(end);
             }
@@ -293,13 +303,17 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
                 }
             }
             ir::Stmt::Break(span) => match block_span {
-                Some(BlockSpan::Loop { end, .. } | BlockSpan::Switch { end }) => {
-                    self.emit(Instr::Jump(Jump::new(end)));
+                Some(BlockSpan { break_target, .. }) => {
+                    self.emit(Instr::Jump(Jump::new(break_target)));
                 }
                 _ => return Err(AssembleError::InvalidControlFlow(*span)),
             },
             ir::Stmt::Continue(span) => {
-                if let Some(BlockSpan::Loop { start, .. }) = block_span {
+                if let Some(BlockSpan {
+                    continue_target: Some(start),
+                    ..
+                }) = block_span
+                {
                     self.emit(Instr::Jump(Jump::new(start)));
                 } else {
                     return Err(AssembleError::InvalidControlFlow(*span));
@@ -977,7 +991,7 @@ impl From<Label> for usize {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum BlockSpan {
-    Loop { start: Label, end: Label },
-    Switch { end: Label },
+struct BlockSpan {
+    continue_target: Option<Label>,
+    break_target: Label,
 }
