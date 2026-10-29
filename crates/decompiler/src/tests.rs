@@ -187,6 +187,55 @@ fn assignment_expression_keeps_hoisted_local_type() {
 }
 
 #[test]
+fn returning_switch_cases_preserve_remaining_cases_and_default() {
+    let mut bundle = ScriptBundle::default();
+    let function = function(&mut bundle);
+    let name = bundle.cnames_mut().add("Int32");
+    let typ = bundle.define(Type::new(name, TypeKind::Primitive));
+    let code = resolve_labels(vec![
+        Instr::Switch(Switch::new(typ, 2)),
+        Instr::I32Zero,
+        Instr::SwitchLabel(SwitchLabel::new(7, 4)),
+        Instr::I32Zero,
+        Instr::Return,
+        Instr::I32Zero,
+        Instr::Jump(Jump::new(15)),
+        Instr::SwitchLabel(SwitchLabel::new(12, 9)),
+        Instr::I32One,
+        Instr::Return,
+        Instr::I32One,
+        Instr::Jump(Jump::new(15)),
+        Instr::SwitchDefault,
+        Instr::Return,
+        Instr::I32Const(2),
+        Instr::I32Const(3),
+        Instr::Return,
+        Instr::Nop,
+    ]);
+    let block = decompile(&bundle, &function, &code);
+    insta::assert_snapshot!(format_block(&block));
+}
+
+#[test]
+fn returning_conditional_consumes_structural_jump() {
+    let mut bundle = ScriptBundle::default();
+    let function = function(&mut bundle);
+    let code = resolve_labels(vec![
+        Instr::JumpIfFalse(Jump::new(5)),
+        Instr::TrueConst,
+        Instr::Return,
+        Instr::I32One,
+        Instr::Jump(Jump::new(7)),
+        Instr::Return,
+        Instr::I32Zero,
+        Instr::Return,
+        Instr::I32Const(2),
+    ]);
+    let block = decompile(&bundle, &function, &code);
+    insta::assert_snapshot!(format_block(&block));
+}
+
+#[test]
 fn switch_fallthrough_preserves_default_body() {
     let mut bundle = ScriptBundle::default();
     let function = function(&mut bundle);

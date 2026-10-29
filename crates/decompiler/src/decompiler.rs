@@ -79,7 +79,11 @@ impl<'scope, 'ctx: 'i, 'i> Decompiler<'scope, 'ctx, 'i> {
             match self.consume_stmt(cf_block, end)? {
                 Some(stmt @ ast::Stmt::Return(_)) => {
                     stmts.push(stmt);
-                    // stop on first return statement
+                    // The rest of this region is unreachable, but may include a
+                    // structural jump before the next branch or switch label.
+                    if end != Location::MAX {
+                        while self.position() < end && self.code.next().is_some() {}
+                    }
                     break;
                 }
                 Some(stmt) => {
