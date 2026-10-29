@@ -1,6 +1,6 @@
 mod common;
 
-use common::assert_preserved;
+use common::{assert_preserved, format};
 use redscript_formatter::FormatSettings;
 
 #[test]
@@ -26,6 +26,48 @@ fn large_expression_widths_do_not_overflow_or_wrap() {
             assert!(
                 formatted.contains("\n      \"") || formatted.contains("\n    \""),
                 "large expression should wrap"
+            );
+        }
+    }
+}
+
+#[test]
+fn overflowing_float_chain_bases_do_not_panic() {
+    for trunc_sig_digits in [None, Some(3)] {
+        let settings = FormatSettings {
+            trunc_sig_digits,
+            ..FormatSettings::default()
+        };
+        for (literal, rendered) in [("1.0e100", "inf"), ("1.0e400d", "infd")] {
+            for suffix in [".Member", ".Method()", "[0].Member"] {
+                let source = format!("func F() {{ return {literal}{suffix}; }}");
+                let formatted = format(&source, &settings, "test.reds");
+                assert!(
+                    formatted.contains(&format!("return {rendered}{suffix};")),
+                    "{formatted}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn overflowing_floats_in_lists_do_not_panic() {
+    for trunc_sig_digits in [None, Some(3)] {
+        let settings = FormatSettings {
+            trunc_sig_digits,
+            ..FormatSettings::default()
+        };
+        for (expression, expected) in [
+            ("[1.0e100, 1.0e400d]", "[inf, infd]"),
+            ("Call(1.0e100, 1.0e400d)", "Call(inf, infd)"),
+            ("value.Method(1.0e100, 1.0e400d)", "value.Method(inf, infd)"),
+        ] {
+            let source = format!("func F() {{ return {expression}; }}");
+            let formatted = format(&source, &settings, "test.reds");
+            assert!(
+                formatted.contains(&format!("return {expected};")),
+                "{formatted}"
             );
         }
     }
