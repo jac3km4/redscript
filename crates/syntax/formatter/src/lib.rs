@@ -101,13 +101,13 @@ impl<'a> FormatCtx<'a> {
         }
     }
 
-    fn ws(&self) -> Indent {
-        Indent(self.current_indent())
+    fn indent(&self) -> Indent {
+        Indent(self.indent_width())
     }
 
-    fn bump(&self, n: usize) -> Self {
+    fn indented(&self) -> Self {
         Self {
-            depth: self.depth + n,
+            depth: self.depth + 1,
             ..*self
         }
     }
@@ -119,7 +119,7 @@ impl<'a> FormatCtx<'a> {
         }
     }
 
-    fn current_indent(&self) -> usize {
+    fn indent_width(&self) -> usize {
         self.depth * usize::from(self.settings.indent)
     }
 
@@ -154,7 +154,7 @@ impl<'a> FormatCtx<'a> {
                     }
                     (Prefix::LineComment(comment), None) => {
                         writeln!(f, "{comment}")?;
-                        write!(f, "{}", self.bump(1).ws())
+                        write!(f, "{}", self.indented().indent())
                     }
                     (Prefix::BlockComment(comment), None) => {
                         write!(f, "{comment} ")
@@ -208,16 +208,16 @@ impl<K: AstKind> Formattable for ItemDecl<'_, K> {
         write!(
             f,
             "{}",
-            ctx.node_prefix(NodeId::item_decl(self), Some(ctx.ws()))
+            ctx.node_prefix(NodeId::item_decl(self), Some(ctx.indent()))
         )?;
 
         for doc in &self.doc[..] {
-            writeln!(f, "{}{}", ctx.ws(), doc)?;
+            writeln!(f, "{}{}", ctx.indent(), doc)?;
         }
         for ann in &self.annotations[..] {
-            writeln!(f, "{}{}", ctx.ws(), ann.as_wrapped().as_fmt(ctx))?;
+            writeln!(f, "{}{}", ctx.indent(), ann.as_wrapped().as_fmt(ctx))?;
         }
-        write!(f, "{}", ctx.ws())?;
+        write!(f, "{}", ctx.indent())?;
         if let Some(visibility) = &self.visibility {
             write!(f, "{} ", visibility.as_fmt(ctx))?;
         }
@@ -272,8 +272,8 @@ impl<K: AstKind> Formattable for Aggregate<'_, K> {
             write!(f, " extends {}", (**extends).as_wrapped().as_fmt(ctx))?;
         }
         writeln!(f, " {{")?;
-        format_items(self.items.iter().map(Wrapper::as_wrapped), f, ctx.bump(1))?;
-        write!(f, "{}}}", ctx.ws())
+        format_items(self.items.iter().map(Wrapper::as_wrapped), f, ctx.indented())?;
+        write!(f, "{}}}", ctx.indent())
     }
 }
 
@@ -324,8 +324,8 @@ impl<K: AstKind> Formattable for Enum<'_, K> {
     fn format(&self, f: &mut fmt::Formatter<'_>, ctx: FormatCtx<'_>) -> fmt::Result {
         writeln!(f, "enum {} {{", self.name.as_wrapped())?;
         for variant in &self.variants[..] {
-            let ctx = ctx.bump(1);
-            writeln!(f, "{}{},", ctx.ws(), variant.as_wrapped().as_fmt(ctx))?;
+            let ctx = ctx.indented();
+            writeln!(f, "{}{},", ctx.indent(), variant.as_wrapped().as_fmt(ctx))?;
         }
         write!(f, "}}")
     }
@@ -345,19 +345,19 @@ impl<K: AstKind> Formattable for Block<'_, K> {
     fn format(&self, f: &mut fmt::Formatter<'_>, ctx: FormatCtx<'_>) -> fmt::Result {
         writeln!(f, "{{")?;
         for stmt in &self.stmts[..] {
-            writeln!(f, "{}", stmt.as_wrapped().as_fmt(ctx.bump(1)))?;
+            writeln!(f, "{}", stmt.as_wrapped().as_fmt(ctx.indented()))?;
         }
-        write!(f, "{}}}", ctx.ws())
+        write!(f, "{}}}", ctx.indent())
     }
 }
 
 impl<K: AstKind> Formattable for Stmt<'_, K> {
     fn format(&self, f: &mut fmt::Formatter<'_>, ctx: FormatCtx<'_>) -> fmt::Result {
-        write!(f, "{}", ctx.node_prefix(NodeId::stmt(self), Some(ctx.ws())))?;
+        write!(f, "{}", ctx.node_prefix(NodeId::stmt(self), Some(ctx.indent())))?;
 
         match self {
             Stmt::Let { name, typ, value } => {
-                write!(f, "{}let {}", ctx.ws(), name.as_wrapped())?;
+                write!(f, "{}let {}", ctx.indent(), name.as_wrapped())?;
                 if let Some(typ) = typ {
                     write!(f, ": {}", (**typ).as_wrapped().as_fmt(ctx))?;
                 }
@@ -374,32 +374,32 @@ impl<K: AstKind> Formattable for Stmt<'_, K> {
                 writeln!(
                     f,
                     "{}switch {} {{",
-                    ctx.ws(),
+                    ctx.indent(),
                     (**expr).as_wrapped().as_fmt(ctx)
                 )?;
                 for case in &cases[..] {
-                    let ctx = ctx.bump(1);
+                    let ctx = ctx.indented();
                     writeln!(
                         f,
                         "{}case {}:",
-                        ctx.ws(),
+                        ctx.indent(),
                         case.condition.as_wrapped().as_fmt(ctx)
                     )?;
                     for stmt in &case.body[..] {
-                        writeln!(f, "{}", stmt.as_wrapped().as_fmt(ctx.bump(1)))?;
+                        writeln!(f, "{}", stmt.as_wrapped().as_fmt(ctx.indented()))?;
                     }
                 }
                 if let Some(default) = default {
-                    let ctx = ctx.bump(1);
-                    writeln!(f, "{}default:", ctx.ws())?;
+                    let ctx = ctx.indented();
+                    writeln!(f, "{}default:", ctx.indent())?;
                     for stmt in &default[..] {
-                        writeln!(f, "{}", stmt.as_wrapped().as_fmt(ctx.bump(1)))?;
+                        writeln!(f, "{}", stmt.as_wrapped().as_fmt(ctx.indented()))?;
                     }
                 }
-                write!(f, "{}}}", ctx.ws())
+                write!(f, "{}}}", ctx.indent())
             }
             Stmt::If { blocks, else_ } => {
-                write!(f, "{}", ctx.ws())?;
+                write!(f, "{}", ctx.indent())?;
                 let mut it = blocks.iter();
                 if let Some(block) = it.next() {
                     write!(
@@ -426,7 +426,7 @@ impl<K: AstKind> Formattable for Stmt<'_, K> {
                 write!(
                     f,
                     "{}while {} ",
-                    ctx.ws(),
+                    ctx.indent(),
                     block.condition.as_wrapped().as_fmt(ctx)
                 )?;
                 write!(f, "{}", block.body.as_fmt(ctx))
@@ -435,7 +435,7 @@ impl<K: AstKind> Formattable for Stmt<'_, K> {
                 write!(
                     f,
                     "{}for {} in {} ",
-                    ctx.ws(),
+                    ctx.indent(),
                     name.as_wrapped(),
                     (**iter).as_wrapped().as_fmt(ctx)
                 )?;
@@ -445,20 +445,20 @@ impl<K: AstKind> Formattable for Stmt<'_, K> {
                 write!(
                     f,
                     "{}return {};",
-                    ctx.ws(),
+                    ctx.indent(),
                     (**expr).as_wrapped().as_fmt(ctx)
                 )
             }
             Stmt::Return(None) => {
-                write!(f, "{}return;", ctx.ws())
+                write!(f, "{}return;", ctx.indent())
             }
             Stmt::Break => {
-                write!(f, "{}break;", ctx.ws())
+                write!(f, "{}break;", ctx.indent())
             }
             Stmt::Continue => {
-                write!(f, "{}continue;", ctx.ws())
+                write!(f, "{}continue;", ctx.indent())
             }
-            Stmt::Expr(expr) => write!(f, "{}{};", ctx.ws(), (**expr).as_wrapped().as_fmt(ctx)),
+            Stmt::Expr(expr) => write!(f, "{}{};", ctx.indent(), (**expr).as_wrapped().as_fmt(ctx)),
         }
     }
 }
@@ -970,18 +970,18 @@ where
         let width = iter.clone().map(|e| e.approx_width()).sum::<usize>()
             + separator.len() * (iter.len().max(1) - 1);
 
-        if ctx.current_indent() + width > usize::from(ctx.settings.max_width) {
+        if ctx.indent_width() + width > usize::from(ctx.settings.max_width) {
             let sep = separator.trim_end();
-            let ctx = ctx.bump(1);
+            let ctx = ctx.indented();
             for (i, elem) in iter.clone().enumerate() {
                 if i > 0 {
                     write!(f, "{sep}")?;
                 }
                 writeln!(f)?;
-                write!(f, "{}{}", ctx.ws(), elem.as_fmt(ctx))?;
+                write!(f, "{}{}", ctx.indent(), elem.as_fmt(ctx))?;
             }
             writeln!(f)?;
-            write!(f, "{}", ctx.decrement().ws())
+            write!(f, "{}", ctx.decrement().indent())
         } else {
             write!(f, "{padding}{}{padding}", SepBy(iter.clone(), ", ", *ctx))
         }
@@ -1014,7 +1014,7 @@ impl<A: Formattable> Formattable for &A {
     }
 }
 
-enum Chain<'ast, 'src, K: AstKind> {
+enum ChainPart<'ast, 'src, K: AstKind> {
     Member(&'src str),
     Call(
         &'src str,
@@ -1030,35 +1030,35 @@ fn format_chain<K: AstKind>(
     f: &mut fmt::Formatter<'_>,
     ctx: FormatCtx<'_>,
 ) -> fmt::Result {
-    let mut cur = expr;
+    let mut base_expr = expr;
     let mut chain = vec![];
 
     let mut chain_fields = 0;
     let mut chain_calls = 0;
     let mut chain_ops = 0;
 
-    let mut cur_parent = ctx.parent;
+    let mut parent_op = ctx.parent;
     let ctx = ctx.without_parent_op();
 
     let parenthesize = loop {
-        match cur {
+        match base_expr {
             // handle expressions that might require parentheses first
             Expr::Assign { .. } | Expr::Conditional { .. } | Expr::Lambda { .. } => {
-                break cur_parent.is_some();
+                break parent_op.is_some();
             }
             Expr::DynCast { .. } => {
-                break matches!(cur_parent, Some(ParentOp::TopPrec | ParentOp::Unary));
+                break matches!(parent_op, Some(ParentOp::TopPrec | ParentOp::Unary));
             }
             Expr::UnOp { .. } | Expr::New { .. } => {
-                break matches!(cur_parent, Some(ParentOp::TopPrec));
+                break matches!(parent_op, Some(ParentOp::TopPrec));
             }
             Expr::BinOp { lhs, op, rhs } => {
-                if cur_parent.is_some_and(|parent| !parent.can_assoc(*op)) {
+                if parent_op.is_some_and(|parent| !parent.can_assoc(*op)) {
                     break true;
                 }
-                cur = (**lhs).as_wrapped();
-                cur_parent = Some(ParentOp::BinaryLhs(*op));
-                chain.push(Chain::Op(*op, (**rhs).as_wrapped()));
+                base_expr = (**lhs).as_wrapped();
+                parent_op = Some(ParentOp::BinaryLhs(*op));
+                chain.push(ChainPart::Op(*op, (**rhs).as_wrapped()));
                 chain_ops += 1;
             }
             // break the chain if we're chaining operators and we encounter a non-operator
@@ -1066,15 +1066,15 @@ fn format_chain<K: AstKind>(
                 break false;
             }
             Expr::Member { expr, member } => {
-                cur = (**expr).as_wrapped();
-                cur_parent = Some(ParentOp::TopPrec);
-                chain.push(Chain::Member(member));
+                base_expr = (**expr).as_wrapped();
+                parent_op = Some(ParentOp::TopPrec);
+                chain.push(ChainPart::Member(member));
                 chain_fields += 1;
             }
             Expr::Index { expr, index } => {
-                cur = (**expr).as_wrapped();
-                cur_parent = Some(ParentOp::TopPrec);
-                chain.push(Chain::Index((**index).as_wrapped()));
+                base_expr = (**expr).as_wrapped();
+                parent_op = Some(ParentOp::TopPrec);
+                chain.push(ChainPart::Index((**index).as_wrapped()));
             }
             Expr::Call {
                 expr,
@@ -1082,9 +1082,9 @@ fn format_chain<K: AstKind>(
                 args,
             } => {
                 if let Expr::Member { expr, member } = (**expr).as_wrapped() {
-                    cur = (**expr).as_wrapped();
-                    cur_parent = Some(ParentOp::TopPrec);
-                    chain.push(Chain::Call(member, &type_args[..], &args[..]));
+                    base_expr = (**expr).as_wrapped();
+                    parent_op = Some(ParentOp::TopPrec);
+                    chain.push(ChainPart::Call(member, &type_args[..], &args[..]));
                     chain_calls += 1;
                 } else {
                     break false;
@@ -1096,10 +1096,10 @@ fn format_chain<K: AstKind>(
 
     let base = DisplayFn(|f: &mut fmt::Formatter<'_>| {
         // The chain root's prefix was already emitted by Expr::format.
-        if std::ptr::eq(cur, expr) {
-            format_expr_body(cur, f, ctx)
+        if std::ptr::eq(base_expr, expr) {
+            format_expr_body(base_expr, f, ctx)
         } else {
-            cur.format(f, ctx)
+            base_expr.format(f, ctx)
         }
     });
     if parenthesize {
@@ -1108,40 +1108,40 @@ fn format_chain<K: AstKind>(
         write!(f, "{base}")?;
     }
 
-    let width = cur.approx_width()
+    let width = base_expr.approx_width()
         + if parenthesize { 2 } else { 0 }
-        + chain.iter().map(Chain::approx_width).sum::<usize>();
-    let break_line = ctx.current_indent() + width > usize::from(ctx.settings.max_width)
+        + chain.iter().map(ChainPart::approx_width).sum::<usize>();
+    let break_line = ctx.indent_width() + width > usize::from(ctx.settings.max_width)
         || chain_fields > usize::from(ctx.settings.max_chain_fields)
         || chain_calls > usize::from(ctx.settings.max_chain_calls)
         || chain_ops > usize::from(ctx.settings.max_chain_operators)
         || chain.len() > usize::from(ctx.settings.max_chain_total);
 
-    let ctx = ctx.bump(1);
+    let ctx = ctx.indented();
 
-    for i in chain.into_iter().rev() {
-        match i {
-            Chain::Member(member) => {
+    for part in chain.into_iter().rev() {
+        match part {
+            ChainPart::Member(member) => {
                 if break_line {
                     writeln!(f)?;
-                    write!(f, "{}", ctx.ws())?;
+                    write!(f, "{}", ctx.indent())?;
                 }
                 write!(f, ".{member}")?;
             }
-            Chain::Call(member, type_args, args) => {
+            ChainPart::Call(member, type_args, args) => {
                 if break_line {
                     writeln!(f)?;
-                    write!(f, "{}", ctx.ws())?;
+                    write!(f, "{}", ctx.indent())?;
                 }
                 write!(f, ".{member}")?;
                 format_call_args::<K>(type_args, args, f, ctx)?;
             }
-            Chain::Index(index) => write!(f, "[{}]", index.as_fmt(ctx))?,
-            Chain::Op(op, rhs) => {
+            ChainPart::Index(index) => write!(f, "[{}]", index.as_fmt(ctx))?,
+            ChainPart::Op(op, rhs) => {
                 let ctx = ctx.with_parent_op(ParentOp::BinaryRhs(op));
                 if break_line {
                     writeln!(f)?;
-                    write!(f, "{}", ctx.ws())?;
+                    write!(f, "{}", ctx.indent())?;
                 } else {
                     write!(f, " ")?;
                 }
@@ -1513,11 +1513,11 @@ impl ApproxWidth for UnOp {
     }
 }
 
-impl<K: AstKind> ApproxWidth for Chain<'_, '_, K> {
+impl<K: AstKind> ApproxWidth for ChainPart<'_, '_, K> {
     fn approx_width(&self) -> usize {
         match self {
-            Chain::Member(member) => member.len() + 1,
-            Chain::Call(member, type_args, args) => {
+            ChainPart::Member(member) => member.len() + 1,
+            ChainPart::Call(member, type_args, args) => {
                 member.len()
                     + type_args
                         .iter()
@@ -1529,8 +1529,8 @@ impl<K: AstKind> ApproxWidth for Chain<'_, '_, K> {
                         .sum::<usize>()
                     + 2
             }
-            Chain::Op(op, rhs) => op.approx_width() + rhs.as_wrapped().approx_width() + 1,
-            Chain::Index(index) => index.as_wrapped().approx_width() + 2,
+            ChainPart::Op(op, rhs) => op.approx_width() + rhs.as_wrapped().approx_width() + 1,
+            ChainPart::Index(index) => index.as_wrapped().approx_width() + 2,
         }
     }
 }
