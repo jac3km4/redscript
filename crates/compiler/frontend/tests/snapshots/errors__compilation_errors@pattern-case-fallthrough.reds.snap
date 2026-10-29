@@ -1,0 +1,28 @@
+---
+source: crates/compiler/frontend/tests/errors.rs
+expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
+input_file: crates/compiler/frontend/tests/data/pattern-case-fallthrough.reds
+---
+error[MISSING_BREAK]: case before a `case let` must end with a `break` or `return` statement
+ --> tests/data/pattern-case-fallthrough.reds:3:10
+  |
+3 |     case 0:
+  |          ^
+
+error[MISSING_BREAK]: case before a `case let` must end with a `break` or `return` statement
+ --> tests/data/pattern-case-fallthrough.reds:11:10
+   |
+11 |     case 0:
+   |          ^
+
+error[MISSING_BREAK]: case before a `case let` must end with a `break` or `return` statement
+ --> tests/data/pattern-case-fallthrough.reds:21:10
+   |
+21 |     case 1:
+   |          ^
+
+error[MISSING_BREAK]: case before a `case let` must end with a `break` or `return` statement
+ --> tests/data/pattern-case-fallthrough.reds:37:10
+   |
+37 |     case null:
+   |          ^^^^

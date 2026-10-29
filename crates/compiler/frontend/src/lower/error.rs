@@ -98,6 +98,8 @@ pub enum Error<'ctx> {
     NonFullyDefinedNativeStructConstruction { type_id: TypeId<'ctx>, span: Span },
     #[error("`case let` block must end with a `break` or `return` statement")]
     MissingBreakInCaseLet(Span),
+    #[error("case before a `case let` must end with a `break` or `return` statement")]
+    FallthroughIntoPatternCase(Span),
     #[error("this type cannot be wrapped with a ref")]
     RefOnNeverRefType(Span),
     #[error("this cast can never succeed, because the types are not related ({0})")]
@@ -154,6 +156,7 @@ impl Error<'_> {
             | Self::DeprecatedNameOf(span)
             | Self::NonFullyDefinedNativeStructConstruction { span, .. }
             | Self::MissingBreakInCaseLet(span)
+            | Self::FallthroughIntoPatternCase(span)
             | Self::RefOnNeverRefType(span)
             | Self::ImpossibleDynCast(_, span)
             | Self::RedundantDynCast(span)
@@ -196,7 +199,7 @@ impl Error<'_> {
             Self::UnexpectedNonConstant(_) => "INVALID_CONSTANT",
             Self::DeprecatedNameOf(_) => "DEPRECATED_SYNTAX",
             Self::NonFullyDefinedNativeStructConstruction { .. } => "NON_FULLY_DEFINED_CTR",
-            Self::MissingBreakInCaseLet(_) => "MISSING_BREAK",
+            Self::MissingBreakInCaseLet(_) | Self::FallthroughIntoPatternCase(_) => "MISSING_BREAK",
             Self::RefOnNeverRefType(_) => "REF_ON_NEVER_REF",
             Self::ImpossibleDynCast(_, _) => "IMPOSSIBLE_DYN_CAST",
             Self::RedundantDynCast(_) => "REDUNDANT_DYN_CAST",

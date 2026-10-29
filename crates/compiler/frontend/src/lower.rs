@@ -532,8 +532,25 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     let local = self.extract_local(expr, &expr_t, span);
                     let branches = cases
                         .iter()
-                        .map(|case| self.lower_pattern_case(case, local, &expr_t, env))
-                        .collect::<Result<_, _>>()?;
+                        .enumerate()
+                        .map(|(index, case)| {
+                            let branch = self.lower_pattern_case(case, local, &expr_t, env)?;
+                            if matches!(case.condition, ast::Condition::Expr(_))
+                                && cases.get(index + 1).is_some_and(|next| {
+                                    matches!(next.condition, ast::Condition::Pattern(_))
+                                })
+                                && !matches!(
+                                    branch.block.stmts.back(),
+                                    Some(ir::Stmt::Break(_) | ir::Stmt::Return(_, _))
+                                )
+                            {
+                                self.reporter.report(Error::FallthroughIntoPatternCase(
+                                    case.condition.span(),
+                                ));
+                            }
+                            Ok(branch)
+                        })
+                        .collect::<Result<_, Error<'ctx>>>()?;
                     (
                         ir::Expr::Const(ir::Const::Bool(true), span).into(),
                         PolyType::nullary(predef::BOOL).into(),
