@@ -1,0 +1,9 @@
+---
+source: crates/compiler/frontend/tests/native_struct_advice.rs
+expression: "diagnostics[0].display(&sources).unwrap()"
+---
+error[NON_FULLY_DEFINED_CTR]: `Native` is a native struct with an incomplete script definition; passing arguments to its constructor might result in undefined behavior. It can still be safely constructed without arguments: `Native()`
+ --> native.reds:2:15
+  |
+2 | func Test() { Native(1); Native(); }
+  |               ^^^^^^^^^

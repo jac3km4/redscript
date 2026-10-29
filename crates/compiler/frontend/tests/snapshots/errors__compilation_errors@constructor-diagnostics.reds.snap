@@ -1,0 +1,22 @@
+---
+source: crates/compiler/frontend/tests/errors.rs
+expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
+input_file: crates/compiler/frontend/tests/data/constructor-diagnostics.reds
+---
+error[INVALID_NEW_USE]: `Value` cannot be constructed with the `new` operator; remove `new` and keep the constructor arguments
+ --> tests/data/constructor-diagnostics.reds:14:3
+   |
+14 |   new Value(42);
+   |   ^^^^^^^^^^^^^
+
+error[INVALID_NEW_USE]: `NeverRef` cannot be constructed with the `new` operator; remove `new` and keep the constructor arguments
+ --> tests/data/constructor-diagnostics.reds:15:3
+   |
+15 |   new NeverRef(42);
+   |   ^^^^^^^^^^^^^^^^
+
+error[PRIVATE_CONSTRUCTOR]: constructor of `Private` is private and cannot be called here
+ --> tests/data/constructor-diagnostics.reds:16:3
+   |
+16 |   new Private();
+   |   ^^^^^^^^^^^^^

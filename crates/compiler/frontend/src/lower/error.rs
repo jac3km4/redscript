@@ -45,7 +45,9 @@ pub enum Error<'ctx> {
     InvalidNewType(Span),
     #[error("this type cannot be directly constructed")]
     InvalidConstructType(Span),
-    #[error("`{0}` cannot be constructed with the `new` operator, use `{}()` instead", .type_id.simple_name())]
+    #[error(
+        "`{type_id}` cannot be constructed with the `new` operator; remove `new` and keep the constructor arguments"
+    )]
     NewWithConstructible { type_id: TypeId<'ctx>, span: Span },
     #[error("this type cannot be used with the `as` operator, the target type must be a class")]
     InvalidDynCastType(Span),
@@ -116,8 +118,8 @@ pub enum Error<'ctx> {
         name: &'ctx str,
         span: Span,
     },
-    #[error("{0}")]
-    PrivateConstructor(Cow<'ctx, str>, Span),
+    #[error("constructor of `{0}` is private and cannot be called here{help}", help = ConstructorHelp(.1))]
+    PrivateConstructor(TypeId<'ctx>, Cow<'ctx, str>, Span),
 }
 
 impl Error<'_> {
@@ -160,7 +162,7 @@ impl Error<'_> {
             | Self::UnexpectedRef(span)
             | Self::UnexpectedNonRef(span)
             | Self::CallingBaseStaticMethod { span, .. }
-            | Self::PrivateConstructor(_, span) => *span,
+            | Self::PrivateConstructor(_, _, span) => *span,
         }
     }
 
@@ -203,7 +205,7 @@ impl Error<'_> {
             Self::UnexpectedRef(_) => "UNEXPECTED_REF",
             Self::UnexpectedNonRef(_) => "UNEXPECTED_NON_REF",
             Self::CallingBaseStaticMethod { .. } => "CALLING_BASE_STATIC_METHOD",
-            Self::PrivateConstructor(_, _) => "PRIVATE_CONSTRUCTOR",
+            Self::PrivateConstructor(_, _, _) => "PRIVATE_CONSTRUCTOR",
         }
     }
 
@@ -222,6 +224,18 @@ impl Error<'_> {
 
     pub fn is_fatal(&self) -> bool {
         !matches!(self, Self::DeprecatedNameOf(_))
+    }
+}
+
+struct ConstructorHelp<'a>(&'a str);
+
+impl fmt::Display for ConstructorHelp<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.0.is_empty() {
+            Ok(())
+        } else {
+            write!(f, "; help: {}", self.0)
+        }
     }
 }
 

@@ -3,7 +3,7 @@ source: crates/compiler/frontend/tests/errors.rs
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/private-constructor.reds
 ---
-error[PRIVATE_CONSTRUCTOR]: use `PrivateConstructor.New` instead of the `new` operator
+error[PRIVATE_CONSTRUCTOR]: constructor of `PrivateConstructor` is private and cannot be called here; help: use `PrivateConstructor.New` instead of the `new` operator
  --> tests/data/private-constructor.reds:10:11
    |
 10 |   let _ = new PrivateConstructor(); // Error
