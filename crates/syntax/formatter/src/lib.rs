@@ -489,153 +489,151 @@ fn format_constant(
     }
 }
 
-trait ExprFormat {
-    fn format_body(&self, f: &mut fmt::Formatter<'_>, ctx: FormatCtx<'_>) -> fmt::Result;
-}
-
 impl<K: AstKind> Formattable for Expr<'_, K> {
     fn format(&self, f: &mut fmt::Formatter<'_>, ctx: FormatCtx<'_>) -> fmt::Result {
         write!(f, "{}", ctx.node_prefix(NodeId::expr(self), None))?;
-        self.format_body(f, ctx)
+        format_expr_body(self, f, ctx)
     }
 }
 
-impl<K: AstKind> ExprFormat for Expr<'_, K> {
-    fn format_body(&self, f: &mut fmt::Formatter<'_>, ctx: FormatCtx<'_>) -> fmt::Result {
-        match self {
-            Expr::Ident(name) => write!(f, "{name}"),
-            Expr::Constant(value) => format_constant(value, f, ctx.settings),
-            Expr::ArrayLit(elems) => {
-                let ctx = ctx.without_parent_op();
+fn format_expr_body<K: AstKind>(
+    expression: &Expr<'_, K>,
+    f: &mut fmt::Formatter<'_>,
+    ctx: FormatCtx<'_>,
+) -> fmt::Result {
+    match expression {
+        Expr::Ident(name) => write!(f, "{name}"),
+        Expr::Constant(value) => format_constant(value, f, ctx.settings),
+        Expr::ArrayLit(elems) => {
+            let ctx = ctx.without_parent_op();
+            write!(
+                f,
+                "[{}]",
+                SepByMultiline::new(elems.iter().map(Wrapper::as_wrapped), ", ", ctx)
+            )
+        }
+        Expr::InterpolatedString(parts) => {
+            let ctx = ctx.without_parent_op();
+            write!(f, "s\"")?;
+            for part in &parts[..] {
+                match part {
+                    StrPart::Expr(expr) => write!(f, "\\({})", expr.as_wrapped().as_fmt(ctx))?,
+                    StrPart::Str(s) => write!(f, "{}", str::escape_default(s))?,
+                }
+            }
+            write!(f, "\"")?;
+            Ok(())
+        }
+        Expr::Assign { lhs, rhs } => {
+            let parenthesize = ctx.parent.is_some();
+            let ctx = ctx.with_parent_op(ParentOp::AssignmentOperand);
+            if parenthesize {
+                write!(f, "(")?;
+            }
+            write!(
+                f,
+                "{} = {}",
+                (**lhs).as_wrapped().as_fmt(ctx),
+                (**rhs).as_wrapped().as_fmt(ctx)
+            )?;
+            if parenthesize {
+                write!(f, ")")?;
+            }
+            Ok(())
+        }
+        Expr::Member { .. } | Expr::BinOp { .. } => format_chain(expression, f, ctx),
+        Expr::UnOp { op, expr } => {
+            let parenthesize = matches!(ctx.parent, Some(ParentOp::TopPrec));
+            let ctx = ctx.with_parent_op(ParentOp::Unary);
+            let expr = (**expr).as_wrapped().as_fmt(ctx);
+            if parenthesize {
+                write!(f, "({}{})", op.as_fmt(ctx), expr)
+            } else {
+                write!(f, "{}{}", op.as_fmt(ctx), expr)
+            }
+        }
+        Expr::Call {
+            expr,
+            type_args,
+            args,
+        } => {
+            if let Expr::Member { .. } = (**expr).as_wrapped() {
+                format_chain(expression, f, ctx)
+            } else {
                 write!(
                     f,
-                    "[{}]",
-                    SepByMultiline::new(elems.iter().map(Wrapper::as_wrapped), ", ", ctx)
-                )
-            }
-            Expr::InterpolatedString(parts) => {
-                let ctx = ctx.without_parent_op();
-                write!(f, "s\"")?;
-                for part in &parts[..] {
-                    match part {
-                        StrPart::Expr(expr) => write!(f, "\\({})", expr.as_wrapped().as_fmt(ctx))?,
-                        StrPart::Str(s) => write!(f, "{}", str::escape_default(s))?,
-                    }
-                }
-                write!(f, "\"")?;
-                Ok(())
-            }
-            Expr::Assign { lhs, rhs } => {
-                let parenthesize = ctx.parent.is_some();
-                let ctx = ctx.with_parent_op(ParentOp::AssignmentOperand);
-                if parenthesize {
-                    write!(f, "(")?;
-                }
-                write!(
-                    f,
-                    "{} = {}",
-                    (**lhs).as_wrapped().as_fmt(ctx),
-                    (**rhs).as_wrapped().as_fmt(ctx)
-                )?;
-                if parenthesize {
-                    write!(f, ")")?;
-                }
-                Ok(())
-            }
-            Expr::Member { .. } | Expr::BinOp { .. } => format_chain(self, f, ctx),
-            Expr::UnOp { op, expr } => {
-                let parenthesize = matches!(ctx.parent, Some(ParentOp::TopPrec));
-                let ctx = ctx.with_parent_op(ParentOp::Unary);
-                let expr = (**expr).as_wrapped().as_fmt(ctx);
-                if parenthesize {
-                    write!(f, "({}{})", op.as_fmt(ctx), expr)
-                } else {
-                    write!(f, "{}{}", op.as_fmt(ctx), expr)
-                }
-            }
-            Expr::Call {
-                expr,
-                type_args,
-                args,
-            } => {
-                if let Expr::Member { .. } = (**expr).as_wrapped() {
-                    format_chain(self, f, ctx)
-                } else {
-                    write!(
-                        f,
-                        "{}",
-                        (**expr)
-                            .as_wrapped()
-                            .as_fmt(ctx.with_parent_op(ParentOp::TopPrec))
-                    )?;
-                    format_call_args::<K>(type_args, args, f, ctx)
-                }
-            }
-            Expr::Index { expr, index } => {
-                write!(
-                    f,
-                    "{}[{}]",
+                    "{}",
                     (**expr)
                         .as_wrapped()
-                        .as_fmt(ctx.with_parent_op(ParentOp::TopPrec)),
-                    (**index).as_wrapped().as_fmt(ctx.without_parent_op())
-                )
+                        .as_fmt(ctx.with_parent_op(ParentOp::TopPrec))
+                )?;
+                format_call_args::<K>(type_args, args, f, ctx)
             }
-            Expr::DynCast { expr, typ } => {
-                let parenthesize = matches!(ctx.parent, Some(ParentOp::TopPrec | ParentOp::Unary));
-                let ctx = ctx.with_parent_op(ParentOp::Unary);
-                let expr = (**expr).as_wrapped().as_fmt(ctx);
-                let typ = (**typ).as_wrapped().as_fmt(ctx);
-                if parenthesize {
-                    write!(f, "({expr} as {typ})")
-                } else {
-                    write!(f, "{expr} as {typ}")
-                }
+        }
+        Expr::Index { expr, index } => {
+            write!(
+                f,
+                "{}[{}]",
+                (**expr)
+                    .as_wrapped()
+                    .as_fmt(ctx.with_parent_op(ParentOp::TopPrec)),
+                (**index).as_wrapped().as_fmt(ctx.without_parent_op())
+            )
+        }
+        Expr::DynCast { expr, typ } => {
+            let parenthesize = matches!(ctx.parent, Some(ParentOp::TopPrec | ParentOp::Unary));
+            let ctx = ctx.with_parent_op(ParentOp::Unary);
+            let expr = (**expr).as_wrapped().as_fmt(ctx);
+            let typ = (**typ).as_wrapped().as_fmt(ctx);
+            if parenthesize {
+                write!(f, "({expr} as {typ})")
+            } else {
+                write!(f, "{expr} as {typ}")
             }
-            Expr::New { typ, args } => {
-                let ctx = ctx.without_parent_op();
+        }
+        Expr::New { typ, args } => {
+            let ctx = ctx.without_parent_op();
+            write!(
+                f,
+                "new {}({})",
+                (**typ).as_wrapped().as_fmt(ctx),
+                SepByMultiline::new(args.iter().map(Wrapper::as_wrapped), ", ", ctx)
+            )
+        }
+        Expr::Conditional { cond, then, else_ } => {
+            let parenthesize = ctx.parent.is_some();
+            let ctx = ctx.without_parent_op();
+            let cond = (**cond)
+                .as_wrapped()
+                .as_fmt(ctx.with_parent_op(ParentOp::ConditionalCondition));
+            let then = (**then).as_wrapped().as_fmt(ctx);
+            let else_ = (**else_).as_wrapped().as_fmt(ctx);
+            if parenthesize {
+                write!(f, "({cond} ? {then} : {else_})")
+            } else {
+                write!(f, "{cond} ? {then} : {else_}")
+            }
+        }
+        Expr::Lambda { params, body } => {
+            let parenthesize = ctx.parent.is_some();
+            let ctx = ctx.without_parent_op();
+            let params = params.iter().map(Wrapper::as_wrapped);
+
+            if parenthesize {
                 write!(
                     f,
-                    "new {}({})",
-                    (**typ).as_wrapped().as_fmt(ctx),
-                    SepByMultiline::new(args.iter().map(Wrapper::as_wrapped), ", ", ctx)
+                    "(({}) -> {})",
+                    SepBy(params, ", ", ctx),
+                    body.as_fmt(ctx)
                 )
+            } else {
+                write!(f, "({}) -> {}", SepBy(params, ", ", ctx), body.as_fmt(ctx))
             }
-            Expr::Conditional { cond, then, else_ } => {
-                let parenthesize = ctx.parent.is_some();
-                let ctx = ctx.without_parent_op();
-                let cond = (**cond)
-                    .as_wrapped()
-                    .as_fmt(ctx.with_parent_op(ParentOp::ConditionalCondition));
-                let then = (**then).as_wrapped().as_fmt(ctx);
-                let else_ = (**else_).as_wrapped().as_fmt(ctx);
-                if parenthesize {
-                    write!(f, "({cond} ? {then} : {else_})")
-                } else {
-                    write!(f, "{cond} ? {then} : {else_}")
-                }
-            }
-            Expr::Lambda { params, body } => {
-                let parenthesize = ctx.parent.is_some();
-                let ctx = ctx.without_parent_op();
-                let params = params.iter().map(Wrapper::as_wrapped);
-
-                if parenthesize {
-                    write!(
-                        f,
-                        "(({}) -> {})",
-                        SepBy(params, ", ", ctx),
-                        body.as_fmt(ctx)
-                    )
-                } else {
-                    write!(f, "({}) -> {}", SepBy(params, ", ", ctx), body.as_fmt(ctx))
-                }
-            }
-            Expr::This => write!(f, "this"),
-            Expr::Super => write!(f, "super"),
-            Expr::Null => write!(f, "null"),
-            Expr::Error => Ok(()),
         }
+        Expr::This => write!(f, "this"),
+        Expr::Super => write!(f, "super"),
+        Expr::Null => write!(f, "null"),
+        Expr::Error => Ok(()),
     }
 }
 
@@ -1099,7 +1097,7 @@ fn format_chain<K: AstKind>(
     let base = DisplayFn(|f: &mut fmt::Formatter<'_>| {
         // The chain root's prefix was already emitted by Expr::format.
         if std::ptr::eq(cur, expr) {
-            cur.format_body(f, ctx)
+            format_expr_body(cur, f, ctx)
         } else {
             cur.format(f, ctx)
         }
