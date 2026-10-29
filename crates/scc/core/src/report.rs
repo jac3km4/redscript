@@ -111,7 +111,7 @@ impl CompilationFailure {
         }
 
         let mut hints = hints.into_iter().collect::<Vec<_>>();
-        hints.sort_by(|(left, _), (right, _)| left.cmp(right));
+        hints.sort_by_key(|(id, _)| *id);
 
         Ok(Self {
             failing_files,
