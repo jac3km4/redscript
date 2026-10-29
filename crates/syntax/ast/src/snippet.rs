@@ -34,8 +34,10 @@ impl<'a> SourceSnippet<'a> {
         gutter: usize,
     ) -> fmt::Result {
         let line = self.file.line_contents(number).ok_or(fmt::Error)?;
-        let line = line.trim_end_matches(['\r', '\n']);
-        writeln!(f, "{:>gutter$} | {}", number + 1, expand_tabs(line))?;
+        let line = line
+            .strip_suffix('\n')
+            .map_or(line, |line| line.strip_suffix('\r').unwrap_or(line));
+        writeln!(f, "{:>gutter$} | {}", number + 1, render_line(line))?;
         let pad = if number == self.start.line {
             display_column(line, self.start.col)
         } else {
@@ -44,7 +46,7 @@ impl<'a> SourceSnippet<'a> {
         let end = if number == self.end.line {
             display_column(line, self.end.col)
         } else {
-            expand_tabs(line).width()
+            render_line(line).width()
         };
         let length = end.saturating_sub(pad).max(1);
         let continuation = if number < last_line { " ..." } else { "" };
@@ -79,23 +81,34 @@ impl fmt::Display for SourceSnippet<'_> {
 
 fn display_column(line: &str, column: usize) -> usize {
     let prefix = line.chars().take(column).collect::<String>();
-    expand_tabs(&prefix).width()
+    render_line(&prefix).width()
 }
 
-fn expand_tabs(line: &str) -> String {
+fn render_line(line: &str) -> String {
     const TAB_WIDTH: usize = 4;
-    let mut expanded = String::new();
+    let mut rendered = String::new();
     let mut column = 0;
-    for (index, segment) in line.split('\t').enumerate() {
-        if index > 0 {
-            let spaces = TAB_WIDTH - column % TAB_WIDTH;
-            expanded.extend(std::iter::repeat_n(' ', spaces));
-            column += spaces;
+    for segment in line.split_inclusive(char::is_control) {
+        let control = segment.chars().next_back().filter(|ch| ch.is_control());
+        let text = control.map_or(segment, |ch| &segment[..segment.len() - ch.len_utf8()]);
+        rendered.push_str(text);
+        // Measure whole text runs to preserve combining and emoji sequence widths.
+        column += text.width();
+        match control {
+            Some('\t') => {
+                let spaces = TAB_WIDTH - column % TAB_WIDTH;
+                rendered.extend(std::iter::repeat_n(' ', spaces));
+                column += spaces;
+            }
+            Some(ch) => {
+                let start = rendered.len();
+                rendered.extend(ch.escape_default());
+                column += rendered.len() - start;
+            }
+            None => {}
         }
-        expanded.push_str(segment);
-        column += segment.width();
     }
-    expanded
+    rendered
 }
 
 #[cfg(test)]
@@ -135,6 +148,51 @@ mod tests {
             render("a界e\u{301}", "界e\u{301}"),
             "  |\n1 | a界e\u{301}\n  |  ^^^\n"
         );
+    }
+
+    #[test]
+    fn escapes_source_controls_and_aligns_underlines() {
+        for (control, escaped) in [
+            ('\u{1b}', "\\u{1b}"),
+            ('\u{8}', "\\u{8}"),
+            ('\0', "\\u{0}"),
+            ('\r', "\\r"),
+            ('\u{85}', "\\u{85}"),
+        ] {
+            let source = format!("a{control}bad");
+            assert_eq!(
+                render(&source, "bad"),
+                format!(
+                    "  |\n1 | a{escaped}bad\n  | {}^^^\n",
+                    " ".repeat(1 + escaped.len())
+                )
+            );
+            assert_eq!(
+                render(&source, &control.to_string()),
+                format!(
+                    "  |\n1 | a{escaped}bad\n  |  {}\n",
+                    "^".repeat(escaped.len())
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn controls_preserve_unicode_widths_and_tab_stops() {
+        assert_eq!(
+            render("界e\u{301}\u{1b}\tbad", "bad"),
+            "  |\n1 | 界e\u{301}\\u{1b}   bad\n  |             ^^^\n"
+        );
+        assert_eq!(
+            render("👩\u{200d}💻\tbad", "bad"),
+            "  |\n1 | 👩\u{200d}💻  bad\n  |     ^^^\n"
+        );
+    }
+
+    #[test]
+    fn only_strips_cr_as_part_of_crlf() {
+        assert_eq!(render("a\r", "\r"), "  |\n1 | a\\r\n  |  ^^\n");
+        assert_eq!(render("a\r\r\n", "a\r\r\n"), "  |\n1 | a\\r\n  | ^^^\n");
     }
 
     #[test]
