@@ -147,15 +147,17 @@ impl<'ctx> Symbols<'ctx> {
     pub fn get_method(&self, id: MethodId<'ctx>) -> Option<(&'ctx str, &Method<'ctx>)> {
         let def = self.get_type(id.parent)?;
         let agg = def.schema.as_aggregate()?;
-        let (name, val) = agg.methods.by_index(id.index)?;
-        Some((name, val))
+        agg.methods
+            .by_index(id.index)
+            .map(|(&name, val)| (name, val))
     }
 
     pub fn get_method_mut(&mut self, id: MethodId<'ctx>) -> Option<(&'ctx str, &mut Method<'ctx>)> {
         let def = self.types.get_mut(&id.parent)?;
         let agg = def.schema.as_aggregate_mut()?;
-        let (name, val) = agg.methods.by_index_mut(id.index)?;
-        Some((name, val))
+        agg.methods
+            .by_index_mut(id.index)
+            .map(|(&name, val)| (name, val))
     }
 
     pub fn get_enum_variant(&self, id: FieldId<'ctx>) -> Option<(&'ctx str, i64)> {
@@ -546,8 +548,9 @@ impl<'ctx> FieldMap<'ctx> {
 
     #[inline]
     pub fn by_index(&self, index: FieldIndex) -> Option<(&'ctx str, &Field<'ctx>)> {
-        let (name, field) = self.map.get_index(index.0)?;
-        Some((name, field))
+        self.map
+            .get_index(index.0)
+            .map(|(&name, field)| (name, field))
     }
 
     #[inline]
@@ -942,14 +945,14 @@ impl<'ctx> Method<'ctx> {
     pub fn new(
         flags: MethodFlags,
         typ: FunctionType<'ctx>,
-        overloaded: Option<MethodId<'ctx>>,
+        overridden: Option<MethodId<'ctx>>,
         doc: impl Into<Box<[&'ctx str]>>,
         span: Option<Span>,
     ) -> Self {
         Self {
             flags,
             typ,
-            overriden: overloaded,
+            overriden: overridden,
             doc: doc.into(),
             span,
             aliased_method: None,
@@ -981,8 +984,8 @@ impl<'ctx> Method<'ctx> {
         self.overriden
     }
 
-    pub fn set_overriden(&mut self, overloaded: MethodId<'ctx>) {
-        self.overriden = Some(overloaded);
+    pub fn set_overriden(&mut self, overridden: MethodId<'ctx>) {
+        self.overriden = Some(overridden);
     }
 
     #[inline]
@@ -1360,15 +1363,12 @@ impl fmt::Display for QualifiedName<'_> {
 pub struct FieldRedefinition;
 
 #[inline]
-fn method_dedup<'ctx: 'a, 'a>() -> impl FnMut(
-    FunctionEntry<MethodId<'ctx>, &'ctx str, &'a Method<'ctx>>,
-) -> Option<
-    FunctionEntry<MethodId<'ctx>, &'ctx str, &'a Method<'ctx>>,
-> {
+fn method_dedup<'ctx: 'a, 'a>() -> impl FnMut(MethodEntry<'a, 'ctx>) -> Option<MethodEntry<'a, 'ctx>>
+{
     let mut dedup = HashSet::new();
     move |entry| {
-        if let Some(overloaded) = entry.func().overriden {
-            dedup.insert(overloaded);
+        if let Some(overridden) = entry.func().overriden {
+            dedup.insert(overridden);
         }
         dedup.remove(entry.key()).not().then_some(entry)
     }

@@ -80,14 +80,7 @@ impl<'ctx> Stmt<'ctx> {
                         .cmp_pos(pos)
                 })
                 .ok()
-                .and_then(|idx| {
-                    let branch = &branches[idx];
-                    if branch.condition.span().contains(pos) {
-                        Some(branch.condition.find_at(pos))
-                    } else {
-                        branch.block.find_at(pos)
-                    }
-                })
+                .and_then(|idx| branches[idx].find_at(pos))
                 .or_else(|| default.as_ref()?.find_at(pos)),
             Stmt::Switch {
                 scrutinee,
