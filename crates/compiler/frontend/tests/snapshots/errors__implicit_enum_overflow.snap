@@ -1,0 +1,8 @@
+---
+source: crates/compiler/frontend/tests/errors.rs
+expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
+---
+[VAL_OVERFLOW] At tests/data/enum-resolution/overflow.reds:3:3
+  Overflow,
+  ^^^^^^^^
+value overflow
