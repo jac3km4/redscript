@@ -61,9 +61,7 @@ func F() {
     );
 }
 
-#[test]
-fn ordered_comments_include_nested_interpolations_but_not_string_contents() {
-    let source = r#"
+const NESTED_INTERPOLATION_COMMENTS: &str = r#"
 /// documentation
 func F() {
     let plain = "// not a comment /* either */";
@@ -71,6 +69,20 @@ func F() {
     // before closing brace
 }
 "#;
+
+#[test]
+#[ignore = "parser does not support comments inside nested interpolation expressions"]
+fn formatting_preserves_nested_interpolation_comments() {
+    assert_preserved(
+        NESTED_INTERPOLATION_COMMENTS,
+        &FormatSettings::DEFAULT,
+        "nested-interpolation.reds",
+    );
+}
+
+#[test]
+fn ordered_comments_include_nested_interpolations_but_not_string_contents() {
+    let source = NESTED_INTERPOLATION_COMMENTS;
     let sources = SourceMap::new();
     let id = sources.push_back("test.reds", source.to_owned());
     assert_eq!(
