@@ -1,5 +1,5 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = [
     "crates/syntax/ast",
     "crates/syntax/parser",
@@ -85,33 +85,32 @@ features = ["hashbrown"]
 stable_deref_trait = { git = "https://github.com/Storyyeller/stable_deref_trait", rev = "59a35e0" }
 
 [workspace.lints.rust]
-warnings = "warn"
-future-incompatible = "warn"
-let-underscore = "warn"
-nonstandard-style = "warn"
-rust-2018-compatibility = "warn"
-rust-2018-idioms = "warn"
-rust-2021-compatibility = "warn"
-rust-2024-compatibility = "warn"
+future_incompatible = "deny"
+let_underscore = "deny"
+nonstandard_style = "deny"
+rust_2018_compatibility = "deny"
+rust_2018_idioms = "deny"
+rust_2021_compatibility = "deny"
+rust_2024_compatibility = "deny"
 
 [workspace.lints.clippy]
-all = "warn"
-match_same_arms = "warn"
-semicolon_if_nothing_returned = "warn"
-single_match_else = "warn"
-redundant_closure_for_method_calls = "warn"
-cloned_instead_of_copied = "warn"
-redundant_else = "warn"
-unnested_or_patterns = "warn"
-unreadable_literal = "warn"
-type_repetition_in_bounds = "warn"
-equatable_if_let = "warn"
-implicit_clone = "warn"
-default_trait_access = "warn"
-explicit_deref_methods = "warn"
-explicit_iter_loop = "warn"
-inefficient_to_string = "warn"
-match_bool = "warn"
+all = { level = "deny", priority = -1 }
+match_same_arms = "deny"
+semicolon_if_nothing_returned = "deny"
+single_match_else = "deny"
+redundant_closure_for_method_calls = "deny"
+cloned_instead_of_copied = "deny"
+redundant_else = "deny"
+unnested_or_patterns = "deny"
+unreadable_literal = "deny"
+type_repetition_in_bounds = "deny"
+equatable_if_let = "deny"
+implicit_clone = "deny"
+default_trait_access = "deny"
+explicit_deref_methods = "deny"
+explicit_iter_loop = "deny"
+inefficient_to_string = "deny"
+match_bool = "deny"
 
 [profile.release]
 strip = true

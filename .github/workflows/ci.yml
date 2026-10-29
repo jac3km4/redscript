@@ -5,41 +5,23 @@ on:
     branches: ["*.*.x"]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  check-format:
-    name: Check formatting
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: rustup toolchain install nightly --profile minimal --component rustfmt --no-self-update
-      - run: cargo +nightly fmt --all -- --check
-
-  lint:
-    name: Lint
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: rustup toolchain install stable --profile minimal --component clippy --no-self-update
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --all-features -- -D warnings
-
-  test:
-    name: Test
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: rustup toolchain install stable --profile minimal --no-self-update
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo test --all-features
+  check:
+    uses: ./.github/workflows/check.yml
 
   package:
     name: Build and package
     uses: ./.github/workflows/package.yml
     strategy:
+      fail-fast: false
       matrix:
-        os:
-          - windows-latest
-          - macos-14
         include:
           - os: windows-latest
             suffix: windows
@@ -48,4 +30,3 @@ jobs:
     with:
       os: ${{ matrix.os }}
       suffix: ${{ matrix.suffix }}
-      tag: ${{ github.base_ref || github.ref_name }}

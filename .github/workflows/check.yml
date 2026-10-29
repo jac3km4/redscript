@@ -1,0 +1,70 @@
+name: Checks
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  RUSTUP_TOOLCHAIN: stable
+  CARGO_TERM_COLOR: always
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+
+jobs:
+  test:
+    name: Lint and test (${{ matrix.configuration }})
+    runs-on: windows-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - configuration: default
+            features: ""
+          - configuration: all-features
+            features: --all-features
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install stable --profile minimal --component clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.configuration }}
+          save-if: ${{ github.event_name == 'push' && github.ref_type == 'branch' }}
+      - run: cargo clippy --workspace --all-targets --locked ${{ matrix.features }} -- -D warnings
+      - run: cargo test --workspace --locked ${{ matrix.features }}
+      # Workspace feature unification can hide missing standalone dependency features.
+      - run: cargo check -p scc-core --locked
+
+  rustfmt:
+    name: Check formatting
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install nightly-2026-10-15 --profile minimal --component rustfmt
+      - run: cargo +nightly-2026-10-15 fmt --all -- --check
+
+  test-macos:
+    name: Test portable crates (macOS)
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install stable --profile minimal
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.event_name == 'push' && github.ref_type == 'branch' }}
+      # Dotfile and SCC tests include Windows-specific path expectations.
+      - run: >-
+          cargo test --locked
+          -p redscript-ast -p redscript-parser -p redscript-formatter
+          -p redscript-io -p redscript-compiler-frontend -p redscript-compiler-backend
+          -p redscript-compiler-api -p redscript-decompiler -p redscript-code-edit

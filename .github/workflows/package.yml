@@ -7,43 +7,63 @@ on:
       suffix:
         required: true
         type: string
-      tag:
-        required: true
-        type: string
+
+permissions:
+  contents: read
 
 env:
+  RUSTUP_TOOLCHAIN: stable
   CARGO_TERM_COLOR: always
 
 jobs:
   build:
     runs-on: ${{ inputs.os }}
+    timeout-minutes: 45
     env:
-      ARCHIVE_NAME: redscript-${{ inputs.tag }}-${{ inputs.suffix }}.zip
+      ARCHIVE_NAME: redscript-${{ github.ref_type == 'tag' && github.ref_name || github.sha }}-${{ inputs.suffix }}.zip
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
-          filter: tree:0
-
-      - run: rustup toolchain install stable --profile minimal --no-self-update
+          persist-credentials: false
+      - run: rustup toolchain install stable --profile minimal
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: release-${{ inputs.os }}
+          save-if: ${{ github.event_name == 'push' && github.ref_type == 'branch' }}
 
-      - run: cargo build --release
+      - run: cargo build --workspace --release --locked
 
       - if: runner.os == 'Windows'
-        run: .\scripts\package.ps1 -archiveName "${{ env.ARCHIVE_NAME }}"
+        shell: pwsh
+        run: .\scripts\package.ps1 -archiveName "$env:ARCHIVE_NAME"
       - if: runner.os != 'Windows'
-        run: ./scripts/package.sh "${{ env.ARCHIVE_NAME }}"
+        shell: bash
+        run: ./scripts/package.sh "$ARCHIVE_NAME"
 
-      - uses: actions/upload-artifact@v4
+      - name: Verify packaged outputs
+        id: outputs
+        shell: pwsh
+        env:
+          ARTIFACT_SUFFIX: ${{ inputs.suffix }}
+        run: |
+          $cli = switch ($env:ARTIFACT_SUFFIX) {
+            'windows' { 'redscript-cli.exe' }
+            'macos' { 'redscript-cli-aarch64-darwin' }
+            'linux' { 'redscript-cli-x86_64-linux-gnu' }
+            default { throw "Unsupported artifact suffix: $env:ARTIFACT_SUFFIX" }
+          }
+          foreach ($path in @($cli, $env:ARCHIVE_NAME)) {
+            if (!(Test-Path -LiteralPath $path -PathType Leaf) -or (Get-Item -LiteralPath $path).Length -eq 0) {
+              throw "Missing or empty packaged output: $path"
+            }
+          }
+          "cli=$cli" >> $env:GITHUB_OUTPUT
+      - uses: actions/upload-artifact@v7
         name: Upload artifacts
         with:
           path: |
-            redscript-cli.exe
-            redscript-cli-aarch64-darwin
-            redscript-cli-x86_64-linux-gnu
+            ${{ steps.outputs.outputs.cli }}
             ${{ env.ARCHIVE_NAME }}
           name: artifact-${{ inputs.os }}
           if-no-files-found: error
+          compression-level: 1

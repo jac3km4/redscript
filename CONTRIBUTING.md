@@ -2,13 +2,17 @@
 
 ## Validation
 
-Use stable Rust for builds, tests, and Clippy. Use nightly rustfmt to honor the
-repository's formatting configuration:
+Use stable Rust for builds, tests, and Clippy. CI checks both default and all
+features. Use the pinned nightly rustfmt to honor the repository's formatting
+configuration:
 
 ```sh
+cargo test --workspace --locked
 cargo test --workspace --all-features --locked
+cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo clippy --workspace --all-features --all-targets --locked -- -D warnings
-cargo +nightly fmt --all -- --check
+rustup toolchain install nightly-2026-10-15 --profile minimal --component rustfmt
+cargo +nightly-2026-10-15 fmt --all -- --check
 ```
 
 Also check affected packages independently (for example,
