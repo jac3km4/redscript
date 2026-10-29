@@ -230,6 +230,20 @@ fn integer_chain_bases_keep_member_access_unambiguous() {
 }
 
 #[test]
+fn nested_enum_closing_braces_are_indented() {
+    let formatted = assert_preserved(
+        "class C { enum E { A, B } class D { enum Empty {} } }",
+        &FormatSettings::default(),
+        "test.reds",
+    );
+    assert!(
+        formatted.contains("  enum E {\n    A,\n    B,\n  }"),
+        "{formatted}"
+    );
+    assert!(formatted.contains("    enum Empty {\n    }"), "{formatted}");
+}
+
+#[test]
 fn doubles_keep_their_suffix() {
     for trunc_sig_digits in [None, Some(3)] {
         let settings = FormatSettings {

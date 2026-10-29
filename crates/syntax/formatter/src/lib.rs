@@ -335,7 +335,7 @@ impl<K: AstKind> Formattable for Enum<'_, K> {
             let ctx = ctx.indented();
             writeln!(f, "{}{},", ctx.indent(), variant.as_wrapped().as_fmt(ctx))?;
         }
-        write!(f, "}}")
+        write!(f, "{}}}", ctx.indent())
     }
 }
 
