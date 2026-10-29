@@ -424,6 +424,57 @@ impl<'ctx> PolyType<'ctx> {
         }
     }
 
+    // Prove rigid annotation bounds without treating enclosing type parameters as
+    // inference variables. A RHS parameter's upper bound does not prove subtyping.
+    pub fn satisfies_bound(&self, other: &Self, symbols: &Symbols<'ctx>) -> bool {
+        fn check<'ctx, Mode: BaseMode>(
+            lhs: &PolyType<'ctx>,
+            rhs: &PolyType<'ctx>,
+            symbols: &Symbols<'ctx>,
+        ) -> bool {
+            if lhs == rhs {
+                return true;
+            }
+            match (lhs, rhs) {
+                (PolyType::Mono(Type::Nothing), _) => true,
+                (PolyType::Mono(Type::Ctx(var)), _)
+                    if var.upper().is_some_and(|upper| {
+                        check::<Mode>(&upper.clone().into_poly(), rhs, symbols)
+                    }) =>
+                {
+                    true
+                }
+                (_, PolyType::Mono(Type::Ctx(var))) => var
+                    .lower()
+                    .is_some_and(|lower| check::<Mode>(lhs, &lower.clone().into_poly(), symbols)),
+                (PolyType::Mono(Type::Data(lhs)), PolyType::Mono(Type::Data(rhs))) => {
+                    let Some(lhs) = lhs.clone().instantiate_as::<Mode>(rhs.id(), symbols) else {
+                        return false;
+                    };
+                    let params = symbols[rhs.id()].params();
+                    lhs.args().len() == params.len()
+                        && rhs.args().len() == params.len()
+                        && lhs
+                            .args()
+                            .iter()
+                            .zip(rhs.args())
+                            .zip(params)
+                            .all(|((l, r), param)| match param.variance() {
+                                Variance::Covariant => check::<AnySupertype>(l, r, symbols),
+                                Variance::Contravariant => check::<AnySupertype>(r, l, symbols),
+                                Variance::Invariant => {
+                                    check::<AnyBaseType>(l, r, symbols)
+                                        && check::<AnyBaseType>(r, l, symbols)
+                                }
+                            })
+                }
+                _ => false,
+            }
+        }
+
+        check::<AnyBaseType>(self, other, symbols)
+    }
+
     pub fn coerce(
         &self,
         other: &Self,
@@ -732,6 +783,39 @@ mod tests {
             var.constrain::<AnySupertype>(&base, &symbols).unwrap();
             rhs.constrain_invariant(lhs, &symbols).unwrap();
         }
+    }
+
+    #[test]
+    fn rigid_bounds_follow_lower_bounds_without_equating_upper_bounds() {
+        let interner = TypeInterner::default();
+        let symbols = hierarchy(&interner);
+        let base = Type::nullary(interner.intern("Base"));
+        let leaf = PolyType::nullary(interner.intern("Leaf"));
+        let with_lower = Type::Ctx(Rc::new(CtxVar::new(
+            "T",
+            Variance::Invariant,
+            Some(base.clone()),
+            None,
+        )))
+        .into_poly();
+        assert!(leaf.satisfies_bound(&with_lower, &symbols));
+
+        let first = Type::Ctx(Rc::new(CtxVar::new(
+            "T",
+            Variance::Invariant,
+            None,
+            Some(base.clone()),
+        )))
+        .into_poly();
+        let second = Type::Ctx(Rc::new(CtxVar::new(
+            "U",
+            Variance::Invariant,
+            None,
+            Some(base),
+        )))
+        .into_poly();
+        assert!(!first.satisfies_bound(&second, &symbols));
+        assert!(!second.satisfies_bound(&first, &symbols));
     }
 
     #[test]

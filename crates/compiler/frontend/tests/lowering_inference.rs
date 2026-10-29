@@ -159,6 +159,114 @@ fn array_elements_receive_contextual_type_hints() {
 }
 
 #[test]
+fn body_local_type_applications_check_declared_bounds() {
+    for (type_params, body, expected_errors) in [
+        ("", "let value: Store<Dog>;", 0),
+        ("", "let value: Store<Chair>;", 1),
+        ("", "let value: [Store<Chair>];", 1),
+        ("<T extends Animal>", "let value: Store<T>;", 0),
+        ("<T>", "let value: Store<T>;", 1),
+        ("", "let value: Pair<Animal, Dog>;", 0),
+        ("", "let value: Pair<Dog, Animal>;", 1),
+        ("<T, U extends T>", "let value: Pair<T, U>;", 0),
+        (
+            "<T extends Animal, U extends Animal>",
+            "let value: Pair<T, U>;",
+            1,
+        ),
+        ("", "let value = new Store<Dog>();", 0),
+        ("", "let value = new Store<Chair>();", 1),
+        ("<T extends Animal>", "let value = new Store<T>();", 0),
+        ("", "let value = Holder<Dog>();", 0),
+        ("", "let value = Holder<Chair>();", 1),
+        ("", "let value = (x: Store<Chair>) -> {};", 1),
+    ] {
+        let sources = SourceMap::new();
+        sources.push_back(
+            "local-type-bounds.reds",
+            format!(
+                r#"
+                class Animal {{}}
+                class Dog extends Animal {{}}
+                class Chair {{}}
+                class Store<T extends Animal> {{}}
+                class Pair<T, U extends T> {{}}
+                struct Holder<T extends Animal> {{}}
+                func Test{type_params}() {{ {body} }}
+                "#,
+            ),
+        );
+        let interner = TypeInterner::default();
+        let (_, _, diagnostics) = infer(&sources, &interner);
+        assert_eq!(
+            diagnostics.len(),
+            expected_errors,
+            "{type_params}: {body}: {diagnostics:?}"
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code() == "TYPE_ERR")
+        );
+    }
+}
+
+#[test]
+fn body_local_bounds_respect_nested_variance_and_inheritance() {
+    for (type_params, body, expected_errors) in [
+        ("", "let value: NeedsProducer<Producer<Dog>>;", 0),
+        ("", "let value: NeedsProducer<DerivedProducer>;", 0),
+        ("", "let value: NeedsProducer<Producer<Chair>>;", 1),
+        (
+            "<T extends Animal>",
+            "let value: NeedsProducer<Producer<T>>;",
+            0,
+        ),
+        ("", "let value: NeedsConsumer<Consumer<Animal>>;", 0),
+        ("", "let value: NeedsConsumer<Consumer<Chair>>;", 1),
+        (
+            "<T extends Animal>",
+            "let value: NeedsConsumer<Consumer<T>>;",
+            1,
+        ),
+        ("", "let value: NeedsArray<[Animal]>;", 0),
+        ("", "let value: NeedsArray<[Dog]>;", 1),
+        ("<T extends Animal>", "let value: NeedsArray<[T]>;", 1),
+    ] {
+        let sources = SourceMap::new();
+        sources.push_back(
+            "nested-type-bounds.reds",
+            format!(
+                r#"
+                class Animal {{}}
+                class Dog extends Animal {{}}
+                class Chair {{}}
+                class Producer<+T> {{}}
+                class DerivedProducer extends Producer<Dog> {{}}
+                class Consumer<-T> {{}}
+                class NeedsProducer<T extends Producer<Animal>> {{}}
+                class NeedsConsumer<T extends Consumer<Dog>> {{}}
+                class NeedsArray<T extends [Animal]> {{}}
+                func Test{type_params}() {{ {body} }}
+                "#,
+            ),
+        );
+        let interner = TypeInterner::default();
+        let (_, _, diagnostics) = infer(&sources, &interner);
+        assert_eq!(
+            diagnostics.len(),
+            expected_errors,
+            "{type_params}: {body}: {diagnostics:?}"
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code() == "TYPE_ERR")
+        );
+    }
+}
+
+#[test]
 fn block_lambdas_infer_return_types_after_lowering_the_body() {
     let sources = SourceMap::new();
     sources.push_back(

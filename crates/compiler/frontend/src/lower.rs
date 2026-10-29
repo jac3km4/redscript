@@ -1091,7 +1091,11 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         } else {
             typ.args().iter().map(PolyType::from_type).collect()
         };
+        let inferred_args = typ.args().is_empty();
         let typ = TypeApp::new(typ.id(), type_args);
+        if !inferred_args {
+            self.check_type_app(&typ, *type_span)?;
+        }
 
         let ir = ir::Expr::NewInstance {
             class_type: typ.clone().into(),
@@ -1115,6 +1119,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         span: Span,
     ) -> LowerResult<'ctx, (ir::Expr<'ctx>, PolyType<'ctx>)> {
         let def = &self.symbols[id];
+        let type_args_are_inferred = type_args.is_empty();
 
         let type_args = if type_args.is_empty() {
             def.params()
@@ -1131,6 +1136,9 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 .collect::<Result<Rc<_>, _>>()?
         };
         let typ = TypeApp::new(id, type_args);
+        if !type_args_are_inferred {
+            self.check_type_app(&typ, span)?;
+        }
 
         let TypeSchema::Aggregate(aggregate) = def.schema() else {
             return Err(Error::InvalidConstructType(span));
@@ -2388,7 +2396,40 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         }
         typ.args()
             .iter()
-            .try_for_each(|arg| self.check_type(arg, span))
+            .try_for_each(|arg| self.check_type(arg, span))?;
+
+        let env = typ.type_env(self.symbols);
+        for (arg, param) in typ.args().iter().zip(sym.params()) {
+            if let Some(upper) = param.upper() {
+                let upper = PolyType::from_type_with_env(upper, &env)
+                    .map_err(|var| Error::UnresolvedVar(var, span))?;
+                self.check_bound(arg, &upper, span)?;
+            }
+            if let Some(lower) = param.lower() {
+                let lower = PolyType::from_type_with_env(lower, &env)
+                    .map_err(|var| Error::UnresolvedVar(var, span))?;
+                self.check_bound(&lower, arg, span)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn check_bound(
+        &self,
+        lower: &PolyType<'ctx>,
+        upper: &PolyType<'ctx>,
+        span: Span,
+    ) -> LowerResult<'ctx, ()> {
+        match (lower, upper) {
+            (PolyType::Mono(lhs), PolyType::Mono(rhs)) => {
+                if lower.satisfies_bound(upper, self.symbols) {
+                    Ok(())
+                } else {
+                    Err(TypeError::Mismatch(lhs.clone(), rhs.clone())).with_span(span)
+                }
+            }
+            _ => lower.constrain_base(upper, self.symbols).with_span(span),
+        }
     }
 }
 
