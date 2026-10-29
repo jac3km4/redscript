@@ -397,7 +397,15 @@ impl<'ctx> PolyType<'ctx> {
             (Self::Mono(l), Self::Mono(r)) => l.constrain::<Mode>(r, symbols),
             (Self::Mono(l), Self::Var(r)) => r.add_lower(l, symbols),
             (Self::Var(l), Self::Mono(r)) => l.add_upper(r, symbols),
-            (Self::Var(l), Self::Var(r)) => l.unify(r, symbols),
+            (Self::Var(l), Self::Var(r)) => {
+                if let Some(exact) = l.exact() {
+                    r.add_lower(&exact, symbols)
+                } else if let Some(exact) = r.exact() {
+                    l.add_upper(&exact, symbols)
+                } else {
+                    l.unify(r, symbols)
+                }
+            }
         }
     }
 
@@ -550,6 +558,11 @@ impl<'ctx> Var<'ctx> {
     #[inline]
     pub fn upper(&self) -> Option<InferredType<'ctx>> {
         self.repr().0.borrow().upper.clone()
+    }
+
+    fn exact(&self) -> Option<InferredType<'ctx>> {
+        let lower = self.lower();
+        (self.upper().as_ref() == Some(&lower)).then_some(lower)
     }
 
     fn add_upper(&self, ub: &InferredType<'ctx>, symbols: &Symbols<'ctx>) -> InferResult<'ctx, ()> {
@@ -718,6 +731,34 @@ mod tests {
             leaf.constrain::<AnySupertype>(&var, &symbols).unwrap();
             var.constrain::<AnySupertype>(&base, &symbols).unwrap();
             rhs.constrain_invariant(lhs, &symbols).unwrap();
+        }
+    }
+
+    #[test]
+    fn exact_variables_allow_directional_subtype_constraints() {
+        let interner = TypeInterner::default();
+        let symbols = hierarchy(&interner);
+        let base = PolyType::nullary(interner.intern("Base"));
+        let leaf = PolyType::nullary(interner.intern("Leaf"));
+        for exact_lhs in [true, false] {
+            let lhs = PolyType::fresh();
+            let rhs = PolyType::fresh();
+            if exact_lhs {
+                lhs.constrain_invariant(&leaf, &symbols).unwrap();
+                base.constrain_base(&rhs, &symbols).unwrap();
+            } else {
+                leaf.constrain_base(&lhs, &symbols).unwrap();
+                rhs.constrain_invariant(&base, &symbols).unwrap();
+            }
+            lhs.constrain_base(&rhs, &symbols).unwrap();
+            assert_eq!(
+                lhs.coalesce(&symbols).unwrap(),
+                Type::nullary(interner.intern("Leaf"))
+            );
+            assert_eq!(
+                rhs.coalesce(&symbols).unwrap(),
+                Type::nullary(interner.intern("Base"))
+            );
         }
     }
 
