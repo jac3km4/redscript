@@ -41,10 +41,41 @@ impl UnusedLocalVisitor {
     }
 
     fn unused_locals(&self) -> impl Iterator<Item = (ir::Local, Span)> {
-        self.spans
+        let mut locals = self
+            .spans
             .iter()
             .filter(|&(local, _)| !self.used.contains(local))
             .map(|(&local, &span)| (local, span))
+            .collect::<Vec<_>>();
+        locals.sort_by_key(|&(_, span)| span);
+        locals.into_iter()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unused_locals_are_sorted_by_span() {
+        let sources = redscript_ast::SourceMap::new();
+        let file = sources.push_back("test.reds", "");
+        let mut visitor = UnusedLocalVisitor::default();
+        for (id, start, end) in [(0, 20, 25), (1, 5, 10), (2, 5, 8), (3, 0, 1)] {
+            visitor
+                .spans
+                .insert(ir::Local::Var(id), Span::new(start, end, file));
+        }
+        visitor.used.insert(ir::Local::Var(3));
+
+        assert_eq!(
+            visitor.unused_locals().collect::<Vec<_>>(),
+            vec![
+                (ir::Local::Var(2), Span::new(5, 8, file)),
+                (ir::Local::Var(1), Span::new(5, 10, file)),
+                (ir::Local::Var(0), Span::new(20, 25, file)),
+            ]
+        );
     }
 }
 

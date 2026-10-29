@@ -126,7 +126,19 @@ impl<'ctx> Diagnostics<'ctx> {
         let mut errors = 0;
         let filter = filter.into();
 
-        for diagnostic in self {
+        let mut diagnostics = self.into_iter().collect::<Vec<_>>();
+        diagnostics.sort_by_cached_key(|diagnostic| {
+            let span = diagnostic.span();
+            (
+                sources.get(span.file).map(|file| file.path()),
+                span.start,
+                span.end,
+                diagnostic.code(),
+                diagnostic.to_string(),
+            )
+        });
+
+        for diagnostic in diagnostics {
             if !filter.check(diagnostic) {
                 continue;
             }
@@ -250,6 +262,38 @@ impl SourceMapExt for SourceMap {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dump_sorts_by_path_span_code_and_message_without_reordering_storage() {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        let sources = SourceMap::new();
+        let z = sources.push_back("z.reds", "test");
+        let a = sources.push_back("a.reds", "test");
+        let diagnostics = Diagnostics::from(vec![
+            Diagnostic::UnusedLocal(ast::Span::new(0, 1, z)),
+            Diagnostic::UnusedLocal(ast::Span::new(2, 3, a)),
+            Diagnostic::UnknownIntrinsic("z", ast::Span::new(0, 2, a)),
+            Diagnostic::UnknownIntrinsic("a", ast::Span::new(0, 2, a)),
+            Diagnostic::MissingFunctionBody(ast::Span::new(0, 2, a)),
+            Diagnostic::UnusedLocal(ast::Span::new(0, 1, a)),
+        ]);
+        let observed = Rc::new(RefCell::new(Vec::new()));
+        let output = observed.clone();
+        let filter = DiagnosticFilter::Predicate(Box::new(move |diagnostic| {
+            output.borrow_mut().push(diagnostic.to_string());
+            false
+        }));
+
+        diagnostics.dump(&sources, filter).unwrap();
+
+        assert_eq!(
+            *observed.borrow(),
+            [5, 3, 2, 4, 1, 0].map(|i| diagnostics.0[i].to_string())
+        );
+        assert_eq!(diagnostics.0[0].span().file, z);
+    }
 
     #[test]
     fn flush_propagates_spanless_assembly_errors_without_writing() {
