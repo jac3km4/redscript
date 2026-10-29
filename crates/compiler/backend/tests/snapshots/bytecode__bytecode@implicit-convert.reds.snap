@@ -8,7 +8,7 @@ input_file: crates/compiler/backend/tests/data/implicit-convert.reds
 // Test; (f1)
 invoke.static j30 l12 f2 0000000000000001
 as_ref 0
-string.const 0
+string.const 0 "test"
 param.end
 assign
 local 0

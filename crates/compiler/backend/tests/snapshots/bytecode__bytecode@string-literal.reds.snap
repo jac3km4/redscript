@@ -2,18 +2,17 @@
 source: crates/compiler/backend/tests/bytecode.rs
 expression: "BytecodePrinter::new(&bundle, bundle_len)"
 input_file: crates/compiler/backend/tests/data/string-literal.reds
-snapshot_kind: text
 ---
 // Test; (f0)
 assign
 local 0
-string.const 0
+string.const 0 "💩"
 assign
 local 1
-cname.const 0
+cname.const 0 "back"
 assign
 local 2
-resource.const 0
+resource.const 0 "base\\gameplay\\gui\\common\\buttonhints.inkwidget"
 assign
 local 3
-tweakdb.const 0
+tweakdb.const 0 "MappinIcons.QuestMappin"

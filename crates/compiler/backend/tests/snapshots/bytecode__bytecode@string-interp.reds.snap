@@ -9,7 +9,7 @@ local 0
 i32.const 1990
 assign
 local 1
-string.const 0
+string.const 0 "John"
 return
 invoke.static j212 l5 f1 0000000000000011
 as_ref 0
@@ -19,13 +19,13 @@ invoke.static j96 l5 f1 0000000000000011
 as_ref 0
 invoke.static j57 l5 f1 0000000000000011
 as_ref 0
-string.const 1
+string.const 1 "My name is "
 as_ref 0
 to_string 0
 local 1
 param.end
 as_ref 0
-string.const 2
+string.const 2 " and I am "
 param.end
 as_ref 0
 to_string 1
@@ -35,7 +35,7 @@ local 0
 param.end
 param.end
 as_ref 0
-string.const 3
+string.const 3 " years old"
 param.end
 
 // OperatorAdd;StringString (f1)

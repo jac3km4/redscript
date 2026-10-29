@@ -24,13 +24,13 @@ local 0
 assign
 local 1
 invoke.static j22 l15 f0 0000000000000000
-string.const 0
+string.const 0 "a"
 i32.one
 param.end
 assign
 local 2
 invoke.static j26 l16 f2 0000000000000000
-string.const 1
+string.const 1 "b"
 i32.const 2
 param.end
 

@@ -35,7 +35,7 @@ switch.label 108 29
 ctx 26
 this
 invoke.virtual j25 l13 f1 0000000000000000
-cname.const 2
+cname.const 2 "Ok<Int32,String>"
 param.end
 assign
 local 1
@@ -54,7 +54,7 @@ switch.label 80 29
 ctx 26
 this
 invoke.virtual j25 l15 f1 0000000000000000
-cname.const 4
+cname.const 4 "Err<Int32,String>"
 param.end
 assign
 local 2

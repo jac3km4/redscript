@@ -86,7 +86,12 @@ impl fmt::Display for BytecodePrinter<'_> {
             for instr in func.body().code_iter() {
                 match instr.unwrap() {
                     Instr::CNameConst(idx) => {
-                        writeln!(f, "cname.const {}", indices.name(idx))?;
+                        writeln!(
+                            f,
+                            "cname.const {} {:?}",
+                            indices.name(idx),
+                            &self.bundle[idx]
+                        )?;
                     }
                     Instr::EnumConst { enum_, value } => {
                         writeln!(
@@ -97,13 +102,28 @@ impl fmt::Display for BytecodePrinter<'_> {
                         )?;
                     }
                     Instr::StringConst(idx) => {
-                        writeln!(f, "string.const {}", indices.string(idx))?;
+                        writeln!(
+                            f,
+                            "string.const {} {:?}",
+                            indices.string(idx),
+                            &self.bundle[idx]
+                        )?;
                     }
                     Instr::TweakDbIdConst(idx) => {
-                        writeln!(f, "tweakdb.const {}", indices.tweakdb(idx))?;
+                        writeln!(
+                            f,
+                            "tweakdb.const {} {:?}",
+                            indices.tweakdb(idx),
+                            &self.bundle[idx]
+                        )?;
                     }
                     Instr::ResourceConst(idx) => {
-                        writeln!(f, "resource.const {}", indices.resource(idx))?;
+                        writeln!(
+                            f,
+                            "resource.const {} {:?}",
+                            indices.resource(idx),
+                            &self.bundle[idx]
+                        )?;
                     }
                     Instr::Local(idx) => {
                         writeln!(f, "local {}", indices.local(idx))?;

@@ -2,19 +2,18 @@
 source: crates/compiler/backend/tests/bytecode.rs
 expression: "BytecodePrinter::new(&bundle, bundle_len)"
 input_file: crates/compiler/backend/tests/data/name-of.reds
-snapshot_kind: text
 ---
 // Test; (f0)
 assign
 local 0
-cname.const 0
+cname.const 0 "Int32"
 assign
 local 1
-cname.const 0
+cname.const 0 "Int32"
 invoke.static j16 l6 f1 0000000000000000
 param.end
 
 // Generic<Int32>; (f1)
 assign
 local 2
-cname.const 0
+cname.const 0 "Int32"

@@ -2,7 +2,6 @@
 source: crates/compiler/backend/tests/bytecode.rs
 expression: "BytecodePrinter::new(&bundle, bundle_len)"
 input_file: crates/compiler/backend/tests/data/local-init.reds
-snapshot_kind: text
 ---
 // Test; (f0)
 assign
@@ -20,13 +19,13 @@ enum.from_int 0 1
 i8.const 0
 assign
 local 4
-string.const 0
+string.const 0 ""
 assign
 local 5
-cname.const 0
+cname.const 0 "None"
 assign
 local 6
-tweakdb.const 0
+tweakdb.const 0 ""
 array.clear 1
 local 7
 assign

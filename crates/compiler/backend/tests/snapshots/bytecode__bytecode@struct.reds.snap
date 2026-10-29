@@ -2,11 +2,10 @@
 source: crates/compiler/backend/tests/bytecode.rs
 expression: "BytecodePrinter::new(&bundle, bundle_len)"
 input_file: crates/compiler/backend/tests/data/struct.reds
-snapshot_kind: text
 ---
 // Test; (f0)
 assign
 local 0
 struct.new 2 0
 i32.const 10
-string.const 0
+string.const 0 ""

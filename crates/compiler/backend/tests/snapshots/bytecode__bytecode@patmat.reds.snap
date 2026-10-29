@@ -227,7 +227,7 @@ switch.label 80 37
 ctx 34
 param 3
 invoke.virtual j25 l57 f0 0000000000000000
-cname.const 1
+cname.const 1 "SubclassA"
 param.end
 assign
 local 21
@@ -240,7 +240,7 @@ switch.label 90 37
 ctx 34
 param 3
 invoke.virtual j25 l59 f0 0000000000000000
-cname.const 2
+cname.const 2 "SubclassB"
 param.end
 assign
 local 22
@@ -261,7 +261,7 @@ jump.if_not 81
 ctx 34
 local 23
 invoke.virtual j25 l65 f0 0000000000000000
-cname.const 1
+cname.const 1 "SubclassA"
 param.end
 assign
 local 24
@@ -278,7 +278,7 @@ jump.if_not 91
 ctx 34
 local 25
 invoke.virtual j25 l67 f0 0000000000000000
-cname.const 2
+cname.const 2 "SubclassB"
 param.end
 assign
 local 26
@@ -301,7 +301,7 @@ ctx 35
 wref.to_ref
 param 4
 invoke.virtual j25 l76 f0 0000000000000000
-cname.const 1
+cname.const 1 "SubclassA"
 param.end
 assign
 local 27
@@ -316,7 +316,7 @@ ctx 35
 wref.to_ref
 param 4
 invoke.virtual j25 l78 f0 0000000000000000
-cname.const 2
+cname.const 2 "SubclassB"
 param.end
 assign
 local 28
@@ -339,7 +339,7 @@ ctx 35
 wref.to_ref
 local 29
 invoke.virtual j25 l84 f0 0000000000000000
-cname.const 1
+cname.const 1 "SubclassA"
 param.end
 assign
 local 30
@@ -358,7 +358,7 @@ ctx 35
 wref.to_ref
 local 31
 invoke.virtual j25 l86 f0 0000000000000000
-cname.const 2
+cname.const 2 "SubclassB"
 param.end
 assign
 local 32
@@ -381,7 +381,7 @@ switch.label 80 37
 ctx 34
 param 5
 invoke.virtual j25 l95 f0 0000000000000000
-cname.const 1
+cname.const 1 "SubclassA"
 param.end
 assign
 local 33
@@ -394,7 +394,7 @@ switch.label 90 37
 ctx 34
 param 5
 invoke.virtual j25 l97 f0 0000000000000000
-cname.const 2
+cname.const 2 "SubclassB"
 param.end
 assign
 local 34
@@ -415,7 +415,7 @@ jump.if_not 81
 ctx 34
 local 35
 invoke.virtual j25 l103 f0 0000000000000000
-cname.const 1
+cname.const 1 "SubclassA"
 param.end
 assign
 local 36
@@ -432,7 +432,7 @@ jump.if_not 91
 ctx 34
 local 37
 invoke.virtual j25 l105 f0 0000000000000000
-cname.const 2
+cname.const 2 "SubclassB"
 param.end
 assign
 local 38
@@ -461,7 +461,7 @@ invoke.static j75 l114 f11 0000000000000000
 ctx 34
 local 40
 invoke.virtual j25 l114 f0 0000000000000000
-cname.const 3
+cname.const 3 "Class"
 param.end
 ref.to_bool
 ctx 18
