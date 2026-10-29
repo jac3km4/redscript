@@ -213,6 +213,22 @@ fn aggregate_patterns_keep_explicit_fields() {
 }
 
 #[test]
+fn integer_chain_bases_keep_member_access_unambiguous() {
+    for literal in ["0", "1", "2147483647", "1l", "1u", "1ul"] {
+        for suffix in [
+            ".Member",
+            ".Method()",
+            ".Member.Other",
+            "[0].Member",
+            "(value).Member",
+        ] {
+            let source = format!("func F() {{ return ({literal}){suffix}; }}");
+            assert_preserved(&source, &FormatSettings::default(), "test.reds");
+        }
+    }
+}
+
+#[test]
 fn doubles_keep_their_suffix() {
     for trunc_sig_digits in [None, Some(3)] {
         let settings = FormatSettings {

@@ -1129,6 +1129,14 @@ fn format_chain<K: AstKind>(
         };
     };
 
+    // Without parentheses, the lexer consumes the member-access dot as part of the number.
+    let parenthesize = parenthesize
+        || matches!(base_expr, Expr::Constant(Constant::I32(_)))
+            && matches!(
+                chain.last(),
+                Some(ChainPart::Member(_) | ChainPart::Call(..))
+            );
+
     let base = DisplayFn(|f: &mut fmt::Formatter<'_>| {
         // The chain root's prefix was already emitted by Expr::format.
         if std::ptr::eq(base_expr, expr) {
