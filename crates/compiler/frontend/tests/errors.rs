@@ -4,6 +4,7 @@ use redscript_ast::{Item, SourceMap};
 use redscript_compiler_api::{
     CompileErrorReporter, Diagnostic, SourceMapExt, Symbols, TypeInterner,
 };
+use redscript_compiler_frontend::pass::{DiagnosticPass, UnusedLocals};
 use redscript_compiler_frontend::{Evaluator, infer_from_sources, parse_files, process_sources};
 
 #[test]
@@ -68,6 +69,38 @@ fn implicit_enum_overflow() {
         [Diagnostic::ValueOverflow(_)]
     ));
     insta::assert_snapshot!(DisplayDiagnostics(reporter.into_reported(), &sources));
+}
+
+#[test]
+fn unused_locals() {
+    let sources = SourceMap::from_files(&["tests/data/passes/unused-locals.reds"]).unwrap();
+    sources.populate_boot_lib();
+    let interner = TypeInterner::default();
+    let mut reporter = CompileErrorReporter::default();
+    let (unit, _) = infer_from_sources(
+        &sources,
+        Symbols::with_default_types(),
+        &mut reporter,
+        &interner,
+    );
+    assert!(reporter.reported().is_empty());
+
+    for function in unit.all_functions() {
+        UnusedLocals.run(function, &mut reporter);
+    }
+    let mut diagnostics = reporter.into_reported();
+    assert_eq!(diagnostics.len(), 2);
+    assert!(
+        diagnostics
+            .iter()
+            .all(|d| matches!(d, Diagnostic::UnusedLocal(_)))
+    );
+    // The pass collects locals in a hash map; this fixture uses a single file.
+    diagnostics.sort_by_key(|diagnostic| {
+        let span = diagnostic.span();
+        (span.start, span.end)
+    });
+    insta::assert_snapshot!(DisplayDiagnostics(diagnostics, &sources));
 }
 
 struct DisplayDiagnostics<'ctx>(Vec<Diagnostic<'ctx>>, &'ctx SourceMap);
