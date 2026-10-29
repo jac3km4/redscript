@@ -53,7 +53,7 @@ pub enum Diagnostic<'ctx> {
     AnnotatedMethodNotFound(FunctionAnnotation<'ctx>, Span),
     #[error("the annotations on this function are incompatible with each other")]
     IncompatibleAnnotations(Span),
-    #[error("this class is missing some required method implementation(s):\n{}", sep_by(.0, "\n"))]
+    #[error("this class is missing required method implementations:\n{}", sep_by(.0, "\n"))]
     MissingMethodImpls(Box<[FunctionSignature<'ctx, Poly>]>, Span),
     #[error("this class contains a duplicated implementation of the `{0}` method")]
     DuplicateMethod(&'ctx str, Span),
@@ -61,7 +61,7 @@ pub enum Diagnostic<'ctx> {
     FinalMethodOverride(&'ctx str, Span),
     #[error("this class circularly extends itself")]
     CircularInheritance(Span),
-    #[error("type `{0}` expects {1} type arguments")]
+    #[error("type `{0}` expects {1} type {noun}", noun = if *.1 == 1 { "argument" } else { "arguments" })]
     InvalidTypeArgCount(TypeId<'ctx>, usize, Span),
     #[error("type `{0}` does not satisfy expected bound `{1}`")]
     UnsastisfiedBound(Box<Type<'ctx>>, Box<Type<'ctx>>, Span),
@@ -103,7 +103,7 @@ pub enum Diagnostic<'ctx> {
     AddFieldConflict(Span),
     #[error("structures cannot have variance annotations")]
     InvalidStructVariance(Span),
-    #[error("method overrides cannot be less visibile than the method they override ({0})")]
+    #[error("method overrides cannot be less visible than the method they override ({0})")]
     LessVisibleOverride(Visibility, Span),
     #[error("{0}")]
     Other(Box<dyn std::error::Error + 'ctx>, DiagnosticLevel, Span),

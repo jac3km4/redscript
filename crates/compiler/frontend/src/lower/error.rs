@@ -30,8 +30,9 @@ pub enum Error<'ctx> {
     #[error("there's no matching `{0}` function")]
     UnresolvedFunction(&'ctx str, Span),
     #[error(
-        "invalid number of arguments, expected {expected} arguments, found {found}",
+        "invalid number of arguments, expected {expected} {noun}, found {found}",
         expected = DisplayArgCounts(.0),
+        noun = if .0.iter().all(|r| *r.start() == 1 && *r.end() == 1) { "argument" } else { "arguments" },
         found = .1
     )]
     InvalidArgCount(Vec<RangeInclusive<usize>>, usize, Span),
@@ -46,7 +47,7 @@ pub enum Error<'ctx> {
     InvalidConstructType(Span),
     #[error("`{0}` cannot be constructed with the `new` operator, use `{}()` instead", .type_id.simple_name())]
     NewWithConstructible { type_id: TypeId<'ctx>, span: Span },
-    #[error("this type cannot be usedd with the `as` operator, the target type must be a class")]
+    #[error("this type cannot be used with the `as` operator, the target type must be a class")]
     InvalidDynCastType(Span),
     #[error("the target type of this cast is not known, consider specifying it")]
     UnknownStaticCastType(Span),
@@ -70,15 +71,13 @@ pub enum Error<'ctx> {
     CyclicType(Span),
     #[error("this literal is out of range for {0}{hint}", hint = NumberTypeRangeHint(*.0))]
     LiteralOutOfRange(TypeId<'ctx>, Span),
-    #[error(
-        r#"expected a `{0}` here, you should prefix your literal with '{1}', e.g. {1}"lorem ipsum""#
-    )]
+    #[error(r#"expected `{0}`; use a `{0}` literal, e.g. `{1}"text"`"#)]
     WrongStringLiteral(TypeId<'ctx>, char, Span),
     #[error("`{0}` is an abstract class and cannot be instantiated")]
     InstantiatingAbstract(TypeId<'ctx>, Span),
     #[error("this type has no super type to refer to")]
     NonExistentSuperType(Span),
-    #[error("this expression is not a place that can be written to")]
+    #[error("cannot assign to this expression")]
     InvalidPlaceExpr(Span),
     #[error(
         "the highlighted temporary value cannot be used in this expression, consider extracting it \
@@ -328,7 +327,7 @@ impl fmt::Display for CoalesceError<'_> {
                 } else {
                     write!(f, "`Any`")?;
                 }
-                write!(f, " for some type T), consider adding type annotations")
+                write!(f, ") for some type T; consider adding type annotations")
             }
         }
     }

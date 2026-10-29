@@ -15,7 +15,7 @@ error[REDUNDANT_DYN_CAST]: this cast is redundant, you should remove it
 15 |   let _ = b as ClassA; // Redundant
    |           ^^^^^^^^^^^
 
-error[INVALID_DYN_CAST]: this type cannot be usedd with the `as` operator, the target type must be a class
+error[INVALID_DYN_CAST]: this type cannot be used with the `as` operator, the target type must be a class
  --> tests/data/dyn-cast-checks.reds:16:16
    |
 16 |   let _ = b as Int32; // Invalid

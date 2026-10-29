@@ -3,7 +3,7 @@ source: crates/compiler/frontend/tests/errors.rs
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/expr-checks.reds
 ---
-error[INVALID_PLACE]: this expression is not a place that can be written to
+error[INVALID_PLACE]: cannot assign to this expression
  --> tests/data/expr-checks.reds:11:3
    |
 11 |   ReturnsInt() = 2;

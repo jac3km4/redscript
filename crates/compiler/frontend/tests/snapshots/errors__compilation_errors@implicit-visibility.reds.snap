@@ -3,19 +3,19 @@ source: crates/compiler/frontend/tests/errors.rs
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/implicit-visibility.reds
 ---
-error[LESS_VISIBLE_OVERRIDE]: method overrides cannot be less visibile than the method they override (public)
+error[LESS_VISIBLE_OVERRIDE]: method overrides cannot be less visible than the method they override (public)
  --> tests/data/implicit-visibility.reds:9:16
   |
 9 |   private func Public() {} // Error
   |                ^^^^^^
 
-error[LESS_VISIBLE_OVERRIDE]: method overrides cannot be less visibile than the method they override (protected)
+error[LESS_VISIBLE_OVERRIDE]: method overrides cannot be less visible than the method they override (protected)
  --> tests/data/implicit-visibility.reds:10:16
    |
 10 |   private func Protected() {} // Error
    |                ^^^^^^^^^
 
-error[LESS_VISIBLE_OVERRIDE]: method overrides cannot be less visibile than the method they override (public)
+error[LESS_VISIBLE_OVERRIDE]: method overrides cannot be less visible than the method they override (public)
  --> tests/data/implicit-visibility.reds:15:18
    |
 15 |   protected func Public() {} // Error

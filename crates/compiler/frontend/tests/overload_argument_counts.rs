@@ -34,7 +34,7 @@ fn reports_distinct_accepted_counts_and_actual_count() {
             "invalid number of arguments, expected between 1 and 3 arguments, found 0",
             "invalid number of arguments, expected between 1 and 3 arguments, found 4",
             "invalid number of arguments, expected between 0 and 2 arguments, found 3",
-            "invalid number of arguments, expected 1 arguments, found 0",
+            "invalid number of arguments, expected 1 argument, found 0",
             "invalid number of arguments, expected 2 arguments, found 1",
             "invalid number of arguments, expected 2 arguments, found 1",
         ]

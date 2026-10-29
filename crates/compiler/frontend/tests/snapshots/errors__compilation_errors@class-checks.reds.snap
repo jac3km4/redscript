@@ -87,19 +87,19 @@ error[INVALID_BASE]: this type cannot inherit from a primitive
 19 | class ClassExtendingPrimitive extends Int32 {}
    |       ^^^^^^^^^^^^^^^^^^^^^^^
 
-error[INVALID_TYPE_ARG_COUNT]: type `AbstractClass` expects 1 type arguments
+error[INVALID_TYPE_ARG_COUNT]: type `AbstractClass` expects 1 type argument
  --> tests/data/class-checks.reds:37:7
    |
 37 | class ClassWithInvalidTypeArgCounts extends AbstractClass<Int32, Int32> {
    |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-error[INVALID_TYPE_ARG_COUNT]: type `AbstractClass` expects 1 type arguments
+error[INVALID_TYPE_ARG_COUNT]: type `AbstractClass` expects 1 type argument
  --> tests/data/class-checks.reds:38:7
    |
 38 |   let field: AbstractClass;
    |       ^^^^^
 
-error[INVALID_TYPE_ARG_COUNT]: type `AbstractClass` expects 1 type arguments
+error[INVALID_TYPE_ARG_COUNT]: type `AbstractClass` expects 1 type argument
  --> tests/data/class-checks.reds:40:15
    |
 40 |   func Method(a: AbstractClass) -> AbstractClass<String, String> {}
@@ -135,7 +135,7 @@ error[DUP_METHOD]: this class contains a duplicated implementation of the `Metho
 27 | class ClassWithDuplicateMethod {
    |       ^^^^^^^^^^^^^^^^^^^^^^^^
 
-error[MISSING_IMPL]: this class is missing some required method implementation(s):
+error[MISSING_IMPL]: this class is missing required method implementations:
   func UnimplementedMethod(a: Int32) -> Void
  --> tests/data/class-checks.reds:13:7
    |
@@ -148,7 +148,7 @@ warning[FINAL_FN_OVERRIDE]: this class overrides a final method `FinalMethod`
 32 | class ClassOverridingFinalMethod extends AbstractClass<Int32> {
    |       ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-error[MISSING_IMPL]: this class is missing some required method implementation(s):
+error[MISSING_IMPL]: this class is missing required method implementations:
   func UnimplementedMethod(a: Int32) -> Void
  --> tests/data/class-checks.reds:37:7
    |

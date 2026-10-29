@@ -9,7 +9,7 @@ error[TYPE_ERR]: type mismatch: found `String` when expected `Int32`
 11 |   let _: Int32 = "";
    |                  ^^
 
-error[WRONG_STRING_LIT]: expected a `CName` here, you should prefix your literal with 'n', e.g. n"lorem ipsum"
+error[WRONG_STRING_LIT]: expected `CName`; use a `CName` literal, e.g. `n"text"`
  --> tests/data/type-mismatch.reds:12:18
    |
 12 |   let _: CName = "";
@@ -21,7 +21,7 @@ error[TYPE_ERR]: type mismatch: found `String` when expected `CName`
 12 |   let _: CName = "";
    |                  ^^
 
-error[WRONG_STRING_LIT]: expected a `TweakDBID` here, you should prefix your literal with 't', e.g. t"lorem ipsum"
+error[WRONG_STRING_LIT]: expected `TweakDBID`; use a `TweakDBID` literal, e.g. `t"text"`
  --> tests/data/type-mismatch.reds:13:22
    |
 13 |   let _: TweakDBID = "";
@@ -33,7 +33,7 @@ error[TYPE_ERR]: type mismatch: found `String` when expected `TweakDBID`
 13 |   let _: TweakDBID = "";
    |                      ^^
 
-error[WRONG_STRING_LIT]: expected a `ResRef` here, you should prefix your literal with 'r', e.g. r"lorem ipsum"
+error[WRONG_STRING_LIT]: expected `ResRef`; use a `ResRef` literal, e.g. `r"text"`
  --> tests/data/type-mismatch.reds:14:19
    |
 14 |   let _: ResRef = "";
