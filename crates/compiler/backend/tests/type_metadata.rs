@@ -82,6 +82,55 @@ fn static_array_lengths_and_element_types() {
     assert_eq!(&bundle[bundle[element].name()], "Bool");
 }
 
+#[test]
+fn generic_structs_used_only_in_types_have_definitions() {
+    let bundle = compile(
+        r#"
+        struct Box<T> { let value: T; }
+        struct Outer { let inner: Box<Bool>; }
+        func Accept(value: Box<Int32>) {}
+        "#,
+    );
+
+    for (name, field_type) in [("Box<Int32>", "Int32"), ("Box<Bool>", "Bool")] {
+        let classes = bundle
+            .definitions()
+            .filter_map(|def| match def {
+                Definition::Class(class) if bundle[class.name()] == name => Some(class),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(classes.len(), 1, "{name}");
+        let fields = classes[0].fields();
+        assert_eq!(fields.len(), 1, "{name}");
+        assert_eq!(
+            &bundle[bundle[bundle[fields[0]].type_()].name()],
+            field_type
+        );
+    }
+}
+
+#[test]
+fn recursive_generic_fields_share_one_type_definition() {
+    let bundle = compile(
+        r#"
+        struct Node<T> { let next: script_ref<Node<T>>; }
+        func Accept(value: Node<Int32>) {}
+        "#,
+    );
+
+    for name in ["Node<Int32>", "script_ref:Node<Int32>"] {
+        assert_eq!(
+            bundle
+                .definitions()
+                .filter(|def| matches!(def, Definition::Type(typ) if bundle[typ.name()] == name))
+                .count(),
+            1,
+            "{name}"
+        );
+    }
+}
+
 fn local_type(bundle: &ScriptBundle<'_>, name: &str) -> TypeIndex {
     bundle
         .definitions()

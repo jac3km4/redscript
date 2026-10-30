@@ -365,6 +365,10 @@ impl<'ctx> Monomorphizer<'ctx> {
         };
         self.types.insert(typ.clone(), type_idx);
 
+        if matches!(schema, TypeSchema::Aggregate(_)) {
+            self.class(typ, symbols, bundle);
+        }
+
         type_idx
     }
 
