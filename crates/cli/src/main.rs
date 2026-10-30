@@ -36,7 +36,7 @@ enum Command {
     Compile(CompileOpts),
     Lint(LintOpts),
     Format(FormatOpts),
-    ExportRedmod(redmod::ExportOpts),
+    TranspileRedmod(redmod::TranspileOpts),
 }
 
 /// decompile a .redscripts file
@@ -222,7 +222,7 @@ fn main() -> anyhow::Result<ExitCode> {
         Command::Compile(opts) => compile(opts),
         Command::Lint(opts) => lint(opts),
         Command::Format(opts) => format(opts),
-        Command::ExportRedmod(opts) => redmod::export(opts),
+        Command::TranspileRedmod(opts) => redmod::transpile(opts),
     }
 }
 

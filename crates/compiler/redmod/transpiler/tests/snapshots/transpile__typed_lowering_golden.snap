@@ -1,0 +1,47 @@
+---
+source: crates/compiler/redmod/transpiler/tests/transpile.rs
+expression: text
+---
+import function OperatorAdd(a: Int32, b: Int32) -> Int32;
+import function OperatorAdd(a: String, b: String) -> String;
+import function OperatorAssignAdd(out a: Int32, b: Int32) -> Int32;
+import function OperatorLess(a: Int32, b: Int32) -> Bool;
+import function OperatorLogicAnd(a: Bool, b: Bool) -> Bool;
+function Tick() -> Bool {
+    return true;
+}
+function Inline(__rst_p0: Int32) -> Int32 {
+    return __rst_p0;
+}
+function Empty() -> array<Int32> {
+    var __rst_v0: array<Int32>;
+    __rst_v0.Clear();
+    return __rst_v0;
+}
+function Test(__rst_p0: array<Int32>, __rst_p1: Bool) -> String {
+    var __rst_v2: String;
+    var __rst_v3: Int32;
+    var __rst_v4: Int32;
+    var __rst_v5: array<Int32>;
+    var __rst_v6: Int32;
+    var __rst_v7: Int32;
+    var __rst_v8: Int32;
+    __rst_v2 = "";
+    __rst_v3 = 0;
+    while ((__rst_v3 < __rst_p0.Size())) {
+        __rst_v4 = __rst_p0[__rst_v3];
+        (__rst_v3 += 1);
+        __rst_v5.Clear();
+        __rst_v6 = Cast<Int32>(0);
+        __rst_v5.PushBack(__rst_v4);
+        if ((__rst_p1 && Tick())) {
+            __rst_v7 = __rst_v4;
+            __rst_v2 = ("value=" + IntToString(__rst_v7));
+            continue;
+        } else {
+            __rst_v8 = __rst_v6;
+            __rst_v5.PushBack(__rst_v8);
+        }
+    }
+    return __rst_v2;
+}

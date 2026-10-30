@@ -1,9 +1,0 @@
----
-source: crates/compiler/redmod/export/tests/export.rs
-expression: "result.iter().map(|d| d.display(&sources).to_string()).collect::<String>()"
----
-error[REDMOD_EXPORT]: lambdas and function values are unsupported
- --> rejected.reds:1:1
-  |
-1 | func Test() { let closure = () -> 1; }
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

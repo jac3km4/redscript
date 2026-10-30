@@ -94,7 +94,7 @@ fn malformed_native_trees_fail_instead_of_losing_nodes() {
 }
 
 #[test]
-fn identifiers_use_native_context_not_exporter_policy() {
+fn identifiers_use_native_context_not_transpiler_policy() {
     let file = FileId::from_i32(0);
     let (module, errors) = redscript_redmod_parser::parse_module("var value: name = value;", file);
     assert!(errors.is_empty());

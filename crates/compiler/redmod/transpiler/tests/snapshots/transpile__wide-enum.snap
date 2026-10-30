@@ -1,0 +1,9 @@
+---
+source: crates/compiler/redmod/transpiler/tests/transpile.rs
+expression: "result.iter().map(|d| d.display(&sources).to_string()).collect::<String>()"
+---
+error[REDMOD_TRANSPILE]: enum declaration literal outside verified target range
+ --> rejected.reds:1:1
+  |
+1 | enum Wide { Value = 2147483648l }
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

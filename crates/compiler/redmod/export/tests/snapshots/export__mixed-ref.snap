@@ -1,9 +1,0 @@
----
-source: crates/compiler/redmod/export/tests/export.rs
-expression: "result.iter().map(|d| d.display(&sources).to_string()).collect::<String>()"
----
-error[REDMOD_EXPORT]: mixedRef types are unsupported
- --> rejected.reds:1:1
-  |
-1 | @mixedRef() class Widget {}
-  | ^^^^^^^^^^^

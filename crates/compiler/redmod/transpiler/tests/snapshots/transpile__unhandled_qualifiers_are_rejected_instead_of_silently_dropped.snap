@@ -1,0 +1,9 @@
+---
+source: crates/compiler/redmod/transpiler/tests/transpile.rs
+expression: "diagnostics[0].display(&sources).to_string()"
+---
+error[REDMOD_TRANSPILE]: editable, instanceeditable, inlined, replicated and testonly qualifiers are not supported by REDmod transpile
+ --> qualifiers.reds:1:16
+  |
+1 | class Widget { editable let value: Int32; }
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^

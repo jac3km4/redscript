@@ -2,7 +2,7 @@
 //!
 //! [`format_source`] preserves source spelling and trivia, changing only leading
 //! indentation. The [`mod@print`] APIs emit native REDmod AST nodes, not original
-//! source text. Neither path performs type-aware export or semantic validation.
+//! source text. Neither path performs type-aware transpilation or semantic validation.
 
 mod format;
 pub mod print;

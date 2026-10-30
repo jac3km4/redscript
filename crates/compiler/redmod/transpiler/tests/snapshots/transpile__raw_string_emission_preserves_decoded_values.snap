@@ -1,0 +1,8 @@
+---
+source: crates/compiler/redmod/transpiler/tests/transpile.rs
+expression: output
+---
+function Test() -> String {
+    return "assets\widgets\
+raw\u{22}\";
+}

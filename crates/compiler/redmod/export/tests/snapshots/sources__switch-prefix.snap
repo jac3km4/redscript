@@ -1,9 +1,0 @@
----
-source: crates/compiler/redmod/export/tests/sources.rs
-expression: "errors.iter().map(|e| e.display(&sources).to_string()).collect::<String>()"
----
-error[REDMOD_EXPORT]: array prefix in switch matcher has no retained conditional evaluation provenance; bind the matcher array explicitly
- --> rejected.reds:1:64
-  |
-1 | func Test(out x: Int32) { switch Read(x) { case 0: break; case Check([Set(x)]): break; } }
-  |                                                                ^^^^^^^^^^^^^^^

@@ -1,8 +1,0 @@
----
-source: crates/compiler/redmod/export/tests/sources.rs
-expression: "output[0].module.text"
----
-@wrapMethod(EngineWidget)
-function Value(__rse_p0: Int32) -> Int32 {
-    return Value(__rse_p0);
-}

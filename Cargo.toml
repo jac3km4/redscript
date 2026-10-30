@@ -12,7 +12,7 @@ members = [
     "crates/compiler/backend",
     "crates/compiler/api",
     "crates/compiler/redmod/adapter",
-    "crates/compiler/redmod/export",
+    "crates/compiler/redmod/transpiler",
     "crates/decompiler",
     "crates/cli",
     "crates/scc/core",
@@ -35,7 +35,7 @@ redscript-redmod-ast.path = "crates/syntax/redmod/ast"
 redscript-redmod-parser.path = "crates/syntax/redmod/parser"
 redscript-redmod-formatter.path = "crates/syntax/redmod/formatter"
 redscript-redmod-adapter.path = "crates/compiler/redmod/adapter"
-redscript-redmod-export.path = "crates/compiler/redmod/export"
+redscript-redmod-transpiler.path = "crates/compiler/redmod/transpiler"
 redscript-io.path = "crates/io"
 redscript-compiler-frontend.path = "crates/compiler/frontend"
 redscript-compiler-backend.path = "crates/compiler/backend"

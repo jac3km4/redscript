@@ -1,9 +1,0 @@
----
-source: crates/compiler/redmod/export/tests/sources.rs
-expression: "errors.iter().map(|e| e.display(&sources).to_string()).collect::<String>()"
----
-error[REDMOD_EXPORT]: competing replacements for the same resolved target/signature across analyzed sources; lowered body ownership is ambiguous
- --> b.reds:1:1
-  |
-1 | @replaceMethod(EngineWidget) public func Value() -> Int32 = 22;
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

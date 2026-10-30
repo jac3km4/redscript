@@ -3,11 +3,11 @@
 ## Current scope
 
 Native parsing/printing, partial semantic analysis, mixed-language IDE analysis,
-and strict community REDscript → REDmod export exist. Full semantic parity and
+and strict community REDscript → REDmod transpilation exist. Full semantic parity and
 runtime compatibility do not.
 
 - [Semantic adapter contracts and limitations](../crates/compiler/redmod/adapter/README.md)
-- [Exporter contracts and limitations](../crates/compiler/redmod/export/README.md)
+- [Transpiler contracts and limitations](../crates/compiler/redmod/transpiler/README.md)
 - [Local parser corpus check](../crates/syntax/redmod/parser/CORPUS.md)
 
 ## Architecture conventions
@@ -43,7 +43,7 @@ shared commits, not only the combined tree.
 ### 2. Preserve evaluation order and semantic identity
 
 The shared frontend can lift array prefixes across lazy expressions or earlier
-operands. Both adapter and exporter currently reject unsafe shapes. Fix this at
+operands. Both adapter and transpiler currently reject unsafe shapes. Fix this at
 the lowering boundary by keeping prerequisites at their execution site; test
 lazy branches, call/receiver order, switch matchers and loop reevaluation before
 relaxing guards. Never fix mutation by operating on a copied receiver.
@@ -52,7 +52,7 @@ Add optional snapshot-qualified source identities/finalized semantic facts when
 needed to associate retained declarations with resolved bodies. Spans, pointer
 IDs and overload positions are not identities. Exclude failed speculative
 candidates and test moves/clones/revisions. Use these facts to support inferred
-signatures, competing patches, multiple wrappers and conditional export plans;
+signatures, competing patches, multiple wrappers and conditional transpilation plans;
 inactive variants need their own actual analysis/bodies.
 
 ### 3. Extend native semantics deliberately
@@ -72,9 +72,9 @@ Add official ambiguity fixtures for casts versus grouping, type/value name
 collisions and comparison/postfix combinations before changing precedence.
 Port applicable shared lexer/parser fixes deliberately, without coupling grammars.
 
-### 4. Broaden export coverage safely
+### 4. Broaden transpilation coverage safely
 
-The exporter README owns unsupported operations and numeric limits. Add verified
+The transpiler README owns unsupported operations and numeric limits. Add verified
 place/reference lowering, default resets and intrinsic mappings before accepting
 more inputs. Preserve exact/select imports rather than widening them. Plan
 cross-module conditions/patches explicitly; do not guess source ownership from
@@ -101,7 +101,7 @@ Remaining work:
 ## Validation boundary
 
 The installed corpus parses 2,112 files without syntax diagnostics; this is not
-semantic or official-compiler conformance. Five authored exports compiled with
+semantic or official-compiler conformance. Five authored transpiled fixtures compiled with
 local official compiler v1.2.2, including String/CName pool checks; no game runtime
 was tested. Official checks were not rerun after integration with upstream
 `ebfe5b8`.

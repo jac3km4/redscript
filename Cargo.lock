@@ -955,7 +955,7 @@ dependencies = [
  "redscript-compiler-api",
  "redscript-decompiler",
  "redscript-dotfile",
- "redscript-redmod-export",
+ "redscript-redmod-transpiler",
  "vmap",
 ]
 
@@ -1118,18 +1118,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "redscript-redmod-export"
-version = "1.0.0-preview.22"
-dependencies = [
- "insta",
- "redscript-community-ast",
- "redscript-community-parser",
- "redscript-compiler-api",
- "redscript-compiler-frontend",
- "redscript-redmod-parser",
-]
-
-[[package]]
 name = "redscript-redmod-formatter"
 version = "1.0.0-preview.22"
 dependencies = [
@@ -1149,6 +1137,18 @@ dependencies = [
  "redscript-community-parser",
  "redscript-redmod-ast",
  "similar-asserts",
+]
+
+[[package]]
+name = "redscript-redmod-transpiler"
+version = "1.0.0-preview.22"
+dependencies = [
+ "insta",
+ "redscript-community-ast",
+ "redscript-community-parser",
+ "redscript-compiler-api",
+ "redscript-compiler-frontend",
+ "redscript-redmod-parser",
 ]
 
 [[package]]

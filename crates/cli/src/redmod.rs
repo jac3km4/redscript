@@ -11,15 +11,15 @@ use redscript_compiler_api::{
     CompilationInputs, ScriptBundle, SourceMapExt, Symbols, TypeFlagRegistry, TypeInterner,
 };
 use redscript_dotfile::Dotfile;
-use redscript_redmod_export::package::{ScriptArtifact, publish_mod, publish_mod_with_root};
-use redscript_redmod_export::validate::OfficialValidator;
-use redscript_redmod_export::{ExportDiagnostic, analyze_sources};
+use redscript_redmod_transpiler::package::{ScriptArtifact, publish_mod, publish_mod_with_root};
+use redscript_redmod_transpiler::validate::OfficialValidator;
+use redscript_redmod_transpiler::{TranspileDiagnostic, analyze_sources};
 
-/// export community redscript sources as a new REDmod script package
+/// transpile community redscript sources as a new REDmod script package
 #[derive(Debug, FromArgs)]
-#[argh(subcommand, name = "export-redmod")]
-pub(crate) struct ExportOpts {
-    /// authored source file or directory to export (repeatable; honors .redscript roots)
+#[argh(subcommand, name = "transpile-redmod")]
+pub(crate) struct TranspileOpts {
+    /// authored source file or directory to transpile (repeatable; honors .redscript roots)
     #[argh(option, short = 's')]
     src: Vec<PathBuf>,
     /// community source file or directory for analysis only (repeatable)
@@ -58,7 +58,7 @@ fn parse_timeout(value: &str) -> Result<Duration, String> {
     Ok(duration)
 }
 
-pub(crate) fn export(opts: ExportOpts) -> anyhow::Result<ExitCode> {
+pub(crate) fn transpile(opts: TranspileOpts) -> anyhow::Result<ExitCode> {
     ensure!(!opts.src.is_empty(), "at least one --src is required");
     let name = opts
         .output
@@ -132,13 +132,13 @@ pub(crate) fn export(opts: ExportOpts) -> anyhow::Result<ExitCode> {
     for warning in analyzed.warnings() {
         eprintln!("warning{warning}");
     }
-    let exported = match analyzed.export_selected(&selected) {
-        Ok(exported) => exported,
+    let transpiled = match analyzed.transpile_selected(&selected) {
+        Ok(transpiled) => transpiled,
         Err(diagnostics) => return report_errors(&diagnostics, &sources),
     };
     let scripts: Vec<_> = paths
         .iter()
-        .zip(&exported)
+        .zip(&transpiled)
         .map(|(path, source)| ScriptArtifact { path, source })
         .collect();
     let published = match (&opts.game_root, &validator) {
@@ -149,7 +149,7 @@ pub(crate) fn export(opts: ExportOpts) -> anyhow::Result<ExitCode> {
     }
     .with_context(|| format!("publishing REDmod package {}", opts.output.display()))?;
     log::info!(
-        "Exported {} script(s) to {}",
+        "Transpiled {} script(s) to {}",
         published.scripts.len(),
         published.directory.display()
     );
@@ -162,7 +162,7 @@ pub(crate) fn export(opts: ExportOpts) -> anyhow::Result<ExitCode> {
 }
 
 fn report_errors(
-    diagnostics: &[ExportDiagnostic],
+    diagnostics: &[TranspileDiagnostic],
     sources: &SourceMap,
 ) -> anyhow::Result<ExitCode> {
     for diagnostic in diagnostics {
@@ -261,8 +261,8 @@ mod tests {
 
     #[test]
     fn help() {
-        let help =
-            crate::Args::from_args(&["redscript-cli"], &["export-redmod", "--help"]).unwrap_err();
+        let help = crate::Args::from_args(&["redscript-cli"], &["transpile-redmod", "--help"])
+            .unwrap_err();
         assert!(help.status.is_ok());
         insta::assert_snapshot!(help.output);
     }

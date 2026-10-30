@@ -46,7 +46,7 @@ This project includes various tools for working with REDscript, such as a compil
 - **`compiler/backend`** - Generates bytecode from the intermediate representation and handles monomorphization for generic functions and types.
 - **`compiler/api`** - Provides a high-level API for interacting seamlessly with the compiler.
 - **`compiler/redmod/adapter`** - Adapts native REDmod syntax to shared semantic analysis.
-- **`compiler/redmod/export`** - Exports typed community REDscript to REDmod source.
+- **`compiler/redmod/transpiler`** - Transpiles typed community REDscript to REDmod source.
 - **`decompiler`** - Decompiles bytecode back into REDscript source code.
 - **`io`** - Reads and writes binary files in the native REDengine format.
 - **`scc/cli`** - Exposes a CLI that acts as a drop-in replacement for the original compiler made by CD Projekt.

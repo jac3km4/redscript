@@ -9,7 +9,7 @@ redscript-compiler-api = { workspace = true, features = ["ignore"] }
 redscript-decompiler.workspace = true
 redscript-community-formatter.workspace = true
 redscript-dotfile.workspace = true
-redscript-redmod-export.workspace = true
+redscript-redmod-transpiler.workspace = true
 
 log.workspace = true
 anyhow.workspace = true

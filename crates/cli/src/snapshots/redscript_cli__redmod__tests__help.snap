@@ -2,12 +2,12 @@
 source: crates/cli/src/redmod.rs
 expression: help.output
 ---
-Usage: redscript-cli export-redmod [-s <src...>] [--dependency <dependency...>] [-b <bundle>] -o <output> [--redmod <redmod>] [--game-root <game-root>] [--timeout <timeout>]
+Usage: redscript-cli transpile-redmod [-s <src...>] [--dependency <dependency...>] [-b <bundle>] -o <output> [--redmod <redmod>] [--game-root <game-root>] [--timeout <timeout>]
 
-export community redscript sources as a new REDmod script package
+transpile community redscript sources as a new REDmod script package
 
 Options:
-  -s, --src         authored source file or directory to export (repeatable;
+  -s, --src         authored source file or directory to transpile (repeatable;
                     honors .redscript roots)
   --dependency      community source file or directory for analysis only
                     (repeatable)

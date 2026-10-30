@@ -1,0 +1,15 @@
+---
+source: crates/compiler/redmod/transpiler/tests/transpile.rs
+assertion_line: 299
+expression: output
+---
+function Effect() -> Bool {
+    return true;
+}
+class Widget extends IScriptable {
+event OnEvent() {
+    var __rst_result: Bool;
+    __rst_result = Effect();
+    return;
+}
+}
