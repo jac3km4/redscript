@@ -151,6 +151,7 @@ fn every_hook_is_file_local_in_both_module_orders() {
         let policy = SemanticPolicy {
             hoist_locals: true,
             native_object_cast: false,
+            implicit_members: false,
             condition: Some(variant_condition),
             member_intrinsic: Some(array_member),
             validate_type: Some(reject_string),

@@ -25,6 +25,10 @@ is not guaranteed to compile officially or behave correctly in the game.
 
 - Explicit types, native casts, `name`/`weak<T>` mappings, bare class values and
   resolved object/weak-reference truthiness; no numeric-to-Bool conversion.
+  Object casts support downcasts, identity and upcasts without conversion overloads.
+- Unqualified fields and method calls resolve against the enclosing aggregate,
+  including inherited and static methods. Parameters and function-wide locals
+  shadow implicit members; unmatched calls retain free-function lookup.
 - Function-wide typed locals with duplicate checks, entry default initialization
   and source-site explicit initialization. Uninitialized local/field groups
   expand in order; standalone blocks flatten under the same binding policy.
@@ -38,7 +42,8 @@ is not guaranteed to compile officially or behave correctly in the game.
   and allow omitted or `protected` visibility, but not `public` or `private`.
 - String field metadata preserves exact keys, duplicates and order. Hints target
   one field in the same aggregate. Persistent class and struct fields use shared
-  persistable-type checks and target-specific access restrictions.
+  persistable-type checks. Declaring-class access restrictions apply only to
+  mod-defined classes, not imported native classes or structs.
 - Bounded `ModuleExists`/single-negation conditions with deterministic first-active
   selection. Capability checks still apply to inactive declarations.
 - Dynamic-array receiver methods: `Size`, `PushBack`, `PopBack`, `Clear`, `Resize`,

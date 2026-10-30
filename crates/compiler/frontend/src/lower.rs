@@ -1456,6 +1456,17 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         span: Span,
     ) -> LowerResult<'ctx, (ir::Expr<'ctx>, PolyType<'ctx>)> {
         let Some((loc, depth)) = env.locals().get_with_depth(name) else {
+            if env.types().policy(span).implicit_members
+                && name != "this"
+                && env.locals().get("this").is_some()
+                && self.context.is_some_and(|id| {
+                    self.symbols
+                        .base_iter_with_self(id)
+                        .any(|(_, agg)| agg.fields().by_name(name).is_some())
+                })
+            {
+                return self.lower_member(&(ast::Expr::This, span), name, env, span);
+            }
             return Err(Error::UnresolvedVar(name, span));
         };
 

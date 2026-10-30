@@ -41,6 +41,38 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         }
 
         if let &(ast::Expr::Ident(name), _) = expr
+            && env.types().policy(call_span).implicit_members
+            && env.locals().get(name).is_none()
+            && let Some(parent) = self.context
+        {
+            let instance = env.locals().get("this").is_some()
+                && self
+                    .symbols
+                    .query_methods_by_name(parent, name)
+                    .any(|entry| !entry.func().flags().is_static());
+            let has_method = self
+                .symbols
+                .query_methods_by_name(parent, name)
+                .any(|entry| instance || entry.func().flags().is_static());
+            if has_method {
+                let receiver = if instance {
+                    ast::Expr::This
+                } else {
+                    ast::Expr::Ident(parent.as_str())
+                };
+                let member = (
+                    ast::Expr::Member {
+                        expr: Box::new((receiver, *expr_span)),
+                        member: name,
+                    },
+                    *expr_span,
+                );
+                return self.lower_call(&member, type_args, args, hint, env, call_span);
+            }
+        }
+
+        if let &(ast::Expr::Ident(name), _) = expr
+            && (!env.types().policy(call_span).implicit_members || env.locals().get(name).is_none())
             && let mut candidates = env.query_free_functions(name, self.symbols).peekable()
             && candidates.peek().is_some()
         {
