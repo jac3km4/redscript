@@ -345,6 +345,44 @@ fn no_op_jump_preserves_conditional_boundary() {
 }
 
 #[test]
+fn nested_local_used_in_outer_block_is_hoisted() {
+    let mut bundle = ScriptBundle::default();
+    let mut function = function(&mut bundle);
+    let function_idx = bundle.define(function.clone());
+    let name = bundle.cnames_mut().add("Int32");
+    let typ = bundle.define(Type::new(name, TypeKind::Primitive));
+    let name = bundle.cnames_mut().add("x");
+    let local = bundle.define(Local::new(name, function_idx, typ, LocalFlags::default()));
+    function.set_locals([local]);
+    let code = resolve_labels(vec![
+        Instr::JumpIfFalse(Jump::new(10)),
+        Instr::TrueConst,
+        Instr::JumpIfFalse(Jump::new(7)),
+        Instr::FalseConst,
+        Instr::Assign,
+        Instr::Local(local),
+        Instr::I32One,
+        Instr::Local(local),
+        Instr::I32Zero,
+        Instr::Jump(Jump::new(10)),
+        Instr::Return,
+        Instr::Nop,
+    ]);
+    let cf = build_control_flow(CodeIter::new(&code)).unwrap();
+    let offsets = CodeIter::new(&code)
+        .with_offsets()
+        .map(|(pos, _)| pos)
+        .collect::<Vec<_>>();
+    let (bounds, _) = cf.get_containing(offsets[5].into());
+    assert_eq!(bounds, Bounds::new(offsets[2].into(), offsets[7].into()));
+    let (bounds, _) = cf.get_containing(offsets[7].into());
+    assert_eq!(bounds, Bounds::new(offsets[0].into(), offsets[10].into()));
+
+    let block = decompile(&bundle, &function, &code);
+    insta::assert_snapshot!(format_block(&block));
+}
+
+#[test]
 fn no_op_jump_preserves_empty_conditional_boundary() {
     let code = resolve_labels(vec![
         Instr::JumpIfFalse(Jump::new(3)),

@@ -1,0 +1,15 @@
+---
+source: crates/decompiler/src/tests.rs
+expression: format_block(&block)
+---
+{
+  let x: Int32;
+  if true {
+    if false {
+      x = 1;
+    }
+    x;
+    0;
+  }
+  return;
+}

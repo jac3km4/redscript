@@ -319,7 +319,7 @@ impl<'scope, 'ctx: 'i, 'i> Decompiler<'scope, 'ctx, 'i> {
                     let (block_bounds, _) = self.control_flow.get_containing(pos);
                     let local_bounds = &self.liveness[&local_idx];
 
-                    if local_bounds.start() == pos && local_bounds.end() <= block_bounds.end() {
+                    if local_bounds.start() == pos && local_bounds.end() < block_bounds.end() {
                         self.consume_instr()?;
 
                         let id = Declaration::new(local_idx);

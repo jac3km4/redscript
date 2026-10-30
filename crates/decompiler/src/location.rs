@@ -71,6 +71,6 @@ impl Bounds {
     }
 
     pub fn contains_location(&self, loc: Location) -> bool {
-        self.start <= loc && loc <= self.end
+        self.start <= loc && loc < self.end
     }
 }

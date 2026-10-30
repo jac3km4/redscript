@@ -80,7 +80,12 @@ impl ControlFlowBlock {
             .next_back()
             && bounds.contains_location(loc)
         {
-            (bounds, parent.get_containing(loc).1)
+            let (nested_bounds, nested) = parent.get_containing(loc);
+            if nested_bounds == Bounds::UNBOUNDED {
+                (bounds, nested)
+            } else {
+                (nested_bounds, nested)
+            }
         } else {
             (Bounds::UNBOUNDED, self)
         }
