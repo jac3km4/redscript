@@ -4,8 +4,8 @@ use redscript_ast::SourceMap;
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{
     Aggregate, AggregateFlags, CompileErrorReporter, Diagnostic, DiagnosticLevel, Field,
-    FieldFlags, FunctionType, Method, MethodFlags, Symbols, Type, TypeDef, TypeInterner,
-    TypeSchema, infer_from_sources, predef,
+    FieldFlags, FunctionType, Method, MethodFlags, Param, ParamFlags, Symbols, Type, TypeDef,
+    TypeInterner, TypeSchema, infer_from_sources, ir, predef,
 };
 
 #[test]
@@ -49,6 +49,7 @@ fn annotations() {
                     ("INVALID_ANN_USE", DiagnosticLevel::Error, "Existing"),
                     ("INVALID_ANN_USE", DiagnosticLevel::Error, "Existing"),
                 ],
+                "nonconflicting-replacements.reds" => &[],
                 "valid-addition.reds" => {
                     let aggregate = symbols[interner.intern("NativeTarget")]
                         .schema()
@@ -83,6 +84,45 @@ fn annotations() {
     });
 }
 
+#[test]
+fn replacement_chain_reports_the_immediately_previous_replacement() {
+    let sources = SourceMap::new();
+    // Processing order, not lexical path order, determines precedence.
+    sources.push_back(
+        "z-first.reds",
+        "@replaceMethod(NativeTarget)
+func Value() -> Int32 { return 1; }",
+    );
+    let last_file = sources.push_back(
+        "a-later.reds",
+        "@replaceMethod(NativeTarget)
+func Value() -> Int32 { return 2; }
+
+@replaceMethod(NativeTarget)
+func Value() -> Int32 { return 3; }",
+    );
+    sources.populate_boot_lib();
+    let interner = TypeInterner::default();
+    let mut reporter = CompileErrorReporter::default();
+    let (unit, _) = infer_from_sources(
+        &sources,
+        annotation_symbols(&interner),
+        &mut reporter,
+        &interner,
+    );
+
+    assert_eq!(unit.method_replacements.len(), 1);
+    let retained = unit.method_replacements.values().next().unwrap();
+    assert_eq!(retained.span.file, last_file);
+    assert_eq!(retained.block.stmts.len(), 1);
+    assert!(matches!(
+        retained.block.stmts.front(),
+        Some(ir::Stmt::Return(Some(expr), _))
+            if matches!(&**expr, ir::Expr::Const(ir::Const::I32(3), _))
+    ));
+    insta::assert_snapshot!(DisplayDiagnostics(reporter.into_reported(), &sources));
+}
+
 fn annotation_symbols(interner: &TypeInterner) -> Symbols<'_> {
     let mut symbols = Symbols::with_default_types();
     for (name, flags) in [
@@ -111,6 +151,26 @@ fn annotation_symbols(interner: &TypeInterner) -> Symbols<'_> {
                     ),
                 )
                 .unwrap();
+            for params in [
+                vec![],
+                vec![Param::new(
+                    "value",
+                    ParamFlags::new(),
+                    Type::nullary(predef::INT32),
+                    None,
+                )],
+            ] {
+                aggregate.methods_mut().add(
+                    "Value",
+                    Method::new(
+                        MethodFlags::new().with_is_native(true),
+                        FunctionType::new([], params, Type::nullary(predef::INT32)),
+                        None,
+                        [],
+                        None,
+                    ),
+                );
+            }
             aggregate.methods_mut().add(
                 "Existing",
                 Method::new(

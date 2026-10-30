@@ -9,6 +9,7 @@ use smallvec::smallvec;
 
 use super::resolution::Scope;
 use super::resolution::constants::ident;
+use crate::diagnostic::FunctionSignature;
 use crate::diagnostic::pass::DiagnosticPass;
 use crate::lower::{Env, Lower};
 use crate::symbols::FreeFunctionIndexes;
@@ -127,7 +128,22 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
                             .reporter(reporter)
                             .span(func.span)
                             .build();
-                        compiled.method_replacements.insert(func.id, lowered);
+                        if let Some(previous) =
+                            compiled.method_replacements.insert(func.id, lowered)
+                        {
+                            let (name, method) = self.symbols.get_method(func.id).unwrap();
+                            let typ = method.type_();
+                            reporter.report(crate::Diagnostic::ReplaceMethodConflict(
+                                func.id.parent(),
+                                Box::new(FunctionSignature::new(
+                                    name,
+                                    typ.params(),
+                                    typ.return_type().clone(),
+                                )),
+                                func.span,
+                                previous.span,
+                            ));
+                        }
                     }
                     FuncItemKind::AddMethod(func) => {
                         let lowered = func.body.as_ref().map(|body| {

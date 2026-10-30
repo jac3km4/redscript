@@ -1,0 +1,6 @@
+---
+source: crates/compiler/frontend/tests/annotation_errors.rs
+expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
+input_file: crates/compiler/frontend/tests/data/annotations/nonconflicting-replacements.reds
+---
+

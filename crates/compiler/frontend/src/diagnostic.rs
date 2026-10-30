@@ -8,6 +8,7 @@ use thiserror::Error;
 use crate::lower::{LowerResult, Poly, TypeError};
 use crate::stages::FunctionAnnotation;
 use crate::symbols::Visibility;
+use crate::types::Immutable;
 use crate::utils::fmt::{DisplayFn, lowercase, sep_by, surrounded_by};
 use crate::{CoalesceError, LowerError, Param, Type, TypeId, TypeKind, Variance, cte};
 
@@ -101,6 +102,18 @@ pub enum Diagnostic<'ctx> {
         "this `@addField` conflicts with an existing field; this operation will have no effect"
     )]
     AddFieldConflict(Span),
+    #[error(
+        "replacement for `{0}.{name}({params}) -> {return_type}` overrides a previous replacement; this replacement takes precedence",
+        name = .1.name,
+        params = sep_by(&.1.params, ", "),
+        return_type = .1.return_type
+    )]
+    ReplaceMethodConflict(
+        TypeId<'ctx>,
+        Box<FunctionSignature<'ctx, Immutable>>,
+        Span,
+        Span,
+    ),
     #[error("structs cannot have variance annotations")]
     InvalidStructVariance(Span),
     #[error("method overrides cannot be less visible than the method they override ({0})")]
@@ -119,7 +132,8 @@ impl<'ctx> Diagnostic<'ctx> {
             Self::UnusedItemQualifiers(_, _)
             | Self::DuplicateVariantName(_, _, _)
             | Self::UnusedLocal(_)
-            | Self::AddFieldConflict(_) => DiagnosticLevel::Warning,
+            | Self::AddFieldConflict(_)
+            | Self::ReplaceMethodConflict(_, _, _, _) => DiagnosticLevel::Warning,
             Self::ImportIsPrivate(_, _) | Self::LessVisibleOverride(_, _) => {
                 DiagnosticLevel::ErrorAllowedAtRuntime
             }
@@ -179,6 +193,7 @@ impl<'ctx> Diagnostic<'ctx> {
             | Self::DuplicateImpl(span)
             | Self::UnusedLocal(span)
             | Self::AddFieldConflict(span)
+            | Self::ReplaceMethodConflict(_, _, span, _)
             | Self::InvalidStructVariance(span)
             | Self::LessVisibleOverride(_, span)
             | Self::Other(_, _, span) => *span,
@@ -229,10 +244,21 @@ impl<'ctx> Diagnostic<'ctx> {
             Self::DuplicateImpl(_) => "DUP_IMPL",
             Self::UnusedLocal(_) => "UNUSED_LOCAL",
             Self::AddFieldConflict(_) => "ADD_FIELD_CONFLICT",
+            Self::ReplaceMethodConflict(_, _, _, _) => "REPLACE_METHOD_CONFLICT",
             Self::InvalidStructVariance(_) => "INVALID_STRUCT_VARIANCE",
             Self::LessVisibleOverride(_, _) => "LESS_VISIBLE_OVERRIDE",
             Self::Other(_, _, _) => "OTHER",
         }
+    }
+
+    pub fn related_locations(&self) -> impl Iterator<Item = (Span, &'static str)> {
+        match self {
+            Self::ReplaceMethodConflict(_, _, _, previous) => {
+                Some((*previous, "previous replacement is overridden here"))
+            }
+            _ => None,
+        }
+        .into_iter()
     }
 
     pub fn display<'a>(
@@ -243,6 +269,14 @@ impl<'ctx> Diagnostic<'ctx> {
         let file = sources.get(span.file).ok_or(UnknownSource(span))?;
         let snippet = ast::SourceSnippet::new(file, span).ok_or(UnknownSource(span))?;
         let start = snippet.start().clone();
+        let related = self
+            .related_locations()
+            .map(|(span, message)| {
+                let file = sources.get(span.file).ok_or(UnknownSource(span))?;
+                let snippet = ast::SourceSnippet::new(file, span).ok_or(UnknownSource(span))?;
+                Ok((file, snippet, message))
+            })
+            .collect::<Result<Vec<_>, UnknownSource>>()?;
 
         Ok(DisplayFn::new(move |f: &mut fmt::Formatter<'_>| {
             writeln!(
@@ -259,7 +293,19 @@ impl<'ctx> Diagnostic<'ctx> {
                 start.col + 1
             )?;
 
-            write!(f, "{snippet}")
+            write!(f, "{snippet}")?;
+            for (file, snippet, message) in &related {
+                writeln!(f, "\nnote: {message}")?;
+                writeln!(
+                    f,
+                    " --> {}:{}:{}",
+                    file.path().display(),
+                    snippet.start().line + 1,
+                    snippet.start().col + 1
+                )?;
+                write!(f, "{snippet}")?;
+            }
+            Ok(())
         }))
     }
 }

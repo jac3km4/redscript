@@ -1,0 +1,35 @@
+---
+source: crates/compiler/frontend/tests/annotation_errors.rs
+expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
+---
+warning[REPLACE_METHOD_CONFLICT]: replacement for `NativeTarget.Value() -> Int32` overrides a previous replacement; this replacement takes precedence
+ --> a-later.reds:1:1
+  |
+1 | @replaceMethod(NativeTarget)
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ ...
+2 | func Value() -> Int32 { return 2; }
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: previous replacement is overridden here
+ --> z-first.reds:1:1
+  |
+1 | @replaceMethod(NativeTarget)
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ ...
+2 | func Value() -> Int32 { return 1; }
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning[REPLACE_METHOD_CONFLICT]: replacement for `NativeTarget.Value() -> Int32` overrides a previous replacement; this replacement takes precedence
+ --> a-later.reds:4:1
+  |
+4 | @replaceMethod(NativeTarget)
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ ...
+5 | func Value() -> Int32 { return 3; }
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: previous replacement is overridden here
+ --> a-later.reds:1:1
+  |
+1 | @replaceMethod(NativeTarget)
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ ...
+2 | func Value() -> Int32 { return 2; }
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
