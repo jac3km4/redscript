@@ -50,13 +50,11 @@ pub fn format_document<'a>(
 
     let (tokens, e) = lex_with_lf_and_comments(source, id);
     errors.extend(e);
-    let Some(mut tokens) = tokens else {
+    let Some(tokens) = tokens else {
         return (None, errors);
     };
-    tokens.retain(|(t, _)| !matches!(t, Token::Whitespace));
-
-    let (ws, tokens): (Vec<_>, Vec<_>) =
-        tokens.into_iter().partition(|(t, _)| t.is_ws_or_comment());
+    let mut ws = vec![];
+    let tokens = extract_trivia(tokens, &mut ws);
 
     let (module, e) = parse(parser::module(), &tokens, id);
     errors.extend(e);
@@ -82,6 +80,34 @@ pub fn format_document<'a>(
         remainder.iter().try_for_each(|t| writeln!(f, "{t}"))
     });
     (Some(display), errors)
+}
+
+// The parser requires trivia-free input at every interpolation level. Keep trivia in
+// source order so the prefix collector can attach it using the original spans.
+fn extract_trivia<'src>(
+    tokens: Vec<Spanned<Token<'src>>>,
+    trivia: &mut Vec<Spanned<Token<'src>>>,
+) -> Vec<Spanned<Token<'src>>> {
+    tokens
+        .into_iter()
+        .filter_map(|(token, span)| {
+            let token = match token {
+                Token::Whitespace => return None,
+                token if token.is_ws_or_comment() => {
+                    trivia.push((token, span));
+                    return None;
+                }
+                Token::Group(tokens) => {
+                    Token::Group(extract_trivia(tokens.into_vec(), trivia).into())
+                }
+                Token::InterpStr(tokens) => {
+                    Token::InterpStr(extract_trivia(tokens.into_vec(), trivia).into())
+                }
+                token => token,
+            };
+            Some((token, span))
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy)]

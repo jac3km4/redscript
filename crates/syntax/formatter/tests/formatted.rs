@@ -71,7 +71,6 @@ func F() {
 "#;
 
 #[test]
-#[ignore = "parser does not support comments inside nested interpolation expressions"]
 fn formatting_preserves_nested_interpolation_comments() {
     assert_preserved(
         NESTED_INTERPOLATION_COMMENTS,

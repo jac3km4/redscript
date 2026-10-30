@@ -1,0 +1,27 @@
+// Before the function.
+func LoadoutLabel(loadoutIndex: Int32) -> String {
+
+    // Before the interpolated string.
+    let label=s"Loadout \(loadoutIndex + 1)";
+    let padded=s"Loadout \(  loadoutIndex  +  1  )";
+    let multiline=s"Loadout \(
+        loadoutIndex
+        + 1
+    )";
+    let commented=s"Loadout \(/* index */ loadoutIndex + /* increment */ 1)";
+    let lineComment=s"Loadout \(// index on the next line
+        loadoutIndex + 1)";
+    let nested=s"Outer \( /* outer */ s"Middle \( s"Inner \( /* inner */ loadoutIndex + 1 )" )" )";
+    let nestedMultiline=s"Outer \(
+        s"Inner \(// nested index
+            loadoutIndex + 1)"
+    )";
+    let multiple=s"\(loadoutIndex + 1) / \(loadoutIndex + 2)";
+    let compact=s"\(s"\(loadoutIndex)")";
+    let trailing=s"\(loadoutIndex /* after index */ + 1 /* after value */)";
+    let trailingLine=s"\(loadoutIndex + 1 // after expression
+    )";
+    return label;
+    // Before the closing brace.
+}
+// After the function.
