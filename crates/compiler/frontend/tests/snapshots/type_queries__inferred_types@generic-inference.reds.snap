@@ -1,0 +1,25 @@
+---
+source: crates/compiler/frontend/tests/type_queries.rs
+assertion_line: 71
+expression: output
+input_file: crates/compiler/frontend/tests/data/type-queries/generic-inference.reds
+---
+Take: B
+TakeReversed: B
+Chain: C
+ChainReversed: C
+TakeDog: Dog (free call <Animal, Dog>)
+TakeDogReversed: Dog (free call <Animal, Dog>)
+TransitiveDog: Dog (free call <Animal, Dog, Dog>)
+TransitiveDogReversed: Dog (free call <Animal, Dog, Dog>)
+First: A
+InferredJoin: Animal (free call <Animal>)
+InferredJoinReversed: Animal (free call <Animal>)
+JoinRigid: Animal
+JoinRigidReversed: Animal
+JoinIdentity: T
+JoinCovariant: Producer<Animal>
+JoinCovariantReversed: Producer<Animal>
+JoinContravariant: Consumer<T>
+JoinContravariantReversed: Consumer<T>
+JoinInvariantIdentity: Cell<T>

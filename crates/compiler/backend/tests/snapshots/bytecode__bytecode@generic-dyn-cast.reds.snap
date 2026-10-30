@@ -7,34 +7,44 @@ input_file: crates/compiler/backend/tests/data/generic-dyn-cast.reds
 // Test;StateState (f0)
 assign
 local 0 "window$2": "ref:WindowState"
-invoke.static j25 l18 f1 Forward<WindowState>;State 0000000000000000
+invoke.static j25 l26 f1 Forward<WindowState>;State 0000000000000000
 param 0 "value": "ref:State"
 param.end
 assign
 local 1 "text$3": "ref:TextState"
-invoke.static j25 l19 f2 Forward<TextState>;State 0000000000000000
+invoke.static j25 l27 f2 Forward<TextState>;State 0000000000000000
 param 0 "value": "ref:State"
 param.end
 assign
 local 2 "weakWindow$4": "wref:WindowState"
-invoke.static j25 l20 f3 FindWeak<WindowState>;State 0000000000000000
+invoke.static j25 l28 f3 FindWeak<WindowState>;State 0000000000000000
 param 1 "weak": "wref:State"
 param.end
 assign
 local 3 "weakText$5": "wref:TextState"
-invoke.static j25 l21 f4 FindWeak<TextState>;State 0000000000000000
+invoke.static j25 l29 f4 FindWeak<TextState>;State 0000000000000000
+param 1 "weak": "wref:State"
+param.end
+assign
+local 4 "concreteWindow$6": "ref:WindowState"
+invoke.static j25 l30 f5 FindWindow<State>;State 0000000000000000
+param 0 "value": "ref:State"
+param.end
+assign
+local 5 "concreteWeakWindow$7": "wref:WindowState"
+invoke.static j25 l31 f6 FindWeakWindow<State>;State 0000000000000000
 param 1 "weak": "wref:State"
 param.end
 
 // Forward<WindowState>;State (f1)
 return
-invoke.static j25 l14 f5 Find<WindowState>;State 0000000000000000
+invoke.static j25 l14 f7 Find<WindowState>;State 0000000000000000
 param 2 "value": "ref:State"
 param.end
 
 // Forward<TextState>;State (f2)
 return
-invoke.static j25 l14 f6 Find<TextState>;State 0000000000000000
+invoke.static j25 l14 f8 Find<TextState>;State 0000000000000000
 param 3 "value": "ref:State"
 param.end
 
@@ -48,12 +58,22 @@ return
 wref.dyncast 1 "TextState"
 param 5 "value": "wref:State"
 
-// Find<WindowState>;State (f5)
+// FindWindow<State>;State (f5)
 return
 ref.dyncast 0 "WindowState"
 param 6 "value": "ref:State"
 
-// Find<TextState>;State (f6)
+// FindWeakWindow<State>;State (f6)
+return
+wref.dyncast 0 "WindowState"
+param 7 "value": "wref:State"
+
+// Find<WindowState>;State (f7)
+return
+ref.dyncast 0 "WindowState"
+param 8 "value": "ref:State"
+
+// Find<TextState>;State (f8)
 return
 ref.dyncast 1 "TextState"
-param 7 "value": "ref:State"
+param 9 "value": "ref:State"

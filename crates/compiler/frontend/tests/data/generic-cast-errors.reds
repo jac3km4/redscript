@@ -17,3 +17,11 @@ func StructBound<T extends Value>(value: State) {
 func UnrelatedBound<T extends Other>(value: State) {
   value as T;
 }
+
+func UnrelatedSource<T extends Other>(value: T) {
+  value as State;
+}
+
+func RedundantSource<T extends State>(value: T) {
+  value as State;
+}

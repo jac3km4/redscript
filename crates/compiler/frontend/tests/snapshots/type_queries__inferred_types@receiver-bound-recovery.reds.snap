@@ -1,0 +1,35 @@
+---
+source: crates/compiler/frontend/tests/type_queries.rs
+assertion_line: 71
+expression: output
+input_file: crates/compiler/frontend/tests/data/type-queries/receiver-bound-recovery.reds
+---
+error[SYM_REDEFINITION]: this name is already defined in the scope
+ --> receiver-bound-recovery.reds:8:22
+  |
+8 |   public func Shadow<T extends Animal, U extends T>(x: U) -> U { return x; }
+  |                      ^
+
+error[SYM_REDEFINITION]: this name is already defined in the scope
+ --> receiver-bound-recovery.reds:9:26
+  |
+9 |   public func ShadowPick<T extends Animal, U extends T>(x: U, tag: Int32) -> U { return x; }
+  |                          ^
+
+error[SYM_REDEFINITION]: this name is already defined in the scope
+ --> receiver-bound-recovery.reds:10:26
+   |
+10 |   public func ShadowPick<T extends Animal, U extends T>(x: U, tag: String) -> U { return x; }
+   |                          ^
+
+error[SYM_REDEFINITION]: this name is already defined in the scope
+ --> receiver-bound-recovery.reds:11:36
+   |
+11 |   public func Forward<U extends T, T extends Animal>(x: U) -> U { return x; }
+   |                                    ^
+
+ShadowExplicit: Dog (instance call <Animal, Dog>)
+ShadowInferred: Dog (instance call <Dog, Dog>)
+ShadowOverloadedExplicit: Dog (instance call <Animal, Dog>)
+ShadowOverloadedInferred: Dog (instance call <Dog, Dog>)
+ForwardExplicit: Dog (instance call <Dog, Animal>)

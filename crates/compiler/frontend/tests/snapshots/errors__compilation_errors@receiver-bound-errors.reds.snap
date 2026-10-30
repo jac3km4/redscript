@@ -1,0 +1,88 @@
+---
+source: crates/compiler/frontend/tests/errors.rs
+expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
+input_file: crates/compiler/frontend/tests/data/receiver-bound-errors.reds
+---
+error[SYM_REDEFINITION]: this name is already defined in the scope
+ --> tests/data/receiver-bound-errors.reds:9:22
+  |
+9 |   public func Shadow<T extends Animal, U extends T>(x: U) -> U { return x; }
+  |                      ^
+
+error[SYM_REDEFINITION]: this name is already defined in the scope
+ --> tests/data/receiver-bound-errors.reds:10:26
+   |
+10 |   public func ShadowPick<T extends Animal, U extends T>(x: U, tag: Int32) -> U { return x; }
+   |                          ^
+
+error[SYM_REDEFINITION]: this name is already defined in the scope
+ --> tests/data/receiver-bound-errors.reds:11:26
+   |
+11 |   public func ShadowPick<T extends Animal, U extends T>(x: U, tag: String) -> U { return x; }
+   |                          ^
+
+error[TYPE_ERR]: type mismatch: found `Chair` when expected `Animal`
+ --> tests/data/receiver-bound-errors.reds:15:48
+   |
+15 | func BadExplicit(s: Store<Animal>, c: Chair) { s.Take<Chair>(c); }
+   |                                                ^^^^^^^^^^^^^^^^
+
+error[TYPE_ERR]: type mismatch: found `Chair` when expected `Animal`
+ --> tests/data/receiver-bound-errors.reds:16:55
+   |
+16 | func BadInferred(s: Store<Animal>, c: Chair) { s.Take(c); }
+   |                                                       ^
+
+error[TYPE_ERR]: type mismatch: found `Chair` when expected `Animal`
+ --> tests/data/receiver-bound-errors.reds:17:59
+   |
+17 | func BadInheritedExplicit(s: Derived<Animal>, c: Chair) { s.Take<Chair>(c); }
+   |                                                           ^^^^^^^^^^^^^^^^
+
+error[TYPE_ERR]: type mismatch: found `Chair` when expected `Animal`
+ --> tests/data/receiver-bound-errors.reds:18:66
+   |
+18 | func BadInheritedInferred(s: Derived<Animal>, c: Chair) { s.Take(c); }
+   |                                                                  ^
+
+error[TYPE_ERR]: type mismatch: found `Chair` when expected `Animal`
+ --> tests/data/receiver-bound-errors.reds:19:58
+   |
+19 | func BadOverloadedExplicit(s: Store<Animal>, c: Chair) { s.Pick<Chair>(c, 1); }
+   |                                                          ^^^^^^^^^^^^^^^^^^^
+
+error[TYPE_ERR]: type mismatch: found `Chair` when expected `Animal`
+ --> tests/data/receiver-bound-errors.reds:20:65
+   |
+20 | func BadOverloadedInferred(s: Store<Animal>, c: Chair) { s.Pick(c, "tag"); }
+   |                                                                 ^
+
+error[TYPE_ERR]: type mismatch: found `Chair` when expected `Animal`
+ --> tests/data/receiver-bound-errors.reds:21:69
+   |
+21 | func BadInheritedOverloadedExplicit(s: Derived<Animal>, c: Chair) { s.Pick<Chair>(c, "tag"); }
+   |                                                                     ^^^^^^^^^^^^^^^^^^^^^^^
+
+error[TYPE_ERR]: type mismatch: found `Chair` when expected `Animal`
+ --> tests/data/receiver-bound-errors.reds:22:76
+   |
+22 | func BadInheritedOverloadedInferred(s: Derived<Animal>, c: Chair) { s.Pick(c, 1); }
+   |                                                                            ^
+
+error[TYPE_ERR]: type mismatch: found `Chair` when expected `Animal`
+ --> tests/data/receiver-bound-errors.reds:23:46
+   |
+23 | func BadShadow(s: Store<Animal>, c: Chair) { s.Shadow<Chair, Chair>(c); }
+   |                                              ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[TYPE_ERR]: type mismatch: found `Chair` when expected `Animal`
+ --> tests/data/receiver-bound-errors.reds:24:56
+   |
+24 | func BadShadowOverloaded(s: Store<Animal>, c: Chair) { s.ShadowPick<Chair, Chair>(c, 1); }
+   |                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[INVALID_TYPE_ARG_COUNT]: invalid number of type arguments: expected 1, found 2
+ --> tests/data/receiver-bound-errors.reds:25:42
+   |
+25 | func TooMany(s: Store<Animal>, d: Dog) { s.Take<Animal, Dog>(d); }
+   |                                          ^^^^^^^^^^^^^^^^^^^^^^

@@ -946,21 +946,15 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             }
             _ => expected.clone(),
         };
-        let mut compatible = expected.constrain_base(&constraint, self.symbols).is_ok();
-        if !compatible && generic_target {
-            // The bound establishes possible overlap, not the runtime cast target.
-            if let (Some(target), Some(source)) = (
-                expected.upper_bound(self.symbols),
-                constraint.upper_bound(self.symbols),
-            ) {
-                let target = target.into_owned().into_type().into_poly();
-                let source = source.into_owned().into_type().into_poly();
-                compatible = target.constrain_base(&source, self.symbols).is_ok()
-                    || source.constrain_base(&target, self.symbols).is_ok();
-            }
-        }
+        let compatible = if matches!(constraint, PolyType::Var(_)) {
+            // An unresolved source (for example null) needs an inference constraint,
+            // not speculative constraints in both directions.
+            expected.constrain_base(&constraint, self.symbols).is_ok()
+        } else {
+            self.dyn_cast_compatible(&constraint, &expected)
+        };
         if !compatible {
-            if constraint.constrain_base(&expected, self.symbols).is_ok() {
+            if constraint.satisfies_bound(&expected, self.symbols) {
                 Err(Error::RedundantDynCast(span))
             } else {
                 Err(Error::ImpossibleDynCast(expr_t, expected, span))
@@ -973,6 +967,33 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 span,
             };
             Ok((ir, result_t))
+        }
+    }
+
+    fn dyn_cast_compatible(&self, source: &PolyType<'ctx>, target: &PolyType<'ctx>) -> bool {
+        if target.satisfies_bound(source, self.symbols) {
+            return true;
+        }
+        if source.satisfies_bound(target, self.symbols) {
+            return false;
+        }
+        if !matches!(source, PolyType::Mono(Type::Ctx(_)))
+            && !matches!(target, PolyType::Mono(Type::Ctx(_)))
+        {
+            return false;
+        }
+        // Bounds establish possible overlap without replacing either cast operand.
+        match (
+            source.upper_bound(self.symbols),
+            target.upper_bound(self.symbols),
+        ) {
+            (Some(source), Some(target)) => {
+                let source = source.into_owned().into_type().into_poly();
+                let target = target.into_owned().into_type().into_poly();
+                source.satisfies_bound(&target, self.symbols)
+                    || target.satisfies_bound(&source, self.symbols)
+            }
+            _ => false,
         }
     }
 

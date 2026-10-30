@@ -364,14 +364,13 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 })
                 .unwrap_or_default();
 
-            let type_env = type_env.push_scope(
-                self.function_env_builder()
-                    .type_(primary.func().type_())
-                    .type_args(&type_args)
-                    .span(span)
-                    .build()?
-                    .pop_scope(),
-            );
+            let type_env = self
+                .function_env_builder()
+                .type_(primary.func().type_())
+                .type_args(&type_args)
+                .base_env(&type_env)
+                .span(span)
+                .build()?;
 
             let return_t =
                 PolyType::from_type_with_env(primary.func().type_().return_type(), &type_env)
@@ -518,14 +517,13 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 typ.base_type_env::<AnyBaseType>(selected.key().parent()?, self.symbols)
             })
             .unwrap_or_default();
-        let type_env = type_env.push_scope(
-            self.function_env_builder()
-                .type_(selected.func().type_())
-                .type_args(type_args)
-                .span(span)
-                .build()?
-                .pop_scope(),
-        );
+        let type_env = self
+            .function_env_builder()
+            .type_(selected.func().type_())
+            .type_args(type_args)
+            .base_env(&type_env)
+            .span(span)
+            .build()?;
         for ((arg, typ), param) in args
             .iter_mut()
             .zip(arg_types)
@@ -669,18 +667,19 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
     }
 
     #[builder(finish_fn = build)]
-    fn function_env_builder(
+    fn function_env_builder<'env>(
         &self,
         type_: &FunctionType<'ctx>,
         type_args: &[PolyType<'ctx>],
+        base_env: &'env ScopedMap<'env, &'ctx str, PolyType<'ctx>>,
         span: Span,
-    ) -> LowerResult<'ctx, ScopedMap<'scope, &'ctx str, PolyType<'ctx>>> {
+    ) -> LowerResult<'ctx, ScopedMap<'env, &'ctx str, PolyType<'ctx>>> {
         if !type_args.is_empty() && type_args.len() != type_.type_params().len() {
             let expected = type_.type_params().len();
             return Err(Error::InvalidTypeArgCount(expected, type_args.len(), span));
         }
 
-        let map: ScopedMap<'_, _, _> = type_
+        let scope = type_
             .type_params()
             .iter()
             .enumerate()
@@ -692,6 +691,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 (var.name(), typ)
             })
             .collect();
+        let map = base_env.push_scope(scope);
 
         for ((_, var), param) in map.top().iter().zip(type_.type_params()) {
             if let Some(upper) = param.upper() {

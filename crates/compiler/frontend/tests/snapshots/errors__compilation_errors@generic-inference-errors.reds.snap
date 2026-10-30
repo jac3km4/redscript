@@ -1,0 +1,89 @@
+---
+source: crates/compiler/frontend/tests/errors.rs
+assertion_line: 27
+expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
+input_file: crates/compiler/frontend/tests/data/generic-inference-errors.reds
+---
+error[TYPE_ERR]: type mismatch: found `Animal` when expected `Dog`
+ --> tests/data/generic-inference-errors.reds:8:63
+  |
+8 | func BadRigid<T extends Animal>(t: T, d: Dog) -> Dog { return true ? t : d; }
+  |                                                               ^^^^^^^^^^^^
+
+error[TYPE_ERR]: type mismatch: found `Animal` when expected `Dog`
+ --> tests/data/generic-inference-errors.reds:9:71
+  |
+9 | func BadRigidReversed<T extends Animal>(t: T, d: Dog) -> Dog { return true ? d : t; }
+  |                                                                       ^^^^^^^^^^^^
+
+error[TYPE_ERR]: type error: cannot unify `T` and `Dog`
+ --> tests/data/generic-inference-errors.reds:10:92
+   |
+10 | func BadMeet<T extends Animal>(t: Consumer<T>, d: Consumer<Dog>) -> Consumer<Dog> { return true ? t : d; }
+   |                                                                                            ^^^^^^^^^^^^
+
+error[TYPE_ERR]: type error: cannot unify `Dog` and `T`
+ --> tests/data/generic-inference-errors.reds:11:100
+   |
+11 | func BadMeetReversed<T extends Animal>(t: Consumer<T>, d: Consumer<Dog>) -> Consumer<Dog> { return true ? d : t; }
+   |                                                                                                    ^^^^^^^^^^^^
+
+error[TYPE_ERR]: type mismatch: found `Animal` when expected `Dog`
+ --> tests/data/generic-inference-errors.reds:12:75
+   |
+12 | func BadInvariant(a: Cell<Animal>, d: Cell<Dog>) -> Cell<Animal> { return true ? a : d; }
+   |                                                                           ^^^^^^^^^^^^
+
+error[TYPE_ERR]: type mismatch: found `Animal` when expected `Dog`
+ --> tests/data/generic-inference-errors.reds:13:83
+   |
+13 | func BadInvariantReversed(a: Cell<Animal>, d: Cell<Dog>) -> Cell<Animal> { return true ? d : a; }
+   |                                                                                   ^^^^^^^^^^^^
+
+error[TYPE_ERR]: type mismatch: found `Consumer<Producer<Dog>>` when expected `Consumer<Producer<Animal>>`
+  caused by: type mismatch: found `Producer<Animal>` when expected `Producer<Dog>`
+  caused by: type mismatch: found `Animal` when expected `Dog`
+ --> tests/data/generic-inference-errors.reds:14:123
+   |
+14 | func BadApplicationMeet(a: Consumer<Producer<Animal>>, d: Consumer<Producer<Dog>>) -> Consumer<Producer<Animal>> { return true ? a : d; }
+   |                                                                                                                           ^^^^^^^^^^^^
+
+error[TYPE_ERR]: type mismatch: found `Consumer<Producer<Dog>>` when expected `Consumer<Producer<Animal>>`
+  caused by: type mismatch: found `Producer<Animal>` when expected `Producer<Dog>`
+  caused by: type mismatch: found `Animal` when expected `Dog`
+ --> tests/data/generic-inference-errors.reds:15:131
+   |
+15 | func BadApplicationMeetReversed(a: Consumer<Producer<Animal>>, d: Consumer<Producer<Dog>>) -> Consumer<Producer<Animal>> { return true ? d : a; }
+   |                                                                                                                                   ^^^^^^^^^^^^
+
+error[TYPE_ERR]: type mismatch: found `Animal` when expected `Dog`
+ --> tests/data/generic-inference-errors.reds:17:54
+   |
+17 | func BadDirection(a: Animal, d: Dog) -> Dog { return Exact<Dog, Animal>(d, a); }
+   |                                                      ^^^^^
+
+error[TYPE_ERR]: type mismatch: found `Animal` when expected `Dog`
+ --> tests/data/generic-inference-errors.reds:23:10
+   |
+23 |   return result;
+   |          ^^^^^^
+
+error[TYPE_ERR]: type mismatch: found `Animal` when expected `Dog`
+ --> tests/data/generic-inference-errors.reds:27:10
+   |
+27 |   return result;
+   |          ^^^^^^
+
+error[TYPE_ERR]: type mismatch: found `Consumer<T>` when expected `Consumer<Animal>`
+  caused by: type mismatch: found `Animal` when expected `T`
+ --> tests/data/generic-inference-errors.reds:30:10
+   |
+30 |   return true ? t : a;
+   |          ^^^^^^^^^^^^
+
+error[TYPE_ERR]: type mismatch: found `Consumer<T>` when expected `Consumer<Animal>`
+  caused by: type mismatch: found `Animal` when expected `T`
+ --> tests/data/generic-inference-errors.reds:33:10
+   |
+33 |   return true ? a : t;
+   |          ^^^^^^^^^^^^

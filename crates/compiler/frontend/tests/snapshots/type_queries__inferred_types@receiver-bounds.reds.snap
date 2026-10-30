@@ -1,0 +1,17 @@
+---
+source: crates/compiler/frontend/tests/type_queries.rs
+assertion_line: 71
+expression: output
+input_file: crates/compiler/frontend/tests/data/type-queries/receiver-bounds.reds
+---
+Explicit: Dog (instance call <Dog>)
+Inferred: Dog (instance call <Dog>)
+InheritedExplicit: Dog (instance call <Dog>)
+InheritedInferred: Dog (instance call <Dog>)
+OverloadedExplicit: Dog (instance call <Dog>)
+OverloadedInferred: Dog (instance call <Dog>)
+InheritedOverloadedExplicit: Dog (instance call <Dog>)
+InheritedOverloadedInferred: Dog (instance call <Dog>)
+ForwardExplicit: Dog (instance call <Dog, Animal>)
+ReceiverOnly: Animal (instance call <>)
+RigidReceiver: U (instance call <U>)

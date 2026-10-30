@@ -27,3 +27,15 @@ error[IMPOSSIBLE_DYN_CAST]: cannot cast from `State` to `T`: the types are not r
    |
 18 |   value as T;
    |   ^^^^^^^^^^
+
+error[IMPOSSIBLE_DYN_CAST]: cannot cast from `T` to `State`: the types are not related
+ --> tests/data/generic-cast-errors.reds:22:3
+   |
+22 |   value as State;
+   |   ^^^^^^^^^^^^^^
+
+error[REDUNDANT_DYN_CAST]: this cast is redundant; remove it
+ --> tests/data/generic-cast-errors.reds:26:3
+   |
+26 |   value as State;
+   |   ^^^^^^^^^^^^^^
