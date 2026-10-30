@@ -1463,9 +1463,11 @@ impl<K: AstKind> ApproxWidth for Param<'_, K> {
             + self
                 .typ
                 .as_ref()
-                .map(|typ| typ.as_wrapped().approx_width())
+                .map(|typ| typ.as_wrapped().approx_width() + 2)
                 .unwrap_or_default()
-            + 2
+            + usize::from(self.qualifiers.contains(ParamQualifiers::OUT)) * 4
+            + usize::from(self.qualifiers.contains(ParamQualifiers::OPTIONAL)) * 4
+            + usize::from(self.qualifiers.contains(ParamQualifiers::CONST)) * 6
     }
 }
 

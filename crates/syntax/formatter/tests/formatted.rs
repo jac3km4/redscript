@@ -141,6 +141,33 @@ fn literal_widths_count_signs_suffixes_and_escapes() {
 }
 
 #[test]
+fn parameter_widths_count_qualifiers() {
+    let mut cases = String::new();
+    for parameter in [
+        "x: Int32",
+        "out x: Int32",
+        "opt x: Int32",
+        "const x: Int32",
+        "out opt const x: Int32",
+    ] {
+        for (extra_width, breaks) in [(-1, true), (0, false), (1, false)] {
+            let settings = FormatSettings {
+                max_width: (parameter.len() as i32 + extra_width) as u16,
+                ..FormatSettings::default()
+            };
+            let source = format!("func F({parameter}) {{}}");
+            let formatted = assert_preserved(&source, &settings, "test.reds");
+            assert_eq!(formatted.contains("func F(\n"), breaks, "{formatted}");
+            cases.push_str(&format!(
+                "=== parameter: {parameter}, max_width: {} ===\n{formatted}\n",
+                settings.max_width
+            ));
+        }
+    }
+    insta::assert_snapshot!(cases);
+}
+
+#[test]
 fn formatted_files() {
     insta::glob!("data/*.reds", |path| {
         let current = env::current_dir().unwrap().canonicalize().unwrap();
