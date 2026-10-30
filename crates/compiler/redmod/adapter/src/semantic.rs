@@ -50,7 +50,7 @@ impl fmt::Display for SemanticError {
             Self::UnsupportedExpressionBody => "expression-bodied functions are not supported",
             Self::PersistentRequiresClassField => "persistent requires a class field",
             Self::EventRequiresClassOrMethodTarget => "events require a class or method annotation target",
-            Self::EventVisibility => "events must omit visibility",
+            Self::EventVisibility => "events must omit visibility or be protected",
             Self::EventQualifiers => "events cannot be static, final or const",
             Self::EventReturnType => "events cannot declare a return type",
             Self::UnsupportedAnnotation => "annotation semantics are not supported by the REDmod adapter",

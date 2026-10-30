@@ -3,6 +3,6 @@ source: crates/compiler/redmod/adapter/tests/fixtures.rs
 expression: output
 input_file: crates/compiler/redmod/adapter/tests/data/event-errors.script
 ---
-REDMOD_SEMANTICS [15..40]: events must omit visibility
+REDMOD_SEMANTICS [15..40]: events must omit visibility or be protected
 REDMOD_SEMANTICS [44..73]: events cannot be static, final or const
 REDMOD_SEMANTICS [78..95]: events require a class or method annotation target

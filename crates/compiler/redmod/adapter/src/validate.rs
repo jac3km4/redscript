@@ -92,7 +92,10 @@ impl<'src> AstVisitor<'src, ast::WithSpan> for Validator<'src> {
                     {
                         self.reject(SemanticError::EventRequiresClassOrMethodTarget, *span);
                     }
-                    if decl.visibility.is_some() {
+                    if decl
+                        .visibility
+                        .is_some_and(|visibility| visibility != ast::Visibility::Protected)
+                    {
                         self.reject(SemanticError::EventVisibility, *span);
                     }
                     if decl.qualifiers.intersects(
