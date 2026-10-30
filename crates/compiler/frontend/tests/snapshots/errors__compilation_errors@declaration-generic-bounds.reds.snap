@@ -1,0 +1,52 @@
+---
+source: crates/compiler/frontend/tests/errors.rs
+expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
+input_file: crates/compiler/frontend/tests/data/declaration-generic-bounds.reds
+---
+error[UNSATISFIED_BOUND]: type `Box<Other>` does not satisfy expected bound `Box<Parent>` for type parameter `T`
+ --> tests/data/declaration-generic-bounds.reds:14:22
+   |
+14 | func InvalidArgument(value: Restricted<Box<Other>>) {}
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[UNSATISFIED_BOUND]: type `ChildBox` does not satisfy expected bound `Box<Parent>` for type parameter `T`
+ --> tests/data/declaration-generic-bounds.reds:15:31
+   |
+15 | func InvalidInheritedArgument(value: Restricted<ChildBox>) {}
+   |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[UNSATISFIED_BOUND]: type `Box<Child>` does not satisfy expected bound `Box<Parent>` for type parameter `T`
+ --> tests/data/declaration-generic-bounds.reds:16:6
+   |
+16 | func InvalidReturn() -> Restricted<Box<Child>> { return null; }
+   |      ^^^^^^^^^^^^^
+
+error[UNSATISFIED_BOUND]: type `Parent` does not satisfy expected bound `T` for type parameter `U`
+ --> tests/data/declaration-generic-bounds.reds:27:23
+   |
+27 | func InvalidDependent(value: Dependent<Child, Parent>) {}
+   |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[UNSATISFIED_BOUND]: type `Producer<Parent>` does not satisfy expected bound `Producer<T>` for type parameter `U`
+ --> tests/data/declaration-generic-bounds.reds:29:29
+   |
+29 | func InvalidNestedDependent(value: NestedDependent<Child, Producer<Parent>>) {}
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[UNSATISFIED_BOUND]: type `Box<Child>` does not satisfy expected bound `Box<Parent>` for type parameter `T`
+ --> tests/data/declaration-generic-bounds.reds:17:26
+   |
+17 | class InvalidField { let value: Restricted<Box<Child>>; }
+   |                          ^^^^^
+
+error[UNSATISFIED_BOUND]: type `Box<Child>` does not satisfy expected bound `Box<Parent>` for type parameter `T`
+ --> tests/data/declaration-generic-bounds.reds:18:7
+   |
+18 | class InvalidBase extends Restricted<Box<Child>> {}
+   |       ^^^^^^^^^^^
+
+error[UNSATISFIED_BOUND]: type `Box<Other>` does not satisfy expected bound `Box<Parent>` for type parameter `T`
+ --> tests/data/declaration-generic-bounds.reds:20:22
+   |
+20 |   public func Accept(value: Restricted<Box<Other>>) {}
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

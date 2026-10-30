@@ -9,6 +9,7 @@ use crate::diagnostic::FunctionSignature;
 use crate::lower::InferredTypeApp;
 use crate::stages::infer::{ClassItem, FuncItemKind, InferStageModule};
 use crate::symbols::AnyBaseType;
+use crate::utils::ScopedMap;
 use crate::{
     CtxVar, Diagnostic, FunctionIndex, FunctionType, IndexMap, IndexSet, MethodId, Param, PolyType,
     Type, TypeApp, TypeId, TypeSchema, Variance,
@@ -290,20 +291,26 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
         &self,
         var: &CtxVar<'ctx>,
         typ: &Type<'ctx>,
+        env: &ScopedMap<'_, &'ctx str, PolyType<'ctx>>,
         span: Span,
     ) -> Result<(), Diagnostic<'ctx>> {
         let Some(upper) = var.upper() else {
             return Ok(());
         };
 
-        match (typ.upper_bound(), upper.upper_bound()) {
-            (Some(x), Some(y)) if self.symbols.is_subtype(x.id(), y.id()) => Ok(()),
-            (_, _) => Err(Diagnostic::UnsatisfiedBound(
+        let bound = PolyType::from_type_with_env(upper, env);
+        if bound
+            .as_ref()
+            .is_ok_and(|bound| PolyType::from_type(typ).satisfies_bound(bound, &self.symbols))
+        {
+            Ok(())
+        } else {
+            Err(Diagnostic::UnsatisfiedBound(
                 typ.clone().into(),
                 upper.clone().into(),
                 var.name(),
                 span,
-            )),
+            ))
         }
     }
 
@@ -315,9 +322,10 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
     ) -> Result<(), Diagnostic<'ctx>> {
         let params = self.symbols[type_app.id()].params();
         if type_app.args().len() == params.len() {
+            let env = InferredTypeApp::from_type(type_app).type_env(&self.symbols);
             for (arg, param) in type_app.args().iter().zip(params) {
-                self.check_var(param, arg, span)?;
                 self.check_type(arg, variance * param.variance(), span)?;
+                self.check_var(param, arg, &env, span)?;
             }
             Ok(())
         } else {
