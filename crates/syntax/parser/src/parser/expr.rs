@@ -46,6 +46,14 @@ fn expr_with_span_impl<'tok, 'src: 'tok>(
         Token::ResRef(s) => Expr::Constant(Constant::Resource(s)),
         Token::TdbId(s) => Expr::Constant(Constant::TweakDbId(s)),
     }
+    .or(select! {
+        Token::IntMinMagnitude => "invalid Int32 literal; use the `l` suffix for Int64 or `ul` for Uint64",
+        Token::LongMinMagnitude => "invalid Int64 literal; use the `ul` suffix for a larger nonnegative integer",
+    }
+    .validate(|message, e, emitter| {
+        emitter.emit(Rich::custom(e.span(), message));
+        Expr::Error
+    }))
     .labelled("value");
 
     let unop = select! {
