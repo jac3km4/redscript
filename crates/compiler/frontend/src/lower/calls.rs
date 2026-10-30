@@ -131,6 +131,45 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             ([], None) => return Err(Error::UnknownStaticCastType(span)),
             _ => return Err(Error::InvalidTypeArgCount(1, type_args.len(), span)),
         };
+        if env.types().policy(span).native_object_cast
+            && let Some(target) = target_t.upper_bound(self.symbols)
+            && self.symbols[target.id()]
+                .schema()
+                .as_aggregate()
+                .is_some_and(|agg| !agg.flags().is_struct() && !agg.flags().is_never_ref())
+        {
+            let (mut expr, expr_t) = self.lower_expr(&args[0], env)?;
+            let constraint = expr_t.unwrap_ref_or_self(self.symbols);
+            let result_t = if expr_t.ref_type(self.symbols) == Some(RefType::Weak) {
+                Type::app(predef::WREF, [target_t.clone()]).into_poly()
+            } else {
+                target_t.clone()
+            };
+            // Native object casts also admit identity and upcasts. Coerce these
+            // directly, without retrying lowering (which can emit statement prefixes).
+            if constraint.satisfies_bound(&target_t, self.symbols) {
+                self.coerce(&mut expr, expr_t, result_t.clone(), env, span)?;
+                return Ok((expr, result_t));
+            }
+            // Keep the same downcast constraints and weak result as lower_dyn_cast.
+            let compatible = if matches!(constraint, PolyType::Var(_)) {
+                target_t.constrain_base(&constraint, self.symbols).is_ok()
+            } else {
+                self.dyn_cast_compatible(&constraint, &target_t)
+            };
+            if !compatible {
+                return Err(Error::ImpossibleDynCast(expr_t, target_t, span));
+            }
+            return Ok((
+                ir::Expr::DynCast {
+                    expr: expr.into(),
+                    expr_type: expr_t.into(),
+                    target_type: target_t.into(),
+                    span,
+                },
+                result_t,
+            ));
+        }
         let candidates = env
             .query_free_functions("Cast", self.symbols)
             .filter(|entry| {

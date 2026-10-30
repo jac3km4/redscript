@@ -87,6 +87,9 @@ pub struct SemanticPolicy {
     /// Duplicate hoisted names (including parameters) are errors; untyped locals retain
     /// ordinary lexical scoping. Nested closures have independent declarations.
     pub hoist_locals: bool,
+    /// Dispatch `Cast<T>` to object casting for non-struct class targets, including
+    /// identity and upcasts through ordinary coercion. Other targets use overloads.
+    pub native_object_cast: bool,
     /// Optionally convert a condition using a unary intrinsic returning `Bool`.
     /// Applies to control-flow conditions, logical operators and ternaries.
     /// `None` from the callback retains the ordinary `Bool` constraint.
