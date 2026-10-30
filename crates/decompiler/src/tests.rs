@@ -345,6 +345,19 @@ fn no_op_jump_preserves_conditional_boundary() {
 }
 
 #[test]
+fn truncated_conditional_branch_returns_error() {
+    let code = [
+        Instr::JumpIfFalse(Jump::new_with_offset(7i16.into())),
+        Instr::TrueConst,
+        Instr::Jump(Jump::new_with_offset(100i16.into())),
+    ];
+    assert!(matches!(
+        build_control_flow(CodeIter::new(&code)),
+        Err(crate::error::Error::UnexpectedEndOfCode)
+    ));
+}
+
+#[test]
 fn nested_local_used_in_outer_block_is_hoisted() {
     let mut bundle = ScriptBundle::default();
     let mut function = function(&mut bundle);

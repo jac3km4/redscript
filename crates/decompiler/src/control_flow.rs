@@ -189,6 +189,9 @@ impl<'ctx, 'i> ControlFlowBuilder<'ctx, 'i> {
                             let offset = self.position();
                             let branches =
                                 ControlFlowBlock::conditional().build(self.it, target)?;
+                            if self.position() == offset {
+                                return Err(Error::UnexpectedEndOfCode);
+                            }
                             self.block.insert(Bounds::new(offset, target), branches);
                         }
                     }
