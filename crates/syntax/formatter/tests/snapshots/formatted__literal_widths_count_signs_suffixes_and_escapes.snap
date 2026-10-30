@@ -1,0 +1,393 @@
+---
+source: crates/syntax/formatter/tests/formatted.rs
+expression: cases
+---
+=== literal: 0, max_width: 2 ===
+
+func F() {
+  Call(
+    0
+  );
+}
+
+
+=== literal: 0, max_width: 3 ===
+
+func F() {
+  Call(0);
+}
+
+
+=== literal: 0, max_width: 4 ===
+
+func F() {
+  Call(0);
+}
+
+
+=== literal: -1, max_width: 3 ===
+
+func F() {
+  Call(
+    -1
+  );
+}
+
+
+=== literal: -1, max_width: 4 ===
+
+func F() {
+  Call(-1);
+}
+
+
+=== literal: -1, max_width: 5 ===
+
+func F() {
+  Call(-1);
+}
+
+
+=== literal: -2147483648, max_width: 12 ===
+
+func F() {
+  Call(
+    -2147483648
+  );
+}
+
+
+=== literal: -2147483648, max_width: 13 ===
+
+func F() {
+  Call(-2147483648);
+}
+
+
+=== literal: -2147483648, max_width: 14 ===
+
+func F() {
+  Call(-2147483648);
+}
+
+
+=== literal: 0l, max_width: 3 ===
+
+func F() {
+  Call(
+    0l
+  );
+}
+
+
+=== literal: 0l, max_width: 4 ===
+
+func F() {
+  Call(0l);
+}
+
+
+=== literal: 0l, max_width: 5 ===
+
+func F() {
+  Call(0l);
+}
+
+
+=== literal: -1l, max_width: 4 ===
+
+func F() {
+  Call(
+    -1l
+  );
+}
+
+
+=== literal: -1l, max_width: 5 ===
+
+func F() {
+  Call(-1l);
+}
+
+
+=== literal: -1l, max_width: 6 ===
+
+func F() {
+  Call(-1l);
+}
+
+
+=== literal: -9223372036854775808l, max_width: 22 ===
+
+func F() {
+  Call(
+    -9223372036854775808l
+  );
+}
+
+
+=== literal: -9223372036854775808l, max_width: 23 ===
+
+func F() {
+  Call(-9223372036854775808l);
+}
+
+
+=== literal: -9223372036854775808l, max_width: 24 ===
+
+func F() {
+  Call(-9223372036854775808l);
+}
+
+
+=== literal: 0u, max_width: 3 ===
+
+func F() {
+  Call(
+    0u
+  );
+}
+
+
+=== literal: 0u, max_width: 4 ===
+
+func F() {
+  Call(0u);
+}
+
+
+=== literal: 0u, max_width: 5 ===
+
+func F() {
+  Call(0u);
+}
+
+
+=== literal: 123u, max_width: 5 ===
+
+func F() {
+  Call(
+    123u
+  );
+}
+
+
+=== literal: 123u, max_width: 6 ===
+
+func F() {
+  Call(123u);
+}
+
+
+=== literal: 123u, max_width: 7 ===
+
+func F() {
+  Call(123u);
+}
+
+
+=== literal: 0ul, max_width: 4 ===
+
+func F() {
+  Call(
+    0ul
+  );
+}
+
+
+=== literal: 0ul, max_width: 5 ===
+
+func F() {
+  Call(0ul);
+}
+
+
+=== literal: 0ul, max_width: 6 ===
+
+func F() {
+  Call(0ul);
+}
+
+
+=== literal: 123ul, max_width: 6 ===
+
+func F() {
+  Call(
+    123ul
+  );
+}
+
+
+=== literal: 123ul, max_width: 7 ===
+
+func F() {
+  Call(123ul);
+}
+
+
+=== literal: 123ul, max_width: 8 ===
+
+func F() {
+  Call(123ul);
+}
+
+
+=== literal: true, max_width: 5 ===
+
+func F() {
+  Call(
+    true
+  );
+}
+
+
+=== literal: true, max_width: 6 ===
+
+func F() {
+  Call(true);
+}
+
+
+=== literal: true, max_width: 7 ===
+
+func F() {
+  Call(true);
+}
+
+
+=== literal: false, max_width: 6 ===
+
+func F() {
+  Call(
+    false
+  );
+}
+
+
+=== literal: false, max_width: 7 ===
+
+func F() {
+  Call(false);
+}
+
+
+=== literal: false, max_width: 8 ===
+
+func F() {
+  Call(false);
+}
+
+
+=== literal: "\n\t", max_width: 7 ===
+
+func F() {
+  Call(
+    "\n\t"
+  );
+}
+
+
+=== literal: "\n\t", max_width: 8 ===
+
+func F() {
+  Call("\n\t");
+}
+
+
+=== literal: "\n\t", max_width: 9 ===
+
+func F() {
+  Call("\n\t");
+}
+
+
+=== literal: n"\n\t", max_width: 8 ===
+
+func F() {
+  Call(
+    n"\n\t"
+  );
+}
+
+
+=== literal: n"\n\t", max_width: 9 ===
+
+func F() {
+  Call(n"\n\t");
+}
+
+
+=== literal: n"\n\t", max_width: 10 ===
+
+func F() {
+  Call(n"\n\t");
+}
+
+
+=== literal: r"\n\t", max_width: 8 ===
+
+func F() {
+  Call(
+    r"\n\t"
+  );
+}
+
+
+=== literal: r"\n\t", max_width: 9 ===
+
+func F() {
+  Call(r"\n\t");
+}
+
+
+=== literal: r"\n\t", max_width: 10 ===
+
+func F() {
+  Call(r"\n\t");
+}
+
+
+=== literal: t"\n\t", max_width: 8 ===
+
+func F() {
+  Call(
+    t"\n\t"
+  );
+}
+
+
+=== literal: t"\n\t", max_width: 9 ===
+
+func F() {
+  Call(t"\n\t");
+}
+
+
+=== literal: t"\n\t", max_width: 10 ===
+
+func F() {
+  Call(t"\n\t");
+}
+
+
+=== literal: s"\n\t", max_width: 8 ===
+
+func F() {
+  Call(
+    s"\n\t"
+  );
+}
+
+
+=== literal: s"\n\t", max_width: 9 ===
+
+func F() {
+  Call(s"\n\t");
+}
+
+
+=== literal: s"\n\t", max_width: 10 ===
+
+func F() {
+  Call(s"\n\t");
+}

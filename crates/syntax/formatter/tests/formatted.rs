@@ -102,6 +102,45 @@ fn ordered_comments_include_nested_interpolations_but_not_string_contents() {
 }
 
 #[test]
+fn literal_widths_count_signs_suffixes_and_escapes() {
+    let mut cases = String::new();
+    for literal in [
+        "0",
+        "-1",
+        "-2147483648",
+        "0l",
+        "-1l",
+        "-9223372036854775808l",
+        "0u",
+        "123u",
+        "0ul",
+        "123ul",
+        "true",
+        "false",
+        r#""\n\t""#,
+        r#"n"\n\t""#,
+        r#"r"\n\t""#,
+        r#"t"\n\t""#,
+        r#"s"\n\t""#,
+    ] {
+        for (extra_width, breaks) in [(-1, true), (0, false), (1, false)] {
+            let settings = FormatSettings {
+                max_width: (literal.len() as i32 + 2 + extra_width) as u16,
+                ..FormatSettings::default()
+            };
+            let source = format!("func F() {{ Call({literal}); }}");
+            let formatted = assert_preserved(&source, &settings, "test.reds");
+            assert_eq!(formatted.contains("Call(\n"), breaks, "{formatted}");
+            cases.push_str(&format!(
+                "=== literal: {literal}, max_width: {} ===\n{formatted}\n",
+                settings.max_width
+            ));
+        }
+    }
+    insta::assert_snapshot!(cases);
+}
+
+#[test]
 fn formatted_files() {
     insta::glob!("data/*.reds", |path| {
         let current = env::current_dir().unwrap().canonicalize().unwrap();

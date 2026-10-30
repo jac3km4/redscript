@@ -1347,18 +1347,26 @@ where
         match self {
             Expr::Ident(ident) => ident.len(),
             Expr::Constant(constant) => match constant {
-                Constant::String(s) => s.len() + 2,
-                Constant::CName(s) => s.len() + 3,
-                Constant::Resource(r) => r.len() + 3,
-                Constant::TweakDbId(t) => t.len() + 3,
+                Constant::String(s) => s.escape_default().count() + 2,
+                Constant::CName(s) => s.escape_default().count() + 3,
+                Constant::Resource(r) => r.escape_default().count() + 3,
+                Constant::TweakDbId(t) => t.escape_default().count() + 3,
                 Constant::F32(f) => ftoa(*f, FmtFloatConfig::default()).len(),
                 Constant::F64(f) => dtoa(*f, FmtFloatConfig::default()).len() + 1,
-                &Constant::I32(0) | &Constant::I64(0) | &Constant::U32(0) | &Constant::U64(0) => 1,
-                Constant::I32(i) => i.unsigned_abs().ilog10() as usize + 1,
-                Constant::I64(i) => i.unsigned_abs().ilog10() as usize + 1,
-                Constant::U32(u) => u.ilog10() as usize + 1,
-                Constant::U64(u) => u.ilog10() as usize + 1,
-                Constant::Bool(_) => 4,
+                Constant::I32(i) => {
+                    i.unsigned_abs().checked_ilog10().unwrap_or(0) as usize
+                        + 1
+                        + usize::from(*i < 0)
+                }
+                Constant::I64(i) => {
+                    i.unsigned_abs().checked_ilog10().unwrap_or(0) as usize
+                        + 2
+                        + usize::from(*i < 0)
+                }
+                Constant::U32(u) => u.checked_ilog10().unwrap_or(0) as usize + 2,
+                Constant::U64(u) => u.checked_ilog10().unwrap_or(0) as usize + 3,
+                Constant::Bool(true) => 4,
+                Constant::Bool(false) => 5,
             },
             Expr::ArrayLit(elems) => elems
                 .iter()
@@ -1369,7 +1377,7 @@ where
                     .iter()
                     .map(|part| match part {
                         StrPart::Expr(expr) => expr.as_wrapped().approx_width() + 3,
-                        StrPart::Str(s) => s.len(),
+                        StrPart::Str(s) => s.escape_default().count(),
                     })
                     .sum::<usize>()
                     + 3
