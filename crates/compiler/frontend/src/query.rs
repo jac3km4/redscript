@@ -70,7 +70,7 @@ pub fn expr_type<'ctx>(
 ) -> Result<Type<'ctx>, QueryError<'ctx>> {
     let typ = match expr {
         ir::Expr::NewInstance { class_type, .. } => {
-            return reference_type(class_type.coalesced(symbols)?, false, symbols);
+            return reference_type(class_type.coalesced(symbols)?.into_type(), false, symbols);
         }
         ir::Expr::Construct { struct_type, .. } => struct_type,
         ir::Expr::NewClosure { closure, .. } => &closure.typ,
@@ -155,18 +155,20 @@ fn find_local<'ctx>(function: &LoweredFunction<'ctx>, local: ir::Local) -> Optio
 }
 
 fn reference_type<'ctx>(
-    target: TypeApp<'ctx>,
+    target: Type<'ctx>,
     weak: bool,
     symbols: &Symbols<'ctx>,
 ) -> Result<Type<'ctx>, QueryError<'ctx>> {
-    let def = symbols
-        .get_type(target.id())
-        .ok_or(QueryError::MissingType(target.id()))?;
-    let mixed = def
-        .schema()
-        .as_aggregate()
-        .is_some_and(|agg| agg.flags().is_mixed_ref());
-    let target = target.into_type();
+    let mixed = if let Some(bound) = target.upper_bound() {
+        symbols
+            .get_type(bound.id())
+            .ok_or(QueryError::MissingType(bound.id()))?
+            .schema()
+            .as_aggregate()
+            .is_some_and(|agg| agg.flags().is_mixed_ref())
+    } else {
+        false
+    };
     Ok(if weak {
         Type::app(predef::WREF, [target])
     } else if mixed {

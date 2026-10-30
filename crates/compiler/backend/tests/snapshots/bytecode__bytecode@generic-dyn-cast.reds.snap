@@ -1,0 +1,59 @@
+---
+source: crates/compiler/backend/tests/bytecode.rs
+assertion_line: 22
+expression: "compile(path, |_| {})"
+input_file: crates/compiler/backend/tests/data/generic-dyn-cast.reds
+---
+// Test;StateState (f0)
+assign
+local 0 "window$2": "ref:WindowState"
+invoke.static j25 l18 f1 Forward<WindowState>;State 0000000000000000
+param 0 "value": "ref:State"
+param.end
+assign
+local 1 "text$3": "ref:TextState"
+invoke.static j25 l19 f2 Forward<TextState>;State 0000000000000000
+param 0 "value": "ref:State"
+param.end
+assign
+local 2 "weakWindow$4": "wref:WindowState"
+invoke.static j25 l20 f3 FindWeak<WindowState>;State 0000000000000000
+param 1 "weak": "wref:State"
+param.end
+assign
+local 3 "weakText$5": "wref:TextState"
+invoke.static j25 l21 f4 FindWeak<TextState>;State 0000000000000000
+param 1 "weak": "wref:State"
+param.end
+
+// Forward<WindowState>;State (f1)
+return
+invoke.static j25 l14 f5 Find<WindowState>;State 0000000000000000
+param 2 "value": "ref:State"
+param.end
+
+// Forward<TextState>;State (f2)
+return
+invoke.static j25 l14 f6 Find<TextState>;State 0000000000000000
+param 3 "value": "ref:State"
+param.end
+
+// FindWeak<WindowState>;State (f3)
+return
+wref.dyncast 0 "WindowState"
+param 4 "value": "wref:State"
+
+// FindWeak<TextState>;State (f4)
+return
+wref.dyncast 1 "TextState"
+param 5 "value": "wref:State"
+
+// Find<WindowState>;State (f5)
+return
+ref.dyncast 0 "WindowState"
+param 6 "value": "ref:State"
+
+// Find<TextState>;State (f6)
+return
+ref.dyncast 1 "TextState"
+param 7 "value": "ref:State"

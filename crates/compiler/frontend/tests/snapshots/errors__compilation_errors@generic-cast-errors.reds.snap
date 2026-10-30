@@ -1,0 +1,29 @@
+---
+source: crates/compiler/frontend/tests/errors.rs
+assertion_line: 27
+expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
+input_file: crates/compiler/frontend/tests/data/generic-cast-errors.reds
+---
+error[INVALID_DYN_CAST]: cannot cast from `State` to `T` with `as`: the target type must be a class
+ --> tests/data/generic-cast-errors.reds:6:12
+  |
+6 |   value as T;
+  |            ^
+
+error[INVALID_DYN_CAST]: cannot cast from `State` to `T` with `as`: the target type must be a class
+ --> tests/data/generic-cast-errors.reds:10:12
+   |
+10 |   value as T;
+   |            ^
+
+error[INVALID_DYN_CAST]: cannot cast from `State` to `T` with `as`: the target type must be a class
+ --> tests/data/generic-cast-errors.reds:14:12
+   |
+14 |   value as T;
+   |            ^
+
+error[IMPOSSIBLE_DYN_CAST]: cannot cast from `State` to `T`: the types are not related
+ --> tests/data/generic-cast-errors.reds:18:3
+   |
+18 |   value as T;
+   |   ^^^^^^^^^^

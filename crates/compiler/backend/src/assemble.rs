@@ -450,7 +450,7 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
                 span,
             } => {
                 let expr_t = self.mono_type(expr_type, *span)?;
-                let target_t = self.mono_type_app(target_type, *span)?;
+                let target_t = self.mono_type(target_type, *span)?;
                 let class = self.monomorph.class(&target_t, self.symbols, self.bundle);
                 self.emit(Instr::DynamicCast {
                     class,

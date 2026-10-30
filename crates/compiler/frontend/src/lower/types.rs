@@ -201,6 +201,14 @@ impl<'ctx> InferredType<'ctx> {
                 }
             }
             (Self::Ctx(lhs), Self::Ctx(rhs)) if lhs.name() == rhs.name() => {}
+            (Self::Ctx(lhs), _) => {
+                let upper = lhs
+                    .upper()
+                    .ok_or_else(|| TypeError::Mismatch(self.clone(), other.clone()))?;
+                upper
+                    .constrain::<Mode>(other, symbols)
+                    .map_err(|err| TypeError::Nested(err.into(), self.clone(), other.clone()))?;
+            }
             _ => return Err(TypeError::Mismatch(self.clone(), other.clone())),
         };
         Ok(())

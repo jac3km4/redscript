@@ -160,7 +160,7 @@ pub trait Visitor<'ctx> {
         &mut self,
         expr: &ir::Expr<'ctx>,
         _expr_type: &ir::Type<'ctx>,
-        _target_type: &ir::TypeApp<'ctx>,
+        _target_type: &ir::Type<'ctx>,
         _span: Span,
     ) {
         self.visit_expr(expr);

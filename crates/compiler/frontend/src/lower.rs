@@ -925,18 +925,17 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
     ) -> LowerResult<'ctx, (ir::Expr<'ctx>, PolyType<'ctx>)> {
         let (expr, expr_t) = self.lower_expr(expr, env)?;
         let resolved = env.types().resolve(typ, self.symbols, *type_span)?;
-        let Type::Data(typ) = resolved else {
+        let Some(agg) = resolved
+            .upper_bound()
+            .and_then(|bound| self.symbols[bound.id()].schema().as_aggregate())
+        else {
             return Err(Error::InvalidDynCastType(expr_t, resolved, *type_span));
         };
-        let target = InferredTypeApp::from_type(&typ);
-        let Some(agg) = self.symbols[target.id()].schema().as_aggregate() else {
-            return Err(Error::InvalidDynCastType(
-                expr_t,
-                typ.into_type(),
-                *type_span,
-            ));
-        };
-        let expected = target.clone().into_type().into_poly();
+        let generic_target = matches!(resolved, Type::Ctx(_));
+        if generic_target && (agg.flags().is_struct() || agg.flags().is_never_ref()) {
+            return Err(Error::InvalidDynCastType(expr_t, resolved, *type_span));
+        }
+        let expected = PolyType::from_type(&resolved);
         let (ref_t, inner) = expr_t.strip_ref(self.symbols).unzip();
 
         let constraint = inner.unwrap_or_else(|| expr_t.clone());
@@ -947,27 +946,33 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             }
             _ => expected.clone(),
         };
-        let inferred = expected
-            .constrain_base(&constraint, self.symbols)
-            .map(|_| result_t);
-
-        match inferred {
-            Err(_) => {
-                if constraint.constrain_base(&expected, self.symbols).is_ok() {
-                    Err(Error::RedundantDynCast(span))
-                } else {
-                    Err(Error::ImpossibleDynCast(expr_t, expected, span))
-                }
+        let mut compatible = expected.constrain_base(&constraint, self.symbols).is_ok();
+        if !compatible && generic_target {
+            // The bound establishes possible overlap, not the runtime cast target.
+            if let (Some(target), Some(source)) = (
+                expected.upper_bound(self.symbols),
+                constraint.upper_bound(self.symbols),
+            ) {
+                let target = target.into_owned().into_type().into_poly();
+                let source = source.into_owned().into_type().into_poly();
+                compatible = target.constrain_base(&source, self.symbols).is_ok()
+                    || source.constrain_base(&target, self.symbols).is_ok();
             }
-            Ok(inferred) => {
-                let ir = ir::Expr::DynCast {
-                    expr: expr.into(),
-                    expr_type: expr_t.into(),
-                    target_type: target.into(),
-                    span,
-                };
-                Ok((ir, inferred))
+        }
+        if !compatible {
+            if constraint.constrain_base(&expected, self.symbols).is_ok() {
+                Err(Error::RedundantDynCast(span))
+            } else {
+                Err(Error::ImpossibleDynCast(expr_t, expected, span))
             }
+        } else {
+            let ir = ir::Expr::DynCast {
+                expr: expr.into(),
+                expr_type: expr_t.into(),
+                target_type: expected.into(),
+                span,
+            };
+            Ok((ir, result_t))
         }
     }
 

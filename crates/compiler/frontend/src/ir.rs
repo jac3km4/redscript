@@ -239,7 +239,7 @@ pub enum Expr<'ctx> {
     DynCast {
         expr: Box<Self>,
         expr_type: Type<'ctx>,
-        target_type: TypeApp<'ctx>,
+        target_type: Type<'ctx>,
         span: Span,
     },
     Local(Local, Span),

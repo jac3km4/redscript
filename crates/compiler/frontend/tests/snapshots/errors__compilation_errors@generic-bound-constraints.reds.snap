@@ -1,0 +1,52 @@
+---
+source: crates/compiler/frontend/tests/errors.rs
+assertion_line: 27
+expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
+input_file: crates/compiler/frontend/tests/data/generic-bound-constraints.reds
+---
+error[TYPE_ERR]: type mismatch: found `State` when expected `T`
+ --> tests/data/generic-bound-constraints.reds:32:10
+   |
+32 |   return value;
+   |          ^^^^^
+
+error[TYPE_ERR]: type mismatch: found `T` when expected `U`
+  caused by: type mismatch: found `State` when expected `U`
+ --> tests/data/generic-bound-constraints.reds:36:10
+   |
+36 |   return value;
+   |          ^^^^^
+
+error[TYPE_ERR]: type mismatch: found `T` when expected `State`
+ --> tests/data/generic-bound-constraints.reds:40:10
+   |
+40 |   return value;
+   |          ^^^^^
+
+error[TYPE_ERR]: type mismatch: found `Producer<State>` when expected `Producer<T>`
+  caused by: type mismatch: found `State` when expected `T`
+ --> tests/data/generic-bound-constraints.reds:48:10
+   |
+48 |   return value;
+   |          ^^^^^
+
+error[TYPE_ERR]: type mismatch: found `Consumer<T>` when expected `Consumer<State>`
+  caused by: type mismatch: found `State` when expected `T`
+ --> tests/data/generic-bound-constraints.reds:56:10
+   |
+56 |   return value;
+   |          ^^^^^
+
+error[TYPE_ERR]: type mismatch: found `Invariant<T>` when expected `Invariant<State>`
+  caused by: type mismatch: found `State` when expected `T`
+ --> tests/data/generic-bound-constraints.reds:60:10
+   |
+60 |   return value;
+   |          ^^^^^
+
+error[TYPE_ERR]: type mismatch: found `Invariant<State>` when expected `Invariant<T>`
+  caused by: type mismatch: found `State` when expected `T`
+ --> tests/data/generic-bound-constraints.reds:64:10
+   |
+64 |   return value;
+   |          ^^^^^
