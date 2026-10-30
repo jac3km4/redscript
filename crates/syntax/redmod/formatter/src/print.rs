@@ -126,6 +126,30 @@ enum DeclScope {
     Member,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DeclGroup {
+    Imports,
+    Fields,
+    Defaults,
+    Hints,
+}
+
+fn decl_group(decl: &Declaration<'_>) -> Option<DeclGroup> {
+    if !decl.docs.is_empty() || !decl.metadata.is_empty() || !decl.annotations.is_empty() {
+        return None;
+    }
+    match &decl.item {
+        Item::Import(_) => Some(DeclGroup::Imports),
+        Item::Field(_) => Some(DeclGroup::Fields),
+        // Keep directive kinds separate without inferring associations with fields.
+        Item::Directive { kind, .. } => Some(match kind {
+            DirectiveKind::Default => DeclGroup::Defaults,
+            DirectiveKind::Hint => DeclGroup::Hints,
+        }),
+        _ => None,
+    }
+}
+
 #[derive(Default)]
 struct Printer {
     out: String,
@@ -212,8 +236,9 @@ impl Printer {
     }
 
     fn decls(&mut self, decls: &[Spanned<Declaration<'_>>], scope: DeclScope) -> Result<()> {
+        let mut previous = None;
         let mut saw_non_import = false;
-        for (decl, span) in decls {
+        for (i, (decl, span)) in decls.iter().enumerate() {
             if matches!(scope, DeclScope::Module) {
                 if matches!(decl.item, Item::Import(_)) {
                     if saw_non_import {
@@ -223,7 +248,12 @@ impl Printer {
                     saw_non_import = true;
                 }
             }
+            let group = decl_group(decl);
+            if i != 0 && (group.is_none() || group != previous) {
+                self.out.push('\n');
+            }
             at(self.decl(decl, scope), *span)?;
+            previous = group;
         }
         Ok(())
     }

@@ -6,6 +6,7 @@ expression: output
 
 /// using docs
 @using "Other.Mod";
+
 /// aggregate docs
 [first = "raw\path"]
 [second = 2]
@@ -16,14 +17,18 @@ public abstract final importonly import exec persistent quest static editable in
     [category = "General"]
     @custom()
     protected editable persistent var first, second: array<weak<C>>;
+
     var ids: Int32[3];
     var names: name;
     var mixed: mixedRef;
     var typedMixed: mixedRef<C>;
     var script: script_ref<name>;
     var weakref: wref<C>;
+
     default first = NULL;
+
     hint first = "hint\text";
+
     private override const function Run(optional out const skip x, y: Int32, z: weak<C>) -> const ref<C> {
         const var i, j: Int32 = 0;
         ;
@@ -77,20 +82,26 @@ public abstract final importonly import exec persistent quest static editable in
         wrappedMethod();
         return new C;
     }
+
     event Tick(x: Int32) -> const Bool;
+
     implicit cast(value: C) -> const name;
+
     cast(value: name) -> C {
     }
+
     struct Nested {
         var x, y: Int32 = 1;
     }
 }
+
 enum E: Uint8 {
     A = -1,
     B,
     C = 4,
     D,
 }
+
 @wrapMethod(C)
 public function Run() {
     Run();

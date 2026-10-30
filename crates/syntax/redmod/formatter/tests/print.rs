@@ -104,6 +104,113 @@ public function Run() { Run(); wrappedMethod(); }
 }
 
 #[test]
+fn declaration_groups_and_transitions() {
+    let output = roundtrip(
+        r#"@module "Groups";
+@using "First";
+@using "Second";
+/// documented import
+@using "Third";
+@using "Fourth";
+@using "Fifth";
+var first: Int32;
+public static var second, third: Int32;
+function First();
+function Second() {}
+class C {
+    var first: Int32;
+    private persistent var second: Int32;
+    function First();
+    event Second();
+    struct Nested {
+        var x: Int32;
+        var y: Int32;
+    }
+    enum E { A, B, }
+    var third: Int32;
+    var fourth: Int32;
+}
+struct Empty {}
+enum E { A, }
+function Last();
+"#,
+    );
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn declaration_prefixes_break_field_groups() {
+    let output = roundtrip(
+        r#"class C {
+    var first: Int32;
+    /// documented field
+    var second: Int32;
+    /// another documented field
+    var third: Int32;
+    var fourth: Int32;
+    var fifth: Int32;
+    [category = "General"]
+    var sixth: Int32;
+    [category = "General"]
+    var seventh: Int32;
+    @custom()
+    var eighth: Int32;
+    @custom()
+    var ninth: Int32;
+    /// combined prefix
+    [category = "General"]
+    @custom()
+    public editable var tenth: Int32;
+    var last: Int32;
+}
+"#,
+    );
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn directive_groups_do_not_infer_field_associations() {
+    let output = roundtrip(
+        r#"class C {
+    var first: Int32;
+    var second: Int32;
+    default first = 1;
+    default second = 2;
+    hint first = "first";
+    hint second = "second";
+    default first = 3;
+    /// documented default
+    default second = 4;
+    default first = 5;
+    [category = "General"]
+    hint first = "metadata";
+    @custom()
+    hint second = "annotated";
+    hint first = "plain";
+    hint second = "plain";
+    function Run();
+    default first = 6;
+    var last: Int32;
+}
+"#,
+    );
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn standalone_declarations_have_no_group_padding() {
+    for source in ["", "class Empty {}", "struct Empty {}", "enum Empty {}"] {
+        let output = roundtrip(source);
+        assert!(!output.starts_with('\n'));
+        assert!(!output.ends_with("\n\n"));
+        if let Some((decl, _)) = module(source).items.first() {
+            assert_eq!(print_item_decl(decl).unwrap(), output);
+            assert_eq!(print_member_decl(decl).unwrap(), output);
+        }
+    }
+}
+
+#[test]
 fn all_operator_declarations_and_expressions() {
     for op in [
         "+", "-", "*", "/", "%", "==", "!=", "<", "<=", ">", ">=", "&&", "||", "&", "|", "^", "!",
