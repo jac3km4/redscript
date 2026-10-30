@@ -19,22 +19,21 @@ function Test(enabled: Bool, values: array<Int32>) -> Bool {
     while (true) {
         __rst_v3.Resize(1);
         __rst_v3[0] = count;
-        if (Check(__rst_v3)) {
-            reset = Cast<Int32>(0);
-            count += 1;
-            switch (count) {
-                case 1:
-                    continue;
-                default:
-                    break;
-            }
-            if (count < 3) {
-                continue;
-            }
-            break;
-        } else {
+        if (!Check(__rst_v3)) {
             break;
         }
+        reset = Cast<Int32>(0);
+        count += 1;
+        switch (count) {
+            case 1:
+                continue;
+            default:
+                break;
+        }
+        if (count < 3) {
+            continue;
+        }
+        break;
     }
     return enabled && (Tick() ? Check(values) : Tick());
 }

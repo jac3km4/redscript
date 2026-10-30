@@ -161,6 +161,10 @@ fn bindings<'ctx>(
 }
 
 fn convert(source: &str) -> String {
+    convert_mapped(source).text
+}
+
+fn convert_mapped(source: &str) -> redscript_redmod_transpiler::TranspiledModule {
     let sources = SourceMap::new();
     sources.push_back("authored.reds", source);
     let interner = TypeInterner::default();
@@ -175,7 +179,7 @@ fn convert(source: &str) -> String {
     for mapping in &result[0].mappings {
         assert!(result[0].text.get(mapping.generated.clone()).is_some());
     }
-    result.into_iter().next().unwrap().text
+    result.into_iter().next().unwrap()
 }
 
 #[test]
@@ -205,6 +209,70 @@ func Test(enabled: Bool, values: [Int32]) -> Bool {
     );
 
     insta::assert_snapshot!(output);
+}
+
+#[test]
+fn loop_guards_preserve_prefixes_and_nested_control_flow() {
+    let output = convert(
+        r#"
+func Check(values: [Int32]) -> Bool = true
+func Tick() {}
+func Nested(values: [Int32]) {
+    while Check([1]) {
+        while Check([2]) { continue; }
+        switch 1 { case 1: continue; default: break; }
+        if Check(values) { continue; }
+        break;
+    }
+}
+func WithTail(flag: Bool) {
+    while true {
+        if flag { Tick(); } else { break; }
+        Tick();
+    }
+}
+func SwitchBreak(flag: Bool) {
+    while true {
+        switch 1 { case 1: if flag { Tick(); } else { break; } }
+        Tick();
+    }
+}
+func ConditionalLoop(flag: Bool) {
+    while flag { if flag { Tick(); } else { break; } }
+}
+func ElseEffects(flag: Bool) {
+    while true { if flag { continue; } else { Tick(); break; } }
+}
+func MultipleBranches(flag: Bool) {
+    while true { if flag { continue; } else if flag { Tick(); } else { break; } }
+}
+func GuardExpression(flag: Bool, values: [Int32]) {
+    while true { if flag ? Check(values) : false { continue; } else { break; } }
+}
+"#,
+    );
+    assert!(output.contains("if (!(flag ? Check(values) : false))"));
+    assert_eq!(output.matches(".Resize(1);").count(), 2);
+    let sources = SourceMap::new();
+    let file = sources.push_back("emitted.script", output.clone());
+    let (module, errors) = redscript_redmod_parser::parse_module(&output, file);
+    assert!(errors.is_empty(), "{errors:?}");
+    assert!(module.is_some());
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn flattened_loop_guards_keep_break_and_body_source_mappings() {
+    use redscript_redmod_transpiler::package::source_at;
+
+    let source = "func Test(flag: Bool) { while true { if flag { continue; } else { break; } } }";
+    let output = convert_mapped(source);
+    for token in ["break;", "continue;"] {
+        let generated = output.text.find(token).unwrap();
+        let mapped = source_at(&output.mappings, generated).unwrap();
+        assert_eq!(mapped.start as usize, source.find(token).unwrap());
+        assert_eq!(&source[mapped.start as usize..mapped.end as usize], token);
+    }
 }
 
 #[test]

@@ -29,8 +29,13 @@ Unsupported input returns diagnostics, never partial output.
 Explicit typed signatures/locals, ordinary calls/operators/casts, structured IR
 control flow, lowered for-in/interpolation, selected dynamic-array intrinsics,
 verified primitive/reference defaults, overrides and uniquely associated patches.
-Local names are hygienic by IR identity. Hoisting declarations does not move
-initializer execution or repeated default resets. Callback return expressions
+Local names prefer authored spellings with deterministic, hygienic disambiguation
+by IR identity; compiler temporaries retain generated names. Expressions use target
+precedence and associativity to avoid redundant parentheses. Final single-branch
+checks with an `else { break; }` directly inside `while (true)` become early-exit
+guards, without moving condition prefixes or changing break/continue targets.
+Hoisting declarations does not move initializer execution or repeated default
+resets. Callback return expressions
 execute into discard locals; calls relying on callback results are rejected.
 Every intrinsic is classified explicitly rather than emitted as an ordinary call.
 

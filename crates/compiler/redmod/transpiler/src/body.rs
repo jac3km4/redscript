@@ -154,18 +154,79 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         mappings: &mut Vec<SourceMapping>,
     ) -> Result<()> {
         for stmt in &block.stmts {
-            let start = text.len();
-            self.stmt(stmt, depth, text, mappings).map_err(|mut e| {
-                if e.span.is_none() {
-                    e.span = Some(stmt.span());
-                }
-                e
-            })?;
-            mappings.push(SourceMapping {
-                generated: start..text.len(),
-                source: stmt.span(),
-            });
+            self.mapped_stmt(stmt, depth, text, mappings)?;
         }
+        Ok(())
+    }
+
+    fn mapped_stmt(
+        &self,
+        stmt: &ir::Stmt<'ctx>,
+        depth: usize,
+        text: &mut String,
+        mappings: &mut Vec<SourceMapping>,
+    ) -> Result<()> {
+        let start = text.len();
+        self.stmt(stmt, depth, text, mappings).map_err(|mut e| {
+            if e.span.is_none() {
+                e.span = Some(stmt.span());
+            }
+            e
+        })?;
+        mappings.push(SourceMapping {
+            generated: start..text.len(),
+            source: stmt.span(),
+        });
+        Ok(())
+    }
+
+    fn loop_block(
+        &self,
+        block: &ir::Block<'ctx>,
+        depth: usize,
+        text: &mut String,
+        mappings: &mut Vec<SourceMapping>,
+    ) -> Result<()> {
+        let Some(ir::Stmt::Branches {
+            branches,
+            default: Some(default),
+            span,
+        }) = block.stmts.back()
+        else {
+            return self.block(block, depth, text, mappings);
+        };
+        let [branch] = &branches[..] else {
+            return self.block(block, depth, text, mappings);
+        };
+        let Some(break_stmt @ ir::Stmt::Break(_)) = default.stmts.front() else {
+            return self.block(block, depth, text, mappings);
+        };
+        if default.stmts.len() != 1 {
+            return self.block(block, depth, text, mappings);
+        }
+
+        // Only the final branch directly inside the loop can become a guard:
+        // its break still exits this loop, and no following statements are skipped.
+        for stmt in block.stmts.iter().take(block.stmts.len() - 1) {
+            self.mapped_stmt(stmt, depth, text, mappings)?;
+        }
+        let start = text.len();
+        let pad = "    ".repeat(depth);
+        text.push_str(&format!(
+            "{pad}if (!{}) {{\n",
+            self.expr_at(&branch.condition, 13)?
+        ));
+        mappings.push(SourceMapping {
+            generated: start..text.len(),
+            source: branch.condition.span(),
+        });
+        self.mapped_stmt(break_stmt, depth + 1, text, mappings)?;
+        text.push_str(&format!("{pad}}}\n"));
+        self.block(&branch.block, depth, text, mappings)?;
+        mappings.push(SourceMapping {
+            generated: start..text.len(),
+            source: *span,
+        });
         Ok(())
     }
 
@@ -188,7 +249,14 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             }
             ir::Stmt::While(branch, _) => {
                 text.push_str(&format!("while ({}) {{\n", self.expr(&branch.condition)?));
-                self.block(&branch.block, depth + 1, text, mappings)?;
+                if matches!(
+                    &*branch.condition,
+                    ir::Expr::Const(ir::Const::Bool(true), _)
+                ) {
+                    self.loop_block(&branch.block, depth + 1, text, mappings)?;
+                } else {
+                    self.block(&branch.block, depth + 1, text, mappings)?;
+                }
                 text.push_str(&format!("{pad}}}\n"));
             }
             ir::Stmt::Branches {
