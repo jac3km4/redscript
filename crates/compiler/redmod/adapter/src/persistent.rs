@@ -64,6 +64,10 @@ impl<'ctx> Visitor<'ctx> for Validator<'_, 'ctx> {
         if self.files.contains(&span.file)
             && self.symbols[field].flags().is_persistent()
             && self.symbols[field.parent()]
+                .schema()
+                .as_aggregate()
+                .is_some_and(|owner| !owner.flags().is_native() && !owner.flags().is_struct())
+            && self.symbols[field.parent()]
                 .span()
                 .is_some_and(|span| self.files.contains(&span.file))
             && self.owner != Some(field.parent())
