@@ -83,6 +83,92 @@ fn authored_transpiled_sources_compile_with_official_compiler() {
     // Keep evidence under target, but never accept output from an earlier run.
 }
 
+#[test]
+#[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]
+fn raw_inline_local_initializers_compile_with_official_compiler() {
+    let executable = PathBuf::from(std::env::var_os("REDMOD_EXE").expect("set REDMOD_EXE"));
+    let game_root =
+        PathBuf::from(std::env::var_os("REDMOD_GAME_ROOT").expect("set REDMOD_GAME_ROOT"));
+    let validator = OfficialValidator {
+        executable,
+        timeout: Duration::from_secs(60),
+    };
+    let parent = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../target/redmod-official")
+        .join(format!(
+            "inline-initializers-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+    std::fs::create_dir_all(parent.parent().unwrap()).unwrap();
+    std::fs::create_dir(&parent).unwrap();
+
+    // Authored REDmod, deliberately bypassing transpilation and snapshot fixtures.
+    // Compilation proves acceptance/typing only, not runtime order or side effects.
+    let fixtures = [
+        (
+            "InlineScalars",
+            r#"function OfficialInlineTick(out counter: Int32) -> Int32 {
+    counter = counter + 1;
+    return counter;
+}
+function OfficialInlineScalars(out counter: Int32) -> Int32 {
+    var x: Int32 = OfficialInlineTick(counter);
+    counter = counter + 10;
+    var y: Int32 = x + OfficialInlineTick(counter);
+    return y;
+}
+"#,
+        ),
+        (
+            "InlineArrayCopy",
+            r#"function OfficialInlineArrayCopy() -> Int32 {
+    var source: array<Int32>;
+    source.Resize(1);
+    source[0] = 42;
+    var copy: array<Int32> = source;
+    return copy[0];
+}
+"#,
+        ),
+        (
+            "InlineReferences",
+            r#"class OfficialInlineWidget extends IScriptable {
+}
+function OfficialInlineReferences() -> OfficialInlineWidget {
+    var value: OfficialInlineWidget = new OfficialInlineWidget;
+    var copy: OfficialInlineWidget = value;
+    return copy;
+}
+"#,
+        ),
+    ];
+    let mut failures = Vec::new();
+    for (name, source) in fixtures {
+        let directory = parent.join(name);
+        std::fs::create_dir_all(directory.join("r6/scripts")).unwrap();
+        std::fs::write(directory.join("r6/scripts/authored.script"), source).unwrap();
+        println!("{name}: {}", directory.display());
+        match validator.validate_with_root(&directory, &game_root) {
+            Ok(report) => {
+                println!(
+                    "{}",
+                    report.stdout.replace("\r\r\n", "\n").replace("\r\n", "\n")
+                );
+                if !report.stderr.is_empty() {
+                    failures.push(format!("{name}: {}", report.stderr));
+                }
+            }
+            Err(error) => failures.push(format!("{name}: {error}")),
+        }
+    }
+    // Retain scripts, logs, and fresh cache artifacts under target as evidence.
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
 // Read only bounded version-14 literal tables, not definitions (which may use
 // official layouts unsupported by the full decompiler). Offsets follow io/bundle.rs.
 fn literal_pool(bytes: &[u8], table: usize) -> Vec<&str> {
