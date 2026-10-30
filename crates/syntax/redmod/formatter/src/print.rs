@@ -102,32 +102,28 @@ pub fn print_module(module: &Module<'_>) -> Result<String> {
         printer.path(path)?;
         printer.out.push_str("\";\n\n");
     }
-    let mut saw_non_import = false;
-    for (decl, span) in &module.items {
-        if matches!(decl.item, Item::Import(_)) {
-            if saw_non_import {
-                return Err(error(PrintErrorKind::ImportsAfterDeclarations, Some(*span)));
-            }
-        } else {
-            saw_non_import = true;
-        }
-        at(printer.decl(decl, false), *span)?;
-    }
+    printer.decls(&module.items, DeclScope::Module)?;
     Ok(printer.out)
 }
 
 /// Print a standalone declaration at module scope.
 pub fn print_item_decl(decl: &Declaration<'_>) -> Result<String> {
     let mut printer = Printer::default();
-    printer.decl(decl, false)?;
+    printer.decl(decl, DeclScope::Module)?;
     Ok(printer.out)
 }
 
 /// Print a standalone declaration in class/struct member context.
 pub fn print_member_decl(decl: &Declaration<'_>) -> Result<String> {
     let mut printer = Printer::default();
-    printer.decl(decl, true)?;
+    printer.decl(decl, DeclScope::Member)?;
     Ok(printer.out)
+}
+
+#[derive(Clone, Copy)]
+enum DeclScope {
+    Module,
+    Member,
 }
 
 #[derive(Default)]
@@ -141,6 +137,14 @@ impl Printer {
         for _ in 0..self.indent {
             self.out.push_str("    ");
         }
+    }
+
+    fn indented(&mut self, print: impl FnOnce(&mut Self) -> Result<()>) -> Result<()> {
+        let indent = self.indent;
+        self.indent += 1;
+        let result = print(self);
+        self.indent = indent;
+        result
     }
 
     fn ident(&mut self, name: &str) -> Result<()> {
@@ -169,11 +173,19 @@ impl Printer {
         if names.is_empty() {
             return Err(error(PrintErrorKind::EmptyNameGroup, None));
         }
-        for (i, name) in names.iter().enumerate() {
+        self.comma_list(names, Self::name)
+    }
+
+    fn comma_list<T>(
+        &mut self,
+        items: &[T],
+        mut print: impl FnMut(&mut Self, &T) -> Result<()>,
+    ) -> Result<()> {
+        for (i, item) in items.iter().enumerate() {
             if i != 0 {
                 self.out.push_str(", ");
             }
-            self.name(name)?;
+            print(self, item)?;
         }
         Ok(())
     }
@@ -199,17 +211,26 @@ impl Printer {
         Ok(())
     }
 
-    fn decl(&mut self, decl: &Declaration<'_>, member: bool) -> Result<()> {
-        for doc in &decl.docs {
-            if !doc.starts_with("///") || doc.starts_with("////") || doc.contains(['\r', '\n']) {
-                return Err(error(PrintErrorKind::UnsupportedDocumentation, None));
+    fn decls(&mut self, decls: &[Spanned<Declaration<'_>>], scope: DeclScope) -> Result<()> {
+        let mut saw_non_import = false;
+        for (decl, span) in decls {
+            if matches!(scope, DeclScope::Module) {
+                if matches!(decl.item, Item::Import(_)) {
+                    if saw_non_import {
+                        return Err(error(PrintErrorKind::ImportsAfterDeclarations, Some(*span)));
+                    }
+                } else {
+                    saw_non_import = true;
+                }
             }
-            self.indent();
-            self.out.push_str(doc);
-            self.out.push('\n');
+            at(self.decl(decl, scope), *span)?;
         }
+        Ok(())
+    }
+
+    fn decl(&mut self, decl: &Declaration<'_>, scope: DeclScope) -> Result<()> {
         if let Item::Import(path) = &decl.item {
-            if member {
+            if matches!(scope, DeclScope::Member) {
                 return Err(error(PrintErrorKind::MemberImport, None));
             }
             if decl.visibility.is_some()
@@ -219,11 +240,24 @@ impl Printer {
             {
                 return Err(error(PrintErrorKind::ImportModifiers, None));
             }
-            self.indent();
+            self.decl_prefix(decl)?;
             self.out.push_str("@using \"");
             self.path(path)?;
             self.out.push_str("\";\n");
             return Ok(());
+        }
+        self.decl_prefix(decl)?;
+        self.item(&decl.item)
+    }
+
+    fn decl_prefix(&mut self, decl: &Declaration<'_>) -> Result<()> {
+        for doc in &decl.docs {
+            if !doc.starts_with("///") || doc.starts_with("////") || doc.contains(['\r', '\n']) {
+                return Err(error(PrintErrorKind::UnsupportedDocumentation, None));
+            }
+            self.indent();
+            self.out.push_str(doc);
+            self.out.push('\n');
         }
         for (meta, span) in &decl.metadata {
             self.indent();
@@ -272,7 +306,11 @@ impl Printer {
                 Modifier::Mutable => "mutable ",
             });
         }
-        match &decl.item {
+        Ok(())
+    }
+
+    fn item(&mut self, item: &Item<'_>) -> Result<()> {
+        match item {
             Item::Import(_) => unreachable!(),
             Item::Field(field) => {
                 self.out.push_str("var ");
@@ -299,11 +337,7 @@ impl Printer {
                     self.typ(extends)?;
                 }
                 self.out.push_str(" {\n");
-                self.indent += 1;
-                for (decl, span) in items {
-                    at(self.decl(decl, true), *span)?;
-                }
-                self.indent -= 1;
+                self.indented(|printer| printer.decls(items, DeclScope::Member))?;
                 self.indent();
                 self.out.push_str("}\n");
             }
@@ -337,22 +371,9 @@ impl Printer {
                     }
                 }
                 self.out.push('(');
-                for (i, (param, span)) in params.iter().enumerate() {
-                    if i != 0 {
-                        self.out.push_str(", ");
-                    }
-                    for (modifier, _) in &param.modifiers {
-                        self.out.push_str(match modifier {
-                            ParamModifier::Optional => "optional ",
-                            ParamModifier::Out => "out ",
-                            ParamModifier::Const => "const ",
-                            ParamModifier::Skip => "skip ",
-                        });
-                    }
-                    at(self.names(&param.names), *span)?;
-                    self.out.push_str(": ");
-                    self.typ(&param.typ)?;
-                }
+                self.comma_list(params, |printer, (param, span)| {
+                    at(printer.param(param), *span)
+                })?;
                 self.out.push(')');
                 if let Some(typ) = return_type {
                     self.out.push_str(" -> ");
@@ -383,16 +404,17 @@ impl Printer {
                     self.typ(typ)?;
                 }
                 self.out.push_str(" {\n");
-                self.indent += 1;
-                for (variant, _) in variants {
-                    self.indent();
-                    self.name(&variant.name)?;
-                    if let Some((value, _)) = variant.value {
-                        write!(self.out, " = {value}").unwrap();
+                self.indented(|printer| {
+                    for (variant, _) in variants {
+                        printer.indent();
+                        printer.name(&variant.name)?;
+                        if let Some((value, _)) = variant.value {
+                            write!(printer.out, " = {value}").unwrap();
+                        }
+                        printer.out.push_str(",\n");
                     }
-                    self.out.push_str(",\n");
-                }
-                self.indent -= 1;
+                    Ok(())
+                })?;
                 self.indent();
                 self.out.push_str("}\n");
             }
@@ -414,6 +436,20 @@ impl Printer {
         Ok(())
     }
 
+    fn param(&mut self, param: &ParamGroup<'_>) -> Result<()> {
+        for (modifier, _) in &param.modifiers {
+            self.out.push_str(match modifier {
+                ParamModifier::Optional => "optional ",
+                ParamModifier::Out => "out ",
+                ParamModifier::Const => "const ",
+                ParamModifier::Skip => "skip ",
+            });
+        }
+        self.names(&param.names)?;
+        self.out.push_str(": ");
+        self.typ(&param.typ)
+    }
+
     fn typ(&mut self, typ: &Spanned<Type<'_>>) -> Result<()> {
         at(self.type_inner(&typ.0), typ.1)
     }
@@ -433,12 +469,7 @@ impl Printer {
                 self.ident(name)?;
                 if !args.is_empty() {
                     self.out.push('<');
-                    for (i, arg) in args.iter().enumerate() {
-                        if i != 0 {
-                            self.out.push_str(", ");
-                        }
-                        self.typ(arg)?;
-                    }
+                    self.comma_list(args, Self::typ)?;
                     self.out.push('>');
                 }
             }
@@ -460,9 +491,7 @@ impl Printer {
 
     fn block(&mut self, block: &Block<'_>) -> Result<()> {
         self.out.push_str("{\n");
-        self.indent += 1;
-        self.stmts(block)?;
-        self.indent -= 1;
+        self.indented(|printer| printer.stmts(block))?;
         self.indent();
         self.out.push('}');
         Ok(())
@@ -574,22 +603,21 @@ impl Printer {
                 self.out.push_str("switch (");
                 self.expr(expr)?;
                 self.out.push_str(") {\n");
-                self.indent += 1;
-                for (label, _) in labels {
-                    self.indent();
-                    if let Some(value) = &label.value {
-                        self.out.push_str("case ");
-                        self.expr(value)?;
-                        self.out.push(':');
-                    } else {
-                        self.out.push_str("default:");
+                self.indented(|printer| {
+                    for (label, _) in labels {
+                        printer.indent();
+                        if let Some(value) = &label.value {
+                            printer.out.push_str("case ");
+                            printer.expr(value)?;
+                            printer.out.push(':');
+                        } else {
+                            printer.out.push_str("default:");
+                        }
+                        printer.out.push('\n');
+                        printer.indented(|printer| printer.stmts(&label.body))?;
                     }
-                    self.out.push('\n');
-                    self.indent += 1;
-                    self.stmts(&label.body)?;
-                    self.indent -= 1;
-                }
-                self.indent -= 1;
+                    Ok(())
+                })?;
                 self.indent();
                 self.out.push('}');
             }
@@ -609,13 +637,7 @@ impl Printer {
     }
 
     fn exprs(&mut self, exprs: &[Spanned<Expr<'_>>]) -> Result<()> {
-        for (i, expr) in exprs.iter().enumerate() {
-            if i != 0 {
-                self.out.push_str(", ");
-            }
-            self.expr(expr)?;
-        }
-        Ok(())
+        self.comma_list(exprs, Self::expr)
     }
 
     fn receiver(&mut self, expr: &Spanned<Expr<'_>>) -> Result<()> {
@@ -691,14 +713,12 @@ impl Printer {
                 if matches!(&**args, [(Expr::Omitted, _)]) {
                     return Err(error(PrintErrorKind::InvalidOmittedArgument, None));
                 }
-                for (i, arg) in args.iter().enumerate() {
-                    if i != 0 {
-                        self.out.push_str(", ");
-                    }
+                self.comma_list(args, |printer, arg| {
                     if !matches!(arg.0, Expr::Omitted) {
-                        self.expr(arg)?;
+                        printer.expr(arg)?;
                     }
-                }
+                    Ok(())
+                })?;
                 self.out.push(')');
             }
             Expr::Member { expr, member } => {
