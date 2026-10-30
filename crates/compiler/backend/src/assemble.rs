@@ -292,6 +292,11 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
                     .expect("every local should be defined");
                 let typ = self.mono_type(typ, *span)?;
 
+                // Variant locals are default-constructed by the VM, not by bytecode.
+                if typ.id() == predef::VARIANT {
+                    return Ok(());
+                }
+
                 if typ.id() == predef::ARRAY {
                     let array_t = self.monomorph.type_(&typ, self.symbols, self.bundle);
                     self.emit(Instr::ArrayClear(array_t));
