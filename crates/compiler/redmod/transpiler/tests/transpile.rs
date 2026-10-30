@@ -492,6 +492,39 @@ func Test(value: Int32) -> Int32 {
 }
 
 #[test]
+fn temporary_names_describe_purpose_and_reserve_authored_names() {
+    let output = convert(
+        r#"
+native func OperatorAssignAdd(out a: Int32, b: Int32) -> Int32
+native func OperatorLess(a: Int32, b: Int32) -> Bool
+func Items() -> [Int32] = [1]
+func Test() {
+    let first = [1];
+    let second = [2];
+    let arrayLiteral = 3;
+    let arrayLiteral_2 = 4;
+    let index = 5;
+    let iterable = 6;
+    for item in Items() { for other in first {} }
+}
+"#,
+    );
+    for declaration in [
+        "var arrayLiteral_3: array<Int32>;",
+        "var arrayLiteral_4: array<Int32>;",
+        "var index_2: Int32;",
+        "var index_3: Int32;",
+        "var iterable_2: array<Int32>;",
+        "var item: Int32;",
+        "var other: Int32;",
+    ] {
+        assert!(output.contains(declaration), "{output}");
+    }
+    assert!(!output.contains("__rst_v"));
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn callback_return_effects_are_evaluated_and_result_removed() {
     let output = convert(
         "func Effect() -> Bool = true class Widget { protected cb func OnEvent() -> Bool { return Effect(); } }",

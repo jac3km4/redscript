@@ -8,18 +8,18 @@ function Check(values: array<Int32>) -> Bool {
 function Tick() -> Void {
 }
 function Nested(values: array<Int32>) -> Void {
-    var __rst_v1: array<Int32>;
-    var __rst_v2: array<Int32>;
+    var arrayLiteral: array<Int32>;
+    var arrayLiteral_2: array<Int32>;
     while (true) {
-        __rst_v1.Resize(1);
-        __rst_v1[0] = 1;
-        if (!Check(__rst_v1)) {
+        arrayLiteral.Resize(1);
+        arrayLiteral[0] = 1;
+        if (!Check(arrayLiteral)) {
             break;
         }
         while (true) {
-            __rst_v2.Resize(1);
-            __rst_v2[0] = 2;
-            if (!Check(__rst_v2)) {
+            arrayLiteral_2.Resize(1);
+            arrayLiteral_2[0] = 2;
+            if (!Check(arrayLiteral_2)) {
                 break;
             }
             continue;

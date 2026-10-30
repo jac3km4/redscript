@@ -30,7 +30,8 @@ Explicit typed signatures/locals, ordinary calls/operators/casts, structured IR
 control flow, lowered for-in/interpolation, selected dynamic-array intrinsics,
 verified primitive/reference defaults, overrides and uniquely associated patches.
 Local names prefer authored spellings with deterministic, hygienic disambiguation
-by IR identity; compiler temporaries retain generated names. Expressions use target
+by IR identity; compiler temporaries use purpose-based names such as `arrayLiteral`,
+`index` and `iterable`, with the same collision protection. Expressions use target
 precedence and associativity to avoid redundant parentheses. Final single-branch
 checks with an `else { break; }` directly inside `while (true)` become early-exit
 guards, without moving condition prefixes or changing break/continue targets.

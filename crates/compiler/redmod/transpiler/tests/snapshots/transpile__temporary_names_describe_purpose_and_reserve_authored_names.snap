@@ -1,0 +1,48 @@
+---
+source: crates/compiler/redmod/transpiler/tests/transpile.rs
+expression: output
+---
+import function OperatorAssignAdd(out a: Int32, b: Int32) -> Int32;
+import function OperatorLess(a: Int32, b: Int32) -> Bool;
+function Items() -> array<Int32> {
+    var arrayLiteral: array<Int32>;
+    arrayLiteral.Resize(1);
+    arrayLiteral[0] = 1;
+    return arrayLiteral;
+}
+function Test() -> Void {
+    var arrayLiteral_3: array<Int32>;
+    var first: array<Int32>;
+    var arrayLiteral_4: array<Int32>;
+    var second: array<Int32>;
+    var arrayLiteral: Int32;
+    var arrayLiteral_2: Int32;
+    var index: Int32;
+    var iterable: Int32;
+    var index_2: Int32;
+    var iterable_2: array<Int32>;
+    var item: Int32;
+    var index_3: Int32;
+    var other: Int32;
+    arrayLiteral_3.Resize(1);
+    arrayLiteral_3[0] = 1;
+    first = arrayLiteral_3;
+    arrayLiteral_4.Resize(1);
+    arrayLiteral_4[0] = 2;
+    second = arrayLiteral_4;
+    arrayLiteral = 3;
+    arrayLiteral_2 = 4;
+    index = 5;
+    iterable = 6;
+    iterable_2 = Items();
+    index_2 = 0;
+    while (index_2 < iterable_2.Size()) {
+        item = iterable_2[index_2];
+        index_2 += 1;
+        index_3 = 0;
+        while (index_3 < first.Size()) {
+            other = first[index_3];
+            index_3 += 1;
+        }
+    }
+}

@@ -13,13 +13,13 @@ function Check(values: array<Int32>) -> Bool {
 }
 function Test(enabled: Bool, values: array<Int32>) -> Bool {
     var count: Int32;
-    var __rst_v3: array<Int32>;
+    var arrayLiteral: array<Int32>;
     var reset: Int32;
     count = 0;
     while (true) {
-        __rst_v3.Resize(1);
-        __rst_v3[0] = count;
-        if (!Check(__rst_v3)) {
+        arrayLiteral.Resize(1);
+        arrayLiteral[0] = count;
+        if (!Check(arrayLiteral)) {
             break;
         }
         reset = Cast<Int32>(0);

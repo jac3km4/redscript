@@ -77,6 +77,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             }
             let source_name = preferred(local).filter(|name| target::ident(name).is_ok());
             let base = source_name
+                .or_else(|| local.temporary_purpose.map(temporary_name))
                 .map(str::to_owned)
                 .unwrap_or_else(|| match local.id {
                     ir::Local::Param(i) => format!("__rst_p{i}"),
@@ -932,6 +933,17 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 None,
             )),
         }
+    }
+}
+
+fn temporary_name(purpose: ir::TemporaryPurpose) -> &'static str {
+    match purpose {
+        ir::TemporaryPurpose::ArrayLiteral => "arrayLiteral",
+        ir::TemporaryPurpose::IterationIndex => "index",
+        ir::TemporaryPurpose::IterationIterable => "iterable",
+        ir::TemporaryPurpose::PatternScrutinee => "matchedValue",
+        ir::TemporaryPurpose::SwitchScrutinee => "switchValue",
+        ir::TemporaryPurpose::LoopEntered => "loopEntered",
     }
 }
 
