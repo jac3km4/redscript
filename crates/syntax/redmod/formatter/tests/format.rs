@@ -21,7 +21,7 @@ fn native_indentation_preserves_comments_literals_and_override() {
 #[test]
 fn native_indentation_preserves_body_and_trailing_doc_comments() {
     let source = "/// host\nclass Host {\n/// method\nfunction Run() {\n/// Explain next call\nUse(/// argument\n1);\n/// trailing body\n}\n/// trailing class\n}\n/// trailing file";
-    let expected = "/// host\nclass Host {\n    /// method\n    function Run() {\n        /// Explain next call\n        Use(/// argument\n        1);\n        /// trailing body\n    }\n    /// trailing class\n}\n/// trailing file";
+    let expected = "/// host\nclass Host {\n    /// method\n    function Run() {\n        /// Explain next call\n        Use(/// argument\n            1);\n        /// trailing body\n    }\n    /// trailing class\n}\n/// trailing file";
     for (source, expected) in [
         (source.to_owned(), expected.to_owned()),
         (source.replace('\n', "\r\n"), expected.replace('\n', "\r\n")),
@@ -88,6 +88,59 @@ fn invalid_source_returns_parser_diagnostics() {
         .map(|error| error.display(&sources).unwrap().to_string())
         .collect();
     insta::assert_snapshot!(diagnostics);
+}
+
+#[test]
+fn switch_bodies_and_nested_labels_are_indented() {
+    let expected = "function F() {\n    switch (x) {\n        case true ? 1 : 2:\n        case 3:\n            // body\n            if (true) {\n                Use();\n            }\n            switch (y) {\n                default:\n                    break;\n            }\n            break;\n        default:\n            /* trailing body */\n    }\n}\n";
+    assert_indentation(expected);
+}
+
+#[test]
+fn existing_multiline_lists_and_chains_use_continuation_indents() {
+    let expected = "class C {\n    function F(\n        x: Int32,\n        y: Int32\n    ) {\n        Use(\n            x,\n            Nested(\n                y\n            )\n        );\n        Use([\n                1,\n                2\n        ]);\n        this\n            .First()\n            .Second();\n    }\n}\n";
+    assert_indentation(expected);
+}
+
+#[test]
+fn multiline_chained_calls_keep_their_continuation_base() {
+    assert_indentation(
+        "function F() {\n    this\n        .First(\n            x\n        )\n        .Second();\n}\n",
+    );
+}
+
+#[test]
+fn compact_empty_switch_labels_do_not_underflow() {
+    assert_indentation(
+        "function F(){switch(x){case 0:case 0:case 0:switch(x){case 0:switch(x){case 0:case 0:case 0:case 0:case 0:}case 0:switch(x){case 0:case 0:case 0:}case 0:case 0:case 0:}case 0:}\n}\n",
+    );
+}
+
+fn assert_indentation(expected: &str) {
+    for expected in [expected.to_owned(), expected.replace('\n', "\r\n")] {
+        let source = expected
+            .split_inclusive('\n')
+            .map(|line| line.trim_start_matches(' '))
+            .collect::<String>();
+        let formatted = redscript_redmod_formatter::format_source(&source, file()).unwrap();
+        assert_eq!(formatted, expected);
+        assert_eq!(
+            redscript_redmod_formatter::format_source(&formatted, file()).unwrap(),
+            formatted
+        );
+        let tokens = |source: &str| {
+            let (tokens, errors) =
+                redscript_redmod_parser::lex_with_lf_and_comments(source, file());
+            assert!(errors.is_empty());
+            tokens
+                .unwrap()
+                .into_iter()
+                .filter(|(token, _)| *token != redscript_redmod_parser::Token::Whitespace)
+                .map(|(token, _)| token.to_string())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(tokens(&source), tokens(&formatted));
+    }
 }
 
 #[test]
