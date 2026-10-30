@@ -484,10 +484,10 @@ func Test(value: Int32) -> Int32 {
 "#,
     );
     assert!(output.contains("function Test(value: Int32)"));
-    assert!(output.contains("var value_2: Int32;"));
+    assert!(output.contains("var value_2: Int32 = 2;"));
     assert!(output.contains("var value_3: Int32;"));
-    assert!(output.contains("var __rst_v3: Int32;"));
-    assert!(output.contains("var Test_2: Int32;"));
+    assert!(output.contains("var __rst_v3: Int32 = 3;"));
+    assert!(output.contains("var Test_2: Int32 = value_2;"));
     insta::assert_snapshot!(output);
 }
 
@@ -512,9 +512,9 @@ func Test() {
     for declaration in [
         "var arrayLiteral_3: array<Int32>;",
         "var arrayLiteral_4: array<Int32>;",
-        "var index_2: Int32;",
+        "var index_2: Int32 = 0;",
         "var index_3: Int32;",
-        "var iterable_2: array<Int32>;",
+        "var iterable_2: array<Int32> = Items();",
         "var item: Int32;",
         "var other: Int32;",
     ] {
@@ -522,6 +522,66 @@ func Test() {
     }
     assert!(!output.contains("__rst_v"));
     insta::assert_snapshot!(output);
+}
+
+#[test]
+fn declarations_merge_only_with_unconditional_first_initializers() {
+    let source = r#"
+func Tick() -> Int32 = 1
+func Test(flag: Bool) -> Int32 {
+    let count = Tick();
+    let zero: Int32;
+    let text: String;
+    let empty: [Int32];
+    let values = [count];
+    if flag { let branchValue = Tick(); }
+    while flag { let repeated = Tick(); let reset: Int32; continue; }
+
+    if flag { let count = count; }
+    count = Tick();
+    return count;
+}
+"#;
+    let output = convert_mapped(source);
+    for expected in [
+        "var count: Int32 = Tick();",
+        "var zero: Int32 = Cast<Int32>(0);",
+        "var text: String = \"\";",
+        "var values: array<Int32> = arrayLiteral;",
+        "var branchValue: Int32;",
+        "var repeated: Int32;",
+        "var reset: Int32;",
+        "var count_2: Int32;",
+        "empty.Clear();",
+        "reset = Cast<Int32>(0);",
+        "count_2 = count;",
+    ] {
+        assert!(output.text.contains(expected), "{}", output.text);
+    }
+    assert_eq!(output.text.matches("var count:").count(), 1);
+    let generated = output.text.find("var count: Int32 = Tick();").unwrap();
+    let mapped =
+        redscript_redmod_transpiler::package::source_at(&output.mappings, generated).unwrap();
+    assert!(source[mapped.start as usize..mapped.end as usize].contains("let count = Tick()"));
+    for (generated_token, source_statement) in [
+        ("Tick();", "let count = Tick()"),
+        ("var zero: Int32", "let zero: Int32"),
+    ] {
+        let offset = if generated_token == "Tick();" {
+            generated + output.text[generated..].find(generated_token).unwrap()
+        } else {
+            output.text.find(generated_token).unwrap()
+        };
+        let span =
+            redscript_redmod_transpiler::package::source_at(&output.mappings, offset).unwrap();
+        assert!(source[span.start as usize..span.end as usize].contains(source_statement));
+    }
+    let sources = SourceMap::new();
+    let file = sources.push_back("emitted.script", output.text.clone());
+    let (module, errors) = redscript_redmod_parser::parse_module(&output.text, file);
+    assert!(errors.is_empty(), "{errors:?}");
+    assert!(module.is_some());
+    insta::assert_snapshot!(output.text);
 }
 
 #[test]

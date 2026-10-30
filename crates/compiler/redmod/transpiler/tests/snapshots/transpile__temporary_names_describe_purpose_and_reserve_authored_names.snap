@@ -12,30 +12,22 @@ function Items() -> array<Int32> {
 }
 function Test() -> Void {
     var arrayLiteral_3: array<Int32>;
-    var first: array<Int32>;
     var arrayLiteral_4: array<Int32>;
-    var second: array<Int32>;
-    var arrayLiteral: Int32;
-    var arrayLiteral_2: Int32;
-    var index: Int32;
-    var iterable: Int32;
-    var index_2: Int32;
-    var iterable_2: array<Int32>;
     var item: Int32;
     var index_3: Int32;
     var other: Int32;
     arrayLiteral_3.Resize(1);
     arrayLiteral_3[0] = 1;
-    first = arrayLiteral_3;
+    var first: array<Int32> = arrayLiteral_3;
     arrayLiteral_4.Resize(1);
     arrayLiteral_4[0] = 2;
-    second = arrayLiteral_4;
-    arrayLiteral = 3;
-    arrayLiteral_2 = 4;
-    index = 5;
-    iterable = 6;
-    iterable_2 = Items();
-    index_2 = 0;
+    var second: array<Int32> = arrayLiteral_4;
+    var arrayLiteral: Int32 = 3;
+    var arrayLiteral_2: Int32 = 4;
+    var index: Int32 = 5;
+    var iterable: Int32 = 6;
+    var iterable_2: array<Int32> = Items();
+    var index_2: Int32 = 0;
     while (index_2 < iterable_2.Size()) {
         item = iterable_2[index_2];
         index_2 += 1;

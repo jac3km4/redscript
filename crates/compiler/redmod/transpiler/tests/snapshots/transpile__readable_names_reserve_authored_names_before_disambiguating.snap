@@ -3,17 +3,13 @@ source: crates/compiler/redmod/transpiler/tests/transpile.rs
 expression: output
 ---
 function Test(value: Int32) -> Int32 {
-    var value_2: Int32;
-    var __rst_v3: Int32;
     var value_3: Int32;
-    var __rst_v4: Int32;
-    var Test_2: Int32;
-    value_2 = 2;
-    __rst_v3 = 3;
+    var value_2: Int32 = 2;
+    var __rst_v3: Int32 = 3;
     if (true) {
         value_3 = 1;
     }
-    __rst_v4 = 4;
-    Test_2 = value_2;
+    var __rst_v4: Int32 = 4;
+    var Test_2: Int32 = value_2;
     return value;
 }

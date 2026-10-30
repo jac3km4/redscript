@@ -15,6 +15,7 @@ pub(crate) struct Body<'a, 'ctx> {
     pub callback: bool,
     pub wrapper: Option<MethodId<'ctx>>,
     result_local: String,
+    inline_declarations: BTreeSet<ir::Local>,
 }
 
 impl<'a, 'ctx> Body<'a, 'ctx> {
@@ -107,6 +108,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             callback,
             wrapper,
             result_local,
+            inline_declarations: crate::locals::inline_declarations(&function.block, symbols)?,
         })
     }
 
@@ -117,11 +119,27 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             .ok_or_else(|| error("missing local identity", Some(self.function.span)))
     }
 
-    pub fn emit(&self) -> Result<(String, Vec<SourceMapping>)> {
+    fn local_declaration(&self, local: ir::Local) -> Result<String> {
+        let typ = self
+            .function
+            .find_local(local)
+            .ok_or_else(|| error("missing local identity", Some(self.function.span)))?
+            .coalesce(self.symbols)
+            .map_err(|e| error(e.to_string(), Some(self.function.span)))?;
+        Ok(format!(
+            "{}: {}",
+            self.local(local)?,
+            target::typ(&typ, self.symbols)?
+        ))
+    }
+
+    pub fn emit(mut self) -> Result<(String, Vec<SourceMapping>)> {
         let mut text = String::from("{\n");
         let mut mappings = Vec::new();
         for local in &self.function.locals {
-            if matches!(local.id, ir::Local::Var(_)) {
+            if matches!(local.id, ir::Local::Var(_))
+                && !self.inline_declarations.contains(&local.id)
+            {
                 let typ = local
                     .typ
                     .coalesce(self.symbols)
@@ -148,7 +166,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
     }
 
     fn block(
-        &self,
+        &mut self,
         block: &ir::Block<'ctx>,
         depth: usize,
         text: &mut String,
@@ -161,7 +179,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
     }
 
     fn mapped_stmt(
-        &self,
+        &mut self,
         stmt: &ir::Stmt<'ctx>,
         depth: usize,
         text: &mut String,
@@ -182,7 +200,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
     }
 
     fn loop_block(
-        &self,
+        &mut self,
         block: &ir::Block<'ctx>,
         depth: usize,
         text: &mut String,
@@ -232,7 +250,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
     }
 
     fn stmt(
-        &self,
+        &mut self,
         stmt: &ir::Stmt<'ctx>,
         depth: usize,
         text: &mut String,
@@ -241,10 +259,23 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         let pad = "    ".repeat(depth);
         text.push_str(&pad);
         match stmt {
-            ir::Stmt::Expr(e) => text.push_str(&format!("{};\n", self.expr(e)?)),
+            ir::Stmt::Expr(e) => {
+                if let ir::Expr::Assign { place, expr, .. } = &**e
+                    && let ir::Expr::Local(local, _) = &**place
+                    && self.inline_declarations.remove(local)
+                {
+                    text.push_str(&format!(
+                        "var {} = {};\n",
+                        self.local_declaration(*local)?,
+                        self.expr(expr)?
+                    ));
+                } else {
+                    text.push_str(&format!("{};\n", self.expr(e)?));
+                }
+            }
             ir::Stmt::Block(block, _) => {
-                // All declarations are already hoisted and renamed, so lexical
-                // grouping carries no remaining target semantics.
+                // Locals are globally hygienic. The declaration planner treats
+                // these flattened blocks as part of their enclosing sequence.
                 text.truncate(text.len() - pad.len());
                 self.block(block, depth, text, mappings)?;
             }
@@ -316,6 +347,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 }
             }
             ir::Stmt::InitDefault { local, typ, .. } => {
+                let inline = self.inline_declarations.remove(local);
                 let name = self.local(*local)?;
                 let typ = typ
                     .coalesced(self.symbols)
@@ -323,7 +355,12 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 if matches!(&typ, Type::Data(app) if app.id() == predef::ARRAY) {
                     text.push_str(&format!("{name}.Clear();\n"));
                 } else {
-                    text.push_str(&format!("{name} = {};\n", self.default_value(&typ)?));
+                    let place = if inline {
+                        format!("var {}", self.local_declaration(*local)?)
+                    } else {
+                        name.to_owned()
+                    };
+                    text.push_str(&format!("{place} = {};\n", self.default_value(&typ)?));
                 }
             }
             ir::Stmt::Break(_) => text.push_str("break;\n"),

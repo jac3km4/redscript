@@ -12,10 +12,9 @@ function Check(values: array<Int32>) -> Bool {
     return true;
 }
 function Test(enabled: Bool, values: array<Int32>) -> Bool {
-    var count: Int32;
     var arrayLiteral: array<Int32>;
     var reset: Int32;
-    count = 0;
+    var count: Int32 = 0;
     while (true) {
         arrayLiteral.Resize(1);
         arrayLiteral[0] = count;

@@ -10,6 +10,7 @@ mod body;
 
 pub use analyze::{AnalyzedSources, TranspiledSource, analyze_sources, transpile_sources};
 mod declarations;
+mod locals;
 pub mod package;
 mod source;
 mod target;

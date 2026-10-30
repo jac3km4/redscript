@@ -19,15 +19,13 @@ function Empty() -> array<Int32> {
     return arrayLiteral;
 }
 function Test(items: array<Int32>, enabled: Bool) -> String {
-    var result: String;
-    var index: Int32;
     var item: Int32;
     var scratch: array<Int32>;
     var zero: Int32;
     var __rst_v7: Int32;
     var __rst_v8: Int32;
-    result = "";
-    index = 0;
+    var result: String = "";
+    var index: Int32 = 0;
     while (index < items.Size()) {
         item = items[index];
         index += 1;
