@@ -7,7 +7,6 @@ use bon::bon;
 use env::{Capture, Locals};
 pub use env::{Env, TypeEnv, TypeRef};
 pub use error::{CoalesceError, Error, LowerResult, TypeError};
-use indexmap::set::MutableValues;
 use redscript_ast as ast;
 use redscript_ast::{Span, Spanned};
 use types::Coercion;
@@ -65,7 +64,10 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
 
     #[inline]
     fn into_output(self) -> LowerOutput<'ctx> {
-        LowerOutput::new(self.locals.into_vec(), self.captures)
+        let mut captures = self.captures;
+        // Nested lambdas may capture locals owned by this function, not its caller.
+        captures.retain(|cap| cap.scope_depth < self.locals.depth());
+        LowerOutput::new(self.locals.into_vec(), captures)
     }
 
     pub fn function(
@@ -1296,10 +1298,9 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             return Err(Error::UnresolvedVar(name, span));
         };
 
-        let ir = if depth > 0
-            && env.locals().scope_iter().count() - usize::from(depth) < self.locals.depth()
-        {
-            self.captures.insert(Capture::new(loc.id, depth));
+        let scope_depth = env.locals().scope_iter().count() - usize::from(depth);
+        let ir = if scope_depth < self.locals.depth() {
+            self.captures.insert(Capture::new(loc.id, scope_depth));
             ir::Expr::Capture(loc.id, span)
         } else {
             ir::Expr::Local(loc.id, span)
@@ -1442,9 +1443,7 @@ pub struct LowerOutput<'ctx> {
 }
 
 impl<'ctx> LowerOutput<'ctx> {
-    pub fn new(locals: Vec<ir::LocalInfo<'ctx>>, mut captures: IndexSet<Capture>) -> Self {
-        // we can safely discard captures that are no longer in scope
-        captures.retain2(|cap| cap.pop_scope().map(|next| *cap = next).is_some());
+    pub fn new(locals: Vec<ir::LocalInfo<'ctx>>, captures: IndexSet<Capture>) -> Self {
         Self { locals, captures }
     }
 

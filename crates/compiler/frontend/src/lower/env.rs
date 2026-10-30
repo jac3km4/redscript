@@ -269,16 +269,15 @@ impl<'scope, 'ctx> Locals<'scope, 'ctx> {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Capture {
     pub captured: ir::Local,
-    pub depth: u16,
+    pub scope_depth: usize,
 }
 
 impl Capture {
-    pub fn new(captured: ir::Local, depth: u16) -> Self {
-        Self { captured, depth }
-    }
-
-    pub fn pop_scope(&self) -> Option<Self> {
-        Some(Self::new(self.captured, self.depth.checked_sub(1)?))
+    pub fn new(captured: ir::Local, scope_depth: usize) -> Self {
+        Self {
+            captured,
+            scope_depth,
+        }
     }
 }
 

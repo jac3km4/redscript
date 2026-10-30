@@ -1,0 +1,284 @@
+---
+source: crates/compiler/backend/tests/bytecode.rs
+expression: "compile(path, |_| {})"
+input_file: crates/compiler/backend/tests/data/lambda-block-captures.reds
+---
+// CaptureLambdaLocal; (f0)
+assign
+local 0 "f$2": "ref:Function0<Void>"
+invoke.static j16 l0 f1 lambda$12::Instantiate 0000000000000000
+param.end
+
+// CaptureLambdaParameter; (f2)
+assign
+local 1 "f$2": "ref:Function1<Int32,Void>"
+invoke.static j16 l0 f3 lambda$26::Instantiate 0000000000000000
+param.end
+
+// CaptureOuterLocal; (f4)
+assign
+local 2 "x$0": "Int32"
+i32.one
+assign
+local 3 "f$3": "ref:Function0<Void>"
+invoke.static j25 l0 f5 lambda$30::Instantiate 0000000000000000
+local 2 "x$0": "Int32"
+param.end
+
+// CaptureFromDifferentBlocks; (f6)
+assign
+local 4 "x$0": "Int32"
+i32.one
+assign
+local 5 "f$5": "ref:Function0<Void>"
+invoke.static j25 l0 f7 lambda$36::Instantiate 0000000000000000
+local 4 "x$0": "Int32"
+param.end
+
+// CaptureShadowedLocal; (f8)
+assign
+local 6 "x$0": "Int32"
+i32.one
+assign
+local 7 "f$4": "ref:Function0<Void>"
+invoke.static j25 l0 f9 lambda$43::Instantiate 0000000000000000
+local 6 "x$0": "Int32"
+param.end
+
+// Function0<Void>::Call; (f10)
+
+// lambda$12::Instantiate (f1)
+assign
+local 8 "self": "ref:Function0<Void>"
+object.new 0 "lambda$12"
+return
+local 8 "self": "ref:Function0<Void>"
+
+// lambda$12::Call; (f11)
+assign
+local 9 "x$0": "Int32"
+i32.one
+jump.if_not 39
+true.const
+assign
+local 10 "g$1": "ref:Function0<Int32>"
+invoke.static j25 l0 f12 lambda$20::Instantiate 0000000000000000
+local 9 "x$0": "Int32"
+param.end
+jump 0
+
+// Function0<Int32>::Call; (f13)
+
+// lambda$20::Instantiate (f12)
+assign
+local 11 "self": "ref:Function0<Int32>"
+object.new 1 "lambda$20"
+assign
+ctx 15
+local 11 "self": "ref:Function0<Int32>"
+object.field 0 lambda$20::capture$1: "Int32"
+param 0 "capture$1": "Int32"
+return
+local 11 "self": "ref:Function0<Int32>"
+
+// lambda$20::Call; (f14)
+return
+object.field 0 lambda$20::capture$1: "Int32"
+
+// Function1<Int32,Void>::Call;Int32 (f15)
+
+// lambda$26::Instantiate (f3)
+assign
+local 12 "self": "ref:Function1<Int32,Void>"
+object.new 2 "lambda$26"
+return
+local 12 "self": "ref:Function1<Int32,Void>"
+
+// lambda$26::Call;Int32 (f16)
+jump.if_not 46
+true.const
+jump.if_not 39
+true.const
+assign
+local 13 "g$1": "ref:Function0<Int32>"
+invoke.static j25 l0 f17 lambda$28::Instantiate 0000000000000000
+param 1 "arg$0": "Int32"
+param.end
+jump 0
+jump 0
+
+// lambda$28::Instantiate (f17)
+assign
+local 14 "self": "ref:Function0<Int32>"
+object.new 3 "lambda$28"
+assign
+ctx 15
+local 14 "self": "ref:Function0<Int32>"
+object.field 1 lambda$28::capture$1: "Int32"
+param 2 "capture$1": "Int32"
+return
+local 14 "self": "ref:Function0<Int32>"
+
+// lambda$28::Call; (f18)
+return
+object.field 1 lambda$28::capture$1: "Int32"
+
+// lambda$30::Instantiate (f5)
+assign
+local 15 "self": "ref:Function0<Void>"
+object.new 4 "lambda$30"
+assign
+ctx 15
+local 15 "self": "ref:Function0<Void>"
+object.field 2 lambda$30::capture$1: "Int32"
+param 3 "capture$1": "Int32"
+return
+local 15 "self": "ref:Function0<Void>"
+
+// lambda$30::Call; (f19)
+jump.if_not 39
+true.const
+assign
+local 16 "g$2": "ref:Function0<Void>"
+invoke.static j25 l0 f20 lambda$32::Instantiate 0000000000000000
+object.field 2 lambda$30::capture$1: "Int32"
+param.end
+jump 0
+
+// lambda$32::Instantiate (f20)
+assign
+local 17 "self": "ref:Function0<Void>"
+object.new 5 "lambda$32"
+assign
+ctx 15
+local 17 "self": "ref:Function0<Void>"
+object.field 3 lambda$32::capture$1: "Int32"
+param 4 "capture$1": "Int32"
+return
+local 17 "self": "ref:Function0<Void>"
+
+// lambda$32::Call; (f21)
+jump.if_not 39
+true.const
+assign
+local 18 "h$1": "ref:Function0<Int32>"
+invoke.static j25 l0 f22 lambda$34::Instantiate 0000000000000000
+object.field 3 lambda$32::capture$1: "Int32"
+param.end
+jump 0
+
+// lambda$34::Instantiate (f22)
+assign
+local 19 "self": "ref:Function0<Int32>"
+object.new 6 "lambda$34"
+assign
+ctx 15
+local 19 "self": "ref:Function0<Int32>"
+object.field 4 lambda$34::capture$1: "Int32"
+param 5 "capture$1": "Int32"
+return
+local 19 "self": "ref:Function0<Int32>"
+
+// lambda$34::Call; (f23)
+return
+object.field 4 lambda$34::capture$1: "Int32"
+
+// lambda$36::Instantiate (f7)
+assign
+local 20 "self": "ref:Function0<Void>"
+object.new 7 "lambda$36"
+assign
+ctx 15
+local 20 "self": "ref:Function0<Void>"
+object.field 5 lambda$36::capture$1: "Int32"
+param 6 "capture$1": "Int32"
+return
+local 20 "self": "ref:Function0<Void>"
+
+// lambda$36::Call; (f24)
+assign
+local 21 "a$1": "Int32"
+object.field 5 lambda$36::capture$1: "Int32"
+jump.if_not 58
+true.const
+assign
+local 22 "b$2": "Int32"
+object.field 5 lambda$36::capture$1: "Int32"
+assign
+local 23 "g$3": "ref:Function0<Int32>"
+invoke.static j25 l0 f25 lambda$41::Instantiate 0000000000000000
+object.field 5 lambda$36::capture$1: "Int32"
+param.end
+jump 0
+jump.if_not 30
+true.const
+jump.if_not 23
+true.const
+assign
+local 24 "c$4": "Int32"
+object.field 5 lambda$36::capture$1: "Int32"
+jump 0
+jump 0
+
+// lambda$41::Instantiate (f25)
+assign
+local 25 "self": "ref:Function0<Int32>"
+object.new 8 "lambda$41"
+assign
+ctx 15
+local 25 "self": "ref:Function0<Int32>"
+object.field 6 lambda$41::capture$1: "Int32"
+param 7 "capture$1": "Int32"
+return
+local 25 "self": "ref:Function0<Int32>"
+
+// lambda$41::Call; (f26)
+return
+object.field 6 lambda$41::capture$1: "Int32"
+
+// lambda$43::Instantiate (f9)
+assign
+local 26 "self": "ref:Function0<Void>"
+object.new 9 "lambda$43"
+assign
+ctx 15
+local 26 "self": "ref:Function0<Void>"
+object.field 7 lambda$43::capture$1: "Int32"
+param 8 "capture$1": "Int32"
+return
+local 26 "self": "ref:Function0<Void>"
+
+// lambda$43::Call; (f27)
+assign
+local 27 "a$1": "Int32"
+object.field 7 lambda$43::capture$1: "Int32"
+jump.if_not 61
+true.const
+assign
+local 28 "x$2": "Int32"
+i32.const 2
+jump.if_not 39
+true.const
+assign
+local 29 "g$3": "ref:Function0<Int32>"
+invoke.static j25 l0 f28 lambda$45::Instantiate 0000000000000000
+local 28 "x$2": "Int32"
+param.end
+jump 0
+jump 0
+
+// lambda$45::Instantiate (f28)
+assign
+local 30 "self": "ref:Function0<Int32>"
+object.new 10 "lambda$45"
+assign
+ctx 15
+local 30 "self": "ref:Function0<Int32>"
+object.field 8 lambda$45::capture$3: "Int32"
+param 9 "capture$3": "Int32"
+return
+local 30 "self": "ref:Function0<Int32>"
+
+// lambda$45::Call; (f29)
+return
+object.field 8 lambda$45::capture$3: "Int32"
