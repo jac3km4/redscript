@@ -11,8 +11,8 @@ use crate::stages::infer::{ClassItem, FuncItemKind, InferStageModule};
 use crate::symbols::AnyBaseType;
 use crate::utils::ScopedMap;
 use crate::{
-    CtxVar, Diagnostic, FunctionIndex, FunctionType, IndexMap, IndexSet, MethodId, Param, PolyType,
-    Type, TypeApp, TypeId, TypeSchema, Variance,
+    CtxVar, Diagnostic, FunctionIndex, FunctionType, IndexMap, MethodId, Param, PolyType, Type,
+    TypeApp, TypeId, TypeSchema, Variance,
 };
 
 impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
@@ -139,7 +139,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
 
             let mut implemented: IndexMap<MethodId<'ctx>, FunctionIndex> = IndexMap::default();
             let unimplemented = virtuals.entry(cls_id).or_default();
-            let mut duplicates = IndexSet::<&'ctx str>::default();
+            let mut duplicates = IndexMap::<&'ctx str, Span>::default();
 
             for method in aggregate.methods().iter() {
                 let method_t = method.func().type_();
@@ -178,7 +178,10 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
 
                 match base {
                     Some(base) if base.key().parent() == cls_id => {
-                        duplicates.insert(method.name());
+                        duplicates.insert(
+                            method.name(),
+                            method.func().span().unwrap_or(class.name_span()),
+                        );
                     }
                     Some(base) => {
                         if base.func().flags().is_final() {
@@ -233,9 +236,8 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                 }
             }
 
-            for dup in duplicates {
-                self.reporter
-                    .report(Diagnostic::DuplicateMethod(dup, class.name_span()));
+            for (dup, span) in duplicates {
+                self.reporter.report(Diagnostic::DuplicateMethod(dup, span));
             }
 
             if !missing.is_empty() {

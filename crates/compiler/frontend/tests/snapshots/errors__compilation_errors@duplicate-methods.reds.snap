@@ -1,0 +1,10 @@
+---
+source: crates/compiler/frontend/tests/errors.rs
+expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
+input_file: crates/compiler/frontend/tests/data/duplicate-methods.reds
+---
+error[DUP_METHOD]: this class contains a duplicated implementation of the `Method` method
+ --> tests/data/duplicate-methods.reds:4:8
+  |
+4 |   func Method(x: String) {}
+  |        ^^^^^^

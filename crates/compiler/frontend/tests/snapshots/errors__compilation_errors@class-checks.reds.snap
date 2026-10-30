@@ -130,10 +130,10 @@ error[UNSATISFIED_BOUND]: type `Chair` does not satisfy expected bound `Animal` 
    |       ^^^^^^^^^^^^^^^^^^^
 
 error[DUP_METHOD]: this class contains a duplicated implementation of the `Method` method
- --> tests/data/class-checks.reds:27:7
+ --> tests/data/class-checks.reds:29:8
    |
-27 | class ClassWithDuplicateMethod {
-   |       ^^^^^^^^^^^^^^^^^^^^^^^^
+29 |   func Method(x: String) {}
+   |        ^^^^^^
 
 error[MISSING_IMPL]: this class is missing required method implementations:
   func UnimplementedMethod(a: Int32) -> Void
