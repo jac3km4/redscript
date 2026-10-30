@@ -9,5 +9,5 @@ function OfficialTranspileLargeFloat() -> Float {
     return 100000000000000000000.0;
 }
 function OfficialTranspileNegativeZero() -> Float {
-    return (-0.0);
+    return -0.0;
 }

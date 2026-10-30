@@ -208,6 +208,69 @@ func Test(enabled: Bool, values: [Int32]) -> Bool {
 }
 
 #[test]
+fn expression_printing_preserves_precedence_and_associativity() {
+    let output = convert(
+        r#"
+native func OperatorAdd(a: Int32, b: Int32) -> Int32
+native func OperatorAdd(a: String, b: String) -> String
+native func Cast(a: Int32) -> Float
+native func OperatorSubtract(a: Int32, b: Int32) -> Int32
+native func OperatorMultiply(a: Int32, b: Int32) -> Int32
+native func OperatorNeg(a: Int32) -> Int32
+native func OperatorLogicNot(a: Bool) -> Bool
+native func OperatorLogicAnd(a: Bool, b: Bool) -> Bool
+native func OperatorAssignAdd(out a: Int32, b: Int32) -> Int32
+func Sum(a: Int32, b: Int32, c: Int32) -> Int32 = a + b * c
+func Product(a: Int32, b: Int32, c: Int32) -> Int32 = (a + b) * c
+func RightSum(a: Int32, b: Int32, c: Int32) -> Int32 = a + (b + c)
+func Difference(a: Int32, b: Int32, c: Int32) -> Int32 = a - (b - c)
+func LeftDifference(a: Int32, b: Int32, c: Int32) -> Int32 = (a - b) - c
+func Negate(a: Int32, b: Int32) -> Int32 = -(a + b)
+func DoubleNegate(a: Int32) -> Int32 = -(-a)
+func Choose(a: Bool, b: Bool, c: Bool) -> Bool = a && (b ? c : a)
+func NestedChoice(a: Bool, b: Bool, c: Bool) -> Bool = (a ? b : c) ? a : b
+func NotChoice(a: Bool, b: Bool, c: Bool) -> Bool = !(a ? b : c)
+func Assign(a: Int32, b: Int32, c: Int32) -> Int32 { a = b + c; return a; }
+func Compound(a: Int32, b: Int32, c: Int32) -> Int32 { a += b += c; return a; }
+func CastChoice(a: Bool, b: Int32, c: Int32) -> Float = Cast<Float>(a ? b : c)
+class Base {}
+class Child extends Base {}
+func CastReceiver(a: Bool, b: Base, c: Base) -> Child = (a ? b : c) as Child
+func Defined(a: Base, flag: Bool) -> Bool = IsDefined(a) && flag
+func Same(a: Base, b: Base, flag: Bool) -> Bool = Equals(a, b) && flag
+func StringIdentity(a: Bool, b: String, c: String) -> String = ToString(a ? b : c) + "!"
+"#,
+    );
+    for expression in [
+        "a + b * c",
+        "(a + b) * c",
+        "a + (b + c)",
+        "a - (b - c)",
+        "a - b - c",
+        "-(a + b)",
+        "-(-a)",
+        "a && (b ? c : a)",
+        "(a ? b : c) ? a : b",
+        "!(a ? b : c)",
+        "a = b + c",
+        "a += b += c",
+        "Cast<Float>(a ? b : c)",
+        "(a ? b : c) as Child",
+        "a != NULL && flag",
+        "a == b && flag",
+        "(a ? b : c) + \"!\"",
+    ] {
+        assert!(output.contains(&format!("{expression};")), "{output}");
+    }
+    let sources = SourceMap::new();
+    let file = sources.push_back("emitted.script", output.clone());
+    let (module, errors) = redscript_redmod_parser::parse_module(&output, file);
+    assert!(errors.is_empty(), "{errors:?}");
+    assert!(module.is_some());
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn declaration_metadata_and_reference_kinds_are_retained() {
     let output = convert(
         r#"

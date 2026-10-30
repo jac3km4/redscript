@@ -1,0 +1,70 @@
+---
+source: crates/compiler/redmod/transpiler/tests/transpile.rs
+expression: output
+---
+import function OperatorAdd(a: Int32, b: Int32) -> Int32;
+import function OperatorAdd(a: String, b: String) -> String;
+import function Cast(a: Int32) -> Float;
+import function OperatorSubtract(a: Int32, b: Int32) -> Int32;
+import function OperatorMultiply(a: Int32, b: Int32) -> Int32;
+import function OperatorNeg(a: Int32) -> Int32;
+import function OperatorLogicNot(a: Bool) -> Bool;
+import function OperatorLogicAnd(a: Bool, b: Bool) -> Bool;
+import function OperatorAssignAdd(out a: Int32, b: Int32) -> Int32;
+function Sum(a: Int32, b: Int32, c: Int32) -> Int32 {
+    return a + b * c;
+}
+function Product(a: Int32, b: Int32, c: Int32) -> Int32 {
+    return (a + b) * c;
+}
+function RightSum(a: Int32, b: Int32, c: Int32) -> Int32 {
+    return a + (b + c);
+}
+function Difference(a: Int32, b: Int32, c: Int32) -> Int32 {
+    return a - (b - c);
+}
+function LeftDifference(a: Int32, b: Int32, c: Int32) -> Int32 {
+    return a - b - c;
+}
+function Negate(a: Int32, b: Int32) -> Int32 {
+    return -(a + b);
+}
+function DoubleNegate(a: Int32) -> Int32 {
+    return -(-a);
+}
+function Choose(a: Bool, b: Bool, c: Bool) -> Bool {
+    return a && (b ? c : a);
+}
+function NestedChoice(a: Bool, b: Bool, c: Bool) -> Bool {
+    return (a ? b : c) ? a : b;
+}
+function NotChoice(a: Bool, b: Bool, c: Bool) -> Bool {
+    return !(a ? b : c);
+}
+function Assign(a: Int32, b: Int32, c: Int32) -> Int32 {
+    a = b + c;
+    return a;
+}
+function Compound(a: Int32, b: Int32, c: Int32) -> Int32 {
+    a += b += c;
+    return a;
+}
+function CastChoice(a: Bool, b: Int32, c: Int32) -> Float {
+    return Cast<Float>(a ? b : c);
+}
+class Base extends IScriptable {
+}
+class Child extends Base {
+}
+function CastReceiver(a: Bool, b: Base, c: Base) -> Child {
+    return (a ? b : c) as Child;
+}
+function Defined(a: Base, flag: Bool) -> Bool {
+    return a != NULL && flag;
+}
+function Same(a: Base, b: Base, flag: Bool) -> Bool {
+    return a == b && flag;
+}
+function StringIdentity(a: Bool, b: String, c: String) -> String {
+    return (a ? b : c) + "!";
+}

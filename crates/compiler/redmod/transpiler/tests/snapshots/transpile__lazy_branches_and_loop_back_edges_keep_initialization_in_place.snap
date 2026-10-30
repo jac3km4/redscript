@@ -21,14 +21,14 @@ function Test(enabled: Bool, values: array<Int32>) -> Bool {
         __rst_v3[0] = count;
         if (Check(__rst_v3)) {
             reset = Cast<Int32>(0);
-            (count += 1);
+            count += 1;
             switch (count) {
                 case 1:
                     continue;
                 default:
                     break;
             }
-            if ((count < 3)) {
+            if (count < 3) {
                 continue;
             }
             break;
@@ -36,5 +36,5 @@ function Test(enabled: Bool, values: array<Int32>) -> Bool {
             break;
         }
     }
-    return (enabled && (Tick() ? Check(values) : Tick()));
+    return enabled && (Tick() ? Check(values) : Tick());
 }

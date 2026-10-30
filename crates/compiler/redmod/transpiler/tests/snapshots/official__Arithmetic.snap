@@ -3,5 +3,5 @@ source: crates/compiler/redmod/transpiler/tests/official.rs
 expression: source.module.text
 ---
 function OfficialTranspileSum(value: Int32) -> Int32 {
-    return (value + 2);
+    return value + 2;
 }

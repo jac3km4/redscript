@@ -353,6 +353,95 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         matches!(e, ir::Expr::Local(..))
     }
 
+    // Target binding powers: assignment 1, conditional 2, binary operators 3..11,
+    // `as` 12, unary 13, and primary/postfix expressions 14. Signed constants
+    // count as unary so negating one cannot accidentally produce a `--` token.
+    fn precedence(&self, e: &ir::Expr<'ctx>) -> Result<u8> {
+        Ok(match e {
+            ir::Expr::Assign { .. } => 1,
+            ir::Expr::Conditional { .. } => 2,
+            ir::Expr::DynCast { .. } => 12,
+            ir::Expr::Const(..) => 13,
+            ir::Expr::Call { call, .. } => {
+                let ir::Call::FreeFunction { function, args, .. } = &**call else {
+                    return Ok(14);
+                };
+                let (name, def) = self
+                    .symbols
+                    .get_free_function(*function)
+                    .ok_or_else(|| error("missing resolved function", Some(e.span())))?;
+                if matches!(
+                    def.intrinsic(),
+                    Some(ir::Intrinsic::Deref | ir::Intrinsic::AsRef)
+                ) || (def.intrinsic() == Some(ir::Intrinsic::ToString)
+                    && args.first().is_some_and(|arg| {
+                        self.type_of(arg)
+                            .is_ok_and(|t| t == Type::nullary(predef::STRING))
+                    }))
+                {
+                    self.precedence(
+                        args.first()
+                            .ok_or_else(|| error("missing intrinsic operand", None))?,
+                    )?
+                } else if matches!(
+                    def.intrinsic(),
+                    Some(
+                        ir::Intrinsic::Equals | ir::Intrinsic::NotEquals | ir::Intrinsic::IsDefined
+                    )
+                ) {
+                    binary_precedence(ast::BinOp::Eq)
+                } else if matches!(
+                    def.intrinsic(),
+                    Some(
+                        ir::Intrinsic::EnumInt
+                            | ir::Intrinsic::IntEnum
+                            | ir::Intrinsic::ToVariant
+                            | ir::Intrinsic::FromVariant
+                    )
+                ) {
+                    12
+                } else if def.intrinsic().is_none()
+                    && def.method_alias().is_none()
+                    && def.flags().is_native()
+                {
+                    let name = name.to_string();
+                    if let Some(op) = ast::BinOp::from_name(&name)
+                        && args.len() == 2
+                    {
+                        binary_precedence(op)
+                    } else if ast::UnOp::from_name(&name).is_some() && args.len() == 1 {
+                        13
+                    } else {
+                        14
+                    }
+                } else {
+                    14
+                }
+            }
+            _ => 14,
+        })
+    }
+
+    fn expr_at(&self, e: &ir::Expr<'ctx>, minimum: u8) -> Result<String> {
+        let text = self.expr(e)?;
+        if self.precedence(e)? < minimum {
+            Ok(format!("({text})"))
+        } else {
+            Ok(text)
+        }
+    }
+
+    fn binary(&self, op: ast::BinOp, a: &ir::Expr<'ctx>, b: &ir::Expr<'ctx>) -> Result<String> {
+        let precedence = binary_precedence(op);
+        let right_associative = op.assoc() == ast::Assoc::Right;
+        Ok(format!(
+            "{} {} {}",
+            self.expr_at(a, precedence + u8::from(right_associative))?,
+            binary_token(op),
+            self.expr_at(b, precedence + u8::from(!right_associative))?
+        ))
+    }
+
     pub fn expr(&self, e: &ir::Expr<'ctx>) -> Result<String> {
         if !matches!(e, ir::Expr::Null { .. }) {
             target::typ(&self.type_of(e)?, self.symbols).map_err(|mut err| {
@@ -394,7 +483,11 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                         Some(e.span()),
                     ));
                 }
-                Ok(format!("{} = {}", self.expr(place)?, self.expr(expr)?))
+                Ok(format!(
+                    "{} = {}",
+                    self.expr_at(place, 2)?,
+                    self.expr(expr)?
+                ))
             }
             ir::Expr::Index { array, index, .. } => {
                 if !Self::simple_place(array) {
@@ -434,16 +527,16 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 else_,
                 ..
             } => Ok(format!(
-                "({} ? {} : {})",
-                self.expr(condition)?,
+                "{} ? {} : {}",
+                self.expr_at(condition, 3)?,
                 self.expr(then)?,
                 self.expr(else_)?
             )),
             ir::Expr::DynCast {
                 expr, target_type, ..
             } => Ok(format!(
-                "({} as {})",
-                self.expr(expr)?,
+                "{} as {}",
+                self.expr_at(expr, 12)?,
                 target::typ(
                     &target_type
                         .coalesced(self.symbols)
@@ -530,21 +623,21 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     if let Some(op) = ast::BinOp::from_name(&name)
                         && let [a, b] = &args[..]
                     {
-                        return Ok(format!(
-                            "({} {} {})",
-                            self.expr(a)?,
-                            binary_token(op),
-                            self.expr(b)?
-                        ));
+                        return self.binary(op, a, b);
                     }
                     if let Some(op) = ast::UnOp::from_name(&name)
                         && let [a] = &args[..]
                     {
-                        return Ok(format!("({}{})", unary_token(op), self.expr(a)?));
+                        let operand = self.expr_at(a, 13)?;
+                        return Ok(if op == ast::UnOp::Neg && operand.starts_with('-') {
+                            format!("-({operand})")
+                        } else {
+                            format!("{}{operand}", unary_token(op))
+                        });
                     }
                     if name == "Cast" && args.len() == 1 {
                         return Ok(format!(
-                            "Cast<{}>(({}))",
+                            "Cast<{}>({})",
                             target::typ(&self.type_of(whole)?, self.symbols)?,
                             self.expr(&args[0])?
                         ));
@@ -648,8 +741,8 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         };
         let cast = || -> Result<String> {
             Ok(format!(
-                "({} as {})",
-                self.expr(unary()?)?,
+                "{} as {}",
+                self.expr_at(unary()?, 12)?,
                 target::typ(&self.type_of(whole)?, self.symbols)?
             ))
         };
@@ -673,12 +766,15 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 let [a, b] = args else {
                     return Err(error("invalid equality arity", None));
                 };
-                Ok(format!(
-                    "({} {} {})",
-                    self.expr(a)?,
-                    if intrinsic == I::Equals { "==" } else { "!=" },
-                    self.expr(b)?
-                ))
+                self.binary(
+                    if intrinsic == I::Equals {
+                        ast::BinOp::Eq
+                    } else {
+                        ast::BinOp::Ne
+                    },
+                    a,
+                    b,
+                )
             }
             I::ArrayClear => method("Clear"),
             I::ArraySize => method("Size"),
@@ -720,7 +816,10 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     .and_then(|d| d.schema().as_aggregate())
                     .is_some_and(|a| !a.flags().is_struct() && !a.flags().is_never_ref())
                 {
-                    Ok(format!("({} != NULL)", self.expr(unary()?)?))
+                    Ok(format!(
+                        "{} != NULL",
+                        self.expr_at(unary()?, binary_precedence(ast::BinOp::Ne))?
+                    ))
                 } else {
                     Err(error(
                         "IsDefined only supports resolved reference classes",
@@ -765,6 +864,14 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 None,
             )),
         }
+    }
+}
+
+fn binary_precedence(op: ast::BinOp) -> u8 {
+    if op.precedence() == 0 {
+        1
+    } else {
+        op.precedence() + 2
     }
 }
 

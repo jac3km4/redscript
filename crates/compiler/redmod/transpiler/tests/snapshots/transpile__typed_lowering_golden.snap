@@ -28,15 +28,15 @@ function Test(items: array<Int32>, enabled: Bool) -> String {
     var __rst_v8: Int32;
     result = "";
     __rst_v3 = 0;
-    while ((__rst_v3 < items.Size())) {
+    while (__rst_v3 < items.Size()) {
         __rst_v4 = items[__rst_v3];
-        (__rst_v3 += 1);
+        __rst_v3 += 1;
         scratch.Clear();
         zero = Cast<Int32>(0);
         scratch.PushBack(__rst_v4);
-        if ((enabled && Tick())) {
+        if (enabled && Tick()) {
             __rst_v7 = __rst_v4;
-            result = ("value=" + IntToString(__rst_v7));
+            result = "value=" + IntToString(__rst_v7);
             continue;
         } else {
             __rst_v8 = zero;
