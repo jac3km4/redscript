@@ -13,6 +13,7 @@ chumsky.workspace = true
 redscript-ast = { workspace = true, features = ["testing"] }
 
 similar-asserts.workspace = true
+insta.workspace = true
 
 [lints]
 workspace = true

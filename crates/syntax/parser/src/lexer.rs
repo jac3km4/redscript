@@ -230,7 +230,20 @@ fn interp_str<'src>(
             .ignore_then(p.or(any().and_is(just(')').not()).ignored()).repeated())
             .then_ignore(just(')'))
     })
-    .to_slice();
+    .to_slice()
+    .validate(move |src, e, emitter| {
+        let offset: LexSpan = e.span();
+        let (tokens, errors) = toks.parse(src).into_output_errors();
+        for error in errors {
+            let span = error.span();
+            emitter.emit(Rich::custom(
+                LexSpan::from(offset.start + span.start..offset.start + span.end),
+                error.reason().to_string(),
+            ));
+        }
+        // Token spans stay slice-relative for Token::map_span; only diagnostics are rebased here.
+        tokens.unwrap_or_default()
+    });
 
     just('s').ignore_then(
         choice((
@@ -240,7 +253,7 @@ fn interp_str<'src>(
                 .collect::<StrParts<'_>>()
                 .map(|ps| Token::StrFrag(ps.str)),
             just("\\")
-                .ignore_then(toks.nested_in(balanced_parens))
+                .ignore_then(balanced_parens)
                 .map(|tok| Token::Group(tok.into())),
         ))
         .map_with(|tok, e| (tok, e.span()))
@@ -427,7 +440,7 @@ impl<'src, S1> Token<'src, S1> {
                 s.into_vec()
                     .into_iter()
                     .map(|(tok, nested)| {
-                        // nested_in lexes the parenthesized slice after the backslash.
+                        // The interpolation lexer lexes the parenthesized slice after the backslash.
                         let offset = base + 1u8;
                         let span = offset + f(nested);
                         (

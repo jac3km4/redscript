@@ -1087,6 +1087,7 @@ name = "redscript-parser"
 version = "1.0.0-preview.22"
 dependencies = [
  "chumsky",
+ "insta",
  "redscript-ast",
  "similar-asserts",
 ]

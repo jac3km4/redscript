@@ -1,0 +1,21 @@
+---
+source: crates/syntax/parser/tests/interpolation_diagnostics.rs
+expression: "diagnostics.join(\"\\n\")"
+---
+error: invalid escape `\q`; use \n, \r, \t, \', \", \\ or \u{HEX}; escape a literal backslash as \\
+ --> interpolation.reds:1:22
+  |
+1 | s"préfixe: \(foo + "\q")"
+  |                      ^
+
+error: invalid Unicode escape; use a Unicode scalar value (not a surrogate, at most 10FFFF)
+ --> interpolation.reds:1:23
+  |
+1 | s"préfixe: \(foo + "\u{D800}")"
+  |                       ^^^^^^
+
+error: invalid Unicode escape; use `\u{HEX}` with 1 to 6 hex digits and a Unicode scalar value (not a surrogate, at most 10FFFF)
+ --> interpolation.reds:1:23
+  |
+1 | s"préfixe: \(foo + "\u{xyz}")"
+  |                       ^^^^^
