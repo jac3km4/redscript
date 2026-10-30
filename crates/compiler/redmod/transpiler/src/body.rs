@@ -43,6 +43,22 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 }
             }
         }
+        let preferred = |local: &ir::LocalInfo<'ctx>| match local.id {
+            ir::Local::Param(i) => signature
+                .params()
+                .get(usize::from(i))
+                .map(redscript_compiler_frontend::Param::name),
+            _ => local.name,
+        };
+        let mut reserved = occupied.clone();
+        reserved.extend(
+            function
+                .locals
+                .iter()
+                .filter_map(&preferred)
+                .filter(|name| target::ident(name).is_ok())
+                .map(str::to_owned),
+        );
         let mut names = BTreeMap::new();
         names.insert(ir::Local::This, "this".to_owned());
         for local in &function.locals {
@@ -59,19 +75,27 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             if names.contains_key(&local.id) {
                 return Err(error("duplicate local identity", local.span));
             }
-            let mut name = match local.id {
-                ir::Local::Param(i) => format!("__rst_p{i}"),
-                ir::Local::Var(i) => format!("__rst_v{i}"),
-                ir::Local::This => unreachable!(),
-            };
-
-            while !occupied.insert(name.clone()) {
-                name.push('_');
+            let source_name = preferred(local).filter(|name| target::ident(name).is_ok());
+            let base = source_name
+                .map(str::to_owned)
+                .unwrap_or_else(|| match local.id {
+                    ir::Local::Param(i) => format!("__rst_p{i}"),
+                    ir::Local::Var(i) => format!("__rst_v{i}"),
+                    ir::Local::This => unreachable!(),
+                });
+            let mut name = base.clone();
+            let mut suffix = 2;
+            while occupied.contains(&name)
+                || (reserved.contains(&name) && source_name != Some(name.as_str()))
+            {
+                name = format!("{base}_{suffix}");
+                suffix += 1;
             }
+            occupied.insert(name.clone());
             names.insert(local.id, name);
         }
         let mut result_local = "__rst_result".to_owned();
-        while !occupied.insert(result_local.clone()) {
+        while reserved.contains(&result_local) || !occupied.insert(result_local.clone()) {
             result_local.push('_');
         }
         Ok(Self {

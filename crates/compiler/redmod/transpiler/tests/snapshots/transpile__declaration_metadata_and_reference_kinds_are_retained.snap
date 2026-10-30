@@ -7,8 +7,8 @@ expression: output
 @using "Example";
 class Widget extends IScriptable {
 public var weak: wref<Example.Widget>;
-public function Identity(__rst_p0: Example.Widget) -> Example.Widget {
-    return __rst_p0;
+public function Identity(value: Example.Widget) -> Example.Widget {
+    return value;
 }
 }
 @if(ModuleExists("Example"))

@@ -4,11 +4,11 @@ expression: source.module.text
 ---
 function OfficialTranspileArray() -> Int32 {
     var __rst_v0: array<Int32>;
-    var __rst_v1: array<Int32>;
+    var values: array<Int32>;
     __rst_v0.Resize(2);
     __rst_v0[0] = 1;
     __rst_v0[1] = 2;
-    __rst_v1 = __rst_v0;
-    __rst_v1.PushBack(3);
-    return __rst_v1.Size();
+    values = __rst_v0;
+    values.PushBack(3);
+    return values.Size();
 }

@@ -8,27 +8,27 @@ import function OperatorLogicAnd(a: Bool, b: Bool) -> Bool;
 function Tick() -> Bool {
     return true;
 }
-function Check(__rst_p0: array<Int32>) -> Bool {
+function Check(values: array<Int32>) -> Bool {
     return true;
 }
-function Test(__rst_p0: Bool, __rst_p1: array<Int32>) -> Bool {
-    var __rst_v2: Int32;
+function Test(enabled: Bool, values: array<Int32>) -> Bool {
+    var count: Int32;
     var __rst_v3: array<Int32>;
-    var __rst_v4: Int32;
-    __rst_v2 = 0;
+    var reset: Int32;
+    count = 0;
     while (true) {
         __rst_v3.Resize(1);
-        __rst_v3[0] = __rst_v2;
+        __rst_v3[0] = count;
         if (Check(__rst_v3)) {
-            __rst_v4 = Cast<Int32>(0);
-            (__rst_v2 += 1);
-            switch (__rst_v2) {
+            reset = Cast<Int32>(0);
+            (count += 1);
+            switch (count) {
                 case 1:
                     continue;
                 default:
                     break;
             }
-            if ((__rst_v2 < 3)) {
+            if ((count < 3)) {
                 continue;
             }
             break;
@@ -36,5 +36,5 @@ function Test(__rst_p0: Bool, __rst_p1: array<Int32>) -> Bool {
             break;
         }
     }
-    return (__rst_p0 && (Tick() ? Check(__rst_p1) : Tick()));
+    return (enabled && (Tick() ? Check(values) : Tick()));
 }

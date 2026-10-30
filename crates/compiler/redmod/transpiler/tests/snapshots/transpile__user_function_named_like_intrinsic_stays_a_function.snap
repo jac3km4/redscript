@@ -1,11 +1,10 @@
 ---
 source: crates/compiler/redmod/transpiler/tests/transpile.rs
-assertion_line: 307
 expression: output
 ---
 @module "Custom";
 
-function ToString(__rst_p0: Int32, __rst_p1: Int32) -> String {
+function ToString(value: Int32, other: Int32) -> String {
     return "custom";
 }
 function Test() -> String {

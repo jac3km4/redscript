@@ -339,6 +339,28 @@ fn local_identity_survives_shadowing_and_reserved_names() {
 }
 
 #[test]
+fn readable_names_reserve_authored_names_before_disambiguating() {
+    let output = convert(
+        r#"
+func Test(value: Int32) -> Int32 {
+    let value_2 = 2;
+    let __rst_v3 = 3;
+    if true { let value = 1; }
+    let NULL = 4;
+    let Test = value_2;
+    return value;
+}
+"#,
+    );
+    assert!(output.contains("function Test(value: Int32)"));
+    assert!(output.contains("var value_2: Int32;"));
+    assert!(output.contains("var value_3: Int32;"));
+    assert!(output.contains("var __rst_v3: Int32;"));
+    assert!(output.contains("var Test_2: Int32;"));
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn callback_return_effects_are_evaluated_and_result_removed() {
     let output = convert(
         "func Effect() -> Bool = true class Widget { protected cb func OnEvent() -> Bool { return Effect(); } }",

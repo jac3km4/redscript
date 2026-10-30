@@ -18,30 +18,30 @@ function Empty() -> array<Int32> {
     __rst_v0.Clear();
     return __rst_v0;
 }
-function Test(__rst_p0: array<Int32>, __rst_p1: Bool) -> String {
-    var __rst_v2: String;
+function Test(items: array<Int32>, enabled: Bool) -> String {
+    var result: String;
     var __rst_v3: Int32;
     var __rst_v4: Int32;
-    var __rst_v5: array<Int32>;
-    var __rst_v6: Int32;
+    var scratch: array<Int32>;
+    var zero: Int32;
     var __rst_v7: Int32;
     var __rst_v8: Int32;
-    __rst_v2 = "";
+    result = "";
     __rst_v3 = 0;
-    while ((__rst_v3 < __rst_p0.Size())) {
-        __rst_v4 = __rst_p0[__rst_v3];
+    while ((__rst_v3 < items.Size())) {
+        __rst_v4 = items[__rst_v3];
         (__rst_v3 += 1);
-        __rst_v5.Clear();
-        __rst_v6 = Cast<Int32>(0);
-        __rst_v5.PushBack(__rst_v4);
-        if ((__rst_p1 && Tick())) {
+        scratch.Clear();
+        zero = Cast<Int32>(0);
+        scratch.PushBack(__rst_v4);
+        if ((enabled && Tick())) {
             __rst_v7 = __rst_v4;
-            __rst_v2 = ("value=" + IntToString(__rst_v7));
+            result = ("value=" + IntToString(__rst_v7));
             continue;
         } else {
-            __rst_v8 = __rst_v6;
-            __rst_v5.PushBack(__rst_v8);
+            __rst_v8 = zero;
+            scratch.PushBack(__rst_v8);
         }
     }
-    return __rst_v2;
+    return result;
 }

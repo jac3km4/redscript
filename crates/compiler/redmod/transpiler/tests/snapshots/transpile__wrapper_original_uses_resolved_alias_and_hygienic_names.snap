@@ -4,7 +4,7 @@ expression: "output[0].text"
 ---
 @wrapMethod(EngineWidget)
 function Value(__rst_p0: Int32) -> Int32 {
-    var __rst_v1: Int32;
-    __rst_v1 = __rst_p0;
-    return Value(__rst_v1);
+    var Value_2: Int32;
+    Value_2 = __rst_p0;
+    return Value(Value_2);
 }

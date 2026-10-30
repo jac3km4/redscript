@@ -5,11 +5,11 @@ expression: "output[0].module.text"
 @module "Authored";
 
 @using "Dependency";
-function Echo(__rst_p0: Int32) -> Int32 {
-    return __rst_p0;
+function Echo(value: Int32) -> Int32 {
+    return value;
 }
-function Echo(__rst_p0: Bool) -> Bool {
-    return __rst_p0;
+function Echo(value: Bool) -> Bool {
+    return value;
 }
 function Run() -> Int32 {
     return Dependency.Value();
