@@ -21,7 +21,7 @@ function Empty() -> array<Int32> {
 function Test(items: array<Int32>, enabled: Bool) -> String {
     var result: String;
     var __rst_v3: Int32;
-    var __rst_v4: Int32;
+    var item: Int32;
     var scratch: array<Int32>;
     var zero: Int32;
     var __rst_v7: Int32;
@@ -29,13 +29,13 @@ function Test(items: array<Int32>, enabled: Bool) -> String {
     result = "";
     __rst_v3 = 0;
     while (__rst_v3 < items.Size()) {
-        __rst_v4 = items[__rst_v3];
+        item = items[__rst_v3];
         __rst_v3 += 1;
         scratch.Clear();
         zero = Cast<Int32>(0);
-        scratch.PushBack(__rst_v4);
+        scratch.PushBack(item);
         if (enabled && Tick()) {
-            __rst_v7 = __rst_v4;
+            __rst_v7 = item;
             result = "value=" + IntToString(__rst_v7);
             continue;
         } else {

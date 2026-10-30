@@ -142,9 +142,9 @@ fn fix_block<'ctx>(
                     if let Some(ir::Stmt::Branches { branches, .. }) = header {
                         let local = ir::Local::Var(*next_local as u16);
                         *next_local += 1;
-                        locals.push(ir::LocalInfo::new(
+                        locals.push(ir::LocalInfo::generated(
                             local,
-                            None,
+                            ir::TemporaryPurpose::LoopEntered,
                             PolyType::nullary(predef::BOOL),
                             Some(generated_span(*span)),
                         ));

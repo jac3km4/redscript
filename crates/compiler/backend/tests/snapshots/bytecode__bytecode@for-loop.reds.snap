@@ -27,7 +27,7 @@ array.size 0 "array:Int32"
 local 0 "var$0": "array:Int32"
 param.end
 assign
-local 2 "var$2": "Int32"
+local 2 "i$2": "Int32"
 array.element 0 "array:Int32"
 local 0 "var$0": "array:Int32"
 local 1 "var$1": "Int32"
@@ -37,7 +37,7 @@ i32.one
 param.end
 invoke.static j34 l8 f3 Log 0000000000000000
 to_string 1 "Int32"
-local 2 "var$2": "Int32"
+local 2 "i$2": "Int32"
 param.end
 jump -146
 

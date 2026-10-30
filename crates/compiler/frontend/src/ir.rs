@@ -502,10 +502,22 @@ impl Local {
     }
 }
 
+/// Target-independent reason for a compiler-generated temporary.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum TemporaryPurpose {
+    ArrayLiteral,
+    IterationIndex,
+    IterationIterable,
+    PatternScrutinee,
+    SwitchScrutinee,
+    LoopEntered,
+}
+
 #[derive(Debug, Clone)]
 pub struct LocalInfo<'ctx> {
     pub id: Local,
     pub name: Option<&'ctx str>,
+    pub temporary_purpose: Option<TemporaryPurpose>,
     pub typ: PolyType<'ctx>,
     pub span: Option<Span>,
 }
@@ -520,8 +532,21 @@ impl<'ctx> LocalInfo<'ctx> {
         Self {
             id,
             name,
+            temporary_purpose: None,
             typ,
             span,
+        }
+    }
+
+    pub fn generated(
+        id: Local,
+        purpose: TemporaryPurpose,
+        typ: PolyType<'ctx>,
+        span: Option<Span>,
+    ) -> Self {
+        Self {
+            temporary_purpose: Some(purpose),
+            ..Self::new(id, None, typ, span)
         }
     }
 }

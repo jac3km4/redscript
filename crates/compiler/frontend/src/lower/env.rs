@@ -290,6 +290,20 @@ impl<'scope, 'ctx> Locals<'scope, 'ctx> {
         self.add(ir::Local::Var(self.counter.get()), name, typ, Some(span))
     }
 
+    pub fn add_temp(
+        &mut self,
+        purpose: ir::TemporaryPurpose,
+        typ: PolyType<'ctx>,
+        span: Span,
+    ) -> &ir::LocalInfo<'ctx> {
+        let local = ir::Local::Var(self.counter.get());
+        self.counter.set(self.counter.get() + 1);
+        let len = self.locals.len();
+        self.locals
+            .push(ir::LocalInfo::generated(local, purpose, typ, Some(span)));
+        &self.locals[len]
+    }
+
     #[inline]
     pub fn add_param(&mut self, typ: PolyType<'ctx>, span: Option<Span>) -> &ir::LocalInfo<'ctx> {
         self.add(ir::Local::Param(self.counter.get()), None, typ, span)

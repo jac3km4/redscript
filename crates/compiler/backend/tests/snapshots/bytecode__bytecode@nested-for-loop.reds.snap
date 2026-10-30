@@ -27,7 +27,7 @@ array.size 0 "array:Int32"
 local 0 "var$0": "array:Int32"
 param.end
 assign
-local 2 "var$2": "Int32"
+local 2 "i$2": "Int32"
 array.element 0 "array:Int32"
 local 0 "var$0": "array:Int32"
 local 1 "var$1": "Int32"
@@ -58,7 +58,7 @@ array.size 0 "array:Int32"
 local 3 "var$3": "array:Int32"
 param.end
 assign
-local 5 "var$5": "Int32"
+local 5 "j$5": "Int32"
 array.element 0 "array:Int32"
 local 3 "var$3": "array:Int32"
 local 4 "var$4": "Int32"
@@ -69,8 +69,8 @@ param.end
 invoke.static j59 l10 f3 Log 0000000000000000
 to_string 1 "Int32"
 invoke.static j34 l10 f4 OperatorAdd;Int32Int32 0000000000000000
-local 2 "var$2": "Int32"
-local 5 "var$5": "Int32"
+local 2 "i$2": "Int32"
+local 5 "j$5": "Int32"
 param.end
 param.end
 jump -171

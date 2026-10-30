@@ -44,6 +44,29 @@ fn analyze_native(
     test(&unit, &symbols);
 }
 
+#[test]
+fn loop_entry_temporaries_have_target_independent_metadata() {
+    for source in [
+        "function Run() { for (;;) { break; } }",
+        "function Run() { do {} while (false); }",
+    ] {
+        analyze(source, |unit, _| {
+            let function = unit.functions.values().next().unwrap();
+            let [flag] = &*function.locals else {
+                panic!("expected one loop entry flag: {:?}", function.locals);
+            };
+            assert_eq!(
+                flag.temporary_purpose,
+                Some(ir::TemporaryPurpose::LoopEntered)
+            );
+            assert_eq!(flag.name, None);
+            assert!(matches!(flag.id, ir::Local::Var(_)));
+            let span = flag.span.unwrap();
+            assert_eq!(span.start, span.end);
+        });
+    }
+}
+
 #[derive(Debug, PartialEq)]
 enum Flow {
     Next,
