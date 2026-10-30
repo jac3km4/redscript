@@ -46,6 +46,44 @@ fn check(source: &str) -> Vec<String> {
 }
 
 #[test]
+fn persistent_primitive_struct_fields_are_valid() {
+    let errors = check(
+        "struct State {
+           public persistent let count: Int32;
+           public persistent let enabled: Bool;
+         }",
+    );
+    assert!(errors.is_empty(), "{errors:?}");
+}
+
+#[test]
+fn persistent_requires_a_class_or_struct_field() {
+    for source in [
+        "persistent function Test() {}",
+        "class State { persistent function Test() {} }",
+        "struct State { persistent function Test() {} }",
+        "persistent struct State { let count: Int32; }",
+    ] {
+        let errors = check(source);
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert!(
+            errors[0].contains("persistent requires a class or struct field"),
+            "{errors:?}"
+        );
+    }
+}
+
+#[test]
+fn persistent_struct_fields_still_require_persistable_types() {
+    let errors = check("struct State { persistent let text: String; }");
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(
+        errors[0].contains("fields of type `String` cannot be marked as persistent"),
+        "{errors:?}"
+    );
+}
+
+#[test]
 fn protected_and_implicit_events_are_valid() {
     let errors = check(
         "class Event {} class Listener {

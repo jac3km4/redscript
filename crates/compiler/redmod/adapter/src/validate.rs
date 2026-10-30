@@ -79,10 +79,9 @@ impl<'src> AstVisitor<'src, ast::WithSpan> for Validator<'src> {
         match node {
             AstNode::ItemDecl((decl, span)) => {
                 if decl.qualifiers.contains(ast::ItemQualifiers::PERSISTENT)
-                    && (!matches!(decl.item, ast::Item::Let(_))
-                        || self.aggregates.last() != Some(&true))
+                    && (!matches!(decl.item, ast::Item::Let(_)) || self.aggregates.is_empty())
                 {
-                    self.reject(SemanticError::PersistentRequiresClassField, *span);
+                    self.reject(SemanticError::PersistentRequiresAggregateField, *span);
                 }
                 if decl.qualifiers.contains(ast::ItemQualifiers::CALLBACK) {
                     if self.aggregates.last() != Some(&true)

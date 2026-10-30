@@ -36,8 +36,8 @@ is not guaranteed to compile officially or behave correctly in the game.
   signatures/flags and respect final methods; events use Void callback metadata
   and allow omitted or `protected` visibility, but not `public` or `private`.
 - String field metadata preserves exact keys, duplicates and order. Hints target
-  one field in the same aggregate. Persistent fields use shared type checks and
-  target-specific access restrictions.
+  one field in the same aggregate. Persistent class and struct fields use shared
+  persistable-type checks and target-specific access restrictions.
 - Bounded `ModuleExists`/single-negation conditions with deterministic first-active
   selection. Capability checks still apply to inactive declarations.
 - Dynamic-array receiver methods: `Size`, `PushBack`, `PopBack`, `Clear`, `Resize`,
