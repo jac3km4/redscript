@@ -8,7 +8,7 @@ edition.workspace = true
 derive-where.workspace = true
 bitflags.workspace = true
 elsa.workspace = true
-unicode-width = "0.1.14"
+unicode-width = "0.2.2"
 chumsky = { workspace = true, optional = true }
 ignore = { workspace = true, optional = true }
 
