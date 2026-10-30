@@ -684,9 +684,12 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
         let line = self.monomorph.source_line(span);
 
         let mut flags = InvokeFlags::default();
-        for (arg, i) in args.iter().zip(0u8..) {
+        for (i, arg) in args.iter().enumerate() {
             if arg.is_prvalue_ref(self.symbols) {
-                flags.set_is_rvalue_ref(i);
+                if i >= u16::BITS as usize {
+                    return Err(AssembleError::TemporaryReferenceArgument(i + 1, arg.span()));
+                }
+                flags.set_is_rvalue_ref(i as u8);
             }
         }
 
@@ -970,6 +973,10 @@ pub enum AssembleError<'ctx> {
     InvalidControlFlow(&'static str, &'static str, Span),
     #[error("struct construction has {0} arguments; the bytecode limit is 255")]
     TooManyArguments(usize, Span),
+    #[error(
+        "argument {0} requires a temporary-reference flag; bytecode supports these flags only for the first 16 arguments"
+    )]
+    TemporaryReferenceArgument(usize, Span),
     #[error("cannot generate code for intrinsic `{0:?}` with these arguments")]
     InvalidIntrinsic(ir::Intrinsic, Span),
     #[error(
@@ -987,6 +994,7 @@ impl AssembleError<'_> {
         match self {
             Self::InvalidControlFlow(_, _, span)
             | Self::TooManyArguments(_, span)
+            | Self::TemporaryReferenceArgument(_, span)
             | Self::InvalidIntrinsic(_, span)
             | Self::InvalidFunctionClass(span)
             | Self::Coalesce(_, span) => Some(*span),
@@ -1032,6 +1040,12 @@ mod diagnostic_tests {
         assert_eq!(
             error.to_string(),
             "struct construction has 256 arguments; the bytecode limit is 255"
+        );
+        assert_eq!(error.span(), Some(span));
+        let error = AssembleError::TemporaryReferenceArgument(17, span);
+        assert_eq!(
+            error.to_string(),
+            "argument 17 requires a temporary-reference flag; bytecode supports these flags only for the first 16 arguments"
         );
         assert_eq!(error.span(), Some(span));
         assert_eq!(

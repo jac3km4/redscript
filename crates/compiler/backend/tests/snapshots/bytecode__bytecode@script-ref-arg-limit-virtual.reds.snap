@@ -1,0 +1,7 @@
+---
+source: crates/compiler/backend/tests/bytecode.rs
+expression: "compile(path, |_| {})"
+input_file: crates/compiler/backend/tests/data/script-ref-arg-limit-virtual.reds
+---
+assembly error: argument 17 requires a temporary-reference flag; bytecode supports these flags only for the first 16 arguments
+at 6:71: "\"temporary\""

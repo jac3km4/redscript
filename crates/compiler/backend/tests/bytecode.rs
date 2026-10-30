@@ -78,11 +78,26 @@ fn compile(path: &Path, seed: impl FnOnce(&mut ScriptBundle<'_>)) -> String {
     );
 
     let bundle_len = bundle.definitions().len();
-    mappings
+    match mappings
         .into_monomorphizer(&sources)
         .monomorphize(&unit, &symbols, &mut bundle)
-        .unwrap();
-    BytecodePrinter::new(&bundle, bundle_len).to_string()
+    {
+        Ok(()) => BytecodePrinter::new(&bundle, bundle_len).to_string(),
+        Err(error) => {
+            let mut output = format!("assembly error: {error}\n");
+            if let Some(span) = error.span() {
+                let file = sources.get(span.file).unwrap();
+                let (line, line_start) = file.line_and_offset(span.start);
+                output.push_str(&format!(
+                    "at {}:{}: {:?}\n",
+                    line + 1,
+                    span.start - line_start + 1,
+                    file.span_contents(span)
+                ));
+            }
+            output
+        }
+    }
 }
 
 #[derive(Debug)]
