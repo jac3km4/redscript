@@ -1,0 +1,99 @@
+---
+source: crates/compiler/redmod/transpiler/tests/transpile.rs
+expression: output
+---
+function Check(values: array<Int32>) -> Bool {
+    return true;
+}
+function Tick() -> Void {
+}
+function Nested(values: array<Int32>) -> Void {
+    var arrayLiteral: array<Int32>;
+    var arrayLiteral_2: array<Int32>;
+    while (true) {
+        arrayLiteral.Resize(1);
+        arrayLiteral[0] = 1;
+        if (!Check(arrayLiteral)) {
+            break;
+        }
+        while (true) {
+            arrayLiteral_2.Resize(1);
+            arrayLiteral_2[0] = 2;
+            if (!Check(arrayLiteral_2)) {
+                break;
+            }
+            continue;
+        }
+        switch (1) {
+            case 1:
+                continue;
+            default:
+                break;
+        }
+        if (Check(values)) {
+            continue;
+        }
+        break;
+    }
+}
+function WithTail(flag: Bool) -> Void {
+    while (true) {
+        if (flag) {
+            Tick();
+        } else {
+            break;
+        }
+        Tick();
+    }
+}
+function SwitchBreak(flag: Bool) -> Void {
+    while (true) {
+        switch (1) {
+            case 1:
+                if (flag) {
+                    Tick();
+                } else {
+                    break;
+                }
+        }
+        Tick();
+    }
+}
+function ConditionalLoop(flag: Bool) -> Void {
+    while (flag) {
+        if (flag) {
+            Tick();
+        } else {
+            break;
+        }
+    }
+}
+function ElseEffects(flag: Bool) -> Void {
+    while (true) {
+        if (flag) {
+            continue;
+        } else {
+            Tick();
+            break;
+        }
+    }
+}
+function MultipleBranches(flag: Bool) -> Void {
+    while (true) {
+        if (flag) {
+            continue;
+        } else if (flag) {
+            Tick();
+        } else {
+            break;
+        }
+    }
+}
+function GuardExpression(flag: Bool, values: array<Int32>) -> Void {
+    while (true) {
+        if (!(flag ? Check(values) : false)) {
+            break;
+        }
+        continue;
+    }
+}

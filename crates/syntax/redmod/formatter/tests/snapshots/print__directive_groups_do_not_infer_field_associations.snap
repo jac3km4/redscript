@@ -1,0 +1,36 @@
+---
+source: crates/syntax/redmod/formatter/tests/print.rs
+expression: output
+---
+class C {
+    var first: Int32;
+    var second: Int32;
+
+    default first = 1;
+    default second = 2;
+
+    hint first = "first";
+    hint second = "second";
+
+    default first = 3;
+
+    /// documented default
+    default second = 4;
+
+    default first = 5;
+
+    [category = "General"]
+    hint first = "metadata";
+
+    @custom()
+    hint second = "annotated";
+
+    hint first = "plain";
+    hint second = "plain";
+
+    function Run();
+
+    default first = 6;
+
+    var last: Int32;
+}

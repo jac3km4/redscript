@@ -1,0 +1,35 @@
+---
+source: crates/syntax/redmod/formatter/tests/print.rs
+expression: output
+---
+class C {
+    var first: Int32;
+
+    /// documented field
+    var second: Int32;
+
+    /// another documented field
+    var third: Int32;
+
+    var fourth: Int32;
+    var fifth: Int32;
+
+    [category = "General"]
+    var sixth: Int32;
+
+    [category = "General"]
+    var seventh: Int32;
+
+    @custom()
+    var eighth: Int32;
+
+    @custom()
+    var ninth: Int32;
+
+    /// combined prefix
+    [category = "General"]
+    @custom()
+    public editable var tenth: Int32;
+
+    var last: Int32;
+}

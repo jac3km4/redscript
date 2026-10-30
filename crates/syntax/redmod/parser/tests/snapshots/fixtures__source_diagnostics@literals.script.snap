@@ -1,0 +1,196 @@
+---
+source: crates/syntax/redmod/parser/tests/fixtures.rs
+expression: output
+input_file: crates/syntax/redmod/parser/tests/data/diagnostics/literals.script
+---
+error: invalid Int32 literal; use the `l` suffix for Int64 or `ul` for Uint64; use a decimal point or `d` suffix for floating-point values
+ --> literals.script:2:24
+  |
+2 |     var value: Int32 = 999999999999999999999;
+  |                        ^^^^^^^^^^^^^^^^^^^^^
+
+error: invalid symbol `§`
+ --> literals.script:4:5
+  |
+4 |     § 猫
+  |     ^
+
+error: invalid symbol `猫`
+ --> literals.script:4:7
+  |
+4 |     § 猫
+  |       ^^
+
+error: unterminated block comment; add `*/`
+ --> literals.script:8:1
+  |
+8 | 
+  | ^
+
+Recovered AST:
+Some(
+    Module {
+        path: None,
+        items: [
+            (
+                Declaration {
+                    annotations: [],
+                    visibility: None,
+                    modifiers: [],
+                    metadata: [],
+                    docs: [],
+                    item: Function {
+                        kind: Function(
+                            (
+                                "Literals",
+                                Span {
+                                    start: 9,
+                                    end: 17,
+                                    file: FileId(
+                                        0,
+                                    ),
+                                },
+                            ),
+                        ),
+                        params: [],
+                        return_type: None,
+                        const_return: None,
+                        body: Some(
+                            [
+                                (
+                                    Local(
+                                        Local {
+                                            const_: None,
+                                            names: [
+                                                (
+                                                    "value",
+                                                    Span {
+                                                        start: 30,
+                                                        end: 35,
+                                                        file: FileId(
+                                                            0,
+                                                        ),
+                                                    },
+                                                ),
+                                            ],
+                                            typ: (
+                                                Named {
+                                                    name: "Int32",
+                                                    args: [],
+                                                },
+                                                Span {
+                                                    start: 37,
+                                                    end: 42,
+                                                    file: FileId(
+                                                        0,
+                                                    ),
+                                                },
+                                            ),
+                                            value: Some(
+                                                (
+                                                    Constant(
+                                                        I32(
+                                                            0,
+                                                        ),
+                                                    ),
+                                                    Span {
+                                                        start: 45,
+                                                        end: 66,
+                                                        file: FileId(
+                                                            0,
+                                                        ),
+                                                    },
+                                                ),
+                                            ),
+                                        },
+                                    ),
+                                    Span {
+                                        start: 26,
+                                        end: 67,
+                                        file: FileId(
+                                            0,
+                                        ),
+                                    },
+                                ),
+                                (
+                                    Local(
+                                        Local {
+                                            const_: None,
+                                            names: [
+                                                (
+                                                    "text",
+                                                    Span {
+                                                        start: 76,
+                                                        end: 80,
+                                                        file: FileId(
+                                                            0,
+                                                        ),
+                                                    },
+                                                ),
+                                            ],
+                                            typ: (
+                                                Named {
+                                                    name: "String",
+                                                    args: [],
+                                                },
+                                                Span {
+                                                    start: 82,
+                                                    end: 88,
+                                                    file: FileId(
+                                                        0,
+                                                    ),
+                                                },
+                                            ),
+                                            value: Some(
+                                                (
+                                                    Constant(
+                                                        String(
+                                                            "\\u{D800}",
+                                                        ),
+                                                    ),
+                                                    Span {
+                                                        start: 91,
+                                                        end: 101,
+                                                        file: FileId(
+                                                            0,
+                                                        ),
+                                                    },
+                                                ),
+                                            ),
+                                        },
+                                    ),
+                                    Span {
+                                        start: 72,
+                                        end: 102,
+                                        file: FileId(
+                                            0,
+                                        ),
+                                    },
+                                ),
+                                (
+                                    Return(
+                                        None,
+                                    ),
+                                    Span {
+                                        start: 118,
+                                        end: 125,
+                                        file: FileId(
+                                            0,
+                                        ),
+                                    },
+                                ),
+                            ],
+                        ),
+                    },
+                },
+                Span {
+                    start: 0,
+                    end: 127,
+                    file: FileId(
+                        0,
+                    ),
+                },
+            ),
+        ],
+    },
+)

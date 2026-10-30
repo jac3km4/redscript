@@ -1,0 +1,7 @@
+---
+source: crates/compiler/redmod/adapter/tests/fixtures.rs
+expression: output
+input_file: crates/compiler/redmod/adapter/tests/data/persistent-type.script
+---
+INVALID_PERSISTENT: fields of type `String` cannot be marked as persistent
+field BadState.text: persistent=true, properties=[]

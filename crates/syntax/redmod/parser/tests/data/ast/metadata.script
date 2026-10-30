@@ -1,0 +1,15 @@
+/// Documented class.
+//// Ordinary comment.
+class Example {
+    /// Documented member.
+    private override function Run() {}
+}
+@wrapMethod(Target)
+function Run() {
+    Run();
+    if (false) { var Run: Callback = Run(); }
+    this.Run();
+    Run();
+}
+@wrapMethod(Target)
+function Unshadowed() { Unshadowed(); }

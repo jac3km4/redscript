@@ -1,0 +1,18 @@
+[package]
+name = "redscript-redmod-transpiler"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+redscript-redmod-parser.workspace = true
+redscript-community-ast.workspace = true
+redscript-compiler-frontend.workspace = true
+
+[dev-dependencies]
+redscript-community-parser.workspace = true
+redscript-compiler-api.workspace = true
+insta.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,3 @@
+function Incomplete(
+    // Missing closing parenthesis after trailing trivia.
+    

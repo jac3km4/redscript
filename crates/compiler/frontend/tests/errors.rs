@@ -1,6 +1,6 @@
 use std::env;
 
-use redscript_ast::{Item, SourceMap};
+use redscript_community_ast::{Item, SourceMap};
 use redscript_compiler_api::{
     CompileErrorReporter, Diagnostic, SourceMapExt, Symbols, TypeInterner,
 };

@@ -1,0 +1,9 @@
+---
+source: crates/compiler/redmod/transpiler/tests/sources.rs
+expression: "errors.iter().map(|e| e.display(&sources).to_string()).collect::<String>()"
+---
+error[REDMOD_TRANSPILE]: array prefix may reorder an earlier interpolation expression; bind interpolation operands explicitly
+ --> rejected.reds:1:52
+  |
+1 | func Test(out x: Int32) -> String = s"\(Read(x)) \(Check([Set(x)]))";
+  |                                                    ^^^^^^^^^^^^^^^

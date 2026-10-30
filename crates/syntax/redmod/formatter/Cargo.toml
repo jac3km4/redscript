@@ -1,0 +1,16 @@
+[package]
+name = "redscript-redmod-formatter"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+redscript-redmod-ast.workspace = true
+redscript-redmod-parser.workspace = true
+
+[dev-dependencies]
+redscript-community-ast = { workspace = true, features = ["testing"] }
+insta.workspace = true
+
+[lints]
+workspace = true

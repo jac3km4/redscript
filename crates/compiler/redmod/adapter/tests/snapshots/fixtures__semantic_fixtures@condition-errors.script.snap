@@ -1,0 +1,9 @@
+---
+source: crates/compiler/redmod/adapter/tests/fixtures.rs
+expression: output
+input_file: crates/compiler/redmod/adapter/tests/data/condition-errors.script
+---
+REDMOD_SEMANTICS [139..182]: condition must be ModuleExists("module") or !ModuleExists("module")
+REDMOD_SEMANTICS [126..132]: conditional declaration permits at most 2 version(s)
+REDMOD_SEMANTICS [79..85]: conditional versions cannot both use positive ModuleExists
+function at 126: return=Void

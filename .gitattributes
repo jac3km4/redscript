@@ -1,1 +1,5 @@
 *.reds linguist-language=Swift
+
+# EOF fixtures and rendered empty diagnostic lines intentionally retain whitespace.
+crates/syntax/redmod/parser/tests/data/diagnostics/eof.script whitespace=-blank-at-eol,-blank-at-eof
+crates/syntax/redmod/parser/tests/snapshots/fixtures__source_diagnostics@*.snap whitespace=-blank-at-eol

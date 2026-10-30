@@ -1,4 +1,4 @@
-use redscript_ast::Span;
+use redscript_community_ast::Span;
 use thiserror::Error;
 
 use crate::lower::InferredTypeApp;

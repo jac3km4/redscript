@@ -1,0 +1,22 @@
+---
+source: crates/compiler/redmod/transpiler/tests/sources.rs
+expression: "output[0].module.text"
+---
+@module "Authored";
+
+@using "Dependency";
+function Echo(value: Int32) -> Int32 {
+    return value;
+}
+function Echo(value: Bool) -> Bool {
+    return value;
+}
+function Run() -> Int32 {
+    return Dependency.Value();
+}
+class Widget extends IScriptable {
+var value: Int32;
+public function Read() -> Int32 {
+    return this.value;
+}
+}

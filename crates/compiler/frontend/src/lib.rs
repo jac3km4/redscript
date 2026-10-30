@@ -12,10 +12,10 @@ mod visitor;
 
 pub use cte::Evaluator;
 pub use diagnostic::{Diagnostic, DiagnosticLevel, Reporter, UnknownSource, pass};
-pub use lower::{CoalesceError, Error as LowerError, PolyType, TypeError, TypeRef};
+pub use lower::{CoalesceError, Error as LowerError, PolyType, SemanticPolicy, TypeError, TypeRef};
 pub use query::{QueryError, expr_type};
-pub use redscript_ast as ast;
-use redscript_parser as parser;
+pub use redscript_community_ast as ast;
+use redscript_community_parser as parser;
 pub use stages::{LoweredClass, LoweredCompilationUnit, LoweredFunction};
 use stages::{NameResolution, Scope};
 pub use symbols::{
@@ -75,7 +75,28 @@ pub fn process_sources<'ctx>(
     reporter: &mut CompileErrorReporter<'ctx>,
     interner: &'ctx TypeInterner,
 ) -> (LoweredCompilationUnit<'ctx>, Symbols<'ctx>) {
+    process_sources_with_policy(modules, symbols, evaluator, reporter, interner, &[])
+}
+
+/// Analyze source AST modules with optional per-file semantic hooks.
+///
+/// Files absent from `policies` use [`SemanticPolicy::default`]. If a file occurs
+/// more than once, its first entry wins. Policies follow source spans rather than
+/// module processing order and never modify shared symbol flags.
+///
+/// Callers must provide accurate file IDs on AST spans and perform any additional
+/// source-language capability validation. [`process_sources`] is equivalent to
+/// calling this function with an empty policy slice.
+pub fn process_sources_with_policy<'ctx>(
+    modules: impl IntoIterator<Item = ast::SourceModule<'ctx>>,
+    symbols: Symbols<'ctx>,
+    evaluator: Evaluator<'ctx>,
+    reporter: &mut CompileErrorReporter<'ctx>,
+    interner: &'ctx TypeInterner,
+    policies: &[(ast::FileId, SemanticPolicy)],
+) -> (LoweredCompilationUnit<'ctx>, Symbols<'ctx>) {
     let mut scope = Scope::new(&symbols);
+    scope.set_policies(policies.into());
     let mut resolution = NameResolution::new(modules, evaluator, symbols, reporter, interner);
 
     resolution.populate_globals(&mut scope);

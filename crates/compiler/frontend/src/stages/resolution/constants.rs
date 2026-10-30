@@ -9,6 +9,7 @@ pub mod annotation {
     pub const MIXED_REF: &str = "mixedRef";
     pub const NAME_IMPLEMENTATION: &str = "nameImplementation";
     pub const RUNTIME_PROPERTY: &str = "runtimeProperty";
+    pub const HINT: &str = "hint";
     pub const DERIVE_NEW: &str = "deriveNew";
     pub const PRIVATE_CONSTRUCTOR: &str = "privateConstructor";
 }

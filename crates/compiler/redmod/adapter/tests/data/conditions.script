@@ -1,0 +1,7 @@
+@if(!ModuleExists("Missing.One"))
+function Choice() -> Int32 { return 1; }
+@if(!ModuleExists("Missing.Two"))
+function Choice() -> Int32 { return 2; }
+@if(ModuleExists("Missing.One"))
+function Absent() -> Int32 { return 3; }
+function Use() -> Int32 { return Choice(); }

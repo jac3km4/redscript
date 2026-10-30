@@ -3,12 +3,13 @@ use std::fmt::Debug;
 use std::rc::Rc;
 use std::{iter, mem, slice};
 
+use ast::AstVisitor;
 use bon::bon;
 use env::{Capture, Locals};
-pub use env::{Env, TypeEnv, TypeRef};
+pub use env::{Env, SemanticPolicy, TypeEnv, TypeRef};
 pub use error::{CoalesceError, Error, LowerResult, TypeError};
-use redscript_ast as ast;
-use redscript_ast::{Span, Spanned};
+use redscript_community_ast as ast;
+use redscript_community_ast::{Span, Spanned};
 use types::Coercion;
 pub use types::{InferredTypeApp, Poly, PolyType};
 
@@ -39,6 +40,35 @@ pub struct Lower<'scope, 'ctx> {
     reporter: &'scope mut LowerReporter<'ctx>,
     context: Option<TypeId<'ctx>>,
     does_return_value: bool,
+    hoisted_declarations: crate::IndexMap<Span, Option<ir::LocalInfo<'ctx>>>,
+}
+
+/// Collect explicitly typed locals in the current function, not nested closures.
+#[derive(Default)]
+struct LocalDeclarations<'ctx>(Vec<(Spanned<&'ctx str>, Spanned<ast::SourceType<'ctx>>)>);
+
+impl<'ctx> ast::AstVisitor<'ctx, ast::WithSpan> for LocalDeclarations<'ctx> {
+    type Error = std::convert::Infallible;
+
+    fn visit_let(
+        &mut self,
+        name: &Spanned<&'ctx str>,
+        typ: &Option<Box<Spanned<ast::SourceType<'ctx>>>>,
+        _value: &Option<Box<Spanned<ast::SourceExpr<'ctx>>>>,
+    ) -> Result<(), Self::Error> {
+        if let Some(typ) = typ {
+            self.0.push((*name, typ.as_ref().clone()));
+        }
+        Ok(())
+    }
+
+    fn visit_lambda(
+        &mut self,
+        _params: &[Spanned<ast::SourceParam<'ctx>>],
+        _body: &ast::SourceFunctionBody<'ctx>,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
 }
 
 #[bon]
@@ -59,6 +89,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             reporter,
             context,
             does_return_value: false,
+            hoisted_declarations: crate::IndexMap::default(),
         }
     }
 
@@ -115,7 +146,41 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             match body {
                 ast::FunctionBody::Block(block) => {
                     let mut lower = Lower::new(locals, ret_t.clone(), context, symbols, reporter);
-                    let block = lower.lower_block(&block.stmts, env);
+                    let mut prologue = Vec::new();
+                    if let Some((_, span)) = block.stmts.first()
+                        && env.types().policy(*span).hoist_locals
+                    {
+                        let mut declarations = LocalDeclarations::default();
+                        let Ok(()) = declarations.visit_block(block);
+                        let mut names: IndexSet<_> = env.locals().top().keys().copied().collect();
+                        for ((name, name_span), (typ, type_span)) in declarations.0 {
+                            lower.hoisted_declarations.insert(name_span, None);
+                            if !names.insert(name) {
+                                lower
+                                    .reporter
+                                    .report(Error::LocalRedefinition(name, name_span));
+                                continue;
+                            }
+                            let resolved = lower.resolve_type(&typ, env, type_span);
+                            if let Some(typ) = lower.reporter.unwrap_err(resolved) {
+                                let local = lower
+                                    .locals
+                                    .add_var(Some(name), typ.clone(), name_span)
+                                    .clone();
+                                env.define_local(name, local.clone());
+                                lower
+                                    .hoisted_declarations
+                                    .insert(name_span, Some(local.clone()));
+                                prologue.push(ir::Stmt::InitDefault {
+                                    local: local.id,
+                                    typ: typ.into(),
+                                    span: name_span,
+                                });
+                            }
+                        }
+                    }
+                    let mut block = lower.lower_block(&block.stmts, env);
+                    block.push_prologue(prologue);
                     if !lower.does_return_value && ret_t.is_fresh() {
                         ret_t
                             .constrain_base(&PolyType::nullary(predef::VOID), symbols)
@@ -225,6 +290,38 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         self.lower_block(block, &mut env.introduce_scope())
     }
 
+    fn truth_value(
+        &mut self,
+        expr: ir::Expr<'ctx>,
+        typ: PolyType<'ctx>,
+        env: &Env<'_, 'ctx>,
+        span: Span,
+    ) -> LowerResult<'ctx, ir::Expr<'ctx>> {
+        if let Some(intrinsic) = env
+            .types()
+            .policy(span)
+            .condition
+            .and_then(|condition| condition(&typ, self.symbols))
+        {
+            let (call, result_type) = self
+                .free_function_call_builder()
+                .name(intrinsic)
+                .expected_intrinsic(intrinsic)
+                .args([(expr, typ)])
+                .env(env)
+                .span(span)
+                .build()?;
+            result_type
+                .constrain_base(&PolyType::nullary(predef::BOOL), self.symbols)
+                .with_span(span)?;
+            Ok(ir::Expr::call(call, span))
+        } else {
+            typ.constrain_base(&PolyType::nullary(predef::BOOL), self.symbols)
+                .with_span(span)?;
+            Ok(expr)
+        }
+    }
+
     fn lower_conditional_block(
         &mut self,
         block: &ast::SourceConditionalBlock<'ctx>,
@@ -235,9 +332,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             ast::LetCondition::Expr(expr) => {
                 let (_, span) = expr;
                 let (condition, expr_t) = self.lower_expr(expr, env)?;
-                expr_t
-                    .constrain_base(&PolyType::nullary(predef::BOOL), self.symbols)
-                    .with_span(*span)?;
+                let condition = self.truth_value(condition, expr_t, env, *span)?;
                 let block = self.lower_scoped_block(&block.body.stmts, env);
                 Ok((ir::ConditionalBlock::new(condition, block), None))
             }
@@ -245,7 +340,14 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 let (_, span) = pattern;
                 let (expr, expr_t) = self.lower_expr(val, env)?;
 
-                let local = self.locals.add_var(None, expr_t.clone(), expr.span()).id;
+                let local = self
+                    .locals
+                    .add_temp(
+                        ir::TemporaryPurpose::PatternScrutinee,
+                        expr_t.clone(),
+                        expr.span(),
+                    )
+                    .id;
                 let mut scope = env.introduce_scope();
                 let (prologue, condition) = self.lower_pattern_into_prologue_and_condition(
                     local, &expr_t, &mut scope, pattern,
@@ -383,8 +485,20 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 (ir::Expr::call(call, *span), typ)
             }
             ast::Expr::BinOp { lhs, op, rhs } => {
-                let lhs = self.lower_expr(lhs, env)?;
-                let rhs = self.lower_expr(rhs, env)?;
+                let mut lhs = self.lower_expr(lhs, env)?;
+                let mut rhs = self.lower_expr(rhs, env)?;
+                if env.types().policy(*span).condition.is_some()
+                    && matches!(op, ast::BinOp::And | ast::BinOp::Or)
+                {
+                    lhs = (
+                        self.truth_value(lhs.0, lhs.1, env, *span)?,
+                        PolyType::nullary(predef::BOOL),
+                    );
+                    rhs = (
+                        self.truth_value(rhs.0, rhs.1, env, *span)?,
+                        PolyType::nullary(predef::BOOL),
+                    );
+                }
                 let (call, typ) = self
                     .free_function_call_builder()
                     .name(op.name())
@@ -397,13 +511,20 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             ast::Expr::UnOp { op, expr } => {
                 if matches!(op, ast::UnOp::Neg)
                     && let &(ast::Expr::Constant(ast::Constant::I32(i)), _) = &**expr
+                    && let Some(negated) = i.checked_neg()
                 {
-                    let const_ = self.lower_constant(&ast::Constant::I32(-i), hint, *span)?;
+                    let const_ = self.lower_constant(&ast::Constant::I32(negated), hint, *span)?;
                     let typ = PolyType::nullary(const_.type_id());
                     return Ok((ir::Expr::Const(const_, *span), typ));
                 }
 
-                let arg = self.lower_expr(expr, env)?;
+                let mut arg = self.lower_expr(expr, env)?;
+                if env.types().policy(*span).condition.is_some() && matches!(op, ast::UnOp::Not) {
+                    arg = (
+                        self.truth_value(arg.0, arg.1, env, *span)?,
+                        PolyType::nullary(predef::BOOL),
+                    );
+                }
                 let (call, typ) = self
                     .free_function_call_builder()
                     .name(op.name())
@@ -425,9 +546,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             ast::Expr::Conditional { cond, then, else_ } => {
                 let cond @ (_, cond_span) = &**cond;
                 let (cond, cond_t) = self.lower_expr(cond, env)?;
-                cond_t
-                    .constrain_base(&PolyType::nullary(predef::BOOL), self.symbols)
-                    .with_span(*cond_span)?;
+                let cond = self.truth_value(cond, cond_t, env, *cond_span)?;
 
                 let (then, then_t) = self.lower_expr_with(then, hint, env)?;
                 let (else_, else_t) = self.lower_expr_with(else_, hint.or(Some(&then_t)), env)?;
@@ -478,6 +597,25 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         let res = match stmt {
             ast::Stmt::Let { name, typ, value } => {
                 let &(name, name_span) = name;
+                if let Some(local) = self.hoisted_declarations.get(&name_span).cloned() {
+                    let Some(local) = local else {
+                        // The hoisting pass already reported this declaration's error.
+                        return Ok(ir::Stmt::Block(ir::Block::new([]), span));
+                    };
+                    return if let Some(value @ (_, value_span)) = value.as_deref() {
+                        let (mut value, value_t) =
+                            self.lower_expr_with(value, Some(&local.typ), env)?;
+                        self.coerce(&mut value, value_t, local.typ, env, *value_span)?;
+                        Ok(ir::Expr::Assign {
+                            place: ir::Expr::Local(local.id, name_span).into(),
+                            expr: value.into(),
+                            span,
+                        }
+                        .into())
+                    } else {
+                        Ok(ir::Stmt::Block(ir::Block::new([]), span))
+                    };
+                }
                 let typ = typ
                     .as_deref()
                     .map(|(typ, span)| self.resolve_type(typ, env, *span))
@@ -531,7 +669,12 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     (expr.into(), expr_t.into(), branches)
                 } else {
                     let span = expr.span();
-                    let local = self.extract_local(expr, &expr_t, span);
+                    let local = self.extract_local(
+                        expr,
+                        &expr_t,
+                        span,
+                        ir::TemporaryPurpose::SwitchScrutinee,
+                    );
                     let branches = cases
                         .iter()
                         .enumerate()
@@ -676,7 +819,10 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 })?;
 
         let array_t = Type::app(predef::ARRAY, [elem_typ.clone()]).into_poly();
-        let local = self.locals.add_var(None, array_t.clone(), span).id;
+        let local = self
+            .locals
+            .add_temp(ir::TemporaryPurpose::ArrayLiteral, array_t.clone(), span)
+            .id;
 
         self.push_prefix(ir::Stmt::InitArray {
             local,
@@ -1120,9 +1266,24 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
 
         let mut env = env.introduce_scope();
         let counter_t = PolyType::nullary(predef::INT32);
-        let counter = self.locals.add_var(None, counter_t.clone(), init_span).id;
-        let array_local = self.extract_local(array, &array_t, init_span);
-        let elem = env.define_local(name, self.locals.add_var(None, elem_t, name_span).clone());
+        let counter = self
+            .locals
+            .add_temp(
+                ir::TemporaryPurpose::IterationIndex,
+                counter_t.clone(),
+                init_span,
+            )
+            .id;
+        let array_local = self.extract_local(
+            array,
+            &array_t,
+            init_span,
+            ir::TemporaryPurpose::IterationIterable,
+        );
+        let elem = env.define_local(
+            name,
+            self.locals.add_var(Some(name), elem_t, name_span).clone(),
+        );
 
         let loop_body = {
             let (increment, _) = self
@@ -1295,6 +1456,17 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         span: Span,
     ) -> LowerResult<'ctx, (ir::Expr<'ctx>, PolyType<'ctx>)> {
         let Some((loc, depth)) = env.locals().get_with_depth(name) else {
+            if env.types().policy(span).implicit_members
+                && name != "this"
+                && env.locals().get("this").is_some()
+                && self.context.is_some_and(|id| {
+                    self.symbols
+                        .base_iter_with_self(id)
+                        .any(|(_, agg)| agg.fields().by_name(name).is_some())
+                })
+            {
+                return self.lower_member(&(ast::Expr::This, span), name, env, span);
+            }
             return Err(Error::UnresolvedVar(name, span));
         };
 
@@ -1367,11 +1539,12 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         expr: ir::Expr<'ctx>,
         expr_t: &PolyType<'ctx>,
         span: Span,
+        purpose: ir::TemporaryPurpose,
     ) -> ir::Local {
         if let ir::Expr::Local(local, _) = expr {
             local
         } else {
-            let local = self.locals.add_var(None, expr_t.clone(), span).id;
+            let local = self.locals.add_temp(purpose, expr_t.clone(), span).id;
             self.push_prefix(ir::Expr::Assign {
                 place: ir::Expr::Local(local, span).into(),
                 expr: expr.into(),

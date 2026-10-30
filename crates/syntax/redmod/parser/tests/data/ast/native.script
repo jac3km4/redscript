@@ -1,0 +1,26 @@
+@module "Authored.Native"
+@using "Authored.Types"
+/// Native declarations preserve source intent.
+[category = "Example", visible = true]
+public export virtual class NativeHost {
+    editable var first, second: name;
+    default first = 'initial';
+    hint second = "An authored hint";
+    import enum Choice: Uint8 { First = -1, Second }
+    import operator&&(left: Bool, skip right: Bool): Bool;
+    import implicit cast(value: Choice): const Int32;
+    public override function Run(optional const first, second: weak<NativeHost>, out result: Int32): Int32 {
+        const var index, limit: Int32 = 0;
+        for (index = 0, limit = 2; index < limit; index += 1, limit -= 1) {
+            do { Use(, first, , second); continue; } while (false);
+        }
+        switch (index) {
+            default: Use();
+            case 1: { result = index = limit; break; }
+            case 2:
+            default: return (Int32)Cast<Float>(index);
+        }
+        ;
+        return index;
+    }
+}

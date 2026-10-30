@@ -1,0 +1,38 @@
+---
+source: crates/compiler/redmod/transpiler/tests/transpile.rs
+expression: output
+---
+import function OperatorLess(a: Int32, b: Int32) -> Bool;
+import function OperatorAssignAdd(out a: Int32, b: Int32) -> Int32;
+import function OperatorLogicAnd(a: Bool, b: Bool) -> Bool;
+function Tick() -> Bool {
+    return true;
+}
+function Check(values: array<Int32>) -> Bool {
+    return true;
+}
+function Test(enabled: Bool, values: array<Int32>) -> Bool {
+    var arrayLiteral: array<Int32>;
+    var reset: Int32;
+    var count: Int32 = 0;
+    while (true) {
+        arrayLiteral.Resize(1);
+        arrayLiteral[0] = count;
+        if (!Check(arrayLiteral)) {
+            break;
+        }
+        reset = Cast<Int32>(0);
+        count += 1;
+        switch (count) {
+            case 1:
+                continue;
+            default:
+                break;
+        }
+        if (count < 3) {
+            continue;
+        }
+        break;
+    }
+    return enabled && (Tick() ? Check(values) : Tick());
+}

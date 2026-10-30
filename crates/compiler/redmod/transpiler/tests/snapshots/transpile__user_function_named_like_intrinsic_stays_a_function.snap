@@ -1,0 +1,12 @@
+---
+source: crates/compiler/redmod/transpiler/tests/transpile.rs
+expression: output
+---
+@module "Custom";
+
+function ToString(value: Int32, other: Int32) -> String {
+    return "custom";
+}
+function Test() -> String {
+    return Custom.ToString(1, 2);
+}

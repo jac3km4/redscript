@@ -1,0 +1,53 @@
+---
+source: crates/syntax/redmod/formatter/tests/print.rs
+expression: output
+---
+@module "Groups";
+
+@using "First";
+@using "Second";
+
+/// documented import
+@using "Third";
+
+@using "Fourth";
+@using "Fifth";
+
+var first: Int32;
+public static var second, third: Int32;
+
+function First();
+
+function Second() {
+}
+
+class C {
+    var first: Int32;
+    private persistent var second: Int32;
+
+    function First();
+
+    event Second();
+
+    struct Nested {
+        var x: Int32;
+        var y: Int32;
+    }
+
+    enum E {
+        A,
+        B,
+    }
+
+    var third: Int32;
+    var fourth: Int32;
+}
+
+struct Empty {
+}
+
+enum E {
+    A,
+}
+
+function Last();

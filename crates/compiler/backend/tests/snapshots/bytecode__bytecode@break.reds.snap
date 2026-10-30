@@ -27,7 +27,7 @@ array.size 0 "array:Int32"
 local 0 "var$0": "array:Int32"
 param.end
 assign
-local 2 "var$2": "Int32"
+local 2 "i$2": "Int32"
 array.element 0 "array:Int32"
 local 0 "var$0": "array:Int32"
 local 1 "var$1": "Int32"
@@ -37,7 +37,7 @@ i32.one
 param.end
 jump.if_not 32
 invoke.static j26 l9 f3 OperatorEqual;Int32Int32 0000000000000000
-local 2 "var$2": "Int32"
+local 2 "i$2": "Int32"
 i32.zero
 param.end
 jump 6

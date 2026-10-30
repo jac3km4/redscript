@@ -1,0 +1,6 @@
+var mixed: mixedRef<Target>;
+var missing: ref;
+class Generic<T> {}
+function GenericCall() { Custom<Int32>(1); }
+function Lambda() { var callback: Callback = (value: Int32) -> value; }
+function After() {}

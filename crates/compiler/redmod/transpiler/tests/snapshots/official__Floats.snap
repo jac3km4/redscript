@@ -1,0 +1,13 @@
+---
+source: crates/compiler/redmod/transpiler/tests/official.rs
+expression: source.module.text
+---
+function OfficialTranspileSmallFloat() -> Float {
+    return 0.00000001;
+}
+function OfficialTranspileLargeFloat() -> Float {
+    return 100000000000000000000.0;
+}
+function OfficialTranspileNegativeZero() -> Float {
+    return -0.0;
+}

@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use indexmap::IndexMap;
-use redscript_ast::{self as ast, Span};
+use redscript_community_ast::{self as ast, Span};
 
 use crate::stages::infer::FuncItem;
 use crate::symbols::{FieldEntry, Visibility};

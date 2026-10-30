@@ -1,0 +1,4 @@
+function Unicode() {
+	var text: String = "猫é\u{XYZ}";
+	return;
+}

@@ -1,0 +1,488 @@
+---
+source: crates/syntax/redmod/parser/tests/fixtures.rs
+expression: parsed
+input_file: crates/syntax/redmod/parser/tests/data/ast/metadata.script
+---
+Module {
+    path: None,
+    items: [
+        (
+            Declaration {
+                annotations: [],
+                visibility: None,
+                modifiers: [],
+                metadata: [],
+                docs: [
+                    "/// Documented class.",
+                ],
+                item: Aggregate {
+                    is_struct: false,
+                    name: (
+                        "Example",
+                        Span {
+                            start: 51,
+                            end: 58,
+                            file: FileId(
+                                0,
+                            ),
+                        },
+                    ),
+                    extends: None,
+                    items: [
+                        (
+                            Declaration {
+                                annotations: [],
+                                visibility: Some(
+                                    Private,
+                                ),
+                                modifiers: [
+                                    (
+                                        Override,
+                                        Span {
+                                            start: 100,
+                                            end: 108,
+                                            file: FileId(
+                                                0,
+                                            ),
+                                        },
+                                    ),
+                                ],
+                                metadata: [],
+                                docs: [
+                                    "/// Documented member.",
+                                ],
+                                item: Function {
+                                    kind: Function(
+                                        (
+                                            "Run",
+                                            Span {
+                                                start: 118,
+                                                end: 121,
+                                                file: FileId(
+                                                    0,
+                                                ),
+                                            },
+                                        ),
+                                    ),
+                                    params: [],
+                                    return_type: None,
+                                    const_return: None,
+                                    body: Some(
+                                        [],
+                                    ),
+                                },
+                            },
+                            Span {
+                                start: 65,
+                                end: 126,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                    ],
+                },
+            },
+            Span {
+                start: 0,
+                end: 128,
+                file: FileId(
+                    0,
+                ),
+            },
+        ),
+        (
+            Declaration {
+                annotations: [
+                    (
+                        Annotation {
+                            name: (
+                                "wrapMethod",
+                                Span {
+                                    start: 130,
+                                    end: 140,
+                                    file: FileId(
+                                        0,
+                                    ),
+                                },
+                            ),
+                            args: [
+                                (
+                                    Ident(
+                                        "Target",
+                                    ),
+                                    Span {
+                                        start: 141,
+                                        end: 147,
+                                        file: FileId(
+                                            0,
+                                        ),
+                                    },
+                                ),
+                            ],
+                        },
+                        Span {
+                            start: 129,
+                            end: 148,
+                            file: FileId(
+                                0,
+                            ),
+                        },
+                    ),
+                ],
+                visibility: None,
+                modifiers: [],
+                metadata: [],
+                docs: [],
+                item: Function {
+                    kind: Function(
+                        (
+                            "Run",
+                            Span {
+                                start: 158,
+                                end: 161,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                    ),
+                    params: [],
+                    return_type: None,
+                    const_return: None,
+                    body: Some(
+                        [
+                            (
+                                Expr(
+                                    (
+                                        Call {
+                                            expr: (
+                                                Ident(
+                                                    "Run",
+                                                ),
+                                                Span {
+                                                    start: 170,
+                                                    end: 173,
+                                                    file: FileId(
+                                                        0,
+                                                    ),
+                                                },
+                                            ),
+                                            args: [],
+                                        },
+                                        Span {
+                                            start: 170,
+                                            end: 175,
+                                            file: FileId(
+                                                0,
+                                            ),
+                                        },
+                                    ),
+                                ),
+                                Span {
+                                    start: 170,
+                                    end: 176,
+                                    file: FileId(
+                                        0,
+                                    ),
+                                },
+                            ),
+                            (
+                                If {
+                                    blocks: [
+                                        (
+                                            (
+                                                Constant(
+                                                    Bool(
+                                                        false,
+                                                    ),
+                                                ),
+                                                Span {
+                                                    start: 185,
+                                                    end: 190,
+                                                    file: FileId(
+                                                        0,
+                                                    ),
+                                                },
+                                            ),
+                                            [
+                                                (
+                                                    Local(
+                                                        Local {
+                                                            const_: None,
+                                                            names: [
+                                                                (
+                                                                    "Run",
+                                                                    Span {
+                                                                        start: 198,
+                                                                        end: 201,
+                                                                        file: FileId(
+                                                                            0,
+                                                                        ),
+                                                                    },
+                                                                ),
+                                                            ],
+                                                            typ: (
+                                                                Named {
+                                                                    name: "Callback",
+                                                                    args: [],
+                                                                },
+                                                                Span {
+                                                                    start: 203,
+                                                                    end: 211,
+                                                                    file: FileId(
+                                                                        0,
+                                                                    ),
+                                                                },
+                                                            ),
+                                                            value: Some(
+                                                                (
+                                                                    Call {
+                                                                        expr: (
+                                                                            Ident(
+                                                                                "Run",
+                                                                            ),
+                                                                            Span {
+                                                                                start: 214,
+                                                                                end: 217,
+                                                                                file: FileId(
+                                                                                    0,
+                                                                                ),
+                                                                            },
+                                                                        ),
+                                                                        args: [],
+                                                                    },
+                                                                    Span {
+                                                                        start: 214,
+                                                                        end: 219,
+                                                                        file: FileId(
+                                                                            0,
+                                                                        ),
+                                                                    },
+                                                                ),
+                                                            ),
+                                                        },
+                                                    ),
+                                                    Span {
+                                                        start: 194,
+                                                        end: 220,
+                                                        file: FileId(
+                                                            0,
+                                                        ),
+                                                    },
+                                                ),
+                                            ],
+                                        ),
+                                    ],
+                                    else_: None,
+                                },
+                                Span {
+                                    start: 181,
+                                    end: 222,
+                                    file: FileId(
+                                        0,
+                                    ),
+                                },
+                            ),
+                            (
+                                Expr(
+                                    (
+                                        Call {
+                                            expr: (
+                                                Member {
+                                                    expr: (
+                                                        This,
+                                                        Span {
+                                                            start: 227,
+                                                            end: 231,
+                                                            file: FileId(
+                                                                0,
+                                                            ),
+                                                        },
+                                                    ),
+                                                    member: "Run",
+                                                },
+                                                Span {
+                                                    start: 227,
+                                                    end: 235,
+                                                    file: FileId(
+                                                        0,
+                                                    ),
+                                                },
+                                            ),
+                                            args: [],
+                                        },
+                                        Span {
+                                            start: 227,
+                                            end: 237,
+                                            file: FileId(
+                                                0,
+                                            ),
+                                        },
+                                    ),
+                                ),
+                                Span {
+                                    start: 227,
+                                    end: 238,
+                                    file: FileId(
+                                        0,
+                                    ),
+                                },
+                            ),
+                            (
+                                Expr(
+                                    (
+                                        Call {
+                                            expr: (
+                                                Ident(
+                                                    "Run",
+                                                ),
+                                                Span {
+                                                    start: 243,
+                                                    end: 246,
+                                                    file: FileId(
+                                                        0,
+                                                    ),
+                                                },
+                                            ),
+                                            args: [],
+                                        },
+                                        Span {
+                                            start: 243,
+                                            end: 248,
+                                            file: FileId(
+                                                0,
+                                            ),
+                                        },
+                                    ),
+                                ),
+                                Span {
+                                    start: 243,
+                                    end: 249,
+                                    file: FileId(
+                                        0,
+                                    ),
+                                },
+                            ),
+                        ],
+                    ),
+                },
+            },
+            Span {
+                start: 129,
+                end: 251,
+                file: FileId(
+                    0,
+                ),
+            },
+        ),
+        (
+            Declaration {
+                annotations: [
+                    (
+                        Annotation {
+                            name: (
+                                "wrapMethod",
+                                Span {
+                                    start: 253,
+                                    end: 263,
+                                    file: FileId(
+                                        0,
+                                    ),
+                                },
+                            ),
+                            args: [
+                                (
+                                    Ident(
+                                        "Target",
+                                    ),
+                                    Span {
+                                        start: 264,
+                                        end: 270,
+                                        file: FileId(
+                                            0,
+                                        ),
+                                    },
+                                ),
+                            ],
+                        },
+                        Span {
+                            start: 252,
+                            end: 271,
+                            file: FileId(
+                                0,
+                            ),
+                        },
+                    ),
+                ],
+                visibility: None,
+                modifiers: [],
+                metadata: [],
+                docs: [],
+                item: Function {
+                    kind: Function(
+                        (
+                            "Unshadowed",
+                            Span {
+                                start: 281,
+                                end: 291,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                    ),
+                    params: [],
+                    return_type: None,
+                    const_return: None,
+                    body: Some(
+                        [
+                            (
+                                Expr(
+                                    (
+                                        Call {
+                                            expr: (
+                                                Ident(
+                                                    "Unshadowed",
+                                                ),
+                                                Span {
+                                                    start: 296,
+                                                    end: 306,
+                                                    file: FileId(
+                                                        0,
+                                                    ),
+                                                },
+                                            ),
+                                            args: [],
+                                        },
+                                        Span {
+                                            start: 296,
+                                            end: 308,
+                                            file: FileId(
+                                                0,
+                                            ),
+                                        },
+                                    ),
+                                ),
+                                Span {
+                                    start: 296,
+                                    end: 309,
+                                    file: FileId(
+                                        0,
+                                    ),
+                                },
+                            ),
+                        ],
+                    ),
+                },
+            },
+            Span {
+                start: 252,
+                end: 311,
+                file: FileId(
+                    0,
+                ),
+            },
+        ),
+    ],
+}

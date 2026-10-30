@@ -1,0 +1,13 @@
+---
+source: crates/compiler/redmod/transpiler/tests/official.rs
+expression: source.module.text
+---
+class OfficialTranspileWidget extends IScriptable {
+private var value: Int32;
+public function Read() -> Int32 {
+    return this.value;
+}
+}
+function OfficialTranspileObject() -> OfficialTranspileWidget {
+    return new OfficialTranspileWidget;
+}

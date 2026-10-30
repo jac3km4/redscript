@@ -7,16 +7,21 @@ edition.workspace = true
 [dependencies]
 redscript-compiler-api = { workspace = true, features = ["ignore"] }
 redscript-decompiler.workspace = true
-redscript-formatter.workspace = true
+redscript-community-formatter.workspace = true
 redscript-dotfile.workspace = true
+redscript-redmod-transpiler.workspace = true
 
 log.workspace = true
 anyhow.workspace = true
 hashbrown.workspace = true
+ignore.workspace = true
 fern = { workspace = true, features = ["colored"] }
 vmap.workspace = true
 argh.workspace = true
 mimalloc.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
 
 [lints]
 workspace = true

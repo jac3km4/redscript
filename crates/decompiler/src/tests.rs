@@ -1,6 +1,6 @@
 use hashbrown::HashMap;
-use redscript_ast as ast;
-use redscript_formatter::{FormatCtx, FormatSettings, SyntaxOps};
+use redscript_community_ast as ast;
+use redscript_community_formatter::{FormatCtx, FormatSettings, SyntaxOps};
 use redscript_io::{
     Class, ClassFlags, CodeIter, Function, FunctionFlags, Instr, InvokeFlags, Jump, Local,
     LocalFlags, ScriptBundle, Switch, SwitchLabel, Type, TypeKind, Visibility,

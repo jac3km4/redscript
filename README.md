@@ -45,14 +45,17 @@ This project includes various tools for working with REDscript, such as a compil
 - **`compiler/frontend`** - Performs static analysis on REDscript syntax, lowering it to an intermediate representation.
 - **`compiler/backend`** - Generates bytecode from the intermediate representation and handles monomorphization for generic functions and types.
 - **`compiler/api`** - Provides a high-level API for interacting seamlessly with the compiler.
+- **`compiler/redmod/adapter`** - Adapts native REDmod syntax to shared semantic analysis.
+- **`compiler/redmod/transpiler`** - Transpiles typed community REDscript to REDmod source.
 - **`decompiler`** - Decompiles bytecode back into REDscript source code.
 - **`io`** - Reads and writes binary files in the native REDengine format.
 - **`scc/cli`** - Exposes a CLI that acts as a drop-in replacement for the original compiler made by CD Projekt.
 - **`scc/capi`** - Exposes a C API with an interface similar to the `scc` CLI, but with some additional capabilities like source mapping.
 - **`scc/core`** - Contains common code used across the scc C API and CLI.
-- **`syntax/ast`** - Defines the Abstract Syntax Tree (AST) for REDscript.
-- **`syntax/formatter`** - Formats REDscript source code according to configuration.
-- **`syntax/parser`** - Parses REDscript source code into the AST.
+- **`syntax/community/ast`** - Defines the Abstract Syntax Tree (AST) for REDscript.
+- **`syntax/community/formatter`** - Formats REDscript source code according to configuration.
+- **`syntax/community/parser`** - Parses REDscript source code into the AST.
+- **`syntax/redmod/{ast,formatter,parser}`** - Native REDmod syntax trees, printing/formatting and parsing.
 - **`dotfile`** - Parses the configuration `.redscript` file.
 - **`code-edit`** - Provides source code edits used by tooling and migrations.
 

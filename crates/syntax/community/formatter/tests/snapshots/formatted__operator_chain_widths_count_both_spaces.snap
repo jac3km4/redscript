@@ -1,0 +1,26 @@
+---
+source: crates/syntax/community/formatter/tests/formatted.rs
+expression: cases
+---
+=== operator chain: a + b + c + d, max_width: 14 ===
+
+func F() {
+  a
+    + b
+    + c
+    + d;
+}
+
+
+=== operator chain: a + b + c + d, max_width: 15 ===
+
+func F() {
+  a + b + c + d;
+}
+
+
+=== operator chain: a + b + c + d, max_width: 16 ===
+
+func F() {
+  a + b + c + d;
+}

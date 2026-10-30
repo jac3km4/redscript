@@ -1,0 +1,9 @@
+import enum AuthoredChoice { First = -1, Second = 2, }
+importonly class AuthoredHost {
+    persistent quest var values: array<weak<AuthoredHost>>;
+    public import final function Read(out result: Int32): Bool;
+    protected event OnReady() { return true; }
+}
+function AuthoredFlow(value: Int32): Int32 {
+    switch (value) { case 1: return (Int32)2.5; default: return 0; }
+}

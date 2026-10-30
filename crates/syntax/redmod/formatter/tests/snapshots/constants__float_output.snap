@@ -1,0 +1,7 @@
+---
+source: crates/syntax/redmod/formatter/tests/constants.rs
+expression: print_module(&module.unwrap()).unwrap()
+---
+function Run() {
+    Use(0.00000000000000000001, 100000000000000000000.0, (-0.0), 0.00000000000000000001d, 100000000000000000000.0d, (-0.0d));
+}

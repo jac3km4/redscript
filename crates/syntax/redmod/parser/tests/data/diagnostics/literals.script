@@ -1,0 +1,7 @@
+function Literals() {
+    var value: Int32 = 999999999999999999999;
+    var text: String = "\u{D800}";
+    § 猫
+    return;
+}
+/* unterminated

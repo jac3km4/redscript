@@ -7,7 +7,7 @@ use std::{fmt, mem};
 use aggregate::extract_static_forwarder;
 use constants::{annotation, ident};
 use hashbrown::HashMap;
-use redscript_ast::{self as ast, BinOp, Span, Spanned, UnOp};
+use redscript_community_ast::{self as ast, BinOp, Span, Spanned, UnOp};
 
 use super::TypeInference;
 use super::infer::{FieldItem, FuncItem, FuncItemKind, InferStageModule};
@@ -100,6 +100,16 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
             let is_public = matches!(item_meta.visibility, Some(ast::Visibility::Public));
             match item {
                 ast::Item::Import(import) => {
+                    for (ann, ann_span) in &item_meta.annotations {
+                        if ann.name == annotation::HINT {
+                            self.reporter
+                                .report(Diagnostic::UnknownAnnotation(ann.name, *ann_span));
+                        }
+                    }
+                    if !qualifiers.is_empty() {
+                        self.reporter
+                            .report(Diagnostic::UnusedItemQualifiers(qualifiers, item_span));
+                    }
                     imports.push(ParsedImport {
                         import,
                         span: item_span,
@@ -385,6 +395,12 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
 
     fn process_enum(&mut self, entry: ParsedEnum<'ctx>) {
         let (enum_name, name_span) = entry.enum_.name;
+        for (ann, ann_span) in &entry.meta.annotations {
+            if ann.name == annotation::HINT {
+                self.reporter
+                    .report(Diagnostic::UnknownAnnotation(ann.name, *ann_span));
+            }
+        }
 
         let qs = entry.meta.qualifiers;
         if !qs.is_empty() {
@@ -621,6 +637,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
 
         let mut annotations = meta.annotations;
         let mut properties = extract_field_properties(&mut annotations);
+        let mut hint = extract_field_hint(&mut annotations);
 
         for (ann, ann_span) in &annotations {
             match (ann.name, &ann.args[..]) {
@@ -659,7 +676,8 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         mem::take(&mut properties),
                         mem::take(&mut doc),
                         Some(name_span),
-                    );
+                    )
+                    .with_hint(hint.take());
 
                     if let Ok(idx) = self.symbols[parent_t]
                         .schema_mut()
@@ -876,6 +894,20 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
     }
 }
 
+fn extract_field_hint<'ctx>(
+    anns: &mut Vec<ast::Spanned<ast::SourceAnnotation<'ctx>>>,
+) -> Option<Cow<'ctx, str>> {
+    let mut hint = None;
+    anns.retain(|(ann, _)| match (ann.name, &*ann.args) {
+        (annotation::HINT, [(ast::Expr::Constant(ast::Constant::String(value)), _)]) => {
+            hint = Some(value.clone());
+            false
+        }
+        _ => true,
+    });
+    hint
+}
+
 fn extract_field_properties<'ctx>(
     anns: &mut Vec<ast::Spanned<ast::SourceAnnotation<'ctx>>>,
 ) -> Vec<(Cow<'ctx, str>, Cow<'ctx, str>)> {
@@ -1028,6 +1060,10 @@ impl<'scope, 'ctx> Scope<'scope, 'ctx> {
             types,
             funcs: funcs.into(),
         }
+    }
+
+    pub(crate) fn set_policies(&mut self, policies: Rc<[(ast::FileId, crate::SemanticPolicy)]>) {
+        self.types.set_policies(policies);
     }
 
     pub fn push(

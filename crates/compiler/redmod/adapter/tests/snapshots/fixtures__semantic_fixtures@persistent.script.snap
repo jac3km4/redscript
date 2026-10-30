@@ -1,0 +1,11 @@
+---
+source: crates/compiler/redmod/adapter/tests/fixtures.rs
+expression: output
+input_file: crates/compiler/redmod/adapter/tests/data/persistent.script
+---
+REDMOD_SEMANTICS [204..215]: persistent fields of mod-defined classes are accessible only inside the declaring class; use an accessor
+REDMOD_SEMANTICS [251..262]: persistent fields of mod-defined classes are accessible only inside the declaring class; use an accessor
+field State.count: persistent=true, properties=[("category", "Settings")]
+function at 167: return=Int32
+function at 229: return=Void
+method State.Get: callback=false, return=Int32

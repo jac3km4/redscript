@@ -2,7 +2,7 @@ use std::fmt;
 use std::rc::Rc;
 
 use derive_where::derive_where;
-use redscript_ast::Span;
+use redscript_community_ast::Span;
 
 use super::{FreeFunctionFlags, MethodFlags, MethodId, ParamFlags};
 use crate::types::{CtxVar, Type};

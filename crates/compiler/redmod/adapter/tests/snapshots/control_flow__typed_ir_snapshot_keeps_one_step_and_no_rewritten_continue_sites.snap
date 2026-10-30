@@ -1,0 +1,590 @@
+---
+source: crates/compiler/redmod/adapter/tests/control_flow.rs
+expression: function.block
+---
+Block {
+    stmts: [
+        InitDefault {
+            local: Var(
+                0,
+            ),
+            typ: Type(
+                RefCell {
+                    value: Uninit(
+                        Mono(
+                            Data(
+                                TypeApp {
+                                    id: TypeId(
+                                        "Int32",
+                                    ),
+                                    args: [],
+                                },
+                            ),
+                        ),
+                    ),
+                },
+            ),
+            span: Span {
+                start: 26,
+                end: 27,
+                file: FileId(
+                    1,
+                ),
+            },
+        },
+        Expr(
+            Assign {
+                place: Local(
+                    Var(
+                        0,
+                    ),
+                    Span {
+                        start: 26,
+                        end: 27,
+                        file: FileId(
+                            1,
+                        ),
+                    },
+                ),
+                expr: Const(
+                    I32(
+                        0,
+                    ),
+                    Span {
+                        start: 37,
+                        end: 38,
+                        file: FileId(
+                            1,
+                        ),
+                    },
+                ),
+                span: Span {
+                    start: 22,
+                    end: 38,
+                    file: FileId(
+                        1,
+                    ),
+                },
+            },
+        ),
+        Expr(
+            Assign {
+                place: Local(
+                    Var(
+                        1,
+                    ),
+                    Span {
+                        start: 17,
+                        end: 17,
+                        file: FileId(
+                            1,
+                        ),
+                    },
+                ),
+                expr: Const(
+                    Bool(
+                        false,
+                    ),
+                    Span {
+                        start: 17,
+                        end: 17,
+                        file: FileId(
+                            1,
+                        ),
+                    },
+                ),
+                span: Span {
+                    start: 17,
+                    end: 17,
+                    file: FileId(
+                        1,
+                    ),
+                },
+            },
+        ),
+        While(
+            ConditionalBlock {
+                condition: Const(
+                    Bool(
+                        true,
+                    ),
+                    Span {
+                        start: 17,
+                        end: 17,
+                        file: FileId(
+                            1,
+                        ),
+                    },
+                ),
+                block: Block {
+                    stmts: [
+                        Branches {
+                            branches: [
+                                ConditionalBlock {
+                                    condition: Local(
+                                        Var(
+                                            1,
+                                        ),
+                                        Span {
+                                            start: 17,
+                                            end: 17,
+                                            file: FileId(
+                                                1,
+                                            ),
+                                        },
+                                    ),
+                                    block: Block {
+                                        stmts: [
+                                            Expr(
+                                                Call {
+                                                    call: FreeFunction {
+                                                        function: FreeFunctionIndex(
+                                                            FunctionIndex {
+                                                                item_index: 0,
+                                                                overload_index: 0,
+                                                            },
+                                                        ),
+                                                        type_args: [],
+                                                        args: [
+                                                            Const(
+                                                                I32(
+                                                                    1,
+                                                                ),
+                                                                Span {
+                                                                    start: 57,
+                                                                    end: 58,
+                                                                    file: FileId(
+                                                                        1,
+                                                                    ),
+                                                                },
+                                                            ),
+                                                        ],
+                                                    },
+                                                    span: Span {
+                                                        start: 52,
+                                                        end: 59,
+                                                        file: FileId(
+                                                            1,
+                                                        ),
+                                                    },
+                                                },
+                                            ),
+                                            Expr(
+                                                Assign {
+                                                    place: Local(
+                                                        Var(
+                                                            0,
+                                                        ),
+                                                        Span {
+                                                            start: 61,
+                                                            end: 62,
+                                                            file: FileId(
+                                                                1,
+                                                            ),
+                                                        },
+                                                    ),
+                                                    expr: Call {
+                                                        call: FreeFunction {
+                                                            function: FreeFunctionIndex(
+                                                                FunctionIndex {
+                                                                    item_index: 3,
+                                                                    overload_index: 0,
+                                                                },
+                                                            ),
+                                                            type_args: [],
+                                                            args: [
+                                                                Local(
+                                                                    Var(
+                                                                        0,
+                                                                    ),
+                                                                    Span {
+                                                                        start: 69,
+                                                                        end: 70,
+                                                                        file: FileId(
+                                                                            1,
+                                                                        ),
+                                                                    },
+                                                                ),
+                                                            ],
+                                                        },
+                                                        span: Span {
+                                                            start: 65,
+                                                            end: 71,
+                                                            file: FileId(
+                                                                1,
+                                                            ),
+                                                        },
+                                                    },
+                                                    span: Span {
+                                                        start: 61,
+                                                        end: 71,
+                                                        file: FileId(
+                                                            1,
+                                                        ),
+                                                    },
+                                                },
+                                            ),
+                                        ],
+                                    },
+                                },
+                            ],
+                            default: None,
+                            span: Span {
+                                start: 17,
+                                end: 110,
+                                file: FileId(
+                                    1,
+                                ),
+                            },
+                        },
+                        Expr(
+                            Assign {
+                                place: Local(
+                                    Var(
+                                        1,
+                                    ),
+                                    Span {
+                                        start: 17,
+                                        end: 17,
+                                        file: FileId(
+                                            1,
+                                        ),
+                                    },
+                                ),
+                                expr: Const(
+                                    Bool(
+                                        true,
+                                    ),
+                                    Span {
+                                        start: 17,
+                                        end: 17,
+                                        file: FileId(
+                                            1,
+                                        ),
+                                    },
+                                ),
+                                span: Span {
+                                    start: 17,
+                                    end: 17,
+                                    file: FileId(
+                                        1,
+                                    ),
+                                },
+                            },
+                        ),
+                        Branches {
+                            branches: [
+                                ConditionalBlock {
+                                    condition: Call {
+                                        call: FreeFunction {
+                                            function: FreeFunctionIndex(
+                                                FunctionIndex {
+                                                    item_index: 1,
+                                                    overload_index: 0,
+                                                },
+                                            ),
+                                            type_args: [],
+                                            args: [
+                                                Local(
+                                                    Var(
+                                                        0,
+                                                    ),
+                                                    Span {
+                                                        start: 45,
+                                                        end: 46,
+                                                        file: FileId(
+                                                            1,
+                                                        ),
+                                                    },
+                                                ),
+                                                Const(
+                                                    I32(
+                                                        2,
+                                                    ),
+                                                    Span {
+                                                        start: 48,
+                                                        end: 49,
+                                                        file: FileId(
+                                                            1,
+                                                        ),
+                                                    },
+                                                ),
+                                            ],
+                                        },
+                                        span: Span {
+                                            start: 40,
+                                            end: 50,
+                                            file: FileId(
+                                                1,
+                                            ),
+                                        },
+                                    },
+                                    block: Block {
+                                        stmts: [
+                                            Branches {
+                                                branches: [
+                                                    ConditionalBlock {
+                                                        condition: Const(
+                                                            Bool(
+                                                                true,
+                                                            ),
+                                                            Span {
+                                                                start: 79,
+                                                                end: 83,
+                                                                file: FileId(
+                                                                    1,
+                                                                ),
+                                                            },
+                                                        ),
+                                                        block: Block {
+                                                            stmts: [
+                                                                Continue(
+                                                                    Span {
+                                                                        start: 87,
+                                                                        end: 96,
+                                                                        file: FileId(
+                                                                            1,
+                                                                        ),
+                                                                    },
+                                                                ),
+                                                            ],
+                                                        },
+                                                    },
+                                                ],
+                                                default: None,
+                                                span: Span {
+                                                    start: 75,
+                                                    end: 98,
+                                                    file: FileId(
+                                                        1,
+                                                    ),
+                                                },
+                                            },
+                                            Continue(
+                                                Span {
+                                                    start: 99,
+                                                    end: 108,
+                                                    file: FileId(
+                                                        1,
+                                                    ),
+                                                },
+                                            ),
+                                        ],
+                                    },
+                                },
+                            ],
+                            default: Some(
+                                Block {
+                                    stmts: [
+                                        Break(
+                                            Span {
+                                                start: 17,
+                                                end: 17,
+                                                file: FileId(
+                                                    1,
+                                                ),
+                                            },
+                                        ),
+                                    ],
+                                },
+                            ),
+                            span: Span {
+                                start: 17,
+                                end: 110,
+                                file: FileId(
+                                    1,
+                                ),
+                            },
+                        },
+                    ],
+                },
+            },
+            Span {
+                start: 17,
+                end: 110,
+                file: FileId(
+                    1,
+                ),
+            },
+        ),
+        Expr(
+            Assign {
+                place: Local(
+                    Var(
+                        2,
+                    ),
+                    Span {
+                        start: 111,
+                        end: 111,
+                        file: FileId(
+                            1,
+                        ),
+                    },
+                ),
+                expr: Const(
+                    Bool(
+                        false,
+                    ),
+                    Span {
+                        start: 111,
+                        end: 111,
+                        file: FileId(
+                            1,
+                        ),
+                    },
+                ),
+                span: Span {
+                    start: 111,
+                    end: 111,
+                    file: FileId(
+                        1,
+                    ),
+                },
+            },
+        ),
+        While(
+            ConditionalBlock {
+                condition: Const(
+                    Bool(
+                        true,
+                    ),
+                    Span {
+                        start: 111,
+                        end: 111,
+                        file: FileId(
+                            1,
+                        ),
+                    },
+                ),
+                block: Block {
+                    stmts: [
+                        Branches {
+                            branches: [
+                                ConditionalBlock {
+                                    condition: Local(
+                                        Var(
+                                            2,
+                                        ),
+                                        Span {
+                                            start: 111,
+                                            end: 111,
+                                            file: FileId(
+                                                1,
+                                            ),
+                                        },
+                                    ),
+                                    block: Block {
+                                        stmts: [
+                                            Branches {
+                                                branches: [
+                                                    ConditionalBlock {
+                                                        condition: Const(
+                                                            Bool(
+                                                                false,
+                                                            ),
+                                                            Span {
+                                                                start: 135,
+                                                                end: 140,
+                                                                file: FileId(
+                                                                    1,
+                                                                ),
+                                                            },
+                                                        ),
+                                                        block: Block {
+                                                            stmts: [],
+                                                        },
+                                                    },
+                                                ],
+                                                default: Some(
+                                                    Block {
+                                                        stmts: [
+                                                            Break(
+                                                                Span {
+                                                                    start: 111,
+                                                                    end: 111,
+                                                                    file: FileId(
+                                                                        1,
+                                                                    ),
+                                                                },
+                                                            ),
+                                                        ],
+                                                    },
+                                                ),
+                                                span: Span {
+                                                    start: 111,
+                                                    end: 142,
+                                                    file: FileId(
+                                                        1,
+                                                    ),
+                                                },
+                                            },
+                                        ],
+                                    },
+                                },
+                            ],
+                            default: None,
+                            span: Span {
+                                start: 111,
+                                end: 142,
+                                file: FileId(
+                                    1,
+                                ),
+                            },
+                        },
+                        Expr(
+                            Assign {
+                                place: Local(
+                                    Var(
+                                        2,
+                                    ),
+                                    Span {
+                                        start: 111,
+                                        end: 111,
+                                        file: FileId(
+                                            1,
+                                        ),
+                                    },
+                                ),
+                                expr: Const(
+                                    Bool(
+                                        true,
+                                    ),
+                                    Span {
+                                        start: 111,
+                                        end: 111,
+                                        file: FileId(
+                                            1,
+                                        ),
+                                    },
+                                ),
+                                span: Span {
+                                    start: 111,
+                                    end: 111,
+                                    file: FileId(
+                                        1,
+                                    ),
+                                },
+                            },
+                        ),
+                        Continue(
+                            Span {
+                                start: 116,
+                                end: 125,
+                                file: FileId(
+                                    1,
+                                ),
+                            },
+                        ),
+                    ],
+                },
+            },
+            Span {
+                start: 111,
+                end: 142,
+                file: FileId(
+                    1,
+                ),
+            },
+        ),
+    ],
+}

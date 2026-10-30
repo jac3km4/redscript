@@ -1,0 +1,7 @@
+class State {
+  @runtimeProperty("category", "Settings")
+  public persistent let count: Int32;
+  public function Get() -> Int32 { return this.count; }
+}
+function Read(state: State) -> Int32 { return state.count; }
+function Write(state: State) { state.count = 1; }

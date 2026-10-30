@@ -1,0 +1,9 @@
+---
+source: crates/compiler/redmod/transpiler/tests/transpile.rs
+expression: "result.iter().map(|d| d.display(&sources).to_string()).collect::<String>()"
+---
+error[REDMOD_TRANSPILE]: array literal in lazy operand has no retained control-flow provenance; bind the array in the selected branch explicitly
+ --> rejected.reds:1:90
+  |
+1 | func Check(values: [Int32]) -> Bool = true func Test(flag: Bool) -> Bool = flag ? Check([1]) : false
+  |                                                                                          ^

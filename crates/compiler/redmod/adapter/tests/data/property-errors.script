@@ -1,0 +1,8 @@
+class BadProperties {
+  @runtimeProperty("category")
+  let wrongArity: Int32;
+  @runtimeProperty("category", 1)
+  let wrongType: Int32;
+  @runtimeProperty("category", "Settings")
+  function NotAField() {}
+}

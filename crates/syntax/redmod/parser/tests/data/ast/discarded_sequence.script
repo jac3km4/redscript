@@ -1,0 +1,3 @@
+function Run() {
+    First(), value = Next(), Last(value);
+}

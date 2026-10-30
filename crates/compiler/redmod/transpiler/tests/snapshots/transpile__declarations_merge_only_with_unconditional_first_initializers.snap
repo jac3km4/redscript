@@ -1,0 +1,35 @@
+---
+source: crates/compiler/redmod/transpiler/tests/transpile.rs
+expression: output.text
+---
+function Tick() -> Int32 {
+    return 1;
+}
+function Test(flag: Bool) -> Int32 {
+    var empty: array<Int32>;
+    var arrayLiteral: array<Int32>;
+    var branchValue: Int32;
+    var repeated: Int32;
+    var reset: Int32;
+    var count_2: Int32;
+    var count: Int32 = Tick();
+    var zero: Int32 = Cast<Int32>(0);
+    var text: String = "";
+    empty.Clear();
+    arrayLiteral.Resize(1);
+    arrayLiteral[0] = count;
+    var values: array<Int32> = arrayLiteral;
+    if (flag) {
+        branchValue = Tick();
+    }
+    while (flag) {
+        repeated = Tick();
+        reset = Cast<Int32>(0);
+        continue;
+    }
+    if (flag) {
+        count_2 = count;
+    }
+    count = Tick();
+    return count;
+}

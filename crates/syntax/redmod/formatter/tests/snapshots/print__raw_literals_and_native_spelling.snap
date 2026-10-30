@@ -1,0 +1,12 @@
+---
+source: crates/syntax/redmod/formatter/tests/print.rs
+expression: output
+---
+function Test() {
+    Use("assets\", "\n\t\u{22}\\", "first
+  second", 'Name with "quotes"', 'assets\', n"can't", n"can't\", n"can't\n\u{22}", n"can't
+  second", R"path", T"id", 2.5d, 3l, NULL);
+    var x: name = 'name';
+    var y: weak<C>;
+    var z: mixedRef<C>;
+}

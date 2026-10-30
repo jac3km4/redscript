@@ -6,8 +6,8 @@ edition.workspace = true
 
 [dependencies]
 redscript-io.workspace = true
-redscript-ast.workspace = true
-redscript-formatter.workspace = true
+redscript-community-ast.workspace = true
+redscript-community-formatter.workspace = true
 
 thiserror.workspace = true
 hashbrown.workspace = true

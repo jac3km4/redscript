@@ -1,0 +1,13 @@
+---
+source: crates/compiler/redmod/transpiler/tests/official.rs
+expression: source.module.text
+---
+function OfficialTranspileArray() -> Int32 {
+    var arrayLiteral: array<Int32>;
+    arrayLiteral.Resize(2);
+    arrayLiteral[0] = 1;
+    arrayLiteral[1] = 2;
+    var values: array<Int32> = arrayLiteral;
+    values.PushBack(3);
+    return values.Size();
+}

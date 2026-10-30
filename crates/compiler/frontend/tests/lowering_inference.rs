@@ -1,4 +1,4 @@
-use redscript_ast::SourceMap;
+use redscript_community_ast::SourceMap;
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{
     CompileErrorReporter, Diagnostic, LoweredCompilationUnit, Symbols, Type, TypeInterner,
@@ -241,6 +241,30 @@ fn inference_errors_do_not_assume_member_lookup() {
         diagnostics[0].1,
         "cannot infer the type of this expression; consider adding type annotations"
     );
+}
+
+#[test]
+fn assignments_do_not_produce_the_assigned_value() {
+    for body in [
+        "let a = false; a = true;",
+        "let a = false; let value: Bool = (a = true);",
+        "let a = false; let b = false; a = (b = true);",
+    ] {
+        let sources = SourceMap::new();
+        sources.push_back("assignment.reds", format!("func Test() {{ {body} }}"));
+        let interner = TypeInterner::default();
+        let (_, _, diagnostics) = infer(&sources, &interner);
+        if body == "let a = false; a = true;" {
+            assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        } else {
+            assert!(
+                diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.code() == "TYPE_ERR"),
+                "{body}: {diagnostics:?}"
+            );
+        }
+    }
 }
 
 #[test]

@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use bon::builder;
 use identity_hash::BuildIdentityHasher;
-use redscript_ast::{self as ast, FileId, Span, Spanned};
+use redscript_community_ast::{self as ast, FileId, Span, Spanned};
 use smallvec::smallvec;
 
 use super::resolution::Scope;

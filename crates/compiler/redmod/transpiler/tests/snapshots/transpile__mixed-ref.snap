@@ -1,0 +1,9 @@
+---
+source: crates/compiler/redmod/transpiler/tests/transpile.rs
+expression: "result.iter().map(|d| d.display(&sources).to_string()).collect::<String>()"
+---
+error[REDMOD_TRANSPILE]: mixedRef types are unsupported
+ --> rejected.reds:1:1
+  |
+1 | @mixedRef() class Widget {}
+  | ^^^^^^^^^^^

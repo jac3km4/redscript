@@ -1,0 +1,45 @@
+---
+source: crates/compiler/redmod/transpiler/tests/transpile.rs
+expression: text
+---
+import function OperatorAdd(a: Int32, b: Int32) -> Int32;
+import function OperatorAdd(a: String, b: String) -> String;
+import function OperatorAssignAdd(out a: Int32, b: Int32) -> Int32;
+import function OperatorLess(a: Int32, b: Int32) -> Bool;
+import function OperatorLogicAnd(a: Bool, b: Bool) -> Bool;
+function Tick() -> Bool {
+    return true;
+}
+function Inline(__rst_p0: Int32) -> Int32 {
+    return __rst_p0;
+}
+function Empty() -> array<Int32> {
+    var arrayLiteral: array<Int32>;
+    arrayLiteral.Clear();
+    return arrayLiteral;
+}
+function Test(items: array<Int32>, enabled: Bool) -> String {
+    var item: Int32;
+    var scratch: array<Int32>;
+    var zero: Int32;
+    var __rst_v7: Int32;
+    var __rst_v8: Int32;
+    var result: String = "";
+    var index: Int32 = 0;
+    while (index < items.Size()) {
+        item = items[index];
+        index += 1;
+        scratch.Clear();
+        zero = Cast<Int32>(0);
+        scratch.PushBack(item);
+        if (enabled && Tick()) {
+            __rst_v7 = item;
+            result = "value=" + IntToString(__rst_v7);
+            continue;
+        } else {
+            __rst_v8 = zero;
+            scratch.PushBack(__rst_v8);
+        }
+    }
+    return result;
+}

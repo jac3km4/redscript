@@ -4,7 +4,7 @@ use control_flow::build_control_flow;
 pub use decompiler::Verbosity;
 use decompiler::decompile_block;
 use error::{Error, Result};
-use redscript_ast as ast;
+use redscript_community_ast as ast;
 use redscript_io::{
     Class, CodeIter, Definition, Enum, Field, Function, Parameter, PoolItemIndex, ScriptBundle,
     TypeIndex, TypeKind, Visibility,

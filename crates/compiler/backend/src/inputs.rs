@@ -117,11 +117,18 @@ impl<'ctx> CompilationInputs<'ctx> {
                             .with_is_editable(field.flags().is_editable())
                             .with_is_inline(field.flags().is_inline())
                             .with_is_const(field.flags().is_const())
+                            .with_is_instance_editable(field.flags().is_instance_editable())
+                            .with_is_replicated(field.flags().is_replicated())
+                            .with_is_test_only(field.flags().is_test_only())
                             .with_is_persistent(field.flags().is_persistent())
                             .with_visibility(Visibility::Public);
 
                         fields
-                            .add(assert_borrowed(name), Field::new(flags, typ, [], [], None))
+                            .add(
+                                assert_borrowed(name),
+                                Field::new(flags, typ, [], [], None)
+                                    .with_hint(field.hint().map(|hint| hint.to_owned().into())),
+                            )
                             .map_err(|_| Error::DuplicateField(field_idx.into()))?;
                     }
 
@@ -193,6 +200,7 @@ impl<'ctx> CompilationInputs<'ctx> {
                         .with_is_native(cls.flags().is_native())
                         .with_is_final(cls.flags().is_final())
                         .with_is_import_only(cls.flags().is_import_only())
+                        .with_is_test_only(cls.flags().is_test_only())
                         .with_is_struct(cls.flags().is_struct())
                         .with_is_never_ref(type_flags.is_never_ref())
                         .with_is_mixed_ref(type_flags.is_mixed_ref())

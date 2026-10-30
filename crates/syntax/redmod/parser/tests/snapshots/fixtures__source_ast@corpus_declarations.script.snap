@@ -1,0 +1,806 @@
+---
+source: crates/syntax/redmod/parser/tests/fixtures.rs
+expression: parsed
+input_file: crates/syntax/redmod/parser/tests/data/ast/corpus_declarations.script
+---
+Module {
+    path: None,
+    items: [
+        (
+            Declaration {
+                annotations: [],
+                visibility: None,
+                modifiers: [],
+                metadata: [],
+                docs: [],
+                item: Aggregate {
+                    is_struct: false,
+                    name: (
+                        "CorpusGaps",
+                        Span {
+                            start: 6,
+                            end: 16,
+                            file: FileId(
+                                0,
+                            ),
+                        },
+                    ),
+                    extends: None,
+                    items: [
+                        (
+                            Declaration {
+                                annotations: [],
+                                visibility: Some(
+                                    Public,
+                                ),
+                                modifiers: [
+                                    (
+                                        Export,
+                                        Span {
+                                            start: 30,
+                                            end: 36,
+                                            file: FileId(
+                                                0,
+                                            ),
+                                        },
+                                    ),
+                                ],
+                                metadata: [],
+                                docs: [],
+                                item: Function {
+                                    kind: Function(
+                                        (
+                                            "Exported",
+                                            Span {
+                                                start: 46,
+                                                end: 54,
+                                                file: FileId(
+                                                    0,
+                                                ),
+                                            },
+                                        ),
+                                    ),
+                                    params: [],
+                                    return_type: None,
+                                    const_return: None,
+                                    body: Some(
+                                        [],
+                                    ),
+                                },
+                            },
+                            Span {
+                                start: 23,
+                                end: 59,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                        (
+                            Declaration {
+                                annotations: [],
+                                visibility: Some(
+                                    Private,
+                                ),
+                                modifiers: [
+                                    (
+                                        Virtual,
+                                        Span {
+                                            start: 72,
+                                            end: 79,
+                                            file: FileId(
+                                                0,
+                                            ),
+                                        },
+                                    ),
+                                ],
+                                metadata: [],
+                                docs: [],
+                                item: Function {
+                                    kind: Function(
+                                        (
+                                            "Virtual",
+                                            Span {
+                                                start: 89,
+                                                end: 96,
+                                                file: FileId(
+                                                    0,
+                                                ),
+                                            },
+                                        ),
+                                    ),
+                                    params: [],
+                                    return_type: None,
+                                    const_return: None,
+                                    body: Some(
+                                        [],
+                                    ),
+                                },
+                            },
+                            Span {
+                                start: 64,
+                                end: 101,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                        (
+                            Declaration {
+                                annotations: [],
+                                visibility: None,
+                                modifiers: [
+                                    (
+                                        Editable,
+                                        Span {
+                                            start: 136,
+                                            end: 144,
+                                            file: FileId(
+                                                0,
+                                            ),
+                                        },
+                                    ),
+                                    (
+                                        Inlined,
+                                        Span {
+                                            start: 145,
+                                            end: 152,
+                                            file: FileId(
+                                                0,
+                                            ),
+                                        },
+                                    ),
+                                ],
+                                metadata: [
+                                    (
+                                        Metadata {
+                                            key: (
+                                                "category",
+                                                Span {
+                                                    start: 108,
+                                                    end: 116,
+                                                    file: FileId(
+                                                        0,
+                                                    ),
+                                                },
+                                            ),
+                                            value: (
+                                                Constant(
+                                                    String(
+                                                        "Authored",
+                                                    ),
+                                                ),
+                                                Span {
+                                                    start: 119,
+                                                    end: 129,
+                                                    file: FileId(
+                                                        0,
+                                                    ),
+                                                },
+                                            ),
+                                        },
+                                        Span {
+                                            start: 108,
+                                            end: 129,
+                                            file: FileId(
+                                                0,
+                                            ),
+                                        },
+                                    ),
+                                ],
+                                docs: [],
+                                item: Field(
+                                    Field {
+                                        names: [
+                                            (
+                                                "weight",
+                                                Span {
+                                                    start: 157,
+                                                    end: 163,
+                                                    file: FileId(
+                                                        0,
+                                                    ),
+                                                },
+                                            ),
+                                        ],
+                                        typ: (
+                                            Named {
+                                                name: "Float",
+                                                args: [],
+                                            },
+                                            Span {
+                                                start: 165,
+                                                end: 170,
+                                                file: FileId(
+                                                    0,
+                                                ),
+                                            },
+                                        ),
+                                        default: None,
+                                    },
+                                ),
+                            },
+                            Span {
+                                start: 106,
+                                end: 171,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                        (
+                            Declaration {
+                                annotations: [],
+                                visibility: None,
+                                modifiers: [
+                                    (
+                                        Editable,
+                                        Span {
+                                            start: 176,
+                                            end: 184,
+                                            file: FileId(
+                                                0,
+                                            ),
+                                        },
+                                    ),
+                                ],
+                                metadata: [],
+                                docs: [],
+                                item: Field(
+                                    Field {
+                                        names: [
+                                            (
+                                                "visible",
+                                                Span {
+                                                    start: 189,
+                                                    end: 196,
+                                                    file: FileId(
+                                                        0,
+                                                    ),
+                                                },
+                                            ),
+                                        ],
+                                        typ: (
+                                            Named {
+                                                name: "Bool",
+                                                args: [],
+                                            },
+                                            Span {
+                                                start: 198,
+                                                end: 202,
+                                                file: FileId(
+                                                    0,
+                                                ),
+                                            },
+                                        ),
+                                        default: None,
+                                    },
+                                ),
+                            },
+                            Span {
+                                start: 176,
+                                end: 203,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                        (
+                            Declaration {
+                                annotations: [],
+                                visibility: None,
+                                modifiers: [],
+                                metadata: [],
+                                docs: [],
+                                item: Directive {
+                                    kind: Default,
+                                    target: (
+                                        "weight",
+                                        Span {
+                                            start: 216,
+                                            end: 222,
+                                            file: FileId(
+                                                0,
+                                            ),
+                                        },
+                                    ),
+                                    value: (
+                                        Constant(
+                                            F32(
+                                                2.5,
+                                            ),
+                                        ),
+                                        Span {
+                                            start: 225,
+                                            end: 228,
+                                            file: FileId(
+                                                0,
+                                            ),
+                                        },
+                                    ),
+                                },
+                            },
+                            Span {
+                                start: 208,
+                                end: 229,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                        (
+                            Declaration {
+                                annotations: [],
+                                visibility: None,
+                                modifiers: [],
+                                metadata: [],
+                                docs: [],
+                                item: Directive {
+                                    kind: Hint,
+                                    target: (
+                                        "weight",
+                                        Span {
+                                            start: 239,
+                                            end: 245,
+                                            file: FileId(
+                                                0,
+                                            ),
+                                        },
+                                    ),
+                                    value: (
+                                        Constant(
+                                            String(
+                                                "An authored hint",
+                                            ),
+                                        ),
+                                        Span {
+                                            start: 248,
+                                            end: 266,
+                                            file: FileId(
+                                                0,
+                                            ),
+                                        },
+                                    ),
+                                },
+                            },
+                            Span {
+                                start: 234,
+                                end: 267,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                        (
+                            Declaration {
+                                annotations: [],
+                                visibility: None,
+                                modifiers: [],
+                                metadata: [],
+                                docs: [],
+                                item: Function {
+                                    kind: Function(
+                                        (
+                                            "Retained",
+                                            Span {
+                                                start: 281,
+                                                end: 289,
+                                                file: FileId(
+                                                    0,
+                                                ),
+                                            },
+                                        ),
+                                    ),
+                                    params: [],
+                                    return_type: None,
+                                    const_return: None,
+                                    body: Some(
+                                        [],
+                                    ),
+                                },
+                            },
+                            Span {
+                                start: 272,
+                                end: 294,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                    ],
+                },
+            },
+            Span {
+                start: 0,
+                end: 296,
+                file: FileId(
+                    0,
+                ),
+            },
+        ),
+        (
+            Declaration {
+                annotations: [],
+                visibility: None,
+                modifiers: [
+                    (
+                        Import,
+                        Span {
+                            start: 297,
+                            end: 303,
+                            file: FileId(
+                                0,
+                            ),
+                        },
+                    ),
+                ],
+                metadata: [],
+                docs: [],
+                item: Enum {
+                    name: (
+                        "StorageChoice",
+                        Span {
+                            start: 309,
+                            end: 322,
+                            file: FileId(
+                                0,
+                            ),
+                        },
+                    ),
+                    variants: [
+                        (
+                            EnumVariant {
+                                name: (
+                                    "First",
+                                    Span {
+                                        start: 332,
+                                        end: 337,
+                                        file: FileId(
+                                            0,
+                                        ),
+                                    },
+                                ),
+                                value: Some(
+                                    (
+                                        0,
+                                        Span {
+                                            start: 340,
+                                            end: 341,
+                                            file: FileId(
+                                                0,
+                                            ),
+                                        },
+                                    ),
+                                ),
+                            },
+                            Span {
+                                start: 332,
+                                end: 341,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                        (
+                            EnumVariant {
+                                name: (
+                                    "Second",
+                                    Span {
+                                        start: 343,
+                                        end: 349,
+                                        file: FileId(
+                                            0,
+                                        ),
+                                    },
+                                ),
+                                value: Some(
+                                    (
+                                        1,
+                                        Span {
+                                            start: 352,
+                                            end: 353,
+                                            file: FileId(
+                                                0,
+                                            ),
+                                        },
+                                    ),
+                                ),
+                            },
+                            Span {
+                                start: 343,
+                                end: 353,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                    ],
+                    storage: Some(
+                        (
+                            Named {
+                                name: "Uint8",
+                                args: [],
+                            },
+                            Span {
+                                start: 324,
+                                end: 329,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                    ),
+                },
+            },
+            Span {
+                start: 297,
+                end: 355,
+                file: FileId(
+                    0,
+                ),
+            },
+        ),
+        (
+            Declaration {
+                annotations: [],
+                visibility: None,
+                modifiers: [],
+                metadata: [],
+                docs: [],
+                item: Function {
+                    kind: Operator(
+                        (
+                            Add,
+                            Span {
+                                start: 364,
+                                end: 365,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                    ),
+                    params: [
+                        (
+                            ParamGroup {
+                                modifiers: [],
+                                names: [
+                                    (
+                                        "left",
+                                        Span {
+                                            start: 366,
+                                            end: 370,
+                                            file: FileId(
+                                                0,
+                                            ),
+                                        },
+                                    ),
+                                ],
+                                typ: (
+                                    Named {
+                                        name: "StorageChoice",
+                                        args: [],
+                                    },
+                                    Span {
+                                        start: 372,
+                                        end: 385,
+                                        file: FileId(
+                                            0,
+                                        ),
+                                    },
+                                ),
+                            },
+                            Span {
+                                start: 366,
+                                end: 385,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                        (
+                            ParamGroup {
+                                modifiers: [],
+                                names: [
+                                    (
+                                        "right",
+                                        Span {
+                                            start: 387,
+                                            end: 392,
+                                            file: FileId(
+                                                0,
+                                            ),
+                                        },
+                                    ),
+                                ],
+                                typ: (
+                                    Named {
+                                        name: "StorageChoice",
+                                        args: [],
+                                    },
+                                    Span {
+                                        start: 394,
+                                        end: 407,
+                                        file: FileId(
+                                            0,
+                                        ),
+                                    },
+                                ),
+                            },
+                            Span {
+                                start: 387,
+                                end: 407,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                    ],
+                    return_type: Some(
+                        (
+                            Named {
+                                name: "StorageChoice",
+                                args: [],
+                            },
+                            Span {
+                                start: 410,
+                                end: 423,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                    ),
+                    const_return: None,
+                    body: None,
+                },
+            },
+            Span {
+                start: 356,
+                end: 424,
+                file: FileId(
+                    0,
+                ),
+            },
+        ),
+        (
+            Declaration {
+                annotations: [],
+                visibility: None,
+                modifiers: [
+                    (
+                        Import,
+                        Span {
+                            start: 425,
+                            end: 431,
+                            file: FileId(
+                                0,
+                            ),
+                        },
+                    ),
+                ],
+                metadata: [],
+                docs: [],
+                item: Function {
+                    kind: Cast {
+                        implicit: Some(
+                            Span {
+                                start: 432,
+                                end: 440,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                        span: Span {
+                            start: 441,
+                            end: 445,
+                            file: FileId(
+                                0,
+                            ),
+                        },
+                    },
+                    params: [
+                        (
+                            ParamGroup {
+                                modifiers: [],
+                                names: [
+                                    (
+                                        "value",
+                                        Span {
+                                            start: 446,
+                                            end: 451,
+                                            file: FileId(
+                                                0,
+                                            ),
+                                        },
+                                    ),
+                                ],
+                                typ: (
+                                    Named {
+                                        name: "StorageChoice",
+                                        args: [],
+                                    },
+                                    Span {
+                                        start: 453,
+                                        end: 466,
+                                        file: FileId(
+                                            0,
+                                        ),
+                                    },
+                                ),
+                            },
+                            Span {
+                                start: 446,
+                                end: 466,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                    ],
+                    return_type: Some(
+                        (
+                            Named {
+                                name: "Int32",
+                                args: [],
+                            },
+                            Span {
+                                start: 469,
+                                end: 474,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                    ),
+                    const_return: None,
+                    body: None,
+                },
+            },
+            Span {
+                start: 425,
+                end: 475,
+                file: FileId(
+                    0,
+                ),
+            },
+        ),
+        (
+            Declaration {
+                annotations: [],
+                visibility: None,
+                modifiers: [],
+                metadata: [],
+                docs: [],
+                item: Function {
+                    kind: Function(
+                        (
+                            "AfterDeclarations",
+                            Span {
+                                start: 485,
+                                end: 502,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                    ),
+                    params: [],
+                    return_type: None,
+                    const_return: None,
+                    body: Some(
+                        [],
+                    ),
+                },
+            },
+            Span {
+                start: 476,
+                end: 507,
+                file: FileId(
+                    0,
+                ),
+            },
+        ),
+    ],
+}

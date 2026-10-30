@@ -618,6 +618,7 @@ impl<'ctx> Monomorphizer<'ctx> {
             .with_is_abstract(aggregate.flags().is_abstract())
             .with_is_final(aggregate.flags().is_final())
             .with_is_import_only(aggregate.flags().is_import_only())
+            .with_is_test_only(aggregate.flags().is_test_only())
             .with_is_struct(aggregate.flags().is_struct());
 
         let name = aggregate
@@ -757,7 +758,8 @@ impl<'ctx> Monomorphizer<'ctx> {
         let typ = self.type_(&resolved, symbols, bundle);
         let flags = PoolParameterFlags::default()
             .with_is_optional(param.flags().is_optional())
-            .with_is_out(param.flags().is_out());
+            .with_is_out(param.flags().is_out())
+            .with_is_const(param.flags().is_const());
         bundle.define(PoolParameter::new(name, function, typ, flags))
     }
 
@@ -778,14 +780,20 @@ impl<'ctx> Monomorphizer<'ctx> {
             .with_is_editable(field.flags().is_editable())
             .with_is_inline(field.flags().is_inline())
             .with_is_const(field.flags().is_const())
+            .with_is_instance_editable(field.flags().is_instance_editable())
+            .with_is_replicated(field.flags().is_replicated())
+            .with_is_test_only(field.flags().is_test_only())
             .with_is_persistent(field.flags().is_persistent());
         let attrs = field
             .properties()
             .iter()
             .map(|(k, v)| Property::new(k.clone(), v.clone()))
             .collect::<Vec<_>>();
-        let def =
+        let mut def =
             PoolField::new(cname, class, Visibility::Public, typ, flags).with_attributes(attrs);
+        if let Some(hint) = field.hint() {
+            def = def.with_hint(hint.clone());
+        }
         bundle.define(def)
     }
 

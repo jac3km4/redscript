@@ -1,0 +1,9 @@
+---
+source: crates/compiler/redmod/transpiler/tests/transpile.rs
+expression: "result.iter().map(|d| d.display(&sources).to_string()).collect::<String>()"
+---
+error[REDMOD_TRANSPILE]: array intrinsic requires a local place, not a copied receiver
+ --> rejected.reds:1:67
+  |
+1 | class Widget { let items: [Int32]; public func Test() { ArrayPush(this.items, 1); } }
+  |                                                                   ^^^^^^^^^^

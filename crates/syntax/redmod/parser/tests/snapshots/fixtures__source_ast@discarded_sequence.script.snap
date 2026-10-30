@@ -1,0 +1,179 @@
+---
+source: crates/syntax/redmod/parser/tests/fixtures.rs
+expression: parsed
+input_file: crates/syntax/redmod/parser/tests/data/ast/discarded_sequence.script
+---
+Module {
+    path: None,
+    items: [
+        (
+            Declaration {
+                annotations: [],
+                visibility: None,
+                modifiers: [],
+                metadata: [],
+                docs: [],
+                item: Function {
+                    kind: Function(
+                        (
+                            "Run",
+                            Span {
+                                start: 9,
+                                end: 12,
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        ),
+                    ),
+                    params: [],
+                    return_type: None,
+                    const_return: None,
+                    body: Some(
+                        [
+                            (
+                                Expr(
+                                    (
+                                        Sequence(
+                                            [
+                                                (
+                                                    Call {
+                                                        expr: (
+                                                            Ident(
+                                                                "First",
+                                                            ),
+                                                            Span {
+                                                                start: 21,
+                                                                end: 26,
+                                                                file: FileId(
+                                                                    0,
+                                                                ),
+                                                            },
+                                                        ),
+                                                        args: [],
+                                                    },
+                                                    Span {
+                                                        start: 21,
+                                                        end: 28,
+                                                        file: FileId(
+                                                            0,
+                                                        ),
+                                                    },
+                                                ),
+                                                (
+                                                    Assign {
+                                                        lhs: (
+                                                            Ident(
+                                                                "value",
+                                                            ),
+                                                            Span {
+                                                                start: 30,
+                                                                end: 35,
+                                                                file: FileId(
+                                                                    0,
+                                                                ),
+                                                            },
+                                                        ),
+                                                        rhs: (
+                                                            Call {
+                                                                expr: (
+                                                                    Ident(
+                                                                        "Next",
+                                                                    ),
+                                                                    Span {
+                                                                        start: 38,
+                                                                        end: 42,
+                                                                        file: FileId(
+                                                                            0,
+                                                                        ),
+                                                                    },
+                                                                ),
+                                                                args: [],
+                                                            },
+                                                            Span {
+                                                                start: 38,
+                                                                end: 44,
+                                                                file: FileId(
+                                                                    0,
+                                                                ),
+                                                            },
+                                                        ),
+                                                    },
+                                                    Span {
+                                                        start: 30,
+                                                        end: 44,
+                                                        file: FileId(
+                                                            0,
+                                                        ),
+                                                    },
+                                                ),
+                                                (
+                                                    Call {
+                                                        expr: (
+                                                            Ident(
+                                                                "Last",
+                                                            ),
+                                                            Span {
+                                                                start: 46,
+                                                                end: 50,
+                                                                file: FileId(
+                                                                    0,
+                                                                ),
+                                                            },
+                                                        ),
+                                                        args: [
+                                                            (
+                                                                Ident(
+                                                                    "value",
+                                                                ),
+                                                                Span {
+                                                                    start: 51,
+                                                                    end: 56,
+                                                                    file: FileId(
+                                                                        0,
+                                                                    ),
+                                                                },
+                                                            ),
+                                                        ],
+                                                    },
+                                                    Span {
+                                                        start: 46,
+                                                        end: 57,
+                                                        file: FileId(
+                                                            0,
+                                                        ),
+                                                    },
+                                                ),
+                                            ],
+                                        ),
+                                        Span {
+                                            start: 21,
+                                            end: 57,
+                                            file: FileId(
+                                                0,
+                                            ),
+                                        },
+                                    ),
+                                ),
+                                Span {
+                                    start: 21,
+                                    end: 58,
+                                    file: FileId(
+                                        0,
+                                    ),
+                                },
+                            ),
+                        ],
+                    ),
+                },
+            },
+            Span {
+                start: 0,
+                end: 60,
+                file: FileId(
+                    0,
+                ),
+            },
+        ),
+    ],
+}

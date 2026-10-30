@@ -1,0 +1,14 @@
+---
+source: crates/syntax/redmod/formatter/tests/format.rs
+expression: "formatted.replace(\"\\r\\n\", \"\\n\")"
+---
+class Test {
+    // comment {
+    override function Run() {
+        var text: String = "first
+  second\"; // }
+        Use("assets\widgets", "\u{22}");
+        /* block
+ unmodified */
+    }
+}

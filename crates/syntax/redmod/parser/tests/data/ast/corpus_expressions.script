@@ -1,0 +1,13 @@
+function CorpusExpressions() {
+    var first, second: Int32;
+    var amount: Float = .25f;
+    var suffix: Float = 1.5f;
+    var label: String = "authored\path";
+    switch (1) {
+        case 1: { Ping(); break; }
+        default: return;
+    }
+    AfterExpression();
+}
+class NamedField { var name: CName; var retained: Int32; }
+function AfterExpressions() {}

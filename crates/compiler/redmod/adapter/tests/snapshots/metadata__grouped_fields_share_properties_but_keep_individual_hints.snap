@@ -1,0 +1,36 @@
+---
+source: crates/compiler/redmod/adapter/tests/metadata.rs
+expression: "fields[0]"
+---
+[
+    ResolvedField {
+        name: "first",
+        properties: [
+            (
+                "category",
+                "Shared",
+            ),
+            (
+                "category",
+                "Second",
+            ),
+        ],
+        hint: None,
+    },
+    ResolvedField {
+        name: "second",
+        properties: [
+            (
+                "category",
+                "Shared",
+            ),
+            (
+                "category",
+                "Second",
+            ),
+        ],
+        hint: Some(
+            "Only second",
+        ),
+    },
+]

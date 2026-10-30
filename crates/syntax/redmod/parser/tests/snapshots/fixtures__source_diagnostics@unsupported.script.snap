@@ -1,0 +1,312 @@
+---
+source: crates/syntax/redmod/parser/tests/fixtures.rs
+expression: output
+input_file: crates/syntax/redmod/parser/tests/data/diagnostics/unsupported.script
+---
+error: found ; expected '<'
+ --> unsupported.script:2:17
+  |
+2 | var missing: ref;
+  |                 ^
+
+error: found < expected 'extends', or '{'
+ --> unsupported.script:3:14
+  |
+3 | class Generic<T> {}
+  |              ^
+
+error: found < expected something else in expression in statement
+ --> unsupported.script:4:32
+  |
+4 | function GenericCall() { Custom<Int32>(1); }
+  |                                ^^^^^^^^
+
+error: found : expected something else in expression in statement
+ --> unsupported.script:5:52
+  |
+5 | function Lambda() { var callback: Callback = (value: Int32) -> value; }
+  |                                                    ^
+
+error: expected ';' after statement in statement
+ --> unsupported.script:5:61
+  |
+5 | function Lambda() { var callback: Callback = (value: Int32) -> value; }
+  |                                                             ^
+
+error: found -> expected 'var', or 'let' in expression in statement
+ --> unsupported.script:5:61
+  |
+5 | function Lambda() { var callback: Callback = (value: Int32) -> value; }
+  |                                                             ^^
+
+Recovered AST:
+Some(
+    Module {
+        path: None,
+        items: [
+            (
+                Declaration {
+                    annotations: [],
+                    visibility: None,
+                    modifiers: [],
+                    metadata: [],
+                    docs: [],
+                    item: Field(
+                        Field {
+                            names: [
+                                (
+                                    "mixed",
+                                    Span {
+                                        start: 4,
+                                        end: 9,
+                                        file: FileId(
+                                            0,
+                                        ),
+                                    },
+                                ),
+                            ],
+                            typ: (
+                                Named {
+                                    name: "mixedRef",
+                                    args: [
+                                        (
+                                            Named {
+                                                name: "Target",
+                                                args: [],
+                                            },
+                                            Span {
+                                                start: 20,
+                                                end: 26,
+                                                file: FileId(
+                                                    0,
+                                                ),
+                                            },
+                                        ),
+                                    ],
+                                },
+                                Span {
+                                    start: 11,
+                                    end: 27,
+                                    file: FileId(
+                                        0,
+                                    ),
+                                },
+                            ),
+                            default: None,
+                        },
+                    ),
+                },
+                Span {
+                    start: 0,
+                    end: 28,
+                    file: FileId(
+                        0,
+                    ),
+                },
+            ),
+            (
+                Declaration {
+                    annotations: [],
+                    visibility: None,
+                    modifiers: [],
+                    metadata: [],
+                    docs: [],
+                    item: Function {
+                        kind: Function(
+                            (
+                                "GenericCall",
+                                Span {
+                                    start: 76,
+                                    end: 87,
+                                    file: FileId(
+                                        0,
+                                    ),
+                                },
+                            ),
+                        ),
+                        params: [],
+                        return_type: None,
+                        const_return: None,
+                        body: Some(
+                            [
+                                (
+                                    Expr(
+                                        (
+                                            Error,
+                                            Span {
+                                                start: 92,
+                                                end: 109,
+                                                file: FileId(
+                                                    0,
+                                                ),
+                                            },
+                                        ),
+                                    ),
+                                    Span {
+                                        start: 92,
+                                        end: 109,
+                                        file: FileId(
+                                            0,
+                                        ),
+                                    },
+                                ),
+                            ],
+                        ),
+                    },
+                },
+                Span {
+                    start: 67,
+                    end: 111,
+                    file: FileId(
+                        0,
+                    ),
+                },
+            ),
+            (
+                Declaration {
+                    annotations: [],
+                    visibility: None,
+                    modifiers: [],
+                    metadata: [],
+                    docs: [],
+                    item: Function {
+                        kind: Function(
+                            (
+                                "Lambda",
+                                Span {
+                                    start: 121,
+                                    end: 127,
+                                    file: FileId(
+                                        0,
+                                    ),
+                                },
+                            ),
+                        ),
+                        params: [],
+                        return_type: None,
+                        const_return: None,
+                        body: Some(
+                            [
+                                (
+                                    Local(
+                                        Local {
+                                            const_: None,
+                                            names: [
+                                                (
+                                                    "callback",
+                                                    Span {
+                                                        start: 136,
+                                                        end: 144,
+                                                        file: FileId(
+                                                            0,
+                                                        ),
+                                                    },
+                                                ),
+                                            ],
+                                            typ: (
+                                                Named {
+                                                    name: "Callback",
+                                                    args: [],
+                                                },
+                                                Span {
+                                                    start: 146,
+                                                    end: 154,
+                                                    file: FileId(
+                                                        0,
+                                                    ),
+                                                },
+                                            ),
+                                            value: Some(
+                                                (
+                                                    Error,
+                                                    Span {
+                                                        start: 157,
+                                                        end: 171,
+                                                        file: FileId(
+                                                            0,
+                                                        ),
+                                                    },
+                                                ),
+                                            ),
+                                        },
+                                    ),
+                                    Span {
+                                        start: 132,
+                                        end: 171,
+                                        file: FileId(
+                                            0,
+                                        ),
+                                    },
+                                ),
+                                (
+                                    Expr(
+                                        (
+                                            Error,
+                                            Span {
+                                                start: 172,
+                                                end: 181,
+                                                file: FileId(
+                                                    0,
+                                                ),
+                                            },
+                                        ),
+                                    ),
+                                    Span {
+                                        start: 172,
+                                        end: 181,
+                                        file: FileId(
+                                            0,
+                                        ),
+                                    },
+                                ),
+                            ],
+                        ),
+                    },
+                },
+                Span {
+                    start: 112,
+                    end: 183,
+                    file: FileId(
+                        0,
+                    ),
+                },
+            ),
+            (
+                Declaration {
+                    annotations: [],
+                    visibility: None,
+                    modifiers: [],
+                    metadata: [],
+                    docs: [],
+                    item: Function {
+                        kind: Function(
+                            (
+                                "After",
+                                Span {
+                                    start: 193,
+                                    end: 198,
+                                    file: FileId(
+                                        0,
+                                    ),
+                                },
+                            ),
+                        ),
+                        params: [],
+                        return_type: None,
+                        const_return: None,
+                        body: Some(
+                            [],
+                        ),
+                    },
+                },
+                Span {
+                    start: 184,
+                    end: 203,
+                    file: FileId(
+                        0,
+                    ),
+                },
+            ),
+        ],
+    },
+)

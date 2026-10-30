@@ -1,0 +1,27 @@
+---
+source: crates/syntax/community/parser/tests/interpolation_diagnostics.rs
+expression: "diagnostics.join(\"\\n\")"
+---
+error: invalid Int32 literal; use the `l` suffix for Int64 or `ul` for Uint64; use a decimal point or `d` suffix for floating-point values
+ --> interpolation.reds:1:20
+  |
+1 | s"préfixe: \(foo + 2147483649)"
+  |                    ^^^^^^^^^^
+
+error: invalid Uint32 literal; use the `ul` suffix for a larger unsigned integer
+ --> interpolation.reds:1:20
+  |
+1 | s"préfixe: \(foo + 4294967296u)"
+  |                    ^^^^^^^^^^^
+
+error: invalid Int64 literal; use the `ul` suffix for a larger nonnegative integer
+ --> interpolation.reds:1:20
+  |
+1 | s"préfixe: \(foo + 9223372036854775809l)"
+  |                    ^^^^^^^^^^^^^^^^^^^^
+
+error: invalid Uint64 literal; use a value between 0 and 18446744073709551615
+ --> interpolation.reds:1:20
+  |
+1 | s"préfixe: \(foo + 18446744073709551616ul)"
+  |                    ^^^^^^^^^^^^^^^^^^^^^^
