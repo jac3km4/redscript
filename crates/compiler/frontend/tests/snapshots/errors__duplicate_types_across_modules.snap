@@ -1,0 +1,16 @@
+---
+source: crates/compiler/frontend/tests/errors.rs
+assertion_line: 68
+expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
+---
+error[SYM_REDEFINITION]: this name is already defined in the scope
+ --> tests/data/duplicate-types/duplicate.reds:3:7
+  |
+3 | class SharedClass {}
+  |       ^^^^^^^^^^^
+
+error[SYM_REDEFINITION]: this name is already defined in the scope
+ --> tests/data/duplicate-types/duplicate.reds:5:8
+  |
+5 | struct SharedStruct {}
+  |        ^^^^^^^^^^^^

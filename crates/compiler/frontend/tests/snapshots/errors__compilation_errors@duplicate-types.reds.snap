@@ -1,0 +1,41 @@
+---
+source: crates/compiler/frontend/tests/errors.rs
+assertion_line: 27
+expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
+input_file: crates/compiler/frontend/tests/data/duplicate-types.reds
+---
+error[SYM_REDEFINITION]: this name is already defined in the scope
+ --> tests/data/duplicate-types.reds:5:7
+  |
+5 | class DuplicateClass {}
+  |       ^^^^^^^^^^^^^^
+
+error[SYM_REDEFINITION]: this name is already defined in the scope
+ --> tests/data/duplicate-types.reds:11:8
+   |
+11 | struct DuplicateStruct {}
+   |        ^^^^^^^^^^^^^^^
+
+error[SYM_REDEFINITION]: this name is already defined in the scope
+ --> tests/data/duplicate-types.reds:17:8
+   |
+17 | struct ClassThenStruct {}
+   |        ^^^^^^^^^^^^^^^
+
+error[SYM_REDEFINITION]: this name is already defined in the scope
+ --> tests/data/duplicate-types.reds:23:7
+   |
+23 | class StructThenClass {}
+   |       ^^^^^^^^^^^^^^^
+
+error[SYM_REDEFINITION]: this name is already defined in the scope
+ --> tests/data/duplicate-types.reds:29:6
+   |
+29 | enum ClassThenEnum { Rejected = 0 }
+   |      ^^^^^^^^^^^^^
+
+error[SYM_REDEFINITION]: this name is already defined in the scope
+ --> tests/data/duplicate-types.reds:33:7
+   |
+33 | class EnumThenClass {}
+   |       ^^^^^^^^^^^^^

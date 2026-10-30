@@ -17,13 +17,10 @@ impl<'ctx> ModuleMap<'ctx> {
         id: TypeId<'ctx>,
         public: bool,
     ) -> Result<(), NameRedefinition> {
-        if self
-            .map
-            .insert_owned(&path, Export::Type { id, public })
-            .is_some()
-        {
+        if self.map.get(&path).is_some() {
             return Err(NameRedefinition);
-        };
+        }
+        self.map.insert_owned(&path, Export::Type { id, public });
         Ok(())
     }
 

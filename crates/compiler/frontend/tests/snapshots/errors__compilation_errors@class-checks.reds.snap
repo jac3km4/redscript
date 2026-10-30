@@ -1,5 +1,6 @@
 ---
 source: crates/compiler/frontend/tests/errors.rs
+
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/class-checks.reds
 ---
@@ -135,18 +136,18 @@ error[DUP_METHOD]: this class contains a duplicated implementation of the `Metho
 29 |   func Method(x: String) {}
    |        ^^^^^^
 
+warning[FINAL_FN_OVERRIDE]: this method overrides the final method `FinalMethod`
+ --> tests/data/class-checks.reds:34:14
+   |
+34 |   final func FinalMethod(a: Int32) {}
+   |              ^^^^^^^^^^^
+
 error[MISSING_IMPL]: this class is missing required method implementations:
   func UnimplementedMethod(a: Int32) -> Void
  --> tests/data/class-checks.reds:13:7
    |
 13 | class IncompleteClass extends AbstractClass<Int32> {}
    |       ^^^^^^^^^^^^^^^
-
-warning[FINAL_FN_OVERRIDE]: this method overrides the final method `FinalMethod`
- --> tests/data/class-checks.reds:34:14
-   |
-34 |   final func FinalMethod(a: Int32) {}
-   |              ^^^^^^^^^^^
 
 error[MISSING_IMPL]: this class is missing required method implementations:
   func UnimplementedMethod(a: Int32) -> Void

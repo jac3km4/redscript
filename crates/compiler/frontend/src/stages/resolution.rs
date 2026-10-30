@@ -117,7 +117,9 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         .module_map
                         .add_type(path, cls_id, is_public)
                         .map_err(|_| Diagnostic::NameRedefinition(name_span));
-                    self.reporter.unwrap_err(res);
+                    if self.reporter.unwrap_err(res).is_none() {
+                        continue;
+                    }
 
                     // we initialize and add a stub to enable the compiler to automatically
                     // resolve the ref type whenever the type is used
@@ -227,7 +229,9 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         .module_map
                         .add_type(path, id, is_public)
                         .map_err(|_| Diagnostic::NameRedefinition(name_span));
-                    self.reporter.unwrap_err(res);
+                    if self.reporter.unwrap_err(res).is_none() {
+                        continue;
+                    }
 
                     enums.push(ParsedEnum {
                         id,

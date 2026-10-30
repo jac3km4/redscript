@@ -29,6 +29,46 @@ fn compilation_errors() {
 }
 
 #[test]
+fn duplicate_types_across_modules() {
+    let sources = SourceMap::from_files([
+        "tests/data/duplicate-types/first.reds",
+        "tests/data/duplicate-types/duplicate.reds",
+        "tests/data/duplicate-types/distinct.reds",
+        "tests/data/duplicate-types/imports.reds",
+    ])
+    .unwrap();
+    sources.populate_boot_lib();
+    let interner = TypeInterner::default();
+    let mut reporter = CompileErrorReporter::default();
+    let (unit, symbols) = infer_from_sources(
+        &sources,
+        Symbols::with_default_types(),
+        &mut reporter,
+        &interner,
+    );
+
+    assert!(matches!(
+        reporter.reported(),
+        [
+            Diagnostic::NameRedefinition(_),
+            Diagnostic::NameRedefinition(_)
+        ]
+    ));
+    for name in [
+        "First.SharedClass",
+        "First.SharedStruct",
+        "Second.SharedClass",
+        "Second.SharedStruct",
+    ] {
+        let id = interner.intern(name);
+        let aggregate = symbols[id].schema().as_aggregate().unwrap();
+        assert_eq!(aggregate.methods().iter().count(), 1, "{name}");
+        assert_eq!(unit.classes[&id].methods.len(), 1, "{name}");
+    }
+    insta::assert_snapshot!(DisplayDiagnostics(reporter.into_reported(), &sources));
+}
+
+#[test]
 fn implicit_enum_overflow() {
     let sources = SourceMap::from_files(["tests/data/enum-resolution/overflow.reds"]).unwrap();
     sources.populate_boot_lib();
