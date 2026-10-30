@@ -1607,7 +1607,7 @@ impl<K: AstKind> ApproxWidth for ChainPart<'_, '_, K> {
                         .sum::<usize>()
                     + 2
             }
-            ChainPart::Op(op, rhs) => op.approx_width() + rhs.as_wrapped().approx_width() + 1,
+            ChainPart::Op(op, rhs) => op.approx_width() + rhs.as_wrapped().approx_width() + 2,
             ChainPart::Index(index) => index.as_wrapped().approx_width() + 2,
         }
     }

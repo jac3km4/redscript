@@ -168,6 +168,23 @@ fn parameter_widths_count_qualifiers() {
 }
 
 #[test]
+fn operator_chain_widths_count_both_spaces() {
+    let mut cases = String::new();
+    for (max_width, breaks) in [(14, true), (15, false), (16, false)] {
+        let settings = FormatSettings {
+            max_width,
+            ..FormatSettings::default()
+        };
+        let formatted = assert_preserved("func F() { a + b + c + d; }", &settings, "test.reds");
+        assert_eq!(formatted.contains("a\n    + b"), breaks, "{formatted}");
+        cases.push_str(&format!(
+            "=== operator chain: a + b + c + d, max_width: {max_width} ===\n{formatted}\n"
+        ));
+    }
+    insta::assert_snapshot!(cases);
+}
+
+#[test]
 fn formatted_files() {
     insta::glob!("data/*.reds", |path| {
         let current = env::current_dir().unwrap().canonicalize().unwrap();
