@@ -70,7 +70,7 @@ impl fmt::Display for SemanticError {
             Self::EventOverride => "events do not use override",
             Self::IncompatibleBaseCallback => "base callback has a non-Void return; REDmod event compatibility is unsupported",
             Self::MissingOverride => "overriding a resolved base signature requires override",
-            Self::OverrideParameterFlagsMismatch => "override parameter flags differ from the base signature",
+            Self::OverrideParameterFlagsMismatch => "override parameter out flags differ from the base signature",
             Self::OverrideFinalMethod => "cannot override a final method",
             Self::OverrideReturnTypeMismatch => "override return type differs from the base signature",
             Self::OverrideWithoutBase => "override has no matching base signature",

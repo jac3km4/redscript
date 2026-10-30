@@ -33,7 +33,8 @@ is not guaranteed to compile officially or behave correctly in the game.
   Discarded sequences and condition prefixes preserve execution order.
 - `wrapMethod` own-name calls rewrite only when unqualified and not shadowed by
   parameters or function-wide locals. Written overrides require matching resolved
-  signatures/flags and respect final methods; events use Void callback metadata
+  signatures and `out` flags and respect final methods; `const` and `optional`
+  parameter flags may differ from the base. Events use Void callback metadata
   and allow omitted or `protected` visibility, but not `public` or `private`.
 - String field metadata preserves exact keys, duplicates and order. Hints target
   one field in the same aggregate. Persistent class and struct fields use shared

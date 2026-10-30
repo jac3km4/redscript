@@ -46,6 +46,56 @@ fn check(source: &str) -> Vec<String> {
 }
 
 #[test]
+fn workspot_condition_override_can_add_const() {
+    let errors = check(
+        "class Entity {}
+         class WorkspotCondition {
+           public function CheckCondition(ent: Entity) -> Bool { return true; }
+         }
+         class Condition extends WorkspotCondition {
+           public override function CheckCondition(const ent: Entity) -> Bool { return true; }
+         }",
+    );
+    assert!(errors.is_empty(), "{errors:?}");
+}
+
+#[test]
+fn override_const_and_optional_flags_may_change_in_either_direction() {
+    for (base, child) in [
+        ("const ", ""),
+        ("", "optional "),
+        ("optional ", ""),
+        ("const optional ", ""),
+    ] {
+        let errors = check(&format!(
+            "class Base {{ public function Test({base}value: Int32) {{}} }}
+             class Child extends Base {{ public override function Test({child}value: Int32) {{}} }}"
+        ));
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+}
+
+#[test]
+fn override_out_flags_must_match_in_both_directions() {
+    for (base, child) in [("out ", ""), ("", "out ")] {
+        let errors = check(&format!(
+            "class Base {{ public function Test({base}value: Int32) {{}} }}
+             class Child extends Base {{ public override function Test({child}value: Int32) {{}} }}"
+        ));
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert!(
+            errors[0].contains("override parameter out flags differ from the base signature"),
+            "{errors:?}"
+        );
+    }
+    let errors = check(
+        "class Base { public function Test(out value: Int32) {} }
+         class Child extends Base { public override function Test(out value: Int32) {} }",
+    );
+    assert!(errors.is_empty(), "{errors:?}");
+}
+
+#[test]
 fn persistent_primitive_struct_fields_are_valid() {
     let errors = check(
         "struct State {

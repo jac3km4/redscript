@@ -316,13 +316,7 @@ pub fn overrides<'ctx>(
                         .params()
                         .iter()
                         .zip(method.type_().params())
-                        .any(|(base, method)| {
-                            let base = base.flags();
-                            let method = method.flags();
-                            base.is_out() != method.is_out()
-                                || base.is_const() != method.is_const()
-                                || base.is_optional() != method.is_optional()
-                        })
+                        .any(|(base, method)| base.flags().is_out() != method.flags().is_out())
                     {
                         errors.push(Error::semantic(
                             SemanticError::OverrideParameterFlagsMismatch,
