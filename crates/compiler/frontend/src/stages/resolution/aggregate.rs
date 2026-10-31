@@ -155,8 +155,11 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         .with_has_implicit_visibility(item.visibility.is_none());
 
                     let (func_t, type_scope) = self.create_function_env(&func, &types);
+                    let callback_prototype =
+                        cls_flags.is_native() && !cls_flags.is_import_only() && flags.is_callback();
                     if func.body.is_none()
                         && !flags.is_native()
+                        && !callback_prototype
                         && (!cls_flags.is_abstract()
                             || !func_t.type_params().is_empty()
                             || flags.is_final()

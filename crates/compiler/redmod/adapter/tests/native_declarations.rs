@@ -170,3 +170,49 @@ fn explicit_field_visibility_still_controls_access() {
     }
 }
 
+#[test]
+fn imported_event_prototypes_are_non_native_callbacks_without_lowered_bodies() {
+    // The official compiler emits these as callbacks with the native flag unset.
+    // Unlike a body-bearing event, a prototype must not invent an implementation.
+    let errors = analyze(
+        "import class Listener {
+           protected event OnReady(value: Int32);
+           event OnDone();
+           protected event OnBody() {}
+         }",
+        "",
+        |unit, symbols, interner| {
+            let listener = symbols[interner.intern("Listener")]
+                .schema()
+                .as_aggregate()
+                .unwrap();
+            let methods = listener.methods().iter().collect::<Vec<_>>();
+            assert_eq!(methods.len(), 3);
+            for entry in &methods {
+                let flags = entry.func().flags();
+                assert!(flags.is_callback());
+                assert!(!flags.is_native());
+                assert_eq!(flags.is_unimplemented(), **entry.name() != "OnBody");
+            }
+            let class = &unit.classes[&interner.intern("Listener")];
+            assert_eq!(class.methods.len(), 1);
+        },
+    );
+    assert!(errors.is_empty(), "{errors:?}");
+}
+
+#[test]
+fn free_scripted_and_importonly_prototypes_still_require_bodies() {
+    for (source, dependency) in [
+        ("function OnReady();", ""),
+        ("class Listener { protected event OnReady(); }", ""),
+        (
+            "importonly class Listener { protected event OnReady(); }",
+            "",
+        ),
+    ] {
+        let errors = analyze(source, dependency, |_, _, _| {});
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert!(errors[0].contains("body"), "{errors:?}");
+    }
+}
