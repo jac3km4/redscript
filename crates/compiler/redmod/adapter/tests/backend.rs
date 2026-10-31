@@ -82,6 +82,30 @@ fn call_position(bundle: &ScriptBundle<'_>, code: &[(u32, Instr)], name: &str) -
 }
 
 #[test]
+fn native_enum_storage_is_emitted_and_serialized() {
+    let bundle = compile(
+        "enum Narrow: Uint8 { A = 255 } enum Wide: Int64 { A = 0 } enum Word: Uint32 { A = 4294967295 }",
+    );
+    let bytes = bundle.into_writeable().to_bytes().unwrap();
+    let bundle = ScriptBundle::from_bytes(&bytes).unwrap();
+    for (name, size, value) in [
+        ("Narrow", 1, 255),
+        ("Wide", 8, 0),
+        ("Word", 4, 4_294_967_295),
+    ] {
+        let enm = bundle
+            .definitions()
+            .find_map(|def| match def {
+                redscript_io::Definition::Enum(enm) if bundle[enm.name()] == name => Some(enm),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(enm.size(), size);
+        assert_eq!(bundle[enm.values()[0]].value(), value);
+    }
+}
+
+#[test]
 fn nested_native_loops_assemble_fresh_flags_and_continue_to_guarded_headers() {
     let bundle = compile(
         r#"function Run(): Int32 {

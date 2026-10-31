@@ -50,6 +50,53 @@ fn enum_widths() {
 }
 
 #[test]
+fn explicit_enum_storage_survives_bundle_roundtrip_and_loading() {
+    let bundle = compile(
+        "enum Signed: Int8 { A = -128, B = 127 }
+         enum Unsigned: Uint8 { A = 0, B = 255 }
+         enum Wide: Int64 { A = 0 }
+         enum Half: Uint16 { A = 65535 }
+         enum Word: Uint32 { A = 4294967295l }",
+    );
+    let bytes = bundle.into_writeable().to_bytes().unwrap();
+    let bundle = ScriptBundle::from_bytes(&bytes).unwrap();
+    let sources = SourceMap::new();
+    let interner = TypeInterner::default();
+    let symbols =
+        CompilationInputs::load_without_mapping(&bundle, &interner, &TypeFlagRegistry::default())
+            .unwrap();
+    let (_, mappings) = CompilationInputs::load(&bundle, &interner, &TypeFlagRegistry::default())
+        .unwrap()
+        .into_inner();
+    let mut monomorphizer = mappings.into_monomorphizer(&sources);
+    let mut reemitted = ScriptBundle::default();
+    for (name, size, values) in [
+        ("Signed", 1, vec![-128, 127]),
+        ("Unsigned", 1, vec![0, 255]),
+        ("Wide", 8, vec![0]),
+        ("Half", 2, vec![65_535]),
+        ("Word", 4, vec![4_294_967_295]),
+    ] {
+        let enum_ = symbols[interner.intern(name)].schema().as_enum().unwrap();
+        monomorphizer.add_enum_to_pool(interner.intern(name), &symbols, &mut reemitted);
+        let emitted = reemitted
+            .definitions()
+            .find_map(|def| match def {
+                Definition::Enum(enm) if reemitted[enm.name()] == name => Some(enm),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(emitted.size(), size);
+        assert_eq!(enum_.storage_size(), Some(size));
+        assert_eq!(enum_.storage(), None, "bundle erases signedness");
+        assert_eq!(
+            enum_.variants().map(|(_, value)| value).collect::<Vec<_>>(),
+            values
+        );
+    }
+}
+
+#[test]
 fn static_array_lengths_and_element_types() {
     let bundle = compile(
         r#"
