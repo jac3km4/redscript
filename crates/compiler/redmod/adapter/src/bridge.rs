@@ -266,6 +266,19 @@ impl<'src> Bridge<'src> {
                 native::Modifier::Inlined => Q::INLINE,
                 native::Modifier::Replicated => Q::REPLICATED,
                 native::Modifier::TestOnly => Q::TEST_ONLY,
+                native::Modifier::Mutable
+                    if aggregate
+                        && matches!(
+                            &decl.item,
+                            native::Item::Field(field) if mutable_array(&field.typ.0)
+                        ) =>
+                {
+                    // Official mutable arrays have no extra flag: mutable prevents
+                    // editable/instanceeditable from adding implicit const. The
+                    // shared field model already leaves these arrays non-const.
+                    // Explicit const is independent and must not be cleared.
+                    Q::empty()
+                }
                 native::Modifier::Override => {
                     explicit_override = true;
                     Q::empty()
@@ -932,6 +945,13 @@ fn operator_name(operator: native::Operator, arity: usize, span: Span) -> Result
         Op::Index => return Err((CapabilityError::OperatorDeclaration, span)),
     };
     Ok(name)
+}
+
+fn mutable_array(typ: &native::Type<'_>) -> bool {
+    matches!(
+        typ,
+        native::Type::Array(_) | native::Type::StaticArray(_, _)
+    )
 }
 
 fn typ((ty, span): Spanned<native::Type<'_>>) -> Spanned<ast::SourceType<'_>> {

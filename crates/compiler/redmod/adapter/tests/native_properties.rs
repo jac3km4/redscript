@@ -40,6 +40,102 @@ fn compile(source: &str) -> ScriptBundle<'static> {
     bundle.into_owned()
 }
 
+#[test]
+fn mutable_array_fields_preserve_types_metadata_and_independent_flags() {
+    let bundle = compile(
+        r#"
+        struct Data { var number: Int32; }
+        struct Values { mutable editable var values: array<Bool>; }
+        class Host {
+            [category = "Authored"]
+            mutable editable inlined persistent var first, second: array<Data>;
+            instanceeditable mutable var names: array<CName>;
+            mutable var objects: array<weak<Host>>;
+            mutable editable var fixed: Int32[2];
+            mutable const editable var explicitConst: array<Int32>;
+            public function Mutate() { names.PushBack(n"Authored"); names.Clear(); }
+        }
+        "#,
+    );
+    let bytes = bundle.into_writeable().to_bytes().unwrap();
+    let bundle = ScriptBundle::from_bytes(&bytes).unwrap();
+    let mut seen = Vec::new();
+    for definition in bundle.indexed_definitions() {
+        let IndexedDefinition::Field(_, field) = definition else {
+            continue;
+        };
+        let name = &*bundle[field.name()];
+        if name == "number" {
+            continue;
+        }
+        seen.push(name.to_owned());
+        let flags = field.flags();
+        assert_eq!(flags.is_const(), name == "explicitConst", "{name}");
+        assert_eq!(flags.is_instance_editable(), name == "names", "{name}");
+        assert_eq!(
+            flags.is_editable(),
+            matches!(
+                name,
+                "values" | "first" | "second" | "fixed" | "explicitConst"
+            ),
+            "{name}"
+        );
+        assert_eq!(flags.is_inline(), matches!(name, "first" | "second"));
+        assert_eq!(flags.is_persistent(), matches!(name, "first" | "second"));
+        if matches!(name, "first" | "second") {
+            assert_eq!(field.attributes().len(), 1);
+            assert_eq!(field.attributes()[0].name(), "category");
+            assert_eq!(field.attributes()[0].value(), "Authored");
+        }
+        assert_eq!(
+            &*bundle[bundle[field.type_()].name()],
+            match name {
+                "values" => "array:Bool",
+                "first" | "second" => "array:Data",
+                "names" => "array:CName",
+                "objects" => "array:wref:Host",
+                "fixed" => "Int32[2]",
+                "explicitConst" => "array:Int32",
+                _ => unreachable!(),
+            }
+        );
+    }
+    seen.sort();
+    assert_eq!(
+        seen,
+        [
+            "explicitConst",
+            "first",
+            "fixed",
+            "names",
+            "objects",
+            "second",
+            "values"
+        ]
+    );
+}
+
+#[test]
+fn mutable_does_not_enable_unmapped_types_or_declaration_targets() {
+    for source in [
+        "class Host { mutable var value: Int32; }",
+        "class Host { mutable var value: String; }",
+        "struct Data {} class Host { mutable var value: Data; }",
+        "class Host { mutable var value: Host; }",
+        "mutable var value: array<Int32>;",
+        "mutable class Host {}",
+        "mutable struct Host {}",
+        "mutable function Run() {}",
+        "class Host { mutable function Run() {} }",
+    ] {
+        rejected(
+            source,
+            CapabilityError::Modifier(redscript_redmod_ast::Modifier::Mutable),
+            "mutable",
+        );
+    }
+}
+
 fn rejected(source: &str, expected: CapabilityError, text: &str) {
     let sources = SourceMap::new();
     let file = sources.push_back("properties.script", source);
