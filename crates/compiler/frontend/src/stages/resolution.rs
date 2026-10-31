@@ -408,6 +408,18 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                 .report(Diagnostic::UnusedItemQualifiers(qs, name_span));
         }
 
+        let storage = entry.enum_.storage.as_ref().and_then(|(typ, span)| {
+            let storage = match typ {
+                ast::Type::Named { name, args } if args.is_empty() => {
+                    ast::EnumStorage::from_name(name)
+                }
+                _ => None,
+            };
+            if storage.is_none() {
+                self.reporter.report(Diagnostic::InvalidEnumStorage(*span));
+            }
+            storage
+        });
         let mut by_name = IndexMap::default();
         let mut by_val = BTreeSet::<i64>::new();
 
@@ -424,6 +436,14 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
             } else {
                 0
             };
+
+            if let Some(storage) = storage
+                && !storage.contains(val)
+            {
+                self.reporter
+                    .report(Diagnostic::EnumStorageOverflow(storage, val, *span));
+                continue;
+            }
 
             if by_name.insert(variant.name, val).is_some() {
                 self.reporter.report(Diagnostic::DuplicateVariantName(
@@ -442,7 +462,11 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
             }
         }
 
-        let schema = TypeSchema::Enum(Enum::new(by_name, Some(name_span)).into());
+        let mut enum_ = Enum::new(by_name, Some(name_span));
+        if let Some(storage) = storage {
+            enum_ = enum_.with_storage(storage);
+        }
+        let schema = TypeSchema::Enum(enum_.into());
         self.symbols
             .add_type(entry.id, TypeDef::new([], schema, entry.meta.doc));
     }

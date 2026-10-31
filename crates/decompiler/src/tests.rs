@@ -52,6 +52,40 @@ fn format_block(block: &ast::Block<'_>) -> String {
 }
 
 #[test]
+fn enum_decompilation_preserves_width_without_inventing_signedness() {
+    for (size, value, expected) in [
+        (1, 127, "Int8"),
+        (1, 255, "Uint8"),
+        (2, 0, "Int16"),
+        (4, 4_294_967_295, "Uint32"),
+        (8, 0, "Int64"),
+    ] {
+        let mut bundle = ScriptBundle::default();
+        let name = bundle.cnames_mut().add("Choice");
+        let idx = bundle.define_and_init(
+            redscript_io::Enum::new(name, Visibility::Public, size),
+            |bundle, idx, enm| {
+                let name = bundle.cnames_mut().add("A");
+                let value = bundle.define(redscript_io::EnumMember::new(name, idx, value));
+                enm.with_values(vec![value])
+            },
+        );
+        let decl = crate::decompile_enum(&bundle[idx], &bundle).unwrap();
+        let ast::Item::Enum(enm) = decl.item else {
+            panic!()
+        };
+        assert_eq!(enm.storage, Some(ast::Type::plain(expected)));
+        let formatted = enm
+            .as_fmt(FormatCtx::new(
+                &FormatSettings::default(),
+                &HashMap::default(),
+            ))
+            .to_string();
+        assert!(formatted.starts_with(&format!("enum Choice: {expected} {{")));
+    }
+}
+
+#[test]
 fn static_instance_calls_preserve_receivers() {
     let mut bundle = ScriptBundle::default();
     let name = bundle.cnames_mut().add("Base");

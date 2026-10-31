@@ -226,7 +226,10 @@ impl<'ctx> CompilationInputs<'ctx> {
                         .ok_or_else(|| Error::MissingPoolItem("enum name", enm.name().into()))?;
                     let enum_id = interner.intern(name.as_ref());
 
-                    let mut enum_ = Enum::default();
+                    if !matches!(enm.size(), 1 | 2 | 4 | 8) {
+                        return Err(Error::UnsupportedEnumSize(enm.size()));
+                    }
+                    let mut enum_ = Enum::default().with_storage_size(enm.size());
                     for &value in enm.values() {
                         let val = bundle
                             .get_item(value)
@@ -505,6 +508,8 @@ struct LoadedType<'ctx, K: TypeKind> {
 
 #[derive(Debug, Error)]
 pub enum Error {
+    #[error("unsupported enum storage size {0}")]
+    UnsupportedEnumSize(u8),
     #[error("missing {0} in the pool at index {1}")]
     MissingPoolItem(&'static str, u32),
     #[error("unsupported static array with size {0}")]

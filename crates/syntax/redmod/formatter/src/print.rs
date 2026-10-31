@@ -438,7 +438,10 @@ impl Printer {
                     for (variant, _) in variants {
                         printer.indent();
                         printer.name(&variant.name)?;
-                        if let Some((value, _)) = variant.value {
+                        if let Some((value, span)) = variant.value {
+                            if value == i64::MIN {
+                                return Err(error(PrintErrorKind::EnumValueOutOfRange, Some(span)));
+                            }
                             write!(printer.out, " = {value}").unwrap();
                         }
                         printer.out.push_str(",\n");

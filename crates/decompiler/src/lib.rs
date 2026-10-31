@@ -113,7 +113,14 @@ pub fn decompile_enum<'ctx: 'i, 'i>(
         None,
         ast::ItemQualifiers::empty(),
         [],
-        ast::Item::Enum(ast::Enum::new(name, variants)),
+        ast::Item::Enum({
+            let storage = ast::EnumStorage::from_bundle(
+                enum_.size(),
+                variants.iter().filter_map(|variant| variant.value),
+            )
+            .ok_or(Error::InvalidEnumStorage)?;
+            ast::Enum::new(name, variants).with_storage(Some(ast::Type::plain(storage.name())))
+        }),
     ))
 }
 

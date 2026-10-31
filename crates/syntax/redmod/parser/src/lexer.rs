@@ -56,7 +56,7 @@ pub fn lex<'src>(
                 Some("d") => str.parse().map(Token::Double).map_err(|_| error("Double", "use a decimal number with the `d` suffix")),
                 _ if str.contains(['.', 'e', 'E']) => str.parse().map(Token::Float).map_err(|_| error("Float", "use the `d` suffix for a Double literal")),
                 _ if str == "2147483648" => Ok(Token::IntMinMagnitude),
-                _ => str.parse().map(Token::Int).map_err(|_| error("Int32", "use the `l` suffix for Int64 or `ul` for Uint64; use a decimal point or `d` suffix for floating-point values")),
+                _ => str.parse().map(Token::Int).or_else(|_| str.parse().map(Token::EnumInt)).map_err(|_| error("Int32", "use the `l` suffix for Int64 or `ul` for Uint64; use a decimal point or `d` suffix for floating-point values")),
             };
             let result = result.and_then(|token| {
                 if matches!(token, Token::Float(n) if !n.is_finite())
@@ -261,6 +261,8 @@ pub enum Token<'src, S = Span> {
     // These magnitudes are only valid immediately after unary minus.
     IntMinMagnitude,
     LongMinMagnitude,
+    // Unsuffixed wide integers are accepted only in enum declarations.
+    EnumInt(i64),
     Float(f32),
     Double(f64),
     Str(Cow<'src, str>),
@@ -355,6 +357,7 @@ impl<'src, S1> Token<'src, S1> {
             Self::Long(n) => Token::Long(n),
             Self::IntMinMagnitude => Token::IntMinMagnitude,
             Self::LongMinMagnitude => Token::LongMinMagnitude,
+            Self::EnumInt(n) => Token::EnumInt(n),
             Self::Float(n) => Token::Float(n),
             Self::Double(n) => Token::Double(n),
             Self::Str(s) => Token::Str(s),
@@ -435,6 +438,7 @@ impl fmt::Display for Token<'_> {
             Self::Uint(n) => write!(f, "{n}u"),
             Self::Ulong(n) => write!(f, "{n}ul"),
             Self::Long(n) => write!(f, "{n}l"),
+            Self::EnumInt(n) => write!(f, "{n}"),
             Self::IntMinMagnitude => write!(f, "2147483648"),
             Self::LongMinMagnitude => write!(f, "9223372036854775808l"),
             Self::Float(n) => write!(f, "{n}f"),
@@ -690,8 +694,9 @@ mod tests {
         let result = tokens("1..2");
         assert_eq!(result[0], (Token::Int(1), (0..1).into()));
         assert_eq!(result[1], (Token::Period, (1..2).into()));
+        assert_eq!(tokens("2147483649")[0].0, Token::EnumInt(2_147_483_649));
         for src in [
-            "2147483649",
+            "9223372036854775808",
             "9223372036854775809l",
             "1e100f",
             "1e999d",

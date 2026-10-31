@@ -124,8 +124,8 @@ pub enum ParamModifier {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnumVariant<'src> {
     pub name: Name<'src>,
-    /// Explicit Int32 value; storage syntax does not widen this native subset.
-    pub value: Option<Spanned<i32>>,
+    /// Enum declaration literals use the official compiler's signed 64-bit range.
+    pub value: Option<Spanned<i64>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

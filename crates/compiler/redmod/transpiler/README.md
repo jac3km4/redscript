@@ -55,6 +55,10 @@ Finite Float values use round-tripping plain decimal spelling with a decimal
 point and signed zero. Unsupported integer ranges, nonfinite values and Doubles
 not exactly representable by the supported Float-cast path fail rather than narrow.
 Native parser acceptance alone does not establish transpiler numeric support.
+Explicit enum storage and its representable signed/unsigned values are preserved;
+wide enum initializers use unsuffixed native literals. See
+[enum storage](../../../../docs/enum-storage.md) for the Int64 minimum restriction
+and bundle signedness limitations.
 
 ## Remaining work
 

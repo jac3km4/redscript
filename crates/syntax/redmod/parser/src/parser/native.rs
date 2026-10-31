@@ -223,10 +223,14 @@ pub fn declaration<'tok, 'src: 'tok>() -> impl Parse<'tok, 'src, Declaration<'sr
                     .ignore_then(
                         just(Token::Minus)
                             .ignore_then(just(Token::IntMinMagnitude))
-                            .to(i32::MIN)
+                            .to(i64::from(i32::MIN))
                             .or(just(Token::Minus)
                                 .or_not()
-                                .then(select! { Token::Int(i) => i })
+                                .then(select! {
+                                    Token::Int(i) => i64::from(i),
+                                    Token::IntMinMagnitude => 2_147_483_648,
+                                    Token::EnumInt(i) => i,
+                                })
                                 .map(
                                     |(minus, value)| {
                                         if minus.is_some() { -value } else { value }

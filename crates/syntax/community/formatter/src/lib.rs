@@ -356,7 +356,11 @@ impl<K: AstKind> Formattable for Function<'_, K> {
 
 impl<K: AstKind> Formattable for Enum<'_, K> {
     fn format(&self, f: &mut fmt::Formatter<'_>, ctx: FormatCtx<'_>) -> fmt::Result {
-        writeln!(f, "enum {} {{", self.name.as_wrapped())?;
+        write!(f, "enum {}", self.name.as_wrapped())?;
+        if let Some(storage) = &self.storage {
+            write!(f, ": {}", storage.as_wrapped().as_fmt(ctx))?;
+        }
+        writeln!(f, " {{")?;
         for variant in &self.variants[..] {
             let ctx = ctx.indented();
             writeln!(f, "{}{},", ctx.indent(), variant.as_wrapped().as_fmt(ctx))?;
@@ -369,7 +373,12 @@ impl Formattable for EnumVariant<'_> {
     fn format(&self, f: &mut fmt::Formatter<'_>, _ctx: FormatCtx<'_>) -> fmt::Result {
         write!(f, "{}", self.name)?;
         if let Some(value) = &self.value {
-            write!(f, " = {value}")?;
+            let suffix = if i32::try_from(*value).is_ok() {
+                ""
+            } else {
+                "l"
+            };
+            write!(f, " = {value}{suffix}")?;
         }
         Ok(())
     }

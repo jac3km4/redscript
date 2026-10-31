@@ -232,14 +232,20 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                 }
                 self.output
                     .text
-                    .push_str(&format!("enum {} {{\n", target::ident(source.name.0)?));
+                    .push_str(&format!("enum {}", target::ident(source.name.0)?));
+                if let Some(storage) = enm.storage() {
+                    self.output.text.push_str(&format!(": {}", storage.name()));
+                }
+                self.output.text.push_str(" {\n");
                 for (variant, _) in &source.variants {
                     let value = enm
                         .variants()
                         .find(|(name, _)| *name == variant.name)
                         .map(|(_, value)| value)
                         .ok_or_else(|| error("missing resolved enum variant", None))?;
-                    if i32::try_from(value).is_err() || value == i64::from(i32::MIN) {
+                    if value == i64::MIN
+                        || (enm.storage().is_none() && i32::try_from(value).is_err())
+                    {
                         return Err(error(
                             "enum declaration literal outside verified target range",
                             None,

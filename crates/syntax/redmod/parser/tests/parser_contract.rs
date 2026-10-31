@@ -95,14 +95,17 @@ fn signed_minima_preserve_unary_precedence_and_spans() {
 }
 
 #[test]
-fn native_enums_remain_an_int32_subset() {
+fn native_enum_literals_use_signed_64_bit_values() {
     let source = "enum E: Int64 { Min = - /* minimum */ 2147483648, Max = 2147483647, Next, }";
     let (decl, errors) = parse_item_decl(source, file());
     assert!(errors.is_empty(), "{errors:?}");
     let Item::Enum { variants, .. } = decl.unwrap().item else {
         panic!()
     };
-    for (index, expected) in [i32::MIN, i32::MAX].into_iter().enumerate() {
+    for (index, expected) in [i64::from(i32::MIN), i64::from(i32::MAX)]
+        .into_iter()
+        .enumerate()
+    {
         let (value, span) = variants[index].0.value.unwrap();
         assert_eq!(value, expected);
         let spelling = &source[span.start as usize..span.end as usize];
@@ -119,6 +122,16 @@ fn native_enums_remain_an_int32_subset() {
     for value in [
         "2147483648",
         "-2147483649",
+        "4294967295",
+        "9223372036854775807",
+        "-9223372036854775807",
+    ] {
+        let source = format!("enum E: Int64 {{ A = {value} }}");
+        assert!(parse_item_decl(&source, file()).1.is_empty(), "{source}");
+    }
+    for value in [
+        "9223372036854775808",
+        "-9223372036854775808",
         "2147483648l",
         "1l",
         "-9223372036854775808l",

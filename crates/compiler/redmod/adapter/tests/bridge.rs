@@ -55,7 +55,6 @@ fn native_capabilities_fail_closed_with_typed_actionable_errors() {
             "class Host { var x, y: Int32 = Make(); }",
             CapabilityError::FieldGroup,
         ),
-        ("enum Choice: Uint8 { A, B }", CapabilityError::EnumStorage),
         (
             "operator +(a: Int32, b: Int32): Int32;",
             CapabilityError::OperatorDeclaration,

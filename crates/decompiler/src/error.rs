@@ -14,6 +14,8 @@ pub enum Error {
     VoidCast,
     #[error("Invalid number of arguments for an operator")]
     InvalidOperatorArgs,
+    #[error("Invalid enum storage size or values")]
+    InvalidEnumStorage,
     #[error("Read error: {0}")]
     ReadFailure(redscript_io::byte::Error),
 }

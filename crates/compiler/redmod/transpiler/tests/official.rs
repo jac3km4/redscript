@@ -169,6 +169,118 @@ function OfficialInlineReferences() -> OfficialInlineWidget {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
+#[test]
+#[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]
+fn authored_enum_storage_matches_official_bounds_and_bundle_representation() {
+    let validator = OfficialValidator {
+        executable: PathBuf::from(std::env::var_os("REDMOD_EXE").expect("set REDMOD_EXE")),
+        timeout: Duration::from_secs(60),
+    };
+    let root = PathBuf::from(std::env::var_os("REDMOD_GAME_ROOT").expect("set REDMOD_GAME_ROOT"));
+    let parent = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../target/redmod-official")
+        .join(format!(
+            "enum-storage-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+    let cases = [
+        (
+            "Legal",
+            "enum I8: Int8 { A = -128, B = 127 } enum U8: Uint8 { A = 0, B = 255 } enum I16: Int16 { A = -32768, B = 32767 } enum U16: Uint16 { A = 65535 } enum I32: Int32 { A = -2147483648, B = 2147483647 } enum U32: Uint32 { A = 4294967295 } enum I64: Int64 { A = -9223372036854775807, B = 9223372036854775807 } enum Default { A = 128 } enum Signed: Int8 { A = 0 } enum Unsigned: Uint8 { A = 0 }",
+            None,
+        ),
+        (
+            "NegativeUnsigned",
+            "enum E: Uint8 { A = -1 }",
+            Some("Cannot add enum option"),
+        ),
+        (
+            "ExplicitOverflow",
+            "enum E: Int8 { A = 128 }",
+            Some("Cannot add enum option"),
+        ),
+        (
+            "IncrementOverflow",
+            "enum E: Uint8 { A = 255, B }",
+            Some("Cannot add enum option"),
+        ),
+        (
+            "Unsigned64",
+            "enum E: Uint64 { A = 0 }",
+            Some("Cannot define enum"),
+        ),
+        (
+            "NonInteger",
+            "enum E: Float { A = 0 }",
+            Some("Cannot define enum"),
+        ),
+        (
+            "Minimum64",
+            "enum E: Int64 { A = -9223372036854775808 }",
+            Some("Could not convert script token"),
+        ),
+    ];
+    for (name, source, expected_error) in cases {
+        let directory = parent.join(name);
+        std::fs::create_dir_all(directory.join("r6/scripts")).unwrap();
+        std::fs::write(directory.join("r6/scripts/authored.script"), source).unwrap();
+        println!("{name}: {}", directory.display());
+        let result = validator.validate_with_root(&directory, &root);
+        if let Some(expected) = expected_error {
+            let message = result.unwrap_err().to_string();
+            assert!(message.contains(expected), "{message}");
+        } else {
+            result.unwrap();
+            let bytes = std::fs::read(directory.join("r6/cache/final.redscripts")).unwrap();
+            let names = literal_pool(&bytes, 44);
+            let word = |offset| {
+                u32::from_le_bytes(bytes.get(offset..offset + 4).unwrap().try_into().unwrap())
+                    as usize
+            };
+            let start = word(80);
+            let count = word(84);
+            let enums = (0..count)
+                .filter_map(|i| {
+                    let header = start + i * 20;
+                    let tag = u16::from_le_bytes(
+                        bytes
+                            .get(header + 16..header + 18)
+                            .unwrap()
+                            .try_into()
+                            .unwrap(),
+                    );
+                    (tag == 3).then(|| {
+                        let offset = word(header + 8);
+                        (
+                            names[word(header)],
+                            bytes.get(offset..offset + word(header + 12)).unwrap(),
+                        )
+                    })
+                })
+                .collect::<std::collections::BTreeMap<_, _>>();
+            for (name, width) in [
+                ("I8", 1),
+                ("U8", 1),
+                ("I16", 2),
+                ("U16", 2),
+                ("I32", 4),
+                ("U32", 4),
+                ("I64", 8),
+                ("Default", 4),
+            ] {
+                assert_eq!(enums[name][1], width, "{name}");
+            }
+            // The member index differs; visibility, size, count and native flag do not.
+            assert_eq!(&enums["Signed"][..6], &enums["Unsigned"][..6]);
+            assert_eq!(enums["Signed"].last(), enums["Unsigned"].last());
+        }
+    }
+}
+
 // Read only bounded version-14 literal tables, not definitions (which may use
 // official layouts unsupported by the full decompiler). Offsets follow io/bundle.rs.
 fn literal_pool(bytes: &[u8], table: usize) -> Vec<&str> {

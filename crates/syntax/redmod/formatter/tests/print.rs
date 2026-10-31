@@ -47,6 +47,13 @@ fn minima_nested_enums_and_integer_receivers_roundtrip() {
 }
 
 #[test]
+fn wide_enum_storage_roundtrips() {
+    roundtrip(
+        "enum U: Uint32 { Max = 4294967295 } enum L: Int64 { Min = -9223372036854775807, Max = 9223372036854775807 }",
+    );
+}
+
+#[test]
 fn full_native_grammar() {
     let output = roundtrip(
         r#"@module "Example.Mod";

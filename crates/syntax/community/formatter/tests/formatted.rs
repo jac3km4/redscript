@@ -197,3 +197,31 @@ fn formatted_files() {
         }
     });
 }
+
+#[test]
+fn explicit_enum_storage_and_wide_values_are_preserved() {
+    for storage in [
+        "Int8", "Uint8", "Int16", "Uint16", "Int32", "Uint32", "Int64",
+    ] {
+        let source = format!("enum Choice : {storage} {{ A=0,B }}");
+        let formatted = assert_preserved(&source, &FormatSettings::DEFAULT, "enum.reds");
+        assert!(
+            formatted
+                .trim_start()
+                .starts_with(&format!("enum Choice: {storage} {{")),
+            "{formatted}"
+        );
+    }
+    assert_preserved(
+        "enum Wide: Int64 { Min = -9223372036854775808l, Max = 9223372036854775807l }",
+        &FormatSettings::DEFAULT,
+        "enum.reds",
+    );
+    let formatted = assert_preserved(
+        "enum Default { A=0,B }",
+        &FormatSettings::DEFAULT,
+        "enum.reds",
+    );
+    assert!(formatted.trim_start().starts_with("enum Default {"));
+}
+

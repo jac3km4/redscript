@@ -679,12 +679,12 @@ impl<'ctx> Monomorphizer<'ctx> {
             .fold((0, 0), |(min, max), (_, val)| (min.min(val), max.max(val)));
         let variants = enum_.variants();
 
-        let size = match (min, max) {
+        let size = enum_.storage_size().unwrap_or(match (min, max) {
             (-128..=127, -128..=127) => 1,
             (-32_768..=32_767, -32_768..=32_767) => 2,
             (-2_147_483_648..=2_147_483_647, -2_147_483_648..=2_147_483_647) => 4,
             _ => 8,
-        };
+        });
 
         let enum_ = PoolEnum::new(name, Visibility::Public, size);
 

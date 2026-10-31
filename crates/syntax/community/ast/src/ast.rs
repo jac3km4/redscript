@@ -109,7 +109,12 @@ impl<'src, K: AstKind> ItemDecl<'src, K> {
 impl<'src> ItemDecl<'src, WithSpan> {
     pub fn find_at(&self, pos: u32) -> QueryResult<'_, 'src> {
         match &self.item {
-            Item::Import(_) | Item::Enum(_) => return QueryResult::ItemDecl(self),
+            Item::Import(_) => return QueryResult::ItemDecl(self),
+            Item::Enum(enum_) => enum_
+                .storage
+                .as_ref()
+                .filter(|(_, span)| span.contains(pos))
+                .map(|(typ, _)| typ.find_at(pos)),
             Item::Class(c) | Item::Struct(c) => c.find_at(pos),
             Item::Function(f) => f
                 .params
@@ -329,6 +334,7 @@ impl<'src> FunctionBody<'src, WithSpan> {
 #[derive_where(Debug, Clone, PartialEq)]
 pub struct Enum<'src, K: AstKind = Identity> {
     pub name: K::Inner<&'src str>,
+    pub storage: Option<K::Inner<Type<'src, K>>>,
     pub variants: Box<[K::Inner<EnumVariant<'src>>]>,
 }
 
@@ -339,19 +345,119 @@ impl<'src, K: AstKind> Enum<'src, K> {
     ) -> Self {
         Self {
             name,
+            storage: None,
             variants: variants.into(),
         }
+    }
+
+    pub fn with_storage(mut self, storage: Option<K::Inner<Type<'src, K>>>) -> Self {
+        self.storage = storage;
+        self
     }
 
     pub fn unwrapped(self) -> Enum<'src> {
         Enum {
             name: self.name.into_wrapped(),
+            storage: self.storage.map(|typ| typ.into_wrapped().unwrapped()),
             variants: self
                 .variants
                 .into_vec()
                 .into_iter()
                 .map(Wrapper::into_wrapped)
                 .collect(),
+        }
+    }
+}
+
+/// Integer representations accepted by the official compiler. Bundles retain
+/// only the byte width, not the signedness of the declaration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EnumStorage {
+    Int8,
+    Uint8,
+    Int16,
+    Uint16,
+    Int32,
+    Uint32,
+    Int64,
+}
+
+impl EnumStorage {
+    pub fn from_name(name: &str) -> Option<Self> {
+        Some(match name {
+            "Int8" => Self::Int8,
+            "Uint8" => Self::Uint8,
+            "Int16" => Self::Int16,
+            "Uint16" => Self::Uint16,
+            "Int32" => Self::Int32,
+            "Uint32" => Self::Uint32,
+            "Int64" => Self::Int64,
+            _ => return None,
+        })
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Int8 => "Int8",
+            Self::Uint8 => "Uint8",
+            Self::Int16 => "Int16",
+            Self::Uint16 => "Uint16",
+            Self::Int32 => "Int32",
+            Self::Uint32 => "Uint32",
+            Self::Int64 => "Int64",
+        }
+    }
+
+    pub fn size(self) -> u8 {
+        match self {
+            Self::Int8 | Self::Uint8 => 1,
+            Self::Int16 | Self::Uint16 => 2,
+            Self::Int32 | Self::Uint32 => 4,
+            Self::Int64 => 8,
+        }
+    }
+
+    pub fn is_signed(self) -> bool {
+        matches!(self, Self::Int8 | Self::Int16 | Self::Int32 | Self::Int64)
+    }
+
+    pub fn contains(self, value: i64) -> bool {
+        match self {
+            Self::Int8 => i8::try_from(value).is_ok(),
+            Self::Uint8 => u8::try_from(value).is_ok(),
+            Self::Int16 => i16::try_from(value).is_ok(),
+            Self::Uint16 => u16::try_from(value).is_ok(),
+            Self::Int32 => i32::try_from(value).is_ok(),
+            Self::Uint32 => u32::try_from(value).is_ok(),
+            Self::Int64 => true,
+        }
+    }
+
+    /// Choose a printable representation without claiming to recover signedness.
+    pub fn from_bundle(size: u8, values: impl IntoIterator<Item = i64>) -> Option<Self> {
+        let signed = match size {
+            1 => Self::Int8,
+            2 => Self::Int16,
+            4 => Self::Int32,
+            8 => Self::Int64,
+            _ => return None,
+        };
+        let unsigned = match size {
+            1 => Self::Uint8,
+            2 => Self::Uint16,
+            4 => Self::Uint32,
+            _ => signed,
+        };
+        let (fits_signed, fits_unsigned) =
+            values.into_iter().fold((true, true), |(s, u), value| {
+                (s && signed.contains(value), u && unsigned.contains(value))
+            });
+        if fits_signed {
+            Some(signed)
+        } else if fits_unsigned {
+            Some(unsigned)
+        } else {
+            None
         }
     }
 }

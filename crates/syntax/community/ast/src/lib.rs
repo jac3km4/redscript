@@ -6,7 +6,7 @@ mod visitor;
 
 pub use ast::{
     Aggregate, Annotation, ArraySpread, Assoc, AstKind, BinOp, Block, Case, Condition,
-    ConditionalBlock, Constant, Enum, EnumVariant, Expr, Field, Function, FunctionBody, Import,
+    ConditionalBlock, Constant, Enum, EnumStorage, EnumVariant, Expr, Field, Function, FunctionBody, Import,
     Item, ItemDecl, ItemQualifiers, LetCondition, Module, Param, ParamQualifiers, Path, Pattern,
     QueryResult, Stmt, StrPart, Type, TypeParam, UnOp, Variance, Visibility, WithSpan, Wrapper,
 };

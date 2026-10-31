@@ -117,17 +117,22 @@ fn field<'tok, 'src: 'tok>(
 }
 
 fn enum_<'tok, 'src: 'tok>() -> impl Parse<'tok, 'src, SourceEnum<'src>> {
-    let int = just(Token::Minus).or_not().then(select! {
-        Token::Int(i) => i64::from(i),
-        Token::Long(i) => i,
-    });
+    let int = just(Token::Minus)
+        .ignore_then(select! {
+            Token::IntMinMagnitude => i64::from(i32::MIN),
+            Token::LongMinMagnitude => i64::MIN,
+        })
+        .or(just(Token::Minus)
+            .or_not()
+            .then(select! {
+                Token::Int(i) => i64::from(i),
+                Token::Long(i) => i,
+            })
+            .map(|(minus, value)| if minus.is_some() { -value } else { value }));
 
     let variants = extended_ident()
         .then(just(Token::Assign).ignore_then(int).or_not())
-        .map_with(|(name, value), e| {
-            let val = value.map(|(minus, val)| if minus.is_some() { -val } else { val });
-            (EnumVariant::new(name, val), e.span())
-        })
+        .map_with(|(name, value), e| (EnumVariant::new(name, value), e.span()))
         .separated_by(just(Token::Comma))
         .allow_trailing()
         .collect::<Vec<_>>()
@@ -135,9 +140,10 @@ fn enum_<'tok, 'src: 'tok>() -> impl Parse<'tok, 'src, SourceEnum<'src>> {
 
     just(Token::Ident("enum"))
         .ignore_then(ident_with_span())
+        .then(just(Token::Colon).ignore_then(type_with_span()).or_not())
         .then(variants)
         .then_ignore(just(Token::Semicolon).or_not())
-        .map(|(name, variants)| Enum::new(name, variants))
+        .map(|((name, storage), variants)| Enum::new(name, variants).with_storage(storage))
         .erased()
 }
 

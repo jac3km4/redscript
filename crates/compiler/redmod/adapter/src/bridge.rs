@@ -369,11 +369,8 @@ impl<'src> Bridge<'src> {
                 name,
                 variants,
                 storage,
-            } => {
-                if let Some((_, span)) = storage {
-                    return Err((CapabilityError::EnumStorage, span));
-                }
-                ast::Item::Enum(ast::Enum::new(
+            } => ast::Item::Enum(
+                ast::Enum::new(
                     name,
                     variants
                         .into_iter()
@@ -381,14 +378,15 @@ impl<'src> Bridge<'src> {
                             (
                                 ast::EnumVariant::new(
                                     variant.name.0,
-                                    variant.value.map(|(value, _)| i64::from(value)),
+                                    variant.value.map(|(value, _)| value),
                                 ),
                                 span,
                             )
                         })
                         .collect::<Vec<_>>(),
-                ))
-            }
+                )
+                .with_storage(storage.map(typ)),
+            ),
             native::Item::Directive { kind, .. } => {
                 return Err((
                     match kind {

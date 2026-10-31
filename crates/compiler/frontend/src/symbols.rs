@@ -406,6 +406,9 @@ impl<'ctx> TypeSchema<'ctx> {
 #[derive(Debug, Default, Clone)]
 pub struct Enum<'ctx> {
     variants: IndexMap<&'ctx str, i64>,
+    storage: Option<redscript_community_ast::EnumStorage>,
+    // Serialized enums retain width but erase declaration signedness.
+    storage_size: Option<u8>,
     span: Option<Span>,
 }
 
@@ -413,8 +416,30 @@ impl<'ctx> Enum<'ctx> {
     pub fn new(variants: impl Into<IndexMap<&'ctx str, i64>>, span: Option<Span>) -> Self {
         Self {
             variants: variants.into(),
+            storage: None,
+            storage_size: None,
             span,
         }
+    }
+
+    pub fn with_storage(mut self, storage: redscript_community_ast::EnumStorage) -> Self {
+        self.storage = Some(storage);
+        self.storage_size = Some(storage.size());
+        self
+    }
+
+    pub fn with_storage_size(mut self, size: u8) -> Self {
+        self.storage = None;
+        self.storage_size = Some(size);
+        self
+    }
+
+    pub fn storage(&self) -> Option<redscript_community_ast::EnumStorage> {
+        self.storage
+    }
+
+    pub fn storage_size(&self) -> Option<u8> {
+        self.storage_size
     }
 
     #[inline]

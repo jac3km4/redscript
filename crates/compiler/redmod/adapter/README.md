@@ -53,6 +53,12 @@ is not guaranteed to compile officially or behave correctly in the game.
 - Bytecode-backed modifiers and parameter flags, including const metadata.
   Metadata preservation does not add readonly enforcement or bypass legality checks.
 
+Explicit enum storage is shared with community source: `Int8/16/32/64` and
+`Uint8/16/32` preserve width and enforce signed/unsigned boundaries. Bundle loading
+preserves width but cannot recover erased signedness. See
+[enum storage](../../../../docs/enum-storage.md) for literal limits and official
+characterization.
+
 ## Remaining semantic capabilities
 
 The native parser retains these forms, but analysis rejects unsupported semantics:
@@ -62,7 +68,7 @@ The native parser retains these forms, but analysis rejects unsupported semantic
 | Assignment values/chains; general value sequences | Define typed result/place lowering without duplicating evaluation; shared assignments remain Void |
 | Omitted positional arguments | Resolve skipped slots against signatures; do not substitute `null` |
 | Const locals; initialized local/field groups | Establish mutation and initializer evaluation rules before lowering |
-| Operator/conversion declarations; enum storage; const returns | Add registration/type rules, not syntax-only normalization |
+| Operator/conversion declarations; const returns | Add registration/type rules, not syntax-only normalization |
 | All `default` directives, including inherited fields | Implement target-specific initialization separately from local defaults |
 | `skip` parameters | Add short-circuit call lowering; optional flags alone are insufficient |
 | `export`, `virtual`, `constexpr`, `mutable` modifiers | Verify semantics before mapping or deliberately ignoring them |

@@ -28,6 +28,10 @@ pub enum Diagnostic<'ctx> {
     DuplicateVariantValue(&'ctx str, &'ctx str, i64, Span),
     #[error("implicit enum value exceeds the i64 range when incrementing the maximum value")]
     ValueOverflow(Span),
+    #[error("enum storage must be Int8, Uint8, Int16, Uint16, Int32, Uint32, or Int64")]
+    InvalidEnumStorage(Span),
+    #[error("enum value {1} is outside the range of {0:?}")]
+    EnumStorageOverflow(ast::EnumStorage, i64, Span),
     #[error("this function must have a body")]
     MissingFunctionBody(Span),
     #[error("this function cannot have a body")]
@@ -158,6 +162,8 @@ impl<'ctx> Diagnostic<'ctx> {
             | Self::DuplicateVariantName(_, _, span)
             | Self::DuplicateVariantValue(_, _, _, span)
             | Self::ValueOverflow(span)
+            | Self::InvalidEnumStorage(span)
+            | Self::EnumStorageOverflow(_, _, span)
             | Self::MissingFunctionBody(span)
             | Self::UnexpectedFunctionBody(span)
             | Self::UnusedItemQualifiers(_, span)
@@ -207,7 +213,8 @@ impl<'ctx> Diagnostic<'ctx> {
             Self::CoalesceError(_, _) => "COALESCE_ERR",
             Self::DuplicateVariantName(_, _, _) => "DUP_VARIANT_NAME",
             Self::DuplicateVariantValue(_, _, _, _) => "DUP_VARIANT_VAL",
-            Self::ValueOverflow(_) => "VAL_OVERFLOW",
+            Self::ValueOverflow(_) | Self::EnumStorageOverflow(_, _, _) => "VAL_OVERFLOW",
+            Self::InvalidEnumStorage(_) => "INVALID_ENUM_STORAGE",
             Self::MissingFunctionBody(_) => "MISSING_BODY",
             Self::UnexpectedFunctionBody(_) => "UNEXPECTED_BODY",
             Self::UnusedItemQualifiers(_, _) => "UNUSED_ITEM_QUALIFIERS",
