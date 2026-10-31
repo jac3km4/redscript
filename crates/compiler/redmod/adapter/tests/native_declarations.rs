@@ -48,6 +48,45 @@ fn analyze(
 }
 
 #[test]
+fn imported_scriptable_root_with_boot_dependencies_terminates() {
+    let (send, recv) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        let errors = analyze(
+            "import class IScriptable {}",
+            "class Community {}",
+            |_, symbols, interner| {
+                let root = interner.intern("IScriptable");
+                assert!(symbols[root].schema().base_type().is_none());
+                assert!(
+                    symbols[root]
+                        .schema()
+                        .as_aggregate()
+                        .unwrap()
+                        .flags()
+                        .is_native()
+                );
+                for name in ["Community", "Function0", "Function8"] {
+                    assert_eq!(
+                        symbols[interner.intern(name)]
+                            .schema()
+                            .base_type()
+                            .unwrap()
+                            .id(),
+                        root,
+                        "{name}"
+                    );
+                }
+            },
+        );
+        assert!(errors.is_empty(), "{errors:?}");
+        send.send(()).unwrap();
+    });
+    recv.recv_timeout(std::time::Duration::from_secs(10))
+        .expect("imported root resolution must terminate");
+    worker.join().unwrap();
+}
+
+#[test]
 fn omitted_fields_are_public_but_explicit_visibility_and_method_defaults_survive() {
     for kind in ["class", "import class", "importonly class", "struct"] {
         let imported = if kind.starts_with("import") {

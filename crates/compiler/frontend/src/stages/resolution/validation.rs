@@ -16,6 +16,36 @@ use crate::{
 };
 
 impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
+    pub(super) fn validate_inheritance<'a>(
+        &mut self,
+        classes: impl IntoIterator<Item = &'a ClassItem<'a, 'ctx>>,
+    ) where
+        'ctx: 'a,
+    {
+        let mut checked = HashSet::<TypeId<'ctx>, BuildIdentityHasher<usize>>::default();
+        for class in classes {
+            let mut ancestors = HashSet::<TypeId<'ctx>, BuildIdentityHasher<usize>>::default();
+            let cycle = self
+                .symbols
+                .base_iter_with_self(class.id())
+                .take_while(|(id, _)| !checked.contains(id))
+                .find_map(|(id, _)| (!ancestors.insert(id)).then_some(id));
+
+            if let Some(id) = cycle {
+                let aggregate = self.symbols[id]
+                    .schema_mut()
+                    .as_aggregate_mut()
+                    .expect("cycle member should be an aggregate");
+                if let Some(span) = aggregate.span() {
+                    self.reporter.report(Diagnostic::CircularInheritance(span));
+                }
+                // Break the cycle itself, not the descendant's edge into it.
+                aggregate.set_base(None);
+            }
+            checked.extend(ancestors);
+        }
+    }
+
     pub(super) fn validate_module(&mut self, module: &InferStageModule<'_, 'ctx>) {
         for func in module.functions() {
             let (func_t, span) = match func {
@@ -39,22 +69,6 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
         }
 
         for class in module.classes() {
-            if self
-                .symbols
-                .base_iter_with_self(class.id())
-                .skip(1)
-                .any(|(id, _)| id == class.id())
-            {
-                self.reporter
-                    .report(Diagnostic::CircularInheritance(class.name_span()));
-                // remove base class to prevent base type traversal from looping
-                self.symbols[class.id()]
-                    .schema_mut()
-                    .as_aggregate_mut()
-                    .expect("class should be an aggregate")
-                    .set_base(None);
-            }
-
             let agg = self.symbols[class.id()]
                 .schema()
                 .as_aggregate()

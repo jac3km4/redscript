@@ -393,6 +393,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
             }
         }
 
+        self.validate_inheritance(results.iter().flat_map(InferStageModule::classes));
         for module in &results {
             self.validate_module(module);
         }

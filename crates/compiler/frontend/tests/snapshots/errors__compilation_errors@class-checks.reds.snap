@@ -76,6 +76,12 @@ error[DUP_IMPL]: this implementation is a duplicate of a previous one
 89 | @nameImplementation(DuplicateStringStruct as GenericStruct<String>)
    |                                              ^^^^^^^^^^^^^^^^^^^^^
 
+error[INVALID_BASE]: inheritance cycle detected
+ --> tests/data/class-checks.reds:43:7
+   |
+43 | class CircularClassA extends CircularClassB {}
+   |       ^^^^^^^^^^^^^^
+
 error[INVALID_BASE]: this type cannot inherit from a struct
  --> tests/data/class-checks.reds:4:7
   |
@@ -105,12 +111,6 @@ error[INVALID_TYPE_ARG_COUNT]: type `AbstractClass` expects 1 type argument, but
    |
 40 |   func Method(a: AbstractClass) -> AbstractClass<String, String> {}
    |               ^^^^^^^^^^^^^^^^
-
-error[INVALID_BASE]: inheritance cycle detected
- --> tests/data/class-checks.reds:43:7
-   |
-43 | class CircularClassA extends CircularClassB {}
-   |       ^^^^^^^^^^^^^^
 
 error[INVALID_VARIANCE]: the type `A` appears in contravariant position, which is incompatible with its declaration
  --> tests/data/class-checks.reds:67:16
