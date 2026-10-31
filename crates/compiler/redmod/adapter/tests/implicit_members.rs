@@ -85,6 +85,87 @@ fn static_bodies_cannot_read_instance_fields_and_visibility_is_checked() {
 }
 
 #[test]
+fn implicit_methods_precede_same_named_types_in_instance_inherited_and_static_calls() {
+    let errors = check(
+        "struct Choose { var value: Int32; }
+         class Base { protected function Choose(): Int32 { return 1; } }
+         class Host extends Base { public function Run(): Int32 { return Choose(); } }
+         struct StaticChoice { var value: Int32; }
+         class StaticHost {
+           public static function StaticChoice(): Int32 { return 2; }
+           public function Run(): Int32 { return StaticChoice(); }
+           public static function RunStatic(): Int32 { return StaticChoice(); }
+         }",
+        "",
+    );
+    assert!(errors.is_empty(), "{errors:?}");
+}
+
+#[test]
+fn parameters_and_hoisted_locals_shadow_type_constructors_too() {
+    for body in [
+        "public function Run(Choice: Int32) { Choice(); }",
+        "public function Run() { Choice(); var Choice: Int32; }",
+    ] {
+        let errors = check(
+            &format!(
+                "struct Choice {{ var value: Int32; }}
+                 class Host {{ public function Choice() {{}} {body} }}"
+            ),
+            "",
+        );
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert!(errors[0].contains("Int32"), "{errors:?}");
+    }
+}
+
+#[test]
+fn selected_method_does_not_fall_back_to_constructor_or_free_function() {
+    for method in [
+        "public function Choice(value: String) {}",
+        "private function Choice() {}",
+    ] {
+        let errors = check(
+            &format!(
+                "struct Choice {{}}
+                 class Base {{ {method} }}
+                 class Host extends Base {{ public function Run() {{ Choice(); }} }}"
+            ),
+            "",
+        );
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        let errors = check(
+            &format!(
+                "class Base {{ {method} }}
+                 class Host extends Base {{ public function Run() {{ Choice(); }} }}"
+            ),
+            "func Choice() {}",
+        );
+        assert_eq!(errors.len(), 1, "{errors:?}");
+    }
+}
+
+#[test]
+fn constructors_and_free_functions_remain_available_without_an_implicit_method() {
+    let errors = check(
+        "struct Choice { var value: Int32; }
+         class Host { public function Run(): Choice { Other(); return Choice(1); } }",
+        "func Other() {}",
+    );
+    assert!(errors.is_empty(), "{errors:?}");
+}
+
+#[test]
+fn community_calls_keep_constructor_precedence_over_local_names() {
+    let errors = check(
+        "class Native {}",
+        "struct Choice { let value: Int32; }
+         func Run(Choice: Int32) -> Choice { return Choice(1); }",
+    );
+    assert!(errors.is_empty(), "{errors:?}");
+}
+
+#[test]
 fn community_dependencies_do_not_gain_implicit_members() {
     let errors = check(
         "class Native {}",

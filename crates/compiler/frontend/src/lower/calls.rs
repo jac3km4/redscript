@@ -35,12 +35,6 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         }
 
         if let &(ast::Expr::Ident(name), _) = expr
-            && let Some(&TypeRef::Id(id)) = env.types().get(name)
-        {
-            return self.lower_construct(id, args, type_args, env, call_span);
-        }
-
-        if let &(ast::Expr::Ident(name), _) = expr
             && env.types().policy(call_span).implicit_members
             && env.locals().get(name).is_none()
             && let Some(parent) = self.context
@@ -73,7 +67,16 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
 
         if let &(ast::Expr::Ident(name), _) = expr
             && (!env.types().policy(call_span).implicit_members || env.locals().get(name).is_none())
-            && let mut candidates = env.query_free_functions(name, self.symbols).peekable()
+            && let Some(&TypeRef::Id(id)) = env.types().get(name)
+        {
+            return self.lower_construct(id, args, type_args, env, call_span);
+        }
+
+        if let &(ast::Expr::Ident(name), _) = expr
+            && (!env.types().policy(call_span).implicit_members || env.locals().get(name).is_none())
+            && let mut candidates = env
+                .query_free_functions(name, self.symbols)
+                .peekable()
             && candidates.peek().is_some()
         {
             let (call, typ) = self
