@@ -6,17 +6,20 @@ Native parsing/formatting, partial semantic analysis, mixed-language IDE analysi
 and strict community REDscript → REDmod export exist. Full semantic parity and
 runtime compatibility do not.
 
-The next milestone is broader, trustworthy analysis of installed native sources:
-fix independently reproduced compatibility bugs, verify modifier semantics, then
-implement own and inherited field defaults end to end. Accepting more syntax must
-not silently erase behavior or weaken community-language checks.
+The first-blocker, native-reference, compatibility, and end-to-end field-default
+batch is implemented. The numbered workstream below records its design and
+acceptance gates; the status table distinguishes delivered support from deferred
+semantics. Accepting more syntax must not silently erase behavior or weaken
+community-language checks.
 
 - [Semantic adapter contracts and rejection list](../crates/compiler/redmod/adapter/README.md)
-- [Exporter contracts and limitations](../crates/compiler/redmod/export/README.md)
+- [Transpiler contracts and limitations](../crates/compiler/redmod/transpiler/README.md)
 - [Local parser corpus check](../crates/syntax/redmod/parser/CORPUS.md)
+- [Shared expression/default APIs and semantics](shared-expression-defaults.md)
+- [Const parameter checks and REDmod relaxations](const-parameters.md)
 - [Contribution and validation requirements](../CONTRIBUTING.md)
 
-## Corpus baseline
+## Corpus checkpoints
 
 The 2026-10-30 local semantic run analyzed all 2,112 installed files under
 `tools/redmod/scripts`, including one capital-S `.Script` file. It used the boot
@@ -43,10 +46,35 @@ substantial cascades. All 588 adapter processing errors were missing override
 bases; they are not independently established override bugs. Diagnostic-free
 files and returned IR must not be counted as semantic passes.
 
-The local report and probes were saved under `target/redmod-corpus-review/`.
-These are disposable, untracked artifacts, not a portable test dependency.
-Reproduce important findings with authored regression fixtures rather than
-committing installed game scripts.
+The original disposable probe omitted unused-local analysis. The repeatable
+harness reproduces its 485 warnings plus 964 `UNUSED_LOCAL` warnings (1,449 total).
+
+The historical integrated run at original commit `6b53cb2` on 2026-10-31 used
+the same corpus and boot-only inputs, including the unused-local pass. This was
+**before the shared-default rewrite**; that revision is preserved on
+`backup-feat-redmod`. The corpus has not been rerun for the rewritten history,
+so these are not current-HEAD results:
+
+| Stage | Integrated result |
+| --- | ---: |
+| Native syntax diagnostics | 0 |
+| Files excluded by bridge capability checks | 66 |
+| Additional files excluded by validation | 0 |
+| Modules reaching semantic processing | 2,046 |
+| Adapter processing errors | 1,456 |
+| Shared errors / warnings | 47,982 / 25,364 |
+
+More analyzed bodies expose more errors, including cascades from excluded
+operator declarations and missing engine definitions. These are processing counts,
+not semantic passes or runtime compatibility claims. That historical combined run
+completed following the implicit `IScriptable` self-base/ancestor-cycle fix.
+
+See the [repeatable corpus survey](../crates/compiler/redmod/adapter/CORPUS.md)
+for commands, instrumentation and residual groups. Final reports are under
+`target/redmod-semantic-corpus-final/`; the original probe was under
+`target/redmod-corpus-review/`. These are disposable, untracked artifacts, not
+portable test dependencies. Reduce findings to authored regression fixtures rather
+than committing installed game scripts.
 
 ## Architecture constraints
 
@@ -55,10 +83,13 @@ committing installed game scripts.
   `redscript-redmod-formatter`. Parsing retains unsupported constructs.
 - Keep native mappings, capability checks, and native-to-shared conversion in
   `redscript-redmod-adapter`. Shared frontend extensions must be language-neutral,
-  using narrow per-source policies or supplemental inputs where needed.
-- Do not add native-only syntax variants to the community AST. Preserve adapter
-  plans in the complete `ParsedModule`, including cloned IDE snapshots. Bare-AST
-  APIs must fail closed if extracting the AST would discard required semantics.
+  using shared AST/default features for common semantics and narrow per-source
+  policies only for dialect differences.
+- Aggregate defaults use shared `Item::Default` / `FieldDefault` nodes in both
+  languages, not private adapter plans or supplemental frontend inputs. Preserve
+  the remaining native loop-fixup plans in the complete `ParsedModule`, including
+  cloned IDE snapshots. Bare-AST APIs fail closed for those loop constructs, not
+  for shared aggregate defaults.
 - Preserve evaluation count/order, lazy evaluation, writable places, and written
   spans. Synthetic provenance must not hide source children from IDE queries.
 - Carry resolved semantic identities after binding. Spans, source spellings,
@@ -69,18 +100,138 @@ committing installed game scripts.
 - Use typed diagnostics, complete diagnostic/output snapshots, and direct
   assertions for identity, provenance, order, flags, and serialized properties.
 
-## Next implementation batch
+## Implementation workstream
 
 Keep independent fixes in separate Conventional Commits. Each commit must build
 and include its API initializer/call-site updates, regression tests, and relevant
 contract documentation. Shared prerequisites may need separate commits before
 adapter integration.
 
-### 1. Implicit method/type name collisions
+### Delivery status (2026-10-31)
+
+| Step | Status and implementation |
+| --- | --- |
+| 1. Repeatable corpus run | Harness delivered in `6e2cf7c`, including case-insensitive `.script` discovery. IDE discovery is tracked separately in the IDE repository. |
+| 2–4. Function modifiers | `e1b8390`: verified analysis-only `export`/`constexpr`; checked virtual/private/bodyless method rules. No engine-exposure or compile-time-evaluation claim. |
+| 5. Enum storage | `fdd0c7b`, `27983d4`: both-language syntax, range checks, width preservation and bundle regressions. Signedness is erased in bundles; omitted native storage still differs from the official four-byte default. |
+| 6. References and const checks | `be40fa2`: shared compositional script-reference coercion and receiver unwrapping; strict const-parameter checks by default, with explicit REDmod element-write/non-out-forwarding relaxations. Native `ref<T>` maps to script references, not community strong references; ref locals/returns, nested refs and arrays of refs remain rejected. Only reference write-through is dialect-specific. |
+| 7. Operators/conversions | `2d16262`: checked operator registration and arity. Explicit conversions are retained/queryable but selection fails closed; implicit conversions and index operators remain unsupported. |
+| 8. Omitted slots | `2d16262`: shared signature-checked positional holes emit `Nop`, not null. Community trailing commas add no slot; native trailing commas retain final holes. Lazy `skip` remains separate. |
+| 9. Other first blockers | `7f5513f`: shared assignments/chains yield the coerced destination type, not Void, with one place evaluation and no readback; unsafe array-prefix lifting fails closed. `2d0fa87`: profile properties, const returns and Profile IO correction; `0d99929`: verified mutable array fields. Const locals, scalar mutable, and broader metadata remain deferred. |
+| 10. Method/type collisions | `9204818`: implicit methods precede types; community lookup unchanged. |
+| 11. Native field visibility | `24ef415`: omitted native field visibility is public, with explicit flags unchanged. |
+| 12. Imported callbacks | `39b4178`: shared support for bodyless callbacks on native, non-import-only aggregates, without invented bodies or native method flags; other missing-body checks remain. |
+| 13. Integration checkpoints | `6e2cf7c` supplies the harness; `d06f200` fixes the self-base/ancestor-cycle hang. Recorded corpus/validation results below are historical, not reruns on rewritten commits. |
+| 14. Defaults end to end | `a0a8f48`: shared AST/parser/formatter support, typed own/inherited target resolution and merged serialized properties, with backend round-trip regressions. No private default plans or supplemental-input API. |
+
+Historical validation recorded at original `6b53cb2` (preserved on
+`backup-feat-redmod`, before the shared-default rewrite) included independent
+workspace/all-target `cargo check` for implementation commits, default/all-feature
+workspace tests and all-target strict Clippy, pinned nightly formatting, release
+build, generated docs, and a standalone adapter check. This records the original
+validation only; it does not certify the rewritten trees or claim a corpus rerun.
+
+### Historical original implementation steps and gates
+
+The following list and step-detail sections retain the original design, including
+superseded adapter-plan/supplemental-input proposals. They are historical, not the
+current API contract. Use the status table and shared API guide
+above for completion, rather than interpreting the original imperative wording as
+unfinished work. Characterization may run in parallel, but capabilities must remain
+gated until their representation and consumers are ready.
+
+1. **Make the semantic corpus run repeatable.** Add an optional harness with
+   explicit corpus/dependency inputs, deterministic discovery, per-stage counts,
+   grouped typed diagnostics, and minimal-reproduction links. Include `.Script`
+   discovery consistently in the IDE and harness. Keep installed sources out of CI
+   and committed fixtures. Record the baseline before changing acceptance rules.
+
+2. **Accept `export` on verified function targets.** Treat it as an analysis-only
+   no-op if characterization supports that decision. Cover free functions,
+   instance/static methods, overrides, and visibility. Reject unsupported targets;
+   do not claim equivalent engine exposure or bytecode. See modifier details below.
+
+3. **Support `virtual`.** Reuse existing non-final dispatch where equivalent, but
+   establish private override and bodyless-declaration rules. Check conflicts with
+   `final`, `static`, and `override`; do not simply discard virtual intent where it
+   changes legality. See modifier details below.
+
+4. **Handle `constexpr` deliberately.** Compare ordinary calls, declaration/body
+   restrictions, overrides, and constant-context uses with official fixtures.
+   Ignore it for ordinary analysis only where verified equivalent. Diagnose any
+   unsupported compile-time evaluation explicitly instead of pretending to fold it.
+
+5. **Support explicit enum storage in both languages.** Add optional community
+   syntax alongside native syntax and a shared storage model with unchanged
+   omitted-storage behavior. Carry widths/signedness through resolution, bundle
+   loading, backend emission, formatting, queries, and export. Verify legal storage
+   types and representation; test boundaries, implicit increment overflow, and
+   serialize/reload. The existing IO size byte alone does not settle signedness.
+
+6. **Support native `ref<T>`.** This is native REDmod syntax, not a community-only
+   feature. Replace the blanket rejection with a mapping that preserves native
+   reference/value semantics. Characterize class, value, and nested reference
+   forms; parameters/returns/locals/fields; `weak<T>` interaction; null, coercions,
+   mutation, and overload identity. Reuse a shared representation only when its
+   semantics match, extending language-neutral type/lowering support otherwise.
+   Cover IDE type/definition queries, mixed dependencies, and backend round trips.
+   Do not preserve the rejection merely because community `ref<T>` differs.
+
+7. **Register operator and conversion declarations.** Add checked signatures and
+   native declaration registration using shared resolution where appropriate.
+   Validate operator arity/type rules and conversion selection, keeping value
+   conversions distinct from object downcasts. This should reduce secondary
+   missing-operator/cast diagnostics as more native declarations become available.
+
+8. **Resolve omitted argument slots.** Preserve holes through overload resolution,
+   validate each against the actual optional parameter, and retain positional
+   identity. Do not substitute `null`. Treat `skip` as a separate lazy-call lowering
+   requirement, not an optionality flag.
+
+9. **Address the remaining first-blocker families explicitly.**
+   - **Metadata:** inventory nonstring/nonfield forms; support verified targets and
+     value types without losing keys, duplicates, order, or provenance.
+   - **Assignment values/chains:** implement typed result/place lowering with one
+     evaluation of receivers and RHS, including nested expressions and lazy sites.
+   - **Const returns:** determine type identity, mutation, and metadata effects
+     before mapping them.
+   - **Const locals:** defer readonly support for now. Keep an explicit limitation;
+     do not silently lower them as mutable in strict processing. Any future partial
+     analysis mode must be clearly distinct from target-valid acceptance.
+   - **`mutable`:** characterize mutation/editor/serialization effects alongside
+     const semantics before deciding whether it can be ignored.
+   Rerun capability discovery: the first failure per file hides subsequent forms,
+   including initialized groups and other currently documented gaps. A deferred
+   category remains a blocker, not a completed capability.
+
+10. **Prefer implicit methods over same-named types.** Fix native lookup ordering
+    with shadowing and constructor fallback coverage; leave community lookup
+    unchanged. Details below.
+
+11. **Apply native omitted-field visibility defaults.** Establish rules for
+    scripted/imported/importonly declarations without weakening explicit visibility.
+    Details below.
+
+12. **Support imported event prototypes.** Preserve verified callback/prototype
+    flags without synthetic bodies or blanket native-member inference. Details below.
+
+13. **Run a pre-defaults corpus checkpoint.** Compare accepted modules, first
+    blockers, and dependency cascades with the baseline. Inventory residual
+    unsupported-type diagnostics separately from unknown symbols. Explicit
+    `ref<T>` must now be supported for verified forms; custom generics, function
+    types, or mixed-reference forms need their own decisions rather than a blanket
+    unsupported-type bucket. Run full contribution checks before defaults work.
+
+14. **Implement default directives end to end.** Follow the characterization,
+    retention, resolution, emission, and regression stages below. Include own and
+    inherited fields, structs, duplicates, and imported defaults. Rerun the corpus
+    and contribution checks after integration.
+
+### Step 10 details: implicit method/type name collisions
 
 **Suggested commit:** `fix(redmod): prefer implicit methods over types`
 
-Constructor lookup currently precedes implicit-member lookup. Installed sources
+Before `9204818`, constructor lookup preceded implicit-member lookup. Installed sources
 call `SignalEvent(...)` as a method even when a same-named type exists; a tiny
 self-contained probe reproduces invalid construction, while
 `this.SignalEvent(...)` succeeds.
@@ -96,12 +247,14 @@ Keep community lookup unchanged. Cover instance/static/inherited methods,
 local and hoisted-local shadowing, type collisions, constructor fallback, free
 functions, visibility, and explicit-receiver controls. Characterize ambiguous
 cases with the official compiler before broadening the rule beyond these cases.
+Official probes found one type-versus-local edge where the type wins; the current
+local-first behavior is an intentional remaining difference, not full parity.
 
-### 2. Omitted field visibility
+### Step 11 details: omitted field visibility
 
 **Suggested commit:** `fix(redmod): apply native field visibility defaults`
 
-Omitted visibility on imported fields currently becomes shared private visibility,
+Before `24ef415`, omitted visibility on imported fields became shared private visibility,
 but installed native sources access these fields externally. The mismatch also
 reproduces with an isolated imported class and consumer.
 
@@ -113,11 +266,11 @@ Implement only the verified rule in the adapter or a narrow resolution policy.
 Preserve explicit visibility and implicit-versus-written provenance where relevant.
 Do not make every native field public merely to silence diagnostics.
 
-### 3. Imported event prototypes
+### Step 12 details: imported event prototypes
 
 **Suggested commit:** `fix(redmod): support imported event prototypes`
 
-Bodyless protected events in imported classes currently receive `MISSING_BODY`.
+Before `39b4178`, bodyless protected events in imported classes received `MISSING_BODY`.
 An isolated `import class NativeController { protected event OnMounted(); }`
 reproduces this without missing dependencies.
 
@@ -130,7 +283,7 @@ Keep missing-body checks for invalid scripted declarations. Test subclass
 compatibility and serialized callback/native/unimplemented flags, not just the
 absence of diagnostics.
 
-### 4. Export modifier
+### Step 2 details: export modifier
 
 **Suggested commit:** `fix(redmod): accept export function modifiers`
 
@@ -143,7 +296,7 @@ inventing shared flags. Document the distinction between analysis acceptance and
 equivalent engine exposure or emitted bytecode. Continue rejecting unverified
 modifier targets such as fields.
 
-### 5. Virtual methods
+### Step 3 details: virtual methods
 
 **Suggested commit:** `fix(redmod): support virtual methods`
 
@@ -157,10 +310,26 @@ Map onto existing flags where justified; retain explicit virtual intent in adapt
 metadata if needed. Revisit the override search's exclusion of private base methods
 only when supported by those results.
 
-Rerun corpus analysis after this compatibility/modifier batch before choosing the
-next newly exposed blockers.
+## Step 14: default directives end to end
 
-## Default directives: end-to-end implementation
+**Delivered in `a0a8f48` as shared aggregate defaults.** Both languages parse and
+format `default field = value;` as shared `Item::Default` / `FieldDefault` nodes.
+The frontend consumes those AST members directly after inheritance resolution,
+resolves targets to `FieldId`s, and the backend merges properties on declaring
+fields using supplying-class keys. No private default plans, supplemental frontend
+inputs, or initialization bytecode are involved. Bare-AST defaults retain their
+semantics; native loop fixups still require metadata-aware processing.
+
+Sections A–E below preserve the **historical design gates**, including the
+superseded plan/supplemental-input proposal, not instructions for current APIs.
+See the [shared guide](shared-expression-defaults.md) for the delivered contract.
+
+Official bounded representation probes established own-field duplicate first-wins
+and inherited duplicate last-wins per supplying class. Existing bundle, base and
+sibling entries are preserved. The shared frontend deliberately checks types more
+strictly than official inherited defaults that accept some invalid text. Contiguous numeric
+spellings are retained; parenthesized/comment-separated forms fall back to typed
+formatting. Tests cover these distinctions without requiring a game installation.
 
 Defaults are class-qualified field metadata, not constructor assignments. Support
 own and inherited targets together; attaching directives only to same-class field
@@ -248,21 +417,22 @@ Split retention/frontend plumbing, checked resolution, and backend emission into
 independently buildable commits. Keep end-to-end acceptance gated until required
 plans and representations are wired through all consumers.
 
-## Following semantic work
+## Subsequent semantic work
 
 Reprioritize after each corpus checkpoint; first-blocker counts are not independent
-coverage gains and cannot simply be added together.
+coverage gains and cannot simply be added together. The historical pre-rewrite
+checkpoint's first blockers were (not a current-HEAD corpus measurement):
 
-| Capability | Next step |
-| --- | --- |
-| `constexpr` | Characterize function resolution and compile-time behavior; do not assume it is an ordinary function modifier |
-| Explicit enum storage | Verify widths, ranges, type rules, and serialized representation |
-| Operator/conversion declarations | Register and type-check native declarations; high leverage for reducing downstream missing-operator/cast diagnostics |
-| Explicit `ref<T>` | Define native reference/value semantics; do not map blindly to community strong wrappers |
-| `.Script` discovery | Make IDE discovery and dialect selection consistent, with case-variant tests |
-| Const locals / `mutable` | Establish mutation and legality rules before mapping or ignoring modifiers |
-| Omitted arguments / `skip` | Resolve actual slots and preserve lazy argument execution; optional flags are insufficient |
-| Assignment values / initialized groups | Preserve values, places, initializer visibility, and evaluation count/order |
+1. Const locals: 53 files; readonly support remains deliberately deferred.
+2. Implicit conversion declarations: 9 files; registration/selection still needed.
+3. Scalar `mutable`: 1 file; array-field support does not establish scalar rules.
+4. Index operator declarations: 1 file.
+5. Lazy `skip` parameters: 1 file, excluding a widely used math-operator module.
+6. Native switch label order: 1 file.
+
+Initialized groups, broader metadata, explicit conversion dispatch, and unverified
+reference forms remain follow-ups too; first-blocker counts do not inventory every
+remaining gap.
 
 Additional retained work:
 
@@ -305,5 +475,9 @@ files can expose more errors; total diagnostics alone do not measure progress.
 
 Earlier local official compiler v1.2.2 checks accepted five authored exports,
 including String/CName pool checks, but did not establish game-runtime behavior.
-Those historical results do not validate the planned work. A bounded release may
+Those historical results do not validate later work. New authored official probes
+characterized modifiers, references, operators, omitted slots, enums, native
+properties and defaults; bounded binary inspection was used where the existing
+full reader could not decode official bundles. These are acceptance/representation
+checks, not runtime tests. A bounded release may
 document explicit rejections; it must not advertise full language parity.

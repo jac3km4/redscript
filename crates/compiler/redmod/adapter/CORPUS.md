@@ -88,9 +88,9 @@ one `.Script`. Two consecutive runs produced byte-identical reports under
 `target/redmod-semantic-corpus/` and `target/redmod-semantic-corpus-first/`.
 These counts precede the concurrent modifier/reference acceptance changes; they
 are the boot-only baseline, not a claim about the final combined working tree.
-A later debug-mode run against those concurrent changes exceeded its 120-second
-validation timeout before writing reports (`target/redmod-semantic-corpus-current/`);
-no updated counts were obtained from that attempt.
+An intermediate debug-mode run timed out without reports. A later inheritance
+cycle fix removed an implicit `IScriptable` self-base and made ancestor traversal
+terminate on cycles; the final combined run below completed successfully.
 
 | Outcome | Count |
 | --- | ---: |
@@ -113,6 +113,45 @@ Shared unresolved type/reference/function/member diagnostics totalled 12,644.
 The previous disposable probe reported 485 warnings without the unused-local
 pass; this harness reports the same 485 plus **964 `UNUSED_LOCAL` warnings**.
 This difference is instrumentation, not expanded semantic acceptance.
+
+## Historical integrated checkpoint (2026-10-31)
+
+At original commit `6b53cb2`, the same **2,112 files / 21,873,807 bytes** were
+surveyed with the same boot-only dependencies and unused-local pass. This was
+**before the shared-default rewrite**; the original revision is preserved on
+`backup-feat-redmod`. These results have not been rerun for the rewritten history
+and must not be presented as current-HEAD counts. The historical command was:
+
+```sh
+cargo run --release -p redscript-redmod-adapter --locked --example semantic_corpus -- 'D:/win/Cyberpunk 2077/tools/redmod/scripts' target/redmod-semantic-corpus-final
+```
+
+| Outcome | Baseline | Integrated |
+| --- | ---: | ---: |
+| Syntax-blocked files | 0 | 0 |
+| Capability-blocked files | 1,154 | 66 |
+| Validation-blocked files | 157 | 0 |
+| Modules reaching processing | 801 | 2,046 |
+| Adapter processing errors | 588 | 1,456 |
+| Shared errors | 13,769 | 47,982 |
+| Shared warnings | 1,449 | 25,364 |
+
+That run's remaining first blockers were `ConstLocal` (53 files),
+`ConversionDeclaration` (9), and one each of `Modifier(Mutable)`,
+`OperatorDeclaration` (index operator), `SkipParameter`, and `SwitchLabelOrder`.
+These counts hide later unsupported constructs in the same files.
+
+The largest shared error groups are `UNRESOLVED_FN` (24,572), `UNRESOLVED_REF`
+(7,278), `INVALID_ARG_COUNT` (5,713), `UNRESOLVED_TYPE` (5,235), `TYPE_ERR`
+(2,633), and `UNRESOLVED_MEMBER` (998). Adapter errors comprise
+`OverrideWithoutBase` (882), `OverrideReturnTypeMismatch` (414),
+`PersistentFieldAccess` (148), and other errors (12).
+
+More bodies reached analysis in that run, exposing more diagnostics. In particular,
+the math-operator file was excluded by `skip`, causing many missing
+`OperatorLogicAnd` errors. Do not interpret the totals as independent bugs or
+2,046 processing-eligible modules as semantic passes. Reports remain disposable
+under `target/redmod-semantic-corpus-final/`; no runtime parity is established.
 
 ## Reproduce and reduce
 
