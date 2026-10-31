@@ -183,6 +183,64 @@ fn convert_mapped(source: &str) -> redscript_redmod_transpiler::TranspiledModule
 }
 
 #[test]
+fn value_assignments_are_exported_as_nested_expressions_with_source_mappings() {
+    let source = "func Chain(out a: Int32, out b: Int32) -> Int32 { return a = b = 7; }";
+    let sources = SourceMap::new();
+    sources.populate_boot_lib();
+    let file = sources.push_back("assignment.reds", source);
+    let interner = TypeInterner::default();
+    let mut reporter = CompileErrorReporter::default();
+    let modules = parse_files(&sources, &mut reporter);
+    let module = modules
+        .iter()
+        .find(|module| module.span().is_some_and(|span| span.file == file))
+        .unwrap()
+        .clone();
+    let evaluator = Evaluator::from_modules(&modules);
+    let (unit, symbols) = redscript_compiler_frontend::process_sources_with_policy(
+        modules,
+        Symbols::with_default_types(),
+        evaluator,
+        &mut reporter,
+        &interner,
+        &[],
+    );
+    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+    let request = TranspileModule {
+        source: &module,
+        bindings: bindings(&module, &symbols),
+    };
+    let output = transpile(&[request], &unit, &symbols).unwrap();
+    assert!(
+        output[0].text.contains("return a = b = 7;"),
+        "{}",
+        output[0].text
+    );
+    assert!(
+        output[0]
+            .mappings
+            .iter()
+            .any(|mapping| mapping.source.file == file)
+    );
+    let (parsed, errors) = redscript_redmod_parser::parse_module(&output[0].text, file);
+    assert!(parsed.is_some() && errors.is_empty(), "{errors:?}");
+}
+
+#[test]
+fn explicit_enum_storage_is_exported_without_narrowing() {
+    let output = convert(
+        "enum U: Uint32 { Max = 4294967295l } enum L: Int64 { Max = 9223372036854775807l }",
+    );
+    assert!(output.contains("enum U: Uint32 {"), "{output}");
+    assert!(output.contains("Max = 4294967295,"));
+    assert!(output.contains("enum L: Int64 {"));
+    assert!(output.contains("Max = 9223372036854775807,"));
+    let output = convert("enum Old { A, B }");
+    assert!(output.contains("enum Old {"));
+    assert!(!output.contains("enum Old:"));
+}
+
+#[test]
 fn lazy_branches_and_loop_back_edges_keep_initialization_in_place() {
     let output = convert(
         r#"
@@ -695,11 +753,6 @@ fn rejected_features_have_source_diagnostics() {
             "wide-enum",
             "enum Wide { Value = 2147483648l }",
             "outside verified target range",
-        ),
-        (
-            "lazy-array",
-            "func Check(values: [Int32]) -> Bool = true func Test(flag: Bool) -> Bool = flag ? Check([1]) : false",
-            "lazy operand",
         ),
         (
             "array-place",

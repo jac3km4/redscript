@@ -88,6 +88,7 @@ fn assign<'ctx>(local: ir::Local, value: bool, source: Span) -> ir::Stmt<'ctx> {
     ir::Expr::Assign {
         place: Box::new(ir::Expr::Local(local, span)),
         expr: Box::new(ir::Expr::Const(ir::Const::Bool(value), span)),
+        typ: PolyType::nullary(predef::BOOL).into(),
         span,
     }
     .into()

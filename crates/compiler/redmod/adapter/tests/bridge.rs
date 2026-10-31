@@ -28,18 +28,6 @@ fn body<'a, 'src>(module: &'a ParsedModule<'src>) -> &'a ast::SourceBlock<'src> 
 fn native_capabilities_fail_closed_with_typed_actionable_errors() {
     for (source, expected) in [
         (
-            "function Run() { x = y = 1; }",
-            CapabilityError::AssignmentValue,
-        ),
-        (
-            "function Run() { return x = 1; }",
-            CapabilityError::AssignmentValue,
-        ),
-        (
-            "function Run() { Use(x += 1); }",
-            CapabilityError::AssignmentValue,
-        ),
-        (
             "function Run() { const var x: Int32 = 1; }",
             CapabilityError::ConstLocal,
         ),
@@ -342,23 +330,19 @@ fn discarded_sequences_keep_written_spans_but_not_value_semantics() {
     for ((_, span), expected) in statements.iter().zip(["First()", "x = 1", "Last()"]) {
         assert_eq!(&source[span.start as usize..span.end as usize], expected);
     }
-    for (source, expected) in [
-        (
-            "function Run() { First(), x = y = 1; }",
-            CapabilityError::AssignmentValue,
+    let (parsed, errors) =
+        parse_file_with_metadata("function Run() { First(), Use(Before(), [1]); }", file());
+    assert!(parsed.is_none());
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [Error::Capability {
+                kind: CapabilityError::UnsafeArrayEvaluation,
+                ..
+            }]
         ),
-        (
-            "function Run() { First(), Use(Before(), [1]); }",
-            CapabilityError::UnsafeArrayEvaluation,
-        ),
-    ] {
-        let (parsed, errors) = parse_file_with_metadata(source, file());
-        assert!(parsed.is_none());
-        assert!(
-            matches!(errors.as_slice(), [Error::Capability { kind, .. }] if *kind == expected),
-            "{errors:?}"
-        );
-    }
+        "{errors:?}"
+    );
 }
 
 #[test]

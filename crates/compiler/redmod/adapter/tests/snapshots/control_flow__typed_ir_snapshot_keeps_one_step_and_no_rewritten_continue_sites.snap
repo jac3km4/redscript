@@ -58,6 +58,22 @@ Block {
                         ),
                     },
                 ),
+                typ: Type(
+                    RefCell {
+                        value: Uninit(
+                            Mono(
+                                Data(
+                                    TypeApp {
+                                        id: TypeId(
+                                            "Int32",
+                                        ),
+                                        args: [],
+                                    },
+                                ),
+                            ),
+                        ),
+                    },
+                ),
                 span: Span {
                     start: 22,
                     end: 38,
@@ -90,6 +106,22 @@ Block {
                         end: 17,
                         file: FileId(
                             1,
+                        ),
+                    },
+                ),
+                typ: Type(
+                    RefCell {
+                        value: Uninit(
+                            Mono(
+                                Data(
+                                    TypeApp {
+                                        id: TypeId(
+                                            "Bool",
+                                        ),
+                                        args: [],
+                                    },
+                                ),
+                            ),
                         ),
                     },
                 ),
@@ -215,6 +247,22 @@ Block {
                                                             ),
                                                         },
                                                     },
+                                                    typ: Type(
+                                                        RefCell {
+                                                            value: Uninit(
+                                                                Mono(
+                                                                    Data(
+                                                                        TypeApp {
+                                                                            id: TypeId(
+                                                                                "Int32",
+                                                                            ),
+                                                                            args: [],
+                                                                        },
+                                                                    ),
+                                                                ),
+                                                            ),
+                                                        },
+                                                    ),
                                                     span: Span {
                                                         start: 61,
                                                         end: 71,
@@ -260,6 +308,22 @@ Block {
                                         end: 17,
                                         file: FileId(
                                             1,
+                                        ),
+                                    },
+                                ),
+                                typ: Type(
+                                    RefCell {
+                                        value: Uninit(
+                                            Mono(
+                                                Data(
+                                                    TypeApp {
+                                                        id: TypeId(
+                                                            "Bool",
+                                                        ),
+                                                        args: [],
+                                                    },
+                                                ),
+                                            ),
                                         ),
                                     },
                                 ),
@@ -433,6 +497,22 @@ Block {
                         ),
                     },
                 ),
+                typ: Type(
+                    RefCell {
+                        value: Uninit(
+                            Mono(
+                                Data(
+                                    TypeApp {
+                                        id: TypeId(
+                                            "Bool",
+                                        ),
+                                        args: [],
+                                    },
+                                ),
+                            ),
+                        ),
+                    },
+                ),
                 span: Span {
                     start: 111,
                     end: 111,
@@ -554,6 +634,22 @@ Block {
                                         end: 111,
                                         file: FileId(
                                             1,
+                                        ),
+                                    },
+                                ),
+                                typ: Type(
+                                    RefCell {
+                                        value: Uninit(
+                                            Mono(
+                                                Data(
+                                                    TypeApp {
+                                                        id: TypeId(
+                                                            "Bool",
+                                                        ),
+                                                        args: [],
+                                                    },
+                                                ),
+                                            ),
                                         ),
                                     },
                                 ),

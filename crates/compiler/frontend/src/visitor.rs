@@ -184,7 +184,11 @@ pub trait Visitor<'ctx> {
             } => self.visit_new_struct(struct_type, args, *span),
             ir::Expr::NewClosure { closure, span } => self.visit_new_closure(closure, *span),
             ir::Expr::Call { call, span } => self.visit_call(call, *span),
-            ir::Expr::Assign { place, expr, span } => self.visit_assign(place, expr, *span),
+            ir::Expr::Assign {
+                place, expr, span, ..
+            } => {
+                self.visit_assign(place, expr, *span);
+            }
             ir::Expr::Field {
                 receiver,
                 receiver_type,

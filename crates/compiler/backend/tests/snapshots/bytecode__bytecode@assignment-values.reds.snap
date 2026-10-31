@@ -1,0 +1,84 @@
+---
+source: crates/compiler/backend/tests/bytecode.rs
+expression: "compile(path, |_| {})"
+input_file: crates/compiler/backend/tests/data/assignment-values.reds
+---
+// Tick;OutInt32 (f0)
+assign
+param 0 "n": "Int32"
+i32.one
+return
+param 0 "n": "Int32"
+
+// Chain;OutVariantOutInt32OutInt32 (f1)
+return
+assign
+param 1 "a": "Variant"
+variant.new 0 "Int32"
+assign
+param 2 "b": "Int32"
+invoke.static j25 l3 f0 Tick;OutInt32 0000000000000000
+param 3 "n": "Int32"
+param.end
+
+// Indexed;Outarray<Int32>OutInt32 (f2)
+return
+assign
+array.element 1 "array:Int32"
+param 4 "values": "array:Int32"
+invoke.static j25 l6 f0 Tick;OutInt32 0000000000000000
+param 5 "n": "Int32"
+param.end
+invoke.static j25 l6 f0 Tick;OutInt32 0000000000000000
+param 5 "n": "Int32"
+param.end
+
+// Receiver;HolderOutInt32 (f3)
+assign
+param 6 "n": "Int32"
+i32.one
+return
+param 7 "holder": "ref:Holder"
+
+// Field;HolderOutInt32 (f4)
+return
+assign
+ctx 43
+invoke.static j34 l16 f3 Receiver;HolderOutInt32 0000000000000000
+param 8 "holder": "ref:Holder"
+param 9 "n": "Int32"
+param.end
+object.field 0 Holder::value: "Int32"
+invoke.static j25 l16 f0 Tick;OutInt32 0000000000000000
+param 9 "n": "Int32"
+param.end
+
+// Conditional;OutInt32Bool (f5)
+return
+cond 22 35
+param 10 "flag": "Bool"
+assign
+param 11 "a": "Int32"
+i32.one
+assign
+param 11 "a": "Int32"
+i32.const 2
+
+// ReadWeak;Holder (f6)
+return
+ref.to_wref
+deref 2 "ref:Holder"
+param 12 "value": "script_ref:ref:Holder"
+
+// WrapWeak;Holder (f7)
+return
+as_ref 3 "wref:Holder"
+ref.to_wref
+param 13 "value": "ref:Holder"
+
+// RefIndex;array<Int32> (f8)
+return
+array.element 1 "array:Int32"
+deref 1 "array:Int32"
+param 14 "values": "script_ref:array:Int32"
+i32.zero

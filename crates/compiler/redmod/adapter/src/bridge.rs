@@ -21,7 +21,7 @@ pub enum CapabilityError {
     DoWhileLoop,
     SequenceExpression,
     OmittedArgument,
-    AssignmentValue,
+
     UnsafeArrayEvaluation,
     ConstLocal,
     InitializedLocalGroup,
@@ -59,9 +59,7 @@ impl fmt::Display for CapabilityError {
             Self::OmittedArgument => {
                 "omitted argument slots are not supported; provide explicit arguments"
             }
-            Self::AssignmentValue => {
-                "value-producing assignments are unsupported by the shared Void assignment semantics"
-            }
+
             Self::UnsafeArrayEvaluation => {
                 "array literal prefixes may change conditional evaluation or operand order; bind the array explicitly at its intended execution point"
             }
@@ -212,7 +210,7 @@ impl<'src> Bridge<'src> {
                 .iter()
                 .cloned()
                 .chain(std::iter::once((
-                    ast::Annotation::new("hint", vec![self.expr(value, false)?]),
+                    ast::Annotation::new("hint", vec![self.expr(value)?]),
                     span,
                 )))
                 .collect();
@@ -239,7 +237,7 @@ impl<'src> Bridge<'src> {
                             ann.name.0,
                             ann.args
                                 .into_iter()
-                                .map(|expr| self.expr(expr, false))
+                                .map(|expr| self.expr(expr))
                                 .collect::<Result<Vec<_>>>()?,
                         ),
                         span,
@@ -317,7 +315,7 @@ impl<'src> Bridge<'src> {
                     Box::new(typ(field.typ)),
                     field
                         .default
-                        .map(|expr| self.expr(expr, false).map(Box::new))
+                        .map(|expr| self.expr(expr).map(Box::new))
                         .transpose()?,
                 ))
             }
@@ -539,7 +537,7 @@ impl<'src> Bridge<'src> {
                     let ty = typ(local.typ);
                     let value = local
                         .value
-                        .map(|expr| self.expr(expr, false).map(Box::new))
+                        .map(|expr| self.expr(expr).map(Box::new))
                         .transpose()?;
                     let grouped = local.names.len() > 1;
                     for name in local.names {
@@ -560,7 +558,7 @@ impl<'src> Bridge<'src> {
                     continue;
                 }
                 native::Statement::Return(expr) => ast::Stmt::Return(
-                    expr.map(|expr| self.expr(*expr, false).map(Box::new))
+                    expr.map(|expr| self.expr(*expr).map(Box::new))
                         .transpose()?,
                 ),
                 native::Statement::Break => ast::Stmt::Break,
@@ -648,7 +646,7 @@ impl<'src> Bridge<'src> {
                             // Matcher prefixes must not run before the switch.
                             crate::array_guard::ArrayGuard::check_lazy(&value)?;
                             cases.push(ast::Case::new(
-                                ast::Condition::Expr(self.expr(value, false)?),
+                                ast::Condition::Expr(self.expr(value)?),
                                 body,
                             ));
                         } else {
@@ -656,7 +654,7 @@ impl<'src> Bridge<'src> {
                         }
                     }
                     ast::Stmt::Switch {
-                        expr: Box::new(self.expr(expr, false)?),
+                        expr: Box::new(self.expr(expr)?),
                         cases: cases.into(),
                         default,
                     }
@@ -712,7 +710,7 @@ impl<'src> Bridge<'src> {
             Ok(stmts)
         } else {
             Ok(vec![(
-                ast::Stmt::Expr(Box::new(self.expr((expr, span), true)?)),
+                ast::Stmt::Expr(Box::new(self.expr((expr, span))?)),
                 span,
             )])
         }
@@ -736,7 +734,7 @@ impl<'src> Bridge<'src> {
             prefix.extend(rest);
             Ok((prefix, value))
         } else {
-            Ok((vec![], self.expr((expr, span), false)?))
+            Ok((vec![], self.expr((expr, span))?))
         }
     }
 
@@ -796,24 +794,19 @@ impl<'src> Bridge<'src> {
         body: native::Block<'src>,
     ) -> Result<ast::SourceConditionalBlock<'src>> {
         Ok(ast::ConditionalBlock::new(
-            ast::LetCondition::Expr(self.expr(condition, false)?),
+            ast::LetCondition::Expr(self.expr(condition)?),
             self.block(body)?,
         ))
     }
 
-    fn expr(
-        &self,
-        expr: Spanned<native::Expr<'src>>,
-        discarded: bool,
-    ) -> Result<Spanned<ast::SourceExpr<'src>>> {
+    fn expr(&self, expr: Spanned<native::Expr<'src>>) -> Result<Spanned<ast::SourceExpr<'src>>> {
         crate::array_guard::ArrayGuard::check(&expr)?;
-        self.lower_expr(expr, discarded)
+        self.lower_expr(expr)
     }
 
     fn lower_expr(
         &self,
         (expr, span): Spanned<native::Expr<'src>>,
-        discarded: bool,
     ) -> Result<Spanned<ast::SourceExpr<'src>>> {
         let expr = match expr {
             native::Expr::Ident(name) => ast::Expr::Ident(name),
@@ -825,7 +818,7 @@ impl<'src> Bridge<'src> {
                 items
                     .into_vec()
                     .into_iter()
-                    .map(|expr| self.lower_expr(expr, false))
+                    .map(|expr| self.lower_expr(expr))
                     .collect::<Result<Vec<_>>>()?
                     .into(),
             ),
@@ -834,7 +827,7 @@ impl<'src> Bridge<'src> {
                 args: vec![].into(),
             },
             native::Expr::Call { expr, args } => {
-                let mut expr = self.lower_expr(*expr, false)?;
+                let mut expr = self.lower_expr(*expr)?;
                 if matches!(expr.0, ast::Expr::Ident(name) if Some(name) == self.wrapper) {
                     expr.0 = ast::Expr::Ident("wrappedMethod");
                 }
@@ -846,7 +839,7 @@ impl<'src> Bridge<'src> {
                         .into_iter()
                         .map(|expr| match expr {
                             (native::Expr::Omitted, span) => Ok((ast::Expr::Omitted, span)),
-                            expr => self.lower_expr(expr, false),
+                            expr => self.lower_expr(expr),
                         })
                         .collect::<Result<Vec<_>>>()?
                         .into(),
@@ -859,57 +852,37 @@ impl<'src> Bridge<'src> {
                     Span::new(span.start, span.start, span.file),
                 )),
                 type_args: vec![typ(*ty)].into(),
-                args: vec![self.lower_expr(*expr, false)?].into(),
+                args: vec![self.lower_expr(*expr)?].into(),
             },
             native::Expr::DynCast { expr, typ: ty } => ast::Expr::DynCast {
-                expr: Box::new(self.lower_expr(*expr, false)?),
+                expr: Box::new(self.lower_expr(*expr)?),
                 typ: Box::new(typ(*ty)),
             },
             native::Expr::Member { expr, member } => ast::Expr::Member {
-                expr: Box::new(self.lower_expr(*expr, false)?),
+                expr: Box::new(self.lower_expr(*expr)?),
                 member,
             },
             native::Expr::Index { expr, index } => ast::Expr::Index {
-                expr: Box::new(self.lower_expr(*expr, false)?),
-                index: Box::new(self.lower_expr(*index, false)?),
+                expr: Box::new(self.lower_expr(*expr)?),
+                index: Box::new(self.lower_expr(*index)?),
             },
             native::Expr::UnOp { op, expr } => ast::Expr::UnOp {
                 op,
-                expr: Box::new(self.lower_expr(*expr, false)?),
+                expr: Box::new(self.lower_expr(*expr)?),
             },
-            native::Expr::BinOp { lhs, op, rhs } => {
-                if !discarded
-                    && matches!(
-                        op,
-                        ast::BinOp::AssignAdd
-                            | ast::BinOp::AssignSub
-                            | ast::BinOp::AssignMul
-                            | ast::BinOp::AssignDiv
-                            | ast::BinOp::AssignBitAnd
-                            | ast::BinOp::AssignBitOr
-                    )
-                {
-                    return Err((CapabilityError::AssignmentValue, span));
-                }
-                ast::Expr::BinOp {
-                    lhs: Box::new(self.lower_expr(*lhs, false)?),
-                    op,
-                    rhs: Box::new(self.lower_expr(*rhs, false)?),
-                }
-            }
-            native::Expr::Assign { lhs, rhs } => {
-                if !discarded {
-                    return Err((CapabilityError::AssignmentValue, span));
-                }
-                ast::Expr::Assign {
-                    lhs: Box::new(self.lower_expr(*lhs, false)?),
-                    rhs: Box::new(self.lower_expr(*rhs, false)?),
-                }
-            }
+            native::Expr::BinOp { lhs, op, rhs } => ast::Expr::BinOp {
+                lhs: Box::new(self.lower_expr(*lhs)?),
+                op,
+                rhs: Box::new(self.lower_expr(*rhs)?),
+            },
+            native::Expr::Assign { lhs, rhs } => ast::Expr::Assign {
+                lhs: Box::new(self.lower_expr(*lhs)?),
+                rhs: Box::new(self.lower_expr(*rhs)?),
+            },
             native::Expr::Conditional { cond, then, else_ } => ast::Expr::Conditional {
-                cond: Box::new(self.lower_expr(*cond, false)?),
-                then: Box::new(self.lower_expr(*then, discarded)?),
-                else_: Box::new(self.lower_expr(*else_, discarded)?),
+                cond: Box::new(self.lower_expr(*cond)?),
+                then: Box::new(self.lower_expr(*then)?),
+                else_: Box::new(self.lower_expr(*else_)?),
             },
             native::Expr::Sequence(_) => return Err((CapabilityError::SequenceExpression, span)),
             native::Expr::Omitted => return Err((CapabilityError::OmittedArgument, span)),

@@ -408,6 +408,7 @@ fn bare_shared_ast_api_does_not_silently_drop_required_fixups() {
         let (parsed, errors) = parse_file_with_metadata(source, file);
         assert!(parsed.is_some());
         assert!(errors.is_empty(), "{errors:?}");
+        analyze(source, |_, _| {});
     }
 }
 
@@ -512,23 +513,23 @@ fn plans_and_hoisting_are_per_source_not_global() {
 }
 
 #[test]
-fn value_sequences_and_assignment_conditions_remain_typed_capability_failures() {
+fn assignment_conditions_are_preserved_for_typed_lowering() {
     for source in [
-        "function Run() { for (; x = true;) {} }",
-        "function Run() { do {} while (x = true); }",
+        "function Run() { var x: Bool; for (; x = false;) {} }",
+        "function Run() { var x: Bool; do {} while (x = false); }",
     ] {
         let sources = SourceMap::new();
         let file = sources.push_back("bad.script", source);
         let (parsed, errors) = parse_file_with_metadata(source, file);
-        assert!(parsed.is_none());
-        assert!(
-            matches!(
-                errors.as_slice(),
-                [redscript_redmod_adapter::Error::Capability { .. }]
-            ),
-            "{errors:?}"
-        );
+        assert!(parsed.is_some());
+        assert!(errors.is_empty(), "{errors:?}");
+        analyze(source, |_, _| {});
     }
+    run(
+        "function Run(): Int32 { var x: Bool; do { Mark(1); continue; } while (x = false); return 2; }",
+        &[1],
+        2,
+    );
 }
 
 // The parser currently recognizes comma sequences only in for headers. Build
@@ -700,7 +701,9 @@ fn assert_written_queries(source: &str, unit: &LoweredCompilationUnit<'_>, symbo
                 assert_eq!(span.start, span.end);
             }
             match expr {
-                ir::Expr::Assign { place, expr, span } => {
+                ir::Expr::Assign {
+                    place, expr, span, ..
+                } => {
                     if place.span().start == place.span().end {
                         assert_eq!(span.start, span.end);
                     }

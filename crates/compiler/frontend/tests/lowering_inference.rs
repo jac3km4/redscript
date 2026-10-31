@@ -244,7 +244,7 @@ fn inference_errors_do_not_assume_member_lookup() {
 }
 
 #[test]
-fn assignments_do_not_produce_the_assigned_value() {
+fn assignments_produce_the_assigned_value() {
     for body in [
         "let a = false; a = true;",
         "let a = false; let value: Bool = (a = true);",
@@ -254,16 +254,7 @@ fn assignments_do_not_produce_the_assigned_value() {
         sources.push_back("assignment.reds", format!("func Test() {{ {body} }}"));
         let interner = TypeInterner::default();
         let (_, _, diagnostics) = infer(&sources, &interner);
-        if body == "let a = false; a = true;" {
-            assert!(diagnostics.is_empty(), "{diagnostics:?}");
-        } else {
-            assert!(
-                diagnostics
-                    .iter()
-                    .any(|diagnostic| diagnostic.code() == "TYPE_ERR"),
-                "{body}: {diagnostics:?}"
-            );
-        }
+        assert!(diagnostics.is_empty(), "{body}: {diagnostics:?}");
     }
 }
 

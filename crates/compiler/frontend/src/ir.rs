@@ -205,9 +205,13 @@ pub enum Expr<'ctx> {
         call: Box<Call<'ctx>>,
         span: Span,
     },
+
+    /// Store and yield the coerced value without reading the place again.
+    /// The place is evaluated once, before the value; the result is not a place.
     Assign {
         place: Box<Self>,
         expr: Box<Self>,
+        typ: Type<'ctx>,
         span: Span,
     },
     Field {

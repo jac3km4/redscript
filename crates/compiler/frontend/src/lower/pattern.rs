@@ -87,6 +87,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                         ir::Expr::Assign {
                             place: ir::Expr::Local(local, *name_span).into(),
                             expr: projected.into(),
+                            typ: projection_t.clone().into(),
                             span: *name_span,
                         }
                         .into(),

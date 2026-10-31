@@ -84,6 +84,7 @@ mod tests {
         ir::Expr::Assign {
             place: ir::Expr::Local(local, span).into(),
             expr: value.into(),
+            typ: PolyType::nullary(predef::INT32).into(),
             span,
         }
         .into()
@@ -162,6 +163,7 @@ mod tests {
             }
             .into(),
             expr: value().into(),
+            typ: PolyType::nullary(predef::INT32).into(),
             span,
         };
         for (name, prior) in [

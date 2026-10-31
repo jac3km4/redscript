@@ -2,7 +2,7 @@ use redscript_community_ast::SourceMap;
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{
     CompileErrorReporter, LoweredCompilationUnit, LoweredFunction, Symbols, TypeInterner,
-    infer_from_sources, ir,
+    expr_type, infer_from_sources, ir,
 };
 
 fn analyze(
@@ -45,6 +45,53 @@ fn returned<'a, 'ctx>(function: &'a LoweredFunction<'ctx>) -> &'a ir::Expr<'ctx>
         panic!("expected return")
     };
     expr
+}
+
+#[test]
+fn assignments_yield_coerced_types_without_readback_or_place_identity() {
+    analyze(
+        "native func OperatorLogicAnd(lhs: Bool, rhs: Bool) -> Bool
+                 func Chain(out a: Variant, out b: Int32) -> Variant { return a = b = 7; }
+         func Indexed(out a: [Int32], i: Int32) -> Int32 { return a[i] = 9; }
+         func Conditional(out a: Int32, flag: Bool) -> Int32 { return flag ? (a = 1) : (a = 2); }
+         func Lazy(out a: Bool, flag: Bool) -> Bool { return flag && (a = true); }",
+        |unit, symbols, codes| {
+            assert!(codes.is_empty(), "{codes:?}");
+            for (name, typ) in [
+                ("Chain", "Variant"),
+                ("Indexed", "Int32"),
+                ("Conditional", "Int32"),
+                ("Lazy", "Bool"),
+            ] {
+                let function = function(unit, symbols, name);
+                assert_eq!(function.block.stmts.len(), 1);
+                assert_eq!(
+                    expr_type(returned(function), function, symbols)
+                        .unwrap()
+                        .to_string(),
+                    typ
+                );
+            }
+            let ir::Expr::Assign { expr, .. } = returned(function(unit, symbols, "Chain")) else {
+                panic!("assignment")
+            };
+            let ir::Expr::Call { call, .. } = &**expr else {
+                panic!("coercion")
+            };
+            assert!(matches!(&call.args()[0], ir::Expr::Assign { .. }));
+            let ir::Expr::Assign { place, .. } = returned(function(unit, symbols, "Indexed"))
+            else {
+                panic!("assignment")
+            };
+            assert!(matches!(&**place, ir::Expr::Index { .. }));
+        },
+    );
+    analyze(
+        "func Invalid(out a: Int32) { (a = 1) = 2; }",
+        |_, _, codes| {
+            assert_eq!(codes, ["INVALID_PLACE"]);
+        },
+    );
 }
 
 #[test]
@@ -128,3 +175,44 @@ fn script_reference_coercions_compose_and_receivers_unwrap_by_default() {
     );
 }
 
+#[test]
+fn omitted_arguments_are_inert_before_array_prefixes() {
+    analyze(
+        "func Take(opt value: Int32, values: [Int32]) {}
+         func Test() { Take(,[1]); Take(, [1],); }",
+        |_, _, codes| assert!(codes.is_empty(), "{codes:?}"),
+    );
+    analyze(
+        "class Value {} func Take(opt unused: Int32, values: [Int32], value: ref<Value>) {}
+         func Test(const value: wref<Value>) { Take(, [1], WeakRefToRef(value),); }",
+        |_, _, codes| assert_eq!(codes, ["OTHER"]),
+    );
+}
+
+#[test]
+fn unsafe_array_prefixes_fail_closed_while_local_construction_remains_supported() {
+    let declarations = "func Read(value: Int32) -> Int32 = value;
+        func Take(value: Int32, values: [Int32]) {}
+        func Size(values: [Int32]) -> Int32 = ArraySize(values);";
+    for body in [
+        "let x = 0; Take(Read(x), [x = 1]);",
+        "let x = 0; Take(x, [x = 1]);",
+        "let x = 0; let values = [Read(x), Size([x = 1])];",
+        "let x = 0; let value = false && Size([x = 1]) == 1;",
+        "let x = 0; let value = true ? Size([x = 1]) : 0;",
+        "let x = 0; let values: [[Int32]]; values[x = 1] = [x = 2];",
+    ] {
+        analyze(
+            &format!("{declarations} func Test() {{ {body} }}"),
+            |_, _, codes| {
+                assert_eq!(codes, ["UNSAFE_ARRAY_EVALUATION"], "{body}");
+            },
+        );
+    }
+    analyze(
+        &format!(
+            "{declarations} func Test() {{ let x = 0; let values = [x = 1, x = 2]; Take(x, values); let nested = [[1], [2]]; }}"
+        ),
+        |_, _, codes| assert!(codes.is_empty(), "{codes:?}"),
+    );
+}

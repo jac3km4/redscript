@@ -215,9 +215,14 @@ fn competing_dependency_replacements_cannot_supply_selected_body() {
 fn eager_interpolation_and_switch_prefixes_are_rejected() {
     for (name, body, expected) in [
         (
+            "lazy-array",
+            "func Check(values: [Int32]) -> Bool = true func Test(flag: Bool) -> Bool = flag ? Check([1]) : false",
+            "UNSAFE_ARRAY_EVALUATION",
+        ),
+        (
             "interpolation-prefix",
             r#"func Test(out x: Int32) -> String = s"\(Read(x)) \(Check([Set(x)]))";"#,
-            "earlier interpolation",
+            "UNSAFE_ARRAY_EVALUATION",
         ),
         (
             "switch-prefix",

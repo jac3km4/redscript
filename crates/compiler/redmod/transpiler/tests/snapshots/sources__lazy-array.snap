@@ -1,0 +1,9 @@
+---
+source: crates/compiler/redmod/transpiler/tests/sources.rs
+expression: "errors.iter().map(|e| e.display(&sources).to_string()).collect::<String>()"
+---
+error[REDMOD_TRANSPILE]: community analysis [UNSAFE_ARRAY_EVALUATION]: array literal initialization would change evaluation order or lazy execution; extract it to a local at its execution site
+ --> rejected.reds:1:89
+  |
+1 | func Check(values: [Int32]) -> Bool = true func Test(flag: Bool) -> Bool = flag ? Check([1]) : false
+  |                                                                                         ^^^

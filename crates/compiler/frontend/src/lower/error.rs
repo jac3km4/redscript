@@ -95,6 +95,10 @@ pub enum Error<'ctx> {
     #[error("cannot assign to this expression")]
     InvalidPlaceExpr(Span),
     #[error(
+        "array literal initialization would change evaluation order or lazy execution; extract it to a local at its execution site"
+    )]
+    UnsafeArrayEvaluation(Span),
+    #[error(
         "the highlighted temporary value cannot be used in this expression; consider extracting it \
         to a local"
     )]
@@ -171,6 +175,7 @@ impl Error<'_> {
             | Self::InstantiatingAbstract(_, span)
             | Self::NonExistentSuperType(span)
             | Self::InvalidPlaceExpr(span)
+            | Self::UnsafeArrayEvaluation(span)
             | Self::InvalidTemporary(span)
             | Self::UnexpectedNonConstant(span)
             | Self::DeprecatedNameOf(span)
@@ -191,6 +196,7 @@ impl Error<'_> {
 
     pub fn code(&self) -> &'static str {
         match self {
+            Self::UnsafeArrayEvaluation(_) => "UNSAFE_ARRAY_EVALUATION",
             Self::Type(_, _) => "TYPE_ERR",
             Self::UnresolvedVar(_, _) => "UNRESOLVED_REF",
             Self::LocalRedefinition(_, _) => "SYM_REDEFINITION",

@@ -23,6 +23,7 @@ use crate::types::{RefType, Type, TypeApp, TypeId, predef};
 use crate::utils::ScopedMap;
 use crate::{IndexSet, LowerReporter, MethodId, Param, Variance, ir};
 
+mod array_guard;
 mod calls;
 mod env;
 mod error;
@@ -361,6 +362,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                         ir::Expr::Assign {
                             place: ir::Expr::Local(local, *span).into(),
                             expr: expr.into(),
+                            typ: expr_t.into(),
                             span: *span,
                         }
                         .into(),
@@ -408,10 +410,11 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
 
     fn lower_expr_with(
         &mut self,
-        (expr, span): &Spanned<ast::SourceExpr<'ctx>>,
+        source @ (expr, span): &Spanned<ast::SourceExpr<'ctx>>,
         hint: Option<&PolyType<'ctx>>,
         env: &Env<'_, 'ctx>,
     ) -> LowerResult<'ctx, (ir::Expr<'ctx>, PolyType<'ctx>)> {
+        array_guard::check(source)?;
         let result = match expr {
             &ast::Expr::Ident(name) => self.resolve_local(name, env, *span)?,
             ast::Expr::Constant(cn) => {
@@ -434,7 +437,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     lhs_t = pointee;
                 }
                 let (mut rhs, rhs_t) = self.lower_expr_with(rhs, Some(&lhs_t), env)?;
-                self.coerce(&mut rhs, rhs_t, lhs_t, env, rhs_span)?;
+                self.coerce(&mut rhs, rhs_t, lhs_t.clone(), env, rhs_span)?;
 
                 if lhs.is_prvalue(self.symbols) {
                     self.reporter.report(Error::InvalidPlaceExpr(lhs_span));
@@ -443,9 +446,10 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 let ir = ir::Expr::Assign {
                     place: lhs.into(),
                     expr: rhs.into(),
+                    typ: lhs_t.clone().into(),
                     span: *span,
                 };
-                (ir, PolyType::nullary(predef::VOID))
+                (ir, lhs_t)
             }
             ast::Expr::BinOp {
                 lhs,
@@ -634,10 +638,11 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     return if let Some(value @ (_, value_span)) = value.as_deref() {
                         let (mut value, value_t) =
                             self.lower_expr_with(value, Some(&local.typ), env)?;
-                        self.coerce(&mut value, value_t, local.typ, env, *value_span)?;
+                        self.coerce(&mut value, value_t, local.typ.clone(), env, *value_span)?;
                         Ok(ir::Expr::Assign {
                             place: ir::Expr::Local(local.id, name_span).into(),
                             expr: value.into(),
+                            typ: local.typ.into(),
                             span,
                         }
                         .into())
@@ -657,12 +662,13 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     } else {
                         value_t
                     };
-                    let local = self.locals.add_var(Some(name), typ, name_span);
+                    let local = self.locals.add_var(Some(name), typ.clone(), name_span);
                     let local = env.define_local(name, local.clone());
 
                     ir::Expr::Assign {
                         place: ir::Expr::Local(local, name_span).into(),
                         expr: value.into(),
+                        typ: typ.into(),
                         span,
                     }
                     .into()
@@ -1319,7 +1325,9 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         );
         let elem = env.define_local(
             name,
-            self.locals.add_var(Some(name), elem_t, name_span).clone(),
+            self.locals
+                .add_var(Some(name), elem_t.clone(), name_span)
+                .clone(),
         );
 
         let loop_body = {
@@ -1346,6 +1354,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                         span: iter_span,
                     }
                     .into(),
+                    typ: elem_t.into(),
                     span: name_span.merge(&iter_span),
                 }
                 .into(),
@@ -1379,6 +1388,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             ir::Expr::Assign {
                 place: ir::Expr::Local(counter, init_span).into(),
                 expr: ir::Expr::Const(ir::Const::I32(0), init_span).into(),
+                typ: counter_t.into(),
                 span: init_span,
             }
             .into(),
@@ -1585,6 +1595,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             self.push_prefix(ir::Expr::Assign {
                 place: ir::Expr::Local(local, span).into(),
                 expr: expr.into(),
+                typ: expr_t.clone().into(),
                 span,
             });
             local

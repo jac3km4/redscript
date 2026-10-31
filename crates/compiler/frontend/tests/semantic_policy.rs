@@ -45,6 +45,47 @@ fn function<'a, 'ctx>(
     &unit.functions[entry.key()]
 }
 
+#[test]
+fn assignment_values_are_shared_in_both_module_orders() {
+    for reverse in [false, true] {
+        let sources = SourceMap::new();
+        let hooked = sources.push_back(
+            "hooked.reds",
+            "func Hooked(out value: Int32) -> Int32 { return value = 1; }",
+        );
+        sources.push_back(
+            "ordinary.reds",
+            "func Ordinary(out value: Int32) { value = 2; }",
+        );
+        let interner = TypeInterner::default();
+        let (unit, symbols, diagnostics) = analyze(
+            &sources,
+            &interner,
+            &[(hooked, SemanticPolicy::default())],
+            reverse,
+        );
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let hooked = function(&unit, &symbols, "Hooked");
+        let ir::Stmt::Return(Some(value), _) = &hooked.block.stmts[0] else {
+            panic!("expected return")
+        };
+        assert!(matches!(&**value, ir::Expr::Assign { .. }));
+        assert_eq!(
+            redscript_compiler_frontend::expr_type(value, hooked, &symbols).unwrap(),
+            redscript_compiler_frontend::Type::nullary(predef::INT32),
+        );
+        let ordinary = function(&unit, &symbols, "Ordinary");
+        let ir::Stmt::Expr(value) = &ordinary.block.stmts[0] else {
+            panic!("expected assignment")
+        };
+        assert!(matches!(&**value, ir::Expr::Assign { .. }));
+        assert_eq!(
+            redscript_compiler_frontend::expr_type(value, ordinary, &symbols).unwrap(),
+            redscript_compiler_frontend::Type::nullary(predef::INT32),
+        );
+    }
+}
+
 fn variant_condition<'ctx>(typ: &PolyType<'ctx>, symbols: &Symbols<'ctx>) -> Option<ir::Intrinsic> {
     (typ.upper_bound(symbols)?.id() == predef::VARIANT).then_some(ir::Intrinsic::VariantIsDefined)
 }
