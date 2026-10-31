@@ -33,6 +33,7 @@ pub enum CapabilityError {
     DefaultDirective,
     HintDirective,
     ConstReturn,
+    BodylessValueMethod,
     Modifier(native::Modifier),
     SkipParameter,
     SwitchLabelOrder,
@@ -84,6 +85,9 @@ impl fmt::Display for CapabilityError {
                 "hint directives require a same-aggregate field target and string value"
             }
             Self::ConstReturn => "const return semantics are not supported",
+            Self::BodylessValueMethod => {
+                "non-imported native methods returning a value require a body"
+            }
             Self::Modifier(modifier) => {
                 return write!(
                     f,
@@ -162,7 +166,7 @@ impl<'src> Bridge<'src> {
                     if let native::Item::Field(field) = &mut member.item {
                         field.names.push(name);
                     }
-                    lowered.push((self.declaration(member, span)?, name.1));
+                    lowered.push((self.declaration(member, span, aggregate)?, name.1));
                 }
                 continue;
             }
@@ -182,7 +186,7 @@ impl<'src> Bridge<'src> {
                 }
                 hints.push((*target, value.clone(), span));
             } else {
-                lowered.push((self.declaration(decl, span)?, span));
+                lowered.push((self.declaration(decl, span, aggregate)?, span));
             }
         }
         for (target, value, span) in hints {
@@ -215,6 +219,7 @@ impl<'src> Bridge<'src> {
         &mut self,
         decl: native::Declaration<'src>,
         span: Span,
+        aggregate: bool,
     ) -> Result<ast::SourceItemDecl<'src>> {
         let mut annotations = crate::metadata::annotations(
             decl.metadata,
@@ -239,6 +244,7 @@ impl<'src> Bridge<'src> {
         );
         let mut qualifiers = ast::ItemQualifiers::empty();
         let mut explicit_override = false;
+        let mut virtual_method = false;
         for (modifier, span) in decl.modifiers {
             use ast::ItemQualifiers as Q;
             qualifiers |= match modifier {
@@ -260,8 +266,38 @@ impl<'src> Bridge<'src> {
                     explicit_override = true;
                     Q::empty()
                 }
+                native::Modifier::Virtual
+                    if aggregate
+                        && matches!(
+                            decl.item,
+                            native::Item::Function {
+                                kind: native::FunctionKind::Function(_),
+                                ..
+                            }
+                        ) =>
+                {
+                    virtual_method = true;
+                    Q::empty()
+                }
+                native::Modifier::Export if matches!(decl.item, native::Item::Function { .. }) => {
+                    Q::empty()
+                }
+                native::Modifier::Constexpr
+                    if matches!(
+                        decl.item,
+                        native::Item::Function {
+                            kind: native::FunctionKind::Function(_),
+                            ..
+                        }
+                    ) =>
+                {
+                    Q::empty()
+                }
                 other => return Err((CapabilityError::Modifier(other), span)),
             };
+        }
+        if virtual_method && qualifiers.contains(ast::ItemQualifiers::STATIC) {
+            return Err((CapabilityError::Modifier(native::Modifier::Virtual), span));
         }
         let item = match decl.item {
             native::Item::Import(path) => {
@@ -324,6 +360,30 @@ impl<'src> Bridge<'src> {
                 if explicit_override {
                     self.overrides.push(name.1);
                 }
+                if aggregate
+                    && !virtual_method
+                    && !explicit_override
+                    && !qualifiers
+                        .intersects(ast::ItemQualifiers::STATIC | ast::ItemQualifiers::CALLBACK)
+                    && decl.visibility.unwrap_or(ast::Visibility::Private)
+                        == ast::Visibility::Private
+                {
+                    qualifiers |= ast::ItemQualifiers::FINAL;
+                }
+                let body = if aggregate
+                    && body.is_none()
+                    && !qualifiers
+                        .intersects(ast::ItemQualifiers::NATIVE | ast::ItemQualifiers::CALLBACK)
+                {
+                    if return_type.as_ref().is_some_and(|(typ, _)| {
+                        !matches!(typ, native::Type::Named { name: "Void", args } if args.is_empty())
+                    }) {
+                        return Err((CapabilityError::BodylessValueMethod, name.1));
+                    }
+                    Some(Vec::new())
+                } else {
+                    body
+                };
                 let mut lowered_params = Vec::new();
                 for (param, group_span) in params {
                     let mut qualifiers = ast::ParamQualifiers::empty();

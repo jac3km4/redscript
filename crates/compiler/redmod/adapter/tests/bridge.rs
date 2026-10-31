@@ -81,7 +81,7 @@ fn native_capabilities_fail_closed_with_typed_actionable_errors() {
             CapabilityError::HintDirective,
         ),
         (
-            "export function Run() {}",
+            "export class Host {}",
             CapabilityError::Modifier(redscript_redmod_ast::Modifier::Export),
         ),
         (

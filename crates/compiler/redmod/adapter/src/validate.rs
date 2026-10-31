@@ -298,7 +298,8 @@ pub fn overrides<'ctx>(
                 .find(|entry| {
                     !entry.func().flags().is_static()
                         && !entry.func().flags().is_callback()
-                        && entry.func().flags().visibility() != Visibility::Private
+                        && (entry.func().flags().visibility() != Visibility::Private
+                            || !entry.func().flags().is_final())
                         && entry
                             .func()
                             .type_()
