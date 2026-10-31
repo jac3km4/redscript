@@ -184,6 +184,12 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                 }
                 ast::Item::Let(let_) => {
                     let (name, name_span) = let_.name;
+                    let visibility =
+                        if item.visibility.is_none() && types.policy(name_span).public_fields {
+                            Visibility::Public
+                        } else {
+                            visibility
+                        };
                     let (typ, span) = let_.typ.as_ref();
 
                     let Some(typ) =

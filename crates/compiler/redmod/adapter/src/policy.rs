@@ -72,6 +72,7 @@ pub const POLICY: SemanticPolicy = SemanticPolicy {
     hoist_locals: true,
     native_object_cast: true,
     implicit_members: true,
+    public_fields: true,
     condition: Some(condition),
     member_intrinsic: Some(member_intrinsic),
     validate_type: Some(validate_type),

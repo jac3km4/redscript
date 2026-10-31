@@ -93,6 +93,9 @@ pub struct SemanticPolicy {
     /// Resolve unqualified fields and method calls against the enclosing aggregate
     /// after local lookup, before free-function lookup.
     pub implicit_members: bool,
+    /// Default omitted field visibility to public, including fields of classes.
+    /// Explicit visibility and method defaults are unchanged.
+    pub public_fields: bool,
     /// Optionally convert a condition using a unary intrinsic returning `Bool`.
     /// Applies to control-flow conditions, logical operators and ternaries.
     /// `None` from the callback retains the ordinary `Bool` constraint.
