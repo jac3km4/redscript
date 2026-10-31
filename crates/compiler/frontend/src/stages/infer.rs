@@ -19,6 +19,9 @@ use crate::{
     TypeScope, ir,
 };
 
+#[path = "const_validation.rs"]
+mod const_validation;
+
 #[derive(Debug)]
 pub struct TypeInference<'scope, 'ctx> {
     modules: Vec<InferStageModule<'scope, 'ctx>>,
@@ -226,6 +229,12 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
             }
         }
 
+        const_validation::validate(
+            &compiled,
+            &self.symbols,
+            |span| scope.types.policy(span),
+            reporter,
+        );
         (compiled, self.symbols)
     }
 }

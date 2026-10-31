@@ -85,6 +85,49 @@ fn reject_int_to_variant<'ctx>(
 }
 
 #[test]
+fn native_script_reference_places_are_file_local_in_both_orders() {
+    for reverse in [false, true] {
+        let sources = SourceMap::new();
+        sources.push_back("intrinsics.reds", "@intrinsic(AsRef) func AsRef<T>(value: T) -> script_ref<T>\n@intrinsic(Deref) func Deref<T>(value: script_ref<T>) -> T");
+        let hooked = sources.push_back(
+            "native.reds",
+            "func Native(value: script_ref<Int32>) { value = 7; }",
+        );
+        sources.push_back(
+            "community.reds",
+            "func Community(value: script_ref<Int32>) { value = 7; }",
+        );
+        let interner = TypeInterner::default();
+        let (unit, symbols, diagnostics) = analyze(
+            &sources,
+            &interner,
+            &[(
+                hooked,
+                SemanticPolicy {
+                    script_ref_write_through: true,
+                    ..Default::default()
+                },
+            )],
+            reverse,
+        );
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        for (name, dereferenced) in [("Native", true), ("Community", false)] {
+            let ir::Stmt::Expr(expr) = &function(&unit, &symbols, name).block.stmts[0] else {
+                panic!("expected assignment")
+            };
+            let ir::Expr::Assign { place, .. } = &**expr else {
+                panic!("expected assignment")
+            };
+            assert_eq!(
+                matches!(&**place, ir::Expr::Call { .. }),
+                dereferenced,
+                "{name}"
+            );
+        }
+    }
+}
+
+#[test]
 fn default_policy_matches_the_original_entry_point() {
     let sources = SourceMap::new();
     let file = sources.push_back(
@@ -150,7 +193,10 @@ fn every_hook_is_file_local_in_both_module_orders() {
         let interner = TypeInterner::default();
         let policy = SemanticPolicy {
             hoist_locals: true,
+            const_param_element_writes: false,
+            const_param_non_out_forwarding: false,
             native_object_cast: false,
+            script_ref_write_through: false,
             implicit_members: false,
             public_fields: false,
             condition: Some(variant_condition),

@@ -243,14 +243,7 @@ fn custom_generic_like_native_types_reach_validation() {
     ] {
         let (module, errors) = parse_file_with_metadata(source, file());
         assert!(module.is_some(), "{source}: {errors:?}");
-        assert!(errors.iter().any(|error| matches!(
-            error,
-            Error::Semantic {
-                kind: redscript_redmod_adapter::SemanticError::UnsupportedType,
-                ..
-            }
-        )));
-        assert!(errors.iter().all(|error| !matches!(error, Error::Parse(_))));
+        assert!(errors.is_empty(), "{source}: {errors:?}");
     }
     // Exercise the native API independently of the parser's type grammar.
     let mut native = redscript_redmod_parser::parse_module("function Run(value: Int32) {}", file())

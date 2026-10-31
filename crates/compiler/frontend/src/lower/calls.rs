@@ -230,13 +230,20 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
     fn lower_arg(
         &mut self,
         expr: &mut ir::Expr<'ctx>,
-        lhs: PolyType<'ctx>,
+        mut lhs: PolyType<'ctx>,
         rhs: PolyType<'ctx>,
         param: &Param<'ctx>,
         env: &Env<'_, 'ctx>,
         span: Span,
     ) -> LowerResult<'ctx, ()> {
         if param.flags().is_out() {
+            if env.types().policy(span).script_ref_write_through
+                && rhs.ref_type(self.symbols) != Some(RefType::Script)
+                && let Some((RefType::Script, pointee)) = lhs.strip_ref(self.symbols)
+            {
+                self.emit_reference_conversion(expr, lhs, ir::Intrinsic::Deref, env, span)?;
+                lhs = pointee;
+            }
             rhs.constrain_base(&lhs, self.symbols).with_span(span)?;
             if expr.is_prvalue(self.symbols) {
                 self.reporter.report(Error::InvalidTemporary(span));
@@ -315,7 +322,11 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             return Ok((MemberCall::MethodCall(call), call_t));
         }
 
-        let (mut ir, typ) = self.lower_expr(receiver, env)?;
+        let (mut ir, mut typ) = self.lower_expr(receiver, env)?;
+        if let Some((RefType::Script, pointee)) = typ.strip_ref(self.symbols) {
+            self.emit_reference_conversion(&mut ir, typ, ir::Intrinsic::Deref, env, *expr_span)?;
+            typ = pointee;
+        }
         let (ref_type, unref_t) = typ.strip_ref(self.symbols).unzip();
         let upper_bound = unref_t
             .unwrap_or(typ.clone())
@@ -673,6 +684,27 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         if let Some(validate) = env.types().policy(span).validate_coercion {
             validate(&lhs, &rhs, self.symbols, span)?;
         }
+        match (lhs.strip_ref(self.symbols), rhs.strip_ref(self.symbols)) {
+            (Some((RefType::Script, pointee)), target)
+                if !matches!(target, Some((RefType::Script, _))) =>
+            {
+                self.emit_reference_conversion(expr, lhs, ir::Intrinsic::Deref, env, span)?;
+                return self.coerce(expr, pointee, rhs, env, span);
+            }
+            (source, Some((RefType::Script, pointee)))
+                if !matches!(source, Some((RefType::Script, _))) =>
+            {
+                self.coerce(expr, lhs, pointee.clone(), env, span)?;
+                return self.emit_reference_conversion(
+                    expr,
+                    pointee,
+                    ir::Intrinsic::AsRef,
+                    env,
+                    span,
+                );
+            }
+            _ => {}
+        }
         let name = match lhs.coerce(&rhs, self.symbols).with_span(span)? {
             Some(Coercion::FromRef(RefType::Weak)) => ir::Intrinsic::WeakRefToRef,
             Some(Coercion::IntoRef(RefType::Weak)) => ir::Intrinsic::RefToWeakRef,
@@ -696,11 +728,31 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             }
             None => return Ok(()),
         };
+        self.emit_reference_conversion(expr, lhs, name, env, span)
+    }
+
+    fn emit_reference_conversion(
+        &mut self,
+        expr: &mut ir::Expr<'ctx>,
+        typ: PolyType<'ctx>,
+        intrinsic: ir::Intrinsic,
+        env: &Env<'_, 'ctx>,
+        span: Span,
+    ) -> LowerResult<'ctx, ()> {
+        // Inference for a bare generic parameter can strip reference wrappers.
+        // Pin the script-reference pointee so AsRef<wref<T>> keeps the weak value.
+        let type_args = match intrinsic {
+            ir::Intrinsic::AsRef => vec![typ.clone()],
+            ir::Intrinsic::Deref => vec![typ.unwrap_ref_or_self(self.symbols)],
+            _ => vec![],
+        };
         let arg = mem::replace(expr, ir::Expr::null(span));
         let (call, _) = self
             .free_function_call_builder()
-            .name(name)
-            .args([(arg, lhs)])
+            .name(intrinsic)
+            .expected_intrinsic(intrinsic)
+            .type_args(&type_args)
+            .args([(arg, typ)])
             .env(env)
             .span(span)
             .build()?;

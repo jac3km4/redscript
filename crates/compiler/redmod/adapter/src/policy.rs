@@ -70,7 +70,10 @@ pub fn array_operations() -> &'static [ArrayOperation] {
 
 pub const POLICY: SemanticPolicy = SemanticPolicy {
     hoist_locals: true,
+    const_param_element_writes: true,
+    const_param_non_out_forwarding: true,
     native_object_cast: true,
+    script_ref_write_through: true,
     implicit_members: true,
     public_fields: true,
 
@@ -98,6 +101,12 @@ fn validate_type<'ctx>(
 }
 
 fn condition<'ctx>(typ: &PolyType<'ctx>, symbols: &Symbols<'ctx>) -> Option<ir::Intrinsic> {
+    if let Some((RefType::Script, pointee)) = typ.strip_ref(symbols) {
+        return pointee
+            .upper_bound(symbols)
+            .is_some_and(|typ| typ.id() == predef::BOOL)
+            .then_some(ir::Intrinsic::Deref);
+    }
     let object = typ.ref_type(symbols) == Some(RefType::Weak)
         || typ.upper_bound(symbols).is_some_and(|t| {
             symbols

@@ -10,6 +10,7 @@ pub fn validate(module: &ast::SourceModule<'_>) -> Vec<Error> {
     let mut validator = Validator {
         errors: vec![],
         locals: HashSet::new(),
+
         aggregates: Vec::new(),
     };
     let Ok(()) = validator.visit_module(module);
@@ -19,6 +20,7 @@ pub fn validate(module: &ast::SourceModule<'_>) -> Vec<Error> {
 struct Validator<'src> {
     errors: Vec<Error>,
     locals: HashSet<&'src str>,
+
     aggregates: Vec<bool>,
 }
 
@@ -28,19 +30,28 @@ impl<'src> Validator<'src> {
     }
 
     fn typ(&mut self, (typ, span): &ast::Spanned<ast::SourceType<'src>>) {
+        self.type_argument(typ, *span, false);
+    }
+
+    fn type_argument(&mut self, typ: &ast::SourceType<'src>, span: Span, nested: bool) {
         match typ {
             ast::Type::Named { name, args } => {
+                if *name == "script_ref" && nested {
+                    self.reject(SemanticError::NestedNativeReference, span);
+                }
                 if *name == "ref"
                     || (!args.is_empty() && !matches!(*name, "array" | "wref" | "script_ref"))
                 {
-                    self.reject(SemanticError::UnsupportedType, *span);
+                    self.reject(SemanticError::UnsupportedType, span);
                 }
-                for arg in args {
-                    self.typ(arg);
+                for (arg, span) in args {
+                    self.type_argument(arg, *span, true);
                 }
             }
-            ast::Type::Array(elem) | ast::Type::StaticArray(elem, _) => self.typ(elem),
-            ast::Type::Fn { .. } => self.reject(SemanticError::UnsupportedFunctionType, *span),
+            ast::Type::Array(elem) | ast::Type::StaticArray(elem, _) => {
+                self.type_argument(&elem.0, elem.1, true);
+            }
+            ast::Type::Fn { .. } => self.reject(SemanticError::UnsupportedFunctionType, span),
         }
     }
 }
@@ -50,6 +61,7 @@ impl<'src> AstVisitor<'src, ast::WithSpan> for Validator<'src> {
 
     fn visit_function(&mut self, function: &ast::SourceFunction<'src>) -> Result<(), Self::Error> {
         let old = std::mem::take(&mut self.locals);
+
         if !function.type_params.is_empty() {
             self.reject(SemanticError::UnsupportedGenericFunction, function.name.1);
         }
@@ -62,6 +74,9 @@ impl<'src> AstVisitor<'src, ast::WithSpan> for Validator<'src> {
             }
         }
         if let Some(typ) = &function.return_type {
+            if is_native_reference(&typ.0) {
+                self.reject(SemanticError::NativeReferenceReturn, typ.1);
+            }
             self.typ(typ);
         }
         match &function.body {
@@ -72,6 +87,7 @@ impl<'src> AstVisitor<'src, ast::WithSpan> for Validator<'src> {
             None => {}
         }
         self.locals = old;
+
         Ok(())
     }
 
@@ -190,6 +206,9 @@ impl<'src> AstVisitor<'src, ast::WithSpan> for Validator<'src> {
                     self.reject(SemanticError::DuplicateBinding, name.1);
                 }
                 if let Some(typ) = typ {
+                    if is_native_reference(&typ.0) {
+                        self.reject(SemanticError::NativeReferenceLocal, typ.1);
+                    }
                     self.typ(typ);
                 } else {
                     self.reject(SemanticError::MissingLocalType, name.1);
@@ -247,6 +266,16 @@ impl<'src> AstVisitor<'src, ast::WithSpan> for Validator<'src> {
         }
         Ok(())
     }
+}
+
+fn is_native_reference(typ: &ast::SourceType<'_>) -> bool {
+    matches!(
+        typ,
+        ast::Type::Named {
+            name: "script_ref",
+            ..
+        }
+    )
 }
 
 pub fn overrides<'ctx>(

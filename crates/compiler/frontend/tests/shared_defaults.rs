@@ -82,3 +82,49 @@ fn imported_callback_prototypes_are_shared_but_not_native_or_implemented() {
     }
 }
 
+#[test]
+fn script_reference_coercions_compose_and_receivers_unwrap_by_default() {
+    analyze(
+        "class Object { public let number: Int32; public func Get() -> Int32 { return this.number; } }
+         func ReadWeak(value: script_ref<ref<Object>>) -> wref<Object> { return value; }
+         func ReadStrong(value: script_ref<wref<Object>>) -> ref<Object> { return value; }
+         func ReadVariant(value: script_ref<Int32>) -> Variant { return value; }
+         func WrapWeak(value: ref<Object>) -> script_ref<wref<Object>> { return value; }
+         func WrapVariant(value: Int32) -> script_ref<Variant> { return value; }
+         func Field(value: script_ref<wref<Object>>) -> Int32 { return value.number; }
+         func Method(value: script_ref<ref<Object>>) -> Int32 { return value.Get(); }
+         func Index(value: script_ref<[Int32]>) -> Int32 { return value[0]; }",
+        |unit, symbols, codes| {
+            assert!(codes.is_empty(), "{codes:?}");
+            for (name, outer, inner) in [
+                ("ReadWeak", ir::Intrinsic::RefToWeakRef, ir::Intrinsic::Deref),
+                ("ReadStrong", ir::Intrinsic::WeakRefToRef, ir::Intrinsic::Deref),
+                ("ReadVariant", ir::Intrinsic::ToVariant, ir::Intrinsic::Deref),
+                ("WrapWeak", ir::Intrinsic::AsRef, ir::Intrinsic::RefToWeakRef),
+                ("WrapVariant", ir::Intrinsic::AsRef, ir::Intrinsic::ToVariant),
+            ] {
+                let ir::Expr::Call { call, .. } = returned(function(unit, symbols, name)) else { panic!("outer") };
+                let ir::Call::FreeFunction { function: id, .. } = &**call else { panic!("intrinsic") };
+                assert_eq!(symbols[*id].intrinsic(), Some(outer), "{name}: {call:#?}");
+                let ir::Expr::Call { call, .. } = &call.args()[0] else { panic!("inner") };
+                let ir::Call::FreeFunction { function: id, .. } = &**call else { panic!("intrinsic") };
+                assert_eq!(symbols[*id].intrinsic(), Some(inner), "{name}: {call:#?}");
+            }
+            for name in ["Field", "Method", "Index"] {
+                let receiver = match returned(function(unit, symbols, name)) {
+                    ir::Expr::Field { receiver, .. } => &**receiver,
+                    ir::Expr::Index { array, .. } => &**array,
+                    ir::Expr::Call { call, .. } => {
+                        let ir::Call::Instance { receiver, .. } = &**call else { panic!("method receiver") };
+                        &**receiver
+                    }
+                    _ => panic!("receiver expression"),
+                };
+                let ir::Expr::Call { call, .. } = receiver else { panic!("unwrapped receiver") };
+                let ir::Call::FreeFunction { function, .. } = &**call else { panic!("dereference") };
+                assert_eq!(symbols[*function].intrinsic(), Some(ir::Intrinsic::Deref), "{name}");
+            }
+        },
+    );
+}
+

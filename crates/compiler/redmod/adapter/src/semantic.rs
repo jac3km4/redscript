@@ -4,6 +4,9 @@ use std::fmt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SemanticError {
     UnsupportedType,
+    NativeReferenceLocal,
+    NativeReferenceReturn,
+    NestedNativeReference,
     UnsupportedFunctionType,
     UnsupportedGenericFunction,
     DuplicateBinding,
@@ -44,6 +47,9 @@ impl fmt::Display for SemanticError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::UnsupportedType => "unsupported REDmod reference or generic type",
+            Self::NativeReferenceLocal => "native ref<T> is not allowed on local variables",
+            Self::NativeReferenceReturn => "native functions cannot return ref<T>",
+            Self::NestedNativeReference => "native ref<T> cannot be nested in another reference or array",
             Self::UnsupportedFunctionType => "function types are not supported",
             Self::UnsupportedGenericFunction => "custom generic functions are not supported",
             Self::DuplicateBinding => "duplicate function-wide binding",

@@ -87,9 +87,19 @@ pub struct SemanticPolicy {
     /// Duplicate hoisted names (including parameters) are errors; untyped locals retain
     /// ordinary lexical scoping. Nested closures have independent declarations.
     pub hoist_locals: bool,
+    /// Permit writes to indexed elements rooted in const parameters (REDmod).
+    /// Whole-array writes and mutating array intrinsics remain forbidden.
+    pub const_param_element_writes: bool,
+    /// Permit forwarding const roots to non-const, non-out reference/value-container
+    /// parameters (REDmod). Explicit out arguments remain checked.
+    pub const_param_non_out_forwarding: bool,
     /// Dispatch `Cast<T>` to object casting for non-struct class targets, including
     /// identity and upcasts through ordinary coercion. Other targets use overloads.
     pub native_object_cast: bool,
+    /// Write through script references in assignment destinations and `out` arguments
+    /// instead of assigning/forwarding the reference itself (REDmod).
+    /// Compositional coercion and receiver/index unwrapping are always shared.
+    pub script_ref_write_through: bool,
     /// Resolve unqualified fields and method calls against the enclosing aggregate
     /// after local lookup, before free-function lookup.
     pub implicit_members: bool,

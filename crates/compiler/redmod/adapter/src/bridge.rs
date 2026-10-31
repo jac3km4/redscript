@@ -873,6 +873,8 @@ fn typ((ty, span): Spanned<native::Type<'_>>) -> Spanned<ast::SourceType<'_>> {
             name: match name {
                 "name" => "CName",
                 "weak" => "wref",
+                // Native ref is a value reference, not the community strong handle.
+                "ref" => "script_ref",
                 other => other,
             },
             args: args.into_iter().map(typ).collect(),

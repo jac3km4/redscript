@@ -426,7 +426,13 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             ast::Expr::Assign { lhs, rhs } => {
                 let lhs_span = lhs.1;
                 let rhs_span = rhs.1;
-                let (lhs, lhs_t) = self.lower_expr(lhs, env)?;
+                let (mut lhs, mut lhs_t) = self.lower_expr(lhs, env)?;
+                if env.types().policy(lhs_span).script_ref_write_through
+                    && let Some((RefType::Script, pointee)) = lhs_t.strip_ref(self.symbols)
+                {
+                    self.coerce(&mut lhs, lhs_t, pointee.clone(), env, lhs_span)?;
+                    lhs_t = pointee;
+                }
                 let (mut rhs, rhs_t) = self.lower_expr_with(rhs, Some(&lhs_t), env)?;
                 self.coerce(&mut rhs, rhs_t, lhs_t, env, rhs_span)?;
 
@@ -1031,7 +1037,11 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
     ) -> LowerResult<'ctx, (ir::Expr<'ctx>, PolyType<'ctx>)> {
         let elem_t = PolyType::fresh();
 
-        let (mut expr, expr_t) = self.lower_expr(expr, env)?;
+        let (mut expr, mut expr_t) = self.lower_expr(expr, env)?;
+        if let Some((RefType::Script, pointee)) = expr_t.strip_ref(self.symbols) {
+            self.coerce(&mut expr, expr_t, pointee.clone(), env, *expr_span)?;
+            expr_t = pointee;
+        }
         let type_id = if let Some(typ) = expr_t
             .upper_bound(self.symbols)
             .filter(|typ| typ.id().is_static_array())
@@ -1227,7 +1237,11 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             return Ok((ir::Expr::Const(ir, span), typ));
         };
 
-        let (ir, typ) = self.lower_expr(receiver, env)?;
+        let (mut ir, mut typ) = self.lower_expr(receiver, env)?;
+        if let Some((RefType::Script, pointee)) = typ.strip_ref(self.symbols) {
+            self.coerce(&mut ir, typ, pointee.clone(), env, receiver_span)?;
+            typ = pointee;
+        }
         let (ref_type, unref_t) = typ.strip_ref(self.symbols).unzip();
         let upper_bound = unref_t
             .unwrap_or(typ)
