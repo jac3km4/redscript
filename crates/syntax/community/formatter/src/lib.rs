@@ -247,6 +247,16 @@ impl<K: AstKind> Formattable for ItemDecl<'_, K> {
         for ann in &self.annotations[..] {
             writeln!(f, "{}{}", ctx.indent(), ann.as_wrapped().as_fmt(ctx))?;
         }
+        if let Item::Function(function) = &self.item
+            && let Some(label) = &function.properties.profile
+        {
+            writeln!(
+                f,
+                "{}@profile(\"{}\")",
+                ctx.indent(),
+                str::escape_default(label)
+            )?;
+        }
         write!(f, "{}", ctx.indent())?;
         if let Some(visibility) = &self.visibility {
             write!(f, "{} ", visibility.as_fmt(ctx))?;
@@ -342,7 +352,16 @@ impl<K: AstKind> Formattable for Function<'_, K> {
             SepByMultiline::new(self.params.iter().map(Wrapper::as_wrapped), ", ", ctx)
         )?;
         if let Some(typ) = &self.return_type {
-            write!(f, " -> {}", (**typ).as_wrapped().as_fmt(ctx))?;
+            write!(
+                f,
+                " -> {}{}",
+                if self.properties.is_const_return {
+                    "const "
+                } else {
+                    ""
+                },
+                (**typ).as_wrapped().as_fmt(ctx)
+            )?;
         }
         match &self.body {
             Some(FunctionBody::Block(block)) => write!(f, " {}", block.as_fmt(ctx)),

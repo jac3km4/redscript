@@ -6,9 +6,10 @@ mod visitor;
 
 pub use ast::{
     Aggregate, Annotation, ArraySpread, Assoc, AstKind, BinOp, Block, Case, Condition,
-    ConditionalBlock, Constant, Enum, EnumStorage, EnumVariant, Expr, Field, Function, FunctionBody, Import,
-    Item, ItemDecl, ItemQualifiers, LetCondition, Module, Param, ParamQualifiers, Path, Pattern,
-    QueryResult, Stmt, StrPart, Type, TypeParam, UnOp, Variance, Visibility, WithSpan, Wrapper,
+    ConditionalBlock, Constant, Enum, EnumStorage, EnumVariant, Expr, Field, Function,
+    FunctionBody, FunctionProperties, Import, Item, ItemDecl, ItemQualifiers, LetCondition, Module,
+    Param, ParamQualifiers, Path, Pattern, QueryResult, Stmt, StrPart, Type, TypeParam, UnOp,
+    Variance, Visibility, WithSpan, Wrapper,
 };
 pub use files::{File, SourceLoc, SourceMap};
 pub use snippet::SourceSnippet;

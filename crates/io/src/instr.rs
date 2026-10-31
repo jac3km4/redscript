@@ -445,7 +445,7 @@ impl<L> Instr<L> {
             | Instr::RefToWeakRef
             | Instr::WeakRefNull => 0,
             // variable size
-            Instr::Profile(instr) => 5 + instr.function.len() as u16,
+            Instr::Profile(instr) => 13 + instr.function.len() as u16,
             // not present in bytecode
             Instr::Target(_) => return 0,
         };
@@ -900,7 +900,27 @@ pub struct Breakpoint {
 pub struct Profile {
     #[byte(ctx = Prefixed(ctx))]
     function: Vec<u8>,
-    enabled: bool,
+    padding: [u8; 8],
+    enabled: u8,
+}
+
+impl Profile {
+    /// Creates the profiling marker emitted by REDmod for a function declaration.
+    pub fn new(enabled: bool) -> Self {
+        Self {
+            function: Vec::new(),
+            padding: [0; 8],
+            enabled: u8::from(enabled),
+        }
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.enabled != 0
+    }
+
+    pub fn function(&self) -> &[u8] {
+        &self.function
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, TryRead, TryWrite, Measure)]

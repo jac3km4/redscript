@@ -43,7 +43,6 @@ fn native_capabilities_fail_closed_with_typed_actionable_errors() {
             "[category = \"Test\"] class Host {}",
             CapabilityError::Metadata,
         ),
-        ("function Run(): const Int32;", CapabilityError::ConstReturn),
         (
             "function Run(skip value: Bool);",
             CapabilityError::SkipParameter,

@@ -135,6 +135,7 @@ impl<'src> AstVisitor<'src, ast::WithSpan> for Validator<'src> {
                             | "replaceMethod"
                             | "runtimeProperty"
                             | "hint"
+                            | "profile"
                             | "if"
                     ) {
                         self.reject(SemanticError::UnsupportedAnnotation, *ann_span);
@@ -159,6 +160,15 @@ impl<'src> AstVisitor<'src, ast::WithSpan> for Validator<'src> {
                                 ) =>
                         {
                             self.reject(SemanticError::InvalidRuntimeProperty, *ann_span);
+                        }
+                        "profile"
+                            if !matches!(decl.item, ast::Item::Function(_))
+                                || !matches!(
+                                    &*annotation.args,
+                                    [(ast::Expr::Constant(ast::Constant::String(_)), _)]
+                                ) =>
+                        {
+                            self.reject(SemanticError::UnsupportedAnnotation, *ann_span);
                         }
                         "hint"
                             if !matches!(decl.item, ast::Item::Let(_))

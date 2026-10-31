@@ -466,7 +466,18 @@ fn load_function_type<'ctx>(
         })
         .collect::<Result<Box<_>, _>>()?;
     let return_t = typ.unwrap_or_else(|| Type::nullary(predef::VOID));
-    Ok(FunctionType::new([], params, return_t))
+    let properties = redscript_compiler_frontend::ast::FunctionProperties {
+        is_const_return: func.is_const_return(),
+        // The runtime marker does not retain an authored label. Only inspect the
+        // leading marker; dependency loading must not start decoding whole bodies.
+        profile: match func.body().code_iter().next() {
+            Some(Ok(redscript_io::Instr::Profile(profile))) if profile.is_enabled() => {
+                Some("".into())
+            }
+            _ => None,
+        },
+    };
+    Ok(FunctionType::new([], params, return_t).with_properties(properties))
 }
 
 fn load_param<'ctx>(

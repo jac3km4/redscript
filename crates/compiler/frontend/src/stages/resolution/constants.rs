@@ -10,6 +10,7 @@ pub mod annotation {
     pub const NAME_IMPLEMENTATION: &str = "nameImplementation";
     pub const RUNTIME_PROPERTY: &str = "runtimeProperty";
     pub const HINT: &str = "hint";
+    pub const PROFILE: &str = "profile";
     pub const DERIVE_NEW: &str = "deriveNew";
     pub const PRIVATE_CONSTRUCTOR: &str = "privateConstructor";
 }

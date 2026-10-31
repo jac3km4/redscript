@@ -184,21 +184,6 @@ fn operator_chain_widths_count_both_spaces() {
 }
 
 #[test]
-fn formatted_files() {
-    insta::glob!("data/*.reds", |path| {
-        let current = env::current_dir().unwrap().canonicalize().unwrap();
-        let relative = path.strip_prefix(&current).unwrap();
-        let sources = SourceMap::from_files([relative]).unwrap();
-
-        let settings = FormatSettings::default();
-        for (_, file) in sources.files() {
-            let formatted = assert_preserved(file.source(), &settings, file.path());
-            insta::assert_snapshot!(formatted);
-        }
-    });
-}
-
-#[test]
 fn explicit_enum_storage_and_wide_values_are_preserved() {
     for storage in [
         "Int8", "Uint8", "Int16", "Uint16", "Int32", "Uint32", "Int64",
@@ -225,3 +210,32 @@ fn explicit_enum_storage_and_wide_values_are_preserved() {
     assert!(formatted.trim_start().starts_with("enum Default {"));
 }
 
+#[test]
+fn const_return_qualifier_and_profile_annotation_are_preserved() {
+    let formatted = assert_preserved(
+        r#"@profile("Authored label")
+func Get() -> const Int32 = 7;"#,
+        &FormatSettings::DEFAULT,
+        "properties.reds",
+    );
+    assert!(formatted.contains("-> const Int32"), "{formatted}");
+    assert!(
+        formatted.contains(r#"@profile("Authored label")"#),
+        "{formatted}"
+    );
+}
+
+#[test]
+fn formatted_files() {
+    insta::glob!("data/*.reds", |path| {
+        let current = env::current_dir().unwrap().canonicalize().unwrap();
+        let relative = path.strip_prefix(&current).unwrap();
+        let sources = SourceMap::from_files([relative]).unwrap();
+
+        let settings = FormatSettings::default();
+        for (_, file) in sources.files() {
+            let formatted = assert_preserved(file.source(), &settings, file.path());
+            insta::assert_snapshot!(formatted);
+        }
+    });
+}

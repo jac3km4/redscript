@@ -198,9 +198,14 @@ impl<'ctx> Monomorphizer<'ctx> {
             .span()
             .filter(|_| !flags.is_native())
             .map(|span| self.source_ref(span, bundle));
-        let def = PoolFunction::new(cname, Visibility::Public, flags)
+        let mut def = PoolFunction::new(cname, Visibility::Public, flags)
             .with_return_type(return_t)
             .with_source(source);
+        if func.type_().is_const_return()
+            && let Some(return_t) = return_t
+        {
+            def = def.with_const_return_type(return_t);
+        }
 
         let func_idx = bundle.define_and_init(def, |bundle, idx, f| {
             let params = func
@@ -390,6 +395,14 @@ impl<'ctx> Monomorphizer<'ctx> {
             .monomorphizer(self)
             .build()?;
 
+        let code = if func.properties.profile.is_some() {
+            // Prepending a marker leaves relative branch offsets unchanged.
+            std::iter::once(Instr::Profile(Box::new(redscript_io::Profile::new(true))))
+                .chain(code)
+                .collect()
+        } else {
+            code
+        };
         bundle[index].set_code(code);
         Ok(())
     }
@@ -528,11 +541,16 @@ impl<'ctx> Monomorphizer<'ctx> {
                     .with_is_callback(wrapped.flags().is_callback() && i == 0);
 
                 let source = func.block.span().map(|span| self.source_ref(span, bundle));
-                let def = PoolFunction::new(cname, wrapped.visibility(), flags)
+                let mut def = PoolFunction::new(cname, wrapped.visibility(), flags)
                     .with_class(wrapped.class())
                     .with_base_method(wrapped.base_method().filter(|_| i == 0))
                     .with_return_type(wrapped.return_type())
                     .with_source(source);
+                if wrapped.is_const_return()
+                    && let Some(return_t) = wrapped.return_type()
+                {
+                    def = def.with_const_return_type(return_t);
+                }
                 let next = bundle.define_and_init(def, |bundle, next, def| {
                     let parameters = wrapped
                         .parameters()
@@ -729,10 +747,15 @@ impl<'ctx> Monomorphizer<'ctx> {
             .span()
             .filter(|_| !flags.is_native())
             .map(|span| self.source_ref(span, bundle));
-        let def = PoolFunction::new(cname, Visibility::Public, flags)
+        let mut def = PoolFunction::new(cname, Visibility::Public, flags)
             .with_class(Some(parent))
             .with_return_type(return_t)
             .with_source(source);
+        if method.type_().is_const_return()
+            && let Some(return_t) = return_t
+        {
+            def = def.with_const_return_type(return_t);
+        }
 
         bundle.define_and_init(def, |bundle, idx, func| {
             let params = method

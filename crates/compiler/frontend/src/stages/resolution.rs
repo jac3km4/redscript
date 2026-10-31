@@ -170,7 +170,11 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         _ => unreachable!(),
                     }
                 }
-                ast::Item::Function(function) => {
+                ast::Item::Function(mut function) => {
+                    extract_function_properties(
+                        &mut item_meta.annotations,
+                        &mut function.properties,
+                    );
                     let (name, name_span) = function.name;
                     let path = QualifiedName::from_base_and_name(path_root, name);
                     let index = self
@@ -613,11 +617,13 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                 (func, body)
             }
             (Some(body), None, Some(replaced), None) => {
-                let func = FuncItem::new(replaced, span, name_span, param_names, body, type_scope);
+                let func = FuncItem::new(replaced, span, name_span, param_names, body, type_scope)
+                    .with_properties(func_t.properties().clone());
                 return Some(FuncItemKind::ReplaceMethod(func));
             }
             (Some(body), None, None, Some(wrapped)) => {
-                let func = FuncItem::new(wrapped, span, name_span, param_names, body, type_scope);
+                let func = FuncItem::new(wrapped, span, name_span, param_names, body, type_scope)
+                    .with_properties(func_t.properties().clone());
                 return Some(FuncItemKind::WrapMethod(func));
             }
             (Some(_), _, _, _) => {
@@ -777,7 +783,8 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
             })
             .unwrap_or_else(|| Type::nullary(predef::VOID));
 
-        let func_t = FunctionType::new(vars, params, return_t);
+        let func_t =
+            FunctionType::new(vars, params, return_t).with_properties(func.properties.clone());
 
         let type_scope = types
             .pop_scope()
@@ -930,6 +937,19 @@ fn extract_field_hint<'ctx>(
         _ => true,
     });
     hint
+}
+
+fn extract_function_properties<'ctx>(
+    anns: &mut Vec<ast::Spanned<ast::SourceAnnotation<'ctx>>>,
+    properties: &mut ast::FunctionProperties<'ctx>,
+) {
+    anns.retain(|(ann, _)| match (ann.name, &*ann.args) {
+        (annotation::PROFILE, [(ast::Expr::Constant(ast::Constant::String(label)), _)]) => {
+            properties.profile = Some(label.clone());
+            false
+        }
+        _ => true,
+    });
 }
 
 fn extract_field_properties<'ctx>(

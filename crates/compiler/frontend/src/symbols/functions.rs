@@ -2,7 +2,7 @@ use std::fmt;
 use std::rc::Rc;
 
 use derive_where::derive_where;
-use redscript_community_ast::Span;
+use redscript_community_ast::{FunctionProperties, Span};
 
 use super::{FreeFunctionFlags, MethodFlags, MethodId, ParamFlags};
 use crate::types::{CtxVar, Type};
@@ -13,6 +13,7 @@ pub struct FunctionType<'ctx> {
     type_params: Box<[Rc<CtxVar<'ctx>>]>,
     params: Box<[Param<'ctx>]>,
     return_type: Type<'ctx>,
+    properties: FunctionProperties<'ctx>,
 }
 
 impl<'ctx> FunctionType<'ctx> {
@@ -26,7 +27,21 @@ impl<'ctx> FunctionType<'ctx> {
             type_params: type_params.into(),
             params: params.into(),
             return_type: ret_t,
+            properties: FunctionProperties::default(),
         }
+    }
+
+    pub fn with_properties(mut self, properties: FunctionProperties<'ctx>) -> Self {
+        self.properties = properties;
+        self
+    }
+
+    pub fn properties(&self) -> &FunctionProperties<'ctx> {
+        &self.properties
+    }
+
+    pub fn is_const_return(&self) -> bool {
+        self.properties.is_const_return
     }
 
     pub fn with_params(self, params: impl Into<Box<[Param<'ctx>]>>) -> Self {
@@ -95,6 +110,7 @@ impl Default for FunctionType<'_> {
             type_params: Box::default(),
             params: Box::default(),
             return_type: Type::nullary(predef::VOID),
+            properties: FunctionProperties::default(),
         }
     }
 }

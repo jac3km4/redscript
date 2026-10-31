@@ -414,6 +414,24 @@ func Conditional() -> String = "present"
 }
 
 #[test]
+fn function_profile_and_const_return_are_retained() {
+    let output = convert(
+        r#"@profile("Authored label")
+func Get() -> const Int32 = 7;
+class Host {
+    @profile("Member label")
+    public func Get() -> const Int32 = 8;
+}"#,
+    );
+    assert!(
+        output.contains(r#"[profile = "Authored label"]"#),
+        "{output}"
+    );
+    assert!(output.contains(r#"[profile = "Member label"]"#), "{output}");
+    assert_eq!(output.matches("-> const Int32").count(), 2, "{output}");
+}
+
+#[test]
 fn unhandled_qualifiers_are_rejected_instead_of_silently_dropped() {
     for qualifier in [
         "editable",

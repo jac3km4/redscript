@@ -140,6 +140,13 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
             ));
         }
         self.metadata(decl)?;
+        if let Item::Function(function) = &decl.item
+            && let Some(label) = &function.properties.profile
+        {
+            self.output
+                .text
+                .push_str(&format!("[profile = {}]\n", target::string(label)?));
+        }
         let patch = decl.annotations.iter().any(|(a, _)| {
             matches!(
                 a.name,
@@ -355,7 +362,12 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                 self.output.text.push(')');
                 if !callback {
                     self.output.text.push_str(&format!(
-                        " -> {}",
+                        " -> {}{}",
+                        if signature.is_const_return() {
+                            "const "
+                        } else {
+                            ""
+                        },
                         target::typ(signature.return_type(), self.symbols)?
                     ));
                 }
@@ -516,6 +528,15 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
             self.output.text.push('\n');
         }
         for (a, span) in &decl.annotations {
+            if a.name == "profile"
+                && matches!(decl.item, Item::Function(_))
+                && let [(ast::Expr::Constant(ast::Constant::String(label)), _)] = &*a.args
+            {
+                self.output
+                    .text
+                    .push_str(&format!("[profile = {}]\n", target::string(label)?));
+                continue;
+            }
             if a.name == "mixedRef" {
                 return Err(error("mixedRef types are unsupported", Some(*span)));
             }

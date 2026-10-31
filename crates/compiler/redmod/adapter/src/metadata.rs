@@ -8,13 +8,32 @@ use crate::CapabilityError;
 pub(crate) fn annotations<'src>(
     metadata: Vec<Spanned<native::Metadata<'src>>>,
     is_field: bool,
+    is_function: bool,
 ) -> Result<Vec<Spanned<ast::SourceAnnotation<'src>>>, (CapabilityError, Span)> {
     metadata
         .into_iter()
         .map(|(entry, span)| {
             if !is_field {
+                if is_function
+                    && entry.key.0 == "profile"
+                    && let native::Expr::Constant(ast::Constant::String(label)) = entry.value.0
+                {
+                    return Ok((
+                        ast::Annotation::new(
+                            "profile",
+                            vec![(
+                                ast::Expr::Constant(ast::Constant::String(label)),
+                                entry.value.1,
+                            )],
+                        ),
+                        span,
+                    ));
+                }
                 return Err((CapabilityError::Metadata, span));
             }
+            // Official field attributes serialize some typed literals as strings,
+            // but that does not establish a general expression-to-string mapping.
+            // Keep unrepresented typed metadata rejected rather than stringify it.
             let (native::Expr::Constant(ast::Constant::String(value)), value_span) = entry.value
             else {
                 return Err((CapabilityError::Metadata, entry.value.1));

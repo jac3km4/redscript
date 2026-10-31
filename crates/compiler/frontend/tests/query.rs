@@ -347,6 +347,7 @@ fn invalid_queries_return_errors() {
         block: ir::Block::new([]),
         locals: [].into(),
         span,
+        properties: redscript_compiler_frontend::ast::FunctionProperties::default(),
     };
     let symbols = Symbols::with_default_types();
     assert!(matches!(

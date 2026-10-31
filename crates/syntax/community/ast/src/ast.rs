@@ -251,6 +251,14 @@ impl<'src, K: AstKind> Field<'src, K> {
     }
 }
 
+/// Declaration properties independent of method and parameter qualifiers.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct FunctionProperties<'src> {
+    pub is_const_return: bool,
+    /// Authored profiling label. REDmod currently emits only its presence.
+    pub profile: Option<Cow<'src, str>>,
+}
+
 #[derive_where(Debug, Clone, PartialEq)]
 pub struct Function<'src, K: AstKind = Identity> {
     pub name: K::Inner<&'src str>,
@@ -258,6 +266,7 @@ pub struct Function<'src, K: AstKind = Identity> {
     pub params: Box<[ParamT<'src, K>]>,
     pub return_type: Option<Box<TypeT<'src, K>>>,
     pub body: Option<FunctionBody<'src, K>>,
+    pub properties: FunctionProperties<'src>,
 }
 
 impl<'src, K: AstKind> Function<'src, K> {
@@ -274,7 +283,13 @@ impl<'src, K: AstKind> Function<'src, K> {
             params: params.into(),
             return_type,
             body,
+            properties: FunctionProperties::default(),
         }
+    }
+
+    pub fn with_const_return(mut self, is_const_return: bool) -> Self {
+        self.properties.is_const_return = is_const_return;
+        self
     }
 
     pub fn unwrapped(self) -> Function<'src> {
@@ -296,6 +311,7 @@ impl<'src, K: AstKind> Function<'src, K> {
                 .return_type
                 .map(|typ| (*typ).into_wrapped().unwrapped().into()),
             body: self.body.map(|b| b.into_wrapped().unwrapped()),
+            properties: self.properties,
         }
     }
 
@@ -1658,6 +1674,6 @@ mod tests {
     fn sizes() {
         assert_eq!(mem::size_of::<Expr<'_>>(), 48);
         assert_eq!(mem::size_of::<Stmt<'_>>(), 48);
-        assert_eq!(mem::size_of::<Item<'_>>(), 80);
+        assert_eq!(mem::size_of::<Item<'_>>(), 112);
     }
 }

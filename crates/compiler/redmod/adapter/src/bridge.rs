@@ -227,6 +227,7 @@ impl<'src> Bridge<'src> {
         let mut annotations = crate::metadata::annotations(
             decl.metadata,
             matches!(decl.item, native::Item::Field(_)),
+            matches!(decl.item, native::Item::Function { .. }),
         )?;
         annotations.extend(
             decl.annotations
@@ -344,9 +345,6 @@ impl<'src> Bridge<'src> {
                 const_return,
                 body,
             } => {
-                if let Some(span) = const_return {
-                    return Err((CapabilityError::ConstReturn, span));
-                }
                 let name = match kind {
                     native::FunctionKind::Function(name) => name,
                     native::FunctionKind::Event(name) => {
@@ -464,13 +462,16 @@ impl<'src> Bridge<'src> {
                     .map(|body| self.block(body).map(ast::FunctionBody::Block))
                     .transpose()?;
                 self.wrapper = previous;
-                ast::Item::Function(ast::Function::new(
-                    name,
-                    vec![],
-                    lowered_params,
-                    return_type.map(|ty| Box::new(typ(ty))),
-                    body,
-                ))
+                ast::Item::Function(
+                    ast::Function::new(
+                        name,
+                        vec![],
+                        lowered_params,
+                        return_type.map(|ty| Box::new(typ(ty))),
+                        body,
+                    )
+                    .with_const_return(const_return.is_some()),
+                )
             }
             native::Item::Enum {
                 name,

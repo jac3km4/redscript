@@ -139,7 +139,8 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                 .map_or(default_visibility, convert_visibility);
 
             match item.item {
-                ast::Item::Function(func) => {
+                ast::Item::Function(mut func) => {
+                    super::extract_function_properties(&mut item.annotations, &mut func.properties);
                     for (ann, ann_span) in &item.annotations {
                         if ann.name == annotation::HINT {
                             self.reporter

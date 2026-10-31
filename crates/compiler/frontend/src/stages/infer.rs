@@ -122,6 +122,7 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
                             .then(|| PolyType::nullary(func.id.parent()));
                         let lowered = function_builder()
                             .type_(sym.type_())
+                            .maybe_properties(func.properties.as_ref())
                             .param_names(&func.param_names)
                             .body(&func.body)
                             .env(Env::new(&scope.types.push_scope(func.scope), &scope.funcs))
@@ -188,6 +189,7 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
                             .then(|| PolyType::nullary(func.id.parent()));
                         let lowered = function_builder()
                             .type_(sym.type_())
+                            .maybe_properties(func.properties.as_ref())
                             .param_names(&func.param_names)
                             .body(&func.body)
                             .env(Env::new(&scope.types.push_scope(func.scope), &funcs))
@@ -242,6 +244,7 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
 #[builder(finish_fn = build)]
 fn function_builder<'ctx>(
     type_: &FunctionType<'ctx>,
+    properties: Option<&ast::FunctionProperties<'ctx>>,
     param_names: &[&'ctx str],
     body: &ast::SourceFunctionBody<'ctx>,
     mut env: Env<'_, 'ctx>,
@@ -272,6 +275,7 @@ fn function_builder<'ctx>(
         block,
         locals,
         span,
+        properties: properties.unwrap_or_else(|| type_.properties()).clone(),
     }
 }
 
@@ -358,6 +362,7 @@ pub struct FuncItem<'scope, 'ctx, K, B = ast::SourceFunctionBody<'ctx>> {
     param_names: Box<[&'ctx str]>,
     body: B,
     scope: TypeScope<'scope, 'ctx>,
+    properties: Option<ast::FunctionProperties<'ctx>>,
 }
 
 impl<'scope, 'ctx, K, B> FuncItem<'scope, 'ctx, K, B> {
@@ -376,7 +381,13 @@ impl<'scope, 'ctx, K, B> FuncItem<'scope, 'ctx, K, B> {
             param_names: param_names.into(),
             body,
             scope,
+            properties: None,
         }
+    }
+
+    pub fn with_properties(mut self, properties: ast::FunctionProperties<'ctx>) -> Self {
+        self.properties = Some(properties);
+        self
     }
 
     pub fn id(&self) -> &K {
@@ -435,6 +446,7 @@ pub struct LoweredFunction<'ctx> {
     pub block: ir::Block<'ctx>,
     pub locals: Box<[ir::LocalInfo<'ctx>]>,
     pub span: Span,
+    pub properties: ast::FunctionProperties<'ctx>,
 }
 
 impl<'ctx> LoweredFunction<'ctx> {
