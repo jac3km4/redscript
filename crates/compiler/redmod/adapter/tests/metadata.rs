@@ -237,10 +237,10 @@ fn nonfield_targets_and_nonstring_values_fail_with_typed_capability_errors() {
 }
 
 #[test]
-fn metadata_does_not_enable_defaults_or_unmapped_modifiers() {
+fn metadata_does_not_enable_nonconstant_defaults_or_unmapped_modifiers() {
     for (source, expected) in [
         (
-            r#"class Host { [category = "Test"] var value: Int32; default value = 1; }"#,
+            r#"class Host { [category = "Test"] var value: Int32; default value = Make(); }"#,
             CapabilityError::DefaultDirective,
         ),
         (

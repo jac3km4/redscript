@@ -3,8 +3,8 @@ use std::ptr;
 use crate::ast::{Condition, ExprT, ItemDeclT, LetCondition, ParamT, PatternT, StmtT, TypeT};
 use crate::{
     Aggregate, AstKind, BinOp, Block, Case, ConditionalBlock, Constant, Enum, Expr, Field,
-    Function, FunctionBody, Import, Item, ItemDecl, Module, Pattern, Span, Stmt, StrPart, UnOp,
-    WithSpan, Wrapper,
+    FieldDefault, Function, FunctionBody, Import, Item, ItemDecl, Module, Pattern, Span, Stmt,
+    StrPart, UnOp, WithSpan, Wrapper,
 };
 
 pub trait AstVisitor<'src, K: AstKind> {
@@ -309,6 +309,10 @@ pub trait AstVisitor<'src, K: AstKind> {
         }
     }
 
+    fn visit_field_default(&mut self, default: &FieldDefault<'src, K>) -> Result<(), Self::Error> {
+        self.visit_expr(&default.value)
+    }
+
     fn visit_item_decl(&mut self, item_decl: &ItemDeclT<'src, K>) -> Result<(), Self::Error> {
         self.visit_node(AstNode::ItemDecl(item_decl))?;
         let inner = item_decl.as_wrapped();
@@ -318,6 +322,7 @@ pub trait AstVisitor<'src, K: AstKind> {
             Item::Struct(struct_) => self.visit_struct(struct_)?,
             Item::Function(function) => self.visit_function(function)?,
             Item::Let(field) => self.visit_field(field)?,
+            Item::Default(default) => self.visit_field_default(default)?,
             Item::Enum(_enum) => self.visit_enum(_enum)?,
         }
         self.post_visit_node(AstNode::ItemDecl(item_decl))

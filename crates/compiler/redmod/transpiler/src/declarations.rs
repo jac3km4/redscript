@@ -392,6 +392,12 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                     self.output.text.push_str(";\n");
                 }
             }
+            Item::Default(_) => {
+                return Err(error(
+                    "field default directives are not supported by the transpiler",
+                    Some(span),
+                ));
+            }
             Item::Import(_) => unreachable!(),
         }
         Ok(())

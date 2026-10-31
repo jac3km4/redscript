@@ -89,7 +89,45 @@ impl<'ctx> Monomorphizer<'ctx> {
         self.process_replaced_methods(unit, symbols, bundle)?;
         self.process_wrapped_methods(unit, symbols, bundle)?;
 
-        self.process_backlog(symbols, unit, bundle)
+        self.process_backlog(symbols, unit, bundle)?;
+        self.process_field_defaults(unit, symbols, bundle);
+        Ok(())
+    }
+
+    fn process_field_defaults(
+        &mut self,
+        unit: &LoweredCompilationUnit<'ctx>,
+        symbols: &Symbols<'ctx>,
+        bundle: &mut ScriptBundle<'ctx>,
+    ) {
+        // All declaring fields (including added fields and concrete generic
+        // bases) must exist before class-qualified overrides are merged.
+        for (typ, class) in &self.classes.map {
+            let Some(repr) = unit.classes.get(&typ.id()) else {
+                continue;
+            };
+            let owner = bundle[class.index()].name();
+            let owner = bundle[owner].to_string();
+            for default in &repr.defaults {
+                let Some(base) = typ.instantiate_as(default.field.parent(), symbols) else {
+                    continue;
+                };
+                let declaring = self.classes[base.as_ref()].index();
+                let field = bundle[declaring].fields()[usize::from(default.field.index())];
+                merge_default(
+                    &mut bundle[field],
+                    &owner,
+                    default.literal_text.map_or_else(
+                        || match &default.value {
+                            ir::Const::F32(value) => format!("{value:?}"),
+                            ir::Const::F64(value) => format!("{value:?}"),
+                            value => MangledConstant::new(value, symbols).to_string(),
+                        },
+                        str::to_owned,
+                    ),
+                );
+            }
+        }
     }
 
     fn process_backlog(
@@ -120,8 +158,11 @@ impl<'ctx> Monomorphizer<'ctx> {
                 for (idx, default) in &repr.fields {
                     let mangled = MangledConstant::new(default, symbols);
                     let field_idx = bundle[class.index()].fields_mut()[usize::from(*idx)];
-                    bundle[field_idx]
-                        .set_defaults([Property::new(typ.id().as_str(), mangled.to_string())]);
+                    merge_default(
+                        &mut bundle[field_idx],
+                        typ.id().as_str(),
+                        mangled.to_string(),
+                    );
                 }
 
                 let env = typ.type_env(symbols);
@@ -459,7 +500,7 @@ impl<'ctx> Monomorphizer<'ctx> {
 
             if let Some(default) = expr {
                 let default = MangledConstant::new(default, symbols).to_string();
-                bundle[field_idx].set_defaults([Property::new(id.parent().as_str(), default)]);
+                merge_default(&mut bundle[field_idx], id.parent().as_str(), default);
             }
         }
 
@@ -841,6 +882,19 @@ impl<'ctx> Monomorphizer<'ctx> {
     fn has_backlog(&self) -> bool {
         self.classes.has_backlog() || self.methods.has_backlog() || self.functions.has_backlog()
     }
+}
+
+fn merge_default(field: &mut PoolField<'_>, owner: &str, value: String) {
+    let mut defaults = field.defaults().to_vec();
+    if let Some(existing) = defaults
+        .iter_mut()
+        .find(|property| property.name() == owner)
+    {
+        *existing = Property::new(owner.to_owned(), value);
+    } else {
+        defaults.push(Property::new(owner.to_owned(), value));
+    }
+    field.set_defaults(defaults);
 }
 
 fn define_predefs(bundle: &mut ScriptBundle<'_>) {

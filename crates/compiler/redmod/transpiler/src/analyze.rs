@@ -358,6 +358,12 @@ impl<'ctx> AnalyzedSources<'ctx> {
                 let mut candidates = Vec::new();
                 match &decl.item {
                     Item::Import(_) => return Ok(()),
+                    Item::Default(_) => {
+                        return Err(error(
+                            "field default directives are not supported by the transpiler",
+                            Some(*span),
+                        ));
+                    }
                     Item::Class(c) | Item::Struct(c) => {
                         if !c.type_params.is_empty() {
                             return Err(error(

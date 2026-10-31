@@ -253,6 +253,10 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         enum_,
                     });
                 }
+                ast::Item::Default(_) => self.reporter.report(Diagnostic::UnexpectedItem(
+                    "field defaults must be declared inside an aggregate",
+                    item_span,
+                )),
                 ast::Item::Let(let_) => {
                     lets.push(ParsedLet {
                         meta: item_meta,

@@ -4,6 +4,20 @@ use common::assert_preserved;
 use redscript_community_formatter::FormatSettings;
 
 #[test]
+fn aggregate_field_defaults_roundtrip() {
+    let formatted = assert_preserved(
+        "class Base{let value:Int32;default value=-128;}class Derived extends Base{default value=2;default value=3;}",
+        &FormatSettings::default(),
+        "test.reds",
+    );
+    assert!(formatted.contains("default value = -128;"), "{formatted}");
+    assert!(
+        formatted.contains("default value = 2;\n  default value = 3;"),
+        "{formatted}"
+    );
+}
+
+#[test]
 fn signed_integer_minima_roundtrip() {
     for statement in [
         "data.sortingPriority = -2147483648;",

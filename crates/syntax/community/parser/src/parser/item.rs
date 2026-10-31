@@ -1,7 +1,7 @@
 use chumsky::prelude::*;
 use redscript_community_ast::{
-    Aggregate, Annotation, Enum, EnumVariant, Field, Function, FunctionBody, Import, Item,
-    ItemDecl, ItemQualifiers, Param, ParamQualifiers, Path, SourceAnnotation, SourceBlock,
+    Aggregate, Annotation, Enum, EnumVariant, Field, FieldDefault, Function, FunctionBody, Import,
+    Item, ItemDecl, ItemQualifiers, Param, ParamQualifiers, Path, SourceAnnotation, SourceBlock,
     SourceEnum, SourceExpr, SourceField, SourceFunction, SourceItem, SourceItemDecl, Span,
     Visibility,
 };
@@ -46,7 +46,13 @@ pub fn item_rec<'tok, 'src: 'tok>(
         aggregate(item_decl),
         enum_().map(Item::Enum),
         function(block, expr.clone()).map(Item::Function),
-        field(expr).map(Item::Let),
+        field(expr.clone()).map(Item::Let),
+        just(Token::Default)
+            .ignore_then(extended_ident_with_span())
+            .then_ignore(just(Token::Assign))
+            .then(expr)
+            .then_ignore(just(Token::Semicolon))
+            .map(|(target, value)| Item::Default(FieldDefault::new(target, Box::new(value)))),
     ))
     .labelled("item")
     .erased()
@@ -283,6 +289,46 @@ mod tests {
 
     use super::*;
     use crate::{parse_item, parse_item_decl};
+
+    #[test]
+    fn field_default_directive() {
+        use redscript_community_ast::{AstVisitor, WithSpan};
+        let code = "class Host { default value = -128; let value: Int8; }";
+        let (item, errors) = parse_item(code, FileId::from_i32(0));
+        assert!(errors.is_empty(), "{errors:?}");
+        let Item::Class(class) = item.unwrap() else {
+            panic!()
+        };
+        let Item::Default(default) = &class.items[0].0.item else {
+            panic!()
+        };
+        assert_eq!(default.target.0, "value");
+        assert_eq!(
+            &code[default.value.1.start as usize..default.value.1.end as usize],
+            "-128"
+        );
+        assert!(matches!(
+            class.items[0].0.find_at(default.value.1.start),
+            redscript_community_ast::QueryResult::Expr(_)
+        ));
+        struct Literals(usize);
+        impl<'src> AstVisitor<'src, WithSpan> for Literals {
+            type Error = std::convert::Infallible;
+
+            fn visit_constant(&mut self, _: &Constant<'src>) -> Result<(), Self::Error> {
+                self.0 += 1;
+                Ok(())
+            }
+        }
+        let mut visitor = Literals(0);
+        visitor.visit_class(&class).unwrap();
+        assert_eq!(visitor.0, 1);
+        let Item::Default(default) = class.items.into_iter().next().unwrap().0.unwrapped().item
+        else {
+            panic!()
+        };
+        assert_eq!(default.target, "value");
+    }
 
     #[test]
     fn shared_field_qualifiers() {

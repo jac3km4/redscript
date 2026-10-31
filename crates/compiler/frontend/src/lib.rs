@@ -18,7 +18,7 @@ pub use lower::{CoalesceError, Error as LowerError, PolyType, SemanticPolicy, Ty
 pub use query::{QueryError, expr_type};
 pub use redscript_community_ast as ast;
 use redscript_community_parser as parser;
-pub use stages::{LoweredClass, LoweredCompilationUnit, LoweredFunction};
+pub use stages::{LoweredClass, LoweredCompilationUnit, LoweredFieldDefault, LoweredFunction};
 use stages::{NameResolution, Scope};
 pub use symbols::{
     Aggregate, AggregateFlags, Enum, Field, FieldFlags, FieldId, FieldIndex, FieldMap,

@@ -126,6 +126,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
 
         let mut method_items = vec![];
         let mut field_items = vec![];
+        let mut defaults = vec![];
 
         let default_visibility = if cls_flags.is_struct() {
             Visibility::Public
@@ -226,6 +227,17 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         field_items.push(FieldItem::new(field_idx, Some(default)));
                     }
                 }
+                ast::Item::Default(default) => {
+                    for (ann, span) in item.annotations {
+                        self.reporter
+                            .report(Diagnostic::UnknownAnnotation(ann.name, span));
+                    }
+                    if !item.qualifiers.is_empty() {
+                        self.reporter
+                            .report(Diagnostic::UnusedItemQualifiers(item.qualifiers, item_span));
+                    }
+                    defaults.push((default, item_span));
+                }
                 ast::Item::Import(_) => self.reporter.report(Diagnostic::UnexpectedItem(
                     if is_struct {
                         "imports cannot be declared inside a struct"
@@ -308,6 +320,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
             type_scope,
             method_items,
             field_items,
+            defaults,
         )
     }
 

@@ -6,10 +6,10 @@ mod visitor;
 
 pub use ast::{
     Aggregate, Annotation, ArraySpread, Assoc, AstKind, BinOp, Block, Case, Condition,
-    ConditionalBlock, Constant, Enum, EnumStorage, EnumVariant, Expr, Field, Function,
-    FunctionBody, FunctionProperties, Import, Item, ItemDecl, ItemQualifiers, LetCondition, Module,
-    Param, ParamQualifiers, Path, Pattern, QueryResult, Stmt, StrPart, Type, TypeParam, UnOp,
-    Variance, Visibility, WithSpan, Wrapper,
+    ConditionalBlock, Constant, Enum, EnumStorage, EnumVariant, Expr, Field, FieldDefault,
+    Function, FunctionBody, FunctionProperties, Import, Item, ItemDecl, ItemQualifiers,
+    LetCondition, Module, Param, ParamQualifiers, Path, Pattern, QueryResult, Stmt, StrPart, Type,
+    TypeParam, UnOp, Variance, Visibility, WithSpan, Wrapper,
 };
 pub use files::{File, SourceLoc, SourceMap};
 pub use snippet::SourceSnippet;
@@ -27,6 +27,7 @@ pub type SourcePattern<'src> = Pattern<'src, WithSpan>;
 pub type SourceEnum<'src> = Enum<'src, WithSpan>;
 pub type SourceExpr<'src> = Expr<'src, WithSpan>;
 pub type SourceField<'src> = Field<'src, WithSpan>;
+pub type SourceFieldDefault<'src> = FieldDefault<'src, WithSpan>;
 pub type SourceFunction<'src> = Function<'src, WithSpan>;
 pub type SourceItem<'src> = Item<'src, WithSpan>;
 pub type SourceItemDecl<'src> = ItemDecl<'src, WithSpan>;

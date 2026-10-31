@@ -128,6 +128,10 @@ impl<'src> ItemDecl<'src, WithSpan> {
                         .map(|(typ, _)| typ.find_at(pos))
                 })
                 .or_else(|| f.body.as_ref().and_then(|b| b.find_at(pos))),
+            Item::Default(default) => {
+                let (value, span) = &*default.value;
+                span.contains(pos).then_some(value.find_at(pos))
+            }
             Item::Let(l) => {
                 let (typ, type_span) = l.typ.as_ref();
                 if type_span.contains(pos) {
@@ -150,6 +154,7 @@ pub enum Item<'src, K: AstKind = Identity> {
     Struct(Aggregate<'src, K>),
     Function(Function<'src, K>),
     Let(Field<'src, K>),
+    Default(FieldDefault<'src, K>),
     Enum(Enum<'src, K>),
 }
 
@@ -161,6 +166,7 @@ impl<'src, K: AstKind> Item<'src, K> {
             Item::Struct(s) => Item::Struct(s.unwrapped()),
             Item::Function(f) => Item::Function(f.unwrapped()),
             Item::Let(l) => Item::Let(l.unwrapped()),
+            Item::Default(d) => Item::Default(d.unwrapped()),
             Item::Enum(e) => Item::Enum(e.unwrapped()),
         }
     }
@@ -223,6 +229,33 @@ impl<'src> Aggregate<'src, WithSpan> {
             .ok()?;
         let (item, _) = &self.items[idx];
         Some(item.find_at(pos))
+    }
+}
+
+/// A default supplied by an aggregate for one of its own or inherited fields.
+#[derive_where(Debug, Clone, PartialEq)]
+pub struct FieldDefault<'src, K: AstKind = Identity> {
+    pub target: K::Inner<&'src str>,
+    pub value: Box<ExprT<'src, K>>,
+    /// Numeric source spelling retained by dialects whose metadata preserves it.
+    pub literal_text: Option<&'src str>,
+}
+
+impl<'src, K: AstKind> FieldDefault<'src, K> {
+    pub fn new(target: K::Inner<&'src str>, value: Box<ExprT<'src, K>>) -> Self {
+        Self {
+            target,
+            value,
+            literal_text: None,
+        }
+    }
+
+    pub fn unwrapped(self) -> FieldDefault<'src> {
+        FieldDefault {
+            target: self.target.into_wrapped(),
+            value: (*self.value).into_wrapped().unwrapped().into(),
+            literal_text: self.literal_text,
+        }
     }
 }
 

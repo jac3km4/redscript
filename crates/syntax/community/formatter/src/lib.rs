@@ -278,6 +278,12 @@ impl<K: AstKind> Formattable for Item<'_, K> {
             Item::Struct(struct_) => write!(f, "struct {}", struct_.as_fmt(ctx)),
             Item::Function(func) => write!(f, "{}", func.as_fmt(ctx)),
             Item::Let(field) => write!(f, "{}", field.as_fmt(ctx)),
+            Item::Default(default) => write!(
+                f,
+                "default {} = {};",
+                default.target.as_wrapped(),
+                (*default.value).as_wrapped().as_fmt(ctx)
+            ),
             Item::Enum(enum_) => write!(f, "{}", enum_.as_fmt(ctx)),
         }
     }
@@ -1293,7 +1299,7 @@ fn format_items<'a, 'c: 'a, K: AstKind + 'a>(
     for decl in it {
         let decl = decl.as_wrapped();
         let decl_is_annotated = !decl.annotations.is_empty();
-        if !matches!(decl.item, Item::Import(_) | Item::Let(_))
+        if !matches!(decl.item, Item::Import(_) | Item::Let(_) | Item::Default(_))
             || discriminant != mem::discriminant(&decl.item)
             || annotated != decl_is_annotated
             || decl_is_annotated

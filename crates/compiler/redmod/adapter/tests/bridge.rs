@@ -48,7 +48,7 @@ fn native_capabilities_fail_closed_with_typed_actionable_errors() {
             CapabilityError::SkipParameter,
         ),
         (
-            "class Host { default inherited = 1; }",
+            "class Host { default inherited = Make(); }",
             CapabilityError::DefaultDirective,
         ),
         (

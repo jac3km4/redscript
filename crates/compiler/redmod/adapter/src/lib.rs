@@ -5,6 +5,7 @@ mod array_guard;
 pub mod bridge;
 mod conditions;
 mod control_flow;
+mod defaults;
 mod metadata;
 mod persistent;
 mod policy;
@@ -148,7 +149,10 @@ pub fn parse_file_with_metadata(
         return (None, errors);
     }
     let parsed = native.and_then(|module| match bridge::lower(module) {
-        Ok(parsed) => Some(parsed),
+        Ok(mut parsed) => {
+            defaults::retain_literal_text(&mut parsed.module.items, source);
+            Some(parsed)
+        }
         Err((kind, span)) => {
             errors.push(Error::Capability { kind, span });
             None
@@ -198,6 +202,7 @@ pub fn process_sources<'ctx>(
         .iter()
         .flat_map(|parsed| parsed.control_flow.iter().cloned())
         .collect();
+
     let sources: Vec<_> = dependencies
         .into_iter()
         .chain(modules.into_iter().map(|parsed| parsed.module))

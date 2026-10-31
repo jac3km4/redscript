@@ -71,11 +71,88 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
                     methods.insert(item.id, func);
                 }
 
+                let mut defaults = Vec::new();
+                let mut own_order: IndexMap<FieldIndex, u32> = IndexMap::default();
+                for item in &class.fields {
+                    if let Some(value) = &item.default {
+                        own_order.insert(item.id, value.1.start);
+                    }
+                }
+                // Name resolution has completed for every module before inference:
+                // even bases declared in later files now have their full fields.
+                for (input, input_span) in &class.defaults {
+                    let Some((parent, (index, field))) = self
+                        .symbols
+                        .base_iter_with_self(class.id)
+                        .find_map(|(id, aggregate)| {
+                            Some((id, aggregate.fields().by_name(input.target.0)?))
+                        })
+                    else {
+                        reporter.report(crate::LowerError::UnresolvedMember(
+                            class.id,
+                            input.target.0,
+                            input.target.1,
+                        ));
+                        continue;
+                    };
+                    if parent == class.id
+                        && own_order
+                            .get(&index)
+                            .is_some_and(|&start| start < input_span.start)
+                    {
+                        continue;
+                    }
+                    let receiver = crate::lower::InferredTypeApp::from_type(&crate::TypeApp::new(
+                        class.id,
+                        cls_t
+                            .params()
+                            .iter()
+                            .cloned()
+                            .map(Type::Ctx)
+                            .collect::<Rc<_>>(),
+                    ));
+                    let Some(type_env) = receiver
+                        .base_type_env::<crate::symbols::AnyBaseType>(parent, &self.symbols)
+                    else {
+                        continue;
+                    };
+                    let expected = match PolyType::from_type_with_env(field.type_(), &type_env) {
+                        Ok(expected) => expected,
+                        Err(name) => {
+                            reporter.report(crate::LowerError::UnresolvedVar(name, input.target.1));
+                            continue;
+                        }
+                    };
+                    let env = Env::new(&types, &scope.funcs);
+                    let (value, errors) =
+                        supplemental_constant(&input.value, &env, expected, &self.symbols);
+                    reporter.report_many(errors);
+                    if let Some(value) = value {
+                        // Official own-field defaults are first-wins, whereas inherited
+                        // overrides are last-wins. Keep the resolved entries in order;
+                        // the backend merges inherited entries by supplying-class key.
+                        if parent == class.id {
+                            own_order.insert(index, input_span.start);
+                        }
+                        defaults.push(LoweredFieldDefault {
+                            field: FieldId::new(parent, index),
+                            value,
+                            literal_text: input.literal_text,
+                            span: *input_span,
+                        });
+                    }
+                }
                 let mut fields = IndexMap::default();
                 for item in class.fields {
                     let Some(default) = item.default else {
                         continue;
                     };
+                    if own_order
+                        .get(&item.id)
+                        .is_some_and(|&start| start < default.1.start)
+                    {
+                        continue;
+                    }
                     let field_id = FieldId::new(class.id, item.id);
                     let env = Env::new(&types, &scope.funcs);
                     if let Some(expr) =
@@ -90,6 +167,7 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
                     LoweredClass {
                         methods,
                         fields,
+                        defaults,
                         span: class.span,
                     },
                 );
@@ -279,6 +357,42 @@ fn function_builder<'ctx>(
     }
 }
 
+// Normalize only the bounded literal forms used by supplemental metadata;
+// do not change ordinary unary-operator resolution or community initializers.
+fn supplemental_constant<'ctx>(
+    value: &Spanned<ast::SourceExpr<'ctx>>,
+    env: &Env<'_, 'ctx>,
+    expected: PolyType<'ctx>,
+    symbols: &Symbols<'ctx>,
+) -> (Option<ir::Const<'ctx>>, Vec<crate::LowerError<'ctx>>) {
+    if let ast::Expr::UnOp {
+        op: ast::UnOp::Neg,
+        expr,
+    } = &value.0
+    {
+        let constant = match &expr.0 {
+            ast::Expr::Constant(ast::Constant::F32(value)) => Some(ast::Constant::F32(-value)),
+            ast::Expr::Constant(ast::Constant::F64(value)) => Some(ast::Constant::F64(-value)),
+            ast::Expr::Constant(ast::Constant::I32(value)) => {
+                value.checked_neg().map(ast::Constant::I32)
+            }
+            ast::Expr::Constant(ast::Constant::I64(value)) => {
+                value.checked_neg().map(ast::Constant::I64)
+            }
+            _ => None,
+        };
+        if let Some(constant) = constant {
+            return Lower::constant(
+                &(ast::Expr::Constant(constant), value.1),
+                env,
+                expected,
+                symbols,
+            );
+        }
+    }
+    Lower::constant(value, env, expected, symbols)
+}
+
 fn lower_constant<'ctx>(
     id: FieldId<'ctx>,
     expr: &Spanned<ast::SourceExpr<'ctx>>,
@@ -403,6 +517,7 @@ pub struct ClassItem<'scope, 'ctx> {
     scope: TypeScope<'scope, 'ctx>,
     methods: Vec<FuncItem<'scope, 'ctx, FunctionIndex>>,
     fields: Vec<FieldItem<'ctx, FieldIndex>>,
+    defaults: Vec<Spanned<ast::SourceFieldDefault<'ctx>>>,
 }
 
 impl<'scope, 'ctx> ClassItem<'scope, 'ctx> {
@@ -413,6 +528,7 @@ impl<'scope, 'ctx> ClassItem<'scope, 'ctx> {
         scope: TypeScope<'scope, 'ctx>,
         methods: Vec<FuncItem<'scope, 'ctx, FunctionIndex>>,
         fields: Vec<FieldItem<'ctx, FieldIndex>>,
+        defaults: Vec<Spanned<ast::SourceFieldDefault<'ctx>>>,
     ) -> Self {
         Self {
             id,
@@ -421,6 +537,7 @@ impl<'scope, 'ctx> ClassItem<'scope, 'ctx> {
             scope,
             methods,
             fields,
+            defaults,
         }
     }
 
@@ -501,8 +618,18 @@ impl<'ctx> LoweredCompilationUnit<'ctx> {
 }
 
 #[derive(Debug)]
+pub struct LoweredFieldDefault<'ctx> {
+    pub field: FieldId<'ctx>,
+    pub value: ir::Const<'ctx>,
+    pub literal_text: Option<&'ctx str>,
+    pub span: Span,
+}
+
+#[derive(Debug)]
 pub struct LoweredClass<'ctx> {
     pub methods: IndexMap<FunctionIndex, LoweredFunction<'ctx>>,
     pub fields: IndexMap<FieldIndex, ir::Const<'ctx>>,
+    /// Defaults supplied by this aggregate; field identities may belong to bases.
+    pub defaults: Vec<LoweredFieldDefault<'ctx>>,
     pub span: Span,
 }

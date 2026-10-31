@@ -82,7 +82,7 @@ impl fmt::Display for CapabilityError {
             Self::EnumStorage => "explicit enum storage types are not supported",
             Self::Metadata => "bracket metadata requires a field and string literal values",
             Self::DefaultDirective => {
-                "default directives (including inherited defaults) require target-specific initialization that is not implemented"
+                "default directives require an aggregate field target and a literal or enum member"
             }
             Self::HintDirective => {
                 "hint directives require a same-aggregate field target and string value"
@@ -155,6 +155,36 @@ impl<'src> Bridge<'src> {
         let mut lowered = Vec::new();
         let mut hints = Vec::new();
         for (mut decl, span) in items {
+            if let native::Item::Directive {
+                kind: native::DirectiveKind::Default,
+                target,
+                value,
+            } = &decl.item
+            {
+                if !decl.metadata.is_empty() {
+                    crate::metadata::annotations(decl.metadata.clone(), false, false)?;
+                }
+                if !aggregate
+                    || !decl.annotations.is_empty()
+                    || !decl.modifiers.is_empty()
+                    || decl.visibility.is_some()
+                {
+                    return Err((CapabilityError::DefaultDirective, span));
+                }
+                let value = self.expr(value.clone())?;
+                let default = crate::defaults::plan(*target, value)?;
+                lowered.push((
+                    ast::ItemDecl::new(
+                        vec![],
+                        None,
+                        ast::ItemQualifiers::empty(),
+                        decl.docs,
+                        ast::Item::Default(default),
+                    ),
+                    span,
+                ));
+                continue;
+            }
             if let native::Item::Field(field) = &mut decl.item
                 && field.names.len() > 1
             {
@@ -339,12 +369,9 @@ impl<'src> Bridge<'src> {
                 extends,
                 items,
             } => {
-                let aggregate = ast::Aggregate::new(
-                    name,
-                    vec![],
-                    extends.map(|ty| Box::new(typ(ty))),
-                    self.items(items, true)?,
-                );
+                let items = self.items(items, true)?;
+                let aggregate =
+                    ast::Aggregate::new(name, vec![], extends.map(|ty| Box::new(typ(ty))), items);
                 if is_struct {
                     ast::Item::Struct(aggregate)
                 } else {
