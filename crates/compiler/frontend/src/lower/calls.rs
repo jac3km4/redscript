@@ -69,6 +69,12 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             && (!env.types().policy(call_span).implicit_members || env.locals().get(name).is_none())
             && let Some(&TypeRef::Id(id)) = env.types().get(name)
         {
+            if let Some((_, span)) = args
+                .iter()
+                .find(|(expr, _)| crate::arguments::is_absent(expr))
+            {
+                return Err(Error::UnsupportedOmittedArgument(*span));
+            }
             return self.lower_construct(id, args, type_args, env, call_span);
         }
 
@@ -76,6 +82,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             && (!env.types().policy(call_span).implicit_members || env.locals().get(name).is_none())
             && let mut candidates = env
                 .query_free_functions(name, self.symbols)
+                .filter(|entry| name != "Cast" || conversion_is_eligible(entry.func(), env))
                 .peekable()
             && candidates.peek().is_some()
         {
@@ -160,6 +167,12 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         env: &Env<'_, 'ctx>,
         span: Span,
     ) -> LowerResult<'ctx, (ir::Expr<'ctx>, PolyType<'ctx>)> {
+        if let Some((_, span)) = args
+            .iter()
+            .find(|(expr, _)| crate::arguments::is_absent(expr))
+        {
+            return Err(Error::UnsupportedOmittedArgument(*span));
+        }
         let target_t = match (type_args, hint) {
             ([(target, target_span)], _) => self.resolve_type(target, env, *target_span)?,
             ([], Some(hint)) => hint.clone(),
@@ -205,7 +218,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 result_t,
             ));
         }
-        let candidates = env
+        let candidates: Vec<_> = env
             .query_free_functions("Cast", self.symbols)
             .filter(|entry| {
                 target_t.is_subtype_compatible(
@@ -213,7 +226,18 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     Variance::Covariant,
                     self.symbols,
                 )
-            });
+            })
+            .collect();
+        if !candidates.is_empty()
+            && candidates
+                .iter()
+                .all(|entry| !conversion_is_eligible(entry.func(), env))
+        {
+            return Err(Error::UnsupportedNativeConversion(span));
+        }
+        let candidates = candidates
+            .into_iter()
+            .filter(|entry| conversion_is_eligible(entry.func(), env));
         let (call, typ) = self
             .overload_resolver()
             .name("Cast")
@@ -457,18 +481,34 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         let args = args.into_iter();
         let argc = args.len();
 
+        let mut invalid_slot = None;
         let mut arg_ranges = Vec::new();
         let mut filtered = candidates
             .into_iter()
             .filter(|f| {
                 let range = f.func().type_().min_args()..=f.func().type_().max_args();
                 arg_ranges.push(range.clone());
-                range.contains(&argc)
+                if !range.contains(&argc) {
+                    return false;
+                }
+                if !crate::arguments::accepts_slots(args.clone(), f.func().type_().params()) {
+                    invalid_slot = args
+                        .clone()
+                        .zip(f.func().type_().params())
+                        .find(|((expr, _), param)| {
+                            crate::arguments::is_absent(expr) && !param.flags().is_optional()
+                        })
+                        .map(|((_, span), _)| *span);
+                    return false;
+                }
+                true
             })
             .peekable();
 
         let Some(primary) = filtered.next() else {
-            return if arg_ranges.is_empty() {
+            return if let Some(span) = invalid_slot {
+                Err(Error::RequiredArgumentOmitted(span))
+            } else if arg_ranges.is_empty() {
                 Err(Error::UnresolvedFunction(name, span))
             } else {
                 Err(Error::InvalidArgCount(arg_ranges, argc, span))
@@ -505,6 +545,10 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             let mut checked_args = Vec::with_capacity(args.len());
             for arg in args.zip(primary.func().type_().params()) {
                 let (arg @ (_, span), param) = arg;
+                if crate::arguments::is_absent(&arg.0) {
+                    checked_args.push(ir::Expr::Nop(*span));
+                    continue;
+                }
                 let expected = PolyType::from_type_with_env(param.type_(), &type_env)
                     .map_err(|var| Error::UnresolvedVar(var, *span))?;
                 let res = self.lower_expr_with(arg, Some(&expected), env);
@@ -528,10 +572,15 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             let mut checked_args = Vec::with_capacity(args.len());
             let mut arg_types = Vec::with_capacity(args.len());
 
-            for arg in args {
-                let (expr, typ) = self.lower_expr(arg, env)?;
-                checked_args.push(expr);
-                arg_types.push(typ);
+            for arg in args.clone() {
+                if crate::arguments::is_absent(&arg.0) {
+                    checked_args.push(ir::Expr::Nop(arg.1));
+                    arg_types.push(PolyType::fresh());
+                } else {
+                    let (expr, typ) = self.lower_expr(arg, env)?;
+                    checked_args.push(expr);
+                    arg_types.push(typ);
+                }
             }
 
             let res = self
@@ -571,53 +620,52 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         fn match_by_subtype<'a, 'ctx, It, Key, Name, Func>(
             it: It,
             arg_types: &'a [PolyType<'ctx>],
+            absent: &'a [bool],
             symbols: &'a Symbols<'ctx>,
         ) -> impl Iterator<Item = FunctionEntry<Key, Name, Func>> + use<'a, 'ctx, It, Key, Name, Func>
         where
             It: IntoIterator<Item = FunctionEntry<Key, Name, Func>>,
             Func: FunctionKind<'ctx> + Copy,
         {
-            it.into_iter().filter(|entry| {
-                arg_types
-                    .iter()
-                    .zip(entry.func().type_().params())
-                    .all(|(typ, param)| match param.type_() {
-                        Type::Data(id)
-                            if id.id() == predef::VARIANT && entry.func().intrinsic().is_none() =>
-                        {
-                            true
-                        }
-                        _ => {
-                            let variance = if param.flags().is_out() {
-                                Variance::Invariant
-                            } else {
-                                Variance::Covariant
-                            };
-                            typ.unwrap_ref_or_self(symbols).is_subtype_compatible(
-                                param.type_().unwrap_ref_or_self(),
-                                variance,
-                                symbols,
-                            )
-                        }
-                    })
-            })
+            it.into_iter()
+                .filter(move |entry| accepts_typed_args(entry.func(), arg_types, absent, symbols))
         }
 
-        let mut matches = match_by_subtype(candidates, arg_types, self.symbols).peekable();
-        let selected = matches
-            .next()
-            .or(fallback)
-            .ok_or(Error::UnresolvedFunction(name, span))?;
+        let absent: Vec<_> = args
+            .iter()
+            .map(|arg| matches!(arg, ir::Expr::Nop(_)))
+            .collect();
+        let candidates: Vec<_> = candidates.into_iter().collect();
+        let arg_ranges: Vec<_> = candidates
+            .iter()
+            .map(|entry| entry.func().type_().min_args()..=entry.func().type_().max_args())
+            .collect();
+        let mut matches = match_by_subtype(candidates, arg_types, &absent, self.symbols).peekable();
+        let fallback = fallback.filter(|entry| {
+            (entry.func().type_().min_args()..=entry.func().type_().max_args())
+                .contains(&args.len())
+        });
+        let selected = matches.next().or(fallback).ok_or_else(|| {
+            if !arg_ranges.is_empty() && arg_ranges.iter().all(|range| !range.contains(&args.len()))
+            {
+                Error::InvalidArgCount(arg_ranges, args.len(), span)
+            } else {
+                Error::UnresolvedFunction(name, span)
+            }
+        })?;
 
         let selected = if matches.peek().is_none() {
             selected
         } else {
             // retry with upper bounds lifted to resolve ambiguity
-            for arg in arg_types {
-                arg.force_upper_bound(self.symbols).with_span(span)?;
+            for (arg, absent) in arg_types.iter().zip(&absent) {
+                if !absent {
+                    arg.force_upper_bound(self.symbols).with_span(span)?;
+                }
             }
             let candidates = iter::once(selected).chain(matches);
-            let mut matches = match_by_subtype(candidates, arg_types, self.symbols).peekable();
+            let mut matches =
+                match_by_subtype(candidates, arg_types, &absent, self.symbols).peekable();
 
             let primary = matches
                 .next()
@@ -652,6 +700,9 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             .zip(arg_types)
             .zip(selected.func().type_().params())
         {
+            if matches!(arg, ir::Expr::Nop(_)) {
+                continue;
+            }
             let span = arg.span();
             let expected = PolyType::from_type_with_env(param.type_(), &type_env)
                 .map_err(|var| Error::UnresolvedVar(var, span))?;
@@ -883,6 +934,51 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
 
         Ok(map)
     }
+}
+
+fn conversion_is_eligible(function: &crate::FreeFunction<'_>, env: &Env<'_, '_>) -> bool {
+    // Keep declarations queryable, but do not select native-source conversions
+    // until their dispatch semantics have been established with official fixtures.
+    !function
+        .span()
+        .is_some_and(|span| env.types().policy(span).native_object_cast)
+}
+
+// Eligibility must remain read-only: logical truthiness fallback uses this before
+// resolution, whose ambiguity handling and coercions can constrain inference vars.
+pub(super) fn accepts_typed_args<'ctx>(
+    function: impl FunctionKind<'ctx>,
+    arg_types: &[PolyType<'ctx>],
+    absent: &[bool],
+    symbols: &Symbols<'ctx>,
+) -> bool {
+    let typ = function.type_();
+    (typ.min_args()..=typ.max_args()).contains(&arg_types.len())
+        && arg_types.len() == absent.len()
+        && arg_types
+            .iter()
+            .zip(absent)
+            .zip(typ.params())
+            .all(|((arg, absent), param)| {
+                if *absent {
+                    param.flags().is_optional()
+                } else if matches!(param.type_(), Type::Data(id) if id.id() == predef::VARIANT)
+                    && function.intrinsic().is_none()
+                {
+                    true
+                } else {
+                    let variance = if param.flags().is_out() {
+                        Variance::Invariant
+                    } else {
+                        Variance::Covariant
+                    };
+                    arg.unwrap_ref_or_self(symbols).is_subtype_compatible(
+                        param.type_().unwrap_ref_or_self(),
+                        variance,
+                        symbols,
+                    )
+                }
+            })
 }
 
 #[derive(Debug)]

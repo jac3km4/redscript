@@ -257,6 +257,11 @@ pub trait AstVisitor<'src, K: AstKind> {
         Ok(())
     }
 
+    #[inline]
+    fn visit_omitted(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
     fn visit_module(&mut self, module: &Module<'src, K>) -> Result<(), Self::Error> {
         module
             .items
@@ -364,6 +369,7 @@ pub trait AstVisitor<'src, K: AstKind> {
             Expr::This => self.visit_this()?,
             Expr::Super => self.visit_super()?,
             Expr::Null => self.visit_null()?,
+            Expr::Omitted => self.visit_omitted()?,
             Expr::Error => {}
         }
         self.post_visit_node(AstNode::Expr(expr))

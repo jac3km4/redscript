@@ -1033,6 +1033,8 @@ pub enum Expr<'src, K: AstKind = Identity> {
     This,
     Super,
     Null,
+    /// An absent positional call argument, not a value expression.
+    Omitted,
 
     Error,
 }
@@ -1121,6 +1123,7 @@ impl<'src, K: AstKind> Expr<'src, K> {
             Expr::This => Expr::This,
             Expr::Super => Expr::Super,
             Expr::Null => Expr::Null,
+            Expr::Omitted => Expr::Omitted,
             Expr::Error => Expr::Error,
         }
     }
@@ -1134,6 +1137,7 @@ impl<'src> Expr<'src, WithSpan> {
             | Expr::This
             | Expr::Super
             | Expr::Null
+            | Expr::Omitted
             | Expr::Error => QueryResult::Expr(self),
             Expr::ArrayLit(e) => e
                 .iter()

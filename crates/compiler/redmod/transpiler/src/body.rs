@@ -549,6 +549,12 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
     }
 
     pub fn expr(&self, e: &ir::Expr<'ctx>) -> Result<String> {
+        if matches!(e, ir::Expr::Nop(_)) {
+            return Err(error(
+                "absent argument slots require call-slot emission",
+                Some(e.span()),
+            ));
+        }
         if !matches!(e, ir::Expr::Null { .. }) {
             target::typ(&self.type_of(e)?, self.symbols).map_err(|mut err| {
                 err.span = Some(e.span());
@@ -651,6 +657,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 )?
             )),
             ir::Expr::Call { call, .. } => self.call(call, e),
+            ir::Expr::Nop(_) => unreachable!("absent slots are rejected above"),
             ir::Expr::NewClosure { .. } | ir::Expr::Capture(..) => {
                 Err(error("lambdas/captures are unsupported", Some(e.span())))
             }

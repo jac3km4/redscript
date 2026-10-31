@@ -355,6 +355,7 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
 
     fn assemble_expr(&mut self, expr: &ir::Expr<'ctx>) -> Result<(), AssembleError<'ctx>> {
         match expr {
+            ir::Expr::Nop(_) => self.emit(Instr::Nop),
             ir::Expr::Call { call, span } => self.assemble_call(call, *span)?,
             ir::Expr::Const(const_, _) => self.assemble_const(const_)?,
             ir::Expr::Null { is_weak: false, .. } => self.emit(Instr::Null),

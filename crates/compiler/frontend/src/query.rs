@@ -41,6 +41,8 @@ pub enum QueryError<'ctx> {
     InvalidClosure(TypeApp<'ctx>),
     #[error("the IR does not retain the contextual type of this null literal")]
     UnknownNullType,
+    #[error("an absent argument slot has no expression type")]
+    AbsentArgument,
 }
 
 impl<'ctx> From<CoalesceError<'ctx>> for QueryError<'ctx> {
@@ -69,6 +71,7 @@ pub fn expr_type<'ctx>(
     symbols: &Symbols<'ctx>,
 ) -> Result<Type<'ctx>, QueryError<'ctx>> {
     let typ = match expr {
+        ir::Expr::Nop(_) => return Err(QueryError::AbsentArgument),
         ir::Expr::NewInstance { class_type, .. } => {
             return reference_type(class_type.coalesced(symbols)?.into_type(), false, symbols);
         }

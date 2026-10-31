@@ -235,6 +235,8 @@ pub enum Expr<'ctx> {
         target_type: Type<'ctx>,
         span: Span,
     },
+    /// An absent optional call slot. This has no value or evaluation.
+    Nop(Span),
     Local(Local, Span),
     Capture(Local, Span),
     Const(Const<'ctx>, Span),
@@ -261,7 +263,8 @@ impl<'ctx> Expr<'ctx> {
 
     pub fn span(&self) -> Span {
         match self {
-            Self::NewInstance { span, .. }
+            Self::Nop(span)
+            | Self::NewInstance { span, .. }
             | Self::Construct { span, .. }
             | Self::NewClosure { span, .. }
             | Self::Call { span, .. }

@@ -120,6 +120,34 @@ fn expr_with_span_impl<'tok, 'src: 'tok>(
         .collect::<Vec<_>>()
         .delimited_by(just(Token::LParen), just(Token::RParen))
         .erased();
+    let slot = expr.clone().or_not().map_with(|arg, e| (arg, e.span()));
+    let call_arguments = slot
+        .clone()
+        .then(
+            just(Token::Comma)
+                .ignore_then(slot)
+                .repeated()
+                .collect::<Vec<_>>(),
+        )
+        .map(|(first, mut rest)| {
+            if first.0.is_none() && rest.is_empty() {
+                return Vec::new();
+            }
+            // A final comma terminates the preceding slot, not a new one.
+            if rest.last().is_some_and(|(arg, _)| arg.is_none()) {
+                rest.pop();
+            }
+            std::iter::once(first)
+                .chain(rest)
+                .map(|(arg, span)| {
+                    arg.unwrap_or_else(|| {
+                        (Expr::Omitted, Span::new(span.start, span.start, span.file))
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .delimited_by(just(Token::LParen), just(Token::RParen))
+        .erased();
     let type_arguments = typ
         .clone()
         .separated_by(just(Token::Comma))
@@ -204,7 +232,7 @@ fn expr_with_span_impl<'tok, 'src: 'tok>(
         .erased();
     let call = type_arguments
         .or_not()
-        .then(arguments)
+        .then(call_arguments)
         .map(|(targs, args)| TopPrecedence::Call(targs.unwrap_or_default().into(), args.into()))
         .erased();
     let member = atom

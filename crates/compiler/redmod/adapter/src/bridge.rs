@@ -28,6 +28,8 @@ pub enum CapabilityError {
     FieldGroup,
     OperatorDeclaration,
     ConversionDeclaration,
+    InvalidOperatorSignature(&'static str),
+    InvalidConversionSignature(&'static str),
     EnumStorage,
     Metadata,
     DefaultDirective,
@@ -71,10 +73,13 @@ impl fmt::Display for CapabilityError {
                 "initialized field groups require explicit per-field initializers; split the declaration"
             }
             Self::OperatorDeclaration => {
-                "operator declarations require REDmod overload registration that is not implemented"
+                "this operator declaration has no supported shared dispatch representation"
             }
             Self::ConversionDeclaration => {
-                "conversion declarations require REDmod conversion registration that is not implemented"
+                "implicit conversion selection is not supported; use an explicit cast declaration"
+            }
+            Self::InvalidOperatorSignature(message) | Self::InvalidConversionSignature(message) => {
+                message
             }
             Self::EnumStorage => "explicit enum storage types are not supported",
             Self::Metadata => "bracket metadata requires a field and string literal values",
@@ -350,11 +355,55 @@ impl<'src> Bridge<'src> {
                         qualifiers |= ast::ItemQualifiers::CALLBACK;
                         name
                     }
-                    native::FunctionKind::Operator((_, span)) => {
-                        return Err((CapabilityError::OperatorDeclaration, span));
+                    native::FunctionKind::Operator((operator, span)) => {
+                        let arity = params.iter().map(|(param, _)| param.names.len()).sum();
+                        let name = operator_name(operator, arity, span)?;
+                        if aggregate {
+                            return Err((
+                                CapabilityError::InvalidOperatorSignature(
+                                    "operators must be declared in global scope",
+                                ),
+                                span,
+                            ));
+                        }
+                        (name, span)
                     }
-                    native::FunctionKind::Cast { span, .. } => {
-                        return Err((CapabilityError::ConversionDeclaration, span));
+                    native::FunctionKind::Cast { implicit, span } => {
+                        if implicit.is_some() {
+                            return Err((CapabilityError::ConversionDeclaration, span));
+                        }
+                        if aggregate {
+                            return Err((
+                                CapabilityError::InvalidConversionSignature(
+                                    "conversions must be declared in global scope",
+                                ),
+                                span,
+                            ));
+                        }
+                        if params
+                            .iter()
+                            .map(|(param, _)| param.names.len())
+                            .sum::<usize>()
+                            != 1
+                        {
+                            return Err((
+                                CapabilityError::InvalidConversionSignature(
+                                    "conversions require exactly one parameter",
+                                ),
+                                span,
+                            ));
+                        }
+                        if return_type.as_ref().is_none_or(|(typ, _)| {
+                            matches!(typ, native::Type::Named { name: "Void", args } if args.is_empty())
+                        }) {
+                            return Err((
+                                CapabilityError::InvalidConversionSignature(
+                                    "conversions require an explicit non-Void return type",
+                                ),
+                                span,
+                            ));
+                        }
+                        ("Cast", span)
                     }
                 };
                 if explicit_override {
@@ -795,7 +844,10 @@ impl<'src> Bridge<'src> {
                     args: args
                         .into_vec()
                         .into_iter()
-                        .map(|expr| self.lower_expr(expr, false))
+                        .map(|expr| match expr {
+                            (native::Expr::Omitted, span) => Ok((ast::Expr::Omitted, span)),
+                            expr => self.lower_expr(expr, false),
+                        })
                         .collect::<Result<Vec<_>>>()?
                         .into(),
                 }
@@ -865,6 +917,47 @@ impl<'src> Bridge<'src> {
         };
         Ok((expr, span))
     }
+}
+
+fn operator_name(operator: native::Operator, arity: usize, span: Span) -> Result<&'static str> {
+    use native::Operator as Op;
+
+    if !(1..=2).contains(&arity) {
+        return Err((
+            CapabilityError::InvalidOperatorSignature("operators require one or two parameters"),
+            span,
+        ));
+    }
+    let name = match operator {
+        Op::Add => ast::BinOp::Add.name(),
+        Op::Subtract if arity == 1 => ast::UnOp::Neg.name(),
+        Op::Subtract => ast::BinOp::Sub.name(),
+        Op::Multiply => ast::BinOp::Mul.name(),
+        Op::Divide => ast::BinOp::Div.name(),
+        Op::Modulo => ast::BinOp::Mod.name(),
+        Op::Equal => ast::BinOp::Eq.name(),
+        Op::NotEqual => ast::BinOp::Ne.name(),
+        Op::Less => ast::BinOp::Lt.name(),
+        Op::LessEqual => ast::BinOp::Le.name(),
+        Op::Greater => ast::BinOp::Gt.name(),
+        Op::GreaterEqual => ast::BinOp::Ge.name(),
+        Op::And => ast::BinOp::And.name(),
+        Op::Or => ast::BinOp::Or.name(),
+        Op::BitAnd => ast::BinOp::BitAnd.name(),
+        Op::BitOr => ast::BinOp::BitOr.name(),
+        Op::BitXor => ast::BinOp::BitXor.name(),
+        Op::Not => ast::UnOp::Not.name(),
+        Op::BitNot => ast::UnOp::BitNot.name(),
+        Op::AssignAdd => ast::BinOp::AssignAdd.name(),
+        Op::AssignSubtract => ast::BinOp::AssignSub.name(),
+        Op::AssignMultiply => ast::BinOp::AssignMul.name(),
+        Op::AssignDivide => ast::BinOp::AssignDiv.name(),
+        Op::AssignBitAnd => ast::BinOp::AssignBitAnd.name(),
+        Op::AssignBitOr => ast::BinOp::AssignBitOr.name(),
+        // Shared indexing is an array operation, not an overload call.
+        Op::Index => return Err((CapabilityError::OperatorDeclaration, span)),
+    };
+    Ok(name)
 }
 
 fn typ((ty, span): Spanned<native::Type<'_>>) -> Spanned<ast::SourceType<'_>> {

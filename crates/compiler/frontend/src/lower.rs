@@ -495,6 +495,16 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 let mut rhs = self.lower_expr(rhs, env)?;
                 if env.types().policy(*span).condition.is_some()
                     && matches!(op, ast::BinOp::And | ast::BinOp::Or)
+                    && !env
+                        .query_free_functions(op.name(), self.symbols)
+                        .any(|entry| {
+                            calls::accepts_typed_args(
+                                entry.func(),
+                                &[lhs.1.clone(), rhs.1.clone()],
+                                &[false, false],
+                                self.symbols,
+                            )
+                        })
                 {
                     lhs = (
                         self.truth_value(lhs.0, lhs.1, env, *span)?,
@@ -525,7 +535,19 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 }
 
                 let mut arg = self.lower_expr(expr, env)?;
-                if env.types().policy(*span).condition.is_some() && matches!(op, ast::UnOp::Not) {
+                if env.types().policy(*span).condition.is_some()
+                    && matches!(op, ast::UnOp::Not)
+                    && !env
+                        .query_free_functions(op.name(), self.symbols)
+                        .any(|entry| {
+                            calls::accepts_typed_args(
+                                entry.func(),
+                                std::slice::from_ref(&arg.1),
+                                &[false],
+                                self.symbols,
+                            )
+                        })
+                {
                     arg = (
                         self.truth_value(arg.0, arg.1, env, *span)?,
                         PolyType::nullary(predef::BOOL),
@@ -589,6 +611,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 (ir, typ)
             }
 
+            ast::Expr::Omitted => return Err(Error::UnsupportedOmittedArgument(*span)),
             ast::Expr::Error => (ir::Expr::null(*span), PolyType::fresh()),
         };
         Ok(result)

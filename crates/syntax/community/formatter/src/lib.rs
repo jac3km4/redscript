@@ -704,7 +704,7 @@ fn format_expr_body<K: AstKind>(
         Expr::This => write!(f, "this"),
         Expr::Super => write!(f, "super"),
         Expr::Null => write!(f, "null"),
-        Expr::Error => Ok(()),
+        Expr::Omitted | Expr::Error => Ok(()),
     }
 }
 
@@ -1011,6 +1011,7 @@ struct SepByMultiline<'s, I> {
     separator: &'static str,
     ctx: FormatCtx<'s>,
     padding: &'static str,
+    trailing_separator: bool,
 }
 
 impl<'s, I> SepByMultiline<'s, I> {
@@ -1020,7 +1021,13 @@ impl<'s, I> SepByMultiline<'s, I> {
             separator,
             ctx,
             padding: "",
+            trailing_separator: false,
         }
+    }
+
+    fn with_trailing_separator(mut self, trailing_separator: bool) -> Self {
+        self.trailing_separator = trailing_separator;
+        self
     }
 
     fn with_padding(mut self, padding: &'static str) -> Self {
@@ -1039,9 +1046,16 @@ where
             separator,
             ctx,
             padding,
+            trailing_separator,
         } = self;
+        let trailing = if *trailing_separator {
+            separator.trim_end()
+        } else {
+            ""
+        };
         let width = iter.clone().map(|e| e.approx_width()).sum::<usize>()
-            + separator.len() * (iter.len().max(1) - 1);
+            + separator.len() * (iter.len().max(1) - 1)
+            + trailing.len();
 
         if ctx.indent_width() + width > usize::from(ctx.settings.max_width) {
             let sep = separator.trim_end();
@@ -1053,12 +1067,12 @@ where
                 writeln!(f)?;
                 write!(f, "{}{}", ctx.indent(), elem.as_fmt(ctx))?;
             }
-            writeln!(f)?;
+            writeln!(f, "{trailing}")?;
             write!(f, "{}", ctx.decrement().indent())
         } else {
             write!(
                 f,
-                "{padding}{}{padding}",
+                "{padding}{}{trailing}{padding}",
                 SepBy::new(iter.clone(), ", ", *ctx)
             )
         }
@@ -1292,6 +1306,10 @@ fn format_call_args<K: AstKind>(
         f,
         "({})",
         SepByMultiline::new(args.iter().map(Wrapper::as_wrapped), ", ", ctx)
+            .with_trailing_separator(
+                args.last()
+                    .is_some_and(|arg| matches!(arg.as_wrapped(), Expr::Omitted))
+            )
     )
 }
 
@@ -1463,7 +1481,7 @@ where
             }
             Expr::This | Expr::Null => 4,
             Expr::Super => 5,
-            Expr::Error => 0,
+            Expr::Omitted | Expr::Error => 0,
         }
     }
 }

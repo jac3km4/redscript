@@ -40,6 +40,12 @@ pub enum Error<'ctx> {
         found = .1
     )]
     InvalidArgCount(Vec<RangeInclusive<usize>>, usize, Span),
+    #[error("a required parameter cannot be omitted")]
+    RequiredArgumentOmitted(Span),
+    #[error(
+        "omitted arguments are only supported for optional parameters of function or method calls"
+    )]
+    UnsupportedOmittedArgument(Span),
     #[error("cannot infer the type of this expression; consider adding type annotations")]
     InsufficientTypeInformation(Span),
     #[error("this type does not support the `new` operator")]
@@ -56,6 +62,10 @@ pub enum Error<'ctx> {
         "cannot infer the target type of this cast; specify it with `Cast<T>(value)` or a type annotation"
     )]
     UnknownStaticCastType(Span),
+    #[error(
+        "native conversion declaration dispatch is not supported; its official selection semantics are not established"
+    )]
+    UnsupportedNativeConversion(Span),
     #[error("invalid number of type arguments: expected {0}, found {1}")]
     InvalidTypeArgCount(usize, usize, Span),
     #[error("class constructors do not accept positional arguments")]
@@ -141,12 +151,15 @@ impl Error<'_> {
             | Self::MultipleMatchingOverloads(_, span)
             | Self::UnresolvedFunction(_, span)
             | Self::InvalidArgCount(_, _, span)
+            | Self::RequiredArgumentOmitted(span)
+            | Self::UnsupportedOmittedArgument(span)
             | Self::InsufficientTypeInformation(span)
             | Self::InvalidNewType(span)
             | Self::InvalidConstructType(span)
             | Self::NewWithConstructible { span, .. }
             | Self::InvalidDynCastType(_, _, span)
             | Self::UnknownStaticCastType(span)
+            | Self::UnsupportedNativeConversion(span)
             | Self::InvalidTypeArgCount(_, _, span)
             | Self::ClassConstructorHasArguments(span)
             | Self::UnsupportedArity(_, span)
@@ -187,6 +200,8 @@ impl Error<'_> {
             Self::MultipleMatchingOverloads(_, _) => "MULTIPLE_MATCHING_OVERLOADS",
             Self::UnresolvedFunction(_, _) => "UNRESOLVED_FN",
             Self::InvalidArgCount(_, _, _) => "INVALID_ARG_COUNT",
+            Self::RequiredArgumentOmitted(_) => "REQUIRED_ARGUMENT_OMITTED",
+            Self::UnsupportedOmittedArgument(_) => "UNSUPPORTED_OMITTED_ARGUMENT",
             Self::InsufficientTypeInformation(_) => "CANNOT_LOOKUP_MEMBER",
             Self::InvalidNewType(_)
             | Self::ClassConstructorHasArguments(_)
@@ -195,6 +210,7 @@ impl Error<'_> {
             Self::InvalidConstructType(_) => "INVALID_CONSTRUCT",
             Self::InvalidDynCastType(_, _, _) => "INVALID_DYN_CAST",
             Self::UnknownStaticCastType(_) => "INVALID_STATIC_CAST",
+            Self::UnsupportedNativeConversion(_) => "UNSUPPORTED_NATIVE_CONVERSION",
             Self::InvalidTypeArgCount(_, _, _) => "INVALID_TYPE_ARG_COUNT",
             Self::UnsupportedArity(_, _) => "UNSUPPORTED_ARITY",
             Self::UnsupportedStaticArraySize(_, _) => "UNSUPPORTED_ARRAY_SIZE",

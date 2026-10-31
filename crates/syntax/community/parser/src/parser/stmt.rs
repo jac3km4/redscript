@@ -285,8 +285,6 @@ mod tests {
             "for (; ; ) {}",
             "do {} while false;",
             "a = 1, b = 2;",
-            "f(, 1);",
-            "f(,,);",
         ] {
             let (_, errors) = parse_stmt(source, FileId::from_i32(0));
             assert!(!errors.is_empty(), "{source}");

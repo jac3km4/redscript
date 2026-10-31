@@ -214,6 +214,7 @@ pub trait Visitor<'ctx> {
             ir::Expr::Capture(local, span) => self.visit_capture(*local, *span),
             ir::Expr::Const(const_, _) => self.visit_const(const_),
             ir::Expr::Null { is_weak, span } => self.visit_null(*is_weak, *span),
+            ir::Expr::Nop(_) => {}
         }
     }
 }

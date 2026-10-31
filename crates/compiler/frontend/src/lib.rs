@@ -1,3 +1,4 @@
+mod arguments;
 mod cte;
 mod diagnostic;
 pub mod ir;
@@ -10,6 +11,7 @@ pub mod types;
 pub mod utils;
 mod visitor;
 
+pub use arguments::absent_argument;
 pub use cte::Evaluator;
 pub use diagnostic::{Diagnostic, DiagnosticLevel, Reporter, UnknownSource, pass};
 pub use lower::{CoalesceError, Error as LowerError, PolyType, SemanticPolicy, TypeError, TypeRef};

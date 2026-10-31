@@ -28,10 +28,6 @@ fn body<'a, 'src>(module: &'a ParsedModule<'src>) -> &'a ast::SourceBlock<'src> 
 fn native_capabilities_fail_closed_with_typed_actionable_errors() {
     for (source, expected) in [
         (
-            "function Run() { Use(, 1); }",
-            CapabilityError::OmittedArgument,
-        ),
-        (
             "function Run() { x = y = 1; }",
             CapabilityError::AssignmentValue,
         ),
@@ -54,14 +50,6 @@ fn native_capabilities_fail_closed_with_typed_actionable_errors() {
         (
             "class Host { var x, y: Int32 = Make(); }",
             CapabilityError::FieldGroup,
-        ),
-        (
-            "operator +(a: Int32, b: Int32): Int32;",
-            CapabilityError::OperatorDeclaration,
-        ),
-        (
-            "implicit cast(value: Int32): Float;",
-            CapabilityError::ConversionDeclaration,
         ),
         (
             "[category = \"Test\"] class Host {}",
@@ -123,33 +111,27 @@ fn syntax_failures_do_not_expose_recovered_shared_modules() {
 #[test]
 fn native_only_declarations_and_expressions_are_checked_without_placeholders() {
     let span = ast::Span::new(0, 1, file());
-    for (item, expected) in [
-        (
-            redscript_redmod_ast::Item::Function {
-                kind: redscript_redmod_ast::FunctionKind::Operator((
-                    redscript_redmod_ast::Operator::Add,
-                    span,
-                )),
-                params: vec![],
-                return_type: None,
-                const_return: None,
-                body: None,
+    for item in [
+        redscript_redmod_ast::Item::Function {
+            kind: redscript_redmod_ast::FunctionKind::Operator((
+                redscript_redmod_ast::Operator::Add,
+                span,
+            )),
+            params: vec![],
+            return_type: None,
+            const_return: None,
+            body: None,
+        },
+        redscript_redmod_ast::Item::Function {
+            kind: redscript_redmod_ast::FunctionKind::Cast {
+                implicit: Some(span),
+                span,
             },
-            CapabilityError::OperatorDeclaration,
-        ),
-        (
-            redscript_redmod_ast::Item::Function {
-                kind: redscript_redmod_ast::FunctionKind::Cast {
-                    implicit: Some(span),
-                    span,
-                },
-                params: vec![],
-                return_type: None,
-                const_return: None,
-                body: None,
-            },
-            CapabilityError::ConversionDeclaration,
-        ),
+            params: vec![],
+            return_type: None,
+            const_return: None,
+            body: None,
+        },
     ] {
         let module = redscript_redmod_ast::Module {
             path: None,
@@ -165,9 +147,15 @@ fn native_only_declarations_and_expressions_are_checked_without_placeholders() {
                 span,
             )],
         };
-        assert!(
-            matches!(redscript_redmod_adapter::bridge::lower(module), Err((kind, _)) if kind == expected)
-        );
+        assert!(matches!(
+            redscript_redmod_adapter::bridge::lower(module),
+            Err((
+                CapabilityError::InvalidOperatorSignature(_)
+                    | CapabilityError::InvalidConversionSignature(_)
+                    | CapabilityError::ConversionDeclaration,
+                _
+            ))
+        ));
     }
     for (expr, expected) in [
         (
@@ -360,10 +348,6 @@ fn discarded_sequences_keep_written_spans_but_not_value_semantics() {
             CapabilityError::AssignmentValue,
         ),
         (
-            "function Run() { First(), Use(, 1); }",
-            CapabilityError::OmittedArgument,
-        ),
-        (
             "function Run() { First(), Use(Before(), [1]); }",
             CapabilityError::UnsafeArrayEvaluation,
         ),
@@ -457,7 +441,7 @@ fn override_metadata_and_same_field_hints_survive_lowering() {
 fn hint_metadata_reaches_symbols_and_capability_failures_isolate_files() {
     let sources = ast::SourceMap::new();
     let good_source = "class Host { var value: Int32; hint value = \"Help\"; }";
-    let bad_source = "function Unsupported() { for (;;) { Use(, 1); } }";
+    let bad_source = "function Unsupported() { const var value: Int32 = 1; }";
     let good_file = sources.push_back("good.script", good_source);
     let bad_file = sources.push_back("bad.script", bad_source);
     let (good, errors) = parse_file_with_metadata(good_source, good_file);
@@ -467,7 +451,7 @@ fn hint_metadata_reaches_symbols_and_capability_failures_isolate_files() {
     assert!(matches!(
         errors.as_slice(),
         [Error::Capability {
-            kind: CapabilityError::OmittedArgument,
+            kind: CapabilityError::ConstLocal,
             ..
         }]
     ));
