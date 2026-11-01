@@ -1106,6 +1106,20 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             self.coerce(&mut expr, expr_t, pointee.clone(), env, *expr_span)?;
             expr_t = pointee;
         }
+        if expr_t
+            .upper_bound(self.symbols)
+            .is_some_and(|typ| typ.id() != predef::ARRAY && !typ.id().is_static_array())
+        {
+            let index = self.lower_expr(index, env)?;
+            let (call, typ) = self
+                .free_function_call_builder()
+                .name("OperatorArray")
+                .args([(expr, expr_t), index])
+                .env(env)
+                .span(span)
+                .build()?;
+            return Ok((ir::Expr::call(call, span), typ));
+        }
         let type_id = if let Some(typ) = expr_t
             .upper_bound(self.symbols)
             .filter(|typ| typ.id().is_static_array())

@@ -944,6 +944,12 @@ fn operator_name(operator: native::Operator, arity: usize, span: Span) -> Result
             span,
         ));
     }
+    if operator == Op::Index && arity != 2 {
+        return Err((
+            CapabilityError::InvalidOperatorSignature("index operators require two parameters"),
+            span,
+        ));
+    }
     let name = match operator {
         Op::Add => ast::BinOp::Add.name(),
         Op::Subtract if arity == 1 => ast::UnOp::Neg.name(),
@@ -970,8 +976,7 @@ fn operator_name(operator: native::Operator, arity: usize, span: Span) -> Result
         Op::AssignDivide => ast::BinOp::AssignDiv.name(),
         Op::AssignBitAnd => ast::BinOp::AssignBitAnd.name(),
         Op::AssignBitOr => ast::BinOp::AssignBitOr.name(),
-        // Shared indexing is an array operation, not an overload call.
-        Op::Index => return Err((CapabilityError::OperatorDeclaration, span)),
+        Op::Index => "OperatorArray",
     };
     Ok(name)
 }

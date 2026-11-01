@@ -340,6 +340,38 @@ fn ordered_switch_dispatch_offsets_preserve_body_order() {
 }
 
 #[test]
+fn index_operator_backend_preserves_out_signature() {
+    let bundle = compile(
+        "struct Data {} class Host extends IScriptable { public var data: Data; } import function Receiver(): Host; import function Key(): String; import operator [](out data: Data, key: String): Bool; function Run(out data: Data): Bool { return data[\"key\"]; } function Ordered(): Bool { return Receiver().data[Key()]; }",
+    );
+    let operator = function(&bundle, "OperatorArray;OutDataString;Bool");
+    assert!(bundle[operator.parameters()[0]].flags().is_out());
+    let code = function(&bundle, "Run;OutData")
+        .body()
+        .code_iter()
+        .with_offsets()
+        .map(|(offset, instr)| (offset, instr.unwrap()))
+        .collect::<Vec<_>>();
+    call_position(&bundle, &code, "OperatorArray;OutDataString;Bool");
+    assert!(
+        !code.iter().any(|(_, instr)| matches!(
+            instr,
+            Instr::ArrayElement(_) | Instr::StaticArrayElement(_)
+        ))
+    );
+    let code = function(&bundle, "Ordered;")
+        .body()
+        .code_iter()
+        .with_offsets()
+        .map(|(offset, instr)| (offset, instr.unwrap()))
+        .collect::<Vec<_>>();
+    let receiver = call_position(&bundle, &code, "Receiver");
+    let key = call_position(&bundle, &code, "Key");
+    assert!(receiver < key);
+    call_position(&bundle, &code, "OperatorArray;OutDataString;Bool");
+}
+
+#[test]
 fn native_enum_storage_is_emitted_and_serialized() {
     let bundle = compile(
         "enum Narrow: Uint8 { A = 255 } enum Wide: Int64 { A = 0 } enum Word: Uint32 { A = 4294967295 }",

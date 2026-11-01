@@ -17,3 +17,12 @@ fn ordered_default_labels_roundtrip() {
         );
     }
 }
+
+#[test]
+fn index_operator_declaration_roundtrips() {
+    assert_preserved(
+        "func operator[](out value: Data, key: String) -> Bool { return true; }",
+        &FormatSettings::default(),
+        "index.reds",
+    );
+}

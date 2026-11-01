@@ -617,8 +617,9 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                     || (body.is_none() && qs.contains(ast::ItemQualifiers::NATIVE)) =>
             {
                 let is_cast = name == ident::CAST && func_t.params().len() == 1;
-                let is_operator =
-                    BinOp::from_name(name).is_some() || UnOp::from_name(name).is_some();
+                let is_operator = BinOp::from_name(name).is_some()
+                    || UnOp::from_name(name).is_some()
+                    || name == "OperatorArray";
                 let flags = FreeFunctionFlags::default()
                     .with_is_exec(qs.take_flag(ast::ItemQualifiers::EXEC))
                     .with_is_native(qs.take_flag(ast::ItemQualifiers::NATIVE))

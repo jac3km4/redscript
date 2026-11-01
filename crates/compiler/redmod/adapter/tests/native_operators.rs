@@ -121,6 +121,7 @@ fn operator_tokens_map_to_shared_names_without_changing_signatures() {
         ("/=", "OperatorAssignDivide"),
         ("&=", "OperatorAssignAnd"),
         ("|=", "OperatorAssignOr"),
+        ("[]", "OperatorArray"),
     ] {
         let source = format!("import operator {token}(out a, b: Int32): Float;");
         let sources = SourceMap::new();
@@ -351,11 +352,6 @@ fn malformed_signatures_and_unrepresented_dispatch_have_targeted_errors() {
             ),
             "global scope",
         ),
-        (
-            "operator [](a: Int32, b: Int32): Int32 {}",
-            CapabilityError::OperatorDeclaration,
-            "dispatch",
-        ),
     ] {
         let sources = SourceMap::new();
         let file = sources.push_back("operators.script", source);
@@ -365,6 +361,52 @@ fn malformed_signatures_and_unrepresented_dispatch_have_targeted_errors() {
         assert!(matches!(errors[0], Error::Capability { kind, .. } if kind == expected));
         assert!(errors[0].to_string().contains(message), "{errors:?}");
         assert_eq!(errors[0].span().file, file);
+    }
+}
+
+#[test]
+fn overloaded_index_uses_shared_calls_and_out_receiver_rules() {
+    let declaration =
+        "struct Data {} operator [](out data: Data, key: String): Bool { return true; }";
+    analyze(
+        &format!("{declaration} function Run(out data: Data): Bool {{ return data[\"key\"]; }}"),
+        "",
+        |unit, symbols, codes| {
+            assert!(codes.is_empty(), "{codes:?}");
+            assert!(returned_call(unit, symbols, "Run").starts_with("OperatorArray"));
+        },
+    );
+    analyze(
+        "function Run(out data: Data): Bool { return data[\"key\"]; }",
+        "struct Data {} func operator[](out data: Data, key: String) -> Bool { return true; }",
+        |unit, symbols, codes| {
+            assert!(codes.is_empty(), "{codes:?}");
+            assert!(returned_call(unit, symbols, "Run").starts_with("OperatorArray"));
+        },
+    );
+    analyze(
+        "function Run(out values: array<Int32>): Int32 { values[0] = 7; return values[0]; }",
+        "native func OperatorArray(out values: [Int32], key: Int32) -> Bool;",
+        |_, _, codes| {
+            assert!(
+                codes.is_empty(),
+                "built-in array places must not dispatch overloads: {codes:?}"
+            );
+        },
+    );
+    analyze(
+        "function Run(out values: Int32[2]): Int32 { values[0] = 7; return values[0]; }",
+        "",
+        |_, _, codes| assert!(codes.is_empty(), "{codes:?}"),
+    );
+    for body in ["data[\"key\"] = false;", "Make()[\"key\"];", "data[1];"] {
+        analyze(
+            &format!(
+                "{declaration} function Make(): Data {{ var data: Data; return data; }} function Run(out data: Data) {{ {body} }}"
+            ),
+            "",
+            |_, _, codes| assert!(!codes.is_empty(), "{body}"),
+        );
     }
 }
 

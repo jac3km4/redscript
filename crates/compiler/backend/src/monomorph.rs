@@ -1115,6 +1115,7 @@ impl<K> fmt::Display for MangledFreeFunction<'_, '_, K> {
         };
         write!(f, ";{}", MangledParams::new(self.func, self.env))?;
         if self.func.flags().is_cast()
+            || self.name.as_ref().last() == Some(&"OperatorArray")
             || (self.func.flags().is_operator()
                 && self
                     .func

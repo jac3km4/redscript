@@ -99,7 +99,13 @@ fn function<'tok, 'src: 'tok>(
     }
     .or_not()
     .then(
-        just(Token::Ident("func")).ignore_then(ident_with_span()),
+        just(Token::Ident("func")).ignore_then(
+            just(Token::Ident("operator"))
+                .ignore_then(just(Token::LBracket))
+                .then_ignore(just(Token::RBracket))
+                .map_with(|_, e| ("OperatorArray", e.span()))
+                .or(ident_with_span()),
+        ),
     )
     .then(type_params().or_not())
     .then(params)

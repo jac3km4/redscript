@@ -66,6 +66,7 @@ fn source_free_typed_calls_reject_user_lazy_parameters() {
         "native func OperatorAdd(skip lhs: Int32, rhs: Int32) -> Int32; func Test() -> Int32 { return 1 + 2; }",
         "native func Read(value: [Int32]) -> Bool; native func OperatorLogicAnd(skip lhs: Bool, rhs: Bool) -> Bool; func Test() -> Bool { return Read([1]) && true; }",
         "native func Read(value: [Int32]) -> Int32; native func OperatorEqual(skip lhs: Int32, rhs: Int32) -> Bool; func Test() -> Bool { return Read([1]) == 2; }",
+        "class Host {} native func Get(value: [Int32]) -> Host; native func OperatorArray(skip lhs: Host, rhs: Int32) -> Int32; func Test() -> Int32 { return Get([1])[0]; }",
     ] {
         let diagnostics = diagnostic_messages(source);
         assert!(
