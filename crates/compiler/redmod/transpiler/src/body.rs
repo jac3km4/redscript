@@ -12,7 +12,7 @@ pub(crate) struct Body<'a, 'ctx> {
     pub symbols: &'a Symbols<'ctx>,
     pub signature: &'a FunctionType<'ctx>,
     pub names: BTreeMap<ir::Local, String>,
-    pub callback: bool,
+
     pub wrapper: Option<MethodId<'ctx>>,
     result_local: String,
     inline_declarations: BTreeSet<ir::Local>,
@@ -23,7 +23,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         function: &'a LoweredFunction<'ctx>,
         symbols: &'a Symbols<'ctx>,
         signature: &'a FunctionType<'ctx>,
-        callback: bool,
+
         wrapper: Option<MethodId<'ctx>>,
     ) -> Result<Self> {
         if !signature.type_params().is_empty() {
@@ -105,7 +105,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             symbols,
             signature,
             names,
-            callback,
+
             wrapper,
             result_local,
             inline_declarations: crate::locals::inline_declarations(&function.block, symbols)?,
@@ -151,9 +151,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 ));
             }
         }
-        if (self.callback && *self.signature.return_type() != Type::nullary(predef::VOID))
-            || self.is_enum(self.signature.return_type())
-        {
+        if self.is_enum(self.signature.return_type()) {
             text.push_str(&format!(
                 "    var {}: {};\n",
                 self.result_local,
@@ -366,17 +364,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             ir::Stmt::Break(_) => text.push_str("break;\n"),
             ir::Stmt::Continue(_) => text.push_str("continue;\n"),
             ir::Stmt::Return(value, _) => {
-                if self.callback {
-                    if let Some(e) = value {
-                        // Evaluate even a lazy/side-effecting result before dropping it.
-                        text.push_str(&format!(
-                            "{} = {};\n{pad}",
-                            self.result_local,
-                            self.expr(e)?
-                        ));
-                    }
-                    text.push_str("return;\n");
-                } else if let Some(value) = value {
+                if let Some(value) = value {
                     if self.is_enum(self.signature.return_type()) {
                         text.push_str(&format!(
                             "{} = {};\n{pad}return {};\n",

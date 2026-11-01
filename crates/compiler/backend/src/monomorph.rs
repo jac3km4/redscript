@@ -732,6 +732,14 @@ impl<'ctx> Monomorphizer<'ctx> {
                 .map(|id| &symbols[symbols.override_slot(id)]);
             let mangled = MangledMethod::new(entry.name(), &sig, func, base, &cls_env).to_string();
             let method = self.add_method_to_pool(mangled, func, cls_idx, &cls_env, symbols, bundle);
+            // Callback dispatch retains the inherited slot in serialized metadata.
+            if func.flags().is_callback()
+                && let Some(base) = func.overriden()
+                && let Some(base_type) = typ.instantiate_as(base.parent(), symbols)
+            {
+                let base_index = self.mono_method(&base_type, base.index(), symbols, bundle);
+                bundle[method] = bundle[method].clone().with_base_method(Some(base_index));
+            }
 
             bundle[cls_idx].add_method(method);
             methods.insert(*entry.key(), method);

@@ -4,6 +4,6 @@ class Base {
 class Child extends Base {
   event OnAttach() { return; }
 }
-class BadReturn {
+class ValueReturn {
   event OnValue() { return true; }
 }

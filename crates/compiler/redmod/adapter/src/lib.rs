@@ -96,21 +96,78 @@ impl fmt::Display for ConditionError {
     }
 }
 
-fn normalize_events(items: &mut [(redscript_community_ast::SourceItemDecl<'_>, Span)]) {
+fn normalize_events(
+    items: &mut [(redscript_community_ast::SourceItemDecl<'_>, Span)],
+    native_aggregate: bool,
+) {
     use redscript_community_ast as ast;
     for (decl, _) in items {
         match &mut decl.item {
             ast::Item::Class(aggregate) | ast::Item::Struct(aggregate) => {
-                normalize_events(&mut aggregate.items);
+                normalize_events(
+                    &mut aggregate.items,
+                    decl.qualifiers
+                        .intersects(ast::ItemQualifiers::NATIVE | ast::ItemQualifiers::IMPORT_ONLY),
+                );
             }
             ast::Item::Function(function)
                 if decl.qualifiers.contains(ast::ItemQualifiers::CALLBACK) =>
             {
-                // The shared frontend infers omitted returns. A source event is always
-                // Void, including bodies that erroneously return a value.
-                function.return_type = Some(Box::new((ast::Type::plain("Void"), function.name.1)));
+                // REDmod events have a Bool slot even with an empty body. Official
+                // fallthrough emits no return value; do not synthesize `false`.
+                function.return_type = Some(Box::new((ast::Type::plain("Bool"), function.name.1)));
+                // A semicolon event in a script class is an empty implementation,
+                // unlike a callback prototype declared by an imported class.
+                // Importonly types cannot acquire scripted implementations either.
+                if !native_aggregate && function.body.is_none() {
+                    function.body = Some(ast::FunctionBody::Block(ast::Block::new([])));
+                }
             }
             _ => {}
+        }
+    }
+}
+
+// Official event bodies terminate with Nop, not a synthesized Bool return.
+// Keep this dialect fixup out of the backend so community callbacks are unchanged.
+fn finish_events<'ctx>(
+    unit: &mut LoweredCompilationUnit<'ctx>,
+    symbols: &Symbols<'ctx>,
+    files: &HashSet<FileId>,
+) {
+    use redscript_compiler_frontend::{MethodId, ir};
+    let finish = |function: &mut redscript_compiler_frontend::LoweredFunction<'ctx>| {
+        if files.contains(&function.span.file) {
+            function
+                .block
+                .stmts
+                .push_back(ir::Stmt::Expr(Box::new(ir::Expr::Nop(function.span))));
+        }
+    };
+    for (id, class) in &mut unit.classes {
+        for (index, function) in &mut class.methods {
+            if symbols[MethodId::new(*id, *index)].flags().is_callback() {
+                finish(function);
+            }
+        }
+    }
+    for (id, function) in &mut unit.added_methods {
+        if symbols[*id].flags().is_callback()
+            && let Some(function) = function
+        {
+            finish(function);
+        }
+    }
+    for (id, function) in &mut unit.method_replacements {
+        if symbols[*id].flags().is_callback() {
+            finish(function);
+        }
+    }
+    for (id, functions) in &mut unit.method_wrappers {
+        if symbols[*id].flags().is_callback() {
+            for function in functions {
+                finish(function);
+            }
         }
     }
 }
@@ -189,7 +246,7 @@ pub fn process_sources<'ctx>(
     let dependencies: Vec<_> = dependencies.into_iter().collect();
     conditions::select(&mut modules, &dependencies, &mut errors);
     for parsed in &mut modules {
-        normalize_events(&mut parsed.module.items);
+        normalize_events(&mut parsed.module.items, false);
     }
     let overrides: HashSet<_> = modules
         .iter()
@@ -215,7 +272,8 @@ pub fn process_sources<'ctx>(
         sources, symbols, evaluator, reporter, interner, &policies,
     );
     control_flow::apply(&mut unit, &control_flow, &mut errors);
-    let files = files.into_iter().collect();
+    let files: HashSet<_> = files.into_iter().collect();
+    finish_events(&mut unit, &symbols, &files);
     validate::overrides(&unit, &symbols, &files, &overrides, &mut errors);
     persistent::validate(&unit, &symbols, &files, &mut errors);
     (unit, symbols, errors)

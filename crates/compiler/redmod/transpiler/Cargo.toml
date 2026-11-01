@@ -10,6 +10,7 @@ redscript-community-ast.workspace = true
 redscript-compiler-frontend.workspace = true
 
 [dev-dependencies]
+redscript-redmod-adapter.workspace = true
 redscript-community-parser.workspace = true
 redscript-compiler-api.workspace = true
 insta.workspace = true

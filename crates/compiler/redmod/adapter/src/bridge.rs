@@ -456,8 +456,11 @@ impl<'src> Bridge<'src> {
                 {
                     qualifiers |= ast::ItemQualifiers::FINAL;
                 }
-                let body = if aggregate
-                    && body.is_none()
+                let body = if body.is_none()
+                    && (aggregate
+                        || return_type.as_ref().is_none_or(|(typ, _)| {
+                            matches!(typ, native::Type::Named { name: "Void", args } if args.is_empty())
+                        }))
                     && !qualifiers
                         .intersects(ast::ItemQualifiers::NATIVE | ast::ItemQualifiers::CALLBACK)
                 {

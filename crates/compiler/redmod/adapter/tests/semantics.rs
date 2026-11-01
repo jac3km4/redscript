@@ -198,13 +198,18 @@ fn explicit_community_intrinsics_and_temporary_arrays_are_rejected() {
 }
 
 #[test]
-fn events_have_void_signatures_without_override_requirements() {
+fn events_have_bool_signatures_without_override_requirements() {
     let (errors, _) = check(
-        "class Base { event OnAttach() {} } class Child extends Base { event OnAttach() { return; } }",
+        "class Base { event OnAttach() {} } class Child extends Base { event OnAttach() { return true; } }",
     );
     assert!(errors.is_empty(), "{errors:?}");
-    let (errors, _) = check("class EventOwner { event OnAttach() { return true; } }");
-    assert!(!errors.is_empty(), "event return must not infer Bool");
+    let (errors, _) = check("class EventOwner { event OnAttach() { return; } }");
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.contains("Void") && e.contains("Bool")),
+        "{errors:?}"
+    );
 }
 
 #[test]
@@ -216,7 +221,7 @@ fn bare_class_values_do_not_acquire_a_strong_wrapper() {
 }
 
 #[test]
-fn non_void_community_callbacks_are_not_silently_adopted() {
+fn bool_community_callbacks_are_compatible_with_events() {
     let sources = SourceMap::new();
     let dependency = "class Base { protected cb func OnAttach() -> Bool { return true; } }";
     let dep_id = sources.push_back("base.reds", dependency);
@@ -235,12 +240,8 @@ fn non_void_community_callbacks_are_not_silently_adopted() {
         &mut reporter,
         &interner,
     );
-    assert!(
-        errors
-            .iter()
-            .any(|error| error.to_string().contains("non-Void")),
-        "{errors:?}"
-    );
+    assert!(errors.is_empty(), "{errors:?}");
+    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
 }
 
 #[test]

@@ -11,6 +11,85 @@ use redscript_redmod_transpiler::validate::OfficialValidator;
 
 #[test]
 #[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]
+fn semicolon_event_contracts_with_official_compiler() {
+    let validator = OfficialValidator {
+        executable: PathBuf::from(std::env::var_os("REDMOD_EXE").expect("set REDMOD_EXE")),
+        timeout: Duration::from_secs(60),
+    };
+    let root = PathBuf::from(std::env::var_os("REDMOD_GAME_ROOT").expect("set REDMOD_GAME_ROOT"));
+    let parent = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../target/parity-integration/official-events")
+        .join(format!(
+            "{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+    let sources = SourceMap::new();
+    let selected = sources.push_back("callback.reds", "class ReviewBoolCallback { protected cb func OnReview(value: Bool) -> Bool { if value { return false; } return value; } }");
+    sources.populate_boot_lib();
+    let interner = TypeInterner::default();
+    let output = transpile_sources(
+        &sources,
+        &[selected],
+        Symbols::with_default_types(),
+        &interner,
+    )
+    .unwrap();
+    for (name, source, accepted) in [
+        ("TranspiledBoolEvent", output[0].module.text.as_str(), true),
+        (
+            "ScriptEvent",
+            "class ReviewScriptEvent extends IScriptable { protected event OnReview(); }",
+            true,
+        ),
+        (
+            "ImportOnlyEvent",
+            "importonly class ReviewImportOnlyEvent extends IScriptable { protected event OnReview(); }",
+            false,
+        ),
+        ("FreePrototype", "function ReviewFreePrototype();", true),
+        (
+            "FreeVoidPrototype",
+            "function ReviewFreeVoidPrototype(): Void;",
+            true,
+        ),
+        (
+            "FreeValuePrototype",
+            "function ReviewFreeValuePrototype(): Bool;",
+            false,
+        ),
+    ] {
+        let directory = parent.join(name);
+        std::fs::create_dir_all(directory.join("r6/scripts")).unwrap();
+        std::fs::write(directory.join("r6/scripts/authored.script"), source).unwrap();
+        let result = validator.validate_with_root(&directory, &root);
+        println!("{name}: {}\n{result:?}", directory.display());
+        assert_eq!(result.is_ok(), accepted, "{name}: {result:?}");
+        if name == "FreeValuePrototype" {
+            assert!(
+                result
+                    .as_ref()
+                    .unwrap_err()
+                    .to_string()
+                    .contains("must return a value")
+            );
+        }
+        if name == "ImportOnlyEvent" {
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("cannot have scripted properties nor methods")
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]
 fn authored_transpiled_sources_compile_with_official_compiler() {
     let executable = PathBuf::from(std::env::var_os("REDMOD_EXE").expect("set REDMOD_EXE"));
     let game_root =

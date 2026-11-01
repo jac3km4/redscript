@@ -39,8 +39,11 @@ Unconditional first assignments and non-array defaults merge with their local
 declarations at the existing execution site when no earlier or self-reference
 exists. Other declarations remain hoisted: branch/loop initialization, array
 resize/clear operations and repeated default resets are never moved or dropped.
-Callback return expressions execute into discard locals; calls relying on callback
-results are rejected.
+Callbacks require a non-const Bool return contract, matching REDmod's implicit
+Bool events. Their return expressions are preserved, not evaluated into discard
+locals followed by invalid bare returns. Void and other community callback result
+contracts fail with a source diagnostic rather than silently changing their ABI.
+Calls relying on callback results remain rejected.
 Every intrinsic is classified explicitly rather than emitted as an ordinary call.
 
 ### Literal conventions

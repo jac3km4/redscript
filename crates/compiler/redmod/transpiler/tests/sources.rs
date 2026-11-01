@@ -9,6 +9,131 @@ use redscript_redmod_transpiler::validate::OfficialValidator;
 use redscript_redmod_transpiler::{analyze_sources, transpile_sources};
 
 #[test]
+fn bool_callbacks_roundtrip_through_adapter_semantics() {
+    use redscript_compiler_frontend::{Type, ir, predef};
+    let sources = SourceMap::new();
+    let selected = sources.push_back("callback.reds", "class Listener { protected cb func OnProbe(value: Bool) -> Bool { if value { return false; } return value; } }");
+    sources.populate_boot_lib();
+    let interner = TypeInterner::default();
+    let output = transpile_sources(
+        &sources,
+        &[selected],
+        Symbols::with_default_types(),
+        &interner,
+    )
+    .unwrap();
+    let text = &output[0].module.text;
+    assert!(text.contains("return false;"), "{text}");
+    assert!(text.contains("return value;"), "{text}");
+    assert!(!text.contains("return;"), "{text}");
+    let target_sources = SourceMap::new();
+    target_sources.populate_boot_lib();
+    let file = target_sources.push_back("callback.script", text.clone());
+    let (parsed, errors) = redscript_redmod_adapter::parse_file_with_metadata(text, file);
+    assert!(errors.is_empty(), "{errors:?}");
+    let dependencies = target_sources
+        .files()
+        .filter(|(id, _)| *id != file)
+        .map(|(id, source)| {
+            let (module, errors) = redscript_community_parser::parse_module(source.source(), id);
+            assert!(errors.is_empty(), "{errors:?}");
+            module.unwrap()
+        })
+        .collect::<Vec<_>>();
+    let mut reporter = redscript_compiler_frontend::CompileErrorReporter::default();
+    let (unit, symbols, errors) = redscript_redmod_adapter::process_sources(
+        parsed,
+        dependencies,
+        Symbols::with_default_types(),
+        &mut reporter,
+        &interner,
+    );
+    assert!(errors.is_empty(), "{errors:?}");
+    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+    let id = interner.intern("Listener");
+    let method = symbols[id]
+        .schema()
+        .as_aggregate()
+        .unwrap()
+        .methods()
+        .iter()
+        .next()
+        .unwrap();
+    assert!(method.func().flags().is_callback());
+    assert_eq!(
+        *method.func().type_().return_type(),
+        Type::nullary(predef::BOOL)
+    );
+    let body = &unit.classes[&id].methods[method.key()].block;
+    assert!(
+        matches!(&body.stmts[1], ir::Stmt::Return(Some(value), _) if matches!(&**value, ir::Expr::Local(..))),
+        "{body:?}"
+    );
+    let ir::Stmt::Branches { branches, .. } = &body.stmts[0] else {
+        panic!("{body:?}")
+    };
+    assert!(
+        matches!(&branches[0].block.stmts[0], ir::Stmt::Return(Some(value), _) if matches!(&**value, ir::Expr::Const(ir::Const::Bool(false), _)))
+    );
+}
+
+#[test]
+fn incompatible_callback_contracts_fail_without_output() {
+    for declaration in [
+        "protected cb func OnProbe() {}",
+        "protected cb func OnProbe() -> Int32 { return 1; }",
+        "protected cb func OnProbe() -> const Bool { return true; }",
+    ] {
+        let sources = SourceMap::new();
+        let selected = sources.push_back(
+            "callback.reds",
+            format!("class Listener {{ {declaration} }}"),
+        );
+        sources.populate_boot_lib();
+        let interner = TypeInterner::default();
+        let errors = transpile_sources(
+            &sources,
+            &[selected],
+            Symbols::with_default_types(),
+            &interner,
+        )
+        .unwrap_err();
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.message.contains("Bool callback return contract")),
+            "{declaration}: {errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .all(|e| e.span.is_some_and(|s| s.file == selected)),
+            "{errors:?}"
+        );
+    }
+    let sources = SourceMap::new();
+    let selected = sources.push_back(
+        "prototype.reds",
+        "native class Listener { protected cb func OnProbe(); }",
+    );
+    sources.populate_boot_lib();
+    let interner = TypeInterner::default();
+    let errors = transpile_sources(
+        &sources,
+        &[selected],
+        Symbols::with_default_types(),
+        &interner,
+    )
+    .unwrap_err();
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.message.contains("Bool callback return contract")),
+        "{errors:?}"
+    );
+}
+
+#[test]
 fn selected_sources_need_no_manual_bindings() {
     let sources = SourceMap::new();
     sources.push_back(

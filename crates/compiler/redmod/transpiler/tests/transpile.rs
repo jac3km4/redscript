@@ -661,11 +661,13 @@ func Test(flag: Bool) -> Int32 {
 }
 
 #[test]
-fn callback_return_effects_are_evaluated_and_result_removed() {
+fn callback_bool_returns_are_preserved() {
     let output = convert(
         "func Effect() -> Bool = true class Widget { protected cb func OnEvent() -> Bool { return Effect(); } }",
     );
-    insta::assert_snapshot!(output);
+    assert!(output.contains("return Effect();"), "{output}");
+    assert!(!output.contains("__rst_result"), "{output}");
+    assert!(!output.contains("return;"), "{output}");
 }
 
 #[test]

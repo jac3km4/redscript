@@ -241,10 +241,57 @@ fn imported_event_prototypes_are_non_native_callbacks_without_lowered_bodies() {
 }
 
 #[test]
-fn free_scripted_and_importonly_prototypes_still_require_bodies() {
+fn free_void_semicolon_is_an_empty_implementation() {
+    for source in ["function OnReady();", "function OnReady(): Void;"] {
+        let errors = analyze(source, "", |unit, _, _| {
+            assert_eq!(unit.functions.len(), 1);
+            assert!(
+                unit.functions
+                    .values()
+                    .next()
+                    .unwrap()
+                    .block
+                    .stmts
+                    .is_empty()
+            );
+        });
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+}
+
+#[test]
+fn scripted_event_semicolon_is_an_empty_bool_implementation() {
+    let errors = analyze(
+        "class Listener { protected event OnReady(); }",
+        "",
+        |unit, symbols, interner| {
+            let id = interner.intern("Listener");
+            let method = symbols[id]
+                .schema()
+                .as_aggregate()
+                .unwrap()
+                .methods()
+                .iter()
+                .next()
+                .unwrap();
+            assert!(method.func().flags().is_callback());
+            assert!(!method.func().flags().is_unimplemented());
+            assert_eq!(method.func().type_().return_type().to_string(), "Bool");
+            let body = &unit.classes[&id].methods[method.key()].block;
+            assert_eq!(body.stmts.len(), 1);
+            assert!(
+                matches!(&body.stmts[0], redscript_compiler_frontend::ir::Stmt::Expr(expr) if matches!(&**expr, redscript_compiler_frontend::ir::Expr::Nop(_))),
+                "{body:?}"
+            );
+        },
+    );
+    assert!(errors.is_empty(), "{errors:?}");
+}
+
+#[test]
+fn value_returning_free_and_importonly_prototypes_are_rejected() {
     for (source, dependency) in [
-        ("function OnReady();", ""),
-        ("class Listener { protected event OnReady(); }", ""),
+        ("function OnReady(): Bool;", ""),
         (
             "importonly class Listener { protected event OnReady(); }",
             "",
@@ -252,6 +299,9 @@ fn free_scripted_and_importonly_prototypes_still_require_bodies() {
     ] {
         let errors = analyze(source, dependency, |_, _, _| {});
         assert_eq!(errors.len(), 1, "{errors:?}");
-        assert!(errors[0].contains("body"), "{errors:?}");
+        assert!(
+            errors[0].contains("body") || errors[0].contains("importonly"),
+            "{errors:?}"
+        );
     }
 }

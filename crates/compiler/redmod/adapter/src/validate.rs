@@ -418,7 +418,7 @@ pub fn overrides<'ctx>(
             && symbols[id].flags().is_callback()
             && symbols[id].type_().return_type()
                 != &redscript_compiler_frontend::Type::nullary(
-                    redscript_compiler_frontend::predef::VOID,
+                    redscript_compiler_frontend::predef::BOOL,
                 )
         {
             errors.push(Error::semantic(

@@ -1148,6 +1148,7 @@ dependencies = [
  "redscript-community-parser",
  "redscript-compiler-api",
  "redscript-compiler-frontend",
+ "redscript-redmod-adapter",
  "redscript-redmod-parser",
 ]
 

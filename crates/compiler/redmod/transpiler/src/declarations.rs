@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use redscript_community_ast::{self as ast, Item, ItemQualifiers as Q, SourceItemDecl, Span};
 use redscript_compiler_frontend::{
-    FunctionType, LoweredCompilationUnit, Symbols, Type, TypeSchema, ir,
+    FunctionType, LoweredCompilationUnit, Symbols, Type, TypeSchema, ir, predef,
 };
 
 use crate::body::{Body, constant};
@@ -321,8 +321,17 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                 if callback && !member && !patch {
                     return Err(error("callback requires member context", None));
                 }
+                if callback
+                    && (*signature.return_type() != Type::nullary(predef::BOOL)
+                        || signature.is_const_return())
+                {
+                    return Err(error(
+                        "REDmod events require a non-const Bool callback return contract",
+                        Some(span),
+                    ));
+                }
                 let body = body
-                    .map(|body| Body::new(body, self.symbols, signature, callback, wrapper))
+                    .map(|body| Body::new(body, self.symbols, signature, wrapper))
                     .transpose()?;
                 if override_ && !callback {
                     self.output.text.push_str("override ");

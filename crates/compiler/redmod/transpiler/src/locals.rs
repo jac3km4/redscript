@@ -316,7 +316,7 @@ mod tests {
             properties: redscript_compiler_frontend::ast::FunctionProperties::default(),
         };
         let signature = FunctionType::default();
-        let (text, _) = crate::body::Body::new(&function, &symbols, &signature, false, None)
+        let (text, _) = crate::body::Body::new(&function, &symbols, &signature, None)
             .unwrap()
             .emit()
             .unwrap();
