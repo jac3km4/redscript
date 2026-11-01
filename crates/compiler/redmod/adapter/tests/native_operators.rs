@@ -352,11 +352,6 @@ fn malformed_signatures_and_unrepresented_dispatch_have_targeted_errors() {
             "global scope",
         ),
         (
-            "implicit cast(a: Int32): Float {}",
-            CapabilityError::ConversionDeclaration,
-            "implicit conversion",
-        ),
-        (
             "operator [](a: Int32, b: Int32): Int32 {}",
             CapabilityError::OperatorDeclaration,
             "dispatch",

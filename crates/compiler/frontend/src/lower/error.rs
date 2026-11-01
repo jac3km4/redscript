@@ -67,7 +67,7 @@ pub enum Error<'ctx> {
     )]
     UnknownStaticCastType(Span),
     #[error(
-        "native conversion declaration dispatch is not supported; its official selection semantics are not established"
+        "conversion declaration dispatch is not supported; its official selection semantics are not established"
     )]
     UnsupportedNativeConversion(Span),
     #[error("invalid number of type arguments: expected {0}, found {1}")]

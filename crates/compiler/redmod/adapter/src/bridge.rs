@@ -27,7 +27,7 @@ pub enum CapabilityError {
     InitializedLocalGroup,
     FieldGroup,
     OperatorDeclaration,
-    ConversionDeclaration,
+
     InvalidOperatorSignature(&'static str),
     InvalidConversionSignature(&'static str),
     EnumStorage,
@@ -73,9 +73,7 @@ impl fmt::Display for CapabilityError {
             Self::OperatorDeclaration => {
                 "this operator declaration has no supported shared dispatch representation"
             }
-            Self::ConversionDeclaration => {
-                "implicit conversion selection is not supported; use an explicit cast declaration"
-            }
+
             Self::InvalidOperatorSignature(message) | Self::InvalidConversionSignature(message) => {
                 message
             }
@@ -383,6 +381,14 @@ impl<'src> Bridge<'src> {
                 const_return,
                 body,
             } => {
+                let conversion = match &kind {
+                    native::FunctionKind::Cast { implicit, .. } => Some(if implicit.is_some() {
+                        ast::ConversionKind::Implicit
+                    } else {
+                        ast::ConversionKind::Explicit
+                    }),
+                    _ => None,
+                };
                 let name = match kind {
                     native::FunctionKind::Function(name) => name,
                     native::FunctionKind::Event(name) => {
@@ -402,10 +408,7 @@ impl<'src> Bridge<'src> {
                         }
                         (name, span)
                     }
-                    native::FunctionKind::Cast { implicit, span } => {
-                        if implicit.is_some() {
-                            return Err((CapabilityError::ConversionDeclaration, span));
-                        }
+                    native::FunctionKind::Cast { span, .. } => {
                         if aggregate {
                             return Err((
                                 CapabilityError::InvalidConversionSignature(
@@ -506,6 +509,7 @@ impl<'src> Bridge<'src> {
                         return_type.map(|ty| Box::new(typ(ty))),
                         body,
                     )
+                    .with_conversion(conversion)
                     .with_const_return(const_return.is_some()),
                 )
             }

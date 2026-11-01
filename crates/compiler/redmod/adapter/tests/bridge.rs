@@ -134,8 +134,7 @@ fn native_only_declarations_and_expressions_are_checked_without_placeholders() {
             redscript_redmod_adapter::bridge::lower(module),
             Err((
                 CapabilityError::InvalidOperatorSignature(_)
-                    | CapabilityError::InvalidConversionSignature(_)
-                    | CapabilityError::ConversionDeclaration,
+                    | CapabilityError::InvalidConversionSignature(_),
                 _
             ))
         ));

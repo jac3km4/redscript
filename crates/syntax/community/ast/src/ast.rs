@@ -284,10 +284,18 @@ impl<'src, K: AstKind> Field<'src, K> {
     }
 }
 
+/// Authored conversion intent, independent of whether dispatch is supported.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConversionKind {
+    Explicit,
+    Implicit,
+}
+
 /// Declaration properties independent of method and parameter qualifiers.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct FunctionProperties<'src> {
     pub is_const_return: bool,
+    pub conversion: Option<ConversionKind>,
     /// Authored profiling label. REDmod currently emits only its presence.
     pub profile: Option<Cow<'src, str>>,
 }
@@ -318,6 +326,11 @@ impl<'src, K: AstKind> Function<'src, K> {
             body,
             properties: FunctionProperties::default(),
         }
+    }
+
+    pub fn with_conversion(mut self, conversion: Option<ConversionKind>) -> Self {
+        self.properties.conversion = conversion;
+        self
     }
 
     pub fn with_const_return(mut self, is_const_return: bool) -> Self {

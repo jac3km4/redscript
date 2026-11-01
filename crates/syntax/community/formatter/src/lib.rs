@@ -344,6 +344,13 @@ impl<K: AstKind> Formattable for Field<'_, K> {
 
 impl<K: AstKind> Formattable for Function<'_, K> {
     fn format(&self, f: &mut fmt::Formatter<'_>, ctx: FormatCtx<'_>) -> fmt::Result {
+        if let Some(conversion) = self.properties.conversion {
+            let qualifier = match conversion {
+                redscript_community_ast::ConversionKind::Explicit => "explicit",
+                redscript_community_ast::ConversionKind::Implicit => "implicit",
+            };
+            write!(f, "{qualifier} ")?;
+        }
         write!(f, "func {}", self.name.as_wrapped())?;
         if !self.type_params.is_empty() {
             write!(

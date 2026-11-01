@@ -58,6 +58,10 @@ impl<'ctx> FunctionType<'ctx> {
         self.properties.is_const_return
     }
 
+    pub fn conversion(&self) -> Option<redscript_community_ast::ConversionKind> {
+        self.properties.conversion
+    }
+
     pub fn with_params(self, params: impl Into<Box<[Param<'ctx>]>>) -> Self {
         Self {
             params: params.into(),

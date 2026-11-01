@@ -157,6 +157,12 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         .with_has_implicit_visibility(item.visibility.is_none());
 
                     let (func_t, type_scope) = self.create_function_env(&func, &types);
+                    if func_t.conversion().is_some() {
+                        self.reporter.report(Diagnostic::UnexpectedItem(
+                            "conversion declarations must be free functions",
+                            name_span,
+                        ));
+                    }
                     let callback_prototype =
                         cls_flags.is_native() && !cls_flags.is_import_only() && flags.is_callback();
                     if func.body.is_none()
@@ -411,6 +417,7 @@ pub(super) fn extract_static_forwarder<'ctx>(
     span: Span,
 ) -> Option<Method<'ctx>> {
     if func_t.is_valid()
+        && func_t.conversion().is_none()
         && flags.is_static()
         && func_t.type_params().is_empty()
         && let [fst, rem @ ..] = func_t.params()

@@ -468,6 +468,8 @@ fn load_function_type<'ctx>(
     let return_t = typ.unwrap_or_else(|| Type::nullary(predef::VOID));
     let properties = redscript_compiler_frontend::ast::FunctionProperties {
         is_const_return: func.is_const_return(),
+        // Bundles do not retain authored explicit/implicit declaration intent.
+        conversion: None,
         // The runtime marker does not retain an authored label. Only inspect the
         // leading marker; dependency loading must not start decoding whole bodies.
         profile: match func.body().code_iter().next() {

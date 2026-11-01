@@ -82,7 +82,10 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             && (!env.types().policy(call_span).implicit_members || env.locals().get(name).is_none())
             && let mut candidates = env
                 .query_free_functions(name, self.symbols)
-                .filter(|entry| name != "Cast" || conversion_is_eligible(entry.func(), env))
+                .filter(|entry| {
+                    entry.func().type_().conversion().is_none()
+                        && (name != "Cast" || conversion_is_eligible(entry.func(), env))
+                })
                 .peekable()
             && candidates.peek().is_some()
         {
@@ -495,6 +498,9 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         let mut filtered = candidates
             .into_iter()
             .filter(|f| {
+                if f.func().type_().conversion().is_some() {
+                    return false;
+                }
                 if !f.func().type_().is_valid() {
                     invalid_signature = true;
                     return false;
@@ -659,6 +665,9 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         let mut arg_ranges = Vec::new();
         let mut invalid_signature = false;
         let candidates = candidates.into_iter().filter(|entry| {
+            if entry.func().type_().conversion().is_some() {
+                return false;
+            }
             if !entry.func().type_().is_valid() {
                 invalid_signature = true;
                 return false;
@@ -668,7 +677,8 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         });
         let mut matches = match_by_subtype(candidates, arg_types, args, self.symbols).peekable();
         let fallback = fallback.filter(|entry| {
-            entry.func().type_().is_valid()
+            entry.func().type_().conversion().is_none()
+                && entry.func().type_().is_valid()
                 && (entry.func().type_().min_args()..=entry.func().type_().max_args())
                     .contains(&args.len())
         });
@@ -813,7 +823,17 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             }
             _ => {}
         }
-        let name = match lhs.coerce(&rhs, self.symbols).with_span(span)? {
+        let coercion = lhs
+            .coerce(&rhs, self.symbols)
+            .with_span(span)
+            .map_err(|error| {
+                if unsupported_implicit_conversion(&lhs, &rhs, env, self.symbols) {
+                    Error::UnsupportedNativeConversion(span)
+                } else {
+                    error
+                }
+            })?;
+        let name = match coercion {
             Some(Coercion::FromRef(RefType::Weak)) => ir::Intrinsic::WeakRefToRef,
             Some(Coercion::IntoRef(RefType::Weak)) => ir::Intrinsic::RefToWeakRef,
             Some(Coercion::FromRef(RefType::Script)) => ir::Intrinsic::Deref,
@@ -993,12 +1013,39 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
     }
 }
 
+// Diagnostic attribution only: no chaining, reference erasure, generic inference,
+// or numeric ranking. Never use this relation to select a conversion.
+fn unsupported_implicit_conversion<'ctx>(
+    source: &PolyType<'ctx>,
+    target: &PolyType<'ctx>,
+    env: &Env<'_, 'ctx>,
+    symbols: &Symbols<'ctx>,
+) -> bool {
+    env.query_free_functions("Cast", symbols).any(|entry| {
+        let typ = entry.func().type_();
+        if !typ.is_valid()
+            || typ.conversion() != Some(ast::ConversionKind::Implicit)
+            || !typ.type_params().is_empty()
+        {
+            return false;
+        }
+        let [param] = typ.params() else { return false };
+        source
+            .coalesce(symbols)
+            .is_ok_and(|source| source == *param.type_())
+            && target
+                .coalesce(symbols)
+                .is_ok_and(|target| target == *typ.return_type())
+    })
+}
+
 fn conversion_is_eligible(function: &crate::FreeFunction<'_>, env: &Env<'_, '_>) -> bool {
-    // Keep declarations queryable, but do not select native-source conversions
-    // until their dispatch semantics have been established with official fixtures.
-    !function
-        .span()
-        .is_some_and(|span| env.types().policy(span).native_object_cast)
+    // Retain authored intent in every dialect without making declarations ordinary
+    // Cast overloads. Imported and scripted dispatch require separate evidence.
+    function.type_().conversion().is_none()
+        && !function
+            .span()
+            .is_some_and(|span| env.types().policy(span).native_object_cast)
 }
 
 // Eligibility must remain read-only: logical truthiness fallback uses this before
@@ -1010,7 +1057,8 @@ pub(super) fn accepts_typed_args<'a, 'ctx: 'a>(
     symbols: &Symbols<'ctx>,
 ) -> bool {
     let typ = function.type_();
-    typ.is_valid()
+    typ.conversion().is_none()
+        && typ.is_valid()
         && (typ.min_args()..=typ.max_args()).contains(&arg_types.len())
         && arg_types.len() == args.len()
         && arg_types

@@ -93,18 +93,25 @@ fn function<'tok, 'src: 'tok>(
             .map(|e| FunctionBody::Inline(e.into())),
     ));
 
-    just(Token::Ident("func"))
-        .ignore_then(ident_with_span())
-        .then(type_params().or_not())
-        .then(params)
-        .then(
-            just(Token::Arrow)
-                .ignore_then(just(Token::Ident("const")).or_not().then(ty))
-                .or_not(),
-        )
-        .then(function_body.or_not())
-        .then_ignore(just(Token::Semicolon).or_not())
-        .map(|((((name, type_params), params), ret_ty), body)| {
+    select! {
+        Token::Ident("explicit") => redscript_community_ast::ConversionKind::Explicit,
+        Token::Ident("implicit") => redscript_community_ast::ConversionKind::Implicit,
+    }
+    .or_not()
+    .then(
+        just(Token::Ident("func")).ignore_then(ident_with_span()),
+    )
+    .then(type_params().or_not())
+    .then(params)
+    .then(
+        just(Token::Arrow)
+            .ignore_then(just(Token::Ident("const")).or_not().then(ty))
+            .or_not(),
+    )
+    .then(function_body.or_not())
+    .then_ignore(just(Token::Semicolon).or_not())
+    .map(
+        |(((((conversion, name), type_params), params), ret_ty), body)| {
             Function::new(
                 name,
                 type_params.unwrap_or_default(),
@@ -112,9 +119,11 @@ fn function<'tok, 'src: 'tok>(
                 ret_ty.as_ref().map(|(_, ty)| Box::new(ty.clone())),
                 body,
             )
+            .with_conversion(conversion)
             .with_const_return(ret_ty.is_some_and(|(qualifier, _)| qualifier.is_some()))
-        })
-        .erased()
+        },
+    )
+    .erased()
 }
 
 fn field<'tok, 'src: 'tok>(

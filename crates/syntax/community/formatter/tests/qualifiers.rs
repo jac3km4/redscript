@@ -9,6 +9,10 @@ fn shared_qualifiers_round_trip() {
 }
 
 native func Lazy(lhs: Bool, skip rhs: Bool) -> Bool;
+
+native implicit func Cast(value: Uint8) -> Float;
+
+native explicit func Cast(value: Int8) -> Float;
 "#;
     let settings = FormatSettings::default();
     let sources = SourceMap::new();
