@@ -20,7 +20,7 @@ cargo run -p redscript-redmod-adapter --locked --example semantic_corpus -- 'D:/
 ```
 
 The default is `target/redmod-semantic-corpus/`, relative to the working directory.
-The example overwrites its five report files but does not clear the directory.
+The example overwrites its seven report files but does not clear the directory.
 Use a disposable, ignored directory; reports may contain game identifiers and
 local paths. No additional packages, installation, environment variables, or game
 executables are required. `--help` prints the CLI contract.
@@ -70,6 +70,8 @@ names are corpus-relative with `/` separators. The root is recorded in the summa
 | `aggregate.tsv` | Counts and distinct files grouped by stage, typed code, adapter reason and severity; up to three exact file/line/column examples and one message |
 | `diagnostics.tsv` | Every diagnostic, including full message, stage, code, reason, severity, file, 1-based line/Unicode-scalar column, and half-open byte offsets |
 | `diagnostics.log` | All full messages with editor-friendly `file:line:column` locations and byte spans; no source snippets |
+| `coverage.tsv` | Per-file bridged declarations, signature flags, explicit/retained bodies and written/mapped expression counts; unavailable AST totals are `NA` |
+| `expression_queries.tsv` | Exact written spans observed in retained IR, conservative query outcome, mixed-outcome flag and query reasons |
 
 TSV cells escape backslashes, tabs, CR and LF. Shared codes are retained rather
 than collapsed into the IDE wrapper's `OTHER` code. Adapter reasons retain enum
@@ -78,7 +80,7 @@ Shared `ErrorAllowedAtRuntime` contributes to errors; `Pedantic` is counted
 separately, not silently omitted.
 
 For repeatability, run twice with separate output directories and compare the
-five files. A parent process may also change the compiler concurrently: record the
+seven files. A parent process may also change the compiler concurrently: record the
 revision and working-tree changes externally when using a run as a checkpoint.
 
 ## Local checkpoint (2026-10-30)
@@ -152,6 +154,158 @@ the math-operator file was excluded by `skip`, causing many missing
 `OperatorLogicAnd` errors. Do not interpret the totals as independent bugs or
 2,046 processing-eligible modules as semantic passes. Reports remain disposable
 under `target/redmod-semantic-corpus-final/`; no runtime parity is established.
+
+## Cleanup working-tree refresh (2026-11-01)
+
+This refresh supersedes the previous working-tree checkpoint below; its old
+counts remain historical. No final revision is assigned while history is being
+arranged. Stable release surveyed the installed directory read-only with the same
+boot/default symbols and no game bundle: **2,112 files / 21,873,807 bytes**.
+
+```sh
+CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_PROFILE_RELEASE_DEBUG=0 CARGO_INCREMENTAL=0 cargo +stable build --release --locked -p redscript-redmod-adapter --example semantic_corpus --target-dir target/parity-integration -j2
+target/parity-integration/release/examples/semantic_corpus.exe 'D:/win/Cyberpunk 2077/tools/redmod/scripts' target/redmod-semantic-corpus-cleanup
+target/parity-integration/release/examples/semantic_corpus.exe 'D:/win/Cyberpunk 2077/tools/redmod/scripts' target/redmod-semantic-corpus-cleanup-replay
+```
+
+**All seven reports replay byte-for-byte.** Five release example tests passed.
+All files reach processing, with zero syntax/capability/validation/missing-module
+files and zero adapter errors. Shared totals remain **12,655 errors / 3,705
+warnings / 0 pedantic**, with errors in 1,172 files and 940 files without reported
+errors (not semantic passes). Total diagnostics remain 16,360.
+
+| Changed shared group | Previous checkpoint | Cleanup refresh |
+| --- | ---: | ---: |
+| `UNSUPPORTED_NATIVE_CONVERSION` | 4,925 / 645 files | 4,958 / 651 files |
+| `UNRESOLVED_FN` | 838 / 289 files | 805 / 276 files |
+| Unresolved calls naming `Cast` | 761 | 728 |
+
+Source-aware native cast fallback now reports 33 calls as unsupported conversion
+dispatch rather than unresolved functions. No conversion selection/emission is
+claimed. All other grouped counts below remain unchanged. `coverage.tsv`,
+`expression_queries.tsv`, `files.tsv` and `summary.md` are byte-identical to the
+previous checkpoint; diagnostic reports differ. The unchanged coverage totals
+below reconcile, including all signature/body/expression/query partitions and
+781,341 expression-query rows. Availability still does not establish correctness.
+
+Full contribution validation passed on this working tree: default/all-feature
+workspace tests each **738 passed, 0 failed, 9 ignored** across 117 targets
+(previously 728 passed); both all-targets Clippy configurations with `-D warnings`;
+pinned nightly-2026-10-15 fmt; release workspace build; all-feature no-dependency
+docs; and nine separate package checks (community AST/parser/formatter,
+frontend/backend, REDmod adapter/transpiler, decompiler and CLI). Cargo used
+`--locked -j2`, `target/parity-integration`, DEV/TEST debug zero and incremental
+off, with release debug zero. Only that target's generated debug directory was
+removed for space; release/docs and official-event artifacts were preserved.
+The combined corpus build/test command timed out after the executable built;
+the separate release-test retry passed. No source/test fixes were needed. The
+existing `chumsky` future-incompatibility advisory remains.
+
+Cleanup includes source-based lazy guards and native cast fallback operands,
+community `const` syntax round-tripping, const-local entry defaults, and removal
+of the special Int32-to-Bool event-return coercion. Ordinary native `Cast` lookup
+is not general conversion support. See
+[lazy evaluation limitations](../../../../docs/lazy-evaluation-limitations.md)
+for conservative typed-call boundaries and expression-prefix restrictions.
+Partial declaration harvesting, complete dependency/layout modeling, general
+conversion dispatch and official/runtime comparison remain deferred.
+
+## Previous working-tree checkpoint (2026-11-01)
+
+Stable release example rebuilt from the dirty integration tree based on `d46faac`
+(not a committed revision of these changes). Installed sources were read only:
+**2,112 files / 21,873,807 UTF-8 bytes**, boot/default symbols only, no game bundle.
+The snapshot comparison is the 47,982 shared-error / 1,456 adapter-error /
+25,364-warning baseline above; no baseline body/query coverage was recorded.
+
+```sh
+CARGO_PROFILE_RELEASE_DEBUG=0 CARGO_PROFILE_RELEASE_INCREMENTAL=false cargo +stable build --release --locked -p redscript-redmod-adapter --example semantic_corpus --target-dir target/parity-integration -j2
+target/parity-integration/release/examples/semantic_corpus.exe 'D:/win/Cyberpunk 2077/tools/redmod/scripts' target/redmod-semantic-corpus-parity
+```
+
+The same executable replayed to `target/redmod-semantic-corpus-parity-replay/`;
+**all seven reports were byte-identical**. Survey executable SHA-256:
+`d770e92403bf5981acb8e9041480f114562c3473de978186fad23c4f203df6c5`.
+The five release example tests passed.
+Coverage TSV sums and signature/body/expression/query partitions were checked.
+Inspection of the runner found no concrete measurement bug; no instrumentation
+change was needed. This does not certify concurrent test changes or the workspace.
+
+| Outcome | Snapshot baseline | Current working tree |
+| --- | ---: | ---: |
+| Files reaching processing | 2,046 | 2,112 |
+| Capability-excluded files | 66 | 0 |
+| Syntax / validation / missing-module files | 0 / 0 / 0 | 0 / 0 / 0 |
+| Adapter processing errors | 1,456 | 0 |
+| Shared errors (including runtime-allowed) | 47,982 | 12,655 |
+| Shared warnings / pedantic | 25,364 / 0 | 3,705 / 0 |
+
+Current errors affect **1,172 files**; 940 files have no reported errors, not 940
+semantic passes. There are 16,360 diagnostics total (12,655 errors + 3,705 warnings).
+All former first-blocker files now enter processing; this is not an accuracy score.
+
+| Observed coverage | Count |
+| --- | ---: |
+| Bridged ASTs / declarations excluding imports | 2,112 / 96,126 |
+| Function declarations | 53,875 |
+| Signature flags valid / invalid / mixed / unavailable | 53,819 / 56 / 0 / 0 |
+| Explicit parsed bodies / retained in lowered unit / unavailable | 38,861 / 38,824 / 37 |
+| Distinct written expression spans | 1,144,329 |
+| Exact-span mapped / unmapped | 781,341 / 362,988 |
+| Query resolved / unresolved / failure | 778,780 / 2,561 / 0 |
+| Mixed query outcomes (subset of mapped) | 38 |
+
+**Measurement limits:** declarations are bridged AST items, not a faithful-declaration
+score. Signature validity is only the compiler flag. Retained bodies include
+recovery IR, not necessarily complete or diagnostic-free checking; the 37 unavailable
+bodies occur in files with invalid signatures, but the harness does not assign
+causes. Prototypes and synthetic bodies are outside the explicit-body denominator.
+Written expressions include bodies and field/default values; imports, empty spans,
+Omitted/Error placeholders and boot are excluded. Mapping requires an exact written
+span on a non-Nop IR expression in a retained function. Unmapped expressions can be
+callee names, folded/default expressions or unavailable bodies, not query failures.
+Generated nodes reusing written spans cannot reliably be separated. Worst observed
+outcome wins (failure, then unresolved, then resolved). Resolved means only a type
+other than `Nothing` was returned, not a correct or poison-free type. All 2,561
+unresolved sites include `UnknownNullType`; 38 also returned a type on another
+observation. Zero query failures says nothing about the 362,988 unmapped sites.
+
+Dominant remaining error groups:
+
+| Shared code | Diagnostics | Files |
+| --- | ---: | ---: |
+| `UNSUPPORTED_NATIVE_CONVERSION` | 4,925 | 645 |
+| `INVALID_FUNCTION_SIGNATURE` | 4,921 | 788 |
+| `NON_FULLY_DEFINED_CTR` (runtime-allowed error) | 1,008 | 237 |
+| `UNRESOLVED_FN` | 838 | 289 |
+| `TYPE_ERR` | 298 | 139 |
+| `MULTIPLE_MATCHING_OVERLOADS` | 163 | 78 |
+| `UNRESOLVED_TYPE` | 162 | 67 |
+| `UNRESOLVED_MEMBER` | 140 | 86 |
+| `INVALID_ARG_COUNT` | 118 | 41 |
+| `UNRESOLVED_REF` | 73 | 19 |
+| `OTHER` / `INVALID_TEMP` | 5 / 4 | 4 / 2 |
+
+Conversion providers now register, but **dispatch remains fail closed**; their
+4,925 diagnostics are not implemented conversions. Invalid-signature reports are
+recovery/dependency guards, not 4,921 independent signature bugs: 4,822 name
+`OperatorEqual`. Missing-type rows are dominated by `NodeRef` (140) and `CRUID`
+(15); the boot-only dependency model remains material. Of unresolved functions,
+761 name `Cast`. Incomplete native-layout constructor checks principally concern
+Vector2/Vector4/inkMargin/Color. Residual type/overload/member/arity failures need
+authored reductions rather than blanket suppression. Warnings comprise 3,117
+`UNUSED_LOCAL` and 588 `UNUSED_ITEM_QUALIFIERS`.
+
+Implemented in the measured working tree: signature-poison preservation/guards,
+source `skip`, conversion registration, const-local checks, event/overload/override
+fixes, Variant extraction ordering, ordered switch defaults, overloaded indexing
+and the bounded scalar-mutable form. See the [investigation](../../../../docs/redmod-semantic-parity.md)
+and linked handoffs for exact contracts. **Partial declaration harvesting is not
+implemented**: parse-stage failures still exclude whole modules. The new reports
+only observe existing analysis; they do not enable a partial-analysis mode.
+Conversion selection, complete dependency/layout modeling, residual semantic
+triage and official binding/dispatch comparisons remain deferred. No full-corpus
+type-accuracy percentage, full language parity or runtime compatibility is claimed.
 
 ## Reproduce and reduce
 

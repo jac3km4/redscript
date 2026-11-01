@@ -52,8 +52,8 @@ harness reproduces its 485 warnings plus 964 `UNUSED_LOCAL` warnings (1,449 tota
 The historical integrated run at original commit `6b53cb2` on 2026-10-31 used
 the same corpus and boot-only inputs, including the unused-local pass. This was
 **before the shared-default rewrite**; that revision is preserved on
-`backup-feat-redmod`. The corpus has not been rerun for the rewritten history,
-so these are not current-HEAD results:
+`backup-feat-redmod`. These historical counts are not current-HEAD results;
+see the integration working-tree rerun below:
 
 | Stage | Integrated result |
 | --- | ---: |
@@ -75,6 +75,105 @@ for commands, instrumentation and residual groups. Final reports are under
 `target/redmod-corpus-review/`. These are disposable, untracked artifacts, not
 portable test dependencies. Reduce findings to authored regression fixtures rather
 than committing installed game scripts.
+
+### Cleanup refresh (2026-11-01)
+
+This working-tree refresh **supersedes the previous integration rerun below**;
+its historical counts remain for comparison. No final revision is assigned while
+history is being arranged. The release survey read the same installed **2,112
+files / 21,873,807 bytes** without modification, with boot/default symbols and no
+bundle. All files reach processing; exclusions and adapter errors remain zero.
+
+Shared totals remain **12,655 errors / 3,705 warnings / 0 pedantic** (16,360
+rows), with errors in 1,172 files and no reported errors in 940, not semantic
+passes. Source-aware cast fallback reclassifies 33 errors: unsupported conversions
+rise from **4,925 to 4,958** (645 to 651 files), unresolved functions fall from
+**838 to 805** (289 to 276 files), and unresolved `Cast` calls fall from **761 to
+728**. Other error groups and all coverage counters below are unchanged. This
+is diagnostic attribution, not implemented conversion dispatch.
+
+Reports in `target/redmod-semantic-corpus-cleanup/` replayed to
+`target/redmod-semantic-corpus-cleanup-replay/` with all seven files byte-identical.
+Coverage partitions and 781,341 query rows reconcile. Five release example tests
+passed. Full contribution validation passed: default/all-feature workspace tests
+(**738 passed, 0 failed, 9 ignored**, 117 targets each; previously 728 passed),
+both all-targets Clippy configurations with `-D warnings`, pinned
+`nightly-2026-10-15` fmt, release workspace build, all-feature no-dependency docs,
+and independent checks of all nine affected packages.
+
+Validation used stable Rust, `--locked -j2`, `target/parity-integration`, DEV/TEST
+debug zero and incremental off; release debug was also zero. Only the generated
+validation debug directory was removed for space, preserving release/docs and
+official-event evidence. A combined corpus build/test command timed out during
+test compilation; the release example had built, and the separate test retry
+passed. No source/test fixes were required. The existing `chumsky` advisory remains.
+
+The cleanup retains source-aware lazy guards/native cast operands, community
+`const` syntax round-tripping and const-local entry defaults, and removes the
+special Int32-to-Bool event-return coercion. See
+[lazy evaluation limitations](lazy-evaluation-limitations.md) for conservative
+source-free typed-call restrictions and unsupported expression-local prefixes.
+Conversion dispatch, partial declaration harvesting, complete dependencies/layout
+and official binding/runtime equivalence remain open; coverage is not accuracy.
+
+### Previous integration working-tree rerun (2026-11-01)
+
+The dirty integration tree based on `d46faac` was rebuilt as a stable release
+`semantic_corpus` example using the existing `target/parity-integration` directory,
+`--locked -j2`, debug info zero and incremental compilation off. It read the same
+installed **2,112 files / 21,873,807 bytes** without modifications, using embedded
+boot/default symbols only and no game bundle.
+
+| Counter | Snapshot baseline | Working-tree rerun |
+| --- | ---: | ---: |
+| Processing-eligible files | 2,046 | 2,112 |
+| Capability-excluded files | 66 | 0 |
+| Syntax / validation / missing-module files | 0 / 0 / 0 | 0 / 0 / 0 |
+| Adapter processing errors | 1,456 | 0 |
+| Shared errors (including runtime-allowed) | 47,982 | 12,655 |
+| Shared warnings / pedantic | 25,364 / 0 | 3,705 / 0 |
+
+Errors affect 1,172 files; the other 940 are not semantic passes. Total diagnostics:
+16,360. Coverage records 96,126 declarations, 53,875 functions (53,819 valid-signature
+flags, 56 invalid, zero mixed/unavailable), and 38,824 retained of 38,861 explicit
+bodies (37 unavailable). Of 1,144,329 distinct written expression spans, 781,341
+map exactly to visited non-Nop IR and 362,988 do not. Queries resolve at 778,780,
+are unresolved at 2,561 and fail at zero mapped spans; 38 have mixed observations.
+No baseline body/query coverage was measured.
+
+Dominant residuals: 4,925 fail-closed conversion-dispatch errors, 4,921 invalid-
+signature guards (4,822 name `OperatorEqual`), 1,008 incomplete native-struct
+constructor errors, 838 unresolved functions (761 `Cast`), 298 type errors and
+163 overload ambiguities. Missing types total 162, including NodeRef (140) and
+CRUID (15). Other errors: 140 missing members, 118 arity, 73 missing references,
+five const-local writes and four invalid temporaries. Warnings are 3,117 unused
+locals and 588 unused qualifiers. Missing dependency/layout information and recovery
+cascades remain distinct from independently established semantic bugs.
+
+All seven reports under `target/redmod-semantic-corpus-parity/` replayed byte-for-
+byte to `target/redmod-semantic-corpus-parity-replay/`. Five release example tests
+passed and coverage partitions reconcile. Runner inspection found no concrete
+measurement bug, so no instrumentation was changed. This is not a workspace test
+certification; concurrent implementation/test work has separate gates.
+
+Implemented in this measured tree: signature-poison guards, source lazy `skip`,
+conversion registration, const-local checks, event/overload/override fixes,
+Variant extraction ordering, ordered switch defaults, overloaded indexing and
+bounded scalar mutable. **Conversion dispatch stays fail closed; partial
+declaration harvesting is not implemented.** Coverage reporting does not enable
+partial analysis. General conversion selection/emission, complete dependencies/
+layout, residual semantic triage and official binding/dispatch comparisons remain
+deferred. Historical delivery tables below describe earlier commits, not the
+status of these uncommitted integration changes.
+
+Retained bodies include recovery IR; signature flags and returned types do not
+establish correctness. Expression counts exclude placeholders/boot but include
+field/default values; mapping misses folded/callee/default sites and cannot
+separate generated nodes reusing written spans. Unresolved queries here are
+UnknownNullType observations; zero failures applies only to mapped spans. Neither
+processing eligibility nor query availability is a type-accuracy percentage or
+runtime claim. See [CORPUS.md](../crates/compiler/redmod/adapter/CORPUS.md) and the
+[semantic investigation](redmod-semantic-parity.md) for full counters and limits.
 
 ## Architecture constraints
 
@@ -421,14 +520,15 @@ plans and representations are wired through all consumers.
 
 Reprioritize after each corpus checkpoint; first-blocker counts are not independent
 coverage gains and cannot simply be added together. The historical pre-rewrite
-checkpoint's first blockers were (not a current-HEAD corpus measurement):
+checkpoint's first blockers were (historical, all now processing-eligible in the
+working-tree rerun above; descriptions below retain the original prioritization):
 
-1. Const locals: 53 files; readonly support remains deliberately deferred.
-2. Implicit conversion declarations: 9 files; registration/selection still needed.
-3. Scalar `mutable`: 1 file; array-field support does not establish scalar rules.
-4. Index operator declarations: 1 file.
-5. Lazy `skip` parameters: 1 file, excluding a widely used math-operator module.
-6. Native switch label order: 1 file.
+1. Const locals: 53 files; bounded readonly checks now implemented in the working tree.
+2. Implicit conversion declarations: 9 files; registration now implemented, selection deferred.
+3. Scalar `mutable`: 1 file; bounded Float form now implemented, general scalar rules deferred.
+4. Index operator declarations: 1 file; overloaded-call path now implemented.
+5. Lazy `skip` parameters: 1 math-operator provider; source lazy lowering now implemented.
+6. Native switch label order: 1 file; ordered defaults now implemented.
 
 Initialized groups, broader metadata, explicit conversion dispatch, and unverified
 reference forms remain follow-ups too; first-blocker counts do not inventory every
