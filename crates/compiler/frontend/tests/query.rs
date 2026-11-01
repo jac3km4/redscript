@@ -305,6 +305,15 @@ fn closure_queries_use_the_enclosing_function() {
           return (inner: String) -> () -> inner;
         }
         func Deep(value: Int32) -> () -> () -> Int32 { return () -> () -> value; }
+        func Gaps() -> (String) -> String {
+          return (text: String) -> {
+            let before = 1;
+            let nested = (arg: Int32) -> arg;
+            let after = text;
+            nested(before);
+            return after;
+          };
+        }
         class Holder {
           public func CaptureThis() -> () -> Holder { return () -> this; }
         }
@@ -319,6 +328,8 @@ fn closure_queries_use_the_enclosing_function() {
         ("return local;", "local", Type::nullary(predef::INT32)),
         ("() -> inner;", "inner", Type::nullary(predef::STRING)),
         ("() -> () -> value;", "value", Type::nullary(predef::INT32)),
+        ("-> arg;", "arg", Type::nullary(predef::INT32)),
+        ("return after;", "after", Type::nullary(predef::STRING)),
         (
             "() -> this;",
             "this",

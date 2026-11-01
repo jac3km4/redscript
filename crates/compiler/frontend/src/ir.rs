@@ -561,6 +561,7 @@ impl<'ctx> LocalInfo<'ctx> {
 #[derive(Debug)]
 pub struct Closure<'ctx> {
     pub typ: TypeApp<'ctx>,
+    /// Sorted by local ID, as in the enclosing function's local table.
     pub locals: Box<[LocalInfo<'ctx>]>,
     pub captures: Box<[Local]>,
     pub block: Block<'ctx>,

@@ -143,11 +143,17 @@ fn find_local<'ctx>(function: &LoweredFunction<'ctx>, local: ir::Local) -> Optio
     }
     impl<'ctx> Visitor<'ctx> for FindLocal<'ctx> {
         fn visit_new_closure(&mut self, closure: &ir::Closure<'ctx>, _: Span) {
+            if self.typ.is_some() {
+                return;
+            }
             // Lowering shares the local ID counter across the function and all
             // nested closures, so a capture retains its original local's ID.
-            if let Some(info) = closure.locals.iter().find(|info| info.id == self.local) {
-                self.typ = Some(info.typ.clone());
-            } else if self.typ.is_none() {
+            if let Ok(index) = closure
+                .locals
+                .binary_search_by_key(&self.local, |info| info.id)
+            {
+                self.typ = Some(closure.locals[index].typ.clone());
+            } else {
                 self.visit_block(&closure.block);
             }
         }
