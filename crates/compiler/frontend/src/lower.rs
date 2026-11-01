@@ -505,7 +505,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                             calls::accepts_typed_args(
                                 entry.func(),
                                 &[lhs.1.clone(), rhs.1.clone()],
-                                &[false, false],
+                                [&lhs.0, &rhs.0].into_iter(),
                                 self.symbols,
                             )
                         })
@@ -547,7 +547,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                             calls::accepts_typed_args(
                                 entry.func(),
                                 std::slice::from_ref(&arg.1),
-                                &[false],
+                                iter::once(&arg.0),
                                 self.symbols,
                             )
                         })

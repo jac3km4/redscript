@@ -218,7 +218,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 result_t,
             ));
         }
-        let candidates: Vec<_> = env
+        let mut candidates = env
             .query_free_functions("Cast", self.symbols)
             .filter(|entry| {
                 target_t.is_subtype_compatible(
@@ -227,17 +227,14 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     self.symbols,
                 )
             })
-            .collect();
-        if !candidates.is_empty()
-            && candidates
-                .iter()
-                .all(|entry| !conversion_is_eligible(entry.func(), env))
-        {
+            .peekable();
+        let has_candidates = candidates.peek().is_some();
+        let mut candidates = candidates
+            .filter(|entry| conversion_is_eligible(entry.func(), env))
+            .peekable();
+        if has_candidates && candidates.peek().is_none() {
             return Err(Error::UnsupportedNativeConversion(span));
         }
-        let candidates = candidates
-            .into_iter()
-            .filter(|entry| conversion_is_eligible(entry.func(), env));
         let (call, typ) = self
             .overload_resolver()
             .name("Cast")
@@ -620,52 +617,54 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         fn match_by_subtype<'a, 'ctx, It, Key, Name, Func>(
             it: It,
             arg_types: &'a [PolyType<'ctx>],
-            absent: &'a [bool],
+            args: &'a [ir::Expr<'ctx>],
             symbols: &'a Symbols<'ctx>,
         ) -> impl Iterator<Item = FunctionEntry<Key, Name, Func>> + use<'a, 'ctx, It, Key, Name, Func>
         where
             It: IntoIterator<Item = FunctionEntry<Key, Name, Func>>,
             Func: FunctionKind<'ctx> + Copy,
         {
-            it.into_iter()
-                .filter(move |entry| accepts_typed_args(entry.func(), arg_types, absent, symbols))
+            it.into_iter().filter(move |entry| {
+                accepts_typed_args(entry.func(), arg_types, args.iter(), symbols)
+            })
         }
 
-        let absent: Vec<_> = args
-            .iter()
-            .map(|arg| matches!(arg, ir::Expr::Nop(_)))
-            .collect();
-        let candidates: Vec<_> = candidates.into_iter().collect();
-        let arg_ranges: Vec<_> = candidates
-            .iter()
-            .map(|entry| entry.func().type_().min_args()..=entry.func().type_().max_args())
-            .collect();
-        let mut matches = match_by_subtype(candidates, arg_types, &absent, self.symbols).peekable();
+        let mut arg_ranges = Vec::new();
+        let candidates = candidates.into_iter().inspect(|entry| {
+            arg_ranges.push(entry.func().type_().min_args()..=entry.func().type_().max_args());
+        });
+        let mut matches = match_by_subtype(candidates, arg_types, args, self.symbols).peekable();
         let fallback = fallback.filter(|entry| {
             (entry.func().type_().min_args()..=entry.func().type_().max_args())
                 .contains(&args.len())
         });
-        let selected = matches.next().or(fallback).ok_or_else(|| {
-            if !arg_ranges.is_empty() && arg_ranges.iter().all(|range| !range.contains(&args.len()))
-            {
-                Error::InvalidArgCount(arg_ranges, args.len(), span)
-            } else {
-                Error::UnresolvedFunction(name, span)
-            }
-        })?;
+        let Some(selected) = matches.next().or(fallback) else {
+            // No match exhausts the candidates, so every argument range is recorded.
+            drop(matches);
+            return Err(
+                if !arg_ranges.is_empty()
+                    && arg_ranges.iter().all(|range| !range.contains(&args.len()))
+                {
+                    Error::InvalidArgCount(arg_ranges, args.len(), span)
+                } else {
+                    Error::UnresolvedFunction(name, span)
+                },
+            );
+        };
 
         let selected = if matches.peek().is_none() {
+            drop(matches);
             selected
         } else {
             // retry with upper bounds lifted to resolve ambiguity
-            for (arg, absent) in arg_types.iter().zip(&absent) {
-                if !absent {
+            for (arg, expr) in arg_types.iter().zip(args.iter()) {
+                if !matches!(expr, ir::Expr::Nop(_)) {
                     arg.force_upper_bound(self.symbols).with_span(span)?;
                 }
             }
             let candidates = iter::once(selected).chain(matches);
             let mut matches =
-                match_by_subtype(candidates, arg_types, &absent, self.symbols).peekable();
+                match_by_subtype(candidates, arg_types, args, self.symbols).peekable();
 
             let primary = matches
                 .next()
@@ -946,21 +945,21 @@ fn conversion_is_eligible(function: &crate::FreeFunction<'_>, env: &Env<'_, '_>)
 
 // Eligibility must remain read-only: logical truthiness fallback uses this before
 // resolution, whose ambiguity handling and coercions can constrain inference vars.
-pub(super) fn accepts_typed_args<'ctx>(
+pub(super) fn accepts_typed_args<'a, 'ctx: 'a>(
     function: impl FunctionKind<'ctx>,
     arg_types: &[PolyType<'ctx>],
-    absent: &[bool],
+    args: impl ExactSizeIterator<Item = &'a ir::Expr<'ctx>>,
     symbols: &Symbols<'ctx>,
 ) -> bool {
     let typ = function.type_();
     (typ.min_args()..=typ.max_args()).contains(&arg_types.len())
-        && arg_types.len() == absent.len()
+        && arg_types.len() == args.len()
         && arg_types
             .iter()
-            .zip(absent)
+            .zip(args)
             .zip(typ.params())
-            .all(|((arg, absent), param)| {
-                if *absent {
+            .all(|((arg, expr), param)| {
+                if matches!(expr, ir::Expr::Nop(_)) {
                     param.flags().is_optional()
                 } else if matches!(param.type_(), Type::Data(id) if id.id() == predef::VARIANT)
                     && function.intrinsic().is_none()
