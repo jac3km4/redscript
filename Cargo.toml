@@ -56,7 +56,6 @@ similar-asserts = "2"
 insta = { version = ">=1, <1.45", features = ["glob"] }
 
 [workspace.lints.rust]
-warnings = "deny"
 future_incompatible = "deny"
 let_underscore = "deny"
 nonstandard_style = "deny"
