@@ -1169,6 +1169,21 @@ impl<'i> Field<'i> {
         self.flags.set_has_default(!self.defaults.is_empty());
     }
 
+    /// Replaces the first default with the same name, or appends it if absent.
+    /// Preserves the order of defaults and any later entries with the same name.
+    pub fn upsert_default(&mut self, default: Property<'i>) {
+        if let Some(existing) = self
+            .defaults
+            .iter_mut()
+            .find(|property| property.name() == default.name())
+        {
+            *existing = default;
+        } else {
+            self.defaults.push(default);
+        }
+        self.flags.set_has_default(true);
+    }
+
     /// Converts this definition into an owned version.
     pub fn into_owned(self) -> Field<'static> {
         Field {
@@ -1699,6 +1714,98 @@ mod tests {
             .unwrap()
             .0
             .into_owned()
+    }
+
+    #[test]
+    fn upsert_default_into_empty_field() {
+        let mut field = Field::new(
+            CNameIndex::UNDEFINED,
+            ClassIndex::new(1).unwrap(),
+            Visibility::Public,
+            TypeIndex::new(1),
+            FieldFlags::default().with_is_native(true),
+        );
+        assert!(field.defaults().is_empty());
+        assert!(!field.flags().has_default());
+
+        field.upsert_default(Property::new("Owner", "value"));
+        assert_eq!(field.defaults(), &[Property::new("Owner", "value")]);
+        assert!(field.flags().has_default());
+        assert!(field.flags().is_native());
+        assert_eq!(roundtrip(&field.clone().into()), field.into());
+    }
+
+    #[test]
+    fn upsert_default_preserves_order() {
+        let mut field = Field::new(
+            CNameIndex::UNDEFINED,
+            ClassIndex::new(1).unwrap(),
+            Visibility::Public,
+            TypeIndex::new(1),
+            FieldFlags::default(),
+        )
+        .with_defaults(vec![
+            Property::new("First", "first"),
+            Property::new("Owner", "old"),
+            Property::new("Last", "last"),
+        ]);
+        let storage = field.defaults().as_ptr();
+
+        field.upsert_default(Property::new("Owner", "updated"));
+        assert_eq!(field.defaults().as_ptr(), storage);
+        assert_eq!(
+            field.defaults(),
+            &[
+                Property::new("First", "first"),
+                Property::new("Owner", "updated"),
+                Property::new("Last", "last"),
+            ]
+        );
+        assert!(field.flags().has_default());
+        assert_eq!(roundtrip(&field.clone().into()), field.clone().into());
+
+        field.upsert_default(Property::new("New", "new"));
+        assert_eq!(
+            field.defaults(),
+            &[
+                Property::new("First", "first"),
+                Property::new("Owner", "updated"),
+                Property::new("Last", "last"),
+                Property::new("New", "new"),
+            ]
+        );
+        assert!(field.flags().has_default());
+        assert_eq!(roundtrip(&field.clone().into()), field.into());
+    }
+
+    #[test]
+    fn upsert_default_updates_only_first_duplicate() {
+        let mut field = Field::new(
+            CNameIndex::UNDEFINED,
+            ClassIndex::new(1).unwrap(),
+            Visibility::Public,
+            TypeIndex::new(1),
+            FieldFlags::default(),
+        )
+        .with_defaults(vec![
+            Property::new("Owner", "old"),
+            Property::new("Other", "other"),
+            Property::new("Owner", "duplicate"),
+        ]);
+        // Decoded fields may have a flag inconsistent with their defaults.
+        field.flags.set_has_default(false);
+
+        field.upsert_default(Property::new("Owner", "updated"));
+        assert_eq!(
+            field.defaults(),
+            &[
+                Property::new("Owner", "updated"),
+                Property::new("Other", "other"),
+                Property::new("Owner", "duplicate"),
+            ]
+        );
+        assert!(field.flags().has_default());
+        assert_eq!(roundtrip(&field.clone().into()), field.into());
     }
 
     #[test]

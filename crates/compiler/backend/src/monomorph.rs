@@ -885,16 +885,7 @@ impl<'ctx> Monomorphizer<'ctx> {
 }
 
 fn merge_default(field: &mut PoolField<'_>, owner: &str, value: String) {
-    let mut defaults = field.defaults().to_vec();
-    if let Some(existing) = defaults
-        .iter_mut()
-        .find(|property| property.name() == owner)
-    {
-        *existing = Property::new(owner.to_owned(), value);
-    } else {
-        defaults.push(Property::new(owner.to_owned(), value));
-    }
-    field.set_defaults(defaults);
+    field.upsert_default(Property::new(owner.to_owned(), value));
 }
 
 fn define_predefs(bundle: &mut ScriptBundle<'_>) {
