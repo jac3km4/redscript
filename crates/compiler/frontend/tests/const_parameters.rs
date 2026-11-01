@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use redscript_community_ast::{self as ast, SourceMap};
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{
@@ -239,11 +241,11 @@ fn const_relaxations_are_independent_and_file_local_in_both_orders() {
                 &interner,
                 &[(
                     relaxed,
-                    SemanticPolicy {
+                    Rc::new(SemanticPolicy {
                         const_param_element_writes: elements,
                         const_param_non_out_forwarding: forwarding,
                         ..SemanticPolicy::default()
-                    },
+                    }),
                 )],
             );
             let count = |file: ast::FileId| {

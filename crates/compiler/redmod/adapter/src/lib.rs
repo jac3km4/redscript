@@ -14,6 +14,7 @@ mod validate;
 
 use std::collections::HashSet;
 use std::fmt;
+use std::rc::Rc;
 
 pub use bridge::{CapabilityError, ParsedModule};
 pub use policy::{ArrayOperation, array_operations};
@@ -208,7 +209,8 @@ pub fn process_sources<'ctx>(
         .chain(modules.into_iter().map(|parsed| parsed.module))
         .collect();
     let evaluator = Evaluator::from_modules(&sources);
-    let policies: Vec<_> = files.iter().map(|&file| (file, policy::POLICY)).collect();
+    let policy = Rc::new(policy::POLICY);
+    let policies: Vec<_> = files.iter().map(|&file| (file, policy.clone())).collect();
     let (mut unit, symbols) = redscript_compiler_frontend::process_sources_with_policy(
         sources, symbols, evaluator, reporter, interner, &policies,
     );

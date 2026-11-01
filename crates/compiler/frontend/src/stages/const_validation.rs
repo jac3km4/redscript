@@ -13,10 +13,10 @@ use crate::{
 #[error("cannot write through a const parameter")]
 struct ConstParameterWrite;
 
-pub(super) fn validate<'ctx>(
+pub(super) fn validate<'policy, 'ctx>(
     unit: &LoweredCompilationUnit<'ctx>,
     symbols: &Symbols<'ctx>,
-    policy: impl Fn(Span) -> SemanticPolicy,
+    policy: impl Fn(Span) -> &'policy SemanticPolicy,
     reporter: &mut CompileErrorReporter<'ctx>,
 ) {
     let mut check = |function: &crate::LoweredFunction<'ctx>, params: &[Param<'ctx>]| {
@@ -63,7 +63,7 @@ struct ConstWrites<'a, 'ctx> {
     symbols: &'a Symbols<'ctx>,
     readonly: HashSet<ir::Local>,
     captures: HashSet<ir::Local>,
-    policy: SemanticPolicy,
+    policy: &'a SemanticPolicy,
     reporter: &'a mut CompileErrorReporter<'ctx>,
 }
 

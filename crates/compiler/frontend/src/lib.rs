@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 mod arguments;
 mod cte;
 mod diagnostic;
@@ -84,7 +86,9 @@ pub fn process_sources<'ctx>(
 ///
 /// Files absent from `policies` use [`SemanticPolicy::default`]. If a file occurs
 /// more than once, its first entry wins. Policies follow source spans rather than
-/// module processing order and never modify shared symbol flags.
+/// module processing order and never modify shared symbol flags. Reuse an `Rc`
+/// across files to share a policy, including runtime-configured policies. Analysis
+/// clones handles into a shared file index; lookups borrow policies without cloning.
 ///
 /// Callers must provide accurate file IDs on AST spans and perform any additional
 /// source-language capability validation. [`process_sources`] is equivalent to
@@ -95,10 +99,10 @@ pub fn process_sources_with_policy<'ctx>(
     evaluator: Evaluator<'ctx>,
     reporter: &mut CompileErrorReporter<'ctx>,
     interner: &'ctx TypeInterner,
-    policies: &[(ast::FileId, SemanticPolicy)],
+    policies: &[(ast::FileId, Rc<SemanticPolicy>)],
 ) -> (LoweredCompilationUnit<'ctx>, Symbols<'ctx>) {
     let mut scope = Scope::new(&symbols);
-    scope.set_policies(policies.into());
+    scope.set_policies(policies);
     let mut resolution = NameResolution::new(modules, evaluator, symbols, reporter, interner);
 
     resolution.populate_globals(&mut scope);

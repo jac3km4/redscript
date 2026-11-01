@@ -1,6 +1,8 @@
 use std::cell::Cell;
 use std::rc::Rc;
+use std::sync::LazyLock;
 
+use hashbrown::HashMap;
 use redscript_community_ast as ast;
 use redscript_community_ast::Span;
 
@@ -128,11 +130,33 @@ pub struct SemanticPolicy {
     pub allow_explicit_intrinsic: Option<fn(ir::Intrinsic) -> bool>,
 }
 
+#[derive(Debug, Clone, Default)]
+struct PolicyTable {
+    index: Rc<HashMap<ast::FileId, Rc<SemanticPolicy>>>,
+}
+
+impl PolicyTable {
+    fn new(policies: &[(ast::FileId, Rc<SemanticPolicy>)]) -> Self {
+        let mut index = HashMap::with_capacity(policies.len());
+        for (file, policy) in policies {
+            index.entry(*file).or_insert_with(|| policy.clone());
+        }
+        Self {
+            index: Rc::new(index),
+        }
+    }
+
+    fn get(&self, file: ast::FileId) -> &SemanticPolicy {
+        static DEFAULT: LazyLock<SemanticPolicy> = LazyLock::new(SemanticPolicy::default);
+        self.index.get(&file).map_or(&DEFAULT, Rc::as_ref)
+    }
+}
+
 #[derive(Debug, Clone)]
-pub struct TypeEnv<'scope, 'ctx>(
-    ScopedMap<'scope, &'ctx str, TypeRef<'scope, 'ctx>>,
-    Rc<[(ast::FileId, SemanticPolicy)]>,
-);
+pub struct TypeEnv<'scope, 'ctx> {
+    types: ScopedMap<'scope, &'ctx str, TypeRef<'scope, 'ctx>>,
+    policies: PolicyTable,
+}
 
 impl<'scope, 'ctx> TypeEnv<'scope, 'ctx> {
     pub fn with_default_types() -> Self {
@@ -142,49 +166,54 @@ impl<'scope, 'ctx> TypeEnv<'scope, 'ctx> {
         map.insert("wref", TypeRef::Id(predef::WREF));
         map.insert("script_ref", TypeRef::Id(predef::SCRIPT_REF));
 
-        Self(ScopedMap::from(map), Rc::default())
+        Self {
+            types: ScopedMap::from(map),
+            policies: PolicyTable::default(),
+        }
     }
 
     #[inline]
     pub fn introduce_scope(&'scope self) -> Self {
-        Self(self.0.introduce_scope(), self.1.clone())
+        Self {
+            types: self.types.introduce_scope(),
+            policies: self.policies.clone(),
+        }
     }
 
     #[inline]
     pub fn pop_scope(self) -> IndexMap<&'ctx str, TypeRef<'scope, 'ctx>> {
-        self.0.pop_scope()
+        self.types.pop_scope()
     }
 
     #[inline]
     pub fn push_scope(&'scope self, scope: IndexMap<&'ctx str, TypeRef<'scope, 'ctx>>) -> Self {
-        Self(self.0.push_scope(scope), self.1.clone())
+        Self {
+            types: self.types.push_scope(scope),
+            policies: self.policies.clone(),
+        }
     }
 
     #[inline]
     pub fn top(&self) -> &IndexMap<&'ctx str, TypeRef<'scope, 'ctx>> {
-        self.0.top()
+        self.types.top()
     }
 
     #[inline]
     pub fn get(&self, name: &'ctx str) -> Option<&TypeRef<'scope, 'ctx>> {
-        self.0.get(name)
+        self.types.get(name)
     }
 
     #[inline]
     pub fn add(&mut self, name: &'ctx str, typ: TypeRef<'scope, 'ctx>) {
-        self.0.insert(name, typ);
+        self.types.insert(name, typ);
     }
 
-    pub(crate) fn set_policies(&mut self, policies: Rc<[(ast::FileId, SemanticPolicy)]>) {
-        self.1 = policies;
+    pub(crate) fn set_policies(&mut self, policies: &[(ast::FileId, Rc<SemanticPolicy>)]) {
+        self.policies = PolicyTable::new(policies);
     }
 
-    pub(crate) fn policy(&self, span: Span) -> SemanticPolicy {
-        self.1
-            .iter()
-            .find(|(file, _)| *file == span.file)
-            .map(|(_, policy)| *policy)
-            .unwrap_or_default()
+    pub(crate) fn policy(&self, span: Span) -> &SemanticPolicy {
+        self.policies.get(span.file)
     }
 
     pub fn resolve(
@@ -194,7 +223,7 @@ impl<'scope, 'ctx> TypeEnv<'scope, 'ctx> {
         span: Span,
     ) -> LowerResult<'ctx, Type<'ctx>> {
         match typ {
-            ast::Type::Named { name, args } => match (self.0.get(name), &args[..]) {
+            ast::Type::Named { name, args } => match (self.types.get(name), &args[..]) {
                 (Some(&TypeRef::Id(id)), [(arg, span)])
                     if id == predef::REF || id == predef::WREF =>
                 {
@@ -330,6 +359,7 @@ impl<'scope, 'ctx> Locals<'scope, 'ctx> {
     }
 
     pub fn into_vec(self) -> Vec<ir::LocalInfo<'ctx>> {
+        debug_assert!(self.locals.windows(2).all(|pair| pair[0].id < pair[1].id));
         self.locals
     }
 
@@ -413,6 +443,46 @@ impl<'ctx> TypeRef<'_, 'ctx> {
 mod tests {
     use super::*;
     use crate::types::Variance;
+
+    #[test]
+    fn policies_share_handles_across_files_and_scopes_with_first_entry_wins() {
+        let sources = ast::SourceMap::new();
+        let first = sources.push_front("first.reds", "");
+        let second = sources.push_back("second.reds", "");
+        let absent = sources.push_back("absent.reds", "");
+        let shared = Rc::new(SemanticPolicy {
+            hoist_locals: true,
+            ..SemanticPolicy::default()
+        });
+        let duplicate = Rc::new(SemanticPolicy::default());
+        let mut env = TypeEnv::default();
+        env.set_policies(&[
+            (first, shared.clone()),
+            (second, shared.clone()),
+            (first, duplicate.clone()),
+        ]);
+        assert_eq!(Rc::strong_count(&shared), 3);
+        assert_eq!(Rc::strong_count(&duplicate), 1);
+
+        let nested = env.introduce_scope();
+        let pushed = nested.push_scope(IndexMap::default());
+        let cloned = env.clone();
+        for scope in [&env, &nested, &pushed, &cloned] {
+            assert!(Rc::ptr_eq(&env.policies.index, &scope.policies.index));
+            for file in [first, second] {
+                let policy = scope.policy(Span::new(0, 0, file));
+                assert!(policy.hoist_locals);
+                assert!(std::ptr::eq(policy, shared.as_ref()));
+            }
+            assert_eq!(Rc::strong_count(&shared), 3);
+        }
+        let default_env = TypeEnv::default();
+        let default = default_env.policy(Span::new(0, 0, first));
+        assert!(!default.hoist_locals);
+        for scope in [&env, &nested, &pushed, &cloned] {
+            assert!(std::ptr::eq(scope.policy(Span::new(0, 0, absent)), default,));
+        }
+    }
 
     #[test]
     fn plain_type_vars_are_accepted() {

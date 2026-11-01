@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use redscript_community_ast::{self as ast, SourceMap, Span};
 use redscript_compiler_frontend::{
     CompileErrorReporter, Diagnostic, Evaluator, LowerError, LoweredCompilationUnit,
@@ -22,13 +24,17 @@ fn analyze<'ctx>(
         modules.reverse();
     }
     let evaluator = Evaluator::from_modules(&modules);
+    let policies: Vec<_> = policies
+        .iter()
+        .map(|(file, policy)| (*file, Rc::new(*policy)))
+        .collect();
     let (unit, symbols) = process_sources_with_policy(
         modules,
         Symbols::with_default_types(),
         evaluator,
         &mut reporter,
         interner,
-        policies,
+        &policies,
     );
     (unit, symbols, reporter.into_reported())
 }
@@ -43,6 +49,57 @@ fn function<'a, 'ctx>(
         .find(|entry| entry.name().to_string() == name)
         .unwrap();
     &unit.functions[entry.key()]
+}
+
+#[test]
+fn shared_runtime_policies_keep_duplicate_precedence_and_scope_defaults() {
+    for reverse in [false, true] {
+        let sources = SourceMap::new();
+        let first = sources.push_back(
+            "first.reds",
+            "class First<T> { public func Check<U>() { value = 1; let value: Int32; } }",
+        );
+        let second = sources.push_back(
+            "second.reds",
+            "func Second<T>() { value = 1; let value: Int32; }",
+        );
+        let ordinary = sources.push_back(
+            "ordinary.reds",
+            "func Ordinary<T>() { value = 1; let value: Int32; }",
+        );
+        let configuration = SemanticPolicy {
+            hoist_locals: sources.files().count() > 1,
+            ..SemanticPolicy::default()
+        };
+        let shared = Rc::new(configuration);
+        let duplicate = Rc::new(SemanticPolicy::default());
+        let policies = [
+            (first, shared.clone()),
+            (second, shared.clone()),
+            (first, duplicate.clone()),
+        ];
+        let interner = TypeInterner::default();
+        let mut reporter = CompileErrorReporter::default();
+        let mut modules = parse_files(&sources, &mut reporter);
+        assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+        if reverse {
+            modules.reverse();
+        }
+        let evaluator = Evaluator::from_modules(&modules);
+        process_sources_with_policy(
+            modules,
+            Symbols::with_default_types(),
+            evaluator,
+            &mut reporter,
+            &interner,
+            &policies,
+        );
+        assert_eq!(reporter.reported().len(), 1, "{:?}", reporter.reported());
+        assert_eq!(reporter.reported()[0].code(), "UNRESOLVED_REF");
+        assert_eq!(reporter.reported()[0].span().file, ordinary);
+        assert_eq!(Rc::strong_count(&shared), 3);
+        assert_eq!(Rc::strong_count(&duplicate), 2);
+    }
 }
 
 #[test]

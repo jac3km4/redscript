@@ -1111,7 +1111,7 @@ impl<'scope, 'ctx> Scope<'scope, 'ctx> {
         }
     }
 
-    pub(crate) fn set_policies(&mut self, policies: Rc<[(ast::FileId, crate::SemanticPolicy)]>) {
+    pub(crate) fn set_policies(&mut self, policies: &[(ast::FileId, Rc<crate::SemanticPolicy>)]) {
         self.types.set_policies(policies);
     }
 

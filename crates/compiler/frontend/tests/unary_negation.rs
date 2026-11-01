@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use redscript_community_ast::SourceMap;
 use redscript_compiler_frontend::{
     CompileErrorReporter, Evaluator, LoweredCompilationUnit, SemanticPolicy, Symbols, TypeInterner,
@@ -47,10 +49,10 @@ fn integer_negation_folds_when_representable_and_otherwise_calls_operator() {
                 &interner,
                 &[(
                     file,
-                    SemanticPolicy {
+                    Rc::new(SemanticPolicy {
                         hoist_locals: true,
                         ..Default::default()
-                    },
+                    }),
                 )],
             )
         } else {
