@@ -61,6 +61,7 @@ pub(super) fn derive_new_method_item<'e, 'ctx: 'e>(
 
     let mut stmts = vec![(
         ast::Stmt::Let {
+            is_const: false,
             name: (SELF_NAME, span),
             typ: None,
             value: Some((new, span).into()),

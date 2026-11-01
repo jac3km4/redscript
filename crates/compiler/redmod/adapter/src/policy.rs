@@ -72,6 +72,7 @@ pub const POLICY: SemanticPolicy = SemanticPolicy {
     hoist_locals: true,
     const_param_element_writes: true,
     const_param_non_out_forwarding: true,
+    const_local_handle_rebinding: true,
     native_object_cast: true,
     script_ref_write_through: true,
     implicit_members: true,

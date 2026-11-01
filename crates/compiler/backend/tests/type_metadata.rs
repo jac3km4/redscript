@@ -7,6 +7,47 @@ use redscript_compiler_frontend::infer_from_sources;
 use redscript_io::{Class, ClassFlags, Definition, ScriptBundle, TypeIndex, TypeKind, Visibility};
 
 #[test]
+fn const_local_and_method_flags_survive_emission_and_loading() {
+    let bundle = compile("class V { public const func Read() {} } func F() { const x: V; }");
+    let local = bundle
+        .definitions()
+        .find_map(|def| match def {
+            Definition::Local(local) => Some(local),
+            _ => None,
+        })
+        .unwrap();
+    assert!(local.flags().is_const());
+    let method = bundle
+        .definitions()
+        .find_map(|def| match def {
+            Definition::Function(method) if bundle[method.name()].starts_with("Read;") => {
+                Some(method)
+            }
+            _ => None,
+        })
+        .unwrap();
+    assert!(method.flags().is_const());
+    let bytes = bundle.into_writeable().to_bytes().unwrap();
+    let bundle = ScriptBundle::from_bytes(&bytes).unwrap();
+    let interner = TypeInterner::default();
+    let (symbols, _) = CompilationInputs::load(&bundle, &interner, &TypeFlagRegistry::default())
+        .unwrap()
+        .into_inner();
+    let class = symbols
+        .get_type(interner.intern("V"))
+        .unwrap()
+        .schema()
+        .as_aggregate()
+        .unwrap();
+    assert!(
+        class
+            .methods()
+            .iter()
+            .any(|entry| entry.func().flags().is_const())
+    );
+}
+
+#[test]
 fn enum_widths() {
     // Unsuffixed enum initializers are Int32 tokens, so the negative limit's
     // magnitude (2147483648) and the 8-byte width require a wider literal.

@@ -783,6 +783,7 @@ impl<'src> Block<'src, WithSpan> {
 #[derive_where(Debug, Clone, PartialEq)]
 pub enum Stmt<'src, K: AstKind = Identity> {
     Let {
+        is_const: bool,
         name: K::Inner<&'src str>,
         typ: Option<Box<TypeT<'src, K>>>,
         value: Option<Box<ExprT<'src, K>>>,
@@ -811,7 +812,13 @@ pub enum Stmt<'src, K: AstKind = Identity> {
 impl<'src, K: AstKind> Stmt<'src, K> {
     pub fn unwrapped(self) -> Stmt<'src> {
         match self {
-            Stmt::Let { name, typ, value } => Stmt::Let {
+            Stmt::Let {
+                is_const,
+                name,
+                typ,
+                value,
+            } => Stmt::Let {
+                is_const,
                 name: name.into_wrapped(),
                 typ: typ.map(|typ| (*typ).into_wrapped().unwrapped().into()),
                 value: value.map(|v| (*v).into_wrapped().unwrapped().into()),

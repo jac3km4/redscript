@@ -435,8 +435,19 @@ impl<K: AstKind> Formattable for Stmt<'_, K> {
         )?;
 
         match self {
-            Stmt::Let { name, typ, value } => {
-                write!(f, "{}let {}", ctx.indent(), name.as_wrapped())?;
+            Stmt::Let {
+                is_const,
+                name,
+                typ,
+                value,
+            } => {
+                write!(
+                    f,
+                    "{}{} {}",
+                    ctx.indent(),
+                    if *is_const { "const" } else { "let" },
+                    name.as_wrapped()
+                )?;
                 if let Some(typ) = typ {
                     write!(f, ": {}", (**typ).as_wrapped().as_fmt(ctx))?;
                 }

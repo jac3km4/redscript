@@ -331,6 +331,7 @@ impl<'scope, 'ctx: 'i, 'i> Decompiler<'scope, 'ctx, 'i> {
                         let value = self.consume_expr()?.into_expr();
 
                         return Ok(Node::Decl {
+                            is_const: local.flags().is_const(),
                             id,
                             name,
                             typ,
@@ -659,6 +660,7 @@ impl<'scope, 'ctx: 'i, 'i> Decompiler<'scope, 'ctx, 'i> {
                 let name = self.bundle.try_get_item_hint(local.name(), "local name")?;
 
                 stmts.push(ast::Stmt::Let {
+                    is_const: local.flags().is_const(),
                     name: expect_borrowed(name),
                     typ: Some(extract_type(local.type_(), self.bundle)?.into()),
                     value: None,
@@ -674,6 +676,7 @@ impl<'scope, 'ctx: 'i, 'i> Decompiler<'scope, 'ctx, 'i> {
 enum Node<'i> {
     Expr(ast::Expr<'i>),
     Decl {
+        is_const: bool,
         name: &'i str,
         typ: ast::Type<'i>,
         value: ast::Expr<'i>,
@@ -696,6 +699,7 @@ impl<'i> Node<'i> {
         match self {
             Node::Expr(expr) => ast::Stmt::Expr(expr.into()),
             Node::Decl {
+                is_const,
                 name,
                 typ,
                 value,
@@ -703,6 +707,7 @@ impl<'i> Node<'i> {
             } => {
                 id.statement.replace(true);
                 ast::Stmt::Let {
+                    is_const,
                     name,
                     typ: Some(typ.into()),
                     value: Some(value.into()),

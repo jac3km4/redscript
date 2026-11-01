@@ -343,6 +343,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
             .with_is_native(is_native)
             .with_is_final(is_final)
             .with_is_static(is_static)
+            .with_is_const(qs.take_flag(ast::ItemQualifiers::CONST))
             .with_is_callback(qs.take_flag(ast::ItemQualifiers::CALLBACK))
             .with_is_unimplemented(func.body.is_none() && !is_native && !is_final && !is_static);
 

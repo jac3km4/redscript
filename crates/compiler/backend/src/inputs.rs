@@ -149,6 +149,7 @@ impl<'ctx> CompilationInputs<'ctx> {
 
                         let flags = MethodFlags::new()
                             .with_is_static(method.flags().is_static())
+                            .with_is_const(method.flags().is_const())
                             .with_is_final(method.flags().is_final())
                             .with_is_native(method.flags().is_native())
                             .with_is_callback(method.flags().is_callback())

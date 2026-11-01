@@ -970,8 +970,9 @@ pub struct MethodFlags {
     pub is_callback: bool,
     pub is_unimplemented: bool,
     pub is_static_forwarder: bool,
+    pub is_const: bool,
 
-    #[bits(7)]
+    #[bits(6)]
     __: u16,
 }
 

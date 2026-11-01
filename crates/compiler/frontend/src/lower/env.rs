@@ -95,6 +95,9 @@ pub struct SemanticPolicy {
     /// Permit forwarding const roots to non-const, non-out reference/value-container
     /// parameters (REDmod). Explicit out arguments remain checked.
     pub const_param_non_out_forwarding: bool,
+    /// Permit repeated rebinding and ordinary/out forwarding of const object handles.
+    /// Referent writes and non-const receiver calls remain forbidden.
+    pub const_local_handle_rebinding: bool,
     /// Dispatch `Cast<T>` to object casting for non-struct class targets, including
     /// identity and upcasts through ordinary coercion. Other targets use overloads.
     pub native_object_cast: bool,
@@ -337,6 +340,27 @@ impl<'scope, 'ctx> Locals<'scope, 'ctx> {
         span: Span,
     ) -> &ir::LocalInfo<'ctx> {
         self.add(ir::Local::Var(self.counter.get()), name, typ, Some(span))
+    }
+
+    pub fn add_const_var(
+        &mut self,
+        name: Option<&'ctx str>,
+        typ: PolyType<'ctx>,
+        span: Span,
+        is_const: bool,
+    ) -> &ir::LocalInfo<'ctx> {
+        self.add_var(name, typ, span);
+        let local = self.locals.last_mut().expect("just added local");
+        local.is_const = is_const;
+        local
+    }
+
+    pub fn set_initializer(&mut self, id: ir::Local, span: Span) {
+        let index = self
+            .locals
+            .binary_search_by_key(&id, |local| local.id)
+            .expect("initializer belongs to a local in this scope");
+        self.locals[index].initializer = Some(span);
     }
 
     pub fn add_temp(

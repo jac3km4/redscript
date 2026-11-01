@@ -332,7 +332,9 @@ pub trait AstVisitor<'src, K: AstKind> {
         self.visit_node(AstNode::Stmt(stmt))?;
         let inner = stmt.as_wrapped();
         match inner {
-            Stmt::Let { name, typ, value } => self.visit_let(name, typ, value)?,
+            Stmt::Let {
+                name, typ, value, ..
+            } => self.visit_let(name, typ, value)?,
             Stmt::Switch {
                 expr,
                 cases,

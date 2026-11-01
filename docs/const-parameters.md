@@ -1,4 +1,4 @@
-# Const parameters
+# Const parameters and locals
 
 Const parameter flags are enforced by shared frontend analysis after function
 bodies have been lowered and calls resolved. Community source uses the strict
@@ -29,6 +29,57 @@ parameters remain legal targets. Function-value calls have no parameter flags;
 strict analysis checks their resolved reference/container argument types instead.
 User method receivers are not presumed mutating merely because a method is
 non-const: receiver effects are not characterized by this pass.
+
+## Const locals
+
+Community syntax uses `const name: Type;`, `const name = value;`, and
+`const name: Type = value;`. The former `const let` syntax is rejected; native
+REDmod syntax remains `const var name: Type;`.
+The AST qualifier and `ir::LocalInfo::is_const` survive bridging, hoisting and
+lowering; constness is not encoded by changing or erasing the value's type.
+The shared post-resolution validator distinguishes const parameter roots from
+const local roots, and binding assignment from referent mutation.
+
+Strict community defaults allow the declaration initializer exactly once, for
+both inferred and explicitly typed const locals. All other binding assignments
+are rejected, including the first assignment after an uninitialized declaration;
+this is intentional, not definite-assignment analysis. Field/index writes,
+mutating array intrinsics, explicit `out` forwarding and ordinary forwarding to
+mutable reference/container parameters are also rejected.
+Scalar by-value reads and forwarding to const parameters remain legal. Non-const
+instance methods on const local referents are rejected; const methods are legal.
+Parameter receiver behavior is unchanged.
+
+The independent, per-file `const_local_handle_rebinding` policy defaults to false
+and is enabled by REDmod. For non-struct class objects and strong/weak class
+handles, it permits repeated root assignment, inline initialization, and ordinary
+or `out` forwarding of the handle. It does not permit field/index mutation,
+forwarding a field as `out`, mutating array intrinsics, or non-const receiver
+methods. Scalars, structs, arrays and script references do not get this exception.
+Under this native policy, default storage initialization is not an explicit source
+assignment; scalar/struct assignment, even the first assignment or an inline
+initializer, is rejected. In particular, the retained official compiler probe
+matrix (`target/parity-investigation/blockers.md`, section B) records const Int32
+inline initialization failing with “Value on the left side is constant. Unable
+to assign to it.” This native restriction is deliberately distinct from community
+initialization; it is not inferred from ordinary non-const initializer acceptance.
+
+`LocalInfo::initializer` records the exact declaration-store span during lowering,
+including hoisted declarations. Validation matches both local ID and that span,
+consumes the exemption once, and uses separate metadata for each closure scope.
+The initializer value is still visited: nested binding writes, captured writes,
+forwarding and referent mutation receive no initialization exemption. No new IR
+expression variant or backend assignment behavior is introduced.
+
+Local provenance follows inherited fields, indexes, dynamic casts, conditional
+branches, script-reference wrappers, strong/weak conversions (including inserted
+coercions), and closure captures. Captured bindings retain their binding-versus-
+referent distinction; nested closure locals use their own metadata.
+
+This is validation of the selected resolved method, not const-aware overload
+ranking. Const returns, const fields and arbitrary method effects remain outside
+this pass. No runtime serialization or full installed-corpus coverage measurement
+is implied by the focused tests.
 
 ## Analysis bounds
 

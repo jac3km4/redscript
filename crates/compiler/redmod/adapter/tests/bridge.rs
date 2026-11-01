@@ -28,10 +28,6 @@ fn body<'a, 'src>(module: &'a ParsedModule<'src>) -> &'a ast::SourceBlock<'src> 
 fn native_capabilities_fail_closed_with_typed_actionable_errors() {
     for (source, expected) in [
         (
-            "function Run() { const var x: Int32 = 1; }",
-            CapabilityError::ConstLocal,
-        ),
-        (
             "function Run() { var x, y: Int32 = Make(); }",
             CapabilityError::InitializedLocalGroup,
         ),
@@ -419,7 +415,7 @@ fn override_metadata_and_same_field_hints_survive_lowering() {
 fn hint_metadata_reaches_symbols_and_capability_failures_isolate_files() {
     let sources = ast::SourceMap::new();
     let good_source = "class Host { var value: Int32; hint value = \"Help\"; }";
-    let bad_source = "function Unsupported() { const var value: Int32 = 1; }";
+    let bad_source = "function Unsupported() { var x, y: Int32 = Make(); }";
     let good_file = sources.push_back("good.script", good_source);
     let bad_file = sources.push_back("bad.script", bad_source);
     let (good, errors) = parse_file_with_metadata(good_source, good_file);
@@ -429,7 +425,7 @@ fn hint_metadata_reaches_symbols_and_capability_failures_isolate_files() {
     assert!(matches!(
         errors.as_slice(),
         [Error::Capability {
-            kind: CapabilityError::ConstLocal,
+            kind: CapabilityError::InitializedLocalGroup,
             ..
         }]
     ));

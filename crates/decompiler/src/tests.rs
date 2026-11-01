@@ -195,6 +195,44 @@ fn initialized_locals_preserve_declared_types() {
 }
 
 #[test]
+fn const_locals_emit_community_syntax() {
+    for initialized in [false, true] {
+        let mut bundle = ScriptBundle::default();
+        let mut function = function(&mut bundle);
+        let function_idx = bundle.define(function.clone());
+        let name = bundle.cnames_mut().add("Int32");
+        let typ = bundle.define(Type::new(name, TypeKind::Primitive));
+        let name = bundle.cnames_mut().add("x");
+        let local = bundle.define(Local::new(
+            name,
+            function_idx,
+            typ,
+            LocalFlags::default().with_is_const(true),
+        ));
+        function.set_locals([local]);
+        let code = if initialized {
+            vec![
+                Instr::Assign,
+                Instr::Local(local),
+                Instr::I32One,
+                Instr::Return,
+                Instr::Nop,
+            ]
+        } else {
+            vec![Instr::Return, Instr::Nop]
+        };
+        let block = decompile(&bundle, &function, &code);
+        let output = format_block(&block);
+        let expected = if initialized {
+            "const x: Int32 = 1;"
+        } else {
+            "const x: Int32;"
+        };
+        assert!(output.contains(expected), "{output}");
+    }
+}
+
+#[test]
 fn assignment_expression_keeps_hoisted_local_type() {
     let mut bundle = ScriptBundle::default();
     let mut function = function(&mut bundle);

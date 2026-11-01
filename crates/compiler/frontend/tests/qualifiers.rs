@@ -21,8 +21,10 @@ fn qualifiers_are_checked_per_declaration() {
             "class Owner { QUALIFIER func Invalid() {} }",
             "import Missing",
         ] {
-            if qualifier == ItemQualifiers::TEST_ONLY
-                && matches!(declaration, "class Invalid {}" | "struct Invalid {}")
+            if (qualifier == ItemQualifiers::TEST_ONLY
+                && matches!(declaration, "class Invalid {}" | "struct Invalid {}"))
+                || (qualifier == ItemQualifiers::CONST
+                    && declaration == "class Owner { QUALIFIER func Invalid() {} }")
             {
                 continue;
             }

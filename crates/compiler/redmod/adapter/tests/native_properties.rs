@@ -203,7 +203,7 @@ fn typed_metadata_is_preserved_by_native_ast_and_not_arbitrarily_stringified() {
 }
 
 #[test]
-fn const_returns_keep_the_native_property_and_const_locals_remain_deferred() {
+fn const_returns_keep_the_native_property() {
     for source in [
         "function Run() -> const Int32 { return 7; }",
         "class Host { public function Run() -> const Host { return this; } }",
@@ -227,11 +227,6 @@ fn const_returns_keep_the_native_property_and_const_locals_remain_deferred() {
         };
         assert!(function.properties.is_const_return);
     }
-    rejected(
-        "function Run() { const var value: Int32; }",
-        CapabilityError::ConstLocal,
-        "const",
-    );
 }
 
 #[test]

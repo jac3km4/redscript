@@ -16,14 +16,21 @@ pub fn stmt_rec<'tok, 'src: 'tok>(
 ) -> impl Parse<'tok, 'src, SourceStmt<'src>> {
     let typ = type_with_span();
 
-    let let_ = just(Token::Ident("let"))
-        .ignore_then(ident_with_span())
+    let let_ = just(Token::Ident("const"))
+        .to(true)
+        .or(just(Token::Ident("let")).to(false))
+        .then(ident_with_span())
         .then(just(Token::Colon).ignore_then(typ.clone()).or_not())
         .then(just(Token::Assign).ignore_then(expr.clone()).or_not())
-        .map(|((name, typ), value)| {
+        .map(|(((const_, name), typ), value)| {
             let value = value.map(Box::new);
             let typ = typ.map(Box::new);
-            Stmt::Let { name, typ, value }
+            Stmt::Let {
+                is_const: const_,
+                name,
+                typ,
+                value,
+            }
         })
         .erased();
 
@@ -219,6 +226,43 @@ mod tests {
 
     use super::*;
     use crate::{Error, Span, parse_stmt};
+
+    #[test]
+    fn const_local_declarations() {
+        for (source, typed, initialized) in [
+            ("const thing = 1;", false, true),
+            ("const thing: Int32 = 1;", true, true),
+            ("const thing: Int32;", true, false),
+        ] {
+            let (stmt, errors) = parse_stmt(source, FileId::from_i32(0));
+            assert!(errors.is_empty(), "{source}: {errors:?}");
+            let Stmt::Let {
+                is_const,
+                name,
+                typ,
+                value,
+            } = stmt.unwrap()
+            else {
+                panic!("expected a local declaration: {source}");
+            };
+            assert!(is_const, "{source}");
+            assert_eq!(name.0, "thing");
+            assert_eq!(typ.is_some(), typed, "{source}");
+            assert_eq!(value.is_some(), initialized, "{source}");
+        }
+    }
+
+    #[test]
+    fn const_let_declarations_are_rejected() {
+        for source in [
+            "const let thing = 1;",
+            "const let thing: Int32 = 1;",
+            "const let thing: Int32;",
+        ] {
+            let (_, errors) = parse_stmt(source, FileId::from_i32(0));
+            assert!(!errors.is_empty(), "{source}");
+        }
+    }
 
     #[test]
     fn pattern_suffixes_preserve_inner_spans() {
@@ -430,6 +474,7 @@ mod tests {
             res,
             Stmt::Let {
                 name: "a",
+                is_const: false,
                 typ: Some(Type::plain("Int32").into()),
                 value: Some(Expr::Constant(Constant::I32(1)).into()),
             }

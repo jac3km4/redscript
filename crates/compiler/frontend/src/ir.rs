@@ -523,6 +523,10 @@ pub enum TemporaryPurpose {
 #[derive(Debug, Clone)]
 pub struct LocalInfo<'ctx> {
     pub id: Local,
+    /// Source const qualification, independent of whether handle storage can rebind.
+    pub is_const: bool,
+    /// Exact declaration-initializer assignment site, not a later binding write.
+    pub initializer: Option<Span>,
     pub name: Option<&'ctx str>,
     pub temporary_purpose: Option<TemporaryPurpose>,
     pub typ: PolyType<'ctx>,
@@ -538,6 +542,8 @@ impl<'ctx> LocalInfo<'ctx> {
     ) -> Self {
         Self {
             id,
+            is_const: false,
+            initializer: None,
             name,
             temporary_purpose: None,
             typ,

@@ -91,7 +91,7 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
                         })?
                         .assume_mono(type_env);
                     let typ = monomorphizer.type_(&typ, symbols, bundle);
-                    let flags = PoolLocalFlags::default();
+                    let flags = PoolLocalFlags::default().with_is_const(local.is_const);
                     let idx = bundle.define(PoolLocal::new(name, function_index, typ, flags));
                     local_indices.push((local.id, idx));
                 }

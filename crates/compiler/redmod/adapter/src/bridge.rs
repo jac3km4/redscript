@@ -23,7 +23,7 @@ pub enum CapabilityError {
     OmittedArgument,
 
     UnsafeArrayEvaluation,
-    ConstLocal,
+
     InitializedLocalGroup,
     FieldGroup,
     OperatorDeclaration,
@@ -63,7 +63,7 @@ impl fmt::Display for CapabilityError {
             Self::UnsafeArrayEvaluation => {
                 "array literal prefixes may change conditional evaluation or operand order; bind the array explicitly at its intended execution point"
             }
-            Self::ConstLocal => "const local enforcement is not supported",
+
             Self::InitializedLocalGroup => {
                 "initialized local groups require explicit per-binding initializers; split the declaration"
             }
@@ -569,9 +569,6 @@ impl<'src> Bridge<'src> {
                     continue;
                 }
                 native::Statement::Local(local) => {
-                    if let Some(span) = local.const_ {
-                        return Err((CapabilityError::ConstLocal, span));
-                    }
                     if local.names.len() > 1 && local.value.is_some() {
                         return Err((CapabilityError::InitializedLocalGroup, span));
                     }
@@ -585,6 +582,7 @@ impl<'src> Bridge<'src> {
                         let own_span = if grouped { name.1 } else { span };
                         stmts.push((
                             ast::Stmt::Let {
+                                is_const: local.const_.is_some(),
                                 name,
                                 typ: Some(Box::new(ty.clone())),
                                 value: value.clone(),

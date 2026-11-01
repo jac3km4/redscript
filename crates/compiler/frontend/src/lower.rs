@@ -46,19 +46,26 @@ pub struct Lower<'scope, 'ctx> {
 
 /// Collect explicitly typed locals in the current function, not nested closures.
 #[derive(Default)]
-struct LocalDeclarations<'ctx>(Vec<(Spanned<&'ctx str>, Spanned<ast::SourceType<'ctx>>)>);
+struct LocalDeclarations<'ctx>(Vec<(Spanned<&'ctx str>, Spanned<ast::SourceType<'ctx>>, bool)>);
 
 impl<'ctx> ast::AstVisitor<'ctx, ast::WithSpan> for LocalDeclarations<'ctx> {
     type Error = std::convert::Infallible;
 
-    fn visit_let(
+    fn visit_node(
         &mut self,
-        name: &Spanned<&'ctx str>,
-        typ: &Option<Box<Spanned<ast::SourceType<'ctx>>>>,
-        _value: &Option<Box<Spanned<ast::SourceExpr<'ctx>>>>,
+        node: ast::AstNode<'_, 'ctx, ast::WithSpan>,
     ) -> Result<(), Self::Error> {
-        if let Some(typ) = typ {
-            self.0.push((*name, typ.as_ref().clone()));
+        if let ast::AstNode::Stmt((
+            ast::Stmt::Let {
+                name,
+                typ: Some(typ),
+                is_const,
+                ..
+            },
+            _,
+        )) = node
+        {
+            self.0.push((*name, typ.as_ref().clone(), *is_const));
         }
         Ok(())
     }
@@ -154,7 +161,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                         let mut declarations = LocalDeclarations::default();
                         let Ok(()) = declarations.visit_block(block);
                         let mut names: IndexSet<_> = env.locals().top().keys().copied().collect();
-                        for ((name, name_span), (typ, type_span)) in declarations.0 {
+                        for ((name, name_span), (typ, type_span), is_const) in declarations.0 {
                             lower.hoisted_declarations.insert(name_span, None);
                             if !names.insert(name) {
                                 lower
@@ -166,7 +173,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                             if let Some(typ) = lower.reporter.unwrap_err(resolved) {
                                 let local = lower
                                     .locals
-                                    .add_var(Some(name), typ.clone(), name_span)
+                                    .add_const_var(Some(name), typ.clone(), name_span, is_const)
                                     .clone();
                                 env.define_local(name, local.clone());
                                 lower
@@ -628,7 +635,13 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         span: Span,
     ) -> LowerResult<'ctx, ir::Stmt<'ctx>> {
         let res = match stmt {
-            ast::Stmt::Let { name, typ, value } => {
+            ast::Stmt::Let {
+                is_const,
+                name,
+                typ,
+                value,
+            } => {
+                let is_const = *is_const;
                 let &(name, name_span) = name;
                 if let Some(local) = self.hoisted_declarations.get(&name_span).cloned() {
                     let Some(local) = local else {
@@ -639,6 +652,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                         let (mut value, value_t) =
                             self.lower_expr_with(value, Some(&local.typ), env)?;
                         self.coerce(&mut value, value_t, local.typ.clone(), env, *value_span)?;
+                        self.locals.set_initializer(local.id, span);
                         Ok(ir::Expr::Assign {
                             place: ir::Expr::Local(local.id, name_span).into(),
                             expr: value.into(),
@@ -662,8 +676,11 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     } else {
                         value_t
                     };
-                    let local = self.locals.add_var(Some(name), typ.clone(), name_span);
+                    let local =
+                        self.locals
+                            .add_const_var(Some(name), typ.clone(), name_span, is_const);
                     let local = env.define_local(name, local.clone());
+                    self.locals.set_initializer(local, span);
 
                     ir::Expr::Assign {
                         place: ir::Expr::Local(local, name_span).into(),
@@ -674,7 +691,9 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     .into()
                 } else {
                     let typ = typ.unwrap_or_else(PolyType::fresh);
-                    let local = self.locals.add_var(Some(name), typ.clone(), name_span);
+                    let local =
+                        self.locals
+                            .add_const_var(Some(name), typ.clone(), name_span, is_const);
                     let local = env.define_local(name, local.clone());
                     ir::Stmt::InitDefault {
                         local,
