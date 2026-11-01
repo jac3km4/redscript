@@ -29,6 +29,8 @@ pub enum Stmt<'ctx> {
         scrutinee: Box<Expr<'ctx>>,
         scrutinee_type: Type<'ctx>,
         branches: Box<[Case<'ctx>]>,
+        /// Number of case labels preceding the default label.
+        default_index: usize,
         default: Option<Block<'ctx>>,
         span: Span,
     },

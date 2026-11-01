@@ -125,14 +125,29 @@ pub fn stmt_rec<'tok, 'src: 'tok>(
         .ignore_then(condition.clone())
         .then_ignore(just(Token::Colon))
         .then(case_body.clone())
-        .map(|(m, body)| Case::new(m, body))
+        .map(|(m, body)| (Some(m), body))
+        .or(just(Token::Default)
+            .ignore_then(just(Token::Colon).ignore_then(case_body))
+            .map(|body| (None, body)))
         .repeated()
         .collect::<Vec<_>>()
-        .then(
-            just(Token::Default)
-                .ignore_then(just(Token::Colon).ignore_then(case_body))
-                .or_not(),
-        )
+        .try_map(|labels, span| {
+            let mut cases = Vec::new();
+            let mut default = None;
+            let mut default_index = 0;
+            for (condition, body) in labels {
+                if let Some(condition) = condition {
+                    cases.push(Case::new(condition, body));
+                } else {
+                    if default.is_some() {
+                        return Err(Rich::custom(span, "duplicate default label"));
+                    }
+                    default_index = cases.len();
+                    default = Some(body);
+                }
+            }
+            Ok((cases, default_index, default))
+        })
         .delimited_by(just(Token::LBrace), just(Token::RBrace))
         .erased();
 
@@ -140,9 +155,10 @@ pub fn stmt_rec<'tok, 'src: 'tok>(
         .ignore_then(expr.clone())
         .then(cases)
         .then_ignore(just(Token::Semicolon).or_not())
-        .map(|(expr, (cases, default))| Stmt::Switch {
+        .map(|(expr, (cases, default_index, default))| Stmt::Switch {
             expr: expr.into(),
             cases: cases.into(),
+            default_index,
             default: default.map(Into::into),
         })
         .erased();
@@ -385,6 +401,7 @@ mod tests {
             parse_stmt(code, FileId::from_i32(0)).0.unwrap().unwrapped(),
             Stmt::Switch {
                 expr: Expr::Ident("a").into(),
+                default_index: 2,
                 cases: [
                     Case::new(
                         Condition::Expr(Expr::Constant(Constant::I32(0))),

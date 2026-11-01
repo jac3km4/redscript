@@ -459,6 +459,7 @@ impl<K: AstKind> Formattable for Stmt<'_, K> {
             Stmt::Switch {
                 expr,
                 cases,
+                default_index,
                 default,
             } => {
                 writeln!(
@@ -467,8 +468,19 @@ impl<K: AstKind> Formattable for Stmt<'_, K> {
                     ctx.indent(),
                     (**expr).as_wrapped().as_fmt(ctx)
                 )?;
-                for case in &cases[..] {
+                for index in 0..=cases.len() {
                     let ctx = ctx.indented();
+                    if index == *default_index
+                        && let Some(default) = default
+                    {
+                        writeln!(f, "{}default:", ctx.indent())?;
+                        for stmt in &default[..] {
+                            writeln!(f, "{}", stmt.as_wrapped().as_fmt(ctx.indented()))?;
+                        }
+                    }
+                    let Some(case) = cases.get(index) else {
+                        continue;
+                    };
                     writeln!(
                         f,
                         "{}case {}:",
@@ -479,13 +491,7 @@ impl<K: AstKind> Formattable for Stmt<'_, K> {
                         writeln!(f, "{}", stmt.as_wrapped().as_fmt(ctx.indented()))?;
                     }
                 }
-                if let Some(default) = default {
-                    let ctx = ctx.indented();
-                    writeln!(f, "{}default:", ctx.indent())?;
-                    for stmt in &default[..] {
-                        writeln!(f, "{}", stmt.as_wrapped().as_fmt(ctx.indented()))?;
-                    }
-                }
+
                 write!(f, "{}}}", ctx.indent())
             }
             Stmt::If { blocks, else_ } => {

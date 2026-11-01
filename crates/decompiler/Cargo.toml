@@ -13,6 +13,9 @@ thiserror.workspace = true
 hashbrown.workspace = true
 
 [dev-dependencies]
+redscript-compiler-api.workspace = true
+redscript-compiler-backend.workspace = true
+redscript-compiler-frontend.workspace = true
 insta.workspace = true
 
 [lints]

@@ -45,6 +45,24 @@ fn analyze_native(
 }
 
 #[test]
+fn ordered_switch_defaults_preserve_fallthrough_and_loop_targets() {
+    for (value, marks) in [(0, vec![10, 20, 30]), (1, vec![20, 30]), (2, vec![30])] {
+        run(
+            &format!(
+                "function Run(): Int32 {{ switch ({value}) {{ case 0: Mark(10); default: Mark(20); case 2: Mark(30); }} return 7; }}"
+            ),
+            &marks,
+            7,
+        );
+    }
+    run(
+        "function Run(): Int32 { var i: Int32 = 0; while (Less(i, 3)) { i = Inc(i); switch (i) { default: Mark(i); continue; case 2: break; } Mark(9); } return i; }",
+        &[1, 9, 3],
+        3,
+    );
+}
+
+#[test]
 fn loop_entry_temporaries_have_target_independent_metadata() {
     for source in [
         "function Run() { for (;;) { break; } }",
@@ -183,6 +201,7 @@ impl<'a, 'ctx> Machine<'a, 'ctx> {
                 ir::Stmt::Switch {
                     scrutinee,
                     branches,
+                    default_index,
                     default,
                     ..
                 } => {
@@ -191,18 +210,24 @@ impl<'a, 'ctx> Machine<'a, 'ctx> {
                         .iter()
                         .position(|branch| self.expr(&branch.matcher) == value);
                     let mut flow = Flow::Next;
+                    let start = start
+                        .map(|index| {
+                            index + usize::from(default.is_some() && index >= *default_index)
+                        })
+                        .or_else(|| default.as_ref().map(|_| *default_index));
                     if let Some(start) = start {
-                        for branch in &branches[start..] {
-                            flow = self.block(&branch.block);
+                        for index in start..branches.len() + usize::from(default.is_some()) {
+                            flow = if default.is_some() && index == *default_index {
+                                self.block(default.as_ref().unwrap())
+                            } else {
+                                let case = index
+                                    - usize::from(default.is_some() && index > *default_index);
+                                self.block(&branches[case].block)
+                            };
                             if flow != Flow::Next {
                                 break;
                             }
                         }
-                    }
-                    if flow == Flow::Next
-                        && let Some(block) = default
-                    {
-                        flow = self.block(block);
                     }
                     if flow == Flow::Break {
                         Flow::Next

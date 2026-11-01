@@ -52,10 +52,6 @@ fn native_capabilities_fail_closed_with_typed_actionable_errors() {
             CapabilityError::Modifier(redscript_redmod_ast::Modifier::Export),
         ),
         (
-            "function Run() { switch (1) { default: break; case 1: break; } }",
-            CapabilityError::SwitchLabelOrder,
-        ),
-        (
             "function Run() { switch (1) { default: break; default: break; } }",
             CapabilityError::SwitchLabelOrder,
         ),

@@ -69,13 +69,21 @@ pub trait AstVisitor<'src, K: AstKind> {
         &mut self,
         expr: &ExprT<'src, K>,
         cases: &[Case<'src, K>],
+        default_index: usize,
         default: &Option<Box<[StmtT<'src, K>]>>,
     ) -> Result<(), Self::Error> {
         self.visit_expr(expr)?;
-        cases.iter().try_for_each(|case| self.visit_case(case))?;
-        default
-            .iter()
-            .try_for_each(|stmts| self.visit_default(stmts))
+        for index in 0..=cases.len() {
+            if index == default_index
+                && let Some(stmts) = default
+            {
+                self.visit_default(stmts)?;
+            }
+            if let Some(case) = cases.get(index) {
+                self.visit_case(case)?;
+            }
+        }
+        Ok(())
     }
 
     fn visit_case(&mut self, case: &Case<'src, K>) -> Result<(), Self::Error> {
@@ -338,8 +346,9 @@ pub trait AstVisitor<'src, K: AstKind> {
             Stmt::Switch {
                 expr,
                 cases,
+                default_index,
                 default,
-            } => self.visit_switch(expr, cases, default)?,
+            } => self.visit_switch(expr, cases, *default_index, default)?,
             Stmt::If { blocks, else_ } => self.visit_if(blocks, else_)?,
             Stmt::While(block) => self.visit_while(block)?,
             Stmt::ForIn { name, iter, body } => self.visit_for_in(name, iter, body)?,

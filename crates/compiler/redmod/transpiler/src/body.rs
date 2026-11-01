@@ -313,17 +313,22 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             ir::Stmt::Switch {
                 scrutinee,
                 branches,
+                default_index,
                 default,
                 ..
             } => {
                 text.push_str(&format!("switch ({}) {{\n", self.expr(scrutinee)?));
-                for case in branches {
-                    text.push_str(&format!("{pad}    case {}:\n", self.expr(&case.matcher)?));
-                    self.block(&case.block, depth + 2, text, mappings)?;
-                }
-                if let Some(block) = default {
-                    text.push_str(&format!("{pad}    default:\n"));
-                    self.block(block, depth + 2, text, mappings)?;
+                for index in 0..=branches.len() {
+                    if index == *default_index
+                        && let Some(block) = default
+                    {
+                        text.push_str(&format!("{pad}    default:\n"));
+                        self.block(block, depth + 2, text, mappings)?;
+                    }
+                    if let Some(case) = branches.get(index) {
+                        text.push_str(&format!("{pad}    case {}:\n", self.expr(&case.matcher)?));
+                        self.block(&case.block, depth + 2, text, mappings)?;
+                    }
                 }
                 text.push_str(&format!("{pad}}}\n"));
             }

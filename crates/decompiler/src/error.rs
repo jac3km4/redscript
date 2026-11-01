@@ -4,6 +4,8 @@ pub type Result<A, E = Error> = std::result::Result<A, E>;
 
 #[derive(Debug, Error)]
 pub enum Error {
+    #[error("Detached switch bodies are unsupported")]
+    DetachedSwitchBodies,
     #[error("Unexpected end of code")]
     UnexpectedEndOfCode,
     #[error("Missing {1} in the pool at index {0}")]

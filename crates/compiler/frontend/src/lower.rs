@@ -705,6 +705,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             ast::Stmt::Switch {
                 expr,
                 cases,
+                default_index,
                 default,
             } => {
                 let (expr, expr_t) = self.lower_expr(expr, env)?;
@@ -729,12 +730,26 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                         span,
                         ir::TemporaryPurpose::SwitchScrutinee,
                     );
+                    if default.as_ref().is_some_and(|block| {
+                        !matches!(
+                            block.stmts.back(),
+                            Some(
+                                ir::Stmt::Break(_) | ir::Stmt::Continue(_) | ir::Stmt::Return(_, _)
+                            )
+                        )
+                    }) && let Some(case) = cases.get(*default_index)
+                        && matches!(case.condition, ast::Condition::Pattern(_))
+                    {
+                        self.reporter
+                            .report(Error::FallthroughIntoPatternCase(case.condition.span()));
+                    }
                     let branches = cases
                         .iter()
                         .enumerate()
                         .map(|(index, case)| {
                             let branch = self.lower_pattern_case(case, local, &expr_t, env)?;
                             if matches!(case.condition, ast::Condition::Expr(_))
+                                && (default.is_none() || index + 1 != *default_index)
                                 && cases.get(index + 1).is_some_and(|next| {
                                     matches!(next.condition, ast::Condition::Pattern(_))
                                 })
@@ -761,6 +776,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     scrutinee,
                     scrutinee_type,
                     branches,
+                    default_index: *default_index,
                     default,
                     span,
                 }

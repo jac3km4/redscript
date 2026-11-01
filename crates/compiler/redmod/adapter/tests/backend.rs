@@ -289,6 +289,57 @@ fn variant_casts_emit_exact_extraction_types_and_single_source_calls() {
 }
 
 #[test]
+fn ordered_switch_dispatch_offsets_preserve_body_order() {
+    let bundle = compile(
+        "function Run() { while (true) { switch (Inc(0)) { case 0: OuterStep(); default: InnerStep(); continue; case 2: DoCondition(); break; } OuterContinue(); break; } }",
+    );
+    let bytes = bundle.into_writeable().to_bytes().unwrap();
+    let bundle = ScriptBundle::from_bytes(&bytes).unwrap();
+    let code = function(&bundle, "Run;")
+        .body()
+        .code_iter()
+        .with_offsets()
+        .map(|(offset, instr)| (offset, instr.unwrap()))
+        .collect::<Vec<_>>();
+    call_position(&bundle, &code, "Inc");
+    let first = call_position(&bundle, &code, "OuterStep");
+    let middle = call_position(&bundle, &code, "InnerStep");
+    let last = call_position(&bundle, &code, "DoCondition");
+    let after = call_position(&bundle, &code, "OuterContinue");
+    assert!(first < middle && middle < last && last < after);
+    let labels = code
+        .iter()
+        .filter_map(|(offset, instr)| match instr {
+            Instr::SwitchLabel(label) => Some((*offset, label)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(labels.len(), 2);
+    for ((offset, label), body) in labels.iter().zip([first, last]) {
+        assert_eq!(
+            i64::from(*offset) + i64::from(i32::from(label.body())),
+            i64::from(code[body].0)
+        );
+    }
+    let default = code
+        .iter()
+        .position(|(_, instr)| matches!(instr, Instr::SwitchDefault))
+        .unwrap();
+    let (offset, Instr::Jump(jump)) = &code[default + 1] else {
+        panic!("default dispatch must jump to its source-order body")
+    };
+    assert_eq!(
+        i64::from(*offset) + i64::from(i32::from(jump.target())),
+        i64::from(code[middle].0)
+    );
+    assert!(labels.iter().all(|(offset, _)| *offset < code[default].0));
+    let (offset, Instr::Jump(jump)) = &code[last - 1] else {
+        panic!("continue must leave the switch")
+    };
+    assert!(i64::from(*offset) + i64::from(i32::from(jump.target())) < i64::from(code[first].0));
+}
+
+#[test]
 fn native_enum_storage_is_emitted_and_serialized() {
     let bundle = compile(
         "enum Narrow: Uint8 { A = 255 } enum Wide: Int64 { A = 0 } enum Word: Uint32 { A = 4294967295 }",

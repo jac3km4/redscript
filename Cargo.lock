@@ -1066,6 +1066,9 @@ dependencies = [
  "insta",
  "redscript-community-ast",
  "redscript-community-formatter",
+ "redscript-compiler-api",
+ "redscript-compiler-backend",
+ "redscript-compiler-frontend",
  "redscript-io",
  "thiserror 2.0.21",
 ]

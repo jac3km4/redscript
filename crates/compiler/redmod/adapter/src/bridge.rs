@@ -96,9 +96,7 @@ impl fmt::Display for CapabilityError {
                 );
             }
 
-            Self::SwitchLabelOrder => {
-                "switch defaults must be unique and last; shared syntax cannot preserve this label order"
-            }
+            Self::SwitchLabelOrder => "switch defaults must be unique",
             Self::ControlFlowLocalLimit => "loop lowering exceeds the typed local limit",
             Self::ControlFlowProvenance => {
                 "loop lowering provenance was changed or lost; retain the parsed REDmod module and its control-flow plan together"
@@ -679,10 +677,8 @@ impl<'src> Bridge<'src> {
                 native::Statement::Switch { expr, labels } => {
                     let mut cases = Vec::new();
                     let mut default = None;
+                    let mut default_index = 0;
                     for (label, span) in labels {
-                        if default.is_some() {
-                            return Err((CapabilityError::SwitchLabelOrder, span));
-                        }
                         let body = self.block(label.body)?.stmts;
                         if let Some(value) = label.value {
                             // Matcher prefixes must not run before the switch.
@@ -692,12 +688,17 @@ impl<'src> Bridge<'src> {
                                 body,
                             ));
                         } else {
+                            if default.is_some() {
+                                return Err((CapabilityError::SwitchLabelOrder, span));
+                            }
+                            default_index = cases.len();
                             default = Some(body);
                         }
                     }
                     ast::Stmt::Switch {
                         expr: Box::new(self.expr(expr)?),
                         cases: cases.into(),
+                        default_index,
                         default,
                     }
                 }

@@ -124,6 +124,12 @@ impl<'scope, 'ctx: 'i, 'i> Decompiler<'scope, 'ctx, 'i> {
                             let pos = self.position();
                             let body = pos + label.body();
                             let next_case = pos + label.next_case();
+                            // Inline labels may share a body at the next label, but
+                            // detached dispatch tables put bodies beyond that label.
+                            // Consuming sequentially would assign them to default.
+                            if body > next_case {
+                                return Err(Error::DetachedSwitchBodies);
+                            }
 
                             let exit = case_exit
                                 .as_ref()
@@ -165,6 +171,7 @@ impl<'scope, 'ctx: 'i, 'i> Decompiler<'scope, 'ctx, 'i> {
 
                 ast::Stmt::Switch {
                     expr: scrutinee,
+                    default_index: cases.len(),
                     cases: cases.into(),
                     default,
                 }

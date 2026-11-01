@@ -260,6 +260,7 @@ mod tests {
                         },
                     )]
                     .into(),
+                    default_index: 1,
                     default: (occurrence == 5)
                         .then(|| ir::Block::new([assign(local, value(), span)])),
                     span,

@@ -791,6 +791,8 @@ pub enum Stmt<'src, K: AstKind = Identity> {
     Switch {
         expr: Box<ExprT<'src, K>>,
         cases: Box<[Case<'src, K>]>,
+        /// Number of case labels preceding the default label.
+        default_index: usize,
         default: Option<Box<[StmtT<'src, K>]>>,
     },
     If {
@@ -826,9 +828,11 @@ impl<'src, K: AstKind> Stmt<'src, K> {
             Stmt::Switch {
                 expr,
                 cases,
+                default_index,
                 default,
             } => Stmt::Switch {
                 expr: (*expr).into_wrapped().unwrapped().into(),
+                default_index,
                 cases: cases
                     .into_vec()
                     .into_iter()
@@ -883,6 +887,7 @@ impl<'src> Stmt<'src, WithSpan> {
                 expr,
                 cases,
                 default,
+                ..
             } => {
                 let (expr, span) = &**expr;
                 if span.contains(pos) {
@@ -1727,7 +1732,7 @@ mod tests {
     #[test]
     fn sizes() {
         assert_eq!(mem::size_of::<Expr<'_>>(), 48);
-        assert_eq!(mem::size_of::<Stmt<'_>>(), 48);
+        assert_eq!(mem::size_of::<Stmt<'_>>(), 56);
         assert_eq!(mem::size_of::<Item<'_>>(), 112);
     }
 }

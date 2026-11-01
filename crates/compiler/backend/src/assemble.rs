@@ -213,6 +213,7 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
                 scrutinee,
                 scrutinee_type,
                 branches,
+                default_index,
                 default,
                 span,
             } => {
@@ -228,6 +229,37 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
 
                 self.emit(Instr::Switch(Switch::new(typ, next_label)));
                 self.assemble_expr(scrutinee)?;
+
+                if let Some(default) = default
+                    && *default_index < branches.len()
+                {
+                    // Dispatch independently of body order: unmatched values must
+                    // search labels after default before entering its body.
+                    let bodies = branches
+                        .iter()
+                        .map(|_| self.new_label())
+                        .collect::<Vec<_>>();
+                    let default_body = self.new_label();
+                    for (case, body) in branches.iter().zip(&bodies) {
+                        self.mark_label(next_label);
+                        next_label = self.new_label();
+                        self.emit(Instr::SwitchLabel(SwitchLabel::new(next_label, *body)));
+                        self.assemble_expr(&case.matcher)?;
+                    }
+                    self.mark_label(next_label);
+                    self.emit(Instr::SwitchDefault);
+                    self.emit(Instr::Jump(Jump::new(default_body)));
+                    for (index, (case, body)) in branches.iter().zip(&bodies).enumerate() {
+                        if index == *default_index {
+                            self.mark_label(default_body);
+                            self.assemble_block(default, switch_span)?;
+                        }
+                        self.mark_label(*body);
+                        self.assemble_block(&case.block, switch_span)?;
+                    }
+                    self.mark_label(end);
+                    return Ok(());
+                }
 
                 let mut case_iter = branches.iter().peekable();
                 while case_iter.peek().is_some() {

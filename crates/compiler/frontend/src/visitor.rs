@@ -30,15 +30,20 @@ pub trait Visitor<'ctx> {
         scrutinee: &ir::Expr<'ctx>,
         _scrutinee_type: &ir::Type<'ctx>,
         branches: &[ir::Case<'ctx>],
+        default_index: usize,
         default: Option<&ir::Block<'ctx>>,
         _span: Span,
     ) {
         self.visit_expr(scrutinee);
-        branches.iter().for_each(|branch| {
-            self.visit_expr(&branch.matcher);
-            self.visit_block(&branch.block);
-        });
-        default.inspect(|block| self.visit_block(block));
+        for index in 0..=branches.len() {
+            if index == default_index {
+                default.inspect(|block| self.visit_block(block));
+            }
+            if let Some(branch) = branches.get(index) {
+                self.visit_expr(&branch.matcher);
+                self.visit_block(&branch.block);
+            }
+        }
     }
 
     fn visit_init_array(
@@ -78,9 +83,17 @@ pub trait Visitor<'ctx> {
                 scrutinee,
                 scrutinee_type,
                 branches,
+                default_index,
                 default,
                 span,
-            } => self.visit_switch(scrutinee, scrutinee_type, branches, default.as_ref(), *span),
+            } => self.visit_switch(
+                scrutinee,
+                scrutinee_type,
+                branches,
+                *default_index,
+                default.as_ref(),
+                *span,
+            ),
             ir::Stmt::InitArray {
                 local,
                 elements,
