@@ -361,6 +361,9 @@ impl<K: TypeKind> fmt::Display for Param<'_, K> {
         if self.flags.is_out() {
             write!(f, "out ")?;
         }
+        if self.flags.is_short_circuit() {
+            write!(f, "skip ")?;
+        }
         write!(f, "{}: {}", self.name, self.typ)
     }
 }

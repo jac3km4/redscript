@@ -290,6 +290,9 @@ fn extract_param_qualifiers(param: &Parameter) -> ast::ParamQualifiers {
     if param.flags().is_const() {
         qs |= ast::ParamQualifiers::CONST;
     }
+    if param.flags().is_short_circuit() {
+        qs |= ast::ParamQualifiers::SKIP;
+    }
     qs
 }
 

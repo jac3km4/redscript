@@ -821,6 +821,7 @@ impl<'ctx> Monomorphizer<'ctx> {
         let resolved = param.type_().assume_mono(env);
         let typ = self.type_(&resolved, symbols, bundle);
         let flags = PoolParameterFlags::default()
+            .with_is_short_circuit(param.flags().is_short_circuit())
             .with_is_optional(param.flags().is_optional())
             .with_is_out(param.flags().is_out())
             .with_is_const(param.flags().is_const());
@@ -1084,7 +1085,15 @@ impl<K> fmt::Display for MangledFreeFunction<'_, '_, K> {
             return Ok(());
         };
         write!(f, ";{}", MangledParams::new(self.func, self.env))?;
-        if self.func.flags().is_cast() {
+        if self.func.flags().is_cast()
+            || (self.func.flags().is_operator()
+                && self
+                    .func
+                    .type_()
+                    .params()
+                    .iter()
+                    .any(|param| param.flags().is_short_circuit()))
+        {
             let rt = self
                 .func
                 .type_()
@@ -1154,6 +1163,9 @@ impl<'ctx, F: FunctionKind<'ctx>> fmt::Display for MangledParams<'_, 'ctx, F> {
         self.func.type_().params().iter().try_for_each(|param| {
             if param.flags().is_out() {
                 write!(f, "Out")?;
+            }
+            if param.flags().is_short_circuit() {
+                write!(f, "Skip")?;
             }
             let typ = param.type_().unwrap_ref_or_self().assume_mono(self.env);
             write!(f, "{typ}",)

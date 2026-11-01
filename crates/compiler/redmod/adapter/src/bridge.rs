@@ -37,7 +37,7 @@ pub enum CapabilityError {
     ConstReturn,
     BodylessValueMethod,
     Modifier(native::Modifier),
-    SkipParameter,
+
     SwitchLabelOrder,
     RecoveredExpression,
     ControlFlowLocalLimit,
@@ -97,9 +97,7 @@ impl fmt::Display for CapabilityError {
                     "REDmod modifier {modifier:?} has no implemented semantic mapping"
                 );
             }
-            Self::SkipParameter => {
-                "skip parameters require short-circuit operator lowering that is not implemented"
-            }
+
             Self::SwitchLabelOrder => {
                 "switch defaults must be unique and last; shared syntax cannot preserve this label order"
             }
@@ -472,14 +470,12 @@ impl<'src> Bridge<'src> {
                 let mut lowered_params = Vec::new();
                 for (param, group_span) in params {
                     let mut qualifiers = ast::ParamQualifiers::empty();
-                    for (modifier, span) in param.modifiers {
+                    for (modifier, _) in param.modifiers {
                         qualifiers |= match modifier {
                             native::ParamModifier::Optional => ast::ParamQualifiers::OPTIONAL,
                             native::ParamModifier::Out => ast::ParamQualifiers::OUT,
                             native::ParamModifier::Const => ast::ParamQualifiers::CONST,
-                            native::ParamModifier::Skip => {
-                                return Err((CapabilityError::SkipParameter, span));
-                            }
+                            native::ParamModifier::Skip => ast::ParamQualifiers::SKIP,
                         };
                     }
                     let ty = typ(param.typ);

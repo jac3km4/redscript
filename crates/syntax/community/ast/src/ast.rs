@@ -1632,6 +1632,7 @@ bitflags! {
         const OPTIONAL = 1 << 0;
         const OUT = 1 << 1;
         const CONST = 1 << 2;
+        const SKIP = 1 << 3;
     }
 
 }

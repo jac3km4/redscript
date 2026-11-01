@@ -44,10 +44,6 @@ fn native_capabilities_fail_closed_with_typed_actionable_errors() {
             CapabilityError::Metadata,
         ),
         (
-            "function Run(skip value: Bool);",
-            CapabilityError::SkipParameter,
-        ),
-        (
             "class Host { default inherited = Make(); }",
             CapabilityError::DefaultDirective,
         ),

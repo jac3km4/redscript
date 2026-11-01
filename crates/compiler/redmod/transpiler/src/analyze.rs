@@ -328,6 +328,7 @@ impl<'ctx> AnalyzedSources<'ctx> {
                     && q.contains(ast::ParamQualifiers::OUT) == resolved.flags().is_out()
                     && q.contains(ast::ParamQualifiers::OPTIONAL) == resolved.flags().is_optional()
                     && q.contains(ast::ParamQualifiers::CONST) == resolved.flags().is_const()
+                    && q.contains(ast::ParamQualifiers::SKIP) == resolved.flags().is_short_circuit()
             })
             && match &f.return_type {
                 Some(t) => self.source_type(file, &t.0).as_ref() == Some(typ.return_type()),

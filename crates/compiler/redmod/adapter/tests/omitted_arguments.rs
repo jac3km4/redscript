@@ -224,16 +224,15 @@ fn required_and_excess_slots_are_diagnostics() {
 }
 
 #[test]
-fn unsupported_call_kinds_fail_closed_and_skip_is_still_rejected() {
+fn unsupported_call_kinds_fail_closed_and_optional_skip_keeps_its_slot() {
     compile(
         "struct Record { var value: Int32; } function Run() { Record(, ); }",
         &["UNSUPPORTED_OMITTED_ARGUMENT"],
     );
-    let sources = SourceMap::new();
-    let source = "function Target(skip optional value: Int32) {} function Run() { Target(, ); }";
-    let file = sources.push_back("skip.script", source);
-    let (_, errors) = parse_file_with_metadata(source, file);
-    assert!(!errors.is_empty(), "skip requires lazy lowering");
+    compile(
+        "function Target(skip optional value: Int32) {} function Run() { Target(); }",
+        &[],
+    );
 }
 
 #[test]

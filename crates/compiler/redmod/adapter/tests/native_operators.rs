@@ -44,6 +44,27 @@ fn analyze(
     inspect(&unit, &symbols, &codes);
 }
 
+#[test]
+fn lazy_calls_share_prefix_array_rejection_with_community_sources() {
+    for (source, community) in [
+        (
+            "import function Lazy(skip value: array<Int32>); function Run() { Lazy([1]); }",
+            "",
+        ),
+        (
+            "function Run() { Lazy([1]); }",
+            "native func Lazy(skip value: [Int32]);",
+        ),
+    ] {
+        analyze(source, community, |_, _, codes| {
+            assert!(
+                codes.iter().any(|code| code == "UNSAFE_ARRAY_EVALUATION"),
+                "{codes:?}"
+            );
+        });
+    }
+}
+
 fn returned_call<'ctx>(
     unit: &LoweredCompilationUnit<'ctx>,
     symbols: &Symbols<'ctx>,

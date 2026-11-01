@@ -494,6 +494,7 @@ fn load_param<'ctx>(
         .ok_or_else(|| Error::MissingPoolItem("parameter type", param.type_().into()))?;
     let LoadedType { typ, .. } = load_type::<Immutable>(typ, bundle, interner, flags)?;
     let flags = ParamFlags::new()
+        .with_is_short_circuit(param.flags().is_short_circuit())
         .with_is_optional(param.flags().is_optional())
         .with_is_out(param.flags().is_out())
         .with_is_const(param.flags().is_const());

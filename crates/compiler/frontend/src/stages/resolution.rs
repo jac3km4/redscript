@@ -772,6 +772,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         .unwrap_err(types.resolve(typ, &self.symbols, *type_span))?;
                 let qs = param.qualifiers;
                 let flags = ParamFlags::default()
+                    .with_is_short_circuit(qs.contains(ast::ParamQualifiers::SKIP))
                     .with_is_optional(qs.contains(ast::ParamQualifiers::OPTIONAL))
                     .with_is_out(qs.contains(ast::ParamQualifiers::OUT))
                     .with_is_const(qs.contains(ast::ParamQualifiers::CONST));

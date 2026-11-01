@@ -66,7 +66,9 @@ fn function<'tok, 'src: 'tok>(
         Token::Ident("opt") => ParamQualifiers::OPTIONAL,
         Token::Ident("out") => ParamQualifiers::OUT,
         Token::Ident("const") => ParamQualifiers::CONST,
+        Token::Ident("skip") => ParamQualifiers::SKIP,
     }
+    .then_ignore(just(Token::Colon).not())
     .labelled("parameter qualifiers");
 
     let ty = type_with_span();

@@ -753,6 +753,9 @@ impl<K: AstKind> Formattable for Param<'_, K> {
         if self.qualifiers.contains(ParamQualifiers::CONST) {
             write!(f, "const ")?;
         };
+        if self.qualifiers.contains(ParamQualifiers::SKIP) {
+            write!(f, "skip ")?;
+        };
         if let Some(typ) = &self.typ {
             write!(f, "{}: {}", self.name, typ.as_wrapped().as_fmt(ctx))
         } else {
@@ -1534,6 +1537,7 @@ impl<K: AstKind> ApproxWidth for Param<'_, K> {
             + usize::from(self.qualifiers.contains(ParamQualifiers::OUT)) * 4
             + usize::from(self.qualifiers.contains(ParamQualifiers::OPTIONAL)) * 4
             + usize::from(self.qualifiers.contains(ParamQualifiers::CONST)) * 6
+            + usize::from(self.qualifiers.contains(ParamQualifiers::SKIP)) * 5
     }
 }
 

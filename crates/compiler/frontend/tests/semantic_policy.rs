@@ -302,6 +302,7 @@ fn every_hook_is_file_local_in_both_module_orders() {
             validate_type: Some(reject_string),
             validate_coercion: Some(reject_int_to_variant),
             allow_explicit_intrinsic: Some(|_| false),
+            ..SemanticPolicy::default()
         };
         let (_, symbols, diagnostics) = analyze(&sources, &interner, &[(hooked, policy)], reverse);
         let codes = |file| {

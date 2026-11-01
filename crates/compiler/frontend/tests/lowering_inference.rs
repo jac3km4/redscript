@@ -36,6 +36,55 @@ fn diagnostic_messages(source: &str) -> Vec<(String, String)> {
 }
 
 #[test]
+fn lazy_arguments_reject_array_prefixes_before_lowering() {
+    for source in [
+        "native func Lazy(skip value: [Int32]); func Test() { Lazy([1]); }",
+        "native func Lazy(skip value: [Int32]); native func Lazy(skip value: Bool); func Test() { Lazy([1]); }",
+        "native func Read(value: [Int32]) -> Bool; native func Lazy(skip value: Bool); func Test() { Lazy(Read([1])); }",
+        "native func Read(value: [Int32]) -> Bool; native func OperatorLogicAnd(lhs: Bool, skip rhs: Bool) -> Bool; func Test() -> Bool { return false && Read([1]); }",
+    ] {
+        let diagnostics = diagnostic_messages(source);
+        assert!(
+            diagnostics
+                .iter()
+                .any(|(code, _)| code == "UNSAFE_ARRAY_EVALUATION"),
+            "{source}: {diagnostics:?}"
+        );
+    }
+    assert!(
+        diagnostic_messages(
+            "native func Lazy(skip value: [Int32]); func Test() { let array = [1]; Lazy(array); }"
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn source_free_typed_calls_reject_user_lazy_parameters() {
+    for source in [
+        "native func Read(value: [Int32]) -> Int32; native func OperatorAdd(skip lhs: Int32, rhs: Int32) -> Int32; func Test() -> Int32 { return Read([1]) + 2; }",
+        "native func OperatorAdd(skip lhs: Int32, rhs: Int32) -> Int32; func Test() -> Int32 { return 1 + 2; }",
+        "native func Read(value: [Int32]) -> Bool; native func OperatorLogicAnd(skip lhs: Bool, rhs: Bool) -> Bool; func Test() -> Bool { return Read([1]) && true; }",
+        "native func Read(value: [Int32]) -> Int32; native func OperatorEqual(skip lhs: Int32, rhs: Int32) -> Bool; func Test() -> Bool { return Read([1]) == 2; }",
+    ] {
+        let diagnostics = diagnostic_messages(source);
+        assert!(
+            diagnostics
+                .iter()
+                .any(|(code, _)| code == "UNSAFE_ARRAY_EVALUATION"),
+            "{source}: {diagnostics:?}"
+        );
+    }
+}
+
+#[test]
+fn source_guarded_logical_rhs_still_accepts_prefix_free_operands() {
+    assert!(diagnostic_messages(
+        "native func OperatorLogicAnd(lhs: Bool, skip rhs: Bool) -> Bool; native func OperatorLogicOr(lhs: Bool, skip rhs: Bool) -> Bool; func Test(a: Bool, b: Bool) -> Bool { return a && (b || false); }"
+    ).is_empty());
+}
+
+#[test]
 fn bare_return_reports_void_as_found() {
     let diagnostics = diagnostic_messages("func Test() -> Int32 { return; }");
     assert_eq!(

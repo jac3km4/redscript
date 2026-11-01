@@ -1,0 +1,97 @@
+---
+source: crates/compiler/backend/tests/bytecode.rs
+expression: "compile(&path, |_| {})"
+---
+// Scripted;BoolSkipBool (f0)
+return
+param 0 "rhs": "Bool"
+
+// Effect;OutBoolBool (f1)
+assign
+param 1 "state": "Bool"
+param 2 "value": "Bool"
+return
+param 1 "state": "Bool"
+
+// AndFalse;OutBool (f2)
+return
+invoke.static j46 l14 f3 OperatorLogicAnd;BoolSkipBool;Bool 0000000000000000
+false.const
+skip 26
+invoke.static j26 l14 f1 Effect;OutBoolBool 0000000000000000
+param 3 "state": "Bool"
+true.const
+param.end
+param.end
+
+// AndTrue;OutBool (f4)
+return
+invoke.static j46 l18 f3 OperatorLogicAnd;BoolSkipBool;Bool 0000000000000000
+true.const
+skip 26
+invoke.static j26 l18 f1 Effect;OutBoolBool 0000000000000000
+param 4 "state": "Bool"
+true.const
+param.end
+param.end
+
+// OrFalse;OutBool (f5)
+return
+invoke.static j46 l22 f6 OperatorLogicOr;BoolSkipBool;Bool 0000000000000000
+false.const
+skip 26
+invoke.static j26 l22 f1 Effect;OutBoolBool 0000000000000000
+param 5 "state": "Bool"
+false.const
+param.end
+param.end
+
+// OrTrue;OutBool (f7)
+return
+invoke.static j46 l26 f6 OperatorLogicOr;BoolSkipBool;Bool 0000000000000000
+true.const
+skip 26
+invoke.static j26 l26 f1 Effect;OutBoolBool 0000000000000000
+param 6 "state": "Bool"
+false.const
+param.end
+param.end
+
+// Nested;OutBool (f8)
+return
+invoke.static j116 l30 f3 OperatorLogicAnd;BoolSkipBool;Bool 0000000000000000
+invoke.static j26 l30 f1 Effect;OutBoolBool 0000000000000000
+param 7 "state": "Bool"
+true.const
+param.end
+skip 71
+invoke.static j71 l30 f6 OperatorLogicOr;BoolSkipBool;Bool 0000000000000000
+invoke.static j26 l30 f1 Effect;OutBoolBool 0000000000000000
+param 7 "state": "Bool"
+false.const
+param.end
+skip 26
+invoke.static j26 l30 f1 Effect;OutBoolBool 0000000000000000
+param 7 "state": "Bool"
+true.const
+param.end
+param.end
+param.end
+
+// Explicit;OutBool (f9)
+return
+invoke.static j71 l34 f0 Scripted;BoolSkipBool 0000000000000000
+invoke.static j26 l34 f1 Effect;OutBoolBool 0000000000000000
+param 8 "state": "Bool"
+true.const
+param.end
+skip 26
+invoke.static j26 l34 f1 Effect;OutBoolBool 0000000000000000
+param 8 "state": "Bool"
+false.const
+param.end
+param.end
+
+// OperatorLogicAnd;BoolSkipBool;Bool (f3)
+
+// OperatorLogicOr;BoolSkipBool;Bool (f6)

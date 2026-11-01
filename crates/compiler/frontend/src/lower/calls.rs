@@ -436,13 +436,23 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         let (call, call_t) = if let Some(aliased) = method.aliased_method()
             && method.flags().is_static_forwarder()
         {
-            let expected = &self.symbols[aliased]
+            let param = self.symbols[aliased]
                 .type_()
-                .param_types()
-                .next()
+                .params()
+                .first()
                 .expect("static alias must at least accept a receiver");
             let span = ir.span();
-            self.coerce(&mut ir, typ, PolyType::from_type(expected), env, span)?;
+            if param.flags().is_short_circuit() {
+                array_guard::check_lazy(receiver)?;
+            }
+            self.lower_arg(
+                &mut ir,
+                typ,
+                PolyType::from_type(param.type_()),
+                param,
+                env,
+                span,
+            )?;
 
             resolved
                 .with_method(aliased)
@@ -518,6 +528,12 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             .collect::<Result<Vec<_>, _>>()?;
 
         if filtered.peek().is_none() {
+            // Prefix construction cannot escape a skipped argument.
+            for (arg, param) in args.clone().zip(primary.func().type_().params()) {
+                if param.flags().is_short_circuit() {
+                    array_guard::check_lazy(arg)?;
+                }
+            }
             let type_env = receiver
                 .and_then(|typ| {
                     typ.base_type_env::<AnyBaseType>(primary.key().parent()?, self.symbols)
@@ -568,6 +584,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         } else {
             let mut checked_args = Vec::with_capacity(args.len());
             let mut arg_types = Vec::with_capacity(args.len());
+            let source_args = args.clone().collect::<Vec<_>>();
 
             for arg in args.clone() {
                 if crate::arguments::is_absent(&arg.0) {
@@ -585,6 +602,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 .name(name)
                 .args(&mut checked_args)
                 .arg_types(&arg_types)
+                .source_args(&source_args)
                 .type_args(&type_args)
                 .candidates(iter::once(primary.clone()).chain(filtered))
                 .maybe_fallback(Some(primary))
@@ -603,6 +621,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         name: &'ctx str,
         args: &mut [ir::Expr<'ctx>],
         arg_types: &[PolyType<'ctx>],
+        #[builder(default)] source_args: &[&Spanned<ast::SourceExpr<'ctx>>],
         #[builder(default)] type_args: &[PolyType<'ctx>],
         candidates: impl IntoIterator<Item = FunctionEntry<Key, Name, Func>>,
         fallback: Option<FunctionEntry<Key, Name, Func>>,
@@ -694,6 +713,27 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             .base_env(&type_env)
             .span(span)
             .build()?;
+        // The source array guard already checks logical RHS operands as lazy;
+        // generated logical calls also use prefix-free operands. Other typed
+        // callers need source to establish that initialization cannot escape.
+        for (index, param) in selected
+            .func()
+            .type_()
+            .params()
+            .iter()
+            .take(args.len())
+            .enumerate()
+        {
+            if param.flags().is_short_circuit() && !matches!(args[index], ir::Expr::Nop(_)) {
+                if let Some(source) = source_args.get(index) {
+                    array_guard::check_lazy(source)?;
+                } else if index != 1
+                    || ![ast::BinOp::And.name(), ast::BinOp::Or.name()].contains(&name)
+                {
+                    return Err(Error::UnsafeArrayEvaluation(args[index].span()));
+                }
+            }
+        }
         for ((arg, typ), param) in args
             .iter_mut()
             .zip(arg_types)

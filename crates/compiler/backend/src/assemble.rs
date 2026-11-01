@@ -498,6 +498,14 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
                     .collect::<Result<Box<_>, AssembleError<'ctx>>>()?;
 
                 if let Some(intrinsic) = free_function.intrinsic() {
+                    if free_function
+                        .type_()
+                        .params()
+                        .iter()
+                        .any(|param| param.flags().is_short_circuit())
+                    {
+                        return Err(AssembleError::InvalidIntrinsic(intrinsic, span));
+                    }
                     self.emit_intrinsic(intrinsic, &type_args, span)?;
                     args.iter().try_for_each(|arg| self.assemble_expr(arg))?;
                     return Ok(());

@@ -980,7 +980,8 @@ pub struct ParamFlags {
     pub is_optional: bool,
     pub is_out: bool,
     pub is_const: bool,
-    #[bits(5)]
+    pub is_short_circuit: bool,
+    #[bits(4)]
     __: u8,
 }
 

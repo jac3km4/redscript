@@ -63,7 +63,19 @@ fn function<'a>(bundle: &'a ScriptBundle<'_>, name: &str) -> &'a Function<'a> {
             }
             _ => None,
         })
-        .unwrap()
+        .unwrap_or_else(|| {
+            panic!(
+                "missing {name}; available: {:?}",
+                bundle
+                    .indexed_definitions()
+                    .filter_map(|def| match def {
+                        IndexedDefinition::Function(_, function) =>
+                            Some(bundle[function.name()].to_string()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            )
+        })
 }
 
 fn call_position(bundle: &ScriptBundle<'_>, code: &[(u32, Instr)], name: &str) -> usize {
@@ -79,6 +91,135 @@ fn call_position(bundle: &ScriptBundle<'_>, code: &[(u32, Instr)], name: &str) -
         .collect::<Vec<_>>();
     assert_eq!(positions.len(), 1, "{name} must be emitted exactly once");
     positions[0]
+}
+
+#[test]
+fn native_lazy_operators_preserve_flags_names_and_effect_order() {
+    let bundle = compile(
+        "import function OperatorLogicAnd(lhs: Bool, skip rhs: Bool) : Bool;
+         import function OperatorLogicOr(lhs: Bool, skip rhs: Bool) : Bool;
+         import function Left() : Bool;
+         import function Right() : Bool;
+         function Scripted(lhs: Bool, skip rhs: Bool) : Bool { return rhs; }
+         function AndFalse() : Bool { return false && Right(); }
+         function AndTrue() : Bool { return true && Right(); }
+         function OrFalse() : Bool { return false || Right(); }
+         function OrTrue() : Bool { return true || Right(); }
+         function Nested() : Bool { return Left() && (Right() || false); }
+         function Explicit() : Bool { return Scripted(Left(), Right()); }",
+    );
+    let bytes = bundle.into_writeable().to_bytes().unwrap();
+    let bundle = ScriptBundle::from_bytes(&bytes).unwrap();
+    for name in [
+        "OperatorLogicAnd;BoolSkipBool;Bool",
+        "OperatorLogicOr;BoolSkipBool;Bool",
+        "Scripted;BoolSkipBool",
+    ] {
+        let func = function(&bundle, name);
+        assert!(!bundle[func.parameters()[0]].flags().is_short_circuit());
+        assert!(bundle[func.parameters()[1]].flags().is_short_circuit());
+        assert_eq!(u8::from(bundle[func.parameters()[1]].flags()), 0x04);
+    }
+    for (name, lhs) in [
+        ("AndFalse;", false),
+        ("AndTrue;", true),
+        ("OrFalse;", false),
+        ("OrTrue;", true),
+    ] {
+        let code = function(&bundle, name)
+            .body()
+            .code_iter()
+            .with_offsets()
+            .map(|(offset, instr)| (offset, instr.unwrap()))
+            .collect::<Vec<_>>();
+        let effect = call_position(&bundle, &code, "Right");
+        assert!(matches!(code[effect - 1].1, Instr::Skip(_)));
+        assert_eq!(
+            code[effect - 2].1,
+            if lhs {
+                Instr::TrueConst
+            } else {
+                Instr::FalseConst
+            }
+        );
+        let Instr::Skip(jump) = &code[effect - 1].1 else {
+            unreachable!()
+        };
+        let target = code[effect - 1].0 as i32 + i32::from(jump.target());
+        assert!(target > code[effect].0 as i32);
+        assert!(code.iter().any(|(offset, instr)| *offset as i32 == target && matches!(instr, Instr::ParamEnd)));
+    }
+    for name in ["Nested;", "Explicit;"] {
+        let code = function(&bundle, name)
+            .body()
+            .code_iter()
+            .with_offsets()
+            .map(|(offset, instr)| (offset, instr.unwrap()))
+            .collect::<Vec<_>>();
+        let left = call_position(&bundle, &code, "Left");
+        let right = call_position(&bundle, &code, "Right");
+        assert!(left < right);
+        assert!(
+            code[left..right]
+                .iter()
+                .any(|(_, instr)| matches!(instr, Instr::Skip(_)))
+        );
+    }
+    // Loading a serialized declaration must retain the semantic flag too.
+    let interner = TypeInterner::default();
+    let (symbols, _) = CompilationInputs::load(&bundle, &interner, &TypeFlagRegistry::default())
+        .unwrap()
+        .into_inner();
+    assert!(symbols.free_functions().any(|entry| {
+        entry
+            .func()
+            .type_()
+            .params()
+            .iter()
+            .any(|param| param.flags().is_short_circuit())
+    }));
+    let sources = SourceMap::new();
+    sources.populate_boot_lib();
+    sources.push_back(
+        "reload.reds",
+        "func Reload() -> Bool { return false && Right(); }
+                 func ReloadScripted() -> Bool { return Scripted(true, Right()); }",
+    );
+    let (symbols, mappings) =
+        CompilationInputs::load(&bundle, &interner, &TypeFlagRegistry::default())
+            .unwrap()
+            .into_inner();
+    let mut reporter = CompileErrorReporter::default();
+    let (unit, symbols) = redscript_compiler_frontend::infer_from_sources(
+        &sources,
+        symbols,
+        &mut reporter,
+        &interner,
+    );
+    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+    let mut bundle = bundle.into_owned();
+    mappings
+        .into_monomorphizer(&sources)
+        .monomorphize(&unit, &symbols, &mut bundle)
+        .unwrap();
+    let code = function(&bundle, "Reload;")
+        .body()
+        .code_iter()
+        .with_offsets()
+        .map(|(offset, instr)| (offset, instr.unwrap()))
+        .collect::<Vec<_>>();
+    let right = call_position(&bundle, &code, "Right");
+    assert!(matches!(code[right - 1].1, Instr::Skip(_)));
+    call_position(&bundle, &code, "OperatorLogicAnd;BoolSkipBool;Bool");
+    let code = function(&bundle, "ReloadScripted;")
+        .body()
+        .code_iter()
+        .with_offsets()
+        .map(|(offset, instr)| (offset, instr.unwrap()))
+        .collect::<Vec<_>>();
+    call_position(&bundle, &code, "Scripted;BoolSkipBool");
+    let right = call_position(&bundle, &code, "Right");
+    assert!(matches!(code[right - 1].1, Instr::Skip(_)));
 }
 
 #[test]

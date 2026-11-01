@@ -346,6 +346,9 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                     if flags.is_const() {
                         self.output.text.push_str("const ");
                     }
+                    if flags.is_short_circuit() {
+                        self.output.text.push_str("skip ");
+                    }
                     let local = ir::Local::Param(
                         u16::try_from(i).map_err(|_| error("too many parameters", None))?,
                     );

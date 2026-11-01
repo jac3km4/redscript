@@ -52,6 +52,22 @@ fn short_circuit() {
     insta::assert_snapshot!(bytecode);
 }
 
+#[test]
+fn source_short_circuit() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/short-circuit/source.reds");
+    insta::assert_snapshot!(compile(&path, |_| {}));
+}
+
+#[test]
+fn lazy_intrinsics_fail_closed() {
+    let path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/short-circuit/intrinsic.reds");
+    assert!(
+        compile(&path, |_| {})
+            .starts_with("assembly error: cannot generate code for intrinsic `Equals`")
+    );
+}
+
 fn compile(path: &Path, seed: impl FnOnce(&mut ScriptBundle<'_>)) -> String {
     let sources = SourceMap::from_files([path]).unwrap();
     sources.populate_boot_lib();

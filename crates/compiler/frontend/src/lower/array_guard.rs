@@ -7,6 +7,10 @@ pub(super) fn check<'ctx>(expr: &Spanned<SourceExpr<'ctx>>) -> LowerResult<'ctx,
     visit(expr, false).map(|_| ())
 }
 
+pub(super) fn check_lazy<'ctx>(expr: &Spanned<SourceExpr<'ctx>>) -> LowerResult<'ctx, ()> {
+    visit(expr, true).map(|_| ())
+}
+
 fn siblings<'a, 'ctx: 'a>(
     exprs: impl IntoIterator<Item = &'a Spanned<SourceExpr<'ctx>>>,
     lazy: bool,

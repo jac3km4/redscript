@@ -7,6 +7,8 @@ fn shared_qualifiers_round_trip() {
   @hint("Editor hint")
   const editable instanceeditable inlined persistent replicated testonly let value: Int32;
 }
+
+native func Lazy(lhs: Bool, skip rhs: Bool) -> Bool;
 "#;
     let settings = FormatSettings::default();
     let sources = SourceMap::new();
