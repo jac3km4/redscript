@@ -301,6 +301,9 @@ pub fn overrides<'ctx>(
         };
         for entry in definition.methods().iter() {
             let method = entry.func();
+            if method.flags().is_static_forwarder() {
+                continue;
+            }
             let Some(span) = method.span().filter(|span| files.contains(&span.file)) else {
                 continue;
             };
@@ -339,7 +342,7 @@ pub fn overrides<'ctx>(
                 .skip(1)
                 .flat_map(|(_, base)| base.methods().by_name::<str>(entry.name()))
                 .find(|entry| {
-                    entry.func().type_().is_valid() && !entry.func().flags().is_static()
+                    entry.func().type_().is_valid() && !entry.func().flags().is_static() && !entry.func().flags().is_static_forwarder()
                         && !entry.func().flags().is_callback()
                         && (entry.func().flags().visibility() != Visibility::Private
                             || !entry.func().flags().is_final())

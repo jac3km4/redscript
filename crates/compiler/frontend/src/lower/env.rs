@@ -111,6 +111,8 @@ pub struct SemanticPolicy {
     /// Default omitted field visibility to public, including fields of classes.
     /// Explicit visibility and method defaults are unchanged.
     pub public_fields: bool,
+    /// Suppress community style advice for inherited static calls at this call site.
+    pub allow_inherited_static_calls: bool,
 
     /// Optionally convert a condition using a unary intrinsic returning `Bool`.
     /// Applies to control-flow conditions, logical operators and ternaries.

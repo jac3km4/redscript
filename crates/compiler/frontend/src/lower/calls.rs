@@ -293,17 +293,24 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             && let Some(&TypeRef::Id(id)) = env.types().get(ident)
             && let mut candidates = self
                 .symbols
-                .base_iter_with_self(id)
-                .map(|(id, def)| {
-                    def.methods()
-                        .by_name(member)
-                        .map(move |entry| entry.map_key(|i| MethodId::new(id, i)))
-                        .peekable()
-                })
-                .find_map(|mut matches| matches.peek().is_some().then_some(matches))
-                .into_iter()
-                .flatten()
+                .query_methods_by_name(id, member)
                 .filter(|entry| entry.func().flags().is_static())
+                .scan(Vec::new(), |seen, entry| {
+                    let hidden =
+                        seen.iter()
+                            .any(|previous: &crate::symbols::MethodEntry<'_, '_>| {
+                                previous.key().parent() != entry.key().parent()
+                                    && same_parameter_signature(
+                                        previous.func().type_(),
+                                        entry.func().type_(),
+                                    )
+                            });
+                    if !hidden {
+                        seen.push(entry.clone());
+                    }
+                    Some((!hidden).then_some(entry))
+                })
+                .flatten()
                 .peekable()
             && candidates.peek().is_some()
         {
@@ -336,7 +343,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             }
 
             let parent = resolved.resolution.function.parent();
-            if parent != id {
+            if parent != id && !env.types().policy(call_span).allow_inherited_static_calls {
                 self.reporter.report(Error::CallingBaseStaticMethod {
                     type_id: parent,
                     name: member,
@@ -399,10 +406,23 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             (upper_bound, ir::CallMode::Normal)
         };
 
-        let mut candidates = self
+        let candidates = self
             .symbols
             .query_methods_by_name(upper_bound.id(), member)
             .filter(|entry| !entry.func().flags().is_static())
+            .collect::<Vec<_>>();
+        // A forwarder is an alias for a static declaration, not another instance
+        // slot. A real method with that signature wins, including inherited ones.
+        let mut candidates = candidates
+            .iter()
+            .filter(|entry| {
+                !entry.func().flags().is_static_forwarder()
+                    || !candidates.iter().any(|real| {
+                        !real.func().flags().is_static_forwarder()
+                            && same_parameter_signature(real.func().type_(), entry.func().type_())
+                    })
+            })
+            .cloned()
             .peekable();
         if candidates.peek().is_none() {
             let (field_expr, field_t, _) = self
@@ -675,58 +695,57 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             arg_ranges.push(entry.func().type_().min_args()..=entry.func().type_().max_args());
             true
         });
-        let mut matches = match_by_subtype(candidates, arg_types, args, self.symbols).peekable();
+        let matches =
+            match_by_subtype(candidates, arg_types, args, self.symbols).collect::<Vec<_>>();
         let fallback = fallback.filter(|entry| {
             entry.func().type_().conversion().is_none()
                 && entry.func().type_().is_valid()
                 && (entry.func().type_().min_args()..=entry.func().type_().max_args())
                     .contains(&args.len())
         });
-        let Some(selected) = matches.next().or(fallback) else {
-            // No match exhausts the candidates, so every argument range is recorded.
-            drop(matches);
-            if invalid_signature {
-                return Err(Error::InvalidFunctionSignature(name, span));
-            }
-            return Err(
-                if !arg_ranges.is_empty()
-                    && arg_ranges.iter().all(|range| !range.contains(&args.len()))
-                {
-                    Error::InvalidArgCount(arg_ranges, args.len(), span)
-                } else {
-                    Error::UnresolvedFunction(name, span)
-                },
-            );
+        let Some(selected) = matches.first().or(fallback.as_ref()) else {
+            return Err(if invalid_signature {
+                Error::InvalidFunctionSignature(name, span)
+            } else if !arg_ranges.is_empty()
+                && arg_ranges.iter().all(|range| !range.contains(&args.len()))
+            {
+                Error::InvalidArgCount(arg_ranges, args.len(), span)
+            } else {
+                Error::UnresolvedFunction(name, span)
+            });
         };
 
-        let selected = if matches.peek().is_none() {
-            drop(matches);
+        let selected = if matches.len() <= 1 {
             selected
         } else {
-            // retry with upper bounds lifted to resolve ambiguity
-            for (arg, expr) in arg_types.iter().zip(args.iter()) {
-                if !matches!(expr, ir::Expr::Nop(_)) {
-                    arg.force_upper_bound(self.symbols).with_span(span)?;
-                }
-            }
-            let candidates = iter::once(selected).chain(matches);
-            let mut matches =
-                match_by_subtype(candidates, arg_types, args, self.symbols).peekable();
-
-            let primary = matches
-                .next()
-                .ok_or(Error::UnresolvedFunction(name, span))?;
-            if matches.peek().is_some() {
-                let matches = iter::once(primary)
-                    .chain(matches)
+            // Compare declarations without constraining argument inference. Only
+            // commit coercions after a unique undominated signature is known.
+            let mut best = matches.iter().filter(|candidate| {
+                !matches.iter().any(|other| {
+                    more_specific_reference_signature(
+                        other.func().type_(),
+                        candidate.func().type_(),
+                        args,
+                        arg_types,
+                        self.symbols,
+                    )
+                })
+            });
+            let primary = best.next();
+            if let Some(primary) = primary
+                && best.next().is_none()
+            {
+                primary
+            } else {
+                let signatures = matches
+                    .iter()
                     .map(|entry| {
-                        let func_t = entry.func().type_();
-                        FunctionSignature::new(name, func_t.params(), func_t.return_type().clone())
+                        let typ = entry.func().type_();
+                        FunctionSignature::new(name, typ.params(), typ.return_type().clone())
                     })
                     .collect();
-                return Err(Error::MultipleMatchingOverloads(matches, span));
+                return Err(Error::MultipleMatchingOverloads(signatures, span));
             }
-            primary
         };
 
         let type_env = receiver
@@ -1011,6 +1030,83 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
 
         Ok(map)
     }
+}
+
+fn same_parameter_signature<'ctx>(lhs: &FunctionType<'ctx>, rhs: &FunctionType<'ctx>) -> bool {
+    lhs.is_valid()
+        && rhs.is_valid()
+        && lhs.type_params().len() == rhs.type_params().len()
+        && lhs.param_types().eq(rhs.param_types())
+}
+
+fn more_specific_reference_signature<'ctx>(
+    lhs: &FunctionType<'ctx>,
+    rhs: &FunctionType<'ctx>,
+    args: &[ir::Expr<'ctx>],
+    arg_types: &[PolyType<'ctx>],
+    symbols: &Symbols<'ctx>,
+) -> bool {
+    if !lhs.type_params().is_empty()
+        || !rhs.type_params().is_empty()
+        || lhs.params().len() != rhs.params().len()
+    {
+        return false;
+    }
+    let mut strict = false;
+    for (index, (left, right)) in lhs.params().iter().zip(rhs.params()).enumerate() {
+        if left.flags().is_optional() != right.flags().is_optional()
+            || left.flags().is_out() != right.flags().is_out()
+            || left.flags().is_const() != right.flags().is_const()
+            || left.flags().is_short_circuit() != right.flags().is_short_circuit()
+        {
+            return false;
+        }
+        if left.type_() == right.type_() {
+            continue;
+        }
+        // Omitted and null arguments supply no evidence for a narrower target.
+        // Out, weak/script-ref, generic and conversion preferences need their own
+        // official dispatch probes; do not derive them from covariance alone.
+        if left.flags().is_out()
+            || args
+                .get(index)
+                .is_none_or(|arg| matches!(arg, ir::Expr::Nop(_) | ir::Expr::Null { .. }))
+            || arg_types.get(index).is_none_or(|typ| {
+                let typ = match typ {
+                    PolyType::Mono(typ) => typ.clone(),
+                    PolyType::Var(var) => var.lower(),
+                };
+                // Coalescing would select inference bounds, even for Nothing.
+                // Inspect existing evidence without freezing the caller's local.
+                !matches!(typ.into_poly().unwrap_ref_or_self(symbols),
+                    PolyType::Mono(Type::Data(typ)) if typ.args().is_empty())
+            })
+        {
+            return false;
+        }
+        let (left, right) = match (left.type_().strip_ref(), right.type_().strip_ref()) {
+            (Some((RefType::Strong, left)), Some((RefType::Strong, right))) => (left, right),
+            (None, None) => (left.type_(), right.type_()),
+            _ => return false,
+        };
+        let (Type::Data(left), Type::Data(right)) = (left, right) else {
+            return false;
+        };
+        if !left.args().is_empty()
+            || !right.args().is_empty()
+            || ![left.id(), right.id()].into_iter().all(|id| {
+                symbols[id]
+                    .schema()
+                    .as_aggregate()
+                    .is_some_and(|agg| !agg.flags().is_struct())
+            })
+            || !symbols.has_base_type(left.id(), right.id())
+        {
+            return false;
+        }
+        strict |= left.id() != right.id();
+    }
+    strict
 }
 
 // Diagnostic attribution only: no chaining, reference erasure, generic inference,

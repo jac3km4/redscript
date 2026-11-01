@@ -77,6 +77,7 @@ pub const POLICY: SemanticPolicy = SemanticPolicy {
     script_ref_write_through: true,
     implicit_members: true,
     public_fields: true,
+    allow_inherited_static_calls: true,
 
     condition: Some(condition),
     member_intrinsic: Some(member_intrinsic),

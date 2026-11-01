@@ -181,6 +181,9 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         extract_static_forwarder(&func_t, id, flags, &meta.doc, name_span);
                     let method = Method::new(flags, func_t, None, item.doc, Some(name_span));
                     let func_idx = methods.add(name, method);
+                    if let Some(forwarder) = forwarder {
+                        methods.add(name, forwarder.with_aliased(MethodId::new(id, func_idx)));
+                    }
                     let params = func.param_names().collect::<Box<[_]>>();
                     let Some(body) = func.body else {
                         continue;
@@ -188,10 +191,6 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                     method_items.push(FuncItem::new(
                         func_idx, item_span, name_span, params, body, type_scope,
                     ));
-
-                    if let Some(forwarder) = forwarder {
-                        methods.add(name, forwarder.with_aliased(MethodId::new(id, func_idx)));
-                    }
                 }
                 ast::Item::Let(let_) => {
                     let (name, name_span) = let_.name;
