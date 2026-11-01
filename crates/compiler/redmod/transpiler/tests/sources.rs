@@ -47,6 +47,42 @@ fn selected_sources_need_no_manual_bindings() {
 }
 
 #[test]
+fn selection_preserves_order_with_unsorted_negative_file_ids() {
+    let sources = SourceMap::new();
+    let back = sources.push_back("back.reds", "class Back {}");
+    let front = sources.push_front("front.reds", "class Front {}");
+    let earlier = sources.push_front("earlier.reds", "class Earlier {}");
+    sources.populate_boot_lib();
+    let interner = TypeInterner::default();
+    let analysis = analyze_sources(&sources, Symbols::with_default_types(), &interner).unwrap();
+    assert_eq!(
+        analysis
+            .modules()
+            .iter()
+            .map(|(id, _)| *id)
+            .collect::<Vec<_>>(),
+        sources.files().map(|(id, _)| id).collect::<Vec<_>>()
+    );
+    let selected = [back, earlier, front];
+    let output = analysis.transpile_selected(&selected).unwrap();
+    assert_eq!(output.iter().map(|s| s.file).collect::<Vec<_>>(), selected);
+    for (source, name) in output.iter().zip(["Back", "Earlier", "Front"]) {
+        assert!(source.module.text.contains(name));
+        assert!(
+            source
+                .module
+                .mappings
+                .iter()
+                .all(|m| m.source.file == source.file)
+        );
+    }
+    assert!(analysis.transpile_selected(&[front, front]).is_err());
+    let missing = sources.push_back("not-analyzed.reds", "");
+    let errors = analysis.transpile_selected(&[missing]).unwrap_err();
+    assert_eq!(errors[0].message, "selected FileId is not in this analysis");
+}
+
+#[test]
 fn conditional_association_fails_with_source_provenance() {
     let sources = SourceMap::new();
     let selected = sources.push_back(

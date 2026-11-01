@@ -1,5 +1,5 @@
 //! Community analysis and conservative, span-independent declaration association.
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use redscript_community_ast::{self as ast, FileId, Item, SourceMap, SourceModule};
 use redscript_compiler_frontend::{
@@ -15,6 +15,9 @@ use crate::{
 /// Successful community analysis, retaining file identities independently of declaration spans.
 pub struct AnalyzedSources<'ctx> {
     modules: Vec<(FileId, SourceModule<'ctx>)>,
+    module_indices: HashMap<FileId, usize>,
+    interner: &'ctx TypeInterner,
+
     unit: LoweredCompilationUnit<'ctx>,
     symbols: Symbols<'ctx>,
     /// Nonfatal community diagnostics, rendered with their original diagnostic codes.
@@ -28,6 +31,9 @@ pub struct TranspiledSource {
 }
 
 /// Analyze every file (including dependencies). Does not add a boot library implicitly.
+///
+/// All type IDs in the supplied `Symbols` must originate from the supplied
+/// `TypeInterner`, except for predefined IDs.
 pub fn analyze_sources<'ctx>(
     sources: &'ctx SourceMap,
     symbols: Symbols<'ctx>,
@@ -78,8 +84,16 @@ pub fn analyze_sources<'ctx>(
     if !errors.is_empty() {
         return Err(errors);
     }
+    let module_indices = modules
+        .iter()
+        .enumerate()
+        .map(|(index, (file, _))| (*file, index))
+        .collect();
+
     Ok(AnalyzedSources {
         modules,
+        module_indices,
+        interner,
         unit,
         symbols,
         warnings: diagnostics
@@ -90,6 +104,9 @@ pub fn analyze_sources<'ctx>(
 }
 
 /// Analyze dependencies and transpile only selected authored files, in selection order.
+///
+/// All type IDs in the supplied `Symbols` must originate from the supplied
+/// `TypeInterner`, except for predefined IDs.
 pub fn transpile_sources<'ctx>(
     sources: &'ctx SourceMap,
     selected: &[FileId],
@@ -129,10 +146,11 @@ impl<'ctx> AnalyzedSources<'ctx> {
                 errors.push(error("duplicate selected FileId", None));
                 continue;
             }
-            let Some((_, source)) = self.modules.iter().find(|(id, _)| *id == file) else {
+            let Some(&index) = self.module_indices.get(&file) else {
                 errors.push(error("selected FileId is not in this analysis", None));
                 continue;
             };
+            let source = &self.modules[index].1;
             let mut bindings = BTreeMap::new();
             let prefix = source
                 .path
@@ -196,33 +214,34 @@ impl<'ctx> AnalyzedSources<'ctx> {
                         Some(*span),
                     ));
                 };
-                let candidates: Vec<_> = self
-                    .type_id(file, name)
-                    .and_then(|id| self.symbols.get_type(id).map(|def| (id, def)))
-                    .and_then(|(id, def)| def.schema().as_aggregate().map(|agg| (id, agg)))
-                    .into_iter()
-                    .flat_map(|(id, agg)| {
-                        agg.methods()
-                            .iter()
-                            .filter(|e| {
-                                **e.name() == f.name.0 && self.signature(file, f, e.func().type_())
-                            })
-                            .map(move |e| MethodId::new(id, *e.key()))
-                    })
-                    .collect();
-                let [id] = candidates.as_slice() else {
+                let id = unique(
+                    self.type_id(file, name)
+                        .and_then(|id| self.symbols.get_type(id).map(|def| (id, def)))
+                        .and_then(|(id, def)| def.schema().as_aggregate().map(|agg| (id, agg)))
+                        .into_iter()
+                        .flat_map(|(id, agg)| {
+                            agg.methods()
+                                .iter()
+                                .filter(|e| {
+                                    **e.name() == f.name.0
+                                        && self.signature(file, f, e.func().type_())
+                                })
+                                .map(move |e| MethodId::new(id, *e.key()))
+                        }),
+                );
+                let Some(id) = id else {
                     return Err(error(
                         "replacement has no unique resolved target/signature across analyzed sources",
                         Some(*span),
                     ));
                 };
-                if targets.contains(id) {
+                if targets.contains(&id) {
                     return Err(error(
                         "competing replacements for the same resolved target/signature across analyzed sources; lowered body ownership is ambiguous",
                         Some(*span),
                     ));
                 }
-                targets.push(*id);
+                targets.push(id);
                 Ok(())
             })();
             result.map_err(|mut e| {
@@ -231,6 +250,11 @@ impl<'ctx> AnalyzedSources<'ctx> {
             })?;
         }
         Ok(())
+    }
+
+    fn resolved_type(&self, name: &str) -> Option<TypeId<'ctx>> {
+        let id = self.interner.get(name)?;
+        self.symbols.get_type(id).map(|_| id)
     }
 
     fn type_id(&self, file: FileId, name: &str) -> Option<TypeId<'ctx>> {
@@ -250,15 +274,7 @@ impl<'ctx> AnalyzedSources<'ctx> {
             "script_ref" => Some(predef::SCRIPT_REF),
             _ => None,
         };
-        builtin.or_else(|| {
-            let mut ids = self
-                .symbols
-                .types()
-                .filter(|(id, _)| id.as_str() == name)
-                .map(|(id, _)| id);
-            let id = ids.next()?;
-            ids.next().is_none().then_some(id)
-        })
+        builtin.or_else(|| self.resolved_type(name))
     }
 
     fn source_type(&self, file: FileId, typ: &ast::SourceType<'ctx>) -> Option<Type<'ctx>> {
@@ -355,8 +371,7 @@ impl<'ctx> AnalyzedSources<'ctx> {
                 } else {
                     parent
                 };
-                let mut candidates = Vec::new();
-                match &decl.item {
+                let binding = match &decl.item {
                     Item::Import(_) => return Ok(()),
                     Item::Default(_) => {
                         return Err(error(
@@ -373,39 +388,30 @@ impl<'ctx> AnalyzedSources<'ctx> {
                         }
                         let name = format!("{prefix}{}", c.name.0);
                         let id = self
-                            .symbols
-                            .types()
-                            .find(|(id, _)| id.as_str() == name)
-                            .map(|(id, _)| id)
+                            .resolved_type(&name)
                             .ok_or_else(|| error("unavailable resolved class", Some(*span)))?;
                         out.insert(key.clone(), R::Type(id));
                         return self.associate(file, &c.items, prefix, Some(id), &indices, out);
                     }
                     Item::Enum(e) => {
                         let name = format!("{prefix}{}", e.name.0);
-                        candidates.extend(
+                        unique(
                             self.unit
                                 .enums
                                 .iter()
                                 .filter(|id| id.as_str() == name)
                                 .map(|&id| R::Type(id)),
-                        );
+                        )
                     }
-                    Item::Let(f) => {
-                        if let Some(owner) = owner
-                            && let Some(agg) = self
-                                .symbols
-                                .get_type(owner)
-                                .and_then(|d| d.schema().as_aggregate())
-                        {
-                            candidates.extend(
-                                agg.fields()
-                                    .iter()
-                                    .filter(|e| e.name() == f.name.0)
-                                    .map(|e| R::Field(FieldId::new(owner, e.index()))),
-                            );
-                        }
-                    }
+                    Item::Let(f) => owner.and_then(|owner| {
+                        let agg = self.symbols.get_type(owner)?.schema().as_aggregate()?;
+                        unique(
+                            agg.fields()
+                                .iter()
+                                .filter(|e| e.name() == f.name.0)
+                                .map(|e| R::Field(FieldId::new(owner, e.index()))),
+                        )
+                    }),
                     Item::Function(f) => {
                         if !f.type_params.is_empty() {
                             return Err(error(
@@ -414,45 +420,54 @@ impl<'ctx> AnalyzedSources<'ctx> {
                             ));
                         }
                         if let Some(owner) = owner {
-                            if let Some(agg) = self
-                                .symbols
+                            self.symbols
                                 .get_type(owner)
                                 .and_then(|d| d.schema().as_aggregate())
-                            {
-                                for e in agg.methods().iter().filter(|e| {
-                                    **e.name() == f.name.0
-                                        && self.signature(file, f, e.func().type_())
-                                }) {
-                                    let id = MethodId::new(owner, *e.key());
-                                    let binding = match patch.map(|(a, _)| a.name) {
-                                        Some("addMethod")
-                                            if self.unit.added_methods.contains_key(&id) =>
-                                        {
-                                            R::AddedMethod(id)
-                                        }
-                                        Some("replaceMethod")
-                                            if self.unit.method_replacements.contains_key(&id) =>
-                                        {
-                                            R::Replacement(id)
-                                        }
-                                        Some("wrapMethod")
-                                            if self
-                                                .unit
-                                                .method_wrappers
-                                                .get(&id)
-                                                .is_some_and(|v| v.len() == 1) =>
-                                        {
-                                            R::Wrapper(id, 0)
-                                        }
-                                        None => R::Method(id),
-                                        _ => continue,
-                                    };
-                                    candidates.push(binding);
-                                }
-                            }
+                                .and_then(|agg| {
+                                    unique(
+                                        agg.methods()
+                                            .iter()
+                                            .filter(|e| {
+                                                **e.name() == f.name.0
+                                                    && self.signature(file, f, e.func().type_())
+                                            })
+                                            .filter_map(|e| {
+                                                let id = MethodId::new(owner, *e.key());
+                                                Some(match patch.map(|(a, _)| a.name) {
+                                                    Some("addMethod")
+                                                        if self
+                                                            .unit
+                                                            .added_methods
+                                                            .contains_key(&id) =>
+                                                    {
+                                                        R::AddedMethod(id)
+                                                    }
+                                                    Some("replaceMethod")
+                                                        if self
+                                                            .unit
+                                                            .method_replacements
+                                                            .contains_key(&id) =>
+                                                    {
+                                                        R::Replacement(id)
+                                                    }
+                                                    Some("wrapMethod")
+                                                        if self
+                                                            .unit
+                                                            .method_wrappers
+                                                            .get(&id)
+                                                            .is_some_and(|v| v.len() == 1) =>
+                                                    {
+                                                        R::Wrapper(id, 0)
+                                                    }
+                                                    None => R::Method(id),
+                                                    _ => return None,
+                                                })
+                                            }),
+                                    )
+                                })
                         } else {
                             let name = format!("{prefix}{}", f.name.0);
-                            candidates.extend(
+                            unique(
                                 self.symbols
                                     .free_functions()
                                     .filter(|e| {
@@ -460,17 +475,17 @@ impl<'ctx> AnalyzedSources<'ctx> {
                                             && self.signature(file, f, e.func().type_())
                                     })
                                     .map(|e| R::Function(*e.key())),
-                            );
+                            )
                         }
                     }
-                }
-                if candidates.len() != 1 {
+                };
+                let Some(binding) = binding else {
                     return Err(error(
                         "declaration has no unique resolved name/signature association (inactive, ambiguous, inferred signature, or multiple wrappers)",
                         Some(*span),
                     ));
-                }
-                out.insert(key.clone(), candidates[0]);
+                };
+                out.insert(key.clone(), binding);
                 Ok(())
             })();
             result.map_err(|mut e| {
@@ -481,5 +496,48 @@ impl<'ctx> AnalyzedSources<'ctx> {
             })?;
         }
         Ok(())
+    }
+}
+
+fn unique<T>(mut candidates: impl Iterator<Item = T>) -> Option<T> {
+    let candidate = candidates.next()?;
+    candidates.next().is_none().then_some(candidate)
+}
+
+#[cfg(test)]
+mod tests {
+    use redscript_compiler_frontend::{Aggregate, TypeDef, TypeSchema};
+
+    use super::*;
+
+    #[test]
+    fn resolved_types_require_symbols_and_preserve_interner_identity() {
+        let sources = SourceMap::new();
+        let file = sources.push_back("empty.reds", "");
+        let interner = TypeInterner::default();
+        let present = interner.intern("Present");
+        interner.intern("Absent");
+        let mut symbols = Symbols::with_default_types();
+        symbols.add_type(
+            present,
+            TypeDef::new([], TypeSchema::Aggregate(Aggregate::default().into()), []),
+        );
+        let analysis = analyze_sources(&sources, symbols, &interner).unwrap();
+        assert_eq!(analysis.resolved_type("Present"), Some(present));
+        assert_eq!(analysis.resolved_type("Absent"), None);
+        assert_eq!(analysis.resolved_type("Unknown"), None);
+        assert_eq!(analysis.type_id(file, "Present"), Some(present));
+        assert_eq!(analysis.type_id(file, "Absent"), None);
+        assert_eq!(analysis.type_id(file, "Unknown"), None);
+        assert!(interner.get_index_of("Unknown").is_none());
+        assert_eq!(analysis.type_id(file, "array"), Some(predef::ARRAY));
+    }
+
+    #[test]
+    fn unique_candidate_rejects_missing_and_multiple_matches() {
+        assert_eq!(unique([].into_iter()), None::<i32>);
+        assert_eq!(unique([1].into_iter()), Some(1));
+        assert_eq!(unique([1, 1].into_iter()), None);
+        assert_eq!(unique([1, 2, 3].into_iter()), None);
     }
 }

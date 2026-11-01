@@ -139,6 +139,11 @@ impl TypeInterner {
         }
     }
 
+    /// Looks up a canonical type ID without interning a new name.
+    pub fn get(&self, name: &str) -> Option<TypeId<'_>> {
+        self.names.get(name).map(TypeId)
+    }
+
     pub fn get_index_of(&self, name: impl AsRef<str>) -> Option<TypeIndex> {
         self.names.get_index_of(name.as_ref()).map(TypeIndex)
     }
