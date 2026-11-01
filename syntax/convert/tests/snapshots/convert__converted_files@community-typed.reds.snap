@@ -1,0 +1,170 @@
+---
+source: crates/syntax/convert/tests/convert.rs
+expression: snapshot
+input_file: crates/syntax/convert/tests/data/community-typed.reds
+---
+// Conversions that depend on type information: converted with the types recorded by the
+// compiler, most of the warnings of the untyped conversion go away
+@module "MyMod.Typed"
+
+enum EMode {
+  Idle = 0,
+  Busy = 1,
+}
+
+struct Size {
+  public let X: Float;
+  public let Y: Float;
+}
+
+public class Widget {
+  public let names: array<CName>;
+
+  public function GetSize() -> Size {
+    return Size(1.0, 2.0);
+  }
+
+  public function GetNames() -> array<CName> {
+    return this.names;
+  }
+
+  public function GetCount() -> Int32 {
+    return this.names.Size();
+  }
+
+  public function SetSize(x: Float, y: Float) {
+  }
+}
+
+function Log(text: String) {
+}
+
+function Scale(factor: Float) -> Float {
+  return factor;
+}
+
+function Apply(mode: EMode) {
+}
+
+function Typed(
+  w: Widget,
+  weak: wref<Widget>,
+  r: script_ref<Int32>,
+  ratio: Float,
+  flag: Bool,
+  id: CName,
+  v: Variant
+) -> Float {
+  // objects in conditions
+  if (IsDefined(w)) {
+    w.SetSize(445, -125);
+  } else if (IsDefined(weak)) {
+    Log(ToString(w.GetCount()));
+  }
+  // the truthiness of a negated object is not documented for REDmod
+  if (!IsDefined(w)) {
+    return 0;
+  }
+  let count: Int32 = w.GetCount();
+  let names: array<CName> = w.GetNames();
+  let size: Size = w.GetSize();
+  let y: Float = size.Y;
+  if (names.Contains(n"a")) {
+    Log(ToString(ratio));
+  }
+  Log(ToString(flag));
+  Log(ToString(id));
+  Log(ToString(IntToString(count)));
+  let value: Int32 = Deref(r);
+  Apply(IntEnum(1));
+  let scaled: Float = Scale(FromVariant(v));
+  let arr: array<CName> = w.GetNames();
+  let i: Int32 = 0;
+  while (i < arr.Size()) {
+    let name_: CName = arr[i];
+    i += 1;
+    Log(ToString(name_));
+  }
+  while (flag) {
+    // reset every iteration in the community dialect
+    let mode: EMode;
+    let other: Widget = NULL;
+    let current: Size;
+    mode = EMode.Busy;
+    other = w;
+    current = size;
+    flag = false;
+  }
+  Log(
+    IntToString(count) + " at " + FloatToString(ratio) + " for " + NameToString(id)
+  );
+  return Scale(2) + y + size.X;
+}
+
+// ToString and interpolation by type: enums, small ints, structs with a static ToString
+struct GameTime {
+  public let seconds: Int32;
+
+  public static function ToString(self: GameTime) -> String {
+    return "time";
+  }
+}
+
+function Describe(
+  mode: EMode,
+  small: Uint8,
+  big: Uint32,
+  time: GameTime,
+  size: Size,
+  w: Widget
+) {
+  Log(ToString(mode));
+  Log(ToString(small));
+  Log(ToString(big));
+  Log(ToString(time));
+  Log(ToString(size));
+  Log(ToString(w));
+  Log(
+    ToString(mode)
+      + " "
+      + ToString(small)
+      + " "
+      + ToString(big)
+      + " "
+      + ToString(time)
+      + " "
+      + ToString(size)
+      + " "
+      + ToString(w)
+  );
+}
+
+
+// diagnostics:
+35:6: warning[is-defined]: IsDefined(..) depends on the type of its argument in REDmod: `if (obj)` for objects, `EntityID.IsDefined(..)`, `GlobalNodeRef.IsDefined(..)` or `TDBID.IsValid(..)`; convert it manually or with type information
+37:13: warning[is-defined]: IsDefined(..) depends on the type of its argument in REDmod: `if (obj)` for objects, `EntityID.IsDefined(..)`, `GlobalNodeRef.IsDefined(..)` or `TDBID.IsValid(..)`; convert it manually or with type information
+38:9: warning[to-string]: REDmod has no generic ToString(..): use `x.ToString()`, `IntToString`, `FloatToString`, `BoolToString`, etc. depending on the type
+41:7: warning[is-defined]: IsDefined(..) depends on the type of its argument in REDmod: `if (obj)` for objects, `EntityID.IsDefined(..)`, `GlobalNodeRef.IsDefined(..)` or `TDBID.IsValid(..)`; convert it manually or with type information
+49:9: warning[to-string]: REDmod has no generic ToString(..): use `x.ToString()`, `IntToString`, `FloatToString`, `BoolToString`, etc. depending on the type
+51:7: warning[to-string]: REDmod has no generic ToString(..): use `x.ToString()`, `IntToString`, `FloatToString`, `BoolToString`, etc. depending on the type
+52:7: warning[to-string]: REDmod has no generic ToString(..): use `x.ToString()`, `IntToString`, `FloatToString`, `BoolToString`, etc. depending on the type
+53:7: warning[to-string]: REDmod has no generic ToString(..): use `x.ToString()`, `IntToString`, `FloatToString`, `BoolToString`, etc. depending on the type
+54:22: warning[deref]: REDmod dereferences script_ref values implicitly, remove Deref(..)
+55:9: warning[cast-target]: the target type of IntEnum(..) could not be determined, convert it to `x as Type` manually
+56:22: warning[cast-target]: the target type of FromVariant(..) could not be determined, convert it to `x as Type` manually
+57:7: info[renamed-local]: `name` is a reserved word in REDmod, renamed to `name_`
+58:9: warning[to-string]: REDmod has no generic ToString(..): use `x.ToString()`, `IntToString`, `FloatToString`, `BoolToString`, etc. depending on the type
+62:5: warning[loop-local-reset]: REDmod keeps the value of `mode` from the previous iteration of the loop, reset it explicitly
+64:5: warning[loop-local-reset]: REDmod keeps the value of `current` from the previous iteration of the loop, reset it explicitly
+82:7: warning[to-string]: REDmod has no generic ToString(..): use `x.ToString()`, `IntToString`, `FloatToString`, `BoolToString`, etc. depending on the type
+83:7: warning[to-string]: REDmod has no generic ToString(..): use `x.ToString()`, `IntToString`, `FloatToString`, `BoolToString`, etc. depending on the type
+84:7: warning[to-string]: REDmod has no generic ToString(..): use `x.ToString()`, `IntToString`, `FloatToString`, `BoolToString`, etc. depending on the type
+85:7: warning[to-string]: REDmod has no generic ToString(..): use `x.ToString()`, `IntToString`, `FloatToString`, `BoolToString`, etc. depending on the type
+86:7: warning[to-string]: REDmod has no generic ToString(..): use `x.ToString()`, `IntToString`, `FloatToString`, `BoolToString`, etc. depending on the type
+87:7: warning[to-string]: REDmod has no generic ToString(..): use `x.ToString()`, `IntToString`, `FloatToString`, `BoolToString`, etc. depending on the type
+88:11: warning[interpolation-to-string]: the type of this interpolated value is unknown, replace the `ToString(..)` placeholder with `IntToString`, `FloatToString`, `x.ToString()`, etc.
+88:19: warning[interpolation-to-string]: the type of this interpolated value is unknown, replace the `ToString(..)` placeholder with `IntToString`, `FloatToString`, `x.ToString()`, etc.
+88:28: warning[interpolation-to-string]: the type of this interpolated value is unknown, replace the `ToString(..)` placeholder with `IntToString`, `FloatToString`, `x.ToString()`, etc.
+88:35: warning[interpolation-to-string]: the type of this interpolated value is unknown, replace the `ToString(..)` placeholder with `IntToString`, `FloatToString`, `x.ToString()`, etc.
+88:43: warning[interpolation-to-string]: the type of this interpolated value is unknown, replace the `ToString(..)` placeholder with `IntToString`, `FloatToString`, `x.ToString()`, etc.
+88:51: warning[interpolation-to-string]: the type of this interpolated value is unknown, replace the `ToString(..)` placeholder with `IntToString`, `FloatToString`, `x.ToString()`, etc.

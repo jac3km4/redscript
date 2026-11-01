@@ -1,0 +1,44 @@
+@module "Test.Trailing" // module comment
+
+@using "Foo.Bar" // using comment
+
+class Foo extends Bar { // class open
+  var a : Int32; // field a
+  var b : Int32 = 1; /* field b */
+
+  function Run(x : Int32) : Int32 { // fn open
+    var y : Int32 = x + 1; // var comment
+    var z : Int32 = 2; /* block */ // and line
+    y += 1; // first
+    // own line
+    y += 2; // second
+    if (y > 1) { // if open
+      y = 0; // inner
+    } else { // else open
+      y = 1;
+    } // if close
+    while (y < 10) { // while open
+      y += 1; // step
+    } // while close
+    var w : Int32 = x /* mid */ + y;
+    for (var i : Int32 = 0; i < 3; i += 1) { // for open
+      Log("x"); // log
+    } // for close
+    for (var j : Int32 = 0; // init comment
+         j < 3; j += 1) {
+    }
+    return y; // result
+  } // fn close
+} // class close
+
+enum Color { // enum open
+  Red, // red
+  Green = 1, // green
+} // enum close
+
+enum Plain {
+  One,
+  Two
+} // plain close
+
+function Last() {} // last

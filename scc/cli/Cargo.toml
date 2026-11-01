@@ -4,6 +4,10 @@ version.workspace = true
 authors.workspace = true
 edition.workspace = true
 
+[[test]]
+name = "compile"
+path = "tests/compile.rs"
+
 [dependencies]
 scc-lib = { path = "../lib" }
 anyhow.workspace = true
@@ -15,6 +19,9 @@ winsplit = "0.1"
 rstest = "0.24"
 rstest_reuse = "0.7"
 pretty_assertions = "1"
+assert_fs = "1"
+assert_cmd = "2"
+predicates = "3"
 
 [lints]
 workspace = true

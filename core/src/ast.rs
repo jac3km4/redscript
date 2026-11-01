@@ -302,7 +302,7 @@ pub enum Literal {
     TweakDbId,
 }
 
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct Pos(u32);
 

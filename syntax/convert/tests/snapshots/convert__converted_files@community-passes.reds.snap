@@ -1,0 +1,224 @@
+---
+source: crates/syntax/convert/tests/convert.rs
+expression: snapshot
+input_file: crates/syntax/convert/tests/data/community-passes.reds
+---
+// License header comment
+// spanning two lines
+@module "MyMod.Runtime"
+
+@using "Other.Utils"
+
+enum EState {
+  Idle = 0,
+  Running = 1,
+}
+
+/// A documented class
+public class Tracker extends ScriptableSystem {
+  // tracked values
+  private let values: array<Int32>;
+  private let label: String;
+  private persistent let saved: Int32;
+
+  // inline body
+  public function Count() -> Int32 {
+    return this.values.Size();
+  }
+
+  public function Values() -> array<Int32> {
+    return this.values;
+  }
+
+  public function Empty(flag: Bool) -> array<String> {
+    let empty: array<String>;
+    if (flag) {
+      // early exit
+      return empty;
+    }
+    return empty;
+  }
+
+  public function Sum(items: array<Int32>) -> Int32 {
+    let total: Int32 = 0;
+    // iterate the items
+    let i: Int32 = 0;
+    while (i < items.Size()) {
+      let item: Int32 = items[i];
+      i += 1;
+      if (item < 0) {
+        continue;
+      }
+      total += item;
+    }
+    let arr: array<Int32> = this.Values();
+    let i_1: Int32 = 0;
+    while (i_1 < arr.Size()) {
+      let value: Int32 = arr[i_1];
+      i_1 += 1;
+      total += value;
+    }
+    return total;
+  }
+
+  public function Describe(name_: String, state: EState, ratio: Float) -> String {
+    let i: Int32 = state as Int32;
+    let back: EState = i as EState;
+    let other: EState = 1 as EState;
+    let v: Variant = ratio as Variant;
+    let r: Float = v as Float;
+    let big: Uint64 = Cast<Uint64>(10);
+    let small: Uint32 = Cast<Uint32>(1);
+    let wide: Int64 = Cast<Int64>(2);
+    if (name_ == this.label || i != 2) {
+      this.values.PushBack(i);
+    }
+    let arr: array<Int32> = this.Values();
+    if (arr.Contains(3)) {
+      this.values.Clear();
+    }
+    return name_
+      + ": "
+      + IntToString(i)
+      + " of "
+      + IntToString(this.values.Size())
+      + " at "
+      + FloatToString(ratio)
+      + " "
+      + ToString(state);
+  }
+
+  public function Shadowing(a: Int32) -> Int32 {
+    let x: Int32 = a;
+    if (a > 0) {
+      let x_1: Int32 = a * 2;
+      return x_1;
+    }
+    while (a > 10) {
+      let x_2: Int32 = 1;
+      a -= x_2;
+    }
+    return x;
+  }
+
+  event OnRefresh(evt: Event) {
+    if (!IsDefined(evt)) {
+      return;
+    }
+    let msg = ToString(evt);
+    return;
+  }
+}
+
+@wrapMethod(PlayerPuppet)
+function OnGameAttached() {
+  // call the original
+  OnGameAttached();
+  let sys: Tracker = GameInstance.GetScriptableSystemsContainer(this.GetGame()).Get(n"Tracker") as Tracker;
+  let n: Int32 = sys.Count();
+}
+
+@replaceMethod(PlayerPuppet)
+function GetLabel() -> String {
+  return "label";
+}
+
+@addField(PlayerPuppet)
+let tracker: wref<Tracker>;
+
+@addMethod(Tracker)
+function Extra() -> Int32 {
+  return 1;
+}
+
+import function ScriptLog(text: String);
+
+function Helpers(r: script_ref<Int32>, f: Float) -> Float {
+  let a: Int32 = Deref(r);
+  let b: Float = RoundF(f);
+  let c: Int32 = Cast<Int32>((a * 2));
+  let t: Tracker = new Tracker;
+  let quoted: String = "say \u{22}hi\u{22}";
+  let states: array<Int32> = [EState.Idle as Int32, 2];
+  let cb_ = (x: Int32) -> x + 1;
+  return b;
+}
+
+function Patterns(name_: CName, o: Tracker, xs: array<String>) {
+  // downcast with a pattern
+  let name_1: Tracker = o as Tracker;
+  if (true) {
+    name_1.Count();
+  }
+  let t: Tracker = o as Tracker;
+  if (t) {
+    t.Count();
+  } else {
+    o.Count();
+  }
+  let w: Tracker = o;
+  if (w) {
+    w.Count();
+  }
+  let i: Int32 = 0;
+  while (i < xs.Size()) {
+    let x: String = xs[i];
+    i += 1;
+    // reset every iteration in the community dialect
+    let found: array<String>;
+    found.Clear();
+    let count: Int32 = 0;
+    found.PushBack(x);
+    count += 1;
+  }
+}
+
+function ShadowedPatterns(o1: Tracker, o2: Tracker) {
+  // inner patterns reuse the outer name
+  let t_1: Tracker = o1 as Tracker;
+  if (t_1) {
+    let t_3: Tracker = o2 as Tracker;
+    if (t_3) {
+      t_3.Count();
+    }
+    t_1.Count();
+  }
+  let t_2: Tracker = o1 as Tracker;
+  if (t_2) {
+    let cb_ = (t: Int32) -> t + 1;
+    t_2.Count();
+  }
+}
+
+@wrapMethod(PlayerPuppet)
+function OnOther() {
+  OnOther();
+}
+
+// trailing comment
+
+// diagnostics:
+12:1: info[override-unknown]: `ScriptableSystem`, a base class of `Tracker`, is not declared in this file: add `override` to the methods that override one of its methods, or convert with `--bundle`
+17:3: warning[persistent-field]: persistent field `saved`: REDmod persistence works differently (see ModdingSystem), and fields read from outside their class need accessor methods
+47:24: info[renamed-local]: `name` is a reserved word in REDmod, renamed to `name_`
+62:71: warning[interpolation-to-string]: the type of this interpolated value is unknown, replace the `ToString(..)` placeholder with `IntToString`, `FloatToString`, `x.ToString()`, etc.
+68:11: info[renamed-local]: REDmod does not allow declaring `x` twice in one function, renamed to `x_1`
+72:11: info[renamed-local]: REDmod does not allow declaring `x` twice in one function, renamed to `x_2`
+79:9: warning[is-defined]: IsDefined(..) depends on the type of its argument in REDmod: `if (obj)` for objects, `EntityID.IsDefined(..)`, `GlobalNodeRef.IsDefined(..)` or `TDBID.IsValid(..)`; convert it manually or with type information
+82:5: warning[untyped-let]: the type of `msg` could not be determined and REDmod often fails to infer it, add a type
+82:15: warning[to-string]: REDmod has no generic ToString(..): use `x.ToString()`, `IntToString`, `FloatToString`, `BoolToString`, etc. depending on the type
+91:76: info[system-name]: REDmod looks up scriptable systems by bare class name, `MyMod.Runtime.Tracker` was shortened to `Tracker`
+101:1: warning[patch-own-class]: @addMethod on `Tracker`, a class declared in this file: patching a mod's own class crashes REDmod at load, change the class directly
+104:1: warning[script-log-import]: only one installed REDmod mod may import ScriptLog, remove it before releasing
+107:18: warning[deref]: REDmod dereferences script_ref values implicitly, remove Deref(..)
+108:18: warning[unsupported-math]: RoundF is not available in REDmod
+111:24: info[string-escape]: this string contains characters REDmod cannot escape with `\"` or `\x`, they were written as `\u{..}` escapes
+112:26: info[cast-in-array-literal]: REDmod rejects `(T)x` casts inside array literals, keep the `as` form or build the array with PushBack
+113:3: warning[untyped-let]: the type of `cb` could not be determined and REDmod often fails to infer it, add a type
+113:7: info[renamed-local]: `cb` is a reserved word in REDmod, renamed to `cb_`
+113:12: warning[lambda]: REDmod has no lambdas, rewrite this with a class or a callback
+117:15: info[renamed-local]: `name` is a reserved word in REDmod, renamed to `name_`
+148:5: warning[untyped-let]: the type of `cb` could not be determined and REDmod often fails to infer it, add a type
+148:9: info[renamed-local]: `cb` is a reserved word in REDmod, renamed to `cb_`
+148:14: warning[lambda]: REDmod has no lambdas, rewrite this with a class or a callback
+155:3: warning[wrap-own-name-call]: in REDmod, calling `OnOther` by its own name inside the wrapper calls the wrapped method instead of this one, use `this.OnOther(..)` to keep the current behaviour

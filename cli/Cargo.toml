@@ -13,6 +13,9 @@ anyhow.workspace = true
 flexi_logger = { workspace = true, features = ["colors"] }
 vmap.workspace = true
 argh.workspace = true
+redscript-convert.workspace = true
+redscript-ast.workspace = true
+hashbrown.workspace = true
 
 [lints]
 workspace = true

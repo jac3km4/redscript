@@ -98,13 +98,35 @@ impl SccApi {
 
         let lib_path = std::env::current_exe().context("Could not get current exe path")?;
 
-        let lib_path = if cfg!(target_os = "windows") {
+        let mut lib_path = if cfg!(target_os = "windows") {
             lib_path.with_file_name("scc_lib.dll")
         } else if cfg!(target_os = "macos") {
             lib_path.with_file_name("libscc_lib.dylib")
         } else {
             lib_path.with_file_name("libscc_lib.so")
         };
+
+        if cfg!(debug_assertions) && !lib_path.exists() {
+            lib_path = if cfg!(target_os = "windows") {
+                lib_path
+                    .parent()
+                    .expect("executable has no parent directory")
+                    .join("deps")
+                    .join("scc_lib.dll")
+            } else if cfg!(target_os = "macos") {
+                lib_path
+                    .parent()
+                    .expect("executable has no parent directory")
+                    .join("deps")
+                    .join("libscc_lib.dylib")
+            } else {
+                lib_path
+                    .parent()
+                    .expect("executable has no parent directory")
+                    .join("deps")
+                    .join("libscc_lib.so")
+            };
+        }
 
         let lib = Library::load(lib_path).context("Could not load the scc shared library")?;
         unsafe {

@@ -4,6 +4,10 @@ members = [
     "compiler",
     "decompiler",
     "cli",
+    "syntax/ast",
+    "syntax/parser",
+    "syntax/formatter",
+    "syntax/convert",
     "scc/cli",
     "scc/lib",
     "scc/lib-tests",
@@ -35,6 +39,21 @@ argh = "0.1"
 walkdir = "2"
 vmap = { version = "0.6", default-features = false }
 rusty-hook = "0.11"
+# .reds to .script conversion crates, copied from the 1.x branch (crates/syntax)
+redscript-ast.path = "syntax/ast"
+redscript-parser.path = "syntax/parser"
+redscript-formatter.path = "syntax/formatter"
+redscript-convert.path = "syntax/convert"
+derive-where = "1"
+bitflags = "2"
+elsa = { version = "1", features = ["indexmap"] }
+chumsky = { version = "1.0.0-alpha.7", features = ["label", "either"] }
+either = "1"
+ignore = "0.4"
+pretty_dtoa = "0.3"
+similar-asserts = "2"
+# insta 1.45+ enables the default features of tempfile, which changes its entry in Cargo.lock
+insta = { version = ">=1, <1.45", features = ["glob"] }
 
 [workspace.lints.rust]
 future_incompatible = "deny"

@@ -1,0 +1,47 @@
+[package]
+name = "redscript-ast"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+derive-where.workspace = true
+bitflags.workspace = true
+elsa.workspace = true
+chumsky = { workspace = true, optional = true }
+ignore = { workspace = true, optional = true }
+
+# the 1.x warn set: these crates are copies of crates/syntax on the 1.x branch
+[lints.rust]
+warnings = "warn"
+future_incompatible = "warn"
+let_underscore = "warn"
+nonstandard_style = "warn"
+rust_2018_compatibility = "warn"
+rust_2018_idioms = "warn"
+rust_2021_compatibility = "warn"
+rust_2024_compatibility = "warn"
+
+[lints.clippy]
+all = "warn"
+match_same_arms = "warn"
+semicolon_if_nothing_returned = "warn"
+single_match_else = "warn"
+redundant_closure_for_method_calls = "warn"
+cloned_instead_of_copied = "warn"
+redundant_else = "warn"
+unnested_or_patterns = "warn"
+unreadable_literal = "warn"
+type_repetition_in_bounds = "warn"
+equatable_if_let = "warn"
+implicit_clone = "warn"
+default_trait_access = "warn"
+explicit_deref_methods = "warn"
+explicit_iter_loop = "warn"
+inefficient_to_string = "warn"
+match_bool = "warn"
+
+[features]
+chumsky = ["dep:chumsky"]
+ignore = ["dep:ignore"]
+testing = []
