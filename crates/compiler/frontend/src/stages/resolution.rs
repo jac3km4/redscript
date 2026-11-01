@@ -398,7 +398,10 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
         for module in &results {
             self.validate_module(module);
         }
-        self.process_inheritance(results.iter().flat_map(InferStageModule::classes));
+        self.process_inheritance(
+            results.iter().flat_map(InferStageModule::classes),
+            &scope.types,
+        );
 
         TypeInference::new(results, self.symbols)
     }

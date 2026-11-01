@@ -111,6 +111,11 @@ pub struct SemanticPolicy {
     /// Default omitted field visibility to public, including fields of classes.
     /// Explicit visibility and method defaults are unchanged.
     pub public_fields: bool,
+    /// Validate override returns against the original slot in the dialect adapter,
+    /// rather than the nearest declaration in shared validation.
+    pub original_slot_override_returns: bool,
+    /// Permit explicitly narrower override visibility; call-site access is unchanged.
+    pub allow_narrower_overrides: bool,
     /// Suppress community style advice for inherited static calls at this call site.
     pub allow_inherited_static_calls: bool,
 

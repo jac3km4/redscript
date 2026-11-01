@@ -70,7 +70,11 @@ impl<'ctx> Visitor<'ctx> for Validator<'_, 'ctx> {
             && self.symbols[field.parent()]
                 .span()
                 .is_some_and(|span| self.files.contains(&span.file))
-            && self.owner != Some(field.parent())
+            && !self.owner.is_some_and(|owner| {
+                self.symbols
+                    .base_iter_with_self(owner)
+                    .any(|(id, _)| id == field.parent())
+            })
         {
             self.errors
                 .push(Error::semantic(SemanticError::PersistentFieldAccess, span));

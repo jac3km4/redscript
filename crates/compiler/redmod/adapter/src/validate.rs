@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::convert::Infallible;
 
 use redscript_community_ast::{self as ast, AstNode, AstVisitor, FileId, Span};
-use redscript_compiler_frontend::{FieldId, LoweredCompilationUnit, MethodId, Symbols, Visibility};
+use redscript_compiler_frontend::{FieldId, LoweredCompilationUnit, MethodId, Symbols};
 
 use crate::{Error, SemanticError};
 
@@ -337,28 +337,16 @@ pub fn overrides<'ctx>(
                 }
                 continue;
             }
-            let base = symbols
-                .base_iter_with_self(id)
-                .skip(1)
-                .flat_map(|(_, base)| base.methods().by_name::<str>(entry.name()))
-                .find(|entry| {
-                    entry.func().type_().is_valid() && !entry.func().flags().is_static() && !entry.func().flags().is_static_forwarder()
-                        && !entry.func().flags().is_callback()
-                        && (entry.func().flags().visibility() != Visibility::Private
-                            || !entry.func().flags().is_final())
-                        && entry
-                            .func()
-                            .type_()
-                            .param_types()
-                            .eq(method.type_().param_types())
-                });
+            let base = method
+                .overriden()
+                .map(|base| &symbols[base])
+                .filter(|base| !base.flags().is_callback());
             match base {
                 Some(base) if !method.flags().is_static() => {
                     if !explicit {
                         errors.push(Error::semantic(SemanticError::MissingOverride, span));
                     }
                     if base
-                        .func()
                         .type_()
                         .params()
                         .iter()
@@ -370,10 +358,14 @@ pub fn overrides<'ctx>(
                             span,
                         ));
                     }
-                    if base.func().flags().is_final() {
+                    if base.flags().is_final() {
                         errors.push(Error::semantic(SemanticError::OverrideFinalMethod, span));
                     }
-                    if base.func().type_().return_type() != method.type_().return_type() {
+                    let slot = symbols.override_slot(MethodId::new(id, *entry.key()));
+                    let contract = symbols.override_return_type(id, slot);
+                    if !contract.is_some_and(|contract| {
+                        symbols.compatible_override_return(method.type_().return_type(), &contract)
+                    }) {
                         errors.push(Error::semantic(
                             SemanticError::OverrideReturnTypeMismatch,
                             span,

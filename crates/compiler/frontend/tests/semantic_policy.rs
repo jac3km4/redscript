@@ -298,6 +298,8 @@ fn every_hook_is_file_local_in_both_module_orders() {
             script_ref_write_through: false,
             implicit_members: false,
             public_fields: false,
+            original_slot_override_returns: false,
+            allow_narrower_overrides: false,
             allow_inherited_static_calls: false,
             condition: Some(variant_condition),
             member_intrinsic: Some(array_member),

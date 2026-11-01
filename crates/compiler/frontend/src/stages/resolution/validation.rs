@@ -174,6 +174,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
     pub(super) fn process_inheritance<'a>(
         &mut self,
         classes: impl IntoIterator<Item = &'a ClassItem<'a, 'ctx>>,
+        types: &crate::lower::TypeEnv<'_, 'ctx>,
     ) where
         'ctx: 'a,
     {
@@ -227,6 +228,12 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         if !entry.func().type_().is_valid()
                             || entry.func().flags().is_static()
                             || entry.func().flags().is_static_forwarder()
+                            || (types
+                                .policy(method.func().span().unwrap_or(class.name_span()))
+                                .original_slot_override_returns
+                                && entry.key().parent() != cls_id
+                                && entry.func().flags().is_final()
+                                && entry.func().flags().visibility() == crate::Visibility::Private)
                             || entry.key() == &MethodId::new(class.id(), *method.key())
                             || !entry.func().type_().type_params().is_empty()
                             || entry.func().type_().params().len() != method_t.params().len()
@@ -256,6 +263,19 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         );
                     }
                     Some(base) => {
+                        let span = method.func().span().unwrap_or(class.name_span());
+                        if !types.policy(span).original_slot_override_returns
+                            && !method.func().flags().is_callback()
+                        {
+                            let contract = self.symbols.override_return_type(cls_id, *base.key());
+                            if !contract.is_some_and(|contract| {
+                                self.symbols
+                                    .compatible_override_return(method_t.return_type(), &contract)
+                            }) {
+                                self.reporter
+                                    .report(Diagnostic::OverrideReturnTypeMismatch(span));
+                            }
+                        }
                         if base.func().flags().is_final() {
                             self.reporter.report(Diagnostic::FinalMethodOverride(
                                 method.name(),
@@ -333,6 +353,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         .set_visibility(overridden_flags.visibility());
                 } else if method.flags().visibility() < overridden_flags.visibility()
                     && let Some(span) = method.span()
+                    && !types.policy(span).allow_narrower_overrides
                 {
                     self.reporter.report(Diagnostic::LessVisibleOverride(
                         overridden_flags.visibility(),

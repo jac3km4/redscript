@@ -13,7 +13,7 @@ use smallvec::SmallVec;
 
 use crate::types::{CtxVar, Type, TypeApp, TypeId};
 use crate::utils::fmt::sep_by;
-use crate::{IndexMap, MonoType, Variance, predef};
+use crate::{IndexMap, MonoType, RefType, Variance, predef};
 
 mod functions;
 
@@ -153,6 +153,81 @@ impl<'ctx> Symbols<'ctx> {
         agg.methods
             .by_index(id.index)
             .map(|(&name, val)| (name, val))
+    }
+
+    /// The original virtual slot, retaining `Method::overriden` as the immediate
+    /// predecessor for lookup, visibility inheritance and implementation tracking.
+    pub fn override_slot(&self, mut id: MethodId<'ctx>) -> MethodId<'ctx> {
+        while let Some(base) = self[id].overriden() {
+            id = base;
+        }
+        id
+    }
+
+    /// Instantiate a declaration's return contract in the receiver's rigid type
+    /// environment, including generic bases from another source dialect.
+    pub fn override_return_type(
+        &self,
+        receiver: TypeId<'ctx>,
+        method: MethodId<'ctx>,
+    ) -> Option<Type<'ctx>> {
+        let args = self[receiver]
+            .params()
+            .iter()
+            .map(|var| crate::PolyType::from_type(&Type::Ctx(var.clone())))
+            .collect::<Rc<_>>();
+        let parent = crate::lower::InferredTypeApp::new(receiver, args)
+            .instantiate_as::<AnyBaseType>(method.parent(), self)?;
+        crate::PolyType::from_type_with_env(
+            self[method].type_().return_type(),
+            &parent.type_env(self),
+        )
+        .ok()?
+        .coalesce(self)
+        .ok()
+    }
+
+    /// Covariance is ABI-safe only within the same strong/weak class-reference
+    /// representation. Arrays, structs, script references and representation
+    /// changes require exact equality, not ordinary coercibility.
+    pub fn compatible_override_return(&self, actual: &Type<'ctx>, contract: &Type<'ctx>) -> bool {
+        if actual == contract {
+            return true;
+        }
+        // A bare mixed/never-ref class is not evidence of a strong-reference ABI.
+        if [actual, contract].iter().any(|typ| {
+            typ.strip_ref().is_none()
+                && typ.upper_bound().is_some_and(|typ| {
+                    self[typ.id()]
+                        .schema()
+                        .as_aggregate()
+                        .is_some_and(|agg| agg.flags().is_mixed_ref() || agg.flags().is_never_ref())
+                })
+        }) {
+            return false;
+        }
+        // Ordinary classes erase explicit `ref<T>` in source resolution; mixed
+        // reference classes retain it. Both denote the strong representation.
+        let (actual_ref, actual) = actual.strip_ref().unwrap_or((RefType::Strong, actual));
+        let (contract_ref, contract) = contract.strip_ref().unwrap_or((RefType::Strong, contract));
+        if actual_ref != contract_ref || !matches!(actual_ref, RefType::Strong | RefType::Weak) {
+            return false;
+        }
+        let (Type::Data(actual), Type::Data(contract)) = (actual, contract) else {
+            return false;
+        };
+        if ![actual, contract].iter().all(|typ| {
+            self[typ.id()]
+                .schema()
+                .as_aggregate()
+                .is_some_and(|agg| !agg.flags().is_struct())
+        }) {
+            return false;
+        }
+        crate::PolyType::from_type(&Type::Data(actual.clone())).satisfies_bound(
+            &crate::PolyType::from_type(&Type::Data(contract.clone())),
+            self,
+        )
     }
 
     pub fn get_method_mut(&mut self, id: MethodId<'ctx>) -> Option<(&'ctx str, &mut Method<'ctx>)> {

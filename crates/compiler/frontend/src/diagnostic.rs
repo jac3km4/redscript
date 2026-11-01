@@ -122,6 +122,8 @@ pub enum Diagnostic<'ctx> {
     InvalidStructVariance(Span),
     #[error("method overrides cannot be less visible than the method they override ({0})")]
     LessVisibleOverride(Visibility, Span),
+    #[error("override return type is incompatible with the inherited signature")]
+    OverrideReturnTypeMismatch(Span),
     #[error("{0}")]
     Other(Box<dyn std::error::Error + 'ctx>, DiagnosticLevel, Span),
 }
@@ -202,6 +204,7 @@ impl<'ctx> Diagnostic<'ctx> {
             | Self::ReplaceMethodConflict(_, _, span, _)
             | Self::InvalidStructVariance(span)
             | Self::LessVisibleOverride(_, span)
+            | Self::OverrideReturnTypeMismatch(span)
             | Self::Other(_, _, span) => *span,
         }
     }
@@ -254,6 +257,7 @@ impl<'ctx> Diagnostic<'ctx> {
             Self::ReplaceMethodConflict(_, _, _, _) => "REPLACE_METHOD_CONFLICT",
             Self::InvalidStructVariance(_) => "INVALID_STRUCT_VARIANCE",
             Self::LessVisibleOverride(_, _) => "LESS_VISIBLE_OVERRIDE",
+            Self::OverrideReturnTypeMismatch(_) => "OVERRIDE_RETURN_TYPE_MISMATCH",
             Self::Other(_, _, _) => "OTHER",
         }
     }

@@ -404,7 +404,7 @@ fn persistent_checks_reach_nested_reads_and_places() {
 }
 
 #[test]
-fn persistent_access_uses_declaring_class_ownership_not_receiver_spelling() {
+fn persistent_access_admits_declaring_class_descendants_not_receiver_spelling() {
     let (errors, _) = check(
         "class State {
            public persistent let count: Int32;
@@ -414,8 +414,7 @@ fn persistent_access_uses_declaring_class_ownership_not_receiver_spelling() {
            public function ReadInherited() -> Int32 { return this.count; }
          }",
     );
-    assert_eq!(errors.len(), 1, "{errors:?}");
-    assert!(errors[0].contains("persistent fields"), "{errors:?}");
+    assert!(errors.is_empty(), "{errors:?}");
 }
 
 #[test]
