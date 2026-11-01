@@ -394,6 +394,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
         }
 
         self.validate_inheritance(results.iter().flat_map(InferStageModule::classes));
+        self.validate_function_signatures();
         for module in &results {
             self.validate_module(module);
         }
@@ -525,7 +526,9 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                     .symbols
                     .query_methods_by_name(cls_id, name)
                     .find(|entry| {
-                        entry.func().type_().param_types().eq(func_t.param_types())
+                        func_t.is_valid()
+                            && entry.func().type_().is_valid()
+                            && entry.func().type_().param_types().eq(func_t.param_types())
                             && entry.func().type_().return_type() == func_t.return_type()
                     });
                 let base = base.as_ref().map(FunctionEntry::key).copied();
@@ -750,8 +753,10 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
         func: &ast::SourceFunction<'ctx>,
         types: &TypeEnv<'_, 'ctx>,
     ) -> (FunctionType<'ctx>, TypeScope<'a, 'ctx>) {
+        let mut invalid = false;
         for param in &func.type_params {
             if param.variance != ast::Variance::Invariant {
+                invalid = true;
                 let (_, span) = param.name;
                 self.reporter.report(Diagnostic::NonDataVariance(span));
             }
@@ -759,38 +764,46 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
 
         let (types, vars) = self.create_scope_env(types, &func.type_params);
 
+        invalid |= vars.len() != func.type_params.len();
         let params = func
             .params
             .iter()
-            .filter_map(|(param, span)| {
+            .map(|(param, span)| {
                 let (typ, type_span) = param
                     .typ
                     .as_ref()
                     .expect("parameter type should always be present");
-                let typ =
-                    self.reporter
-                        .unwrap_err(types.resolve(typ, &self.symbols, *type_span))?;
+                let typ = self
+                    .reporter
+                    .unwrap_err(types.resolve(typ, &self.symbols, *type_span))
+                    .unwrap_or_else(|| {
+                        invalid = true;
+                        Type::Nothing
+                    });
                 let qs = param.qualifiers;
                 let flags = ParamFlags::default()
                     .with_is_short_circuit(qs.contains(ast::ParamQualifiers::SKIP))
                     .with_is_optional(qs.contains(ast::ParamQualifiers::OPTIONAL))
                     .with_is_out(qs.contains(ast::ParamQualifiers::OUT))
                     .with_is_const(qs.contains(ast::ParamQualifiers::CONST));
-                Some(Param::new(param.name, flags, typ, Some(*span)))
+                Param::new(param.name, flags, typ, Some(*span))
             })
             .collect::<Vec<_>>();
 
-        let return_t = func
-            .return_type
-            .as_deref()
-            .and_then(|(ty, span)| {
-                self.reporter
-                    .unwrap_err(types.resolve(ty, &self.symbols, *span))
-            })
-            .unwrap_or_else(|| Type::nullary(predef::VOID));
+        let return_t = match func.return_type.as_deref() {
+            None => Type::nullary(predef::VOID),
+            Some((ty, span)) => self
+                .reporter
+                .unwrap_err(types.resolve(ty, &self.symbols, *span))
+                .unwrap_or_else(|| {
+                    invalid = true;
+                    Type::Nothing
+                }),
+        };
 
-        let func_t =
-            FunctionType::new(vars, params, return_t).with_properties(func.properties.clone());
+        let func_t = FunctionType::new(vars, params, return_t)
+            .with_invalid_signature(invalid)
+            .with_properties(func.properties.clone());
 
         let type_scope = types
             .pop_scope()
@@ -882,6 +895,9 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
         annotation: &FunctionAnnotation<'ctx>,
         types: &TypeEnv<'_, 'ctx>,
     ) -> Option<MethodId<'ctx>> {
+        if !func_type.is_valid() {
+            return None;
+        }
         let (cls_id, aggregate) = self.resolve_annotated_aggregate(cls_name, types, cls_span)?;
         let res = match Self::resolve_annotated_method(func_name, cls_id, aggregate, func_type) {
             Some(res) => Some(res),
@@ -920,11 +936,12 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
         func_type: &FunctionType<'ctx>,
     ) -> Option<(MethodId<'ctx>, &'a Method<'ctx>)> {
         let entry = agg.methods().by_name(func_name).find(|entry| {
-            entry
-                .func()
-                .type_()
-                .param_types()
-                .eq(func_type.param_types())
+            entry.func().type_().is_valid()
+                && entry
+                    .func()
+                    .type_()
+                    .param_types()
+                    .eq(func_type.param_types())
                 && entry.func().type_().return_type() == func_type.return_type()
         })?;
         Some((MethodId::new(id, *entry.key()), *entry.func()))

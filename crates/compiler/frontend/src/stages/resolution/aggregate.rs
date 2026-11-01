@@ -410,7 +410,8 @@ pub(super) fn extract_static_forwarder<'ctx>(
     doc: &[&'ctx str],
     span: Span,
 ) -> Option<Method<'ctx>> {
-    if flags.is_static()
+    if func_t.is_valid()
+        && flags.is_static()
         && func_t.type_params().is_empty()
         && let [fst, rem @ ..] = func_t.params()
         && (fst.type_() == &Type::nullary(parent_id)

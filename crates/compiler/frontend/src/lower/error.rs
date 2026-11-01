@@ -34,6 +34,10 @@ pub enum Error<'ctx> {
     #[error("there's no matching `{0}` function")]
     UnresolvedFunction(&'ctx str, Span),
     #[error(
+        "cannot resolve `{0}`: a declaration has an invalid signature; fix its type errors first"
+    )]
+    InvalidFunctionSignature(&'ctx str, Span),
+    #[error(
         "invalid number of arguments, expected {expected} {noun}, found {found}",
         expected = DisplayArgCounts(.0),
         noun = if .0.iter().all(|r| *r.start() == 1 && *r.end() == 1) { "argument" } else { "arguments" },
@@ -154,6 +158,7 @@ impl Error<'_> {
             | Self::UnresolvedMember(_, _, span)
             | Self::MultipleMatchingOverloads(_, span)
             | Self::UnresolvedFunction(_, span)
+            | Self::InvalidFunctionSignature(_, span)
             | Self::InvalidArgCount(_, _, span)
             | Self::RequiredArgumentOmitted(span)
             | Self::UnsupportedOmittedArgument(span)
@@ -205,6 +210,7 @@ impl Error<'_> {
             Self::UnresolvedMember(_, _, _) => "UNRESOLVED_MEMBER",
             Self::MultipleMatchingOverloads(_, _) => "MULTIPLE_MATCHING_OVERLOADS",
             Self::UnresolvedFunction(_, _) => "UNRESOLVED_FN",
+            Self::InvalidFunctionSignature(_, _) => "INVALID_FUNCTION_SIGNATURE",
             Self::InvalidArgCount(_, _, _) => "INVALID_ARG_COUNT",
             Self::RequiredArgumentOmitted(_) => "REQUIRED_ARGUMENT_OMITTED",
             Self::UnsupportedOmittedArgument(_) => "UNSUPPORTED_OMITTED_ARGUMENT",

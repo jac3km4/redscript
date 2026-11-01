@@ -14,6 +14,7 @@ pub struct FunctionType<'ctx> {
     params: Box<[Param<'ctx>]>,
     return_type: Type<'ctx>,
     properties: FunctionProperties<'ctx>,
+    invalid_signature: bool,
 }
 
 impl<'ctx> FunctionType<'ctx> {
@@ -28,7 +29,20 @@ impl<'ctx> FunctionType<'ctx> {
             params: params.into(),
             return_type: ret_t,
             properties: FunctionProperties::default(),
+            invalid_signature: false,
         }
+    }
+
+    /// Invalid signatures retain their written slots for analysis only. Unresolved
+    /// slots use `Type::Nothing` as storage, not as an inferable bottom type.
+    /// Consumers must not lower bodies or compare/select these as ordinary signatures.
+    pub fn with_invalid_signature(mut self, invalid: bool) -> Self {
+        self.invalid_signature = invalid;
+        self
+    }
+
+    pub fn is_valid(&self) -> bool {
+        !self.invalid_signature
     }
 
     pub fn with_properties(mut self, properties: FunctionProperties<'ctx>) -> Self {
@@ -111,6 +125,7 @@ impl Default for FunctionType<'_> {
             params: Box::default(),
             return_type: Type::nullary(predef::VOID),
             properties: FunctionProperties::default(),
+            invalid_signature: false,
         }
     }
 }

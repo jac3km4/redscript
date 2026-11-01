@@ -57,6 +57,9 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
                 let mut methods = IndexMap::default();
                 for item in class.methods {
                     let method = &self.symbols[MethodId::new(class.id, item.id)];
+                    if !method.type_().is_valid() {
+                        continue;
+                    }
                     let func = function_builder()
                         .type_(method.type_())
                         .param_names(&item.param_names)
@@ -180,6 +183,9 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
             for func in mod_.functions {
                 match func {
                     FuncItemKind::FreeFunction(func) => {
+                        if !self.symbols[func.id].type_().is_valid() {
+                            continue;
+                        }
                         let value = function_builder()
                             .type_(self.symbols[func.id].type_())
                             .param_names(&func.param_names)
@@ -228,6 +234,9 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
                         }
                     }
                     FuncItemKind::AddMethod(func) => {
+                        if !self.symbols[func.id].type_().is_valid() {
+                            continue;
+                        }
                         let lowered = func.body.as_ref().map(|body| {
                             let sym = &self.symbols[func.id];
                             let this_t = sym
@@ -443,10 +452,6 @@ impl<'scope, 'ctx> InferStageModule<'scope, 'ctx> {
         &self.classes
     }
 
-    pub fn functions(&self) -> &[FuncItemKind<'scope, 'ctx>] {
-        &self.functions
-    }
-
     pub fn fields(&self) -> &[FieldItem<'ctx, FieldId<'ctx>>] {
         &self.fields
     }
@@ -502,10 +507,6 @@ impl<'scope, 'ctx, K, B> FuncItem<'scope, 'ctx, K, B> {
     pub fn with_properties(mut self, properties: ast::FunctionProperties<'ctx>) -> Self {
         self.properties = Some(properties);
         self
-    }
-
-    pub fn id(&self) -> &K {
-        &self.id
     }
 }
 

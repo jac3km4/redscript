@@ -1,6 +1,6 @@
 ---
 source: crates/compiler/frontend/tests/errors.rs
-
+assertion_line: 27
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/class-checks.reds
 ---
@@ -82,6 +82,24 @@ error[INVALID_BASE]: inheritance cycle detected
 43 | class CircularClassA extends CircularClassB {}
    |       ^^^^^^^^^^^^^^
 
+error[INVALID_TYPE_ARG_COUNT]: type `AbstractClass` expects 1 type argument, but found 0
+ --> tests/data/class-checks.reds:40:15
+   |
+40 |   func Method(a: AbstractClass) -> AbstractClass<String, String> {}
+   |               ^^^^^^^^^^^^^^^^
+
+error[INVALID_VARIANCE]: the type `A` appears in contravariant position, which is incompatible with its declaration
+ --> tests/data/class-checks.reds:67:16
+   |
+67 |   func MethodA(a: A)
+   |                ^^^^
+
+error[INVALID_VARIANCE]: the type `B` appears in covariant position, which is incompatible with its declaration
+ --> tests/data/class-checks.reds:68:8
+   |
+68 |   func MethodB() -> B
+   |        ^^^^^^^
+
 error[INVALID_BASE]: this type cannot inherit from a struct
  --> tests/data/class-checks.reds:4:7
   |
@@ -105,24 +123,6 @@ error[INVALID_TYPE_ARG_COUNT]: type `AbstractClass` expects 1 type argument, but
    |
 38 |   let field: AbstractClass;
    |       ^^^^^
-
-error[INVALID_TYPE_ARG_COUNT]: type `AbstractClass` expects 1 type argument, but found 0
- --> tests/data/class-checks.reds:40:15
-   |
-40 |   func Method(a: AbstractClass) -> AbstractClass<String, String> {}
-   |               ^^^^^^^^^^^^^^^^
-
-error[INVALID_VARIANCE]: the type `A` appears in contravariant position, which is incompatible with its declaration
- --> tests/data/class-checks.reds:67:16
-   |
-67 |   func MethodA(a: A)
-   |                ^^^^
-
-error[INVALID_VARIANCE]: the type `B` appears in covariant position, which is incompatible with its declaration
- --> tests/data/class-checks.reds:68:8
-   |
-68 |   func MethodB() -> B
-   |        ^^^^^^^
 
 error[UNSATISFIED_BOUND]: type `Chair` does not satisfy expected bound `Animal` for type parameter `A`
  --> tests/data/class-checks.reds:80:7

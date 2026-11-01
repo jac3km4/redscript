@@ -66,6 +66,22 @@ impl<'ctx> Monomorphizer<'ctx> {
         symbols: &Symbols<'ctx>,
         bundle: &mut ScriptBundle<'ctx>,
     ) -> Result<(), AssembleError<'ctx>> {
+        // Analysis can return a partial unit. Reject it before touching the bundle,
+        // including invalid native declarations that have no lowered body.
+        for entry in symbols.free_functions() {
+            if !entry.func().type_().is_valid() {
+                return Err(AssembleError::InvalidFunctionSignature(entry.func().span()));
+            }
+        }
+        for (_, def) in symbols.types() {
+            if let Some(aggregate) = def.schema().as_aggregate() {
+                for entry in aggregate.methods().iter() {
+                    if !entry.func().type_().is_valid() {
+                        return Err(AssembleError::InvalidFunctionSignature(entry.func().span()));
+                    }
+                }
+            }
+        }
         define_predefs(bundle);
 
         for &id in &unit.enums {

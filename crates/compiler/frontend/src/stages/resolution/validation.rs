@@ -7,12 +7,12 @@ use redscript_community_ast::Span;
 use super::NameResolution;
 use crate::diagnostic::FunctionSignature;
 use crate::lower::InferredTypeApp;
-use crate::stages::infer::{ClassItem, FuncItemKind, InferStageModule};
+use crate::stages::infer::{ClassItem, InferStageModule};
 use crate::symbols::AnyBaseType;
 use crate::utils::ScopedMap;
 use crate::{
-    CtxVar, Diagnostic, FunctionIndex, FunctionType, IndexMap, MethodId, Param, PolyType, Type,
-    TypeApp, TypeId, TypeSchema, Variance,
+    CtxVar, Diagnostic, FreeFunction, FunctionIndex, FunctionType, IndexMap, Method, MethodId,
+    Param, PolyType, Type, TypeApp, TypeId, TypeSchema, Variance,
 };
 
 impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
@@ -46,21 +46,79 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
         }
     }
 
-    pub(super) fn validate_module(&mut self, module: &InferStageModule<'_, 'ctx>) {
-        for func in module.functions() {
-            let (func_t, span) = match func {
-                FuncItemKind::FreeFunction(func) => {
-                    let func = &self.symbols[*func.id()];
-                    let span = func.span().expect("user function should have a span");
-                    (func.type_(), span)
-                }
-                _ => {
-                    continue;
-                }
-            };
-            self.reporter.unwrap_err(self.check_func_type(func_t, span));
+    pub(super) fn validate_function_signatures(&mut self) {
+        let mut candidates = self
+            .symbols
+            .free_functions()
+            .filter_map(|entry| entry.func().span().map(|span| (entry, span)))
+            .collect::<Vec<_>>();
+        candidates.sort_by_key(|(_, span)| (span.file, span.start, span.end));
+        let mut functions = vec![];
+        for (entry, span) in candidates {
+            let func = entry.func();
+            if let Err(error) = self.check_func_type(func.type_(), span) {
+                self.reporter.report(error);
+                let typ = func.type_().clone().with_invalid_signature(true);
+                let invalid = if let Some(intrinsic) = func.intrinsic() {
+                    FreeFunction::new_intrinsic(typ, intrinsic, func.doc(), Some(span))
+                } else if let Some(alias) = func.method_alias() {
+                    FreeFunction::new_alias(typ, alias, Some(span))
+                } else {
+                    FreeFunction::new(func.flags(), typ, func.doc(), Some(span))
+                };
+                functions.push((*entry.key(), invalid));
+            }
+        }
+        for (id, func) in functions {
+            self.symbols.set_free_function(id, func);
         }
 
+        let mut candidates = vec![];
+        for (id, def) in self.symbols.types() {
+            let Some(aggregate) = def.schema().as_aggregate() else {
+                continue;
+            };
+            for entry in aggregate.methods().iter() {
+                let method = *entry.func();
+                let Some(span) = method.span() else {
+                    continue;
+                };
+                candidates.push((MethodId::new(id, *entry.key()), method, span));
+            }
+        }
+        candidates.sort_by_key(|(_, _, span)| (span.file, span.start, span.end));
+        let mut methods = vec![];
+        for (id, method, span) in candidates {
+            let signature = method
+                .aliased_method()
+                .map_or(method.type_(), |id| self.symbols[id].type_());
+            if let Err(error) = self.check_func_type(signature, span) {
+                if method.aliased_method().is_none() {
+                    self.reporter.report(error);
+                }
+                let mut invalid = Method::new(
+                    method.flags(),
+                    method.type_().clone().with_invalid_signature(true),
+                    method.overriden(),
+                    method.doc(),
+                    Some(span),
+                );
+                if let Some(alias) = method.aliased_method() {
+                    invalid = invalid.with_aliased(alias);
+                }
+                methods.push((id, invalid));
+            }
+        }
+        for (id, method) in methods {
+            *self
+                .symbols
+                .get_method_mut(id)
+                .expect("method should exist")
+                .1 = method;
+        }
+    }
+
+    pub(super) fn validate_module(&mut self, module: &InferStageModule<'_, 'ctx>) {
         for field in module.fields() {
             let field = &self.symbols[*field.id()];
             let span = field.span().expect("user field should have a span");
@@ -110,13 +168,6 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                 self.reporter
                     .unwrap_err(self.check_type(field.type_(), Variance::Covariant, span));
             }
-
-            for method in agg.methods().iter() {
-                let method = method.func();
-                let span = method.span().expect("user method should have a span");
-                self.reporter
-                    .unwrap_err(self.check_func_type(method.type_(), span));
-            }
         }
     }
 
@@ -157,7 +208,11 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
 
             for method in aggregate.methods().iter() {
                 let method_t = method.func().type_();
-                if method.func().flags().is_static() || !method_t.type_params().is_empty() {
+                if !method_t.is_valid()
+                    || method.func().flags().is_static()
+                    || method.func().flags().is_static_forwarder()
+                    || !method_t.type_params().is_empty()
+                {
                     continue;
                 }
 
@@ -169,7 +224,10 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                     .symbols
                     .query_methods_by_name(cls_id, method.name())
                     .find(|entry| {
-                        if entry.key() == &MethodId::new(class.id(), *method.key())
+                        if !entry.func().type_().is_valid()
+                            || entry.func().flags().is_static()
+                            || entry.func().flags().is_static_forwarder()
+                            || entry.key() == &MethodId::new(class.id(), *method.key())
                             || !entry.func().type_().type_params().is_empty()
                             || entry.func().type_().params().len() != method_t.params().len()
                         {
@@ -359,6 +417,14 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
         func_type: &FunctionType<'ctx>,
         span: Span,
     ) -> Result<(), Diagnostic<'ctx>> {
+        if !func_type.is_valid() {
+            return Ok(());
+        }
+        for var in func_type.type_params() {
+            if let Some(upper) = var.upper() {
+                self.check_type(upper, Variance::Covariant, span)?;
+            }
+        }
         for param in func_type.params() {
             let span = param
                 .span()

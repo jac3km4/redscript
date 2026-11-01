@@ -221,11 +221,12 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         let mut candidates = env
             .query_free_functions("Cast", self.symbols)
             .filter(|entry| {
-                target_t.is_subtype_compatible(
-                    entry.func().type_().return_type(),
-                    Variance::Covariant,
-                    self.symbols,
-                )
+                !entry.func().type_().is_valid()
+                    || target_t.is_subtype_compatible(
+                        entry.func().type_().return_type(),
+                        Variance::Covariant,
+                        self.symbols,
+                    )
             })
             .peekable();
         let has_candidates = candidates.peek().is_some();
@@ -488,11 +489,16 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         let args = args.into_iter();
         let argc = args.len();
 
+        let mut invalid_signature = false;
         let mut invalid_slot = None;
         let mut arg_ranges = Vec::new();
         let mut filtered = candidates
             .into_iter()
             .filter(|f| {
+                if !f.func().type_().is_valid() {
+                    invalid_signature = true;
+                    return false;
+                }
                 let range = f.func().type_().min_args()..=f.func().type_().max_args();
                 arg_ranges.push(range.clone());
                 if !range.contains(&argc) {
@@ -513,7 +519,9 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             .peekable();
 
         let Some(primary) = filtered.next() else {
-            return if let Some(span) = invalid_slot {
+            return if invalid_signature {
+                Err(Error::InvalidFunctionSignature(name, span))
+            } else if let Some(span) = invalid_slot {
                 Err(Error::RequiredArgumentOmitted(span))
             } else if arg_ranges.is_empty() {
                 Err(Error::UnresolvedFunction(name, span))
@@ -649,17 +657,27 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         }
 
         let mut arg_ranges = Vec::new();
-        let candidates = candidates.into_iter().inspect(|entry| {
+        let mut invalid_signature = false;
+        let candidates = candidates.into_iter().filter(|entry| {
+            if !entry.func().type_().is_valid() {
+                invalid_signature = true;
+                return false;
+            }
             arg_ranges.push(entry.func().type_().min_args()..=entry.func().type_().max_args());
+            true
         });
         let mut matches = match_by_subtype(candidates, arg_types, args, self.symbols).peekable();
         let fallback = fallback.filter(|entry| {
-            (entry.func().type_().min_args()..=entry.func().type_().max_args())
-                .contains(&args.len())
+            entry.func().type_().is_valid()
+                && (entry.func().type_().min_args()..=entry.func().type_().max_args())
+                    .contains(&args.len())
         });
         let Some(selected) = matches.next().or(fallback) else {
             // No match exhausts the candidates, so every argument range is recorded.
             drop(matches);
+            if invalid_signature {
+                return Err(Error::InvalidFunctionSignature(name, span));
+            }
             return Err(
                 if !arg_ranges.is_empty()
                     && arg_ranges.iter().all(|range| !range.contains(&args.len()))
@@ -992,7 +1010,8 @@ pub(super) fn accepts_typed_args<'a, 'ctx: 'a>(
     symbols: &Symbols<'ctx>,
 ) -> bool {
     let typ = function.type_();
-    (typ.min_args()..=typ.max_args()).contains(&arg_types.len())
+    typ.is_valid()
+        && (typ.min_args()..=typ.max_args()).contains(&arg_types.len())
         && arg_types.len() == args.len()
         && arg_types
             .iter()

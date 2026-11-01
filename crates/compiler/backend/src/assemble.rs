@@ -983,6 +983,8 @@ pub enum AssembleError<'ctx> {
         "jump offset exceeds the signed 16-bit bytecode limit; reduce the size of this function"
     )]
     LabelTooDistant,
+    #[error("cannot generate code from symbols containing an invalid function signature")]
+    InvalidFunctionSignature(Option<Span>),
     #[error("`{0}` cannot be used here; {1}")]
     InvalidControlFlow(&'static str, &'static str, Span),
     #[error("struct construction has {0} arguments; the bytecode limit is 255")]
@@ -1006,6 +1008,7 @@ pub enum AssembleError<'ctx> {
 impl AssembleError<'_> {
     pub fn span(&self) -> Option<Span> {
         match self {
+            Self::InvalidFunctionSignature(span) => *span,
             Self::InvalidControlFlow(_, _, span)
             | Self::TooManyArguments(_, span)
             | Self::TemporaryReferenceArgument(_, span)

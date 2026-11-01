@@ -304,6 +304,9 @@ pub fn overrides<'ctx>(
             let Some(span) = method.span().filter(|span| files.contains(&span.file)) else {
                 continue;
             };
+            if !method.type_().is_valid() {
+                continue;
+            }
             let explicit = overrides.contains(&span);
             if method.flags().is_callback() {
                 if explicit {
@@ -314,7 +317,8 @@ pub fn overrides<'ctx>(
                     .skip(1)
                     .flat_map(|(_, base)| base.methods().by_name::<str>(entry.name()))
                     .any(|base| {
-                        base.func().flags().is_callback()
+                        base.func().type_().is_valid()
+                            && base.func().flags().is_callback()
                             && base
                                 .func()
                                 .type_()
@@ -335,7 +339,7 @@ pub fn overrides<'ctx>(
                 .skip(1)
                 .flat_map(|(_, base)| base.methods().by_name::<str>(entry.name()))
                 .find(|entry| {
-                    !entry.func().flags().is_static()
+                    entry.func().type_().is_valid() && !entry.func().flags().is_static()
                         && !entry.func().flags().is_callback()
                         && (entry.func().flags().visibility() != Visibility::Private
                             || !entry.func().flags().is_final())
@@ -373,7 +377,13 @@ pub fn overrides<'ctx>(
                         ));
                     }
                 }
-                _ if explicit => {
+                _ if explicit
+                    && !symbols
+                        .base_iter_with_self(id)
+                        .skip(1)
+                        .flat_map(|(_, base)| base.methods().by_name::<str>(entry.name()))
+                        .any(|base| !base.func().type_().is_valid()) =>
+                {
                     errors.push(Error::semantic(SemanticError::OverrideWithoutBase, span));
                 }
                 _ => {}
