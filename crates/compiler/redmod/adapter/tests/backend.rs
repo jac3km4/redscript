@@ -223,6 +223,72 @@ fn native_lazy_operators_preserve_flags_names_and_effect_order() {
 }
 
 #[test]
+fn variant_casts_emit_exact_extraction_types_and_single_source_calls() {
+    let bundle = compile(
+        r#"
+        class Base extends IScriptable {}
+        class Child extends Base {}
+        struct Value { var number: Int32; }
+        function Source() -> Variant { var value: Variant; return value; }
+        function Object() -> Base { return (Base)Source(); }
+        function Explicit() -> Base { return Cast<Base>(Source()); }
+        function Weak() -> weak<Base> { return (weak<Base>)Source(); }
+        function Structure() -> Value { return (Value)Source(); }
+        function Nested() -> Child { return (Child)(IScriptable)Source(); }
+        "#,
+    );
+    let bytes = bundle.into_writeable().to_bytes().unwrap();
+    let bundle = ScriptBundle::from_bytes(&bytes).unwrap();
+    for (name, target) in [
+        ("Object;", "Base"),
+        ("Explicit;", "Base"),
+        ("Weak;", "Base"),
+        ("Structure;", "Value"),
+        ("Nested;", "IScriptable"),
+    ] {
+        let function = function(&bundle, name);
+        let code = function
+            .body()
+            .code_iter()
+            .with_offsets()
+            .map(|(offset, instr)| (offset, instr.unwrap()))
+            .collect::<Vec<_>>();
+        let source = call_position(&bundle, &code, "Source;");
+        let extracts = code
+            .iter()
+            .enumerate()
+            .filter_map(|(i, (_, instr))| match instr {
+                Instr::FromVariant(typ) => Some((i, *typ)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(extracts.len(), 1, "{name}");
+        let (position, typ) = extracts[0];
+        assert!(position < source, "extraction must contain the source call");
+        let inner = match bundle[typ].kind() {
+            redscript_io::TypeKind::Ref(inner) if name != "Weak;" => inner,
+            redscript_io::TypeKind::WeakRef(inner) if name == "Weak;" => inner,
+            redscript_io::TypeKind::Class if name == "Structure;" => typ,
+            kind => panic!("unexpected extraction type for {name}: {kind:?}"),
+        };
+        assert_eq!(&*bundle[bundle[inner].name()], target);
+        if name != "Nested;" {
+            assert_eq!(function.return_type(), Some(typ));
+        }
+        let downcasts = code
+            .iter()
+            .filter(|(_, instr)| matches!(instr, Instr::DynamicCast { .. }))
+            .count();
+        assert_eq!(downcasts, usize::from(name == "Nested;"));
+        assert!(
+            !code
+                .iter()
+                .any(|(_, instr)| matches!(instr, Instr::RefToWeakRef | Instr::WeakRefToRef))
+        );
+    }
+}
+
+#[test]
 fn native_enum_storage_is_emitted_and_serialized() {
     let bundle = compile(
         "enum Narrow: Uint8 { A = 255 } enum Wide: Int64 { A = 0 } enum Word: Uint32 { A = 4294967295 }",

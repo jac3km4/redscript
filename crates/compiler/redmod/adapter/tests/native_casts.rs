@@ -39,6 +39,16 @@ fn analyze(
         &interner,
     );
     assert!(errors.is_empty(), "{errors:?}");
+    for error in reporter.reported() {
+        if error.code() == "IMPOSSIBLE_DYN_CAST" {
+            let span = error.span();
+            assert_eq!(span.file, file);
+            assert!(matches!(
+                &native[span.start as usize..span.end as usize],
+                "(" | "Cast<"
+            ));
+        }
+    }
     let codes = reporter
         .reported()
         .iter()
@@ -127,7 +137,7 @@ fn incompatible_object_casts_are_rejected() {
         class Base {}
         class Other {}
         function Unrelated(value: Base) -> Other { return (Other)value; }
-        function Numeric(value: Int32) -> Base { return (Base)value; }
+        function Numeric(value: Int32) -> Base { return Cast<Base>(value); }
         function Weak(value: weak<Base>) -> weak<Other> { return (Other)value; }
         "#,
         "",
@@ -161,6 +171,123 @@ fn numeric_and_struct_targets_still_resolve_conversion_overloads() {
             }
         },
     );
+}
+
+#[test]
+fn ordinary_conversion_literals_keep_the_selected_parameter_context() {
+    analyze(
+        r#"
+        function Wide() -> Value { return (Value)1.5; }
+        function Narrow() -> Other { return Cast<Other>(1); }
+        function Negative() -> Other { return (Other)-1; }
+        function ExplicitNegative() -> Other { return Cast<Other>(-1); }
+        function Parenthesized() -> Other { return Cast<Other>((1)); }
+        "#,
+        "struct Value {} struct Other {} native func Cast(value: Double) -> Value; native func Cast(value: Int8) -> Other;",
+        false,
+        |unit, symbols, codes| {
+            assert!(codes.is_empty(), "{codes:?}");
+            for (name, expected) in [
+                ("Wide", "Double"),
+                ("Narrow", "Int8"),
+                ("Negative", "Int8"),
+                ("ExplicitNegative", "Int8"),
+                ("Parenthesized", "Int8"),
+            ] {
+                let ir::Expr::Call { call, .. } = returned(unit, symbols, name) else {
+                    panic!("expected conversion in {name}")
+                };
+                let [ir::Expr::Const(value, _)] = call.args() else {
+                    panic!("expected literal argument in {name}")
+                };
+                assert_eq!(value.type_id().to_string(), expected);
+            }
+        },
+    );
+}
+
+#[test]
+fn typed_conversion_fallback_checks_the_lazy_source_operand() {
+    for (operand, expected) in [
+        ("Read([1])", vec!["UNSAFE_ARRAY_EVALUATION"]),
+        ("1", vec![]),
+    ] {
+        analyze(
+            &format!("function Run() -> Value {{ return Cast<Value>({operand}); }}"),
+            "struct Value {} native func Read(values: [Int32]) -> Int32; native func Cast(skip value: Int32) -> Value;",
+            false,
+            |_, _, codes| assert_eq!(codes, expected, "{operand}: {codes:?}"),
+        );
+    }
+}
+
+#[test]
+fn variant_casts_select_extraction_with_exact_target_types() {
+    for reverse in [false, true] {
+        analyze(
+            r#"
+            function Object(value: Variant) -> Base { return (Base)value; }
+            function Explicit(value: Variant) -> Base { return Cast<Base>(value); }
+            function Weak(value: Variant) -> weak<Base> { return (weak<Base>)value; }
+            function Structure(value: Variant) -> Value { return (Value)value; }
+            function Nested() -> Child { return (Child)(Base)GetVariant(); }
+            function Effect() -> Base { return (Base)GetVariant(); }
+            "#,
+            r#"
+            class Base {} class Child extends Base {} struct Value {}
+            native func GetVariant() -> Variant;
+            func Community(value: Variant) -> Base { return Cast<Base>(value); }
+            func CommunityExtraction(value: Variant) -> Base { return FromVariant<Base>(value); }
+            "#,
+            reverse,
+            |unit, symbols, codes| {
+                use ir::Visitor;
+                assert_eq!(codes, ["UNRESOLVED_FN"]);
+                for (name, target) in [
+                    ("Object", "Base"),
+                    ("Explicit", "Base"),
+                    ("Weak", "wref<Base>"),
+                    ("Structure", "Value"),
+                    ("Effect", "Base"),
+                    ("CommunityExtraction", "Base"),
+                ] {
+                    let ir::Expr::Call { call, .. } = returned(unit, symbols, name) else {
+                        panic!("expected extraction in {name}")
+                    };
+                    let ir::Call::FreeFunction {
+                        function,
+                        type_args,
+                        args,
+                    } = &**call
+                    else {
+                        panic!("expected intrinsic call")
+                    };
+                    assert_eq!(
+                        symbols[*function].intrinsic(),
+                        Some(ir::Intrinsic::FromVariant)
+                    );
+                    assert_eq!(type_args.len(), 1);
+                    assert_eq!(type_args[0].coalesced(symbols).unwrap().to_string(), target);
+                    assert_eq!(args.len(), 1);
+                }
+                let ir::Expr::DynCast { expr, .. } = returned(unit, symbols, "Nested") else {
+                    panic!("expected outer object downcast")
+                };
+                assert!(matches!(&**expr, ir::Expr::Call { call, .. }
+                    if matches!(&**call, ir::Call::FreeFunction { function, .. }
+                        if symbols[*function].intrinsic() == Some(ir::Intrinsic::FromVariant))));
+                for name in ["Nested", "Effect"] {
+                    let mut counts = Counts::default();
+                    counts.visit_expr(returned(unit, symbols, name));
+                    assert_eq!(
+                        counts.calls, 2,
+                        "one extraction and one source call: {name}"
+                    );
+                    assert_eq!(counts.casts, usize::from(name == "Nested"));
+                }
+            },
+        );
+    }
 }
 
 #[derive(Default)]

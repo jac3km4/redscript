@@ -493,7 +493,10 @@ fn synthetic_cast_callee_does_not_hide_target_type_or_operand_from_find_at() {
             panic!()
         };
         assert_eq!(callee.1.start, expr.1.start);
-        assert_eq!(callee.1.start, callee.1.end);
+        assert_eq!(
+            &source[callee.1.start as usize..callee.1.end as usize],
+            if cast.starts_with('(') { "(" } else { "Cast<" }
+        );
         assert_eq!(callee.1.file, file());
         let target_pos = source.find("Target").unwrap() as u32;
         assert_eq!(type_args[0].1.start, target_pos);

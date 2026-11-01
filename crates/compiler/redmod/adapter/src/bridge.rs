@@ -888,7 +888,7 @@ impl<'src> Bridge<'src> {
                 // A synthetic callee must not hide the written target type from find_at.
                 expr: Box::new((
                     ast::Expr::Ident("Cast"),
-                    Span::new(span.start, span.start, span.file),
+                    Span::new(span.start, ty.1.start, span.file),
                 )),
                 type_args: vec![typ(*ty)].into(),
                 args: vec![self.lower_expr(*expr)?].into(),

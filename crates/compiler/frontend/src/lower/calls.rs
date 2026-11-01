@@ -182,14 +182,39 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             ([], None) => return Err(Error::UnknownStaticCastType(span)),
             _ => return Err(Error::InvalidTypeArgCount(1, type_args.len(), span)),
         };
-        if env.types().policy(span).native_object_cast
-            && let Some(target) = target_t.upper_bound(self.symbols)
-            && self.symbols[target.id()]
+        let object_target = target_t.upper_bound(self.symbols).is_some_and(|target| {
+            self.symbols[target.id()]
                 .schema()
                 .as_aggregate()
                 .is_some_and(|agg| !agg.flags().is_struct() && !agg.flags().is_never_ref())
-        {
-            let (mut expr, expr_t) = self.lower_expr(&args[0], env)?;
+        });
+        // Literals cannot produce Variant. Leave ordinary conversion operands in
+        // source form so the selected parameter can supply their numeric context.
+        let literal = is_literal_or_negated_literal(&args[0].0);
+        let mut native_arg =
+            if env.types().policy(span).native_object_cast && (object_target || !literal) {
+                let (expr, expr_t) = self.lower_expr(&args[0], env)?;
+                if expr_t
+                    .upper_bound(self.symbols)
+                    .is_some_and(|typ| typ.id() == predef::VARIANT)
+                {
+                    let (call, typ) = self
+                        .free_function_call_builder()
+                        .name(ir::Intrinsic::FromVariant)
+                        .expected_intrinsic(ir::Intrinsic::FromVariant)
+                        .type_args(&[target_t])
+                        .args([(expr, expr_t)])
+                        .env(env)
+                        .span(span)
+                        .build()?;
+                    return Ok((ir::Expr::call(call, span), typ));
+                }
+                Some((expr, expr_t))
+            } else {
+                None
+            };
+        if native_arg.is_some() && object_target {
+            let (mut expr, expr_t) = native_arg.take().unwrap();
             let constraint = expr_t.unwrap_ref_or_self(self.symbols);
             let result_t = if expr_t.ref_type(self.symbols) == Some(RefType::Weak) {
                 Type::app(predef::WREF, [target_t.clone()]).into_poly()
@@ -238,6 +263,22 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             .peekable();
         if has_candidates && candidates.peek().is_none() {
             return Err(Error::UnsupportedNativeConversion(span));
+        }
+        if let Some((expr, expr_t)) = native_arg {
+            let mut checked_args = [expr];
+            let (call, typ) = self
+                .typed_overload_resolver()
+                .name("Cast")
+                .args(&mut checked_args)
+                .arg_types(&[expr_t])
+                .source_args(&[&args[0]])
+                .candidates(candidates)
+                .env(env)
+                .span(span)
+                .resolve()?
+                .with_args(checked_args)
+                .into_call();
+            return Ok((ir::Expr::call(call, span), typ));
         }
         let (call, typ) = self
             .overload_resolver()
@@ -1030,6 +1071,12 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
 
         Ok(map)
     }
+}
+
+fn is_literal_or_negated_literal(expr: &ast::SourceExpr<'_>) -> bool {
+    matches!(expr, ast::Expr::Constant(_))
+        || matches!(expr, ast::Expr::UnOp { op: ast::UnOp::Neg, expr }
+            if matches!(expr.0, ast::Expr::Constant(_)))
 }
 
 fn same_parameter_signature<'ctx>(lhs: &FunctionType<'ctx>, rhs: &FunctionType<'ctx>) -> bool {
