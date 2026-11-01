@@ -116,9 +116,65 @@ fn mutable_array_fields_preserve_types_metadata_and_independent_flags() {
 }
 
 #[test]
+fn observed_mutable_float_preserves_explicit_const_and_flags() {
+    let bundle = compile(
+        "class Host { protected mutable instanceeditable inlined var value: Float = 1.0f; instanceeditable const mutable inlined var frozen: Float = 1.0f; public function Mutate() { value = 2.0f; } }",
+    );
+    let mut count = 0;
+    for definition in bundle.indexed_definitions() {
+        if let IndexedDefinition::Field(_, field) = definition {
+            count += 1;
+            assert!(field.flags().is_instance_editable());
+            assert!(field.flags().is_inline());
+            assert_eq!(field.flags().is_const(), &*bundle[field.name()] == "frozen");
+        }
+    }
+    assert_eq!(count, 2);
+
+    for modifiers in [
+        "const mutable instanceeditable inlined",
+        "mutable instanceeditable inlined const",
+    ] {
+        let source = format!(
+            "class Host {{ {modifiers} var value: Float = 1.0f; public function Mutate() {{ value = 2.0f; }} }}"
+        );
+        let sources = SourceMap::new();
+        let file = sources.push_back("const-float.script", &source);
+        let (parsed, errors) = parse_file_with_metadata(&source, file);
+        assert!(errors.is_empty(), "{errors:?}");
+        let interner = TypeInterner::default();
+        let mut reporter = CompileErrorReporter::default();
+        let (_, symbols, errors) = process_sources(
+            parsed,
+            [],
+            redscript_compiler_frontend::Symbols::with_default_types(),
+            &mut reporter,
+            &interner,
+        );
+        assert!(errors.is_empty(), "{errors:?}");
+        let host = symbols[interner.intern("Host")]
+            .schema()
+            .as_aggregate()
+            .unwrap();
+        assert!(
+            host.fields()
+                .iter()
+                .all(|field| field.field().flags().is_const()),
+            "explicit const must survive either modifier order even in a writing body"
+        );
+    }
+}
+
+#[test]
 fn mutable_does_not_enable_unmapped_types_or_declaration_targets() {
     for source in [
         "class Host { mutable var value: Int32; }",
+        "class Host { mutable var value: Float; }",
+        "class Host { mutable editable inlined var value: Float; }",
+        "class Host { mutable instanceeditable var value: Float; }",
+        "struct Host { mutable instanceeditable inlined var value: Float; }",
+        "import class Host { mutable instanceeditable inlined var value: Float; }",
+        "class Host { mutable instanceeditable inlined var value: Double; }",
         "class Host { mutable var value: String; }",
         "struct Data {} class Host { mutable var value: Data; }",
         "class Host { mutable var value: Host; }",

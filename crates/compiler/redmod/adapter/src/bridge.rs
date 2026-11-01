@@ -122,6 +122,7 @@ pub fn lower(module: native::Module<'_>) -> Result<ParsedModule<'_>> {
     let mut bridge = Bridge {
         overrides: vec![],
         wrapper: None,
+        scalar_mutable: false,
         control_flow: vec![],
     };
     let items = bridge.items(module.items, false)?;
@@ -135,6 +136,7 @@ pub fn lower(module: native::Module<'_>) -> Result<ParsedModule<'_>> {
 struct Bridge<'src> {
     overrides: Vec<Span>,
     wrapper: Option<&'src str>,
+    scalar_mutable: bool,
     control_flow: Vec<crate::control_flow::LoopPlan>,
 }
 
@@ -270,6 +272,24 @@ impl<'src> Bridge<'src> {
                 })
                 .collect::<Result<Vec<_>>>()?,
         );
+        let has_modifier = |expected| {
+            decl.modifiers
+                .iter()
+                .any(|(modifier, _)| *modifier == expected)
+        };
+        let scalar_mutable = self.scalar_mutable
+            && has_modifier(native::Modifier::InstanceEditable)
+            && has_modifier(native::Modifier::Inlined)
+            && decl.modifiers.iter().all(|(modifier, _)| {
+                matches!(
+                    modifier,
+                    native::Modifier::Mutable
+                        | native::Modifier::Const
+                        | native::Modifier::InstanceEditable
+                        | native::Modifier::Inlined
+                )
+            });
+        let imported = has_modifier(native::Modifier::Import);
         let mut qualifiers = ast::ItemQualifiers::empty();
         let mut explicit_override = false;
         let mut virtual_method = false;
@@ -295,11 +315,11 @@ impl<'src> Bridge<'src> {
                         && matches!(
                             &decl.item,
                             native::Item::Field(field) if mutable_array(&field.typ.0)
+                                                            || scalar_mutable && matches!(&field.typ.0,
+                                                                native::Type::Named { name: "Float", args } if args.is_empty())
                         ) =>
                 {
-                    // Official mutable arrays have no extra flag: mutable prevents
-                    // editable/instanceeditable from adding implicit const. The
-                    // shared field model already leaves these arrays non-const.
+                    // These observed forms have no extra flag in official output.
                     // Explicit const is independent and must not be cleared.
                     Q::empty()
                 }
@@ -363,7 +383,10 @@ impl<'src> Bridge<'src> {
                 extends,
                 items,
             } => {
+                let previous = self.scalar_mutable;
+                self.scalar_mutable = !is_struct && !imported;
                 let items = self.items(items, true)?;
+                self.scalar_mutable = previous;
                 let aggregate =
                     ast::Aggregate::new(name, vec![], extends.map(|ty| Box::new(typ(ty))), items);
                 if is_struct {
