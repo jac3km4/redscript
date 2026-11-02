@@ -41,6 +41,181 @@ fn stderr(output: &Output) -> String {
     String::from_utf8(output.stderr.clone()).unwrap()
 }
 
+fn assert_failure(output: &Output, expected: &[&str]) {
+    assert!(!output.status.success(), "{output:?}");
+    let stderr = stderr(output);
+    for text in expected {
+        assert!(stderr.contains(text), "missing {text:?} in {stderr}");
+    }
+}
+
+fn write_bundle(dir: &TestDir) {
+    fs::write(
+        dir.0.join("input.redscripts"),
+        ScriptBundle::default().into_writeable().to_bytes().unwrap(),
+    )
+    .unwrap();
+}
+
+fn source_command(dir: &TestDir, subcommand: &str) -> Command {
+    let mut command = dir.command();
+    command.args([subcommand, "-b", "input.redscripts"]);
+    if subcommand == "compile" {
+        command.args(["-o", "output.redscripts"]);
+    }
+    command
+}
+
+#[test]
+fn warning_help_and_parse_errors_list_accepted_values() {
+    let dir = TestDir::new();
+    fs::write(dir.0.join("test.reds"), "func Test() {}\n").unwrap();
+    for subcommand in ["compile", "lint"] {
+        let output = dir.command().args([subcommand, "--help"]).output().unwrap();
+        let help = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            stderr(&output)
+        );
+        for text in [
+            "unused_locals",
+            "default: none",
+            "repeatable",
+            "pedantic, warning",
+            "default: warning",
+        ] {
+            assert!(help.contains(text), "{help}");
+        }
+        for (flag, value, expected) in [
+            (
+                "-W",
+                "unused",
+                "accepted values for -W/--warn-on: unused_locals",
+            ),
+            (
+                "-L",
+                "error",
+                "accepted values for -L/--warn-level: pedantic, warning (default: warning)",
+            ),
+        ] {
+            let output = source_command(&dir, subcommand)
+                .args(["-s", "test.reds", flag, value])
+                .output()
+                .unwrap();
+            assert_failure(&output, &[value, expected]);
+        }
+        for level in ["pedantic", "warning"] {
+            let output = source_command(&dir, subcommand)
+                .args(["-s", "test.reds", "-W", "unused_locals", "-L", level])
+                .output()
+                .unwrap();
+            assert_failure(
+                &output,
+                &["failed to read baseline bundle input.redscripts"],
+            );
+        }
+    }
+}
+
+#[test]
+fn compile_and_lint_require_explicit_existing_sources() {
+    let dir = TestDir::new();
+    write_bundle(&dir);
+    fs::write(dir.0.join("test.reds"), "func Test() {}\n").unwrap();
+    fs::write(dir.0.join("output.redscripts"), "keep me").unwrap();
+    for subcommand in ["compile", "lint"] {
+        let output = source_command(&dir, subcommand).output().unwrap();
+        assert_failure(&output, &["no source paths provided", "-s/--src"]);
+        // A valid first root must not hide a missing later root.
+        let output = source_command(&dir, subcommand)
+            .args(["-s", "test.reds", "-s", "missing-sources"])
+            .output()
+            .unwrap();
+        assert_failure(&output, &["failed to access source root missing-sources"]);
+        assert_eq!(
+            fs::read_to_string(dir.0.join("output.redscripts")).unwrap(),
+            "keep me"
+        );
+    }
+}
+
+#[test]
+fn compile_and_lint_baseline_errors_include_paths() {
+    let dir = TestDir::new();
+    fs::write(dir.0.join("test.reds"), "func Test() {}\n").unwrap();
+    for subcommand in ["compile", "lint"] {
+        let output = source_command(&dir, subcommand)
+            .args(["-s", "test.reds"])
+            .output()
+            .unwrap();
+        assert_failure(
+            &output,
+            &["failed to read baseline bundle input.redscripts"],
+        );
+    }
+    fs::write(dir.0.join("input.redscripts"), "not a bundle").unwrap();
+    for subcommand in ["compile", "lint"] {
+        let output = source_command(&dir, subcommand)
+            .args(["-s", "test.reds"])
+            .output()
+            .unwrap();
+        assert_failure(&output, &["baseline bundle input.redscripts"]);
+    }
+}
+
+#[test]
+fn compile_output_errors_include_paths() {
+    let dir = TestDir::new();
+    write_bundle(&dir);
+    fs::write(dir.0.join("test.reds"), "func Test() {}\n").unwrap();
+    fs::create_dir(dir.0.join("output.redscripts")).unwrap();
+    let output = source_command(&dir, "compile")
+        .args(["-s", "test.reds"])
+        .output()
+        .unwrap();
+    assert_failure(
+        &output,
+        &["failed to write output bundle output.redscripts"],
+    );
+}
+
+#[test]
+fn decompile_io_errors_include_paths() {
+    let dir = TestDir::new();
+    let run = || {
+        dir.command()
+            .args(["decompile", "-b", "input.redscripts", "-o", "output.reds"])
+            .output()
+            .unwrap()
+    };
+    assert_failure(&run(), &["failed to read input bundle input.redscripts"]);
+    fs::write(dir.0.join("input.redscripts"), "not a bundle").unwrap();
+    assert_failure(&run(), &["failed to decode input bundle input.redscripts"]);
+    write_bundle(&dir);
+    fs::create_dir(dir.0.join("output.reds")).unwrap();
+    assert_failure(&run(), &["failed to create decompiled output output.reds"]);
+}
+
+#[cfg(windows)]
+#[test]
+fn formatter_save_errors_include_paths() {
+    let dir = TestDir::new();
+    let path = dir.0.join("test.reds");
+    fs::write(&path, "func Test(){}\n").unwrap();
+    let original = fs::metadata(&path).unwrap().permissions();
+    let mut readonly = original.clone();
+    readonly.set_readonly(true);
+    fs::set_permissions(&path, readonly).unwrap();
+    let output = dir
+        .command()
+        .args(["format", "-s", "test.reds", "--save"])
+        .output()
+        .unwrap();
+    fs::set_permissions(&path, original).unwrap();
+    assert_failure(&output, &["failed to save formatted source", "test.reds"]);
+    assert_eq!(fs::read_to_string(path).unwrap(), "func Test(){}\n");
+}
+
 #[test]
 fn compilation_and_lint_diagnostics_use_stderr() {
     let dir = TestDir::new();
@@ -122,6 +297,7 @@ fn formatter_continues_after_parse_errors() {
             }
             "--check" => {
                 assert!(output.stdout.is_empty());
+                assert!(stderr.contains("format --save -s"), "{stderr}");
                 assert!(
                     stderr.contains("file is not formatted correctly"),
                     "{stderr}"
