@@ -675,3 +675,30 @@ fn bounded_enum_casts_serialize_existing_opcodes_and_evaluate_once() {
         assert!(conversions[0] < tick);
     }
 }
+
+#[test]
+fn provider_wrappers_stay_under_serialized_skip_and_evaluate_once() {
+    let emitted = compile(
+        "import implicit cast(value: Int32): Bool; import function Tick(): Int32; import function Lazy(skip value: Bool): Bool; function Implicit(): Bool { return Lazy(Tick()); } function Explicit(): Bool { return Lazy((Bool)Tick()); }",
+    );
+    let bytes = emitted.into_writeable().to_bytes().unwrap();
+    let bundle = ScriptBundle::from_bytes(&bytes).unwrap();
+    for name in ["Implicit;", "Explicit;"] {
+        let code = function(&bundle, name)
+            .body()
+            .code_iter()
+            .with_offsets()
+            .map(|(offset, instr)| (offset, instr.unwrap()))
+            .collect::<Vec<_>>();
+        let outer = call_position(&bundle, &code, "Lazy");
+        let cast = call_position(&bundle, &code, "Cast;Int32;Bool");
+        let tick = call_position(&bundle, &code, "Tick");
+        assert!(outer < cast && cast < tick);
+        let (offset, Instr::Skip(jump)) = &code[cast - 1] else {
+            panic!("conversion escaped Skip")
+        };
+        let target = *offset as i32 + i32::from(jump.target());
+        assert!(target > code[tick].0 as i32);
+        assert!(code.iter().any(|(offset, instr)| *offset as i32 == target && matches!(instr, Instr::ParamEnd)));
+    }
+}

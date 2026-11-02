@@ -340,11 +340,26 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
     fn lower_arg(
         &mut self,
         expr: &mut ir::Expr<'ctx>,
+        lhs: PolyType<'ctx>,
+        rhs: PolyType<'ctx>,
+        param: &Param<'ctx>,
+        env: &Env<'_, 'ctx>,
+        span: Span,
+    ) -> LowerResult<'ctx, ()> {
+        self.lower_arg_with_provider(expr, lhs, rhs, param, env, span, true)
+    }
+
+    // Keep recovery permission explicit rather than storing mutable lowering state.
+    #[allow(clippy::too_many_arguments)]
+    fn lower_arg_with_provider(
+        &mut self,
+        expr: &mut ir::Expr<'ctx>,
         mut lhs: PolyType<'ctx>,
         rhs: PolyType<'ctx>,
         param: &Param<'ctx>,
         env: &Env<'_, 'ctx>,
         span: Span,
+        allow_provider: bool,
     ) -> LowerResult<'ctx, ()> {
         if param.flags().is_out() {
             if env.types().policy(span).script_ref_write_through
@@ -359,7 +374,14 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 self.reporter.report(Error::InvalidTemporary(span));
             }
         }
-        self.coerce(expr, lhs, rhs, env, span)?;
+        self.coerce_with_provider(
+            expr,
+            lhs,
+            rhs,
+            env,
+            span,
+            allow_provider && !param.flags().is_out(),
+        )?;
         Ok(())
     }
 
@@ -877,7 +899,17 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             let span = arg.span();
             let expected = PolyType::from_type_with_env(param.type_(), &type_env)
                 .map_err(|var| Error::UnresolvedVar(var, span))?;
-            self.lower_arg(&mut *arg, typ.clone(), expected, param, env, span)?;
+            // A recovery-only signature must not become viable through a provider,
+            // including one exposed by recursive script-reference adaptation.
+            self.lower_arg_with_provider(
+                &mut *arg,
+                typ.clone(),
+                expected,
+                param,
+                env,
+                span,
+                !matches.is_empty(),
+            )?;
         }
 
         let return_t =
@@ -903,6 +935,18 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         env: &Env<'_, 'ctx>,
         span: Span,
     ) -> LowerResult<'ctx, ()> {
+        self.coerce_with_provider(expr, lhs, rhs, env, span, true)
+    }
+
+    fn coerce_with_provider(
+        &mut self,
+        expr: &mut ir::Expr<'ctx>,
+        lhs: PolyType<'ctx>,
+        rhs: PolyType<'ctx>,
+        env: &Env<'_, 'ctx>,
+        span: Span,
+        allow_provider: bool,
+    ) -> LowerResult<'ctx, ()> {
         if let Some(validate) = env.types().policy(span).validate_coercion {
             validate(&lhs, &rhs, self.symbols, span)?;
         }
@@ -911,12 +955,12 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 if !matches!(target, Some((RefType::Script, _))) =>
             {
                 self.emit_reference_conversion(expr, lhs, ir::Intrinsic::Deref, env, span)?;
-                return self.coerce(expr, pointee, rhs, env, span);
+                return self.coerce_with_provider(expr, pointee, rhs, env, span, allow_provider);
             }
             (source, Some((RefType::Script, pointee)))
                 if !matches!(source, Some((RefType::Script, _))) =>
             {
-                self.coerce(expr, lhs, pointee.clone(), env, span)?;
+                self.coerce_with_provider(expr, lhs, pointee.clone(), env, span, allow_provider)?;
                 return self.emit_reference_conversion(
                     expr,
                     pointee,
@@ -926,6 +970,15 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 );
             }
             _ => {}
+        }
+        if allow_provider
+            && env.types().policy(span).native_object_cast
+            && let Some(function) =
+                conversions::implicit_provider(&lhs, &rhs, env, self.symbols, span)?
+        {
+            let arg = mem::replace(expr, ir::Expr::null(span));
+            *expr = conversions::call(function, arg, span);
+            return Ok(());
         }
         let coercion = lhs
             .coerce(&rhs, self.symbols)

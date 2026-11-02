@@ -48,8 +48,8 @@ availability or game runtime behavior.
 
 Other unsupported declarations retain `UNSUPPORTED_NATIVE_CONVERSION` (including
 exact implicit diagnostic attribution), or normal type/overload errors when no
-exact declaration can be attributed. Implicit dispatch, chaining, numeric ranking,
-identity casts, general ToString, and weak-reference conversions are not enabled.
+exact declaration can be attributed. Chaining, numeric ranking, identity casts,
+general ToString, and weak-reference conversions are not enabled.
 
 ## Bounded explicit enum casts
 
@@ -66,6 +66,28 @@ integer widths, literal retyping or implicit enum conversion is introduced.
 Wrappers preserve the operand's execution point and evaluation count. Declared
 value checks are conservative eligibility, not a guarantee about every runtime
 enum/integer value.
+
+## Guarded implicit native providers
+
+At known coercion targets (returns, initializers, assignments and selected call
+arguments), incompatible fixed non-enum pairs may use a unique exact implicit
+native provider under the same signature gates. Existing valid coercions retain
+precedence. Explicit-only providers, implicit enum conversions, chaining and
+conversion-aware overload matching/ranking remain unsupported.
+
+Permission is passed explicitly through argument coercion and recursive
+script-reference adaptation. Out arguments never enable providers. A typed
+resolver's recovery-only fallback (`matches.is_empty()`) also disables them at
+the point of application, including after dereferencing or later inference.
+Single-candidate source resolution and genuinely matched signatures retain
+permission. There is no global state, speculative conversion preflight or second
+matching pass. When permission is false, normal coercion and diagnostic recovery
+still run; declaration order can change the existing diagnostic but must not
+turn a converted overload alternative into success.
+
+Wrappers own the already-lowered operand once and add no statement prefixes.
+Lazy/skip arguments retain their existing guards and execution point. This does
+not add condition truthiness or general provider-aware operator applicability.
 
 ## Fresh official characterization
 
@@ -89,7 +111,7 @@ model. Logs, sources, definitions and summary remain in that target directory.
 
 These results corroborate the earlier blocker evidence. They do not establish
 IR opcode selection, value/ref/const equivalence, ambiguity/ranking, chaining, or
-evaluation-once semantics for a general imported conversion implementation. The bounded explicit path above implements only exact native provider calls;
+evaluation-once semantics for a general imported conversion implementation. The bounded paths above implement only exact native provider calls;
 these observations do not establish a general conversion framework.
 
 ## Coverage and remaining work
@@ -109,6 +131,10 @@ these observations do not establish a general conversion framework.
 - Provider tests cover explicit/implicit intent in explicit casts, conservative
   qualifier gates, scripted/community rejection, duplicate rejection, ordinary
   precedence, contextual literals and operand evaluation once.
+- Guarded implicit tests cover one/two converted overload alternatives in both
+  orders, script-reference and generic recovery, exact/single-candidate positives,
+  known-target contexts, omitted slots, unrelated bad arguments, out/qualifier
+  rejection, no chaining and lazy operand nesting.
 - Bundle roundtrips assert the existing return-qualified native binding and a
   single source call. API tests ensure unsupported/invalid provider requests leave
   existing output untouched.

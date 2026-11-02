@@ -677,3 +677,279 @@ fn enum_casts_reject_uncharacterized_cells_and_keep_precedence() {
         |_, _, codes| assert!(!codes.is_empty()),
     );
 }
+
+#[test]
+fn guarded_recovery_rejects_provider_alternatives_in_both_orders() {
+    for second_provider in ["", "import implicit cast(value: GuardA): GuardC;"] {
+        for params in [["GuardB", "GuardC"], ["GuardC", "GuardB"]] {
+            for argument in ["GuardA", "script_ref<GuardA>"] {
+                let source = format!(
+                    "struct GuardA {{}} struct GuardB {{}} struct GuardC {{}} import implicit cast(value: GuardA): GuardB; {second_provider} import function Pick(value: {}); import function Pick(value: {}); function Run(value: {argument}) {{ Pick(value); }}",
+                    params[0], params[1]
+                );
+                analyze(&source, "", false, |_, _, codes| {
+                    assert_eq!(codes.len(), 1, "{source}: {codes:?}");
+                    assert!(
+                        ["UNSUPPORTED_NATIVE_CONVERSION", "TYPE_ERR"].contains(&codes[0].as_str()),
+                        "{codes:?}"
+                    );
+                });
+            }
+        }
+    }
+}
+
+#[test]
+fn guarded_recovery_preserves_diagnostics_and_checks_later_arguments() {
+    analyze(
+        "struct GuardA {} struct GuardB {} struct GuardC {} import function Pick(value: GuardB); import function Pick(value: GuardC); function Run(value: GuardA) { Pick(value); }",
+        "",
+        false,
+        |_, _, codes| assert_eq!(codes, ["TYPE_ERR"]),
+    );
+    analyze(
+        "struct GuardA {} struct GuardB {} import implicit cast(value: GuardA): GuardB; function Run(value: GuardA): Bool { return value; }",
+        "",
+        false,
+        |_, _, codes| assert_eq!(codes, ["TYPE_ERR"]),
+    );
+    for call in ["Pick(1, value)", "Pick(, value)"] {
+        let source = format!(
+            "struct GuardA {{}} struct GuardB {{}} struct GuardC {{}} import implicit cast(value: GuardA): GuardB; import function Pick(optional n: Int32, value: GuardB); import function Pick(optional n: Int32, value: GuardC); function Run(value: GuardA) {{ {call}; }}"
+        );
+        analyze(&source, "", false, |_, _, codes| {
+            assert_eq!(codes, ["UNSUPPORTED_NATIVE_CONVERSION"]);
+        });
+    }
+    for params in [["Bool", "Int32"], ["Int32", "Bool"]] {
+        let source = format!(
+            "struct GuardA {{}} struct GuardB {{}} struct GuardC {{}} import implicit cast(value: GuardA): GuardB; import function Pick(value: GuardB, other: {}); import function Pick(value: GuardC, other: {}); function Run(value: GuardA) {{ Pick(value, NULL); }}",
+            params[0], params[1]
+        );
+        analyze(&source, "", false, |_, _, codes| assert!(!codes.is_empty()));
+    }
+    analyze(
+        "struct GuardA {} struct GuardB {} struct GuardC {} import implicit cast(value: GuardA): GuardB; import function Pick(required: Int32, value: GuardB); import function Pick(required: Int32, value: GuardC); function Run(value: GuardA) { Pick(, value); }",
+        "",
+        false,
+        |_, _, codes| assert!(!codes.is_empty()),
+    );
+    analyze(
+        "struct GuardA {} struct GuardB {} import implicit cast(value: GuardA): GuardB; import function Single(value: GuardB, wrong: Int32); function Run(value: GuardA) { Single(value, NULL); }",
+        "",
+        false,
+        |_, _, codes| assert!(!codes.is_empty()),
+    );
+}
+
+#[test]
+fn guarded_known_targets_single_candidate_and_exact_overload_are_positive() {
+    analyze(
+        r#"struct GuardA {} struct GuardB {} import implicit cast(value: GuardA): GuardB;
+        import function Single(value: GuardB): GuardB;
+        import function Pick(value: GuardB): GuardB; import function Pick(value: GuardA): GuardA;
+        function Run(value: GuardA): GuardB { return Single(value); }
+        function Exact(value: GuardA): GuardA { return Pick(value); }
+        function Return(value: GuardA): GuardB { return value; }
+        function Local(value: GuardA): GuardB { var result: GuardB = value; result = value; return result; }
+        function Reference(value: script_ref<GuardA>): GuardB { return Single(value); }
+        function Omitted(value: GuardA): GuardB { return Optional(, value); }
+        import function Optional(optional n: Int32, value: GuardB): GuardB;"#,
+        "",
+        false,
+        |unit, symbols, codes| {
+            assert!(codes.is_empty(), "{codes:?}");
+            for name in ["Run", "Omitted"] {
+                let ir::Expr::Call { call, .. } = returned(unit, symbols, name) else {
+                    panic!()
+                };
+                converted(call.args().last().unwrap(), symbols, "GuardA", "GuardB");
+            }
+            converted(
+                returned(unit, symbols, "Return"),
+                symbols,
+                "GuardA",
+                "GuardB",
+            );
+            let ir::Expr::Call { call, .. } = returned(unit, symbols, "Reference") else {
+                panic!()
+            };
+            assert!(matches!(
+                converted(&call.args()[0], symbols, "GuardA", "GuardB"),
+                ir::Expr::Call { .. }
+            ));
+            let ir::Expr::Call { call, .. } = returned(unit, symbols, "Exact") else {
+                panic!()
+            };
+            assert!(matches!(call.args()[0], ir::Expr::Local(..)));
+            let local = symbols
+                .free_functions()
+                .find(|e| e.name().to_string() == "Local")
+                .unwrap();
+            let assignments = unit.functions[local.key()]
+                .block
+                .stmts
+                .iter()
+                .filter_map(|stmt| {
+                    if let ir::Stmt::Expr(value) = stmt
+                        && let ir::Expr::Assign { expr, .. } = &**value
+                    {
+                        Some(expr)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(assignments.len(), 2);
+            for expr in assignments {
+                converted(expr, symbols, "GuardA", "GuardB");
+            }
+        },
+    );
+}
+
+#[test]
+fn guarded_implicit_rejects_chaining_qualifiers_scripted_generic_and_enum() {
+    analyze(
+        "struct GuardA {} struct GuardB {} struct GuardC {} import implicit cast(value: GuardA): GuardB; import implicit cast(value: GuardB): GuardC; function Run(value: GuardA): GuardC { return value; }",
+        "",
+        false,
+        |_, _, codes| assert_eq!(codes, ["TYPE_ERR"]),
+    );
+    for declaration in [
+        "implicit cast(value: GuardA): GuardB { var result: GuardB; return result; }",
+        "import cast(value: GuardA): GuardB;",
+        "import implicit cast(const value: GuardA): GuardB;",
+        "import implicit cast(optional value: GuardA): GuardB;",
+        "import implicit cast(out value: GuardA): GuardB;",
+        "import implicit cast(skip value: GuardA): GuardB;",
+        "import implicit cast(value: GuardA): const GuardB;",
+    ] {
+        analyze(
+            &format!(
+                "struct GuardA {{}} struct GuardB {{}} {declaration} function Run(value: GuardA): GuardB {{ return value; }}"
+            ),
+            "",
+            false,
+            |_, _, codes| assert!(!codes.is_empty(), "{declaration}"),
+        );
+    }
+    analyze(
+        "struct GuardA {} struct GuardB {} import implicit cast(value: GuardA): GuardB; import function Single(out value: GuardB); function Run(value: GuardA) { Single(value); }",
+        "",
+        false,
+        |_, _, codes| assert!(!codes.is_empty()),
+    );
+    for community in [
+        "native implicit func Cast<T>(value: T) -> GuardB;",
+        "native implicit func Cast(value: GuardA) -> GuardB;",
+    ] {
+        analyze(
+            "struct GuardA {} struct GuardB {} function Run(value: GuardA): GuardB { return value; }",
+            community,
+            false,
+            |_, _, codes| assert!(!codes.is_empty()),
+        );
+    }
+    analyze(
+        "struct GuardA {} struct GuardB {} import implicit cast(value: GuardA): GuardB;",
+        "func Community(value: GuardA) -> GuardB { return value; }",
+        false,
+        |_, _, codes| assert_eq!(codes, ["UNSUPPORTED_NATIVE_CONVERSION"]),
+    );
+    analyze(
+        "struct GuardA {} struct GuardB {} import implicit cast(value: GuardA): GuardB; import implicit cast(value: GuardA): GuardB; function Run(value: GuardA): GuardB { return value; }",
+        "",
+        false,
+        |_, _, codes| assert_eq!(codes, ["UNSUPPORTED_NATIVE_CONVERSION"]),
+    );
+    for (source, target) in [("GuardEnum", "Int32"), ("Int32", "GuardEnum")] {
+        analyze(
+            &format!(
+                "enum GuardEnum {{ First = 0 }} import implicit cast(value: {source}): {target}; function Run(value: {source}): {target} {{ return value; }}"
+            ),
+            "",
+            false,
+            |_, _, codes| assert_eq!(codes, ["UNSUPPORTED_NATIVE_CONVERSION"]),
+        );
+    }
+}
+
+#[test]
+fn guarded_generic_recovery_cannot_enable_provider_after_inference() {
+    for reverse in [false, true] {
+        let declarations = if reverse {
+            "native func Pick(left: GuardC, right: GuardC); native func Pick<T>(left: T, right: T);"
+        } else {
+            "native func Pick<T>(left: T, right: T); native func Pick(left: GuardC, right: GuardC);"
+        };
+        analyze(
+            "struct GuardA {} struct GuardB {} import implicit cast(value: GuardA): GuardB; function Run(a: GuardA, b: GuardB) { Pick(b, a); }",
+            &format!("struct GuardC {{}} {declarations}"),
+            false,
+            |_, _, codes| assert!(!codes.is_empty()),
+        );
+    }
+}
+
+#[test]
+fn implicit_provider_lazy_operand_remains_nested_and_prefix_guard_remains() {
+    analyze(
+        "import implicit cast(value: Int32): Bool; import function Tick(): Int32; import function Lazy(skip value: Bool): Bool; function Run(): Bool { return Lazy(Tick()); }",
+        "",
+        false,
+        |unit, symbols, codes| {
+            assert!(codes.is_empty(), "{codes:?}");
+            let entry = symbols
+                .free_functions()
+                .find(|e| e.name().to_string() == "Run")
+                .unwrap();
+            assert_eq!(unit.functions[entry.key()].block.stmts.len(), 1);
+            let ir::Expr::Call { call, .. } = returned(unit, symbols, "Run") else {
+                panic!()
+            };
+            assert!(matches!(
+                converted(&call.args()[0], symbols, "Int32", "Bool"),
+                ir::Expr::Call { .. }
+            ));
+        },
+    );
+    analyze(
+        "import implicit cast(value: Int32): Bool; import function Read(value: array<Int32>): Int32; import function Lazy(skip value: Bool): Bool; function Run(): Bool { return Lazy(Read([1])); }",
+        "",
+        false,
+        |_, _, codes| assert_eq!(codes, ["UNSAFE_ARRAY_EVALUATION"]),
+    );
+}
+
+#[test]
+fn implicit_providers_do_not_displace_variant_or_identity_coercion() {
+    analyze(
+        "import implicit cast(value: Int32): Variant; import implicit cast(value: Int32): Int32; function Boxed(value: Int32): Variant { return value; } function Identity(value: Int32): Int32 { return value; }",
+        "",
+        false,
+        |unit, symbols, codes| {
+            assert!(codes.is_empty(), "{codes:?}");
+            let ir::Expr::Call { call, .. } = returned(unit, symbols, "Boxed") else {
+                panic!()
+            };
+            let ir::Call::FreeFunction { function, .. } = &**call else {
+                panic!()
+            };
+            assert_eq!(
+                symbols[*function].intrinsic(),
+                Some(ir::Intrinsic::ToVariant)
+            );
+            assert!(matches!(
+                returned(unit, symbols, "Identity"),
+                ir::Expr::Local(..)
+            ));
+        },
+    );
+    analyze(
+        "import implicit cast(value: Int32): Bool; function Run(value: Int32) { if (value) {} }",
+        "",
+        false,
+        |_, _, codes| assert!(!codes.is_empty()),
+    );
+}

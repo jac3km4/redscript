@@ -46,11 +46,29 @@ fn unsupported_enum_cast_does_not_replace_output() {
     assert_output_preserved(compilation);
 }
 
+#[test]
+fn unsupported_implicit_provider_does_not_replace_output() {
+    let sources = SourceMap::new();
+    sources.populate_boot_lib();
+    sources.push_back("implicit.reds", "native implicit func Cast(value: Int32) -> Bool; func Use(value: Int32) -> Bool { return value; }");
+    let interner = TypeInterner::default();
+    let bytes = ScriptBundle::default().into_writeable().to_bytes().unwrap();
+    let compilation = Compilation::builder()
+        .bundle(&bytes)
+        .sources(&sources)
+        .type_interner(&interner)
+        .compile()
+        .unwrap();
+    assert_output_preserved(compilation);
+}
+
 fn assert_output_preserved(compilation: Compilation<'_>) {
     assert!(compilation.has_fatal_errors());
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let path = std::env::temp_dir().join(format!(
-        "redscript-conversion-{}-{}.redscripts",
+        "redscript-conversion-{}-{}-{}.redscripts",
         std::process::id(),
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()

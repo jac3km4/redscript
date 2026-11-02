@@ -56,6 +56,26 @@ pub(super) fn provider<'ctx>(
     Ok(Some(*selected.key()))
 }
 
+pub(super) fn implicit_provider<'ctx>(
+    source: &PolyType<'ctx>,
+    target: &PolyType<'ctx>,
+    env: &Env<'_, 'ctx>,
+    symbols: &Symbols<'ctx>,
+    span: Span,
+) -> LowerResult<'ctx, Option<FreeFunctionIndex>> {
+    let (Some(source_id), Some(target_id)) = (fixed_id(source), fixed_id(target)) else {
+        return Ok(None);
+    };
+    if target_id == predef::VARIANT
+        || source.satisfies_bound(target, symbols)
+        || symbols[source_id].schema().as_enum().is_some()
+        || symbols[target_id].schema().as_enum().is_some()
+    {
+        return Ok(None);
+    }
+    provider(source_id, target_id, true, env, symbols, span)
+}
+
 /// Only the characterized four-byte result/input cells are admitted here.
 pub(super) fn enum_fallback<'ctx>(
     source: TypeId<'ctx>,
