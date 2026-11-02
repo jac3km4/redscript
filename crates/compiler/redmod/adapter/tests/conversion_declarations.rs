@@ -152,6 +152,46 @@ fn providers_retain_conversion_intent_signatures_and_source_identity() {
 }
 
 #[test]
+fn conditional_conversions_keep_each_destination() {
+    for destinations in [&["Int32", "Float"][..], &["Int32", "Float", "Bool"][..]] {
+        let sources = SourceMap::new();
+        let source = format!(
+            "struct Data {{}} {}",
+            destinations
+                .iter()
+                .map(|destination| format!(
+                    r#"@if(!ModuleExists("Missing")) import cast(value: Data): {destination};"#
+                ))
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+        let file = sources.push_back("conditional.script", source.as_str());
+        let (parsed, errors) = parse_file_with_metadata(&source, file);
+        assert!(errors.is_empty(), "{errors:?}");
+        let interner = TypeInterner::default();
+        let mut reporter = CompileErrorReporter::default();
+        let (_, symbols, errors) = process_sources(
+            parsed,
+            [],
+            Symbols::with_default_types(),
+            &mut reporter,
+            &interner,
+        );
+        assert!(errors.is_empty(), "{errors:?}");
+        assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+        let actual = symbols
+            .free_functions()
+            .filter(|entry| entry.func().type_().conversion().is_some())
+            .map(|entry| {
+                assert_eq!(entry.name().to_string(), "Cast");
+                entry.func().type_().return_type().to_string()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(actual, destinations);
+    }
+}
+
+#[test]
 fn mixed_source_member_and_operator_conversions_are_not_dispatchable() {
     for source in [
         "class Host { public implicit func Convert(value: Int32) -> Int32 = value; } func Use(host: Host) -> Int32 { return host.Convert(1); }",

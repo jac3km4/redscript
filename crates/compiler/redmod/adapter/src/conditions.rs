@@ -125,7 +125,16 @@ impl<'src> Selection<'_, 'src> {
                     )
                 })
                 .collect();
-            let key = format!("{namespace}:{target}:{}:{params:?}", function.name.0);
+            let destination = function.properties.conversion.and_then(|_| {
+                function
+                    .return_type
+                    .as_ref()
+                    .map(|typ| typ.0.clone().unwrapped())
+            });
+            let key = format!(
+                "{namespace}:{target}:{}:{params:?}:{destination:?}",
+                function.name.0
+            );
             self.versions.entry(key.clone()).or_default().push((
                 positive,
                 patch.is_some_and(|(ann, _)| ann.name == "addMethod"),
