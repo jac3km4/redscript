@@ -466,7 +466,7 @@ fn eager_interpolation_and_switch_prefixes_are_rejected() {
     for (name, body, expected) in [
         (
             "lazy-array",
-            "func Check(values: [Int32]) -> Bool = true func Test(flag: Bool) -> Bool = flag ? Check([1]) : false",
+            "func CheckArray(values: [Int32]) -> Bool = true func Test(flag: Bool) -> Bool = flag ? CheckArray([1]) : false",
             "UNSAFE_ARRAY_EVALUATION",
         ),
         (
@@ -493,6 +493,9 @@ fn eager_interpolation_and_switch_prefixes_are_rejected() {
         )
         .unwrap_err();
         assert!(errors[0].message.contains(expected), "{errors:?}");
+        if name == "lazy-array" {
+            assert_eq!(errors.len(), 1, "{errors:?}");
+        }
         insta::assert_snapshot!(
             name,
             errors

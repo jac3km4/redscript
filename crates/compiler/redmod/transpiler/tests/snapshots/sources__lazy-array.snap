@@ -3,7 +3,7 @@ source: crates/compiler/redmod/transpiler/tests/sources.rs
 expression: "errors.iter().map(|e| e.display(&sources).to_string()).collect::<String>()"
 ---
 error[REDMOD_TRANSPILE]: community analysis [UNSAFE_ARRAY_EVALUATION]: cannot preserve when expressions are evaluated during array literal initialization
- --> rejected.reds:1:89
+ --> rejected.reds:1:99
   |
-1 | func Check(values: [Int32]) -> Bool = true func Test(flag: Bool) -> Bool = flag ? Check([1]) : false
-  |                                                                                         ^^^
+1 | func CheckArray(values: [Int32]) -> Bool = true func Test(flag: Bool) -> Bool = flag ? CheckArray([1]) : false
+  |                                                                                                   ^^^
