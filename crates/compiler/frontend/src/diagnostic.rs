@@ -446,6 +446,57 @@ mod tests {
     use super::*;
 
     #[test]
+    fn array_initialization_does_not_read_its_destination() {
+        use redscript_compiler_api::SourceMapExt;
+
+        use crate::pass::{DiagnosticPass, UnusedLocals};
+        use crate::{Symbols, TypeInterner, infer_from_sources};
+
+        let source = "func Test() {
+            let element = 1;
+            let unread = [element];
+            let empty: [Int32] = [];
+            let used = [2];
+            ArraySize(used);
+            let outer = [3];
+            if true { let outer = [outer[0]]; }
+            let nested = [[4]];
+            let closure = () -> { let captured = [used[0]]; };
+            closure();
+        }";
+        let sources = ast::SourceMap::new();
+        sources.populate_boot_lib();
+        let file = sources.push_back("arrays.reds", source);
+        let interner = TypeInterner::default();
+        let mut reporter = crate::CompileErrorReporter::default();
+        let (unit, _) = infer_from_sources(
+            &sources,
+            Symbols::with_default_types(),
+            &mut reporter,
+            &interner,
+        );
+        assert!(reporter.reported().is_empty(), "{reporter:?}");
+
+        for function in unit.all_functions() {
+            UnusedLocals.run(function, &mut reporter);
+        }
+        let diagnostics = reporter.reported();
+        assert_eq!(diagnostics.len(), 5, "{diagnostics:?}");
+        for (diagnostic, declaration) in diagnostics.iter().zip([
+            "unread =",
+            "empty:",
+            "outer = [outer",
+            "nested =",
+            "captured =",
+        ]) {
+            let start = source.find(declaration).unwrap() as u32;
+            let name_len = declaration.find([' ', ':']).unwrap() as u32;
+            assert_eq!(diagnostic.code(), "UNUSED_LOCAL");
+            assert_eq!(diagnostic.span(), Span::new(start, start + name_len, file));
+        }
+    }
+
+    #[test]
     fn declaration_messages_preserve_codes_and_spans() {
         let file = ast::SourceMap::new().push_back("declarations.reds", "Example");
         let span = Span::new(0, 7, file);

@@ -53,6 +53,16 @@ impl UnusedLocalVisitor {
 }
 
 impl<'ctx> Visitor<'ctx> for UnusedLocalVisitor {
+    fn visit_init_array(
+        &mut self,
+        _local: ir::Local,
+        elements: &[ir::Expr<'ctx>],
+        _element_type: &ir::Type<'ctx>,
+        _span: Span,
+    ) {
+        elements.iter().for_each(|element| self.visit_expr(element));
+    }
+
     fn visit_init_default(&mut self, _local: ir::Local, _typ: &ir::Type<'ctx>, _span: Span) {}
 
     fn visit_assign(&mut self, place: &ir::Expr<'ctx>, value: &ir::Expr<'ctx>, _span: Span) {
