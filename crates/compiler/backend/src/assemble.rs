@@ -293,6 +293,7 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
                 elements,
                 element_type,
                 span,
+                ..
             } => {
                 if elements.is_empty() {
                     return Ok(());
@@ -318,7 +319,9 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
                     self.assemble_expr(element)?;
                 }
             }
-            ir::Stmt::InitDefault { local, typ, span } => {
+            ir::Stmt::InitDefault {
+                local, typ, span, ..
+            } => {
                 let local = self
                     .resolve_local(*local)
                     .expect("every local should be defined");

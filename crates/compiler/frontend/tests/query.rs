@@ -42,6 +42,169 @@ fn return_expr<'a, 'ctx>(function: &'a LoweredFunction<'ctx>) -> &'a ir::Expr<'c
 }
 
 #[test]
+fn direct_array_bindings_keep_exact_query_spans_without_semantic_reads() {
+    let source =
+        "func Test() { let values = [1]; const empty: [Int32] = []; let defaulted: Int32; [3]; }";
+    let sources = SourceMap::new();
+    let file = sources.push_back("query.reds", source);
+    let interner = TypeInterner::default();
+    let (unit, symbols) = lower(&sources, &interner);
+    let function = function(&unit, &symbols, "Test");
+    for name in ["values", "empty"] {
+        let local = function
+            .locals
+            .iter()
+            .find(|local| local.name == Some(name))
+            .unwrap();
+        let start = source.find(name).unwrap() as u32;
+        let expected_span = Span::new(start, start + name.len() as u32, file);
+        for pos in start..expected_span.end {
+            let expr = function.block.find_at(pos).unwrap();
+            assert!(
+                matches!(expr, ir::Expr::Local(id, span) if *id == local.id && *span == expected_span)
+            );
+            assert_eq!(
+                expr_type(expr, function, &symbols).unwrap(),
+                Type::app(predef::ARRAY, [Type::nullary(predef::INT32)])
+            );
+        }
+    }
+    let ir::Stmt::InitArray {
+        source_binding: Some(_),
+        ..
+    } = &function.block.stmts[0]
+    else {
+        panic!("missing nonempty declaration binding")
+    };
+    let ir::Stmt::InitDefault {
+        source_binding: Some(_),
+        ..
+    } = &function.block.stmts[1]
+    else {
+        panic!("missing empty declaration binding")
+    };
+    assert!(matches!(
+        &function.block.stmts[2],
+        ir::Stmt::InitDefault {
+            source_binding: None,
+            ..
+        }
+    ));
+    assert!(matches!(
+        &function.block.stmts[3],
+        ir::Stmt::InitArray {
+            source_binding: None,
+            ..
+        }
+    ));
+    assert!(
+        function
+            .block
+            .find_at(source.find("defaulted").unwrap() as u32)
+            .is_none()
+    );
+    assert!(
+        function
+            .block
+            .find_at(source.find("Int32").unwrap() as u32)
+            .is_none()
+    );
+    assert!(
+        function
+            .block
+            .find_at(source.find("[]").unwrap() as u32)
+            .is_none()
+    );
+    assert!(matches!(
+        function
+            .block
+            .find_at(source.find("[1]").unwrap() as u32 + 1),
+        Some(ir::Expr::Const(ir::Const::I32(1), _))
+    ));
+
+    #[derive(Default)]
+    struct LocalOccurrences(Vec<ir::Local>);
+    impl<'ctx> ir::Visitor<'ctx> for LocalOccurrences {
+        fn visit_local(&mut self, local: ir::Local, _: Span) {
+            self.0.push(local);
+        }
+    }
+    let mut occurrences = LocalOccurrences::default();
+    ir::Visitor::visit_block(&mut occurrences, &function.block);
+    for name in ["values", "empty"] {
+        let local = function
+            .locals
+            .iter()
+            .find(|local| local.name == Some(name))
+            .unwrap();
+        assert_eq!(
+            occurrences.0.iter().filter(|id| **id == local.id).count(),
+            1
+        );
+    }
+}
+
+#[test]
+fn shadowed_direct_array_bindings_in_closures_keep_their_own_identity() {
+    let source = "func Test() { let values = [1]; let f: () -> Void = () -> { let values = [values[0]]; let empty: [Int32] = []; }; }";
+    let sources = SourceMap::new();
+    let file = sources.push_back("query.reds", source);
+    let interner = TypeInterner::default();
+    let (unit, symbols) = lower(&sources, &interner);
+    let function = function(&unit, &symbols, "Test");
+    let outer = function
+        .locals
+        .iter()
+        .find(|local| local.name == Some("values"))
+        .unwrap();
+    let ir::Stmt::Expr(expr) = &function.block.stmts[1] else {
+        panic!("expected closure declaration")
+    };
+    let ir::Expr::Assign { expr, .. } = &**expr else {
+        panic!("expected closure assignment")
+    };
+    let ir::Expr::NewClosure { closure, .. } = &**expr else {
+        panic!("expected closure")
+    };
+    let inner = closure
+        .locals
+        .iter()
+        .find(|local| local.name == Some("values"))
+        .unwrap();
+    let empty = closure
+        .locals
+        .iter()
+        .find(|local| local.name == Some("empty"))
+        .unwrap();
+    assert_ne!(outer.id, inner.id);
+    for (start, local) in [
+        (source.find("values").unwrap(), outer),
+        (source.find("let values = [values").unwrap() + 4, inner),
+        (source.find("empty").unwrap(), empty),
+    ] {
+        let name = local.name.unwrap();
+        let expected_span = Span::new(start as u32, (start + name.len()) as u32, file);
+        let expr = function.block.find_at(start as u32).unwrap();
+        assert!(
+            matches!(expr, ir::Expr::Local(id, span) if *id == local.id && *span == expected_span)
+        );
+        assert_eq!(
+            expr_type(expr, function, &symbols).unwrap(),
+            Type::app(predef::ARRAY, [Type::nullary(predef::INT32)])
+        );
+    }
+    let start = source.find("[values[0]]").unwrap() + 1;
+    let expr = function.block.find_at(start as u32).unwrap();
+    assert!(
+        matches!(expr, ir::Expr::Capture(id, span) if *id == outer.id && *span == Span::new(start as u32, (start + "values".len()) as u32, file))
+    );
+    assert_eq!(
+        expr_type(expr, function, &symbols).unwrap(),
+        Type::app(predef::ARRAY, [Type::nullary(predef::INT32)])
+    );
+}
+
+#[test]
 fn constants_locals_and_assignment() {
     let sources = SourceMap::new();
     sources.push_back(

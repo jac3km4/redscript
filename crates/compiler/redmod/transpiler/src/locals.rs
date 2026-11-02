@@ -51,6 +51,7 @@ pub(crate) fn inline_declarations<'ctx>(
                     local: local @ ir::Local::Var(_),
                     typ,
                     span,
+                    ..
                 } if !seen.0.contains(local) => {
                     let typ = typ
                         .coalesced(symbols)
@@ -345,12 +346,14 @@ mod tests {
         let block = ir::Block::new([
             ir::Stmt::InitArray {
                 local: array,
+                source_binding: None,
                 elements: Box::new([]),
                 element_type: PolyType::nullary(predef::INT32).into(),
                 span,
             },
             ir::Stmt::InitDefault {
                 local: empty,
+                source_binding: None,
                 typ: PolyType::from_type(&Type::app(predef::ARRAY, [Type::nullary(predef::INT32)]))
                     .into(),
                 span,
@@ -363,6 +366,7 @@ mod tests {
             ),
             ir::Stmt::InitDefault {
                 local: scalar,
+                source_binding: None,
                 typ: PolyType::nullary(predef::INT32).into(),
                 span,
             },

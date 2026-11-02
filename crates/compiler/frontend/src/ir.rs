@@ -36,12 +36,18 @@ pub enum Stmt<'ctx> {
     },
     InitArray {
         local: Local,
+        /// Query-only declaration binding, never evaluated or visited.
+        /// When present, must be `Expr::Local(local, declaration_name_span)`.
+        source_binding: Option<Box<Expr<'ctx>>>,
         elements: Box<[Expr<'ctx>]>,
         element_type: Type<'ctx>,
         span: Span,
     },
     InitDefault {
         local: Local,
+        /// Query-only declaration binding, never evaluated or visited.
+        /// When present, must be `Expr::Local(local, declaration_name_span)`.
+        source_binding: Option<Box<Expr<'ctx>>>,
         typ: Type<'ctx>,
         span: Span,
     },
@@ -98,10 +104,27 @@ impl<'ctx> Stmt<'ctx> {
                         .or_else(|| default.as_ref()?.find_at(pos))
                 }
             }
-            Stmt::InitArray { elements, span, .. } if span.contains(pos) => elements
-                .binary_search_by(|element| element.span().cmp_pos(pos))
-                .ok()
-                .map(|idx| elements[idx].find_at(pos)),
+            Stmt::InitArray {
+                source_binding,
+                elements,
+                span,
+                ..
+            } if span.contains(pos) => source_binding
+                .as_deref()
+                .filter(|binding| binding.span().contains(pos))
+                .or_else(|| {
+                    elements
+                        .binary_search_by(|element| element.span().cmp_pos(pos))
+                        .ok()
+                        .map(|idx| elements[idx].find_at(pos))
+                }),
+            Stmt::InitDefault {
+                source_binding,
+                span,
+                ..
+            } if span.contains(pos) => source_binding
+                .as_deref()
+                .filter(|binding| binding.span().contains(pos)),
             _ => None,
         }
     }

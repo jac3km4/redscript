@@ -198,6 +198,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                                     .insert(name_span, Some(local.clone()));
                                 prologue.push(ir::Stmt::InitDefault {
                                     local: local.id,
+                                    source_binding: None,
                                     typ: typ.into(),
                                     span: name_span,
                                 });
@@ -749,16 +750,18 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                         span,
                     );
                     return Ok(if elements.is_empty() {
-                        // InitArray([]) is a backend no-op. Clear the lexical slot
-                        // on every execution, not just its first loop iteration.
+                        // InitArray([]) is a backend no-op; retain an explicit
+                        // initialization operation for the authored empty literal.
                         ir::Stmt::InitDefault {
                             local,
+                            source_binding: Some(ir::Expr::Local(local, name_span).into()),
                             typ: typ.into(),
                             span,
                         }
                     } else {
                         ir::Stmt::InitArray {
                             local,
+                            source_binding: Some(ir::Expr::Local(local, name_span).into()),
                             elements: elements.into(),
                             element_type: element_type.into(),
                             span,
@@ -819,6 +822,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     );
                     ir::Stmt::InitDefault {
                         local,
+                        source_binding: None,
                         typ: typ.into(),
                         span,
                     }
@@ -1063,6 +1067,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
 
         self.push_prefix(ir::Stmt::InitArray {
             local,
+            source_binding: None,
             elements: elems.into(),
             element_type: elem_typ.into(),
             span,
