@@ -192,14 +192,17 @@ fn fresh_array_declarations_construct_in_place_and_assignments_keep_copies() {
     );
     for expected in [
         "values.Resize(2);\n    values[0] = Tick();\n    values[1] = Tick();",
-        "while (again) {\n        empty.Clear();",
-        "values_2.Resize(1);\n        values_2[0] = values[0];",
+        "while (again) {\n        emptyLiteral.Clear();",
+        "values_2Literal.Resize(1);\n        values_2Literal[0] = values[0];\n        values_2 = values_2Literal;",
         "valuesLiteral.Resize(2);\n    valuesLiteral[0] = values[0];",
         "values = valuesLiteral;",
     ] {
         assert!(output.contains(expected), "{expected}: {output}");
     }
-    assert!(!output.contains("values_2Literal"), "{output}");
+    assert!(
+        output.contains("emptyLiteral.Clear();\n        empty = emptyLiteral;"),
+        "{output}"
+    );
     let sources = SourceMap::new();
     let file = sources.push_back("direct.script", output.clone());
     let (parsed, errors) = redscript_redmod_parser::parse_module(&output, file);

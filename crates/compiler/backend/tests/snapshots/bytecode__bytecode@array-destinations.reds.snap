@@ -11,13 +11,13 @@ assign
 array.element 0 "array:Int32"
 local 0 "values$0": "array:Int32"
 u64.const 0
-invoke.static j16 l5 f1 First 0000000000000000
+invoke.static j16 l7 f1 First 0000000000000000
 param.end
 assign
 array.element 0 "array:Int32"
 local 0 "values$0": "array:Int32"
 u64.const 1
-invoke.static j16 l5 f2 Second 0000000000000000
+invoke.static j16 l7 f2 Second 0000000000000000
 param.end
 array.resize 0 "array:Int32"
 local 1 "typed$1": "array:Int32"
@@ -29,91 +29,280 @@ u64.const 0
 i32.const 3
 
 // Repeated;Bool (f3)
-jump.if_not 187
+jump.if_not 207
 param 0 "again": "Bool"
-array.clear 0 "array:Int32"
-local 2 "empty$1": "array:Int32"
+assign
+local 2 "empty$2": "array:Int32"
+local 3 "var$1": "array:Int32"
 array.push 0 "array:Int32"
-local 2 "empty$1": "array:Int32"
+local 2 "empty$2": "array:Int32"
 i32.one
 array.resize 0 "array:Int32"
-local 3 "filled$2": "array:Int32"
+local 4 "var$3": "array:Int32"
 u64.const 2
 assign
 array.element 0 "array:Int32"
-local 3 "filled$2": "array:Int32"
+local 4 "var$3": "array:Int32"
 u64.const 0
-invoke.static j16 l13 f1 First 0000000000000000
+invoke.static j16 l15 f1 First 0000000000000000
 param.end
 assign
 array.element 0 "array:Int32"
-local 3 "filled$2": "array:Int32"
+local 4 "var$3": "array:Int32"
 u64.const 1
-invoke.static j16 l13 f2 Second 0000000000000000
+invoke.static j16 l15 f2 Second 0000000000000000
 param.end
+assign
+local 5 "filled$4": "array:Int32"
+local 4 "var$3": "array:Int32"
 array.push 0 "array:Int32"
-local 3 "filled$2": "array:Int32"
+local 5 "filled$4": "array:Int32"
 i32.const 3
-jump -190
+jump -210
 
 // Shadowed; (f4)
 array.resize 0 "array:Int32"
-local 4 "values$0": "array:Int32"
+local 6 "values$0": "array:Int32"
 u64.const 1
 assign
 array.element 0 "array:Int32"
-local 4 "values$0": "array:Int32"
+local 6 "values$0": "array:Int32"
 u64.const 0
 i32.one
 jump.if_not 78
 true.const
 array.resize 0 "array:Int32"
-local 5 "values$1": "array:Int32"
+local 7 "values$1": "array:Int32"
 u64.const 1
 assign
 array.element 0 "array:Int32"
-local 5 "values$1": "array:Int32"
+local 7 "values$1": "array:Int32"
 u64.const 0
 array.element 0 "array:Int32"
-local 4 "values$0": "array:Int32"
+local 6 "values$0": "array:Int32"
 i32.zero
 jump 0
 
 // ExistingAssignment; (f5)
 array.resize 0 "array:Int32"
-local 6 "values$0": "array:Int32"
+local 8 "values$0": "array:Int32"
 u64.const 2
 assign
 array.element 0 "array:Int32"
-local 6 "values$0": "array:Int32"
+local 8 "values$0": "array:Int32"
 u64.const 0
 i32.one
 assign
 array.element 0 "array:Int32"
-local 6 "values$0": "array:Int32"
+local 8 "values$0": "array:Int32"
 u64.const 1
 i32.const 2
 array.resize 0 "array:Int32"
-local 7 "var$1": "array:Int32"
+local 9 "var$1": "array:Int32"
 u64.const 2
 assign
 array.element 0 "array:Int32"
-local 7 "var$1": "array:Int32"
+local 9 "var$1": "array:Int32"
 u64.const 0
 array.element 0 "array:Int32"
-local 6 "values$0": "array:Int32"
+local 8 "values$0": "array:Int32"
 i32.one
 assign
 array.element 0 "array:Int32"
-local 7 "var$1": "array:Int32"
+local 9 "var$1": "array:Int32"
 u64.const 1
 array.element 0 "array:Int32"
-local 6 "values$0": "array:Int32"
+local 8 "values$0": "array:Int32"
 i32.zero
 assign
-local 6 "values$0": "array:Int32"
-local 7 "var$1": "array:Int32"
+local 8 "values$0": "array:Int32"
+local 9 "var$1": "array:Int32"
+
+// RetainedAliasWhile;Bool (f6)
+array.resize 0 "array:Int32"
+local 10 "seed$1": "array:Int32"
+u64.const 2
+assign
+array.element 0 "array:Int32"
+local 10 "seed$1": "array:Int32"
+u64.const 0
+i32.one
+assign
+array.element 0 "array:Int32"
+local 10 "seed$1": "array:Int32"
+u64.const 1
+i32.const 2
+assign
+local 11 "previous$2": "script_ref:array:Int32"
+as_ref 0 "array:Int32"
+local 10 "seed$1": "array:Int32"
+jump.if_not 198
+param 1 "again": "Bool"
+array.resize 0 "array:Int32"
+local 12 "var$3": "array:Int32"
+u64.const 2
+assign
+array.element 0 "array:Int32"
+local 12 "var$3": "array:Int32"
+u64.const 0
+array.element 0 "array:Int32"
+deref 0 "array:Int32"
+local 11 "previous$2": "script_ref:array:Int32"
+i32.one
+assign
+array.element 0 "array:Int32"
+local 12 "var$3": "array:Int32"
+u64.const 1
+array.element 0 "array:Int32"
+deref 0 "array:Int32"
+local 11 "previous$2": "script_ref:array:Int32"
+i32.zero
+assign
+local 13 "values$4": "array:Int32"
+local 12 "var$3": "array:Int32"
+assign
+local 11 "previous$2": "script_ref:array:Int32"
+as_ref 0 "array:Int32"
+local 13 "values$4": "array:Int32"
+jump -201
+
+// RetainedAliasNested;Bool (f7)
+array.resize 0 "array:Int32"
+local 14 "seed$1": "array:Int32"
+u64.const 2
+assign
+array.element 0 "array:Int32"
+local 14 "seed$1": "array:Int32"
+u64.const 0
+i32.one
+assign
+array.element 0 "array:Int32"
+local 14 "seed$1": "array:Int32"
+u64.const 1
+i32.const 2
+assign
+local 15 "previous$2": "script_ref:array:Int32"
+as_ref 0 "array:Int32"
+local 14 "seed$1": "array:Int32"
+jump.if_not 266
+param 2 "again": "Bool"
+jump.if_not 213
+param 2 "again": "Bool"
+jump.if_not 198
+param 2 "again": "Bool"
+array.resize 0 "array:Int32"
+local 16 "var$3": "array:Int32"
+u64.const 2
+assign
+array.element 0 "array:Int32"
+local 16 "var$3": "array:Int32"
+u64.const 0
+array.element 0 "array:Int32"
+deref 0 "array:Int32"
+local 15 "previous$2": "script_ref:array:Int32"
+i32.one
+assign
+array.element 0 "array:Int32"
+local 16 "var$3": "array:Int32"
+u64.const 1
+array.element 0 "array:Int32"
+deref 0 "array:Int32"
+local 15 "previous$2": "script_ref:array:Int32"
+i32.zero
+assign
+local 17 "values$4": "array:Int32"
+local 16 "var$3": "array:Int32"
+assign
+local 15 "previous$2": "script_ref:array:Int32"
+as_ref 0 "array:Int32"
+local 17 "values$4": "array:Int32"
+jump 0
+jump 38
+assign
+local 18 "empty$6": "array:Int32"
+local 19 "var$5": "array:Int32"
+array.push 0 "array:Int32"
+local 18 "empty$6": "array:Int32"
+i32.one
+jump -269
+
+// RetainedAliasFor;Bool (f8)
+array.resize 0 "array:Int32"
+local 20 "seed$1": "array:Int32"
+u64.const 2
+assign
+array.element 0 "array:Int32"
+local 20 "seed$1": "array:Int32"
+u64.const 0
+i32.one
+assign
+array.element 0 "array:Int32"
+local 20 "seed$1": "array:Int32"
+u64.const 1
+i32.const 2
+assign
+local 21 "previous$2": "script_ref:array:Int32"
+as_ref 0 "array:Int32"
+local 20 "seed$1": "array:Int32"
+assign
+local 22 "var$3": "Int32"
+i32.zero
+jump.if_not 356
+invoke.static j43 l60 f9 OperatorLess;Int32Int32 0000000000000000
+local 22 "var$3": "Int32"
+array.size 0 "array:Int32"
+local 20 "seed$1": "array:Int32"
+param.end
+assign
+local 23 "item$4": "Int32"
+array.element 0 "array:Int32"
+local 20 "seed$1": "array:Int32"
+local 22 "var$3": "Int32"
+invoke.static j26 l60 f10 OperatorAssignAdd;OutInt32Int32 0000000000000000
+local 22 "var$3": "Int32"
+i32.one
+param.end
+assign
+local 24 "empty$6": "array:Int32"
+local 25 "var$5": "array:Int32"
+array.push 0 "array:Int32"
+local 24 "empty$6": "array:Int32"
+local 23 "item$4": "Int32"
+jump.if_not 198
+param 3 "again": "Bool"
+array.resize 0 "array:Int32"
+local 26 "var$7": "array:Int32"
+u64.const 2
+assign
+array.element 0 "array:Int32"
+local 26 "var$7": "array:Int32"
+u64.const 0
+array.element 0 "array:Int32"
+deref 0 "array:Int32"
+local 21 "previous$2": "script_ref:array:Int32"
+i32.one
+assign
+array.element 0 "array:Int32"
+local 26 "var$7": "array:Int32"
+u64.const 1
+array.element 0 "array:Int32"
+deref 0 "array:Int32"
+local 21 "previous$2": "script_ref:array:Int32"
+i32.zero
+assign
+local 27 "values$8": "array:Int32"
+local 26 "var$7": "array:Int32"
+assign
+local 21 "previous$2": "script_ref:array:Int32"
+as_ref 0 "array:Int32"
+local 27 "values$8": "array:Int32"
+jump 0
+jump -359
 
 // First (f1)
 
 // Second (f2)
+
+// OperatorLess;Int32Int32 (f9)
+
+// OperatorAssignAdd;OutInt32Int32 (f10)

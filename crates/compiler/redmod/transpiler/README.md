@@ -47,9 +47,11 @@ declarations at the existing execution site when no earlier or self-reference
 exists. Other declarations remain hoisted: branch/loop initialization, array
 resize/clear operations and repeated default resets are never moved or dropped.
 Shared lowering constructs direct array literals in eligible fresh lexical locals,
-avoiding an intermediate array and copy. Existing assignments, hoisted/native-policy
-bindings and non-array coercions retain temporaries. Empty direct initializers clear
-the local on every execution, including loop back edges.
+avoiding an intermediate array and copy. Existing assignments, repeated loop-body
+declarations, hoisted/native-policy bindings and non-array coercions retain
+temporaries. A loop-local slot can have escaped through `script_ref` on a previous
+iteration, so lexical freshness alone does not permit in-place construction there.
+Empty literal temporaries are cleared on every execution in emitted source.
 Shared IR also retains declaration provenance: lexical scope identity, full source
 declaration span, initialization kind/site, and lexical versus hoisted storage with
 its entry-default site. This metadata does not widen declaration fusion into

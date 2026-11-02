@@ -3,7 +3,7 @@ use std::rc::Rc;
 use redscript_community_ast::SourceMap;
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::ir::{
-    Block, Expr, LocalInfo, Stmt, TemporaryOwner, TemporaryPurpose,
+    Block, Const, Expr, LocalInfo, Stmt, TemporaryOwner, TemporaryPurpose,
 };
 use redscript_compiler_frontend::{
     CompileErrorReporter, Evaluator, SemanticPolicy, Symbols, TypeInterner, parse_files,
@@ -17,6 +17,8 @@ fn check(body: &str, policy: SemanticPolicy, inspect: impl FnOnce(&[LocalInfo<'_
         format!(
             "native func First() -> Int32;
          native func Second() -> Int32;
+         native func OperatorAssignAdd(out lhs: Int32, rhs: Int32) -> Int32;
+         native func OperatorLess(lhs: Int32, rhs: Int32) -> Bool;
          func Test(again: Bool) {{ {body} }}"
         ),
     );
@@ -101,24 +103,133 @@ fn shadowed_initializer_reads_the_outer_binding() {
     );
 }
 
+fn collect_statements<'a, 'ctx>(block: &'a Block<'ctx>, statements: &mut Vec<&'a Stmt<'ctx>>) {
+    for stmt in &block.stmts {
+        statements.push(stmt);
+        match stmt {
+            Stmt::Block(block, _) => collect_statements(block, statements),
+            Stmt::While(loop_, _) => collect_statements(&loop_.block, statements),
+            Stmt::Branches {
+                branches, default, ..
+            } => {
+                for branch in branches {
+                    collect_statements(&branch.block, statements);
+                }
+                if let Some(block) = default {
+                    collect_statements(block, statements);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn assert_array_copy<'a, 'ctx>(
+    locals: &[LocalInfo<'_>],
+    block: &'a Block<'ctx>,
+    name: &str,
+    element_count: usize,
+) -> &'a [Expr<'ctx>] {
+    let destination = locals.iter().find(|info| info.name == Some(name)).unwrap();
+    let temps: Vec<_> = locals
+        .iter()
+        .filter(|info| {
+            info.temporary_purpose == Some(TemporaryPurpose::ArrayLiteral)
+                && info.temporary_owner == Some(TemporaryOwner::Destination(destination.id))
+        })
+        .collect();
+    assert_eq!(temps.len(), 1, "{name}");
+    let temp = temps[0];
+    assert_ne!(temp.id, destination.id);
+    assert_eq!(temp.name, None);
+    let mut statements = vec![];
+    collect_statements(block, &mut statements);
+    assert!(!statements.iter().any(|stmt| {
+        matches!(stmt, Stmt::InitArray { local, .. } | Stmt::InitDefault { local, .. } if *local == destination.id)
+    }), "must not resize or clear the possibly aliased destination {name}");
+    let index = statements
+        .iter()
+        .position(|stmt| matches!(stmt, Stmt::InitArray { local, .. } if *local == temp.id))
+        .unwrap();
+    let Stmt::InitArray { elements, .. } = statements[index] else {
+        unreachable!()
+    };
+    assert_eq!(elements.len(), element_count);
+    let Stmt::Expr(copy) = statements[index + 1] else {
+        panic!("missing copy for {name}")
+    };
+    let Expr::Assign {
+        place, expr, span, ..
+    } = &**copy
+    else {
+        panic!("{copy:?}")
+    };
+    assert!(matches!(&**place, Expr::Local(local, _) if *local == destination.id));
+    assert!(matches!(&**expr, Expr::Local(local, _) if *local == temp.id));
+    assert_eq!(destination.initializer, Some(*span));
+    elements
+}
+
 #[test]
-fn loop_declarations_initialize_at_each_execution_including_empty_clears() {
+fn loop_declarations_keep_temporary_copies_including_empty_literals() {
     check(
         "while again { let empty: [Int32] = []; ArrayPush(empty, 1); let filled = [First(), Second()]; }",
         SemanticPolicy::default(),
         |locals, block| {
-            assert!(locals.iter().all(|info| info.temporary_purpose.is_none()));
             assert_eq!(block.stmts.len(), 1);
             let Stmt::While(loop_, _) = &block.stmts[0] else {
                 panic!("{block:?}")
             };
-            assert_eq!(loop_.block.stmts.len(), 3);
-            assert!(matches!(loop_.block.stmts[0], Stmt::InitDefault { .. }));
-            assert!(
-                matches!(loop_.block.stmts[2], Stmt::InitArray { ref elements, .. } if elements.len() == 2)
-            );
+            assert_eq!(loop_.block.stmts.len(), 5);
+            // The backend leaves InitArray([]) inert; the fresh temporary is
+            // copied each iteration rather than clearing the escaped destination.
+            assert_array_copy(locals, &loop_.block, "empty", 0);
+            let elements = assert_array_copy(locals, &loop_.block, "filled", 2);
+            assert!(elements[0].span().start < elements[1].span().start);
         },
     );
+}
+
+#[test]
+fn retained_script_ref_aliases_require_temporary_copies_in_repeated_declarations() {
+    let initializer = "let values = [previous[1], previous[0]]; previous = AsRef(values);";
+    for repeated in [
+        format!("while again {{ {initializer} }}"),
+        format!("while again {{ if again {{ if again {{ {initializer} }} }} }}"),
+        format!("while again {{ if again {{}} else {{ {initializer} }} }}"),
+        format!("for item in seed {{ {initializer} }}"),
+        format!("for item in seed {{ if again {{ {initializer} }} }}"),
+    ] {
+        check(
+            &format!(
+                "let seed = [1, 2]; let previous: script_ref<[Int32]> = AsRef(seed); {repeated}"
+            ),
+            SemanticPolicy::default(),
+            |locals, block| {
+                let elements = assert_array_copy(locals, block, "values", 2);
+                for (element, expected) in elements.iter().zip([1, 0]) {
+                    let Expr::Index { index, .. } = element else {
+                        panic!("{element:?}")
+                    };
+                    assert!(
+                        matches!(&**index, Expr::Const(Const::I32(value), _) if *value == expected)
+                    );
+                }
+            },
+        );
+    }
+}
+
+#[test]
+fn repeated_empty_literals_keep_copy_fallback_inside_branches_and_for_in() {
+    for repeated in [
+        "while again { if again { let empty: [Int32] = []; ArrayPush(empty, 1); } }",
+        "for item in [1, 2] { let empty: [Int32] = []; ArrayPush(empty, item); }",
+    ] {
+        check(repeated, SemanticPolicy::default(), |locals, block| {
+            assert_array_copy(locals, block, "empty", 0);
+        });
+    }
 }
 
 #[test]

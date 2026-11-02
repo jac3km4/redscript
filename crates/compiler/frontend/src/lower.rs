@@ -42,6 +42,7 @@ pub struct Lower<'scope, 'ctx> {
     reporter: &'scope mut LowerReporter<'ctx>,
     context: Option<TypeId<'ctx>>,
     does_return_value: bool,
+    in_loop: bool,
     hoisted_declarations: crate::IndexMap<Span, Option<ir::LocalInfo<'ctx>>>,
 }
 
@@ -98,6 +99,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             reporter,
             context,
             does_return_value: false,
+            in_loop: false,
             hoisted_declarations: crate::IndexMap::default(),
         }
     }
@@ -712,6 +714,10 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     .map(|(typ, span)| self.resolve_type(typ, env, *span))
                     .transpose()?;
                 if let Some(value @ (ast::Expr::ArrayLit(elems), value_span)) = value.as_deref()
+                    // A lexical slot reused by a loop may have escaped through
+                    // script_ref on an earlier iteration. Keep temporary/copy
+                    // construction there until non-escape is proven.
+                    && !self.in_loop
                     && !env.types().policy(span).hoist_locals
                     && !env.types().policy(span).native_object_cast
                     && !env.types().policy(span).script_ref_write_through
@@ -928,7 +934,10 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 }
             }
             ast::Stmt::While(block) => {
-                let (block, prefix) = self.lower_conditional_block(block, env)?;
+                let was_in_loop = mem::replace(&mut self.in_loop, true);
+                let result = self.lower_conditional_block(block, env);
+                self.in_loop = was_in_loop;
+                let (block, prefix) = result?;
                 let Some(prefix) = prefix else {
                     return Ok(ir::Stmt::While(block, span));
                 };
@@ -947,7 +956,10 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 ir::Stmt::While(outer, span)
             }
             ast::Stmt::ForIn { name, iter, body } => {
-                let block = self.lower_for_in(name, iter, body, env, span)?;
+                let was_in_loop = mem::replace(&mut self.in_loop, true);
+                let result = self.lower_for_in(name, iter, body, env, span);
+                self.in_loop = was_in_loop;
+                let block = result?;
                 ir::Stmt::Block(block, span)
             }
             ast::Stmt::Return(Some(val)) => {
