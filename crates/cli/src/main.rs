@@ -88,10 +88,10 @@ struct CompileOpts {
     /// path to an output .redscripts file
     #[argh(option, short = 'o')]
     output: PathBuf,
-    /// enable specific warnings
+    /// enable a warning (accepted: unused_locals; default: none; repeatable)
     #[argh(option, short = 'W')]
     warn_on: Vec<WarnOn>,
-    /// set the minimum level of diagnostics to emit
+    /// minimum diagnostic level (accepted: pedantic, warning; default: warning)
     #[argh(option, short = 'L', default = "WarnOnLevel::Warning")]
     warn_level: WarnOnLevel,
 }
@@ -106,10 +106,10 @@ struct LintOpts {
     /// path to a .redscripts file to use for incremental compilation
     #[argh(option, short = 'b')]
     bundle: PathBuf,
-    /// enable specific warnings
+    /// enable a warning (accepted: unused_locals; default: none; repeatable)
     #[argh(option, short = 'W')]
     warn_on: Vec<WarnOn>,
-    /// set the minimum level of diagnostics to emit
+    /// minimum diagnostic level (accepted: pedantic, warning; default: warning)
     #[argh(option, short = 'L', default = "WarnOnLevel::Warning")]
     warn_level: WarnOnLevel,
 }
@@ -169,7 +169,9 @@ impl FromStr for WarnOn {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "unused_locals" => Ok(Self::UnusedLocals),
-            _ => Err(format!("unknown warning: {s}")),
+            _ => Err(format!(
+                "unknown warning {s:?}; accepted values for -W/--warn-on: unused_locals"
+            )),
         }
     }
 }
@@ -196,7 +198,9 @@ impl FromStr for WarnOnLevel {
         match s {
             "pedantic" => Ok(Self::Pedantic),
             "warning" => Ok(Self::Warning),
-            _ => Err(format!("unknown warning level: {s}")),
+            _ => Err(format!(
+                "unknown warning level {s:?}; accepted values for -L/--warn-level: pedantic, warning (default: warning)"
+            )),
         }
     }
 }
@@ -227,9 +231,11 @@ fn main() -> anyhow::Result<ExitCode> {
 }
 
 fn compile(opts: CompileOpts) -> anyhow::Result<ExitCode> {
-    let (map, _f) = Map::with_options().open(opts.bundle)?;
-    let interner = TypeInterner::default();
     let sources = load_sources(&opts.src)?;
+    let (map, _f) = Map::with_options()
+        .open(&opts.bundle)
+        .with_context(|| format!("failed to read baseline bundle {}", opts.bundle.display()))?;
+    let interner = TypeInterner::default();
     let passes = opts
         .warn_on
         .into_iter()
@@ -241,8 +247,14 @@ fn compile(opts: CompileOpts) -> anyhow::Result<ExitCode> {
         .sources(&sources)
         .type_interner(&interner)
         .diagnostics(&passes)
-        .compile()?
-        .flush(opts.output)
+        .compile()
+        .with_context(|| {
+            format!(
+                "failed to compile with baseline bundle {}",
+                opts.bundle.display()
+            )
+        })?
+        .flush(&opts.output)
     {
         Ok((_, diagnostics)) => {
             diagnostics.dump(&sources, DiagnosticLevel::from(opts.warn_level))?;
@@ -254,14 +266,20 @@ fn compile(opts: CompileOpts) -> anyhow::Result<ExitCode> {
             log::info!("Compilation failed");
             Ok(ExitCode::FAILURE)
         }
+        Err(FlushError::Write(err)) => Err(anyhow::Error::new(err).context(format!(
+            "failed to write output bundle {}",
+            opts.output.display()
+        ))),
         Err(err) => anyhow::bail!("{err}"),
     }
 }
 
 fn lint(opts: LintOpts) -> anyhow::Result<ExitCode> {
-    let (map, _f) = Map::with_options().open(opts.bundle)?;
-    let interner = TypeInterner::default();
     let sources = load_sources(&opts.src)?;
+    let (map, _f) = Map::with_options()
+        .open(&opts.bundle)
+        .with_context(|| format!("failed to read baseline bundle {}", opts.bundle.display()))?;
+    let interner = TypeInterner::default();
     let passes = opts
         .warn_on
         .into_iter()
@@ -273,7 +291,13 @@ fn lint(opts: LintOpts) -> anyhow::Result<ExitCode> {
         .sources(&sources)
         .type_interner(&interner)
         .diagnostics(&passes)
-        .compile()?;
+        .compile()
+        .with_context(|| {
+            format!(
+                "failed to lint with baseline bundle {}",
+                opts.bundle.display()
+            )
+        })?;
 
     comp.diagnostics()
         .dump(&sources, DiagnosticLevel::from(opts.warn_level))?;
@@ -312,10 +336,18 @@ fn decompile(opts: DecompileOpts) -> anyhow::Result<ExitCode> {
     let prefix_map = HashMap::default();
     let ctx = FormatCtx::new(&settings, &prefix_map);
 
-    let (map, _f) = Map::with_options().open(opts.bundle)?;
-    let bundle = ScriptBundle::from_bytes(&map)?;
+    let (map, _f) = Map::with_options()
+        .open(&opts.bundle)
+        .with_context(|| format!("failed to read input bundle {}", opts.bundle.display()))?;
+    let bundle = ScriptBundle::from_bytes(&map)
+        .with_context(|| format!("failed to decode input bundle {}", opts.bundle.display()))?;
 
-    let mut output = BufWriter::new(File::create(opts.output)?);
+    let mut output = BufWriter::new(File::create(&opts.output).with_context(|| {
+        format!(
+            "failed to create decompiled output {}",
+            opts.output.display()
+        )
+    })?);
     let settings = Settings::default();
     let settings = if opts.verbose {
         settings.verbose()
@@ -323,8 +355,19 @@ fn decompile(opts: DecompileOpts) -> anyhow::Result<ExitCode> {
         settings
     };
     for item in decompile_all(&bundle, &settings) {
-        writeln!(output, "{}", item?.as_fmt(ctx))?;
+        writeln!(output, "{}", item?.as_fmt(ctx)).with_context(|| {
+            format!(
+                "failed to write decompiled output {}",
+                opts.output.display()
+            )
+        })?;
     }
+    output.flush().with_context(|| {
+        format!(
+            "failed to write decompiled output {}",
+            opts.output.display()
+        )
+    })?;
 
     Ok(ExitCode::SUCCESS)
 }
@@ -377,13 +420,18 @@ fn format(opts: FormatOpts) -> anyhow::Result<ExitCode> {
             if formatted.trim() != file.source().trim() {
                 failed = true;
                 eprintln!("[ERROR] At {}", file.path().display());
-                eprintln!("file is not formatted correctly");
+                eprintln!(
+                    "file is not formatted correctly; run `format --save -s \"{}\"` to fix it",
+                    file.path().display()
+                );
             }
             continue;
         }
 
         if opts.save {
-            fs::write(file.path(), formatted)?;
+            fs::write(file.path(), formatted).with_context(|| {
+                format!("failed to save formatted source {}", file.path().display())
+            })?;
         } else {
             println!("{module}");
         }
@@ -401,9 +449,17 @@ fn format(opts: FormatOpts) -> anyhow::Result<ExitCode> {
 }
 
 fn load_sources(src: &[PathBuf]) -> anyhow::Result<SourceMap> {
+    anyhow::ensure!(
+        !src.is_empty(),
+        "no source paths provided; use -s/--src <file-or-directory> (repeatable)"
+    );
     let mut roots = vec![];
     for src in src {
-        let dotfile = Dotfile::load_or_default(src)?;
+        fs::metadata(src)
+            .with_context(|| format!("failed to access source root {}", src.display()))?;
+        let dotfile = Dotfile::load_or_default(src).with_context(|| {
+            format!("failed to load source configuration for {}", src.display())
+        })?;
         roots.extend(
             dotfile
                 .expanded_source_roots()
