@@ -130,14 +130,11 @@ pub fn parse_expr(src: &str, file: FileId) -> ParseResult<Expr<'_>> {
     parse!(src, parser::expr(), file)
 }
 
-pub fn lex(src: &str, f: FileId) -> ParseResult<Vec<Spanned<Token<'_, Span>>>> {
+pub fn lex(src: &str, f: FileId) -> ParseResult<Vec<Spanned<Token<'_>>>> {
     lex_internal(src, f, false)
 }
 
-pub fn lex_with_lf_and_comments(
-    src: &str,
-    f: FileId,
-) -> ParseResult<Vec<Spanned<Token<'_, Span>>>> {
+pub fn lex_with_lf_and_comments(src: &str, f: FileId) -> ParseResult<Vec<Spanned<Token<'_>>>> {
     lex_internal(src, f, true)
 }
 
@@ -145,7 +142,7 @@ fn lex_internal(
     src: &str,
     file_id: FileId,
     keep_lf_and_comments: bool,
-) -> ParseResult<Vec<Spanned<Token<'_, Span>>>> {
+) -> ParseResult<Vec<Spanned<Token<'_>>>> {
     let (output, errors) = lexer::lex(keep_lf_and_comments)
         .parse(src)
         .into_output_errors();
@@ -162,11 +159,7 @@ fn lex_internal(
 
     let output = tokens
         .into_iter()
-        .map(|(tok, span)| {
-            let span = Span::from((file_id, span));
-            let tok = tok.map_span(span, |s| Span::from((file_id, s)));
-            (tok, span)
-        })
+        .map(|(tok, span)| (tok, Span::from((file_id, span))))
         .collect();
     (Some(output), errors)
 }
@@ -209,7 +202,52 @@ fn parse_with_eof<'tok, 'src: 'tok, A>(
 
 #[cfg(test)]
 mod tests {
-    use super::is_target_identifier;
+    use super::*;
+
+    #[test]
+    fn public_lexers_preserve_token_byte_spans() {
+        let file = FileId::from_i32(7);
+        let source = " \"é\" + value";
+        for (tokens, errors) in [lex(source, file), lex_with_lf_and_comments(source, file)] {
+            assert!(errors.is_empty(), "{errors:?}");
+            let tokens: Vec<_> = tokens
+                .unwrap()
+                .into_iter()
+                .filter(|(token, _)| !token.is_ws_or_comment())
+                .collect();
+            assert_eq!(
+                tokens,
+                [
+                    (Token::Str("é".into()), Span::new(1, 5, file)),
+                    (Token::Plus, Span::new(6, 7, file)),
+                    (Token::Ident("value"), Span::new(8, 13, file)),
+                ]
+            );
+            let (expr, errors) = parse(parser::expr(), &tokens, file);
+            assert!(errors.is_empty(), "{errors:?}");
+            assert_eq!(expr, parse_expr(source, file).0);
+        }
+    }
+
+    #[test]
+    fn interpolation_rejection_preserves_source_span() {
+        let file = FileId::from_i32(7);
+        let source = r#" s"value: \(é)" "#;
+        let span = Span::new(1, source.len() as u32 - 1, file);
+        for errors in [
+            lex(source, file).1,
+            lex_with_lf_and_comments(source, file).1,
+            parse_expr(source, file).1,
+        ] {
+            assert!(
+                errors
+                    .iter()
+                    .any(|error| matches!(error, Error::Lex(message, actual)
+                    if message.contains("interpolated strings") && *actual == span)),
+                "{errors:?}"
+            );
+        }
+    }
 
     #[test]
     fn target_identifiers_accept_ascii_names() {

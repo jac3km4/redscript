@@ -1,17 +1,15 @@
 use std::borrow::Cow;
-use std::{fmt, ops};
+use std::fmt;
 
 use chumsky::input::InputRef;
 use chumsky::prelude::*;
-
-use crate::Span;
 
 type LexSpan = SimpleSpan;
 type LexExtra<'src> = extra::Err<Rich<'src, char, LexSpan>>;
 
 pub fn lex<'src>(
     keep_lf_and_comments: bool,
-) -> impl Parser<'src, &'src str, Vec<(Token<'src, LexSpan>, LexSpan)>, LexExtra<'src>> + Clone {
+) -> impl Parser<'src, &'src str, Vec<(Token<'src>, LexSpan)>, LexExtra<'src>> + Clone {
     let num = text::int(10)
         .then_ignore(
             just('.')
@@ -180,7 +178,7 @@ fn str_contents<'src>(
         .map(Cow::Borrowed)
 }
 
-fn symbol<'src>() -> impl Parser<'src, &'src str, Token<'src, LexSpan>, LexExtra<'src>> + Clone {
+fn symbol<'src>() -> impl Parser<'src, &'src str, Token<'src>, LexExtra<'src>> + Clone {
     custom(|inp| {
         let before = inp.save();
         let pos = inp.offset();
@@ -251,8 +249,7 @@ fn symbol<'src>() -> impl Parser<'src, &'src str, Token<'src, LexSpan>, LexExtra
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Token<'src, S = Span> {
-    Group(Box<[(Self, S)]>),
+pub enum Token<'src> {
     Ident(&'src str),
     Int(i32),
     Uint(u32),
@@ -269,8 +266,6 @@ pub enum Token<'src, S = Span> {
     CName(Cow<'src, str>),
     ResRef(Cow<'src, str>),
     TdbId(Cow<'src, str>),
-    StrFrag(Cow<'src, str>),
-    InterpStr(Box<[(Self, S)]>),
 
     LineComment(&'src str),
     DocComment(&'src str),
@@ -328,103 +323,12 @@ pub enum Token<'src, S = Span> {
     Default,
 }
 
-impl<'src, S1> Token<'src, S1> {
+impl Token<'_> {
     pub fn is_ws_or_comment(&self) -> bool {
         matches!(
             self,
             Self::LineComment(_) | Self::BlockComment(_) | Self::LineFeed | Self::Whitespace
         )
-    }
-
-    pub fn map_span<S2>(self, base: S2, f: impl Fn(S1) -> S2 + Clone) -> Token<'src, S2>
-    where
-        S2: Copy + ops::Add<u8, Output = S2> + ops::Add<S2, Output = S2>,
-    {
-        match self {
-            Self::Group(s) => Token::Group(
-                s.into_vec()
-                    .into_iter()
-                    .map(|(tok, nested)| {
-                        let span = f(nested);
-                        (tok.map_span(span, f.clone()), base + 1u8 + span)
-                    })
-                    .collect(),
-            ),
-            Self::Ident(s) => Token::Ident(s),
-            Self::Int(n) => Token::Int(n),
-            Self::Uint(n) => Token::Uint(n),
-            Self::Ulong(n) => Token::Ulong(n),
-            Self::Long(n) => Token::Long(n),
-            Self::IntMinMagnitude => Token::IntMinMagnitude,
-            Self::LongMinMagnitude => Token::LongMinMagnitude,
-            Self::EnumInt(n) => Token::EnumInt(n),
-            Self::Float(n) => Token::Float(n),
-            Self::Double(n) => Token::Double(n),
-            Self::Str(s) => Token::Str(s),
-            Self::CName(s) => Token::CName(s),
-            Self::ResRef(s) => Token::ResRef(s),
-            Self::TdbId(s) => Token::TdbId(s),
-            Self::StrFrag(s) => Token::StrFrag(s),
-            Self::InterpStr(s) => Token::InterpStr(
-                s.into_vec()
-                    .into_iter()
-                    .map(|(tok, nested)| {
-                        let span = f(nested);
-                        (tok.map_span(span, f.clone()), base + span)
-                    })
-                    .collect(),
-            ),
-            Self::LineComment(s) => Token::LineComment(s),
-            Self::DocComment(s) => Token::DocComment(s),
-            Self::BlockComment(s) => Token::BlockComment(s),
-            Self::Whitespace => Token::Whitespace,
-            Self::LineFeed => Token::LineFeed,
-            Self::AssignAdd => Token::AssignAdd,
-            Self::AssignSub => Token::AssignSub,
-            Self::AssignMul => Token::AssignMul,
-            Self::AssignDiv => Token::AssignDiv,
-            Self::AssignBitOr => Token::AssignBitOr,
-            Self::AssignBitAnd => Token::AssignBitAnd,
-            Self::Plus => Token::Plus,
-            Self::Minus => Token::Minus,
-            Self::Star => Token::Star,
-            Self::Slash => Token::Slash,
-            Self::Percent => Token::Percent,
-            Self::Eq => Token::Eq,
-            Self::Ne => Token::Ne,
-            Self::Le => Token::Le,
-            Self::Ge => Token::Ge,
-            Self::And => Token::And,
-            Self::Or => Token::Or,
-            Self::BitAnd => Token::BitAnd,
-            Self::BitOr => Token::BitOr,
-            Self::BitXor => Token::BitXor,
-            Self::Not => Token::Not,
-            Self::BitNot => Token::BitNot,
-            Self::Period => Token::Period,
-            Self::Comma => Token::Comma,
-            Self::LParen => Token::LParen,
-            Self::RParen => Token::RParen,
-            Self::LBrace => Token::LBrace,
-            Self::RBrace => Token::RBrace,
-            Self::LBracket => Token::LBracket,
-            Self::RBracket => Token::RBracket,
-            Self::LAngle => Token::LAngle,
-            Self::RAngle => Token::RAngle,
-            Self::Arrow => Token::Arrow,
-            Self::Colon => Token::Colon,
-            Self::Semicolon => Token::Semicolon,
-            Self::Assign => Token::Assign,
-            Self::Question => Token::Question,
-            Self::At => Token::At,
-            Self::True => Token::True,
-            Self::False => Token::False,
-            Self::Null => Token::Null,
-            Self::This => Token::This,
-            Self::Super => Token::Super,
-            Self::Case => Token::Case,
-            Self::Default => Token::Default,
-        }
     }
 }
 
@@ -447,22 +351,10 @@ impl fmt::Display for Token<'_> {
             Self::CName(s) => write!(f, "n\"{s}\""),
             Self::ResRef(s) => write!(f, "R\"{s}\""),
             Self::TdbId(s) => write!(f, "T\"{s}\""),
-            Self::InterpStr(s) => {
-                write!(f, "s\"")?;
-                for (tok, _) in s {
-                    write!(f, "{tok}")?;
-                }
-                write!(f, "\"")
-            }
+
             Self::Whitespace => write!(f, " "),
             Self::LineFeed => writeln!(f),
-            Self::Group(s) => {
-                for (tok, _) in s {
-                    write!(f, "\\({tok})")?;
-                }
-                Ok(())
-            }
-            Self::StrFrag(s) => write!(f, "{s}"),
+
             Self::AssignAdd => write!(f, "+="),
             Self::AssignSub => write!(f, "-="),
             Self::AssignMul => write!(f, "*="),
@@ -516,7 +408,7 @@ impl fmt::Display for Token<'_> {
 mod tests {
     use super::*;
 
-    fn tokens(src: &str) -> Vec<(Token<'_, LexSpan>, LexSpan)> {
+    fn tokens(src: &str) -> Vec<(Token<'_>, LexSpan)> {
         let (tokens, errors) = lex(false).parse(src).into_output_errors();
         assert!(errors.is_empty(), "{errors:?}");
         tokens.unwrap()
@@ -763,9 +655,7 @@ mod tests {
             ("2147483648", Token::IntMinMagnitude),
             ("9223372036854775808l", Token::LongMinMagnitude),
         ] {
-            let span = Span::new(0, 0, redscript_redmod_ast::FileId::from_i32(0));
-            let mapped = expected.clone().map_span(span, |_| span);
-            assert_eq!(mapped.to_string(), literal);
+            assert_eq!(expected.to_string(), literal);
             assert_eq!(
                 tokens(literal),
                 vec![(expected.clone(), (0..literal.len()).into())]
