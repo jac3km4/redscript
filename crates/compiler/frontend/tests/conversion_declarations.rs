@@ -1,7 +1,10 @@
+use std::rc::Rc;
+
 use redscript_community_ast::{ConversionKind, SourceMap};
 use redscript_compiler_api::{Diagnostic, SourceMapExt};
 use redscript_compiler_frontend::{
-    CompileErrorReporter, Symbols, TypeInterner, infer_from_sources,
+    CompileErrorReporter, Evaluator, SemanticPolicy, Symbols, TypeInterner, infer_from_sources,
+    parse_files, process_sources_with_policy,
 };
 
 #[test]
@@ -28,6 +31,10 @@ fn community_intent_is_queryable_but_not_dispatchable() {
             .map(Diagnostic::code)
             .collect::<Vec<_>>();
         assert_eq!(codes, ["UNSUPPORTED_NATIVE_CONVERSION"]);
+        assert_eq!(
+            reporter.reported()[0].to_string(),
+            "this conversion declaration is not supported for this use"
+        );
         let function = symbols
             .free_functions()
             .find(|entry| {
@@ -124,4 +131,56 @@ fn unsupported_implicit_return_is_not_silently_coerced() {
         .map(Diagnostic::code)
         .collect::<Vec<_>>();
     assert_eq!(codes, ["UNSUPPORTED_NATIVE_CONVERSION"]);
+    assert_eq!(
+        reporter.reported()[0].to_string(),
+        "this conversion declaration is not supported for this use"
+    );
+}
+
+#[test]
+fn ambiguous_native_conversions_explain_selection_failure() {
+    let sources = SourceMap::new();
+    sources.populate_boot_lib();
+    let first = sources.push_back(
+        "first.reds",
+        "module First\npublic native explicit func Cast(value: Int32) -> String;",
+    );
+    let second = sources.push_back(
+        "second.reds",
+        "module Second\npublic native explicit func Cast(value: Int32) -> String;",
+    );
+    let consumer = sources.push_back(
+        "consumer.reds",
+        "import First.Cast\nimport Second.Cast\nfunc Use(value: Int32) -> String { return Cast<String>(value); }",
+    );
+    let interner = TypeInterner::default();
+    let mut reporter = CompileErrorReporter::default();
+    let modules = parse_files(&sources, &mut reporter);
+    assert!(reporter.reported().is_empty(), "{reporter:?}");
+    let evaluator = Evaluator::from_modules(&modules);
+    let policy = Rc::new(SemanticPolicy {
+        native_object_cast: true,
+        ..SemanticPolicy::default()
+    });
+    process_sources_with_policy(
+        modules,
+        Symbols::with_default_types(),
+        evaluator,
+        &mut reporter,
+        &interner,
+        &[
+            (first, policy.clone()),
+            (second, policy.clone()),
+            (consumer, policy),
+        ],
+    );
+    assert_eq!(reporter.reported().len(), 1, "{reporter:?}");
+    let diagnostic = &reporter.reported()[0];
+    assert_eq!(diagnostic.code(), "UNSUPPORTED_NATIVE_CONVERSION");
+    assert_eq!(
+        diagnostic.to_string(),
+        "multiple native conversion declarations match; cannot choose one"
+    );
+    assert_eq!(diagnostic.span().file, consumer);
+    insta::assert_snapshot!(diagnostic.display(&sources).unwrap());
 }

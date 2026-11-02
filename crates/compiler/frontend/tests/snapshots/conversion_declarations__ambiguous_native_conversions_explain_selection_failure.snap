@@ -1,0 +1,9 @@
+---
+source: crates/compiler/frontend/tests/conversion_declarations.rs
+expression: diagnostic.display(&sources).unwrap()
+---
+error[UNSUPPORTED_NATIVE_CONVERSION]: multiple native conversion declarations match; cannot choose one
+ --> consumer.reds:3:43
+  |
+3 | func Use(value: Int32) -> String { return Cast<String>(value); }
+  |                                           ^^^^
