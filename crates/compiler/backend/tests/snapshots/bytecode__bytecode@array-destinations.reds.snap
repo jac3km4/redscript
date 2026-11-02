@@ -1,0 +1,119 @@
+---
+source: crates/compiler/backend/tests/bytecode.rs
+expression: "compile(path, |_| {})"
+input_file: crates/compiler/backend/tests/data/array-destinations.reds
+---
+// Fresh; (f0)
+array.resize 0 "array:Int32"
+local 0 "values$0": "array:Int32"
+u64.const 2
+assign
+array.element 0 "array:Int32"
+local 0 "values$0": "array:Int32"
+u64.const 0
+invoke.static j16 l5 f1 First 0000000000000000
+param.end
+assign
+array.element 0 "array:Int32"
+local 0 "values$0": "array:Int32"
+u64.const 1
+invoke.static j16 l5 f2 Second 0000000000000000
+param.end
+array.resize 0 "array:Int32"
+local 1 "typed$1": "array:Int32"
+u64.const 1
+assign
+array.element 0 "array:Int32"
+local 1 "typed$1": "array:Int32"
+u64.const 0
+i32.const 3
+
+// Repeated;Bool (f3)
+jump.if_not 187
+param 0 "again": "Bool"
+array.clear 0 "array:Int32"
+local 2 "empty$1": "array:Int32"
+array.push 0 "array:Int32"
+local 2 "empty$1": "array:Int32"
+i32.one
+array.resize 0 "array:Int32"
+local 3 "filled$2": "array:Int32"
+u64.const 2
+assign
+array.element 0 "array:Int32"
+local 3 "filled$2": "array:Int32"
+u64.const 0
+invoke.static j16 l13 f1 First 0000000000000000
+param.end
+assign
+array.element 0 "array:Int32"
+local 3 "filled$2": "array:Int32"
+u64.const 1
+invoke.static j16 l13 f2 Second 0000000000000000
+param.end
+array.push 0 "array:Int32"
+local 3 "filled$2": "array:Int32"
+i32.const 3
+jump -190
+
+// Shadowed; (f4)
+array.resize 0 "array:Int32"
+local 4 "values$0": "array:Int32"
+u64.const 1
+assign
+array.element 0 "array:Int32"
+local 4 "values$0": "array:Int32"
+u64.const 0
+i32.one
+jump.if_not 78
+true.const
+array.resize 0 "array:Int32"
+local 5 "values$1": "array:Int32"
+u64.const 1
+assign
+array.element 0 "array:Int32"
+local 5 "values$1": "array:Int32"
+u64.const 0
+array.element 0 "array:Int32"
+local 4 "values$0": "array:Int32"
+i32.zero
+jump 0
+
+// ExistingAssignment; (f5)
+array.resize 0 "array:Int32"
+local 6 "values$0": "array:Int32"
+u64.const 2
+assign
+array.element 0 "array:Int32"
+local 6 "values$0": "array:Int32"
+u64.const 0
+i32.one
+assign
+array.element 0 "array:Int32"
+local 6 "values$0": "array:Int32"
+u64.const 1
+i32.const 2
+array.resize 0 "array:Int32"
+local 7 "var$1": "array:Int32"
+u64.const 2
+assign
+array.element 0 "array:Int32"
+local 7 "var$1": "array:Int32"
+u64.const 0
+array.element 0 "array:Int32"
+local 6 "values$0": "array:Int32"
+i32.one
+assign
+array.element 0 "array:Int32"
+local 7 "var$1": "array:Int32"
+u64.const 1
+array.element 0 "array:Int32"
+local 6 "values$0": "array:Int32"
+i32.zero
+assign
+local 6 "values$0": "array:Int32"
+local 7 "var$1": "array:Int32"
+
+// First (f1)
+
+// Second (f2)

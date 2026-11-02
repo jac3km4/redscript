@@ -46,6 +46,10 @@ Unconditional first assignments and non-array defaults merge with their local
 declarations at the existing execution site when no earlier or self-reference
 exists. Other declarations remain hoisted: branch/loop initialization, array
 resize/clear operations and repeated default resets are never moved or dropped.
+Shared lowering constructs direct array literals in eligible fresh lexical locals,
+avoiding an intermediate array and copy. Existing assignments, hoisted/native-policy
+bindings and non-array coercions retain temporaries. Empty direct initializers clear
+the local on every execution, including loop back edges.
 Callbacks require a non-const Bool return contract, matching REDmod's implicit
 Bool events. Their return expressions are preserved, not evaluated into discard
 locals followed by invalid bare returns. Void and other community callback result

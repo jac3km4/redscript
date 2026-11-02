@@ -183,12 +183,36 @@ fn convert_mapped(source: &str) -> redscript_redmod_transpiler::TranspiledModule
 }
 
 #[test]
+fn fresh_array_declarations_construct_in_place_and_assignments_keep_copies() {
+    let output = convert(
+        "func Tick() -> Int32 { return 1; } \
+         func Test(again: Bool) { let values = [Tick(), Tick()]; \
+         while again { let empty: [Int32] = []; ArrayPush(empty, 1); \
+         let values = [values[0]]; } values = [values[0], Tick()]; }",
+    );
+    for expected in [
+        "values.Resize(2);\n    values[0] = Tick();\n    values[1] = Tick();",
+        "while (again) {\n        empty.Clear();",
+        "values_2.Resize(1);\n        values_2[0] = values[0];",
+        "valuesLiteral.Resize(2);\n    valuesLiteral[0] = values[0];",
+        "values = valuesLiteral;",
+    ] {
+        assert!(output.contains(expected), "{expected}: {output}");
+    }
+    assert!(!output.contains("values_2Literal"), "{output}");
+    let sources = SourceMap::new();
+    let file = sources.push_back("direct.script", output.clone());
+    let (parsed, errors) = redscript_redmod_parser::parse_module(&output, file);
+    assert!(parsed.is_some() && errors.is_empty(), "{errors:?}");
+}
+
+#[test]
 fn contextual_temporary_names_reserve_authored_names_and_shadowed_owners() {
     let output = convert(
         "native func OperatorAssignAdd(out a: Int32, b: Int32) -> Int32; \
          native func OperatorLess(a: Int32, b: Int32) -> Bool; \
          func Items() -> [Int32] { return [1]; } \
-         func Test() { let firstLiteral = 9; let first = [1]; \
+         func Test() { let firstLiteral = 9; let first: [Int32]; first = [1]; \
          for item in Items() { for item in Items() {} } }",
     );
     for expected in [
@@ -712,8 +736,8 @@ func Test() {
 "#,
     );
     for declaration in [
-        "var firstLiteral: array<Int32>;",
-        "var secondLiteral: array<Int32>;",
+        "var first: array<Int32>;",
+        "var second: array<Int32>;",
         "var itemIndex: Int32 = 0;",
         "var otherIndex: Int32;",
         "var itemIterable: array<Int32> = Items();",
@@ -749,7 +773,7 @@ func Test(flag: Bool) -> Int32 {
         "var count: Int32 = Tick();",
         "var zero: Int32 = 0;",
         "var text: String = \"\";",
-        "var values: array<Int32> = valuesLiteral;",
+        "var values: array<Int32>;",
         "var branchValue: Int32;",
         "var repeated: Int32;",
         "var reset: Int32;",

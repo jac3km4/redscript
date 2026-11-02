@@ -3,11 +3,10 @@ source: crates/compiler/redmod/transpiler/tests/official.rs
 expression: source.module.text
 ---
 function OfficialTranspileArray() -> Int32 {
-    var valuesLiteral: array<Int32>;
-    valuesLiteral.Resize(2);
-    valuesLiteral[0] = 1;
-    valuesLiteral[1] = 2;
-    var values: array<Int32> = valuesLiteral;
+    var values: array<Int32>;
+    values.Resize(2);
+    values[0] = 1;
+    values[1] = 2;
     values.PushBack(3);
     return values.Size();
 }

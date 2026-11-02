@@ -14,17 +14,15 @@ function Items() -> array<Int32> {
 }
 
 function Test() -> Void {
-    var firstLiteral: array<Int32>;
-    var secondLiteral: array<Int32>;
+    var first: array<Int32>;
+    var second: array<Int32>;
     var item: Int32;
     var otherIndex: Int32;
     var other: Int32;
-    firstLiteral.Resize(1);
-    firstLiteral[0] = 1;
-    var first: array<Int32> = firstLiteral;
-    secondLiteral.Resize(1);
-    secondLiteral[0] = 2;
-    var second: array<Int32> = secondLiteral;
+    first.Resize(1);
+    first[0] = 1;
+    second.Resize(1);
+    second[0] = 2;
     var arrayLiteral: Int32 = 3;
     var arrayLiteral_2: Int32 = 4;
     var index: Int32 = 5;

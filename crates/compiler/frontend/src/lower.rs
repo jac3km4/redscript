@@ -687,6 +687,47 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     .as_deref()
                     .map(|(typ, span)| self.resolve_type(typ, env, *span))
                     .transpose()?;
+                if let Some(value @ (ast::Expr::ArrayLit(elems), value_span)) = value.as_deref()
+                    && !env.types().policy(span).hoist_locals
+                    && !env.types().policy(span).native_object_cast
+                    && !env.types().policy(span).script_ref_write_through
+                    && typ.as_ref().is_none_or(|typ| {
+                        typ.upper_bound(self.symbols)
+                            .is_some_and(|typ| typ.id() == predef::ARRAY)
+                    })
+                {
+                    array_guard::check(value)?;
+                    // Lower before introducing the binding: a shadowed name in the
+                    // initializer must still resolve to the outer local.
+                    let (elements, element_type) =
+                        self.lower_array_elements(elems, typ.as_ref(), env, *value_span)?;
+                    let array_type = Type::app(predef::ARRAY, [element_type.clone()]).into_poly();
+                    let typ = typ.unwrap_or_else(|| array_type.clone());
+                    let local = self
+                        .locals
+                        .add_const_var(Some(name), typ.clone(), name_span, is_const)
+                        .clone();
+                    let mut destination = ir::Expr::Local(local.id, *value_span);
+                    self.coerce(&mut destination, array_type, typ.clone(), env, *value_span)?;
+                    let local = env.define_local(name, local);
+                    self.locals.set_initializer(local, span);
+                    return Ok(if elements.is_empty() {
+                        // InitArray([]) is a backend no-op. Clear the lexical slot
+                        // on every execution, not just its first loop iteration.
+                        ir::Stmt::InitDefault {
+                            local,
+                            typ: typ.into(),
+                            span,
+                        }
+                    } else {
+                        ir::Stmt::InitArray {
+                            local,
+                            elements: elements.into(),
+                            element_type: element_type.into(),
+                            span,
+                        }
+                    });
+                }
                 if let Some(value @ (_, value_span)) = value.as_deref() {
                     let (mut value, value_t) = self.lower_expr_with(value, typ.as_ref(), env)?;
                     let array_temp = match &value {
@@ -898,13 +939,13 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         }
     }
 
-    fn lower_array_lit(
+    fn lower_array_elements(
         &mut self,
         elems: &[Spanned<ast::SourceExpr<'ctx>>],
         hint: Option<&PolyType<'ctx>>,
         env: &Env<'_, 'ctx>,
         span: Span,
-    ) -> LowerResult<'ctx, (ir::Expr<'ctx>, PolyType<'ctx>)> {
+    ) -> LowerResult<'ctx, (Vec<ir::Expr<'ctx>>, PolyType<'ctx>)> {
         let elem_hint = hint.and_then(|typ| {
             let typ = typ.upper_bound(self.symbols)?;
             (typ.id() == predef::ARRAY)
@@ -927,7 +968,17 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     acc.push(elem);
                     Ok((acc, elem_typ.lub(&typ, self.symbols).with_span(span)?))
                 })?;
+        Ok((elems, elem_typ))
+    }
 
+    fn lower_array_lit(
+        &mut self,
+        elems: &[Spanned<ast::SourceExpr<'ctx>>],
+        hint: Option<&PolyType<'ctx>>,
+        env: &Env<'_, 'ctx>,
+        span: Span,
+    ) -> LowerResult<'ctx, (ir::Expr<'ctx>, PolyType<'ctx>)> {
+        let (elems, elem_typ) = self.lower_array_elements(elems, hint, env, span)?;
         let array_t = Type::app(predef::ARRAY, [elem_typ.clone()]).into_poly();
         let local = self
             .locals

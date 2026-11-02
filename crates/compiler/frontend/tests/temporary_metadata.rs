@@ -79,7 +79,6 @@ fn array_and_iteration_temporaries_keep_purpose_separate_from_names() {
     assert_locals(
         "let authored = [1]; for item in Values() {}",
         &[
-            (None, Some(Purpose::ArrayLiteral)),
             (Some("authored"), None),
             (None, Some(Purpose::IterationIndex)),
             (None, Some(Purpose::IterationIterable)),
@@ -122,7 +121,7 @@ fn array_destinations_use_local_identity_under_shadowing() {
                 .collect();
             assert_eq!(
                 owners,
-                [0, 1, 1, 0].map(|i| Some(Owner::Destination(destinations[i])))
+                [1, 0].map(|i| Some(Owner::Destination(destinations[i])))
             );
         },
     );
@@ -183,10 +182,6 @@ fn reused_iterables_keep_their_original_metadata() {
     with_locals(
         "let values = [1]; for item in values {} for item in input {} for item in [2] {}",
         |locals| {
-            let values = locals
-                .iter()
-                .find(|info| info.name == Some("values"))
-                .unwrap();
             for local in locals
                 .iter()
                 .filter(|info| info.temporary_purpose.is_none())
@@ -197,12 +192,8 @@ fn reused_iterables_keep_their_original_metadata() {
                 .iter()
                 .filter(|info| info.temporary_purpose == Some(Purpose::ArrayLiteral))
                 .collect();
-            assert_eq!(arrays.len(), 2);
-            assert_eq!(
-                arrays[0].temporary_owner,
-                Some(Owner::Destination(values.id))
-            );
-            assert_eq!(arrays[1].temporary_owner, None);
+            assert_eq!(arrays.len(), 1);
+            assert_eq!(arrays[0].temporary_owner, None);
             assert!(
                 locals
                     .iter()
@@ -225,16 +216,12 @@ fn reused_iterables_keep_their_original_metadata() {
 #[test]
 fn arrays_without_local_destinations_have_no_owner() {
     with_locals("[1]; let nested = [[2]];", |locals| {
-        let nested = locals
-            .iter()
-            .find(|info| info.name == Some("nested"))
-            .unwrap();
         let owners: Vec<_> = locals
             .iter()
             .filter(|info| info.temporary_purpose == Some(Purpose::ArrayLiteral))
             .map(|info| info.temporary_owner)
             .collect();
-        assert_eq!(owners, [None, None, Some(Owner::Destination(nested.id))]);
+        assert_eq!(owners, [None, None]);
     });
 }
 
