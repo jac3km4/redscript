@@ -45,6 +45,7 @@ pub fn is_target_identifier(name: &str) -> bool {
                 | "if"
                 | "else"
                 | "while"
+                | "do"
                 | "for"
                 | "switch"
                 | "case"
@@ -56,6 +57,7 @@ pub fn is_target_identifier(name: &str) -> bool {
                 | "as"
                 | "out"
                 | "optional"
+                | "skip"
                 | "public"
                 | "private"
                 | "protected"
@@ -246,6 +248,7 @@ mod tests {
             "if",
             "else",
             "while",
+            "do",
             "for",
             "switch",
             "case",
@@ -257,6 +260,7 @@ mod tests {
             "as",
             "out",
             "optional",
+            "skip",
             "public",
             "private",
             "protected",

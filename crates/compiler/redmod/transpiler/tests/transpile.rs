@@ -258,6 +258,14 @@ fn generated_guards_simplify_only_verified_boolean_negation() {
 }
 
 #[test]
+fn target_control_flow_and_parameter_keywords_are_renamed() {
+    let output = convert("func Test(skip: Int32) -> Int32 { let do = skip; return do; }");
+    assert!(output.contains("function Test(skip_: Int32)"), "{output}");
+    assert!(output.contains("var do_: Int32 = skip_;"), "{output}");
+    assert!(output.contains("return do_;"), "{output}");
+}
+
+#[test]
 fn reserved_authored_names_keep_hygienic_recognizable_stems() {
     let output = convert(
         "func Test(name: Int32) -> Int32 { let name_ = 2; \

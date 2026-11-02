@@ -470,6 +470,12 @@ impl Printer {
     }
 
     fn param(&mut self, param: &ParamGroup<'_>) -> Result<()> {
+        // These names would be consumed as modifiers rather than bindings.
+        for (name, span) in &param.names {
+            if matches!(*name, "optional" | "out" | "const" | "skip") {
+                return Err(error(PrintErrorKind::InvalidIdentifier, Some(*span)));
+            }
+        }
         for (modifier, _) in &param.modifiers {
             self.out.push_str(match modifier {
                 ParamModifier::Optional => "optional ",

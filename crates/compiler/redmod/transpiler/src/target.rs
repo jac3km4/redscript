@@ -171,7 +171,8 @@ mod tests {
             assert_eq!(ident(name).unwrap(), name);
         }
         for name in [
-            "", "1name", "a-b", "a.b", "a b", "café", "a\n", "class", "NULL", "override",
+            "", "1name", "a-b", "a.b", "a b", "café", "a\n", "class", "NULL", "override", "do",
+            "skip",
         ] {
             let error = ident(name).unwrap_err();
             assert_eq!(

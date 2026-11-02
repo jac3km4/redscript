@@ -54,6 +54,26 @@ fn wide_enum_storage_roundtrips() {
 }
 
 #[test]
+fn parameter_modifier_names_are_rejected_in_every_group_position() {
+    use redscript_redmod_formatter::PrintErrorKind;
+
+    for name in ["optional", "out", "const", "skip"] {
+        for index in 0..2 {
+            let mut ast = module("function Run(first, second: Int32) {}");
+            let Item::Function { params, .. } = &mut ast.items[0].0.item else {
+                panic!()
+            };
+            let span = params[0].0.names[index].1;
+            params[0].0.names[index].0 = name;
+            let error = print_module(&ast).unwrap_err();
+            assert_eq!(error.kind, PrintErrorKind::InvalidIdentifier, "{name}");
+            assert_eq!(error.span, Some(span));
+        }
+    }
+    roundtrip("function Run(optional out const skip value, other: Int32, name: name) {}");
+}
+
+#[test]
 fn full_native_grammar() {
     let output = roundtrip(
         r#"@module "Example.Mod";
