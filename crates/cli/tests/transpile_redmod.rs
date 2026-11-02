@@ -311,7 +311,7 @@ fn validator_spawn_failure_rolls_back_staging() {
 }
 
 #[test]
-fn bundle_symbols_replace_boot_sources() {
+fn bundle_symbols_and_boot_intrinsics_are_available_without_dependencies() {
     let f = Fixture::new();
     let sources = SourceMap::new();
     sources.populate_boot_lib();
@@ -336,13 +336,40 @@ fn bundle_symbols_replace_boot_sources() {
     .unwrap();
     f.write(
         "main.reds",
-        "public func Main() -> Int32 { return EngineValue(); }",
+        "public func Main() -> Bool { return Equals(EngineValue(), 42); }",
     );
     assert_success(&f.run(&[
         "--src",
         "main.reds",
         "--bundle",
         "baseline.redscripts",
+        "--output",
+        "MyMod",
+    ]));
+    let script = fs::read_to_string(f.0.join("MyMod/r6/scripts/main.script")).unwrap();
+    assert!(script.contains("EngineValue() == 42"), "{script}");
+    assert_eq!(
+        fs::read_dir(f.0.join("MyMod/r6/scripts")).unwrap().count(),
+        1
+    );
+}
+
+#[test]
+fn explicit_boot_dependency_is_not_loaded_twice_or_exported() {
+    let f = Fixture::new();
+    f.write(
+        "deps/boot.reds",
+        include_str!("../../../assets/reds/boot.reds"),
+    );
+    f.write(
+        "main.reds",
+        "public func Main() -> Bool { return Equals(1, 1); }",
+    );
+    assert_success(&f.run(&[
+        "--src",
+        "main.reds",
+        "--dependency",
+        "deps",
         "--output",
         "MyMod",
     ]));

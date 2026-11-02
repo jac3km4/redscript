@@ -25,7 +25,7 @@ pub(crate) struct TranspileOpts {
     /// community source file or directory for analysis only (repeatable)
     #[argh(option)]
     dependency: Vec<PathBuf>,
-    /// existing baseline .redscripts for engine symbols (replaces built-in boot sources)
+    /// existing baseline .redscripts for engine symbols (boot intrinsics are always loaded)
     #[argh(option, short = 'b')]
     bundle: Option<PathBuf>,
     /// new mod directory; parent must exist, name must not contain periods
@@ -96,6 +96,7 @@ pub(crate) fn transpile(opts: TranspileOpts) -> anyhow::Result<ExitCode> {
         .transpose()?;
 
     let sources = SourceMap::new();
+    sources.populate_boot_lib();
     let mut seen = HashSet::new();
     let mut selected = Vec::new();
     let mut paths = Vec::new();
@@ -121,7 +122,6 @@ pub(crate) fn transpile(opts: TranspileOpts) -> anyhow::Result<ExitCode> {
         CompilationInputs::load_without_mapping(bundle, &interner, &TypeFlagRegistry::default())
             .context("loading baseline symbols")?
     } else {
-        sources.populate_boot_lib();
         Symbols::with_default_types()
     };
 
@@ -228,6 +228,10 @@ fn load_roots(
             let mut files: Vec<_> = loaded.files().map(|(_, file)| file).collect();
             files.sort_by_key(|file| file.path());
             for file in files {
+                // Boot is already an unselected dependency, even when supplied explicitly.
+                if file.source() == include_str!("../../../assets/reds/boot.reds") {
+                    continue;
+                }
                 let canonical = fs::canonicalize(file.path())?;
                 if !seen.insert(canonical) {
                     continue;

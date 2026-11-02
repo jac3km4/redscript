@@ -11,8 +11,8 @@ Options:
                     honors .redscript roots)
   --dependency      community source file or directory for analysis only
                     (repeatable)
-  -b, --bundle      existing baseline .redscripts for engine symbols (replaces
-                    built-in boot sources)
+  -b, --bundle      existing baseline .redscripts for engine symbols (boot
+                    intrinsics are always loaded)
   -o, --output      new mod directory; parent must exist, name must not contain
                     periods
   --redmod          absolute path to a trusted official REDmod executable for
