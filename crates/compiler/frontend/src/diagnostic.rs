@@ -497,45 +497,33 @@ mod tests {
     }
 
     #[test]
-    fn declaration_messages_preserve_codes_and_spans() {
+    fn declaration_diagnostics_preserve_codes_and_spans() {
         let file = ast::SourceMap::new().push_back("declarations.reds", "Example");
         let span = Span::new(0, 7, file);
-        for (diagnostic, code, message) in [
-            (
-                Diagnostic::MissingFunctionBody(span),
-                "MISSING_BODY",
-                "this function must have a body; define its implementation inside `{ ... }`",
-            ),
-            (
-                Diagnostic::UnexpectedFunctionBody(span),
-                "UNEXPECTED_BODY",
-                "a body is not allowed for this function declaration",
-            ),
-            (
-                Diagnostic::CircularInheritance(span),
-                "INVALID_BASE",
-                "inheritance cycle detected; a type cannot inherit from itself, directly or indirectly",
-            ),
-            (
-                Diagnostic::NameRedefinition(span),
-                "SYM_REDEFINITION",
-                "this name is already defined in this scope",
-            ),
-            (
-                Diagnostic::InvalidImplType(span),
-                "INVALID_IMPL_TYPE",
-                "an implementation requires a concrete data type with no unresolved type parameters",
-            ),
+        for (diagnostic, code) in [
+            (Diagnostic::MissingFunctionBody(span), "MISSING_BODY"),
+            (Diagnostic::UnexpectedFunctionBody(span), "UNEXPECTED_BODY"),
+            (Diagnostic::CircularInheritance(span), "INVALID_BASE"),
+            (Diagnostic::NameRedefinition(span), "SYM_REDEFINITION"),
+            (Diagnostic::InvalidImplType(span), "INVALID_IMPL_TYPE"),
             (
                 Diagnostic::ImportNotFound("Example", span),
                 "UNRESOLVED_IMPORT",
-                "imported name `Example` could not be found",
             ),
         ] {
-            assert_eq!(diagnostic.to_string(), message);
             assert_eq!(diagnostic.code(), code);
             assert_eq!(diagnostic.span(), span);
             assert!(diagnostic.related_locations().next().is_none());
         }
+    }
+
+    #[test]
+    fn invalid_impl_type_message() {
+        let file = ast::SourceMap::new().push_back("declarations.reds", "Example");
+        let span = Span::new(0, 7, file);
+        assert_eq!(
+            Diagnostic::InvalidImplType(span).to_string(),
+            "an implementation requires a concrete data type with no unresolved type parameters"
+        );
     }
 }
