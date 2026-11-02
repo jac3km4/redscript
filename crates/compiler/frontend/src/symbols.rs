@@ -141,6 +141,18 @@ impl<'ctx> Symbols<'ctx> {
             .map(|entry| entry.map_key(FreeFunctionIndex))
     }
 
+    /// Look up only the overload family containing the resolved function.
+    pub fn free_function_overloads(
+        &self,
+        index: FreeFunctionIndex,
+    ) -> impl Iterator<Item = FunctionEntry<FreeFunctionIndex, &QualifiedName<'ctx>, &FreeFunction<'ctx>>>
+    {
+        self.get_free_function(index)
+            .into_iter()
+            .flat_map(|(name, _)| self.free_funcs.by_name(name))
+            .map(|entry| entry.map_key(FreeFunctionIndex))
+    }
+
     pub fn types(&self) -> impl Iterator<Item = (TypeId<'ctx>, &TypeDef<'ctx>)> {
         self.types.iter().map(|(id, def)| (*id, def))
     }

@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use redscript_community_ast as ast;
 use redscript_compiler_frontend::{
-    FunctionType, LoweredFunction, MethodId, Symbols, Type, TypeSchema, expr_type, ir, predef,
+    FunctionType, LoweredFunction, MethodId, PolyType, QueryError, RefType, Symbols, Type,
+    TypeSchema, Variance, expr_type, ir, predef,
 };
 
 use crate::{Result, SourceMapping, error, target};
@@ -290,7 +291,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     text.push_str(&format!(
                         "var {} = {};\n",
                         self.local_declaration(*local)?,
-                        self.expr(expr)?
+                        self.contextual_expr(expr, &self.type_of(place)?)?
                     ));
                 } else {
                     text.push_str(&format!("{};\n", self.expr(e)?));
@@ -404,7 +405,10 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                         ));
                         return Ok(());
                     }
-                    text.push_str(&format!("return {};\n", self.expr(value)?));
+                    text.push_str(&format!(
+                        "return {};\n",
+                        self.contextual_expr(value, self.signature.return_type())?
+                    ));
                 } else {
                     text.push_str("return;\n");
                 }
@@ -678,7 +682,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 Ok(format!(
                     "{} = {}",
                     self.expr_at(place, 2)?,
-                    self.expr(expr)?
+                    self.contextual_expr(expr, &self.type_of(place)?)?
                 ))
             }
             ir::Expr::Index { array, index, .. } => {
@@ -760,6 +764,264 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     && matches!(typ, Type::Data(app) if self.symbols.get_type(app.id()).and_then(|d| d.schema().as_aggregate()).is_some_and(|a| !a.flags().is_struct() && !a.flags().is_never_ref()))
             }
             _ => false,
+        })
+    }
+
+    // Only the immediate typed sink may supply a conversion. In particular, do
+    // not propagate it through conditionals, casts, or another conversion: doing
+    // so can remove a strong handle before its original lifetime ends.
+    fn contextual_expr(&self, e: &ir::Expr<'ctx>, expected: &Type<'ctx>) -> Result<String> {
+        if let ir::Expr::Call { call, .. } = e
+            && let ir::Call::FreeFunction { function, args, .. } = &**call
+            && let Some((_, def)) = self.symbols.get_free_function(*function)
+            && let Some(conversion @ (ir::Intrinsic::RefToWeakRef | ir::Intrinsic::WeakRefToRef)) =
+                def.intrinsic()
+        {
+            let invalid = || {
+                error(
+                    "strong/weak reference coercion requires an exact contextual target",
+                    Some(e.span()),
+                )
+            };
+            let [arg] = &args[..] else {
+                return Err(invalid());
+            };
+            let source = self.type_of(arg)?;
+            let result = self.type_of(e)?;
+
+            let (from, to) = if conversion == ir::Intrinsic::RefToWeakRef {
+                (RefType::Strong, RefType::Weak)
+            } else {
+                (RefType::Weak, RefType::Strong)
+            };
+            // Ordinary class types are the IR's canonical strong handles;
+            // explicit ref<T> wrappers may also occur in resolved types.
+            let reference_kind = |typ: &Type<'ctx>| {
+                typ.ref_type().or_else(|| match typ {
+                    Type::Data(app)
+                        if self
+                            .symbols
+                            .get_type(app.id())
+                            .and_then(|def| def.schema().as_aggregate())
+                            .is_some_and(|agg| {
+                                !agg.flags().is_struct()
+                                    && !agg.flags().is_never_ref()
+                                    && !agg.flags().is_mixed_ref()
+                            }) =>
+                    {
+                        Some(RefType::Strong)
+                    }
+                    _ => None,
+                })
+            };
+            if &result != expected
+                || reference_kind(&source) != Some(from)
+                || reference_kind(&result) != Some(to)
+                || source.unwrap_ref_or_self() != result.unwrap_ref_or_self()
+            {
+                return Err(invalid());
+            }
+            // Validate both representations, and keep the operand at this exact
+            // execution point. Ordinary expression emission still rejects any
+            // inner conversion instead of cancelling a strong/weak round trip.
+            target::typ(&result, self.symbols)?;
+            target::typ(&source, self.symbols)?;
+            return self.expr_at(arg, 2);
+        }
+        self.expr(e)
+    }
+
+    fn call_args(
+        &self,
+        signature: &FunctionType<'ctx>,
+        args: &[ir::Expr<'ctx>],
+        call: &ir::Call<'ctx>,
+    ) -> Result<String> {
+        let contextual = self.call_context(signature, args, call)?;
+        args.iter()
+            .enumerate()
+            .map(|(i, arg)| {
+                if contextual
+                    && let Some(param) = signature.params().get(i)
+                    && !param.flags().is_out()
+                {
+                    self.contextual_expr(arg, param.type_())
+                } else {
+                    self.expr(arg)
+                }
+            })
+            .collect::<Result<Vec<_>>>()
+            .map(|v| v.join(", "))
+    }
+
+    fn erased_operand<'e>(&self, arg: &'e ir::Expr<'ctx>) -> Option<&'e ir::Expr<'ctx>> {
+        let ir::Expr::Call { call, .. } = arg else {
+            return None;
+        };
+        let ir::Call::FreeFunction { function, args, .. } = &**call else {
+            return None;
+        };
+        let [operand] = &args[..] else { return None };
+        match self.symbols[*function].intrinsic()? {
+            ir::Intrinsic::RefToWeakRef | ir::Intrinsic::WeakRefToRef => Some(operand),
+            _ => None,
+        }
+    }
+
+    // This is a proof of noncompetition, not a replacement target overload resolver:
+    // any other possibly viable declaration blocks erasure. In particular, a ref
+    // versus weak overload remains a competitor even if the original IR chose one.
+    fn call_context(
+        &self,
+        signature: &FunctionType<'ctx>,
+        args: &[ir::Expr<'ctx>],
+        call: &ir::Call<'ctx>,
+    ) -> Result<bool> {
+        let rewritten = |i: usize, arg| {
+            signature
+                .params()
+                .get(i)
+                .filter(|p| !p.flags().is_out())
+                .and_then(|_| self.erased_operand(arg))
+        };
+        // Ordinary calls without immediate erasures do not query overloads.
+        if !args
+            .iter()
+            .enumerate()
+            .any(|(i, arg)| rewritten(i, arg).is_some())
+        {
+            return Ok(false);
+        }
+        let types = args
+            .iter()
+            .enumerate()
+            .map(|(i, arg)| {
+                if matches!(arg, ir::Expr::Nop(_)) {
+                    Ok(None)
+                } else {
+                    let arg = rewritten(i, arg).unwrap_or(arg);
+                    match expr_type(arg, self.function, self.symbols) {
+                        Ok(typ) => Ok(Some(typ)),
+                        // Null's contextual type is not retained by the IR. Keep
+                        // it unknown for viability rather than inventing a class.
+                        Err(QueryError::UnknownNullType) => Ok(Some(Type::Nothing)),
+                        Err(err) => Err(error(err.to_string(), Some(arg.span()))),
+                    }
+                }
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let viable = |candidate: &FunctionType<'ctx>| {
+            if !candidate.is_valid()
+                || args.len() < candidate.min_args()
+                || args.len() > candidate.max_args()
+            {
+                return false;
+            }
+            // Generic substitution/target-specific ranking is not proven here.
+            if !candidate.type_params().is_empty() {
+                return true;
+            }
+            fn unresolved(typ: &Type<'_>) -> bool {
+                match typ {
+                    Type::Data(app) => app.args().iter().any(unresolved),
+                    // Null/bottom and unresolved variables have no concrete
+                    // disjoint target type, including inside a reference.
+                    Type::Ctx(_) | Type::Nothing => true,
+                }
+            }
+            fn numeric(typ: &Type<'_>) -> bool {
+                typ.unwrap_ref_or_self().upper_bound().is_some_and(|app| {
+                    [
+                        predef::INT8,
+                        predef::INT16,
+                        predef::INT32,
+                        predef::INT64,
+                        predef::UINT8,
+                        predef::UINT16,
+                        predef::UINT32,
+                        predef::UINT64,
+                        predef::FLOAT,
+                        predef::DOUBLE,
+                    ]
+                    .contains(&app.id())
+                })
+            }
+            types.iter().zip(candidate.params()).all(|(typ, param)| {
+                let Some(typ) = typ else {
+                    return param.flags().is_optional();
+                };
+                // Match conservatively after reference erasure, including target
+                // script-reference write-through and variant conversion. Unknown
+                // receiver type substitutions must not prove noncompetition.
+                // Target numeric conversions/contextual literal typing can differ
+                // from shared subtype checks. Even typed numeric expressions are
+                // conservatively competing; spelling is not a type proof. Out
+                // flags likewise cannot prove that emitted arguments are disjoint.
+                unresolved(param.type_())
+                    || unresolved(typ)
+                    || (numeric(typ) && numeric(param.type_()))
+                    || param
+                        .type_()
+                        .upper_bound()
+                        .is_some_and(|app| app.id() == predef::VARIANT)
+                    || PolyType::from_type(typ)
+                        .unwrap_ref_or_self(self.symbols)
+                        .is_subtype_compatible(
+                            param.type_().unwrap_ref_or_self(),
+                            Variance::Covariant,
+                            self.symbols,
+                        )
+            })
+        };
+        Ok(match call {
+            ir::Call::FreeFunction { function, .. } => self
+                .symbols
+                .free_function_overloads(*function)
+                .all(|entry| entry.key() == function || !viable(entry.func().type_())),
+            ir::Call::Static {
+                parent_id, method, ..
+            } => {
+                let (name, _) = self.symbols.get_method(*method).unwrap();
+                self.symbols
+                    .query_methods_by_name(*parent_id, name)
+                    .all(|entry| {
+                        entry.key() == method
+                            || !entry.func().flags().is_static()
+                            || !viable(entry.func().type_())
+                    })
+            }
+            ir::Call::Instance {
+                receiver,
+                method,
+                mode,
+                ..
+            } => {
+                if self.symbols[*method].flags().is_static_forwarder() {
+                    return Ok(false);
+                }
+                let typ = self.type_of(receiver)?;
+                let Some(app) = typ.unwrap_ref_or_self().upper_bound() else {
+                    return Ok(false);
+                };
+                let parent = if matches!(mode, ir::CallMode::ForceStatic) {
+                    let Some((parent, _)) = self.symbols.base_iter_with_self(app.id()).nth(1)
+                    else {
+                        return Ok(false);
+                    };
+                    parent
+                } else {
+                    app.id()
+                };
+                let (name, _) = self.symbols.get_method(*method).unwrap();
+                self.symbols
+                    .query_methods_by_name(parent, name)
+                    .all(|entry| {
+                        entry.key() == method
+                            || entry.func().flags().is_static()
+                            || !viable(entry.func().type_())
+                    })
+            }
+            ir::Call::Closure { .. } => false,
         })
     }
 
@@ -846,7 +1108,12 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 {
                     return Err(error("helper unavailable in REDmod", None));
                 }
-                Ok(format!("{}({})", target::path(&name)?, self.args(args)?))
+
+                Ok(format!(
+                    "{}({})",
+                    target::path(&name)?,
+                    self.call_args(def.type_(), args, call)?
+                ))
             }
             ir::Call::Static {
                 parent_id,
@@ -873,7 +1140,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     "{}.{}({})",
                     target::path(parent_id.as_str())?,
                     target::ident(name)?,
-                    self.args(args)?
+                    self.call_args(def.type_(), args, call)?
                 ))
             }
             ir::Call::Instance {
@@ -914,7 +1181,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 Ok(format!(
                     "{recv}.{}({})",
                     target::ident(name)?,
-                    self.args(call.args())?
+                    self.call_args(def.type_(), call.args(), call)?
                 ))
             }
             ir::Call::Closure { .. } => Err(error("function values are unsupported", None)),
