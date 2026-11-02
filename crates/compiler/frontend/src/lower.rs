@@ -398,10 +398,24 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         let ast::Condition::Expr(expr) = &case.condition else {
             unimplemented!("pattern matching in regular case statements");
         };
-        let (expr, expr_t) = self.lower_expr(expr, env)?;
-        expr_t
-            .constrain_base(scrutinee_t, self.symbols)
-            .with_span(expr.span())?;
+        let (mut expr, expr_t) = self.lower_expr_with(expr, Some(scrutinee_t), env)?;
+        let span = expr.span();
+        // Variant comparison and script-reference scrutinee dereferencing need
+        // switch-level semantics, not boxing or taking references to case values.
+        if scrutinee_t
+            .upper_bound(self.symbols)
+            .is_some_and(|app| app.id() == predef::VARIANT)
+            || matches!(
+                scrutinee_t.strip_ref(self.symbols),
+                Some((RefType::Script, _))
+            )
+        {
+            expr_t
+                .constrain_base(scrutinee_t, self.symbols)
+                .with_span(span)?;
+        } else {
+            self.coerce(&mut expr, expr_t, scrutinee_t.clone(), env, span)?;
+        }
         let block = self.lower_scoped_block(&case.body, env);
         Ok(ir::Case::new(expr, block))
     }

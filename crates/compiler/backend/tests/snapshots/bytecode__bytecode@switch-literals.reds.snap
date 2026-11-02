@@ -1,0 +1,59 @@
+---
+source: crates/compiler/backend/tests/bytecode.rs
+expression: "compile(path, |_| {})"
+input_file: crates/compiler/backend/tests/data/switch-literals.reds
+---
+// Signed;Int8 (f0)
+switch 6 j20
+param 0 "value": "Int8"
+switch.label 4 9
+i8.const -128
+switch.label 7 2
+i8.const 127
+jump 0
+
+// Unsigned;Uint8Bool (f1)
+jump.if_not 71
+param 1 "run": "Bool"
+switch 9 j20
+param 2 "value": "Uint8"
+switch.label 4 13
+u8.const 0
+switch.label 4 21
+u8.const 255
+switch.default
+jump 12
+assign
+param 2 "value": "Uint8"
+u8.const 1
+jump -65
+jump 0
+jump 3
+jump -74
+
+// Wide;Uint64 (f2)
+switch 14 j20
+param 3 "value": "Uint64"
+switch.label 14 9
+u64.const 1
+jump 0
+
+// Read; (f3)
+return
+u8.const 255
+
+// Ordered; (f4)
+switch 9 j27
+invoke.static j16 l35 f3 Read; 0000000000000000
+param.end
+switch.label 20 2
+u8.const 0
+invoke.static j16 l37 f3 Read; 0000000000000000
+param.end
+switch.label 21 16
+invoke.static j16 l38 f3 Read; 0000000000000000
+param.end
+jump 10
+switch.label 7 2
+u8.const 255
+jump 0
