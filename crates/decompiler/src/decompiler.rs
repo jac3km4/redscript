@@ -39,6 +39,7 @@ struct Decompiler<'scope, 'ctx, 'i> {
     control_flow: &'scope ControlFlowBlock,
     liveness: HashMap<LocalIndex, Bounds>,
     declared: HashSet<Declaration>,
+    written: HashSet<&'i str>,
     verbosity: Verbosity,
 }
 
@@ -57,6 +58,7 @@ impl<'scope, 'ctx: 'i, 'i> Decompiler<'scope, 'ctx, 'i> {
             bundle,
             liveness: calculate_liveness(code),
             declared: HashSet::new(),
+            written: HashSet::new(),
             verbosity,
         }
     }
@@ -334,6 +336,7 @@ impl<'scope, 'ctx: 'i, 'i> Decompiler<'scope, 'ctx, 'i> {
 
                         let local = self.bundle.try_get_item(local_idx)?;
                         let name = self.bundle.try_get_item_hint(local.name(), "local name")?;
+                        self.written.insert(name);
                         let typ = extract_type(local.type_(), self.bundle)?;
                         let value = self.consume_expr()?.into_expr();
 
@@ -346,12 +349,12 @@ impl<'scope, 'ctx: 'i, 'i> Decompiler<'scope, 'ctx, 'i> {
                         });
                     }
                     ast::Expr::Assign {
-                        lhs: self.consume_expr()?.into_expr().into(),
+                        lhs: self.consume_write_target()?.into(),
                         rhs: self.consume_expr()?.into_expr().into(),
                     }
                 } else {
                     ast::Expr::Assign {
-                        lhs: self.consume_expr()?.into_expr().into(),
+                        lhs: self.consume_write_target()?.into(),
                         rhs: self.consume_expr()?.into_expr().into(),
                     }
                 }
@@ -634,6 +637,24 @@ impl<'scope, 'ctx: 'i, 'i> Decompiler<'scope, 'ctx, 'i> {
         Ok(args)
     }
 
+    fn consume_write_target(&mut self) -> Result<ast::Expr<'i>> {
+        let target = self.consume_expr()?.into_expr();
+        self.record_write(&target);
+        Ok(target)
+    }
+
+    fn record_write(&mut self, target: &ast::Expr<'i>) {
+        match target {
+            ast::Expr::Ident(name) => {
+                self.written.insert(name);
+            }
+            ast::Expr::Index { expr, .. } | ast::Expr::Member { expr, .. } => {
+                self.record_write(expr);
+            }
+            _ => {}
+        }
+    }
+
     #[inline]
     fn consume_intrinsic(&mut self, name: &'static str, arg_count: usize) -> Result<ast::Expr<'i>> {
         self.consume_intrinsic_with_type_args(name, arg_count, vec![])
@@ -645,9 +666,25 @@ impl<'scope, 'ctx: 'i, 'i> Decompiler<'scope, 'ctx, 'i> {
         arg_count: usize,
         type_args: Vec<ast::Type<'i>>,
     ) -> Result<ast::Expr<'i>> {
-        let args = (0..arg_count)
+        let args: Box<[_]> = (0..arg_count)
             .map(|_| Ok(self.consume_expr()?.into_expr()))
             .collect::<Result<_>>()?;
+        if matches!(
+            name,
+            "ArrayClear"
+                | "ArrayResize"
+                | "ArrayPush"
+                | "ArrayPop"
+                | "ArrayInsert"
+                | "ArrayRemove"
+                | "ArrayGrow"
+                | "ArrayErase"
+                | "ArraySort"
+                | "ArraySortByPredicate"
+        ) && let Some(target) = args.first()
+        {
+            self.record_write(target);
+        }
         Ok(ast::Expr::Call {
             expr: ast::Expr::Ident(name).into(),
             type_args: type_args.into(),
@@ -668,8 +705,9 @@ impl<'scope, 'ctx: 'i, 'i> Decompiler<'scope, 'ctx, 'i> {
 
                 // Hoisting loses the initializer's execution point. Expanded array
                 // initialization and assignments inside expressions cannot become
-                // later writes to an uninitialized const declaration.
-                if local.flags().is_const() && self.liveness.contains_key(&local_idx) {
+                // later writes to an uninitialized const declaration. Read-only
+                // locals can retain their VM-default value without an initializer.
+                if local.flags().is_const() && self.written.contains(name.as_ref()) {
                     return Err(Error::UnsupportedConstInitializer(name.to_string()));
                 }
 

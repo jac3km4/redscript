@@ -65,6 +65,51 @@ fn ordinary_const_declarations_roundtrip() {
 }
 
 #[test]
+fn read_only_default_const_variant_roundtrips() {
+    let bytes = compile("func Probe() -> Variant { const value: Variant; return value; }");
+    let bundle = ScriptBundle::from_bytes(&bytes).unwrap();
+    let function = bundle
+        .indexed_definitions()
+        .find_map(|def| match def {
+            IndexedDefinition::Function(_, function)
+                if bundle[function.name()].starts_with("Probe;") =>
+            {
+                Some(function)
+            }
+            _ => None,
+        })
+        .unwrap();
+    let code = function
+        .body()
+        .code_iter()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert!(
+        code.iter()
+            .all(|instr| !matches!(instr, redscript_io::Instr::Assign))
+    );
+    let local_name = &bundle[bundle[function.locals()[0]].name()];
+    for settings in [Settings::default(), Settings::default().verbose()] {
+        let item = decompile_function(function, &bundle, &settings).unwrap();
+        let output = item
+            .as_fmt(FormatCtx::new(
+                &FormatSettings::default(),
+                &HashMap::default(),
+            ))
+            .to_string();
+        assert!(
+            output.contains(&format!("const {local_name}: Variant;")),
+            "{output}"
+        );
+        assert!(
+            output.contains(&format!("return {local_name};")),
+            "{output}"
+        );
+        compile(&output.replace(local_name.as_ref(), "value"));
+    }
+}
+
+#[test]
 fn expanded_const_array_initializers_fail_closed() {
     for value in ["[]", "[1, 2]"] {
         let bytes = compile(&format!(
