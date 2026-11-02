@@ -25,6 +25,7 @@ use crate::{IndexSet, LowerReporter, MethodId, Param, Variance, ir};
 
 mod array_guard;
 mod calls;
+mod conversions;
 mod env;
 mod error;
 mod pattern;

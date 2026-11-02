@@ -367,3 +367,136 @@ fn community_cast_behavior_is_unchanged_in_mixed_sources() {
         );
     }
 }
+
+fn converted<'a, 'ctx>(
+    expr: &'a ir::Expr<'ctx>,
+    symbols: &Symbols<'ctx>,
+    source: &str,
+    target: &str,
+) -> &'a ir::Expr<'ctx> {
+    let ir::Expr::Call { call, .. } = expr else {
+        panic!("expected conversion")
+    };
+    let ir::Call::FreeFunction {
+        function,
+        args,
+        type_args,
+    } = &**call
+    else {
+        panic!()
+    };
+    let provider = &symbols[*function];
+    assert!(provider.flags().is_native());
+    assert!(provider.type_().conversion().is_some());
+    assert!(type_args.is_empty());
+    assert_eq!(provider.type_().params()[0].type_().to_string(), source);
+    assert_eq!(provider.type_().return_type().to_string(), target);
+    assert_eq!(args.len(), 1);
+    &args[0]
+}
+
+#[test]
+fn native_provider_explicit_call_evaluates_operand_once() {
+    for qualifier in ["", "implicit "] {
+        analyze(
+            &format!(
+                "import {qualifier}cast(value: Int32): Float; import function Tick(): Int32; function Run(): Float {{ return (Float)Tick(); }}"
+            ),
+            "",
+            false,
+            |unit, symbols, codes| {
+                assert!(codes.is_empty(), "{codes:?}");
+                let operand = converted(returned(unit, symbols, "Run"), symbols, "Int32", "Float");
+                let ir::Expr::Call { call, .. } = operand else {
+                    panic!()
+                };
+                let ir::Call::FreeFunction { function, args, .. } = &**call else {
+                    panic!()
+                };
+                assert!(
+                    symbols
+                        .free_functions()
+                        .any(|e| e.key() == function && e.name().to_string() == "Tick")
+                );
+                assert!(args.is_empty());
+            },
+        );
+    }
+}
+
+#[test]
+fn native_provider_explicit_gates_and_ordinary_precedence() {
+    for declaration in [
+        "cast(value: Int32): Float { return 1.0; }",
+        "import cast(const value: Int32): Float;",
+        "import cast(out value: Int32): Float;",
+        "import cast(optional value: Int32): Float;",
+        "import cast(skip value: Int32): Float;",
+        "import cast(value: Int32): const Float;",
+        "import cast(value: script_ref<Int32>): Float;",
+    ] {
+        analyze(
+            &format!("{declaration} function Run(value: Int32): Float {{ return (Float)value; }}"),
+            "",
+            false,
+            |_, _, codes| assert!(!codes.is_empty(), "{declaration}"),
+        );
+    }
+    for reverse in [false, true] {
+        analyze(
+            "import cast(value: Int32): Float; function Run(value: Int32): Float { return (Float)value; }",
+            "native func Cast(value: Int32) -> Float;",
+            reverse,
+            |unit, symbols, codes| {
+                assert!(codes.is_empty(), "{codes:?}");
+                let ir::Expr::Call { call, .. } = returned(unit, symbols, "Run") else {
+                    panic!()
+                };
+                let ir::Call::FreeFunction { function, .. } = &**call else {
+                    panic!()
+                };
+                assert!(symbols[*function].type_().conversion().is_none());
+            },
+        );
+    }
+    analyze(
+        "import cast(value: Int32): Float; function Run(value: Int32): Float { return (Float)value; }",
+        "native func Cast(value: Bool) -> Float;",
+        false,
+        |_, _, codes| assert!(!codes.is_empty()),
+    );
+    analyze(
+        "import cast(value: Int32): Float; function Run(): Float { return (Float)1; }",
+        "",
+        false,
+        |_, _, codes| assert_eq!(codes, ["UNSUPPORTED_NATIVE_CONVERSION"]),
+    );
+}
+
+#[test]
+fn native_provider_explicit_ambiguity_and_community_consumers_fail_closed() {
+    analyze(
+        "import cast(value: Int32): Float; import implicit cast(value: Int32): Float; function Run(value: Int32): Float { return (Float)value; }",
+        "",
+        false,
+        |_, _, codes| assert_eq!(codes, ["UNSUPPORTED_NATIVE_CONVERSION"]),
+    );
+    analyze(
+        "import cast(value: Int32): Float;",
+        "func Community(value: Int32) -> Float { return Cast<Float>(value); }",
+        false,
+        |_, _, codes| assert_eq!(codes, ["UNSUPPORTED_NATIVE_CONVERSION"]),
+    );
+    analyze(
+        "function Run(value: Int32): Float { return (Float)value; }",
+        "native explicit func Cast(value: Int32) -> Float;",
+        false,
+        |_, _, codes| assert_eq!(codes, ["UNSUPPORTED_NATIVE_CONVERSION"]),
+    );
+    analyze(
+        "function Run(value: Int32): Float { return (Float)value; }",
+        "native explicit func Cast<T>(value: T) -> Float;",
+        false,
+        |_, _, codes| assert_eq!(codes, ["UNSUPPORTED_NATIVE_CONVERSION"]),
+    );
+}

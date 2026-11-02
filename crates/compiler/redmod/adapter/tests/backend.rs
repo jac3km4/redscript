@@ -617,3 +617,29 @@ fn bracket_metadata_hints_and_field_flags_survive_bundle_io() {
     assert_eq!(value.hint().map(AsRef::as_ref), Some("Separate hint"));
     assert!(value.flags().is_inline());
 }
+
+#[test]
+fn explicit_provider_uses_native_binding_and_serializes_operand_once() {
+    let emitted = compile(
+        "import cast(value: Int32): Float; import function Tick(): Int32; function Run(): Float { return (Float)Tick(); }",
+    );
+    let bytes = emitted.into_writeable().to_bytes().unwrap();
+    let bundle = ScriptBundle::from_bytes(&bytes).unwrap();
+    let provider = function(&bundle, "Cast;Int32;Float");
+    assert!(provider.flags().is_native());
+    assert!(provider.body().is_empty());
+    assert_eq!(provider.parameters().len(), 1);
+    assert_eq!(
+        &*bundle[bundle[provider.return_type().unwrap()].name()],
+        "Float"
+    );
+    let code = function(&bundle, "Run;")
+        .body()
+        .code_iter()
+        .with_offsets()
+        .map(|(offset, instr)| (offset, instr.unwrap()))
+        .collect::<Vec<_>>();
+    let cast = call_position(&bundle, &code, "Cast;Int32;Float");
+    let tick = call_position(&bundle, &code, "Tick");
+    assert!(cast < tick);
+}

@@ -246,6 +246,27 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 result_t,
             ));
         }
+        // Ordinary Cast return-target overloads retain precedence, even if their
+        // arguments later fail. Do not retry lowering the already-lowered operand.
+        if let Some((_, expr_t)) = native_arg.as_ref()
+            && !env.query_free_functions("Cast", self.symbols).any(|entry| {
+                conversion_is_eligible(entry.func(), env)
+                    && target_t.is_subtype_compatible(
+                        entry.func().type_().return_type(),
+                        Variance::Covariant,
+                        self.symbols,
+                    )
+            })
+            && let (Some(source), Some(target)) = (
+                conversions::fixed_id(expr_t),
+                conversions::fixed_id(&target_t),
+            )
+            && let Some(function) =
+                conversions::provider(source, target, false, env, self.symbols, span)?
+        {
+            let (expr, _) = native_arg.take().unwrap();
+            return Ok((conversions::call(function, expr, span), target_t));
+        }
         let mut candidates = env
             .query_free_functions("Cast", self.symbols)
             .filter(|entry| {
@@ -887,7 +908,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             .coerce(&rhs, self.symbols)
             .with_span(span)
             .map_err(|error| {
-                if unsupported_implicit_conversion(&lhs, &rhs, env, self.symbols) {
+                if conversions::unsupported_implicit(&lhs, &rhs, env, self.symbols) {
                     Error::UnsupportedNativeConversion(span)
                 } else {
                     error
@@ -1154,32 +1175,6 @@ fn more_specific_reference_signature<'ctx>(
         strict |= left.id() != right.id();
     }
     strict
-}
-
-// Diagnostic attribution only: no chaining, reference erasure, generic inference,
-// or numeric ranking. Never use this relation to select a conversion.
-fn unsupported_implicit_conversion<'ctx>(
-    source: &PolyType<'ctx>,
-    target: &PolyType<'ctx>,
-    env: &Env<'_, 'ctx>,
-    symbols: &Symbols<'ctx>,
-) -> bool {
-    env.query_free_functions("Cast", symbols).any(|entry| {
-        let typ = entry.func().type_();
-        if !typ.is_valid()
-            || typ.conversion() != Some(ast::ConversionKind::Implicit)
-            || !typ.type_params().is_empty()
-        {
-            return false;
-        }
-        let [param] = typ.params() else { return false };
-        source
-            .coalesce(symbols)
-            .is_ok_and(|source| source == *param.type_())
-            && target
-                .coalesce(symbols)
-                .is_ok_and(|target| target == *typ.return_type())
-    })
 }
 
 fn conversion_is_eligible(function: &crate::FreeFunction<'_>, env: &Env<'_, '_>) -> bool {

@@ -195,7 +195,7 @@ fn mixed_source_member_and_operator_conversions_are_not_dispatchable() {
 }
 
 #[test]
-fn retained_implicit_declarations_never_become_ordinary_cast_overloads() {
+fn retained_conversions_dispatch_only_supported_native_providers() {
     for declaration in [
         "implicit cast(value: Data): Int32 { return value.value; }",
         "import implicit cast(value: Data): Int32;",
@@ -234,12 +234,11 @@ fn retained_implicit_declarations_never_become_ordinary_cast_overloads() {
             .iter()
             .map(redscript_compiler_frontend::Diagnostic::code)
             .collect::<Vec<_>>();
-        assert_eq!(
-            codes,
-            ["UNSUPPORTED_NATIVE_CONVERSION"],
-            "{declaration}: {:?}",
-            reporter.reported()
-        );
-        assert_eq!(reporter.reported()[0].span().file, file);
+        if declaration.starts_with("import") {
+            assert!(codes.is_empty(), "{declaration}: {:?}", reporter.reported());
+        } else {
+            assert_eq!(codes, ["UNSUPPORTED_NATIVE_CONVERSION"]);
+            assert_eq!(reporter.reported()[0].span().file, file);
+        }
     }
 }
