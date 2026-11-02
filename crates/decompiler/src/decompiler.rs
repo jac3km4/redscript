@@ -651,6 +651,17 @@ impl<'scope, 'ctx: 'i, 'i> Decompiler<'scope, 'ctx, 'i> {
             ast::Expr::Index { expr, .. } | ast::Expr::Member { expr, .. } => {
                 self.record_write(expr);
             }
+            // Quiet mode strips these reference-preserving wrappers entirely.
+            ast::Expr::Call { expr, args, .. }
+                if matches!(
+                    expr.as_ref(),
+                    ast::Expr::Ident("Deref" | "AsRef" | "WeakRefToRef" | "RefToWeakRef")
+                ) =>
+            {
+                if let [target] = args.as_ref() {
+                    self.record_write(target);
+                }
+            }
             _ => {}
         }
     }

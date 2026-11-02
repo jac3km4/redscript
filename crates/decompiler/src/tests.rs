@@ -277,6 +277,44 @@ fn const_assignment_expression_requires_a_preservable_initializer() {
 }
 
 #[test]
+fn wrapped_const_array_mutations_fail_closed_in_both_verbosity_modes() {
+    let mut bundle = ScriptBundle::default();
+    let mut function = function(&mut bundle);
+    let function_idx = bundle.define(function.clone());
+    let name = bundle.cnames_mut().add("Int32");
+    let element = bundle.define(Type::new(name, TypeKind::Primitive));
+    let name = bundle.cnames_mut().add("array:Int32");
+    let array = bundle.define(Type::new(name, TypeKind::Array(element)));
+    let name = bundle.cnames_mut().add("c");
+    let local = bundle.define(Local::new(
+        name,
+        function_idx,
+        array,
+        LocalFlags::default().with_is_const(true),
+    ));
+    function.set_locals([local]);
+    for wrappers in [
+        vec![Instr::Deref(array)],
+        vec![Instr::AsRef(array)],
+        vec![Instr::WeakRefToRef],
+        vec![Instr::RefToWeakRef],
+        vec![Instr::Deref(array), Instr::AsRef(array)],
+    ] {
+        let mut code = vec![Instr::ArrayClear(array)];
+        code.extend(wrappers);
+        code.extend([Instr::Local(local), Instr::Return, Instr::Nop]);
+        let cf = build_control_flow(CodeIter::new(&code)).unwrap();
+        for verbosity in [Verbosity::Quiet, Verbosity::Verbose] {
+            let error = decompile_block(&function, &bundle, &code, &cf, verbosity).unwrap_err();
+            assert!(matches!(
+                error,
+                crate::error::Error::UnsupportedConstInitializer(name) if name == "c"
+            ));
+        }
+    }
+}
+
+#[test]
 fn assignment_expression_keeps_hoisted_local_type() {
     let mut bundle = ScriptBundle::default();
     let mut function = function(&mut bundle);
