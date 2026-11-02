@@ -49,14 +49,26 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 .query_methods_by_name(parent, name)
                 .any(|entry| instance || entry.func().flags().is_static());
             if has_method {
-                let receiver = if instance {
-                    ast::Expr::This
-                } else {
-                    ast::Expr::Ident(parent.as_str())
-                };
+                if !instance {
+                    let (MemberCall::MethodCall(call), typ) = self
+                        .member_call_builder()
+                        .receiver(expr)
+                        .static_parent(parent)
+                        .member(name)
+                        .type_args(type_args)
+                        .args(args)
+                        .maybe_type_hint(hint)
+                        .env(env)
+                        .call_span(call_span)
+                        .build()?
+                    else {
+                        unreachable!("known static method resolved as a field")
+                    };
+                    return Ok((ir::Expr::call(call, call_span), typ));
+                }
                 let member = (
                     ast::Expr::Member {
-                        expr: Box::new((receiver, *expr_span)),
+                        expr: Box::new((ast::Expr::This, *expr_span)),
                         member: name,
                     },
                     *expr_span,
@@ -390,6 +402,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
     fn member_call_builder(
         &mut self,
         receiver @ (_, expr_span): &Spanned<ast::SourceExpr<'ctx>>,
+        static_parent: Option<TypeId<'ctx>>,
         member: &'ctx str,
         type_args: &[Spanned<ast::SourceType<'ctx>>],
         args: &[Spanned<ast::SourceExpr<'ctx>>],
@@ -397,8 +410,14 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         env: &Env<'_, 'ctx>,
         call_span: Span,
     ) -> LowerResult<'ctx, (MemberCall<'ctx>, PolyType<'ctx>)> {
-        if let (ast::Expr::Ident(ident), _) = receiver
-            && let Some(&TypeRef::Id(id)) = env.types().get(ident)
+        let static_parent = static_parent.or_else(|| match receiver {
+            (ast::Expr::Ident(ident), _) => match env.types().get(ident) {
+                Some(&TypeRef::Id(id)) => Some(id),
+                _ => None,
+            },
+            _ => None,
+        });
+        if let Some(id) = static_parent
             && let mut candidates = self
                 .symbols
                 .query_methods_by_name(id, member)
