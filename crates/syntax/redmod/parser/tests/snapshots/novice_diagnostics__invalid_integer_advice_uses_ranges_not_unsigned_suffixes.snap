@@ -1,0 +1,93 @@
+---
+source: crates/syntax/redmod/parser/tests/novice_diagnostics.rs
+expression: "diagnostics.join(\"\\n\")"
+---
+error: unsigned literal suffixes are not supported in REDmod
+ --> literal.script:1:1
+  |
+1 | 1u
+  | ^^
+
+error: unsigned literal suffixes are not supported in REDmod
+ --> literal.script:1:1
+  |
+1 | 1ul
+  | ^^^
+
+error: unsigned literal suffixes are not supported in REDmod
+ --> literal.script:1:1
+  |
+1 | 4294967296u
+  | ^^^^^^^^^^^
+
+error: invalid Uint32 literal; use a value between 0 and 4294967295
+ --> literal.script:1:1
+  |
+1 | 4294967296u
+  | ^^^^^^^^^^^
+
+error: unsigned literal suffixes are not supported in REDmod
+ --> literal.script:1:1
+  |
+1 | 18446744073709551616ul
+  | ^^^^^^^^^^^^^^^^^^^^^^
+
+error: invalid Uint64 literal; use a value between 0 and 18446744073709551615
+ --> literal.script:1:1
+  |
+1 | 18446744073709551616ul
+  | ^^^^^^^^^^^^^^^^^^^^^^
+
+error: invalid Int64 literal; use a value between -9223372036854775808 and 9223372036854775807
+ --> literal.script:1:1
+  |
+1 | 9223372036854775809l
+  | ^^^^^^^^^^^^^^^^^^^^
+
+error: invalid Int64 literal; use a value between -9223372036854775808 and 9223372036854775807
+ --> literal.script:1:1
+  |
+1 | 18446744073709551616l
+  | ^^^^^^^^^^^^^^^^^^^^^
+
+error: invalid integer literal; use a value between -9223372036854775808 and 9223372036854775807; add the `l` suffix for Int64 expressions
+ --> literal.script:1:1
+  |
+1 | 9223372036854775808
+  | ^^^^^^^^^^^^^^^^^^^
+
+error: invalid integer literal; use a value between -9223372036854775808 and 9223372036854775807; add the `l` suffix for Int64 expressions
+ --> literal.script:1:1
+  |
+1 | 999999999999999999999
+  | ^^^^^^^^^^^^^^^^^^^^^
+
+error: invalid Int64 literal; integer literals cannot have a decimal point or exponent; remove the integer suffix and use a decimal point or `d` suffix for floating-point values
+ --> literal.script:1:1
+  |
+1 | 1.5l
+  | ^^^^
+
+error: unsigned literal suffixes are not supported in REDmod
+ --> literal.script:1:1
+  |
+1 | 1e3u
+  | ^^^^
+
+error: invalid Uint32 literal; integer literals cannot have a decimal point or exponent; remove the integer suffix and use a decimal point or `d` suffix for floating-point values
+ --> literal.script:1:1
+  |
+1 | 1e3u
+  | ^^^^
+
+error: unsigned literal suffixes are not supported in REDmod
+ --> literal.script:1:1
+  |
+1 | .5ul
+  | ^^^^
+
+error: invalid Uint64 literal; integer literals cannot have a decimal point or exponent; remove the integer suffix and use a decimal point or `d` suffix for floating-point values
+ --> literal.script:1:1
+  |
+1 | .5ul
+  | ^^^^
