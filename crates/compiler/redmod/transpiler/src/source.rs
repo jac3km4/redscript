@@ -59,6 +59,16 @@ struct Guard {
 impl<'src> AstVisitor<'src, WithSpan> for Guard {
     type Error = TranspileDiagnostic;
 
+    fn visit_node(&mut self, node: ast::AstNode<'_, 'src, WithSpan>) -> Result<()> {
+        if let ast::AstNode::Stmt((ast::Stmt::Let { is_const: true, .. }, span)) = node {
+            return Err(error(
+                "const locals are unsupported: REDmod initialization semantics differ",
+                Some(*span),
+            ));
+        }
+        Ok(())
+    }
+
     fn visit_array_lit(&mut self, elems: &[Spanned<SourceExpr<'src>>]) -> Result<()> {
         if self.lazy {
             return Err(error(

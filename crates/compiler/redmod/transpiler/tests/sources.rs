@@ -134,6 +134,39 @@ fn incompatible_callback_contracts_fail_without_output() {
 }
 
 #[test]
+fn const_locals_fail_closed_with_source_diagnostics() {
+    for body in [
+        "const value: Int32 = 1;",
+        "const value: Int32;",
+        "if true { const value = 1; }",
+        "while false { const value = 1; }",
+    ] {
+        let sources = SourceMap::new();
+        let source = format!("func Run() {{ {body} }}");
+        let selected = sources.push_back("const.reds", source.clone());
+        sources.populate_boot_lib();
+        let interner = TypeInterner::default();
+        let errors = transpile_sources(
+            &sources,
+            &[selected],
+            Symbols::with_default_types(),
+            &interner,
+        )
+        .unwrap_err();
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        let error = &errors[0];
+        assert!(
+            error.message.contains("const locals are unsupported"),
+            "{error:?}"
+        );
+        let span = error.span.unwrap();
+        assert_eq!(span.file, selected);
+        assert!(source[span.start as usize..span.end as usize].starts_with("const value"));
+        assert!(error.declaration.is_some());
+    }
+}
+
+#[test]
 fn selected_sources_need_no_manual_bindings() {
     let sources = SourceMap::new();
     sources.push_back(
