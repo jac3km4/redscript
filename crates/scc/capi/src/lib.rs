@@ -129,7 +129,8 @@ pub extern "C" fn scc_get_success(output: &SccResult) -> Option<&SccOutput> {
     }
 }
 
-/// Copies the error message into caller-owned storage without consuming `output`.
+/// Copies the error message and its underlying causes into caller-owned storage
+/// without consuming `output`.
 /// The copied bytes remain valid independently of the result.
 /// Returns the number of bytes copied excluding the null terminator.
 /// On error, a nonempty buffer is null-terminated and the message is truncated to fit.
@@ -150,7 +151,7 @@ pub unsafe extern "C" fn scc_copy_error(
     match output {
         SccResult::Success(_) => 0,
         SccResult::Error(error) => {
-            let error = error.to_string();
+            let error = format!("{error:#}");
             let max_len = error.len().min(buffer_size - 1);
             unsafe {
                 ptr::copy_nonoverlapping(error.as_ptr(), buffer, max_len);
@@ -326,6 +327,18 @@ mod tests {
         assert_eq!(copied, 4);
         assert_eq!(&buffer[..5], b"test\0");
         assert_eq!(buffer[5], 0xff);
+    }
+
+    #[test]
+    fn copy_error_preserves_chain_after_result_is_freed() {
+        let result = Box::new(SccResult::Error(
+            anyhow::anyhow!("underlying I/O failure").context("cache context"),
+        ));
+        let mut buffer = [0xff; 128];
+        let copied = unsafe { scc_copy_error(&result, buffer.as_mut_ptr(), buffer.len()) };
+        scc_free_result(result);
+        assert_eq!(&buffer[..copied], b"cache context: underlying I/O failure");
+        assert_eq!(buffer[copied], 0);
     }
 
     #[test]
