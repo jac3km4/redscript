@@ -73,6 +73,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         projection: &Projection<'_, 'ctx>,
         projection_t: &PolyType<'ctx>,
         env: &mut Env<'_, 'ctx>,
+        declaration_span: Span,
     ) -> LowerResult<'ctx, Pattern<'ctx>> {
         match pattern {
             ast::Pattern::Name((name, name_span)) => {
@@ -80,6 +81,13 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     .locals
                     .add_var(Some(name), projection_t.clone(), *name_span);
                 let local = env.define_local(name, local.clone());
+                self.record_declaration(
+                    local,
+                    env,
+                    declaration_span,
+                    ir::InitializationKind::Pattern,
+                    *name_span,
+                );
                 let projected = self.lower_projection(projection, env, *name_span)?;
                 Ok(Pattern {
                     conditions: vec![],
@@ -119,7 +127,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 let Pattern {
                     mut conditions,
                     prologue,
-                } = self.lower_pattern(pattern, projection, &binding_t, env)?;
+                } = self.lower_pattern(pattern, projection, &binding_t, env, declaration_span)?;
 
                 let projected = self.lower_projection(projection, env, *type_span)?;
                 let type_check = self
@@ -176,7 +184,8 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                             field,
                         };
 
-                        let pattern = self.lower_pattern(pattern, &project, &field_t, env);
+                        let pattern =
+                            self.lower_pattern(pattern, &project, &field_t, env, declaration_span);
                         self.reporter.unwrap_err(pattern)
                     });
 
@@ -189,7 +198,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 let Pattern {
                     mut conditions,
                     prologue,
-                } = self.lower_pattern(pattern, projection, projection_t, env)?;
+                } = self.lower_pattern(pattern, projection, projection_t, env, declaration_span)?;
                 let projected = self.lower_projection(projection, env, *span)?;
                 let (call, _) = self
                     .free_function_call_builder()
@@ -252,7 +261,8 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                         array_type: projection_t.clone(),
                         index,
                     };
-                    let result = self.lower_pattern(pattern, &projection, &elem_t, env);
+                    let result =
+                        self.lower_pattern(pattern, &projection, &elem_t, env, declaration_span);
                     self.reporter.unwrap_err(result)
                 });
                 let mut pattern =
@@ -326,7 +336,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         let Pattern {
             conditions,
             prologue,
-        } = self.lower_pattern(pattern, &projection, scrutinee_t, scope)?;
+        } = self.lower_pattern(pattern, &projection, scrutinee_t, scope, *span)?;
         let expr = conditions
             .into_iter()
             .try_fold(None, |acc, cond| {

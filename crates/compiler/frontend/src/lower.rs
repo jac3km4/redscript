@@ -172,10 +172,24 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                             }
                             let resolved = lower.resolve_type(&typ, env, type_span);
                             if let Some(typ) = lower.reporter.unwrap_err(resolved) {
-                                let local = lower
+                                let mut local = lower
                                     .locals
                                     .add_const_var(Some(name), typ.clone(), name_span, is_const)
                                     .clone();
+                                let declaration = ir::LocalDeclaration {
+                                    scope: env.scope(),
+                                    span: name_span,
+                                    initialization: ir::Initialization {
+                                        kind: ir::InitializationKind::Default,
+                                        site: name_span,
+                                    },
+                                    storage: ir::LocalStorage::Hoisted {
+                                        scope: env.scope(),
+                                        default_site: name_span,
+                                    },
+                                };
+                                local.declaration = Some(declaration);
+                                lower.locals.set_declaration(local.id, declaration);
                                 env.define_local(name, local.clone());
                                 lower
                                     .hoisted_declarations
@@ -666,6 +680,16 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                         // The hoisting pass already reported this declaration's error.
                         return Ok(ir::Stmt::Block(ir::Block::new([]), span));
                     };
+                    let mut declaration = local.declaration.expect("hoisted declaration exists");
+                    declaration.scope = env.scope();
+                    declaration.span = span;
+                    if value.is_some() {
+                        declaration.initialization = ir::Initialization {
+                            kind: ir::InitializationKind::AuthoredValue,
+                            site: span,
+                        };
+                    }
+                    self.locals.set_declaration(local.id, declaration);
                     return if let Some(value @ (_, value_span)) = value.as_deref() {
                         let (mut value, value_t) =
                             self.lower_expr_with(value, Some(&local.typ), env)?;
@@ -711,6 +735,13 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     self.coerce(&mut destination, array_type, typ.clone(), env, *value_span)?;
                     let local = env.define_local(name, local);
                     self.locals.set_initializer(local, span);
+                    self.record_declaration(
+                        local,
+                        env,
+                        span,
+                        ir::InitializationKind::AuthoredValue,
+                        span,
+                    );
                     return Ok(if elements.is_empty() {
                         // InitArray([]) is a backend no-op. Clear the lexical slot
                         // on every execution, not just its first loop iteration.
@@ -745,6 +776,13 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                             .add_const_var(Some(name), typ.clone(), name_span, is_const);
                     let local = env.define_local(name, local.clone());
                     self.locals.set_initializer(local, span);
+                    self.record_declaration(
+                        local,
+                        env,
+                        span,
+                        ir::InitializationKind::AuthoredValue,
+                        span,
+                    );
                     if let Some(temp) = array_temp {
                         self.locals.associate_temp(
                             temp,
@@ -766,6 +804,13 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                         self.locals
                             .add_const_var(Some(name), typ.clone(), name_span, is_const);
                     let local = env.define_local(name, local.clone());
+                    self.record_declaration(
+                        local,
+                        env,
+                        span,
+                        ir::InitializationKind::Default,
+                        span,
+                    );
                     ir::Stmt::InitDefault {
                         local,
                         typ: typ.into(),
@@ -927,6 +972,25 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             }
         };
         Ok(res)
+    }
+
+    fn record_declaration(
+        &mut self,
+        local: ir::Local,
+        env: &Env<'_, 'ctx>,
+        span: Span,
+        kind: ir::InitializationKind,
+        site: Span,
+    ) {
+        self.locals.set_declaration(
+            local,
+            ir::LocalDeclaration {
+                scope: env.scope(),
+                span,
+                initialization: ir::Initialization { kind, site },
+                storage: ir::LocalStorage::Lexical,
+            },
+        );
     }
 
     fn associate_array_destination(&mut self, value: &ir::Expr<'ctx>, destination: ir::Local) {
@@ -1468,6 +1532,14 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             self.locals
                 .add_var(Some(name), elem_t.clone(), name_span)
                 .clone(),
+        );
+
+        self.record_declaration(
+            elem,
+            &env,
+            span,
+            ir::InitializationKind::Iteration,
+            name_span.merge(&iter_span),
         );
 
         for (temp, purpose) in [

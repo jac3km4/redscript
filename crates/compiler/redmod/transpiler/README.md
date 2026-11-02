@@ -50,6 +50,10 @@ Shared lowering constructs direct array literals in eligible fresh lexical local
 avoiding an intermediate array and copy. Existing assignments, hoisted/native-policy
 bindings and non-array coercions retain temporaries. Empty direct initializers clear
 the local on every execution, including loop back edges.
+Shared IR also retains declaration provenance: lexical scope identity, full source
+declaration span, initialization kind/site, and lexical versus hoisted storage with
+its entry-default site. This metadata does not widen declaration fusion into
+branches or loops; const initializer tracking remains separate.
 Callbacks require a non-const Bool return contract, matching REDmod's implicit
 Bool events. Their return expressions are preserved, not evaluated into discard
 locals followed by invalid bare returns. Void and other community callback result

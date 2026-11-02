@@ -530,6 +530,49 @@ pub enum TemporaryOwner {
     IterationBinding(Local),
 }
 
+/// Lexical scope identity, unique within a function and its nested closures.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub struct ScopeId(pub u32);
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum InitializationKind {
+    AuthoredValue,
+    Default,
+    Pattern,
+    Iteration,
+}
+
+/// An initialization operation, identified by the destination local and IR span.
+/// This describes the source kind: an authored empty array remains `AuthoredValue`
+/// even when lowered to `InitDefault`. Pattern/iteration sites execute per match/step.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct Initialization {
+    pub kind: InitializationKind,
+    pub site: Span,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum LocalStorage {
+    /// Storage and visibility follow the declaration's lexical scope.
+    Lexical,
+    /// Function-wide visibility and an additional default initialization at entry.
+    /// For declarations without a value, this is also `initialization.site`.
+    Hoisted { scope: ScopeId, default_site: Span },
+}
+
+/// Source declaration provenance. The containing `LocalInfo::id` is its identity;
+/// parameters and compiler-generated temporaries have no declaration record.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct LocalDeclaration {
+    pub scope: ScopeId,
+    /// Full let statement, root pattern, or for-in statement span.
+    pub span: Span,
+    /// Source initialization, or the entry default for a valueless hoisted let.
+    /// Later assignments are not declaration initializations.
+    pub initialization: Initialization,
+    pub storage: LocalStorage,
+}
+
 #[derive(Debug, Clone)]
 pub struct LocalInfo<'ctx> {
     pub id: Local,
@@ -537,6 +580,7 @@ pub struct LocalInfo<'ctx> {
     pub is_const: bool,
     /// Exact declaration-initializer assignment site, not a later binding write.
     pub initializer: Option<Span>,
+    pub declaration: Option<LocalDeclaration>,
     pub name: Option<&'ctx str>,
     pub temporary_purpose: Option<TemporaryPurpose>,
     pub temporary_owner: Option<TemporaryOwner>,
@@ -555,6 +599,7 @@ impl<'ctx> LocalInfo<'ctx> {
             id,
             is_const: false,
             initializer: None,
+            declaration: None,
             name,
             temporary_purpose: None,
             temporary_owner: None,

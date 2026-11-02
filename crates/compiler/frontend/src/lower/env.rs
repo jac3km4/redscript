@@ -18,6 +18,8 @@ pub struct Env<'scope, 'ctx> {
     types: &'scope TypeEnv<'scope, 'ctx>,
     funcs: &'scope ScopedMap<'scope, &'ctx str, FreeFunctionIndexes>,
     locals: ScopedMap<'scope, &'ctx str, ir::LocalInfo<'ctx>>,
+    scope: ir::ScopeId,
+    scope_counter: Rc<Cell<u32>>,
 }
 
 impl<'scope, 'ctx> Env<'scope, 'ctx> {
@@ -29,6 +31,8 @@ impl<'scope, 'ctx> Env<'scope, 'ctx> {
             types,
             funcs: globals,
             locals: ScopedMap::default(),
+            scope: ir::ScopeId(0),
+            scope_counter: Rc::new(Cell::new(1)),
         }
     }
 
@@ -40,11 +44,19 @@ impl<'scope, 'ctx> Env<'scope, 'ctx> {
     }
 
     pub fn introduce_scope(&'scope self) -> Self {
+        let scope = ir::ScopeId(self.scope_counter.get());
+        self.scope_counter.set(scope.0 + 1);
         Self {
             types: self.types,
             funcs: self.funcs,
             locals: self.locals.introduce_scope(),
+            scope,
+            scope_counter: self.scope_counter.clone(),
         }
+    }
+
+    pub fn scope(&self) -> ir::ScopeId {
+        self.scope
     }
 
     pub fn query_free_functions<'a>(
@@ -360,6 +372,14 @@ impl<'scope, 'ctx> Locals<'scope, 'ctx> {
         let local = self.locals.last_mut().expect("just added local");
         local.is_const = is_const;
         local
+    }
+
+    pub fn set_declaration(&mut self, id: ir::Local, declaration: ir::LocalDeclaration) {
+        let index = self
+            .locals
+            .binary_search_by_key(&id, |local| local.id)
+            .expect("declaration belongs to a local in this function");
+        self.locals[index].declaration = Some(declaration);
     }
 
     pub fn set_initializer(&mut self, id: ir::Local, span: Span) {
