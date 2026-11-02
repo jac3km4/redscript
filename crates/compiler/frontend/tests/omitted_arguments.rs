@@ -20,6 +20,17 @@ fn check(source: &str, expected: &[(&str, &str)]) {
     assert_eq!(diagnostics.len(), expected.len(), "{diagnostics:?}");
     for (diagnostic, (code, following)) in diagnostics.iter().zip(expected) {
         assert_eq!(diagnostic.code(), *code, "{diagnostics:?}");
+        match *code {
+            "REQUIRED_ARGUMENT_OMITTED" => assert_eq!(
+                diagnostic.to_string(),
+                "a required argument cannot be omitted"
+            ),
+            "UNSUPPORTED_OMITTED_ARGUMENT" => assert_eq!(
+                diagnostic.to_string(),
+                "an argument can only be omitted for an optional parameter in a function or method call"
+            ),
+            _ => {}
+        }
         let span = diagnostic.span();
         assert_eq!(span.file, file);
         if *code != "MULTIPLE_MATCHING_OVERLOADS" {
