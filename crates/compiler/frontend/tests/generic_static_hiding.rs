@@ -33,7 +33,7 @@ fn static_hiding_compares_instantiated_base_parameters() {
         let codes = reporter
             .reported()
             .iter()
-            .map(|diagnostic| diagnostic.code())
+            .map(redscript_compiler_api::Diagnostic::code)
             .collect::<Vec<_>>();
         let expected_codes = if expected == "Base" {
             vec!["CALLING_BASE_STATIC_METHOD"]
