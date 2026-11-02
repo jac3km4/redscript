@@ -1,31 +1,21 @@
-use redscript_community_ast::SourceMap;
-use redscript_compiler_api::SourceMapExt;
+mod common;
+
 use redscript_compiler_frontend::{
-    CompileErrorReporter, LoweredCompilationUnit, LoweredFunction, Symbols, TypeInterner,
-    expr_type, infer_from_sources, ir,
+    LoweredCompilationUnit, LoweredFunction, Symbols, expr_type, ir,
 };
 
 fn analyze(
     source: &str,
     test: impl for<'ctx> FnOnce(&LoweredCompilationUnit<'ctx>, &Symbols<'ctx>, &[String]),
 ) {
-    let sources = SourceMap::new();
-    sources.push_back("shared.reds", source);
-    sources.populate_boot_lib();
-    let interner = TypeInterner::default();
-    let mut reporter = CompileErrorReporter::default();
-    let (unit, symbols) = infer_from_sources(
-        &sources,
-        Symbols::with_default_types(),
-        &mut reporter,
-        &interner,
-    );
-    let codes = reporter
-        .reported()
-        .iter()
-        .map(|d| d.code().to_owned())
-        .collect::<Vec<_>>();
-    test(&unit, &symbols, &codes);
+    common::analyze("shared.reds", source, |_, unit, symbols, reporter| {
+        let codes = reporter
+            .reported()
+            .iter()
+            .map(|d| d.code().to_owned())
+            .collect::<Vec<_>>();
+        test(unit, symbols, &codes);
+    });
 }
 
 fn function<'a, 'ctx>(

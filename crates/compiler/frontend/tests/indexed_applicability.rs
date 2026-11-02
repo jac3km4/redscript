@@ -1,61 +1,50 @@
-use redscript_community_ast::SourceMap;
-use redscript_compiler_api::SourceMapExt;
-use redscript_compiler_frontend::{
-    CompileErrorReporter, Symbols, TypeInterner, infer_from_sources, ir,
-};
+mod common;
+
+use redscript_compiler_frontend::ir;
 
 fn analyze(source: &str, expected_codes: &[&str], expected_targets: &[&str]) {
-    let sources = SourceMap::new();
-    sources.populate_boot_lib();
-    sources.push_back("indexed.reds", source);
-    let interner = TypeInterner::default();
-    let mut reporter = CompileErrorReporter::default();
-    let (unit, symbols) = infer_from_sources(
-        &sources,
-        Symbols::with_default_types(),
-        &mut reporter,
-        &interner,
-    );
-    let codes = reporter
-        .reported()
-        .iter()
-        .map(redscript_compiler_frontend::Diagnostic::code)
-        .collect::<Vec<_>>();
-    assert_eq!(codes, expected_codes, "{source}: {:?}", reporter.reported());
-    let mut targets = symbols
-        .free_functions()
-        .filter(|entry| {
-            entry
-                .name()
-                .as_single_component()
-                .is_some_and(|name| name.starts_with("Run"))
-        })
-        .filter_map(|entry| {
-            let ir::Stmt::Return(Some(expr), _) =
-                unit.functions.get(entry.key())?.block.stmts.back()?
-            else {
-                return None;
-            };
-            let ir::Expr::Call { call, .. } = &**expr else {
-                return None;
-            };
-            let ir::Call::FreeFunction { function, .. } = &**call else {
-                return None;
-            };
-            Some(
-                symbols[*function]
-                    .type_()
-                    .param_types()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(","),
-            )
-        })
-        .collect::<Vec<_>>();
-    targets.sort();
-    let mut expected = expected_targets.to_vec();
-    expected.sort();
-    assert_eq!(targets, expected, "{source}");
+    common::analyze("indexed.reds", source, |_, unit, symbols, reporter| {
+        let codes = reporter
+            .reported()
+            .iter()
+            .map(redscript_compiler_frontend::Diagnostic::code)
+            .collect::<Vec<_>>();
+        assert_eq!(codes, expected_codes, "{source}: {:?}", reporter.reported());
+        let mut targets = symbols
+            .free_functions()
+            .filter(|entry| {
+                entry
+                    .name()
+                    .as_single_component()
+                    .is_some_and(|name| name.starts_with("Run"))
+            })
+            .filter_map(|entry| {
+                let ir::Stmt::Return(Some(expr), _) =
+                    unit.functions.get(entry.key())?.block.stmts.back()?
+                else {
+                    return None;
+                };
+                let ir::Expr::Call { call, .. } = &**expr else {
+                    return None;
+                };
+                let ir::Call::FreeFunction { function, .. } = &**call else {
+                    return None;
+                };
+                Some(
+                    symbols[*function]
+                        .type_()
+                        .param_types()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join(","),
+                )
+            })
+            .collect::<Vec<_>>();
+        targets.sort();
+        let mut expected = expected_targets.to_vec();
+        expected.sort();
+        assert_eq!(targets, expected, "{source}");
+    });
 }
 
 #[test]

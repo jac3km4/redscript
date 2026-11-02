@@ -1,77 +1,66 @@
-use redscript_community_ast::SourceMap;
-use redscript_compiler_api::SourceMapExt;
-use redscript_compiler_frontend::{
-    CompileErrorReporter, Symbols, TypeInterner, infer_from_sources, ir,
-};
+mod common;
+
+use redscript_compiler_frontend::ir;
 
 fn analyze(source: &str, check: impl FnOnce(&[String], &[String])) {
-    let sources = SourceMap::new();
-    sources.populate_boot_lib();
-    let file = sources.push_back("selection.reds", source);
-    let interner = TypeInterner::default();
-    let mut reporter = CompileErrorReporter::default();
-    let (unit, symbols) = infer_from_sources(
-        &sources,
-        Symbols::with_default_types(),
-        &mut reporter,
-        &interner,
-    );
-    let codes = reporter
-        .reported()
-        .iter()
-        .map(|d| d.code().to_owned())
-        .collect::<Vec<_>>();
-    let targets = symbols
-        .free_functions()
-        .filter(|entry| {
-            entry
-                .name()
-                .as_single_component()
-                .is_some_and(|name| name.starts_with("Run"))
-                && entry.func().span().is_some_and(|span| span.file == file)
-        })
-        .filter_map(|entry| {
-            let function = unit.functions.get(entry.key())?;
-            let ir::Stmt::Return(Some(expr), _) = function.block.stmts.back()? else {
-                return None;
-            };
-            let ir::Expr::Call { call, .. } = &**expr else {
-                return None;
-            };
-            Some(match &**call {
-                ir::Call::FreeFunction { function, .. } => {
-                    format!(
-                        "free({})",
-                        symbols[*function]
-                            .type_()
-                            .param_types()
-                            .map(ToString::to_string)
-                            .collect::<Vec<_>>()
-                            .join(",")
-                    )
-                }
-                ir::Call::Instance { method, .. } | ir::Call::Static { method, .. } => {
-                    let kind = if matches!(&**call, ir::Call::Instance { .. }) {
-                        "instance"
-                    } else {
-                        "static"
-                    };
-                    format!(
-                        "{kind} {}({})",
-                        method.parent(),
-                        symbols[*method]
-                            .type_()
-                            .param_types()
-                            .map(ToString::to_string)
-                            .collect::<Vec<_>>()
-                            .join(",")
-                    )
-                }
-                ir::Call::Closure { .. } => panic!("unexpected closure"),
+    common::analyze("selection.reds", source, |file, unit, symbols, reporter| {
+        let codes = reporter
+            .reported()
+            .iter()
+            .map(|d| d.code().to_owned())
+            .collect::<Vec<_>>();
+        let targets = symbols
+            .free_functions()
+            .filter(|entry| {
+                entry
+                    .name()
+                    .as_single_component()
+                    .is_some_and(|name| name.starts_with("Run"))
+                    && entry.func().span().is_some_and(|span| span.file == file)
             })
-        })
-        .collect::<Vec<_>>();
-    check(&codes, &targets);
+            .filter_map(|entry| {
+                let function = unit.functions.get(entry.key())?;
+                let ir::Stmt::Return(Some(expr), _) = function.block.stmts.back()? else {
+                    return None;
+                };
+                let ir::Expr::Call { call, .. } = &**expr else {
+                    return None;
+                };
+                Some(match &**call {
+                    ir::Call::FreeFunction { function, .. } => {
+                        format!(
+                            "free({})",
+                            symbols[*function]
+                                .type_()
+                                .param_types()
+                                .map(ToString::to_string)
+                                .collect::<Vec<_>>()
+                                .join(",")
+                        )
+                    }
+                    ir::Call::Instance { method, .. } | ir::Call::Static { method, .. } => {
+                        let kind = if matches!(&**call, ir::Call::Instance { .. }) {
+                            "instance"
+                        } else {
+                            "static"
+                        };
+                        format!(
+                            "{kind} {}({})",
+                            method.parent(),
+                            symbols[*method]
+                                .type_()
+                                .param_types()
+                                .map(ToString::to_string)
+                                .collect::<Vec<_>>()
+                                .join(",")
+                        )
+                    }
+                    ir::Call::Closure { .. } => panic!("unexpected closure"),
+                })
+            })
+            .collect::<Vec<_>>();
+        check(&codes, &targets);
+    });
 }
 
 #[test]
