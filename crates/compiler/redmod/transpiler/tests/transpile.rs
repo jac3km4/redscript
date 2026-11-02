@@ -183,6 +183,33 @@ fn convert_mapped(source: &str) -> redscript_redmod_transpiler::TranspiledModule
 }
 
 #[test]
+fn generated_guards_simplify_only_verified_boolean_negation() {
+    let output = convert(
+        "native func OperatorLogicNot(value: Bool) -> Bool; \
+         native func OperatorLess(a: Float, b: Float) -> Bool; \
+         class Widget {} \
+         func Check(values: [Int32]) -> Bool { return true; } \
+         func Get(values: [Int32]) -> ref<Widget> { return null; } \
+         func Number(values: [Int32]) -> Float { return 0.0; } \
+         func Test(x: Float) { \
+         while Check([1]) == true {} \
+         while Check([2]) != false {} \
+         while !Check([3]) {} \
+         while IsDefined(Get([4])) {} \
+         while Number([5]) < x {} }",
+    );
+    for expected in [
+        "if (Check(arrayLiteral) != true)",
+        "if (Check(arrayLiteral_2) == false)",
+        "if (Check(arrayLiteral_3))",
+        "if (Get(arrayLiteral_4) == NULL)",
+        "if (!(Number(arrayLiteral_5) < x))",
+    ] {
+        assert!(output.contains(expected), "{expected}: {output}");
+    }
+}
+
+#[test]
 fn reserved_authored_names_keep_hygienic_recognizable_stems() {
     let output = convert(
         "func Test(name: Int32) -> Int32 { let name_ = 2; \

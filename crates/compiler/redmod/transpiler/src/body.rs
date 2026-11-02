@@ -233,8 +233,8 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         let start = text.len();
         let pad = "    ".repeat(depth);
         text.push_str(&format!(
-            "{pad}if (!{}) {{\n",
-            self.expr_at(&branch.condition, 13)?
+            "{pad}if ({}) {{\n",
+            self.negated(&branch.condition)?
         ));
         mappings.push(SourceMapping {
             generated: start..text.len(),
@@ -533,6 +533,66 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         } else {
             Ok(text)
         }
+    }
+
+    fn negated(&self, expr: &ir::Expr<'ctx>) -> Result<String> {
+        if let ir::Expr::Const(ir::Const::Bool(value), _) = expr {
+            return Ok((!value).to_string());
+        }
+        if let ir::Expr::Call { call, .. } = expr
+            && let ir::Call::FreeFunction { function, args, .. } = &**call
+        {
+            let (name, def) = self
+                .symbols
+                .get_free_function(*function)
+                .ok_or_else(|| error("missing resolved function", Some(expr.span())))?;
+            let op = match def.intrinsic() {
+                Some(ir::Intrinsic::Equals) => Some(ast::BinOp::Eq),
+                Some(ir::Intrinsic::NotEquals) => Some(ast::BinOp::Ne),
+                None if def.flags().is_native() && def.method_alias().is_none() => {
+                    let name = name.to_string();
+                    if ast::UnOp::from_name(&name) == Some(ast::UnOp::Not)
+                        && let [arg] = &args[..]
+                        && self.type_of(arg)? == Type::nullary(predef::BOOL)
+                        && self.type_of(expr)? == Type::nullary(predef::BOOL)
+                    {
+                        self.expr(expr)?;
+                        return self.expr(arg);
+                    }
+                    ast::BinOp::from_name(&name)
+                }
+                Some(ir::Intrinsic::IsDefined) => {
+                    // Validate the supported reference type before spelling the inverse.
+                    self.expr(expr)?;
+                    if let [arg] = &args[..] {
+                        return Ok(format!(
+                            "{} == NULL",
+                            self.expr_at(arg, binary_precedence(ast::BinOp::Eq))?
+                        ));
+                    }
+                    None
+                }
+                _ => None,
+            };
+            if let Some(op @ (ast::BinOp::Eq | ast::BinOp::Ne)) = op
+                && let [a, b] = &args[..]
+                && self.type_of(expr)? == Type::nullary(predef::BOOL)
+            {
+                self.expr(expr)?;
+                return self.binary(
+                    if op == ast::BinOp::Eq {
+                        ast::BinOp::Ne
+                    } else {
+                        ast::BinOp::Eq
+                    },
+                    a,
+                    b,
+                );
+            }
+        }
+        // Do not invert ordered comparisons: NaNs and user-defined operators
+        // make apparently equivalent rewrites observably different.
+        Ok(format!("!{}", self.expr_at(expr, 13)?))
     }
 
     fn binary(&self, op: ast::BinOp, a: &ir::Expr<'ctx>, b: &ir::Expr<'ctx>) -> Result<String> {
