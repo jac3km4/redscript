@@ -51,7 +51,7 @@ pub(super) fn provider<'ctx>(
     };
     // No ranking, registration-order preference, or intrinsic fallback on ambiguity.
     if matches.next().is_some() {
-        return Err(Error::UnsupportedNativeConversion(span));
+        return Err(Error::AmbiguousNativeConversion(span));
     }
     Ok(Some(*selected.key()))
 }
