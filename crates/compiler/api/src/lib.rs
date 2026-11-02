@@ -381,8 +381,11 @@ impl fmt::Display for DiagnosticSummary {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Completed with {} warnings and {} errors",
-            self.warnings, self.errors
+            "Completed with {} warning{} and {} error{}",
+            self.warnings,
+            if self.warnings == 1 { "" } else { "s" },
+            self.errors,
+            if self.errors == 1 { "" } else { "s" }
         )
     }
 }
@@ -463,6 +466,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn diagnostic_summary_uses_singular_only_for_one() {
+        for (warnings, errors, expected) in [
+            (0, 0, "Completed with 0 warnings and 0 errors"),
+            (0, 1, "Completed with 0 warnings and 1 error"),
+            (0, 2, "Completed with 0 warnings and 2 errors"),
+            (1, 0, "Completed with 1 warning and 0 errors"),
+            (1, 1, "Completed with 1 warning and 1 error"),
+            (1, 2, "Completed with 1 warning and 2 errors"),
+            (2, 0, "Completed with 2 warnings and 0 errors"),
+            (2, 1, "Completed with 2 warnings and 1 error"),
+            (2, 2, "Completed with 2 warnings and 2 errors"),
+        ] {
+            assert_eq!(DiagnosticSummary { warnings, errors }.to_string(), expected);
+        }
+    }
+
+    #[test]
     fn source_order_sorts_by_path_span_code_and_message_without_reordering_storage() {
         let sources = SourceMap::new();
         let z = sources.push_back("z.reds", "test");
@@ -520,7 +540,7 @@ mod tests {
         let output = String::from_utf8(output).unwrap();
         assert!(output.find("a.reds").unwrap() < output.find("z.reds").unwrap());
         assert!(output.contains("warning[UNUSED_LOCAL]"));
-        assert!(output.ends_with("Completed with 1 warnings and 1 errors\n"));
+        assert!(output.ends_with("Completed with 1 warning and 1 error\n"));
     }
 
     #[test]

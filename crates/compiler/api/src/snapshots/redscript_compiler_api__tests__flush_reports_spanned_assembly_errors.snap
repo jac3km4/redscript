@@ -8,4 +8,4 @@ error[OTHER]: `continue` cannot be used here; a loop is required
 1 | func Test() { continue; }
   |               ^^^^^^^^^
 
-Completed with 0 warnings and 1 errors
+Completed with 0 warnings and 1 error
