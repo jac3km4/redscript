@@ -1,5 +1,9 @@
 # REDmod semantic parity investigation
 
+For the follow-up investigation at `86af12a`, including verified engine dependency
+experiments, conversion matrices, residual triage and a revised implementation
+sequence, see [Next steps toward 90–99% semantic analysis](redmod-parity-next.md).
+
 Original investigation checkpoint: 2026-11-01, compiler `fad6745`. The original
 investigation made no production changes. The cleanup refresh below supersedes
 previous integration measurements for the current working tree. Historical
@@ -36,6 +40,86 @@ A credible 90–99% target needs separate denominators:
 
 Do not call the percentage of files entering processing a semantic parity score.
 A full-corpus accuracy percentage cannot be inferred from current diagnostics.
+
+## Small-fix checkpoint after conversion prototype removal
+
+The retained implementation adds engine primitive builtins, native dynamic-array
+Grow/Count descriptors, shared indexed derived-to-base applicability and contextual
+switch literals. The broader provider/opcode/identity conversion prototype was
+removed; `lower/calls.rs` and conversion assembly remain unchanged. Useful findings
+and remaining design constraints are in
+[Deferred conversion implementation findings](conversion-implementation-notes.md).
+
+Fresh release reports in `target/redmod-semantic-corpus-small-fixes/` record the
+same 2,112 files / 21,873,807 bytes, zero parse/adapter processing errors and:
+
+| Observation | Builtins checkpoint | Retained small fixes |
+| --- | ---: | ---: |
+| Errors / warnings | 8,035 / 1,609 | 7,999 / 1,608 |
+| Mapped expression spans | 875,101 | 875,426 |
+| Resolved / unresolved mapped queries | 872,391 / 2,710 | 872,731 / 2,695 |
+| Unsupported conversions | 5,275 | 5,275 |
+
+Newly applicable overloads expose 19 additional ambiguities while reducing type
+errors by 30, unresolved functions by 17 and unresolved members by eight. These
+counts describe net changes, not a semantic-accuracy score. Variant switch rules,
+script-reference scrutinee dereferencing, general conversion selection and native
+opcode fallbacks remain deferred.
+
+Final default and all-feature workspace tests each passed **771 tests, 0 failed,
+9 ignored, 0 filtered** across 126 targets. Both full all-target Clippy
+configurations passed with `-D warnings`. Pinned nightly formatting, release
+workspace build, all-feature docs, independent frontend/backend/adapter checks
+and five release corpus example tests passed. Validation used stable Rust,
+`--locked -j2`, low-debug nonincremental settings and `target/parity-integration`.
+An orphaned conversion-width prototype test was removed with the abandoned
+implementation before the final unfiltered test/Clippy runs. No game-runtime
+validation or full semantic agreement is claimed.
+
+## Engine builtins implementation checkpoint
+
+The compiler now registers `NodeRef`, `CRUID`, `LocalizationString` and
+`redResourceReferenceScriptToken` as shared opaque primitive builtins. They are
+not integer aliases; no literal syntax, defaults or new conversions are implied.
+Previously absent nullary primitives also emit primitive type records, rather
+than class records. Frontend/native regressions and serialized bundle reloads
+cover identity, signatures, fields, arrays, generics and equality fallback.
+
+A freshly built release survey of the unchanged installed corpus, with the same
+boot/default-symbol dependency mode, produced:
+
+| Observation | Before builtins | With builtins |
+| --- | ---: | ---: |
+| Shared errors / warnings | 12,655 / 3,705 | 8,035 / 1,609 |
+| Valid / invalid signatures | 53,819 / 56 | 53,875 / 0 |
+| Retained / unavailable explicit bodies | 38,824 / 37 | 38,861 / 0 |
+| Mapped expression spans | 781,341 | 875,101 |
+| Resolved / unresolved mapped queries | 778,780 / 2,561 | 872,391 / 2,710 |
+
+All 2,112 files / 21,873,807 bytes reach processing with no adapter errors.
+Reports: `target/redmod-semantic-corpus-builtins/`. All seven replay reports are
+byte-identical; available experiment reports match the earlier verified-primitive
+restoration experiment. These remain availability observations, not type/binding
+accuracy. No body is unavailable by this measure, but retained recovery IR is not
+proof of complete checking.
+
+The change removes 4,921 invalid-signature, 158 unknown-type, 36 missing-reference
+and 32 missing-member errors, plus 2,096 unused-local warnings. It exposes 527
+additional diagnostics, including 317 unsupported conversions and 70 incomplete
+constructors. Net error reduction: 4,620. Remaining leading codes are 5,275
+unsupported conversions, 1,078 runtime-allowed incomplete constructors, 846
+unresolved functions, 360 type errors, 171 ambiguities, 129 missing members and
+125 arity errors. Do not add removed counts as independent semantic fixes.
+
+Validation: default and all-feature workspace tests each passed **746 tests,
+0 failed, 9 ignored** across 120 targets. Both all-target Clippy configurations
+with `-D warnings`, pinned nightly formatting, release workspace build, all-feature
+docs, independent frontend/backend/adapter checks and five release survey tests
+passed. Low-debug, nonincremental builds used `-j2`; successful debug validation
+also disabled linker debug output after disk-full retries. Only the validation
+target's generated debug directory was removed; release/probe evidence survived.
+The existing `chumsky` future-incompatibility advisory remains. No runtime parity
+is claimed.
 
 ## Cleanup refresh and validation (2026-11-01)
 
