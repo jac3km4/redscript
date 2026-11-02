@@ -70,9 +70,9 @@ fn compile_impl(settings: &SccSettings) -> Result<SccOutput, anyhow::Error> {
                     continue;
                 }
 
-                log::error!("Compilation failed: {err}");
+                log::error!("Compilation failed: {err:#}");
                 if settings.should_show_error_report() {
-                    let report = ErrorReport::new(&err).to_string();
+                    let report = ErrorReport::new(&err, settings).to_string();
                     tfd::MessageBox::new("REDscript error", &report)
                         .with_icon(tfd::MessageBoxIcon::Error)
                         .run_modal();
@@ -101,9 +101,14 @@ fn lock_and_compile(
             .create(true)
             .truncate(false)
             .open(&ts_path)
-            .context("failed to open the timestamp file")?,
+            .with_context(|| format!("failed to open timestamp file '{}'", ts_path.display()))?,
     )
-    .context("failed to acquire a write lock on the timestamp file")?;
+    .with_context(|| {
+        format!(
+            "failed to acquire a write lock on timestamp file '{}'",
+            ts_path.display()
+        )
+    })?;
 
     let input_file = prepare_input_cache(settings, &mut ts_file)?;
     let output_file = settings.output_cache_file_path();
@@ -117,7 +122,9 @@ fn lock_and_compile(
     sources.populate_boot_lib();
 
     let interner = TypeInterner::default();
-    let (mmap, _f) = Map::with_options().open(&input_file)?;
+    let (mmap, _f) = Map::with_options()
+        .open(&input_file)
+        .with_context(|| format!("failed to map input cache file '{}'", input_file.display()))?;
 
     let refs = match Compilation::builder()
         .bundle(&mmap)
@@ -132,14 +139,20 @@ fn lock_and_compile(
         Err(FlushError::Write(SaveError::Mmap(err)))
             if err.kind() == io::ErrorKind::PermissionDenied =>
         {
-            anyhow::bail!(
+            return Err(anyhow::Error::new(err).context(format!(
                 "could not write to '{}', make sure the file is not read-only",
                 output_file.display()
-            );
+            )));
         }
         Err(FlushError::FatalErrors(diagnostics, symbols)) => {
             on_error(&diagnostics, symbols, &sources)?;
             return Err(CompilationFailure::new(diagnostics, &sources, settings)?.into());
+        }
+        Err(FlushError::Write(err)) => {
+            return Err(anyhow::Error::new(err).context(format!(
+                "failed to write output cache file '{}'",
+                output_file.display()
+            )));
         }
         Err(err) => anyhow::bail!("{err}"),
         Ok((syms, diagnostics)) => {
@@ -153,7 +166,21 @@ fn lock_and_compile(
         }
     };
 
-    CompileTimestamp::try_from(&output_file.metadata()?)?.write(&mut *ts_file)?;
+    let metadata = output_file.metadata().with_context(|| {
+        format!(
+            "failed to read output cache metadata '{}'",
+            output_file.display()
+        )
+    })?;
+    CompileTimestamp::try_from(&metadata)
+        .with_context(|| {
+            format!(
+                "failed to obtain a timestamp of '{}'",
+                output_file.display()
+            )
+        })?
+        .write(&mut *ts_file)
+        .with_context(|| format!("failed to write timestamp file '{}'", ts_path.display()))?;
 
     Ok(SccOutput::new(sources, interner, refs))
 }
@@ -164,10 +191,18 @@ fn prepare_input_cache(settings: &SccSettings, ts_file: &mut fs::File) -> anyhow
         let cache_dir = cache_file
             .parent()
             .context("provided cache file path has no parent directory")?;
-        fs::create_dir_all(cache_dir).context("failed to create the cache directory")?;
+        fs::create_dir_all(cache_dir).with_context(|| {
+            format!("failed to create cache directory '{}'", cache_dir.display())
+        })?;
 
         let base = settings.unmodified_cache_file_path();
-        fs::copy(&base, &cache_file).context("could not copy the base cache file")?;
+        fs::copy(&base, &cache_file).with_context(|| {
+            format!(
+                "could not copy base cache file '{}' to '{}'",
+                base.display(),
+                cache_file.display()
+            )
+        })?;
     }
 
     let backup_file = cache_file.with_extension(BACKUP_FILE_EXT);
@@ -176,21 +211,41 @@ fn prepare_input_cache(settings: &SccSettings, ts_file: &mut fs::File) -> anyhow
         if base.exists() {
             log::info!("Re-initializing the backup file from '{}'", base.display());
 
-            fs::copy(&base, &backup_file)
-                .context("could not copy the base redscript backup file")?;
+            fs::copy(&base, &backup_file).with_context(|| {
+                format!(
+                    "could not copy base redscript backup file '{}' to '{}'",
+                    base.display(),
+                    backup_file.display()
+                )
+            })?;
         }
     }
 
     let write_ts = cache_file
         .metadata()
         .and_then(|meta| CompileTimestamp::try_from(&meta))
-        .context("failed to obtain a timestamp of the cache file")?;
-    let saved_ts = CompileTimestamp::read(&mut *ts_file)
-        .context("failed to read the existing timestamp file")?;
+        .with_context(|| {
+            format!(
+                "failed to obtain a timestamp of cache file '{}'",
+                cache_file.display()
+            )
+        })?;
+    let saved_ts = CompileTimestamp::read(&mut *ts_file).with_context(|| {
+        format!(
+            "failed to read existing timestamp file '{}'",
+            cache_file.with_extension(TIMESTAMP_FILE_EXT).display()
+        )
+    })?;
 
     if settings
         .does_have_separate_output_cache()
-        .context("failed to check for output cache")?
+        .with_context(|| {
+            format!(
+                "failed to compare output cache '{}' with input cache '{}'",
+                settings.output_cache_file_path().display(),
+                cache_file.display()
+            )
+        })?
     {
         match saved_ts {
             saved_ts if saved_ts != Some(write_ts) && backup_file.exists() => {
@@ -199,13 +254,23 @@ fn prepare_input_cache(settings: &SccSettings, ts_file: &mut fs::File) -> anyhow
                     backup_file.display()
                 );
 
-                fs::remove_file(&backup_file).context("failed to remove a stale backup file")?;
+                fs::remove_file(&backup_file).with_context(|| {
+                    format!(
+                        "failed to remove stale backup file '{}'",
+                        backup_file.display()
+                    )
+                })?;
             }
             _ if backup_file.exists() => {
                 log::info!("Restoring the backup file to '{}'", cache_file.display());
 
-                fs::rename(&backup_file, &cache_file)
-                    .context("failed to restore the backup file")?;
+                fs::rename(&backup_file, &cache_file).with_context(|| {
+                    format!(
+                        "failed to restore backup file '{}' to '{}'",
+                        backup_file.display(),
+                        cache_file.display()
+                    )
+                })?;
             }
             _ => {}
         }
@@ -221,7 +286,13 @@ fn prepare_input_cache(settings: &SccSettings, ts_file: &mut fs::File) -> anyhow
                     backup_file.display()
                 );
 
-                fs::copy(&cache_file, &backup_file).context("failed to copy the cache file")?;
+                fs::copy(&cache_file, &backup_file).with_context(|| {
+                    format!(
+                        "failed to copy cache file '{}' to '{}'",
+                        cache_file.display(),
+                        backup_file.display()
+                    )
+                })?;
             }
             Some(_) if !backup_file.exists() => {
                 anyhow::bail!(
@@ -238,4 +309,37 @@ fn prepare_input_cache(settings: &SccSettings, ts_file: &mut fs::File) -> anyhow
 
 fn diagnostic_filter(dia: &Diagnostic<'_>) -> bool {
     dia.level() == DiagnosticLevel::Error || dia.level() == DiagnosticLevel::Warning
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn timestamp_open_failure_includes_path_and_io_cause() {
+        let root = env::temp_dir().join(format!(
+            "redscript-missing-cache-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let settings = SccSettings::new(root);
+        let error = lock_and_compile(&settings, |_, _, _| Ok(()))
+            .err()
+            .expect("missing cache directory should fail");
+        let path = settings
+            .cache_file_path()
+            .with_extension(TIMESTAMP_FILE_EXT);
+        assert_eq!(
+            error.to_string(),
+            format!("failed to open timestamp file '{}'", path.display())
+        );
+        let cause = error
+            .downcast_ref::<io::Error>()
+            .expect("I/O cause is preserved");
+        assert_eq!(cause.kind(), io::ErrorKind::NotFound);
+        assert!(format!("{error:#}").contains(&cause.to_string()));
+    }
 }
