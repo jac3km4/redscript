@@ -12,11 +12,15 @@ use crate::hints::UserHints;
 #[derive(Debug)]
 pub struct ErrorReport<'ctx> {
     cause: &'ctx anyhow::Error,
+    log_dir: PathBuf,
 }
 
 impl<'ctx> ErrorReport<'ctx> {
-    pub fn new(cause: &'ctx anyhow::Error) -> Self {
-        Self { cause }
+    pub fn new(cause: &'ctx anyhow::Error, settings: &SccSettings) -> Self {
+        Self {
+            cause,
+            log_dir: crate::logger::log_dir(settings.root_dir()),
+        }
     }
 }
 
@@ -44,16 +48,20 @@ impl fmt::Display for ErrorReport<'_> {
             } else {
                 writeln!(
                     f,
-                    "You should check if these mods are outdated and update them if possible. They may \
-                 also be incompatible with the current version of the game, in which case you \
-                 should remove them and try again."
+                    "If these files belong to mods, check whether updates are available. If a mod is \
+                     incompatible with the current game version, try disabling it and compiling again."
                 )?;
             }
         } else {
-            writeln!(f, "Reason: {}", self.cause)?;
+            writeln!(f, "Reason: {:#}", self.cause)?;
         }
 
-        Ok(())
+        writeln!(f)?;
+        writeln!(
+            f,
+            "For more details, check the REDscript logs in '{}'.",
+            self.log_dir.display()
+        )
     }
 }
 
@@ -89,7 +97,7 @@ impl CompilationFailure {
         failing_files.sort();
 
         let hints_config = UserHints::load(settings.user_hints_dir()).unwrap_or_else(|err| {
-            log::warn!("Failed to parse one of the user hints TOML files: {err}");
+            log::warn!("Failed to parse one of the user hints TOML files: {err:#}");
             UserHints::default()
         });
 
@@ -126,6 +134,43 @@ mod tests {
     use redscript_compiler_api::ast::Span;
 
     use super::*;
+
+    #[test]
+    fn report_includes_error_chain_and_log_directory() {
+        let settings = SccSettings::new(PathBuf::from("game"));
+        let error = anyhow::anyhow!("access denied").context("failed to open cache");
+        let report = ErrorReport::new(&error, &settings).to_string();
+        assert!(report.contains("Reason: failed to open cache: access denied"));
+        assert!(
+            report.contains(
+                &crate::logger::log_dir(settings.root_dir())
+                    .display()
+                    .to_string()
+            )
+        );
+        assert!(!report.contains("mods"));
+    }
+
+    #[test]
+    fn compilation_report_uses_conditional_advice_unless_hints_exist() {
+        let settings = SccSettings::new(PathBuf::from("game"));
+        for hints in [vec![], vec!["Install the required dependency".to_owned()]] {
+            let has_hints = !hints.is_empty();
+            let error = CompilationFailure {
+                failing_files: vec![PathBuf::from("test.reds")],
+                hints,
+            }
+            .into();
+            let report = ErrorReport::new(&error, &settings).to_string();
+            assert!(report.contains("test.reds"));
+            assert!(report.contains("REDscript logs"));
+            assert_eq!(report.contains("If these files belong to mods"), !has_hints);
+            assert_eq!(
+                report.contains("- Install the required dependency"),
+                has_hints
+            );
+        }
+    }
 
     #[test]
     fn failure_sorts_paths_and_deduplicated_hints_by_id() {
