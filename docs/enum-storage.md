@@ -1,5 +1,9 @@
 # Explicit enum storage
 
+See the [language guide](README.md) for dialect context and
+[conversion semantics](conversion-declarations.md#bounded-explicit-enum-casts)
+for the separately bounded enum/Int32 cast paths.
+
 Both community and native source accept `enum Choice: Uint8 { A = 0, B = 255 }`.
 Legal storage types are `Int8`, `Uint8`, `Int16`, `Uint16`, `Int32`, `Uint32`,
 and `Int64`. `Uint64` and noninteger types are rejected. Explicit values and
@@ -46,8 +50,7 @@ Inspection of freshly compiled authored bundles found widths 1/2/4/8 as declared
 4 for omitted storage, and identical enum payload metadata for Int8 and Uint8
 with the same value. Signedness is checked at compile time but erased on disk.
 These probes establish compilation/serialization behavior, not game-runtime
-behavior. Local disposable evidence is under `target/enum-probes-2/` and
-`target/enum-probes-3/`.
+behavior. Disposable local probe artifacts are not required to use this contract.
 
 Portable tests use authored fixtures, not installed game scripts. The opt-in
 `authored_enum_storage_matches_official_bounds_and_bundle_representation` test in

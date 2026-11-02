@@ -1,5 +1,9 @@
 # Lazy evaluation limitations
 
+See the [language guide](README.md) and
+[array literal boundary](shared-expression-defaults.md#array-literal-evaluation-boundary)
+for eager callee/operand ordering, including static versus runtime callees.
+
 Source `skip` parameters retain lazy evaluation for supported expressions. This
 is not general expression-local initialization: array literals still lower to
 statement-prefix initialization, and expression-local initialization remains
@@ -41,4 +45,5 @@ in lazy positions; do not infer safety from an unchanged prefix-vector length.
 
 The REDmod adapter may reject unsafe forms earlier than shared call lowering.
 These are compile-time safety restrictions, not evidence of runtime equivalence
-with the official compiler.
+with the official compiler. Expression-local initialization and corresponding
+regressions remain tracked in [future work](language-future-work.md#evaluation-and-initialization).

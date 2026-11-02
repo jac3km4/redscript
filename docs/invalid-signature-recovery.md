@@ -1,5 +1,8 @@
 # Invalid signature recovery
 
+See the [language guide](README.md) and
+[remaining analysis work](language-future-work.md#analysis-lookup-and-constness).
+
 Source signature resolution preserves parameter count, order, names, qualifiers,
 source spans, and every successfully resolved type when a parameter or explicit
 return type fails to resolve. An omitted return still means `Void`; an unresolved

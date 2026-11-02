@@ -1,46 +1,32 @@
 # Shared expression and aggregate-default APIs
 
-Community and REDmod inputs now share these frontend rules:
+See the [language guide](README.md) for dialect context. Community and REDmod
+inputs share these frontend rules:
 
 - An assignment yields its coerced destination type. Chains, arguments, returns,
   and conditional branches can use that value. Typed IR has one `Expr::Assign`
-  with a `typ` field; `AssignValue` and the `assignment_values` policy are removed.
-  This replaces the former Void result in community source. The destination is
-  evaluated once, before the RHS; the result is a temporary,
-  not an assignable place. Assembly emits `Assign` without destination readback.
+  with a `typ` field. The destination is evaluated once, before the RHS; the result
+  is a temporary, not an assignable place. Assembly emits `Assign` without destination readback.
 - Bodyless callbacks on native, non-import-only aggregates retain callback flags
   without becoming native methods or acquiring synthetic bodies. Scripted and
-  import-only aggregates and ordinary methods retain their body checks. The
-  `native_callback_prototypes` policy is removed.
+  import-only aggregates and ordinary methods retain their body checks. Native
+  event normalization is detailed in [event semantics](redmod-events.md).
 - Script-reference coercions compose with other conversions: unwrap before
   converting to a value, or convert to the pointee type before wrapping. Generated
   conversions preserve the exact pointee, including weak wrappers. Member, method,
   and index receivers unwrap script references without a policy flag.
 
-`native_script_refs` is renamed to `script_ref_write_through`. It controls only
-assignment destinations and `out` arguments: REDmod writes/forwards the referenced
+`script_ref_write_through` controls only assignment destinations and `out`
+arguments: REDmod writes/forwards the referenced
 place, while community source assigns/forwards the reference itself. It remains
 file-local and defaults to false. `implicit_members`, `public_fields`, and
 `native_object_cast` remain dialect policies, unchanged.
 
-## Strict const checks and REDmod relaxations
+## Const checks
 
-Shared frontend analysis enforces const parameters by default; this is not a
-REDmod-only check. `SemanticPolicy::default()` leaves both characterized REDmod
-relaxations disabled:
-
-- `const_param_element_writes` permits indexed element writes/`out` forwarding,
-  including fields within elements, but not whole-array replacement or mutation
-  of array size.
-- `const_param_non_out_forwarding` permits non-`out` forwarding to non-const
-  reference/container parameters. Explicit `out` and known mutating array
-  intrinsics remain checked.
-
-The adapter enables both per native source file; community dependencies stay
-strict. Whole-root and field writes remain rejected in both modes. These are
-bounded direct-root checks, not transitive immutability or const field/return
-enforcement. See [const parameters](const-parameters.md) for provenance, alias,
-and closure limits.
+See [const parameters and locals](const-parameters.md) for strict community
+validation, narrow per-file native relaxations and alias/closure bounds. Constness
+is a direct-root validation contract, not transitive immutability.
 
 ## Shared aggregate defaults
 
@@ -91,12 +77,16 @@ later array arguments/elements, complex assignment destinations with array RHSs,
 logical RHSs, and conditional arms. Literal-only nested arrays and ordinary local
 array initialization remain supported. Omitted argument slots have no evaluation
 and are prefix-inert, so `Take(, [1])` is allowed when the first parameter is
-optional. The guard does not infer purity from
-function names. It deliberately rejects some pure expressions rather than silently
-changing their evaluation order.
+optional. Type-qualified static calls such as `Host.Take([1])` have no runtime
+callee evaluation and are accepted. Runtime member callees and closure/function-value
+callees remain guarded: a prefix could change the callable before it is read.
+The guard does not infer purity from function names. It deliberately rejects
+some pure expressions rather than silently changing their evaluation order.
 
 Extract the array to a local at its intended execution site, after any preceding
 effects; use explicit control flow for lazy branches. This guard is not a new
-expression-local array construction facility. REDmod capability checks and the
-transpiler's additional prefix restrictions remain in place. Bytecode snapshots
-verify instruction structure, not game-runtime execution.
+expression-local array construction facility. See
+[lazy evaluation limitations](lazy-evaluation-limitations.md) for skipped arguments
+and typed-call boundaries. REDmod capability checks and the transpiler's additional
+prefix restrictions remain in place. Bytecode snapshots verify instruction
+structure, not game-runtime execution.

@@ -65,6 +65,9 @@ native source declaration proves an engine ABI.
   never invent empty/native implementations or emit partial units.
 - Separate resolution outcomes from diagnostic wording and record provisional
   recovery bindings. Invalid candidates must not silently become verified dispatch.
+- Native cast/grouping disambiguation needs a syntax-based rule: historical probes
+  found `-(x) - (y)` misread as a cast to x, while official arithmetic succeeded.
+  Retain real `(Type)-value` controls; do not fix it with a type-name whitelist.
 - Broaden native candidate tiers only with read-only applicability: applicable
   instance methods retain priority over static/global candidates. Qualified-global
   calls, untyped NULL equality and type/local collision edges need their own rules.

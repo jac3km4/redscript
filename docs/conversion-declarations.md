@@ -1,7 +1,9 @@
 # Conversion declarations and bounded native selection
 
-Step 3 of `redmod-semantic-parity.md` retains conversion providers without
-assuming that declaration acceptance proves dispatch semantics.
+Conversion providers retain declaration intent without assuming that declaration
+acceptance proves dispatch semantics. See the [language guide](README.md),
+[remaining conversion work](language-future-work.md#conversions-and-native-bindings)
+and [historical experiment findings](conversion-implementation-notes.md).
 
 ## Shared representation
 
@@ -89,14 +91,12 @@ Wrappers own the already-lowered operand once and add no statement prefixes.
 Lazy/skip arguments retain their existing guards and execution point. This does
 not add condition truthiness or general provider-aware operator applicability.
 
-## Fresh official characterization
+## Historical official characterization
 
-On 2026-11-01, `target/parity-investigation/step3_probe.py` used fresh directories
-under `target/parity-investigation/step3-conversions-1793559287360585700` and the
-installed official `redMod.exe validate-mod-scripts -compile`. Success required
-both the official success marker and nonempty `final.redscripts`/`.h64` artifacts.
-These use the installed engine scripts, not a fabricated standalone dependency
-model. Logs, sources, definitions and summary remain in that target directory.
+Authored probes on 2026-11-01 used the installed official compiler and engine
+scripts, not a fabricated standalone dependency model. Success required both the
+official success marker and fresh nonempty compiled/hash artifacts. Disposable
+local probe directories are not requirements for this contract.
 
 | Fixture | Official result |
 | --- | --- |
@@ -124,8 +124,7 @@ these observations do not establish a general conversion framework.
   and unsupported explicit use across files.
 - An ignored installed-source inventory test accepts `REDMOD_SCRIPTS_DIR` and
   checks all nine foundational files and their 52 implicit/75 explicit declarations.
-  It was explicitly run against the installed `tools/redmod/scripts` tree and
-  passed for all nine files.
+  This is an optional installed-source check, not a portable test dependency.
 - Full corpus semantic recovery remains a separate acceptance step. Bounded
   provider dispatch does not claim all consumers compile.
 - Provider tests cover explicit/implicit intent in explicit casts, conservative
@@ -140,6 +139,7 @@ these observations do not establish a general conversion framework.
   existing output untouched.
 - Invalid-signature recovery and `skip` behavior are otherwise unchanged.
 
-Validation is synthetic compiler-level coverage, not installed-engine binding or
-runtime verification. Full corpus replay and broader workspace validation remain
-separate follow-ups.
+Synthetic compiler-level coverage is not installed-engine binding or runtime
+verification. Historical corpus measurements are in the
+[investigation archive](conversion-implementation-notes.md), not a current-HEAD
+validation claim.

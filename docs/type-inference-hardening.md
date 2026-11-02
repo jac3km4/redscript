@@ -1,215 +1,85 @@
-# Type inference hardening plan
+# Type inference safeguards and hardening
 
-## Scope
+This separates current solver mechanisms from remaining design work. It replaces
+an older transaction/cycle/join implementation plan whose cycle and generic-bound
+sections were partly superseded. See the [language index](README.md) and
+[future-work list](language-future-work.md#analysis-lookup-and-constness).
 
-Address three remaining correctness and robustness problems in inference:
+## Current mechanisms
 
-1. Failed constraints can leave partially mutated inference state.
-2. Recursive bounds can create reference cycles or overflow during coalescing.
-3. Generic joins and meets can discard constraints or produce order-dependent results.
+`crates/compiler/frontend/src/lower/types.rs` retains variable bounds and directed
+subtype edges. Variable-to-variable subtyping is not generally equality;
+strongly connected components may merge without equating unrelated variables.
+Invariant constraints retain both bounds. Rigid annotation parameters are checked
+through proven bounds, not treated as inference variables merely because their
+upper bound resembles a requested type.
 
-Implementation order: **transactions → cycle safety → joins and meets**. All three
-change recursive constraint operations; atomic failure handling provides the
-foundation for safely rejecting cycles and incompatible generic applications.
+Application joins project operands to a nominal common base before combining
+substituted arguments. Same-constructor merging composes parameter variance:
 
-Keep the existing `Rc<RefCell<VarState>>` representation. An arena-based solver,
-recursive types, or a full directed-constraint graph are outside this plan.
-
-## 1. Transactional constraint operations
-
-Primary files:
-
-- `crates/compiler/frontend/src/lower/types.rs`
-- `crates/compiler/frontend/src/lower.rs`
-
-### Implementation
-
-Introduce an internal inference context with an undo journal:
-
-- Record the previous `VarState` before each mutation.
-- Support checkpoints, commit, and rollback.
-- Thread the context through recursive constraints, unification, joins, and meets.
-- Keep existing public methods as wrappers that open a transaction.
-- Share the transaction across recursive calls rather than committing each call
-  independently.
-
-Rollback must include representative links and path compression, not just bounds.
-Either journal compression writes or use non-compressing representative lookup
-within transactions.
-
-Refactor bound updates to compute the prospective merged bound, validate it
-against the opposite bound, and store it only after validation succeeds. Recursive
-validation can still mutate nested variables, so this ordering complements the
-journal rather than replacing it. Do not hold a `RefMut` across recursive solver
-calls.
-
-### Speculative callers
-
-Audit lowering call sites that continue after failed constraints, particularly:
-
-- Ignored contextual return-hint constraints.
-- Dynamic-cast checks that try one relationship and then another.
-- Fallback paths that inspect `is_ok()` or discard errors.
-
-Distinguish two operations:
-
-- **Try-and-commit:** retain successful inference, rollback on failure. Use for
-  contextual hints that should contribute constraints when compatible.
-- **Probe:** always rollback, including on success. Use for checks intended only
-  to answer a question.
-
-### Regression tests
-
-Assert that state is unchanged after:
-
-- An incompatible upper or lower bound.
-- Failure in a later generic argument after an earlier argument mutated.
-- Failure halfway through invariant equality or unification.
-- A failed speculative hint followed by successful inference.
-- Representative compression performed during a failed operation.
-
-**Acceptance criterion:** failure restores the entire reachable inference state,
-not just the outer variable.
-
-## 2. Occurs checks and cycle-safe coalescing
-
-Primary files:
-
-- `crates/compiler/frontend/src/lower/types.rs`
-- `crates/compiler/frontend/src/lower/simplify.rs`
-- `crates/compiler/frontend/src/lower/error.rs`
-
-### Occurs checks
-
-Add representative-aware occurs checks before storing bounds or linking
-representatives. Traverse:
-
-- Application arguments.
-- Context-variable bounds.
-- Inference-variable bounds and representatives.
-- Prospective merged state, including cycles introduced by unification.
-
-Use visited representatives to avoid repeatedly traversing shared acyclic graphs.
-Direct identity constraints such as `X <: X` remain no-ops.
-
-Under the current finite-type representation, reject recursive bounds rather than
-attempting to support recursive types. Keep the check isolated so this policy can
-evolve independently.
-
-Add dedicated recursive-type errors. Diagnostics must not recursively format an
-already cyclic graph.
-
-### Coalescer protection
-
-In `Simplifier`:
-
-- Use canonical representative keys consistently for analysis and caching.
-- Stop repeated analysis once the relevant variance information has been visited.
-- Track active simplification separately from completed cached results.
-- Return a cycle error when simplification re-enters an active variable.
-- Distinguish shared subgraphs from cycles; a global “seen means error” rule would
-  incorrectly reject valid sharing.
-
-### Regression tests
-
-Cover:
-
-- Direct self-application: `(x) -> x(x)`.
-- Indirect cycles through two variables.
-- Cycles introduced only by representative merging.
-- Nested function and array bounds.
-- Acyclic shared graphs and long representative chains.
-- Rollback after occurs-check failure.
-- Rejection without retaining an `Rc` cycle.
-
-**Acceptance criterion:** recursive inference produces a diagnostic, never a stack
-overflow, `RefCell` panic, or newly retained reference cycle.
-
-## 3. Variance-correct generic joins and meets
-
-Primary file: `crates/compiler/frontend/src/lower/types.rs`.
-
-### Same-constructor applications
-
-Combine arguments according to parameter variance:
-
-| Parameter variance | Join (`lub`) | Meet (`glb`) |
+| Parameter variance | Join | Meet |
 | --- | --- | --- |
 | Covariant | Join arguments | Meet arguments |
 | Contravariant | Meet arguments | Join arguments |
 | Invariant | Enforce equality | Enforce equality |
 
-Remove the current invariant `lub(...).glb(...)` expression.
+Different-constructor meets build a nominally narrower candidate and constrain it
+against both inputs instead of discarding the wider operand's generic arguments.
+Indexed derived-object evidence participates in read-only applicability for base
+parameters without selecting/freezing live variables.
 
-Invariant equality must accept compatible inference variables while rejecting
-incompatible rigid types. Execute the entire application operation transactionally.
+Bound refinement performs an occurs check, validates prospective local bounds and
+then stores them before neighbor propagation. Coalescing has independent cycle
+protection. Ownership components retain internal bound/edge graphs while external
+handles live and clear links when the last external owner is dropped. This permits
+constraint cycles without intentionally adding recursive-type support or retaining
+unreachable Rc cycles. Rejected constraints clear update guards/remove newly added
+edges; these local safeguards are **not whole-operation transactional rollback**.
 
-### Different constructors
+Solver regressions cover directional edges, invariant constraints, late bounds,
+cyclic components, ownership release, recursive coalescing and generic joins/meets.
+Their existence is not a claim that validation was rerun for this documentation.
 
-- **Join:** project both applications to their nominal common base, then combine
-  that base's substituted arguments.
-- **Meet:** select the nominally narrower constructor, project it to the wider
-  constructor, and validate the generic relationship.
-- Do not silently discard wider-constructor arguments or invent an inverse
-  substitution. Reject cases the current representation cannot express safely.
+## Remaining goal: atomic failed operations
 
-Audit the variable cases in `PolyType::lub` and `glb` as well. They currently mutate
-or unify operands; tests must establish that resulting substitutions satisfy the
-advertised bound relationship.
+A recursive constraint operation can mutate earlier/nested variables before a
+later step fails. Local validate-before-store does not restore all reachable
+state. Transactional failure handling remains a separate correctness goal.
 
-### Regression tests
+A possible implementation is an internal undo journal with checkpoints, commit
+and rollback shared across the entire recursive operation. Keep public operations
+as wrappers rather than committing each recursive step independently. Account for
+bounds, representatives/path compression, directed edges and ownership-component
+changes in the **current** representation; the old two-bound-only plan is
+insufficient. Do not hold RefMut across recursive calls.
 
-Use a small deterministic matrix covering all variances, nested applications,
-inherited substitutions, and inference variables. Check:
+Separate speculative callers into:
 
-- Commutativity, comparing results modulo representative identity.
-- Idempotence.
-- Every successful join is an upper bound of both inputs.
-- Every successful meet is a lower bound of both inputs.
-- Reversing conditional branches preserves acceptance and inferred type.
-- Conflicting invariant arrays fail in both operand orders.
-- Failure leaves inference state unchanged.
+- **Try-and-commit:** retain successful constraints and roll back failures, for
+  compatible contextual hints.
+- **Probe:** always roll back, including success, for read-only questions.
 
-**Acceptance criterion:** successful operations preserve both inputs' constraints,
-and operand order does not affect acceptance or the resolved result.
+Audit ignored return hints, dynamic-cast alternative checks and fallback paths
+that discard constraint errors. Read-only applicability must not resolve live
+variables merely to select a provider or overload.
 
-## Delivery sequence
+Required regressions should prove unchanged reachable inference after failure in
+later generic arguments, invariant equality, representative compression, edge
+propagation and speculative hints. Follow a failed operation with successful
+inference to expose contamination rather than asserting only the original error.
 
-Use separate commits for:
+## Ongoing correctness criteria
 
-1. Transaction infrastructure and rollback regressions.
-2. Speculative-call-site integration.
-3. Occurs checks and recursive-type diagnostics.
-4. Cycle-safe coalescing.
-5. Variance-aware joins and meets.
+Retain tests for recursive bounds without stack overflow/RefCell panic, valid
+shared graphs versus cycles, component release and long representative chains.
+For deterministic variance/nested/inherited matrices, check commutativity modulo
+representative identity, idempotence, upper/lower-bound relationships, reversed
+conditional branches, invariant-array rejection in both orders and eventual
+transactional failure atomicity.
 
-Each commit should include its focused regression tests. Preserve unrelated work
-in the working tree when staging changes.
-
-## Validation
-
-Start with focused solver tests, then run frontend tests:
-
-```sh
-cargo test -p redscript-compiler-frontend --lib lower::types::tests --offline
-cargo test -p redscript-compiler-frontend --lib --tests --offline
-```
-
-Finish with backend tests and targeted linting:
-
-```sh
-cargo test -p redscript-compiler-backend --lib --tests --offline
-cargo clippy -p redscript-compiler-frontend --lib --test lowering_inference --offline --no-deps
-```
-
-Include any new test targets in targeted linting. Inspect snapshot changes
-individually, especially invariance and inference fixtures; do not accept them
-wholesale. Invalid programs may gain diagnostics, but existing valid programs
-should remain accepted unless a deliberate behavior change is documented.
-
-## Deferred work
-
-Replacing all variable-to-variable subtype constraints with directed constraint
-edges is a broader solver redesign. Do not bundle it into these fixes. Likewise,
-do not add recursive-type support or replace the variable storage model as part
-of this plan.
+Do not replace the storage model or add recursive types merely to implement
+rollback. Stage infrastructure, speculative callers and any newly isolated solver
+fixes separately, with focused regressions. Review snapshots individually rather
+than accepting them wholesale. Start with solver unit tests, then frontend and
+backend tests and affected-package checks; finish with the commands in
+[CONTRIBUTING.md](../CONTRIBUTING.md).

@@ -1,5 +1,9 @@
 # Const parameters and locals
 
+See the [language guide](README.md) for dialect context and
+[future work](language-future-work.md#analysis-lookup-and-constness) for broader
+constness gaps.
+
 Const parameter flags are enforced by shared frontend analysis after function
 bodies have been lowered and calls resolved. Community source uses the strict
 policy by default. Diagnostics are shared frontend errors (`OTHER`, with message
@@ -58,11 +62,11 @@ forwarding a field as `out`, mutating array intrinsics, or non-const receiver
 methods. Scalars, structs, arrays and script references do not get this exception.
 Under this native policy, default storage initialization is not an explicit source
 assignment; scalar/struct assignment, even the first assignment or an inline
-initializer, is rejected. In particular, the retained official compiler probe
-matrix (`target/parity-investigation/blockers.md`, section B) records const Int32
-inline initialization failing with “Value on the left side is constant. Unable
-to assign to it.” This native restriction is deliberately distinct from community
-initialization; it is not inferred from ordinary non-const initializer acceptance.
+initializer, is rejected. In particular, historical official compiler probes
+record const Int32 inline initialization failing with “Value on the left side is
+constant. Unable to assign to it.” This native restriction is deliberately distinct
+from community initialization; it is not inferred from ordinary non-const
+initializer acceptance.
 
 `LocalInfo::initializer` records the exact declaration-store span during lowering,
 including hoisted declarations. Validation matches both local ID and that span,
@@ -80,6 +84,15 @@ This is validation of the selected resolved method, not const-aware overload
 ranking. Const returns, const fields and arbitrary method effects remain outside
 this pass. No runtime serialization or full installed-corpus coverage measurement
 is implied by the focused tests.
+
+## Export and decompilation
+
+The REDmod transpiler explicitly rejects const locals rather than dropping their
+qualifier or emitting native declarations with different initialization rules.
+Decompilation supports ordinary initialized const declarations, but errors when a
+const initializer would require unsafe hoisting (including expanded arrays and
+initialization inside expressions). It must not emit an uninitialized const
+binding followed by an illegal assignment.
 
 ## Analysis bounds
 

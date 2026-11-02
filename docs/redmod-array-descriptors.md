@@ -1,5 +1,10 @@
 # REDmod dynamic-array Grow and Count
 
+See the [native language guide](redmod-language.md#control-flow-arrays-and-constness)
+for the complete supported descriptor list and
+[future work](language-future-work.md#analysis-lookup-and-constness) for missing
+array/Variant operations.
+
 The native adapter exposes two additional dynamic-array member descriptors:
 
 | Native spelling | Shared intrinsic | Arguments | Result |

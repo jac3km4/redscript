@@ -1,0 +1,140 @@
+# Native REDmod language support
+
+Native parsing/formatting, bounded shared semantic analysis, mixed-language IDE
+analysis and strict community-to-REDmod source export exist. Full language parity,
+installed-engine binding equivalence and game-runtime compatibility are not
+established. Parser acceptance is broader than semantic or backend support.
+
+See the [language guide](README.md), [community dialect](community-language.md),
+[adapter API](../crates/compiler/redmod/adapter/README.md) and
+[transpiler API](../crates/compiler/redmod/transpiler/README.md). Historical corpus
+counts in component reports describe their recorded revisions, not current HEAD.
+
+## Processing and source policy
+
+Keep native AST/grammar/formatting in the native syntax crates and native mapping
+and capability checks in the adapter. Shared semantic extensions should be
+language-neutral, with narrow per-file policies for actual dialect differences.
+Native policies must not weaken community dependencies in a mixed compilation.
+
+Use `parse_file_with_metadata`, retain/clone the entire `ParsedModule`, and pass
+it to `process_sources`. Native for/do-while fixups depend on this metadata.
+Bare-AST convenience APIs fail closed for these loop forms. Aggregate defaults
+are shared AST members and need no private adapter default plans.
+
+Check syntax/capability errors, adapter processing errors **and** shared frontend
+diagnostics. Returned IR can contain recovery. Parse/bridge failures still exclude
+whole modules; partial declaration harvesting is not implemented. IDE query
+availability is not semantic accuracy or permission to emit artifacts.
+
+## Declarations and references
+
+- `export` and `constexpr` are analysis-only no-ops on verified function targets,
+  not equivalent engine exposure or compile-time evaluation. Unsupported modifier
+  targets still fail. `virtual` uses checked non-final dispatch; ordinary private
+  methods are implicitly final.
+- Omitted field visibility defaults to public; explicit flags remain effective.
+  String field properties preserve keys, duplicates and order. Hints target one
+  field in the same aggregate. Broader metadata is not silently discarded.
+- Function-wide typed locals are hoisted with duplicate checks and entry defaults;
+  explicit initializers remain at their source execution sites. Uninitialized
+  groups expand in order, and standalone blocks flatten under the same policy.
+  Initialized groups and general value sequences remain unsupported.
+- Native `ref<T>` means script reference, not community strong `ref<T>`. Verified
+  scalar/string/struct/class/array/weak parameter and field forms compose with
+  dereferencing/coercion. Native assignment/out places write through references.
+  Ref locals/returns, nested refs, arrays of refs and mixed-reference forms remain
+  rejected. See [shared reference semantics](shared-expression-defaults.md).
+- [Enum storage](enum-storage.md) retains declared width/ranges. Omitted native
+  storage currently follows inferred community widths, unlike official REDmod's
+  four-byte default. Use explicit storage when representation matters.
+- NodeRef, CRUID, LocalizationString and redResourceReferenceScriptToken are shared
+  opaque primitives, not fabricated classes or integer aliases. No extra literal,
+  default-value, layout or conversion behavior follows from registration.
+
+## Calls, inheritance and conversions
+
+[Lookup and inheritance](lookup-inheritance.md) defines implicit member precedence,
+static ancestry/hiding, generated forwarders, bounded specificity, native original
+slot return covariance and persistent access. Implicit static calls retain their
+qualified type identity across modules, and generic static hiding compares
+substituted parameter signatures. These fixes do not enable arbitrary calls
+through runtime value receivers.
+
+Native operators preserve checked signatures. Non-array `operator[]` resolves
+OperatorArray; built-in arrays retain writable indexing. Omitted argument slots
+must match optional parameters and emit Nop. Unlike community syntax, a final
+comma retains a final hole. Authored parameter-default expressions are separate
+and unsupported.
+
+[Conversion declarations](conversion-declarations.md) preserve explicit/implicit
+intent without making providers ordinary overload candidates. Implemented native
+selection is bounded to unique exact native providers, guarded implicit coercions
+at known targets and selected explicit enum/Int32 conversions. There is no general
+conversion-aware matching, chaining or numeric-distance ranking. Variant extraction
+precedes object casts; native object casts support identity/upcast/downcast and
+resolved object/weak-reference truthiness. Ordinary Cast precedence and contextual
+literal typing remain intact. No special Int32-to-Bool return hook exists.
+
+Conditions support bounded ModuleExists/single-negation selection, with deterministic
+first-active versions and capability checking of inactive declarations. Conversion
+version keys include the Cast return destination, so equal operands with different
+destinations are not collapsed. Other grouping still uses source spelling, not
+fully resolved semantic signatures; this is not general variant-aware analysis.
+
+## Control flow, arrays and constness
+
+- Native for/do-while fixups retain execution order and continue targets. Ordered
+  switch defaults preserve label/body order, fallthrough, one scrutinee evaluation
+  and enclosing loop continues. See [control flow and indexing](control-flow-operators.md).
+- Source `skip` flags retain lazy call intent and serialized parameter flags.
+  Unsafe array prefixes and conservative source-free typed calls are rejected;
+  [lazy limitations](lazy-evaluation-limitations.md) defines the boundary.
+- Dynamic-array descriptors include Size, PushBack, PopBack, Clear, Resize,
+  Contains, FindFirst, FindLast, Insert, Remove, Erase and Last, plus
+  [Grow and Count](redmod-array-descriptors.md). They require array places;
+  temporary receivers are rejected. Fixed-array members and EraseFast are not
+  aliases to these operations, and native source does not expose arbitrary
+  community intrinsic spellings.
+- [Const rules](const-parameters.md) retain native qualifiers. Parameter element
+  writes/non-out forwarding have narrow native relaxations; const local class
+  handles permit rebinding/handle forwarding, not referent mutation. Native const
+  scalar/struct explicit initialization is rejected, unlike community const
+  initialization. Const fields/returns and arbitrary effects remain incomplete.
+- `mutable` is accepted for verified aggregate array fields. The bounded scalar
+  form is a Float field on a non-imported class with `instanceeditable inlined`,
+  optionally `const`, and no other modifiers. It adds no extra flag and never
+  clears explicit const. It is not a general mutable-scalar rule; array-field
+  implicit const and scalar const-field write enforcement remain incomplete.
+
+## Defaults, events and output boundaries
+
+[Aggregate defaults](shared-expression-defaults.md#shared-aggregate-defaults)
+resolve typed own/inherited targets and merge metadata on declaring fields keyed
+by supplying class, with no initialization bytecode. Checking is intentionally
+stricter than official inherited defaults that accept some invalid text. These
+properties do not prove local or runtime construction/reset behavior.
+
+[Events](redmod-events.md) have implicit Bool contracts, legal fallthrough and no
+synthetic default false return. Script semicolon events become empty implementations;
+imported prototypes retain callback identity without invented bodies. Importonly
+scripted members remain invalid. Bool patch metadata support is not a general
+claim of official wrapper/patch parity.
+
+Native struct construction needs verified completeness/layout; imported source
+fields alone are not sufficient evidence. Default/reset support, additional
+builtins, broader patches, contextual function values, float matching and
+prefix/postfix behavior remain bounded. Custom native generics, lambdas/function
+types, mixedRef/neverRef, unknown annotations and unverified metadata fail closed.
+See [future work](language-future-work.md), including the unresolved backend
+Variant reset risk and the separate transpiler restrictions.
+
+## Evidence and validation
+
+Optional [parser](../crates/syntax/redmod/parser/CORPUS.md) and
+[semantic](../crates/compiler/redmod/adapter/CORPUS.md) surveys use explicitly
+supplied local inputs. Do not commit installed scripts or require disposable
+reports. Bytecode snapshots establish instruction structure; official authored
+probes establish bounded acceptance/representation; neither is game execution.
+The [investigation archive](language-investigations.md) preserves key findings,
+not a current validation certification or a parity percentage.
