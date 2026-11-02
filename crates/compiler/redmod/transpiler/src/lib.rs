@@ -18,7 +18,7 @@ pub use target::LiteralError;
 pub mod validate;
 
 use std::borrow::Cow;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt;
 use std::ops::Range;
 
@@ -147,8 +147,18 @@ pub fn transpile<'ctx>(
         return Err(diagnostics);
     }
     let symbol_names = body::reserved_names(symbols);
+    // Only selected modules are emitted. Analysis-only source dependencies do
+    // not introduce target modules or widen symbol-level @using directives.
+    let mut target_modules = BTreeSet::new();
     for module in modules {
-        match declarations::emit(module, unit, symbols, &symbol_names) {
+        if let Some(path) = &module.source.path {
+            for length in 1..=path.segments.len() {
+                target_modules.insert(path.segments[..length].join("."));
+            }
+        }
+    }
+    for module in modules {
+        match declarations::emit(module, unit, symbols, &symbol_names, &target_modules) {
             Ok(module) => output.push(module),
             Err(error) => diagnostics.push(error),
         }

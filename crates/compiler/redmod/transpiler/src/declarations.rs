@@ -16,12 +16,14 @@ pub fn emit<'ctx>(
     unit: &LoweredCompilationUnit<'ctx>,
     symbols: &Symbols<'ctx>,
     symbol_names: &BTreeSet<String>,
+    target_modules: &BTreeSet<String>,
 ) -> Result<TranspiledModule> {
     let mut emitter = Emitter {
         module,
         unit,
         symbols,
         symbol_names,
+        target_modules,
         output: TranspiledModule {
             text: String::new(),
             mappings: Vec::new(),
@@ -74,6 +76,7 @@ struct Emitter<'a, 'ctx> {
     unit: &'a LoweredCompilationUnit<'ctx>,
     symbols: &'a Symbols<'ctx>,
     symbol_names: &'a BTreeSet<String>,
+    target_modules: &'a BTreeSet<String>,
     output: TranspiledModule,
     used: BTreeSet<DeclarationPath>,
     depth: usize,
@@ -122,17 +125,11 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
             {
                 return Err(error("unsupported import metadata", None));
             }
-            let ast::Import::All(import) = import else {
-                return Err(error(
-                    "REDmod transpile requires wildcard imports; exact/select imports cannot be widened safely",
-                    None,
-                ));
-            };
-            let name = import.segments.join(".");
-            target::path(&name)?;
-            self.output
-                .text
-                .push_str(&format!("@using {};\n", target::string(&name)?));
+            for name in self.import_paths(import)? {
+                self.output
+                    .text
+                    .push_str(&format!("@using {};\n", target::string(&name)?));
+            }
             return Ok(());
         }
         let resolved = *self.module.bindings.get(path).ok_or_else(|| error("missing explicit declaration binding; inactive/ambiguous declarations cannot use span guessing", None))?;
@@ -430,6 +427,52 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
             Item::Import(_) => unreachable!(),
         }
         Ok(())
+    }
+
+    fn import_paths(&self, import: &ast::Import<'ctx>) -> Result<Vec<String>> {
+        let (module, selected) = match import {
+            ast::Import::All(path) => {
+                let name = path.segments.join(".");
+                target::path(&name)?;
+                return Ok(vec![name]);
+            }
+            ast::Import::Exact(path) => {
+                let Some((name, module)) = path.segments.split_last() else {
+                    return Err(error("empty exact import", None));
+                };
+                (module, BTreeSet::from([*name]))
+            }
+            ast::Import::Select(path, names) => {
+                (&path.segments[..], names.iter().copied().collect())
+            }
+        };
+        let name = module.join(".");
+        target::path(&name)?;
+        for selected in &selected {
+            target::ident(selected)?;
+        }
+        if selected.is_empty() {
+            return Err(error("empty select import", None));
+        }
+        // Native @using accepts a full symbol path and imports its overload
+        // family without exposing the rest of the module. Do not replace it
+        // with a module-level @using, even though typed IR uses qualified names.
+        let mut paths = Vec::new();
+        for selected in selected {
+            let full = format!("{name}.{selected}");
+            // The same @using also exposes a module with this exact path.
+            // A symbol/module prefix overlap would silently widen the import.
+            if self.target_modules.contains(&full) {
+                return Err(error(
+                    format!(
+                        "exact/select import `{full}` overlaps a module and would widen target scope"
+                    ),
+                    None,
+                ));
+            }
+            paths.push(full);
+        }
+        Ok(paths)
     }
 
     fn validate_binding(
