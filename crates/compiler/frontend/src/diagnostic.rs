@@ -32,9 +32,9 @@ pub enum Diagnostic<'ctx> {
     InvalidEnumStorage(Span),
     #[error("enum value {1} is outside the range of {0:?}")]
     EnumStorageOverflow(ast::EnumStorage, i64, Span),
-    #[error("this function must have a body")]
+    #[error("this function must have a body; define its implementation inside `{{ ... }}`")]
     MissingFunctionBody(Span),
-    #[error("this function cannot have a body")]
+    #[error("a body is not allowed for this function declaration")]
     UnexpectedFunctionBody(Span),
     #[error("{} {noun} {verb} no effect on this item", sep_by(.0.iter_names().map(|(name,_)| surrounded_by(lowercase(name), "`", "`")), ", "), noun = if .0.iter_names().count() == 1 { "qualifier" } else { "qualifiers" }, verb = if .0.iter_names().count() == 1 { "has" } else { "have" })]
     UnusedItemQualifiers(ast::ItemQualifiers, Span),
@@ -46,11 +46,11 @@ pub enum Diagnostic<'ctx> {
     InvalidBaseType(Span),
     #[error("`{0}` is not a valid annotation in this context")]
     UnknownAnnotation(&'ctx str, Span),
-    #[error("`{0}` could not be found")]
+    #[error("imported name `{0}` could not be found")]
     ImportNotFound(&'ctx str, Span),
     #[error("`{0}` is private and cannot be imported")]
     ImportIsPrivate(&'ctx str, Span),
-    #[error("this name is already defined in the scope")]
+    #[error("this name is already defined in this scope")]
     NameRedefinition(Span),
     #[error("`{0}` is not a valid target for this annotation")]
     InvalidAnnotationType(&'ctx str, Span),
@@ -64,11 +64,13 @@ pub enum Diagnostic<'ctx> {
     DuplicateMethod(&'ctx str, Span),
     #[error("this method overrides the final method `{0}`")]
     FinalMethodOverride(&'ctx str, Span),
-    #[error("inheritance cycle detected")]
+    #[error(
+        "inheritance cycle detected; a type cannot inherit from itself, directly or indirectly"
+    )]
     CircularInheritance(Span),
     #[error("type `{0}` expects {1} type {noun}, but found {2}", noun = if *.1 == 1 { "argument" } else { "arguments" })]
     InvalidTypeArgCount(TypeId<'ctx>, usize, usize, Span),
-    #[error("type `{0}` does not satisfy expected bound `{1}` for type parameter `{2}`")]
+    #[error("type `{0}` does not satisfy the requirement `{1}` declared for type parameter `{2}`")]
     UnsatisfiedBound(Box<Type<'ctx>>, Box<Type<'ctx>>, &'ctx str, Span),
     #[error("this annotation attempts to modify a user-defined symbol, which is not allowed")]
     UserSymbolAnnotation(Span),
@@ -96,7 +98,7 @@ pub enum Diagnostic<'ctx> {
     Cte(#[from] cte::Error),
     #[error("the name of an implementation must be a valid identifier")]
     InvalidImplName(Span),
-    #[error("the type of an implementation must have no free type variables")]
+    #[error("an implementation requires a concrete data type with no unresolved type parameters")]
     InvalidImplType(Span),
     #[error("this implementation is a duplicate of a previous one")]
     DuplicateImpl(Span),
@@ -436,5 +438,53 @@ impl<'id, A> ErrorWithSpan for Result<A, CoalesceError<'id>> {
     #[inline]
     fn with_span(self, span: Span) -> Self::Result {
         self.map_err(|e| Diagnostic::CoalesceError(Box::new(e), span))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn declaration_messages_preserve_codes_and_spans() {
+        let file = ast::SourceMap::new().push_back("declarations.reds", "Example");
+        let span = Span::new(0, 7, file);
+        for (diagnostic, code, message) in [
+            (
+                Diagnostic::MissingFunctionBody(span),
+                "MISSING_BODY",
+                "this function must have a body; define its implementation inside `{ ... }`",
+            ),
+            (
+                Diagnostic::UnexpectedFunctionBody(span),
+                "UNEXPECTED_BODY",
+                "a body is not allowed for this function declaration",
+            ),
+            (
+                Diagnostic::CircularInheritance(span),
+                "INVALID_BASE",
+                "inheritance cycle detected; a type cannot inherit from itself, directly or indirectly",
+            ),
+            (
+                Diagnostic::NameRedefinition(span),
+                "SYM_REDEFINITION",
+                "this name is already defined in this scope",
+            ),
+            (
+                Diagnostic::InvalidImplType(span),
+                "INVALID_IMPL_TYPE",
+                "an implementation requires a concrete data type with no unresolved type parameters",
+            ),
+            (
+                Diagnostic::ImportNotFound("Example", span),
+                "UNRESOLVED_IMPORT",
+                "imported name `Example` could not be found",
+            ),
+        ] {
+            assert_eq!(diagnostic.to_string(), message);
+            assert_eq!(diagnostic.code(), code);
+            assert_eq!(diagnostic.span(), span);
+            assert!(diagnostic.related_locations().next().is_none());
+        }
     }
 }

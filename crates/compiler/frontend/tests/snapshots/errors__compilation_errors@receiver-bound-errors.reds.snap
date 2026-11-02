@@ -3,19 +3,19 @@ source: crates/compiler/frontend/tests/errors.rs
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/receiver-bound-errors.reds
 ---
-error[SYM_REDEFINITION]: this name is already defined in the scope
+error[SYM_REDEFINITION]: this name is already defined in this scope
  --> tests/data/receiver-bound-errors.reds:9:22
   |
 9 |   public func Shadow<T extends Animal, U extends T>(x: U) -> U { return x; }
   |                      ^
 
-error[SYM_REDEFINITION]: this name is already defined in the scope
+error[SYM_REDEFINITION]: this name is already defined in this scope
  --> tests/data/receiver-bound-errors.reds:10:26
    |
 10 |   public func ShadowPick<T extends Animal, U extends T>(x: U, tag: Int32) -> U { return x; }
    |                          ^
 
-error[SYM_REDEFINITION]: this name is already defined in the scope
+error[SYM_REDEFINITION]: this name is already defined in this scope
  --> tests/data/receiver-bound-errors.reds:11:26
    |
 11 |   public func ShadowPick<T extends Animal, U extends T>(x: U, tag: String) -> U { return x; }

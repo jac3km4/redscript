@@ -4,7 +4,7 @@ assertion_line: 27
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/class-checks.reds
 ---
-error[SYM_REDEFINITION]: this name is already defined in the scope
+error[SYM_REDEFINITION]: this name is already defined in this scope
  --> tests/data/class-checks.reds:25:7
    |
 25 | class ClassDefinedTwice {}
@@ -46,13 +46,13 @@ error[INVALID_PERSISTENT]: fields of type `ResRef` cannot be marked as persisten
 59 |   persistent let res: ResRef;
    |                  ^^^
 
-error[MISSING_BODY]: this function must have a body
+error[MISSING_BODY]: this function must have a body; define its implementation inside `{ ... }`
  --> tests/data/class-checks.reds:67:8
    |
 67 |   func MethodA(a: A)
    |        ^^^^^^^
 
-error[MISSING_BODY]: this function must have a body
+error[MISSING_BODY]: this function must have a body; define its implementation inside `{ ... }`
  --> tests/data/class-checks.reds:68:8
    |
 68 |   func MethodB() -> B
@@ -64,7 +64,7 @@ error[NON_STATIC_STRUCT_FN]: struct methods must be static
 47 |   func Method() {}
    |        ^^^^^^
 
-error[SYM_REDEFINITION]: this name is already defined in the scope
+error[SYM_REDEFINITION]: this name is already defined in this scope
  --> tests/data/class-checks.reds:87:21
    |
 87 | @nameImplementation(ClashingIntStruct as GenericStruct<Int32>)
@@ -76,7 +76,7 @@ error[DUP_IMPL]: this implementation is a duplicate of a previous one
 89 | @nameImplementation(DuplicateStringStruct as GenericStruct<String>)
    |                                              ^^^^^^^^^^^^^^^^^^^^^
 
-error[INVALID_BASE]: inheritance cycle detected
+error[INVALID_BASE]: inheritance cycle detected; a type cannot inherit from itself, directly or indirectly
  --> tests/data/class-checks.reds:43:7
    |
 43 | class CircularClassA extends CircularClassB {}
@@ -124,7 +124,7 @@ error[INVALID_TYPE_ARG_COUNT]: type `AbstractClass` expects 1 type argument, but
 38 |   let field: AbstractClass;
    |       ^^^^^
 
-error[UNSATISFIED_BOUND]: type `Chair` does not satisfy expected bound `Animal` for type parameter `A`
+error[UNSATISFIED_BOUND]: type `Chair` does not satisfy the requirement `Animal` declared for type parameter `A`
  --> tests/data/class-checks.reds:80:7
    |
 80 | class ClassViolatingBound extends ClassWithBound<Chair> {}

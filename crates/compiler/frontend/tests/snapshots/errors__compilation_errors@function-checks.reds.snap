@@ -3,13 +3,13 @@ source: crates/compiler/frontend/tests/errors.rs
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/function-checks.reds
 ---
-error[UNEXPECTED_BODY]: this function cannot have a body
+error[UNEXPECTED_BODY]: a body is not allowed for this function declaration
  --> tests/data/function-checks.reds:4:13
   |
 4 | native func NativeFuncWithUnexpectedBody(x: Int32) -> Int32 {
   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-error[MISSING_BODY]: this function must have a body
+error[MISSING_BODY]: this function must have a body; define its implementation inside `{ ... }`
  --> tests/data/function-checks.reds:8:6
   |
 8 | func FreeFunctionWithMissingBody(x: Int32) -> Int32
