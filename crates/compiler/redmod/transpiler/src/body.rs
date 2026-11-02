@@ -752,9 +752,15 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             ir::Expr::Field {
                 receiver, field, ..
             } => {
-                if !Self::simple_place(receiver) {
+                if !Self::simple_place(receiver)
+                    && !crate::field_reads::inline_receiver(
+                        receiver,
+                        &self.type_of(receiver)?,
+                        self.symbols,
+                    )
+                {
                     return Err(error(
-                        "field access requires a stable local receiver",
+                        "field read requires a stable local or verified inline receiver",
                         Some(e.span()),
                     ));
                 }
@@ -770,7 +776,11 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                         Some(e.span()),
                     ));
                 }
-                Ok(format!("{}.{}", self.expr(receiver)?, target::ident(name)?))
+                Ok(format!(
+                    "{}.{}",
+                    self.expr_at(receiver, 14)?,
+                    target::ident(name)?
+                ))
             }
             ir::Expr::Conditional {
                 condition,

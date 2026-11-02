@@ -1,0 +1,77 @@
+---
+source: crates/compiler/redmod/transpiler/tests/field_reads.rs
+expression: text
+---
+struct FieldVisual {
+    public var m_isIconic: Bool;
+}
+
+struct FieldData {
+    public var visualStateData: FieldVisual;
+    public var owner: FieldOwner;
+
+    public static function Bump(self: script_ref<FieldData>) -> Void {
+    }
+}
+
+class FieldOwner extends IScriptable {
+    public var child: FieldOwner;
+    public var data: FieldData;
+    public var flag: Bool;
+}
+
+function FieldSelect(out steps: Int32, owner: FieldOwner) -> FieldOwner {
+    steps = steps + 1;
+    return owner;
+}
+
+function FieldNull() -> FieldOwner {
+    return NULL;
+}
+
+function FieldStructRead(owner: FieldOwner) -> Bool {
+    return owner.child.data.visualStateData.m_isIconic;
+}
+
+function FieldLocalRead(data: FieldData) -> Bool {
+    return data.visualStateData.m_isIconic;
+}
+
+function FieldHandleRead(data: FieldData) -> Bool {
+    return data.owner.child.flag;
+}
+
+function FieldNullRead() -> Bool {
+    return FieldNull().child.flag;
+}
+
+function FieldMutate(out owner: FieldOwner) -> Bool {
+    owner = new FieldOwner;
+    return true;
+}
+
+function FieldPair(first: Bool, second: Bool) -> Bool {
+    return first;
+}
+
+import function OperatorLogicAnd(a: Bool, b: Bool) -> Bool;
+
+import function OperatorAdd(a: Int32, b: Int32) -> Int32;
+
+function FieldDeref(data: script_ref<FieldData>) -> Bool {
+    return data.visualStateData.m_isIconic;
+}
+
+function FieldProbe(enabled: Bool, owner: FieldOwner, other: FieldOwner, steps: Int32, data: FieldData) -> Bool {
+    FieldPair(FieldSelect(steps, owner).child.flag, FieldMutate(owner));
+    FieldPair(data.owner.child.flag, FieldMutate(owner));
+    (enabled ? FieldSelect(steps, owner) : FieldSelect(steps, other)).child.flag;
+    if (enabled) {
+        FieldSelect(steps, owner).child.flag;
+    }
+    while (enabled && FieldSelect(steps, owner).child.flag) {
+        continue;
+    }
+    var result: Bool = enabled && FieldSelect(steps, owner).child.flag;
+    return FieldNull().child.flag;
+}

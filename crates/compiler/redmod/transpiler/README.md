@@ -74,9 +74,18 @@ Every intrinsic is classified explicitly rather than emitted as an ordinary call
 
 Strong class-reference call chains, existing local-rooted fields and conditional
 receivers stay inline, preserving Context/argument and lazy execution boundaries.
-Struct write-back, nonlocal field accesses (feature6), array places and compound
-weak/script-reference receivers remain gated. See the
+Struct write-back, array places and compound weak/script-reference receivers
+remain gated. See the
 [receiver contract and bytecode evidence](../../../../docs/redmod-method-receivers.md).
+
+### Compound field reads
+
+Bounded field reads stay inline: class call/conditional chains, nested local-rooted
+class/struct fields, and `Deref(localScriptRef).visualStateData.m_isIconic`.
+Struct member reads require a variable-rooted parent scope in official v1.2.2;
+call/conditional-rooted struct paths remain rejected. Writable places, `out`,
+mutable struct receivers and array gates are unchanged. See the
+[field-read contract and official evidence](../../../../docs/redmod-field-reads.md).
 
 ### Native String borrows
 

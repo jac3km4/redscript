@@ -95,14 +95,14 @@ fn compound_receivers_stay_at_their_expression_sites() {
 }
 
 #[test]
-fn struct_places_and_feature6_field_accesses_remain_rejected() {
+fn struct_places_remain_rejected() {
     let structure = "struct Value { public let count: Int32; public static func Bump(self: script_ref<Value>) {} } class Holder { public let value: Value; }";
     for source in [
         format!("{structure} func Test(holder: ref<Holder>) {{ holder.value.Bump(); }}"),
         format!("{structure} func Test(values: [Value]) {{ values[0].Bump(); }}"),
-        format!("{structure} func Make() -> Value {{ return Value(0); }} func Test() {{ Make().Bump(); }}"),
-        "class Node { public let next: ref<Node>; public let value: Int32; } func Test(n: ref<Node>) -> Int32 { return n.next.value; }".into(),
-        "class Node { public let value: Int32; } func Make() -> ref<Node> { return new Node(); } func Test() -> Int32 { return Make().value; }".into(),
+        format!(
+            "{structure} func Make() -> Value {{ return Value(0); }} func Test() {{ Make().Bump(); }}"
+        ),
     ] {
         let errors = emit(&source).unwrap_err();
         assert!(errors.iter().all(|e| e.span.is_some()), "{errors:?}");

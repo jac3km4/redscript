@@ -35,17 +35,17 @@ identity. This is not a general materialization algorithm.
 - Struct receiver aliases requiring a nonlocal `AsRef` still fail closed; neither
   fields nor array elements are copied into mutable value receivers.
 - Array receiver/place and `out` argument restrictions are unchanged.
-- **Feature6 is not implemented:** `Make().field` and `owner.child.field` remain
-  rejected. `owner.child.Method()` uses the existing single local-rooted field
-  expression; it does not broaden field emission or writable places.
+- [Feature6 field reads](redmod-field-reads.md) now independently permits bounded
+  `Make().field` and `owner.child.field` reads. It does not broaden writable places
+  or mutable struct receivers.
 - Cast, index, assignment and construction compound receivers remain outside
   this bounded slice. Existing simple local receivers are unchanged.
 
 ## Tests and evidence
 
 `crates/compiler/redmod/transpiler/tests/receivers.rs` snapshots emitted source,
-passes it through the full native adapter, and checks retained struct/place and
-feature6 rejections. The authored fixture includes nested side-effecting receiver
+passes it through the full native adapter, and checks retained struct/place
+rejections. Feature6 read coverage is in the separate `field_reads` tests. The authored fixture includes nested side-effecting receiver
 calls, arguments rebinding the original reference, conditional receiver arms,
 branch-local calls, lazy RHS expressions, loop reevaluation/continue and a
 null-returning receiver.
