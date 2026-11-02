@@ -5,6 +5,7 @@ expression: output.text
 function Tick() -> Int32 {
     return 1;
 }
+
 function Test(flag: Bool) -> Int32 {
     var empty: array<Int32>;
     var arrayLiteral: array<Int32>;

@@ -5,8 +5,10 @@ expression: output
 function Check(values: array<Int32>) -> Bool {
     return true;
 }
+
 function Tick() -> Void {
 }
+
 function Nested(values: array<Int32>) -> Void {
     var arrayLiteral: array<Int32>;
     var arrayLiteral_2: array<Int32>;
@@ -36,6 +38,7 @@ function Nested(values: array<Int32>) -> Void {
         break;
     }
 }
+
 function WithTail(flag: Bool) -> Void {
     while (true) {
         if (flag) {
@@ -46,6 +49,7 @@ function WithTail(flag: Bool) -> Void {
         Tick();
     }
 }
+
 function SwitchBreak(flag: Bool) -> Void {
     while (true) {
         switch (1) {
@@ -59,6 +63,7 @@ function SwitchBreak(flag: Bool) -> Void {
         Tick();
     }
 }
+
 function ConditionalLoop(flag: Bool) -> Void {
     while (flag) {
         if (flag) {
@@ -68,6 +73,7 @@ function ConditionalLoop(flag: Bool) -> Void {
         }
     }
 }
+
 function ElseEffects(flag: Bool) -> Void {
     while (true) {
         if (flag) {
@@ -78,6 +84,7 @@ function ElseEffects(flag: Bool) -> Void {
         }
     }
 }
+
 function MultipleBranches(flag: Bool) -> Void {
     while (true) {
         if (flag) {
@@ -89,6 +96,7 @@ function MultipleBranches(flag: Bool) -> Void {
         }
     }
 }
+
 function GuardExpression(flag: Bool, values: array<Int32>) -> Void {
     while (true) {
         if (!(flag ? Check(values) : false)) {

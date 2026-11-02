@@ -319,7 +319,7 @@ mod tests {
         let signature = FunctionType::default();
         let (text, _) = crate::body::Body::new(&function, &symbols, &signature, None)
             .unwrap()
-            .emit()
+            .emit_at(0)
             .unwrap();
         assert!(text.contains("var before: Int32;"), "{text}");
         assert!(text.contains("var inside: Int32;"), "{text}");

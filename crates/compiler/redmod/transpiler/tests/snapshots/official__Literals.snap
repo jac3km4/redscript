@@ -5,16 +5,20 @@ expression: source.module.text
 function OfficialTranspilePath() -> String {
     return "assets\widgets\button";
 }
+
 function OfficialTranspileTrailingSlash() -> String {
     return "assets\";
 }
+
 function OfficialTranspileEscapeLooking() -> String {
     return "\n\t\u{22}\\";
 }
+
 function OfficialTranspileMultiline() -> String {
     return "first
   second";
 }
+
 function OfficialTranspileName() -> CName {
     return 'raw\name\';
 }

@@ -133,7 +133,8 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         ))
     }
 
-    pub fn emit(mut self) -> Result<(String, Vec<SourceMapping>)> {
+    pub fn emit_at(mut self, depth: usize) -> Result<(String, Vec<SourceMapping>)> {
+        let pad = "    ".repeat(depth + 1);
         let mut text = String::from("{\n");
         let mut mappings = Vec::new();
         for local in &self.function.locals {
@@ -145,7 +146,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     .coalesce(self.symbols)
                     .map_err(|e| error(e.to_string(), local.span))?;
                 text.push_str(&format!(
-                    "    var {}: {};\n",
+                    "{pad}var {}: {};\n",
                     self.local(local.id)?,
                     target::typ(&typ, self.symbols)?
                 ));
@@ -153,13 +154,13 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         }
         if self.is_enum(self.signature.return_type()) {
             text.push_str(&format!(
-                "    var {}: {};\n",
+                "{pad}var {}: {};\n",
                 self.result_local,
                 target::typ(self.signature.return_type(), self.symbols)?
             ));
         }
-        self.block(&self.function.block, 1, &mut text, &mut mappings)?;
-        text.push_str("}\n");
+        self.block(&self.function.block, depth + 1, &mut text, &mut mappings)?;
+        text.push_str(&format!("{}}}\n", "    ".repeat(depth)));
         Ok((text, mappings))
     }
 

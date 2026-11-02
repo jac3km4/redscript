@@ -25,6 +25,7 @@ pub fn emit<'ctx>(
             mappings: Vec::new(),
         },
         used: BTreeSet::new(),
+        depth: 0,
     };
     if let Some(path) = &module.source.path {
         emitter.output.text.push_str(&format!(
@@ -43,6 +44,9 @@ pub fn emit<'ctx>(
             }
         } else {
             saw_declaration = true;
+        }
+        if i > 0 && separates_declarations(&module.source.items[i - 1].0, decl) {
+            emitter.output.text.push('\n');
         }
         emitter.decl(decl, *span, vec![i], false)?;
     }
@@ -69,6 +73,7 @@ struct Emitter<'a, 'ctx> {
     symbols: &'a Symbols<'ctx>,
     output: TranspiledModule,
     used: BTreeSet<DeclarationPath>,
+    depth: usize,
 }
 
 impl<'a, 'ctx> Emitter<'a, 'ctx> {
@@ -139,14 +144,16 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                 Some(span),
             ));
         }
+        let pad = "    ".repeat(self.depth);
         self.metadata(decl)?;
         if let Item::Function(function) = &decl.item
             && let Some(label) = &function.properties.profile
         {
             self.output
                 .text
-                .push_str(&format!("[profile = {}]\n", target::string(label)?));
+                .push_str(&format!("{pad}[profile = {}]\n", target::string(label)?));
         }
+        self.output.text.push_str(&pad);
         let patch = decl.annotations.iter().any(|(a, _)| {
             matches!(
                 a.name,
@@ -216,12 +223,17 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                     ));
                 }
                 self.output.text.push_str(" {\n");
+                self.depth += 1;
                 for (i, (item, span)) in source.items.iter().enumerate() {
+                    if i > 0 && separates_declarations(&source.items[i - 1].0, item) {
+                        self.output.text.push('\n');
+                    }
                     let mut indices = path.0.clone();
                     indices.push(i);
                     self.decl(item, *span, indices, true)?;
                 }
-                self.output.text.push_str("}\n");
+                self.depth -= 1;
+                self.output.text.push_str(&format!("{pad}}}\n"));
             }
             Item::Enum(source) => {
                 let R::Type(id) = resolved else {
@@ -259,11 +271,11 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                         ));
                     }
                     self.output.text.push_str(&format!(
-                        "    {} = {value},\n",
+                        "{pad}    {} = {value},\n",
                         target::ident(variant.name)?
                     ));
                 }
-                self.output.text.push_str("}\n");
+                self.output.text.push_str(&format!("{pad}}}\n"));
             }
             Item::Let(source) => {
                 let R::Field(id) = resolved else {
@@ -390,7 +402,7 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                     ));
                 }
                 if let Some(body) = body {
-                    let (text, mappings) = body.emit()?;
+                    let (text, mappings) = body.emit_at(self.depth)?;
                     self.output.text.push(' ');
                     let offset = self.output.text.len();
                     self.output.text.push_str(&text);
@@ -538,10 +550,12 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
     }
 
     fn metadata(&mut self, decl: &SourceItemDecl<'ctx>) -> Result<()> {
+        let pad = "    ".repeat(self.depth);
         for doc in &decl.doc {
             if !doc.starts_with("///") || doc.contains(['\n', '\r']) {
                 return Err(error("invalid documentation comment", None));
             }
+            self.output.text.push_str(&pad);
             self.output.text.push_str(doc);
             self.output.text.push('\n');
         }
@@ -552,7 +566,7 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
             {
                 self.output
                     .text
-                    .push_str(&format!("[profile = {}]\n", target::string(label)?));
+                    .push_str(&format!("{pad}[profile = {}]\n", target::string(label)?));
                 continue;
             }
             if a.name == "mixedRef" {
@@ -572,7 +586,7 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                 ));
             }
             self.output.text.push_str(&format!(
-                "@{}({})\n",
+                "{pad}@{}({})\n",
                 a.name,
                 a.args
                     .iter()
@@ -583,6 +597,13 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
         }
         Ok(())
     }
+}
+
+fn separates_declarations(previous: &SourceItemDecl<'_>, next: &SourceItemDecl<'_>) -> bool {
+    !matches!(
+        (&previous.item, &next.item),
+        (Item::Import(_), Item::Import(_)) | (Item::Let(_), Item::Let(_))
+    )
 }
 
 fn metadata_expr(expr: &ast::SourceExpr<'_>) -> Result<String> {

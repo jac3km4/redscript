@@ -183,6 +183,34 @@ fn convert_mapped(source: &str) -> redscript_redmod_transpiler::TranspiledModule
 }
 
 #[test]
+fn declarations_are_spaced_and_members_and_mappings_are_indented() {
+    let output = convert_mapped(
+        "class Widget { let first: Int32; let second: Int32; \
+         /// Read the field.\n public func Read() -> Int32 { return this.first; } \
+         public func Reset() { this.first = 0; } } func Run() {}",
+    );
+    assert_eq!(
+        output.text,
+        "class Widget extends IScriptable {\n\
+         \x20   var first: Int32;\n\
+         \x20   var second: Int32;\n\n\
+         \x20   /// Read the field.\n\
+         \x20   public function Read() -> Int32 {\n\
+         \x20       return this.first;\n\
+         \x20   }\n\n\
+         \x20   public function Reset() -> Void {\n\
+         \x20       this.first = 0;\n\
+         \x20   }\n\
+         }\n\n\
+         function Run() -> Void {\n\
+         }\n",
+    );
+    assert!(output.mappings.iter().any(|mapping| {
+        &output.text[mapping.generated.clone()] == "        return this.first;\n"
+    }));
+}
+
+#[test]
 fn value_assignments_are_exported_as_nested_expressions_with_source_mappings() {
     let source = "func Chain(out a: Int32, out b: Int32) -> Int32 { return a = b = 7; }";
     let sources = SourceMap::new();
