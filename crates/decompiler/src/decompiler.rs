@@ -661,10 +661,17 @@ impl<'scope, 'ctx: 'i, 'i> Decompiler<'scope, 'ctx, 'i> {
         self.declared.retain(|decl| decl.statement.get());
 
         let mut stmts = vec![];
-        for &local in self.function.locals() {
-            if !self.declared.contains(&Declaration::new(local)) {
-                let local = self.bundle.try_get_item(local)?;
+        for &local_idx in self.function.locals() {
+            if !self.declared.contains(&Declaration::new(local_idx)) {
+                let local = self.bundle.try_get_item(local_idx)?;
                 let name = self.bundle.try_get_item_hint(local.name(), "local name")?;
+
+                // Hoisting loses the initializer's execution point. Expanded array
+                // initialization and assignments inside expressions cannot become
+                // later writes to an uninitialized const declaration.
+                if local.flags().is_const() && self.liveness.contains_key(&local_idx) {
+                    return Err(Error::UnsupportedConstInitializer(name.to_string()));
+                }
 
                 stmts.push(ast::Stmt::Let {
                     is_const: local.flags().is_const(),
