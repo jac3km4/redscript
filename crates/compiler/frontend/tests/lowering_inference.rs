@@ -47,7 +47,8 @@ fn lazy_arguments_reject_array_prefixes_before_lowering() {
         assert!(
             diagnostics
                 .iter()
-                .any(|(code, _)| code == "UNSAFE_ARRAY_EVALUATION"),
+                .any(|(code, message)| code == "UNSAFE_ARRAY_EVALUATION"
+                    && message == "cannot preserve when expressions are evaluated during array literal initialization"),
             "{source}: {diagnostics:?}"
         );
     }
@@ -72,7 +73,8 @@ fn source_free_typed_calls_reject_user_lazy_parameters() {
         assert!(
             diagnostics
                 .iter()
-                .any(|(code, _)| code == "UNSAFE_ARRAY_EVALUATION"),
+                .any(|(code, message)| code == "UNSAFE_ARRAY_EVALUATION"
+                    && message == "cannot check when this `skip` argument is evaluated because its source expression is unavailable"),
             "{source}: {diagnostics:?}"
         );
     }
@@ -126,19 +128,19 @@ fn local_type_diagnostics_include_actual_counts() {
         ),
         (
             "func Test() { let value: [Int32; 17]; }",
-            "unsupported static array size: found 17 elements, maximum is 16",
+            "static array length 17 exceeds the maximum supported length of 16",
         ),
         (
             "func Test() { let value: (Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32) -> Void; }",
-            "function arity 9 exceeds maximum 8",
+            "too many function parameters or arguments: found 9, maximum is 8",
         ),
         (
             "func Test() { let value = (a, b, c, d, e, f, g, h, i) -> {}; }",
-            "function arity 9 exceeds maximum 8",
+            "too many function parameters or arguments: found 9, maximum is 8",
         ),
         (
             "func Test() { let f = () -> {}; f(1, 2, 3, 4, 5, 6, 7, 8, 9); }",
-            "function arity 9 exceeds maximum 8",
+            "too many function parameters or arguments: found 9, maximum is 8",
         ),
     ] {
         let diagnostics = diagnostic_messages(source);
@@ -237,11 +239,11 @@ fn reference_errors_show_expected_and_found_types() {
         [
             (
                 "UNEXPECTED_NON_REF".into(),
-                "expected `ref<Mixed>`, found `Mixed`: a `ref` is required here".into()
+                "expected `ref<Mixed>`, found `Mixed`: expected a reference, but found a non-reference value".into()
             ),
             (
                 "UNEXPECTED_REF".into(),
-                "expected `Mixed`, found `ref<Mixed>`: a `ref` is not expected here".into()
+                "expected `Mixed`, found `ref<Mixed>`: expected a non-reference value, but found a reference".into()
             ),
         ]
     );
