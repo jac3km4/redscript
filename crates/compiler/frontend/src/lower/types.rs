@@ -598,10 +598,17 @@ impl<'ctx> PolyType<'ctx> {
         match self {
             Self::Mono(typ) => typ.is_subtype_compatible(other, variance, symbols),
             Self::Var(var) => {
-                var.lower().is_subtype_compatible(other, variance, symbols)
-                    && var
-                        .upper()
-                        .is_none_or(|u| u.is_subtype_compatible(other, !variance, symbols))
+                // For L <: X <: U, eligibility asks whether X can satisfy the
+                // candidate, not whether the candidate equals both endpoints.
+                // X <: T needs L <: T; T <: X needs T <: U. Equality needs both.
+                (variance == Variance::Contravariant
+                    || var
+                        .lower()
+                        .is_subtype_compatible(other, Variance::Covariant, symbols))
+                    && (variance == Variance::Covariant
+                        || var.upper().is_none_or(|upper| {
+                            upper.is_subtype_compatible(other, Variance::Contravariant, symbols)
+                        }))
             }
         }
     }
@@ -1068,6 +1075,109 @@ mod tests {
             );
         }
         symbols
+    }
+
+    #[test]
+    fn applicability_respects_directional_and_partial_bounds_without_selecting() {
+        let interner = TypeInterner::default();
+        let symbols = hierarchy(&interner);
+        let types = ["Leaf", "Middle", "Base"].map(|name| Type::nullary(interner.intern(name)));
+        for (lower, upper) in [
+            (Some(0), Some(0)),
+            (Some(1), Some(1)),
+            (Some(0), Some(2)),
+            (Some(0), None),
+            (None, Some(1)),
+            (None, None),
+        ] {
+            let lower_type = lower.map_or(InferredType::Nothing, |i| (&types[i]).into());
+            let upper_type = upper.map(|i| (&types[i]).into());
+            let inferred = PolyType::with_bounds(lower_type.clone(), upper_type.clone());
+            for (i, candidate) in types.iter().enumerate() {
+                for variance in [
+                    Variance::Covariant,
+                    Variance::Contravariant,
+                    Variance::Invariant,
+                ] {
+                    let above_lower = lower.is_none_or(|lower| lower <= i);
+                    let below_upper = upper.is_none_or(|upper| i <= upper);
+                    let expected = match variance {
+                        Variance::Covariant => above_lower,
+                        Variance::Contravariant => below_upper,
+                        Variance::Invariant => above_lower && below_upper,
+                    };
+                    assert_eq!(
+                        inferred.is_subtype_compatible(candidate, variance, &symbols),
+                        expected,
+                        "{lower:?}..{upper:?}, {candidate}, {variance:?}"
+                    );
+                }
+            }
+            let PolyType::Var(var) = &inferred else {
+                unreachable!()
+            };
+            assert_eq!(var.lower(), lower_type);
+            assert_eq!(var.upper(), upper_type);
+            // Eligibility must not select an endpoint or add speculative bounds.
+            inferred
+                .constrain_invariant(
+                    &PolyType::from_type(&types[lower.unwrap_or(upper.unwrap_or(2))]),
+                    &symbols,
+                )
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn applicability_composes_nested_variance_and_preserves_unknowns() {
+        let interner = TypeInterner::default();
+        let mut symbols = hierarchy(&interner);
+        let leaf = Type::nullary(interner.intern("Leaf"));
+        let base = Type::nullary(interner.intern("Base"));
+        let fixed = PolyType::with_bounds((&leaf).into(), Some((&leaf).into()));
+        for variance in [
+            Variance::Covariant,
+            Variance::Contravariant,
+            Variance::Invariant,
+        ] {
+            let id = interner.intern(match variance {
+                Variance::Covariant => "Producer",
+                Variance::Contravariant => "Consumer",
+                Variance::Invariant => "Cell",
+            });
+            symbols.add_type(
+                id,
+                TypeDef::new(
+                    [Rc::new(CtxVar::new("T", variance, None, None))],
+                    TypeSchema::Aggregate(Aggregate::default().into()),
+                    [],
+                ),
+            );
+            let inferred = Type::app(id, [fixed.clone()]).into_poly();
+            assert_eq!(
+                inferred.is_subtype_compatible(
+                    &Type::app(id, [base.clone()]),
+                    Variance::Covariant,
+                    &symbols,
+                ),
+                variance == Variance::Covariant
+            );
+            assert!(inferred.is_subtype_compatible(
+                &Type::app(id, [leaf.clone()]),
+                Variance::Covariant,
+                &symbols,
+            ));
+        }
+        for unknown in [PolyType::fresh(), InferredType::Nothing.into_poly()] {
+            for variance in [
+                Variance::Covariant,
+                Variance::Contravariant,
+                Variance::Invariant,
+            ] {
+                assert!(unknown.is_subtype_compatible(&base, variance, &symbols));
+                assert!(unknown.is_subtype_compatible(&leaf, variance, &symbols));
+            }
+        }
     }
 
     #[test]
