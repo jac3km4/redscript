@@ -8,6 +8,7 @@ Block {
             local: Var(
                 0,
             ),
+            source_binding: None,
             typ: Type(
                 RefCell {
                     value: Uninit(
