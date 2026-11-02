@@ -131,6 +131,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 (MemberCall::FieldAccess(field), typ) => (field, typ),
             }
         } else {
+            array_guard::check_runtime_callee(args, *expr_span)?;
             self.lower_expr(expr, env)?
         };
 
@@ -461,6 +462,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             return Ok((MemberCall::MethodCall(call), call_t));
         }
 
+        array_guard::check_runtime_callee(args, *expr_span)?;
         let (mut ir, mut typ) = self.lower_expr(receiver, env)?;
         if let Some((RefType::Script, pointee)) = typ.strip_ref(self.symbols) {
             self.emit_reference_conversion(&mut ir, typ, ir::Intrinsic::Deref, env, *expr_span)?;

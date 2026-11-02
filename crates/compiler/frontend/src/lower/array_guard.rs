@@ -1,5 +1,5 @@
 //! Fail closed where statement-prefix array construction would change evaluation.
-use redscript_community_ast::{BinOp, Expr, SourceExpr, Spanned, StrPart};
+use redscript_community_ast::{BinOp, Expr, SourceExpr, Span, Spanned, StrPart};
 
 use super::{Error, LowerResult};
 
@@ -9,6 +9,19 @@ pub(super) fn check<'ctx>(expr: &Spanned<SourceExpr<'ctx>>) -> LowerResult<'ctx,
 
 pub(super) fn check_lazy<'ctx>(expr: &Spanned<SourceExpr<'ctx>>) -> LowerResult<'ctx, ()> {
     visit(expr, true).map(|_| ())
+}
+
+// Call lowering invokes this after distinguishing runtime values from static names.
+pub(super) fn check_runtime_callee<'ctx>(
+    args: &[Spanned<SourceExpr<'ctx>>],
+    span: Span,
+) -> LowerResult<'ctx, ()> {
+    for arg in args {
+        if visit(arg, false)? {
+            return Err(Error::UnsafeArrayEvaluation(span));
+        }
+    }
+    Ok(())
 }
 
 fn siblings<'a, 'ctx: 'a>(
@@ -65,7 +78,11 @@ fn visit<'ctx>((expr, span): &Spanned<SourceExpr<'ctx>>, lazy: bool) -> LowerRes
         Expr::Call { expr, args, .. } => {
             let callee = visit(expr, lazy)?;
             let args_array = siblings(args.iter(), lazy)?;
-            if args_array && !matches!(expr.0, Expr::Ident(_)) {
+            // Identifier receivers may name a type. Call lowering checks runtime
+            // callees once name resolution can distinguish them from static calls.
+            let static_syntax = matches!(expr.0, Expr::Ident(_))
+                || matches!(&expr.0, Expr::Member { expr, .. } if matches!(expr.0, Expr::Ident(_)));
+            if args_array && !static_syntax {
                 return Err(Error::UnsafeArrayEvaluation(expr.1));
             }
             Ok(callee || args_array)
