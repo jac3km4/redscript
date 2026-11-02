@@ -111,69 +111,56 @@ impl<'scope, 'ctx: 'i, 'i> Decompiler<'scope, 'ctx, 'i> {
 
         let stmt = match instr {
             Instr::Switch(_) => {
-                let mut cases = Vec::new();
-                let mut default = None;
-
-                let mut switch_exit = None;
-                let mut case_exit: Option<(Location, Location)> = None;
-
+                let start = self.code.clone();
+                let layout = crate::control_flow::SwitchLayout::read(start.clone(), end)?;
                 self.consume_instr()?;
                 let scrutinee = self.consume_expr()?.into_expr().into();
-
-                while self.position() < end {
-                    match (self.code.clone().next(), switch_exit) {
-                        (Some(Instr::SwitchLabel(label)), _) => {
-                            let pos = self.position();
-                            let body = pos + label.body();
-                            let next_case = pos + label.next_case();
-                            // Inline labels may share a body at the next label, but
-                            // detached dispatch tables put bodies beyond that label.
-                            // Consuming sequentially would assign them to default.
-                            if body > next_case {
-                                return Err(Error::DetachedSwitchBodies);
-                            }
-
-                            let exit = case_exit
-                                .as_ref()
-                                .and_then(|&(b, e)| (b == body).then_some(e))
-                                .unwrap_or_default()
-                                .max(next_case);
-                            case_exit = Some((body, exit));
-
-                            self.consume_instr()?;
-                            let label = self.consume_expr()?.into_expr();
-
-                            let nested = cf_block.get_block(Bounds::new(body, next_case));
-                            // keep track of where the switch breaks out to in order to be able
-                            // to determine where the final case ends
-                            if let Some(e) = nested.exit()
-                                && e > next_case
-                            {
-                                switch_exit = Some(e);
-                            }
-
-                            let block = self.consume_block(nested, exit)?;
-                            cases.push(ast::Case::new(ast::Condition::Expr(label), block.stmts));
+                let mut labels = Vec::new();
+                for &(pos, body) in &layout.labels {
+                    self.code = start.clone();
+                    crate::control_flow::seek(&mut self.code, pos)?;
+                    self.consume_instr()?;
+                    labels.push((body, self.consume_expr()?.into_expr()));
+                }
+                // The layout retains lazy matcher evaluation order, including
+                // backward-linked labels sharing a body.
+                let mut cases = Vec::new();
+                let mut default = None;
+                let mut default_index = labels.len();
+                let mut labels = labels.into_iter().peekable();
+                for &(body, body_end) in &layout.bodies {
+                    self.code = start.clone();
+                    crate::control_flow::seek(&mut self.code, body)?;
+                    let nested = cf_block.get_block(Bounds::new(body, body_end));
+                    let block = self.consume_block(nested, body_end)?;
+                    if layout.default == Some(body) {
+                        default_index = cases.len();
+                        if !labels.peek().is_some_and(|&(target, _)| target == body) {
+                            default = Some(block.stmts);
+                            continue;
                         }
-                        (Some(Instr::SwitchDefault), Some(exit)) => {
-                            self.consume_instr()?;
-                            let block = self.consume_block(cf_block, exit)?;
-                            if !block.stmts.is_empty() {
-                                default = Some(block.stmts);
-                            }
-                            break;
-                        }
-                        (Some(Instr::SwitchDefault), None) => {
-                            self.consume_instr()?;
-                            break;
-                        }
-                        _ => break,
+                        // An empty default can share the following case's body.
+                        default = Some(Box::new([]));
+                    }
+                    let mut stmts = Some(block.stmts);
+                    while labels.peek().is_some_and(|&(target, _)| target == body) {
+                        let (_, label) = labels.next().unwrap();
+                        let grouped = labels.peek().is_some_and(|&(target, _)| target == body);
+                        cases.push(ast::Case::new(
+                            ast::Condition::Expr(label),
+                            if grouped {
+                                Box::new([])
+                            } else {
+                                stmts.take().unwrap()
+                            },
+                        ));
                     }
                 }
-
+                self.code = start;
+                crate::control_flow::seek(&mut self.code, layout.end)?;
                 ast::Stmt::Switch {
                     expr: scrutinee,
-                    default_index: cases.len(),
+                    default_index,
                     cases: cases.into(),
                     default,
                 }
