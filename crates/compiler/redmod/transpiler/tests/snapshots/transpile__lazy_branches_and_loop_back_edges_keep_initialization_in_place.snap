@@ -26,7 +26,7 @@ function Test(enabled: Bool, values: array<Int32>) -> Bool {
         if (!Check(arrayLiteral)) {
             break;
         }
-        reset = Cast<Int32>(0);
+        reset = 0;
         count += 1;
         switch (count) {
             case 1:

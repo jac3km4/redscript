@@ -14,7 +14,7 @@ function Test(flag: Bool) -> Int32 {
     var reset: Int32;
     var count_2: Int32;
     var count: Int32 = Tick();
-    var zero: Int32 = Cast<Int32>(0);
+    var zero: Int32 = 0;
     var text: String = "";
     empty.Clear();
     arrayLiteral.Resize(1);
@@ -25,7 +25,7 @@ function Test(flag: Bool) -> Int32 {
     }
     while (flag) {
         repeated = Tick();
-        reset = Cast<Int32>(0);
+        reset = 0;
         continue;
     }
     if (flag) {

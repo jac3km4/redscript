@@ -414,10 +414,12 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         if id == predef::DOUBLE {
             return Ok("Cast<Double>(0.0)".into());
         }
+        if id == predef::INT32 {
+            return Ok("0".into());
+        }
         if [
             predef::INT8,
             predef::INT16,
-            predef::INT32,
             predef::INT64,
             predef::UINT8,
             predef::UINT16,
@@ -1044,7 +1046,7 @@ pub(crate) fn constant<'ctx>(c: &ir::Const<'ctx>, symbols: &Symbols<'ctx>) -> Re
     use ir::Const as C;
     let cast = |value: String| -> Result<String> {
         Ok(format!(
-            "Cast<{}>(({value}))",
+            "Cast<{}>({value})",
             target::typ(&Type::nullary(c.type_id()), symbols)?
         ))
     };
@@ -1104,7 +1106,7 @@ mod float_tests {
             assert!(text.contains('.'), "{text}");
             assert_eq!(text.parse::<f32>().unwrap().to_bits(), value.to_bits());
             let double = constant(&ir::Const::F64(f64::from(value)), &symbols).unwrap();
-            assert_eq!(double, format!("Cast<Double>(({text}))"));
+            assert_eq!(double, format!("Cast<Double>({text})"));
         }
         assert_eq!(float_literal(-0.0), "-0.0");
     }

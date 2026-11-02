@@ -38,7 +38,7 @@ function Test(items: array<Int32>, enabled: Bool) -> String {
         item = items[index];
         index += 1;
         scratch.Clear();
-        zero = Cast<Int32>(0);
+        zero = 0;
         scratch.PushBack(item);
         if (enabled && Tick()) {
             __rst_v7 = item;

@@ -183,6 +183,42 @@ fn convert_mapped(source: &str) -> redscript_redmod_transpiler::TranspiledModule
 }
 
 #[test]
+fn numeric_defaults_and_typed_literals_avoid_redundant_syntax() {
+    let output = convert(
+        "func Test() { let zero: Int32; let small: Int16 = 3; \
+         let negative: Int8 = -2; let wide: Int64 = 4; \
+         let unsigned: Uint32 = 5u; let precise: Double = 1.5d; \
+         let minimum: Int32 = -2147483648; }",
+    );
+    assert!(output.contains("var zero: Int32 = 0;"), "{output}");
+    assert!(
+        output.contains("var small: Int16 = Cast<Int16>(3);"),
+        "{output}"
+    );
+    assert!(
+        output.contains("var negative: Int8 = Cast<Int8>(-2);"),
+        "{output}"
+    );
+    assert!(
+        output.contains("var wide: Int64 = Cast<Int64>(4);"),
+        "{output}"
+    );
+    assert!(
+        output.contains("var unsigned: Uint32 = Cast<Uint32>(5);"),
+        "{output}"
+    );
+    assert!(
+        output.contains("var precise: Double = Cast<Double>(1.5);"),
+        "{output}"
+    );
+    assert!(
+        output.contains("var minimum: Int32 = (-2147483647 - 1);"),
+        "{output}"
+    );
+    assert!(!output.contains("Cast<Int32>(0)"), "{output}");
+}
+
+#[test]
 fn declarations_are_spaced_and_members_and_mappings_are_indented() {
     let output = convert_mapped(
         "class Widget { let first: Int32; let second: Int32; \
@@ -649,7 +685,7 @@ func Test(flag: Bool) -> Int32 {
     let output = convert_mapped(source);
     for expected in [
         "var count: Int32 = Tick();",
-        "var zero: Int32 = Cast<Int32>(0);",
+        "var zero: Int32 = 0;",
         "var text: String = \"\";",
         "var values: array<Int32> = arrayLiteral;",
         "var branchValue: Int32;",
@@ -657,7 +693,7 @@ func Test(flag: Bool) -> Int32 {
         "var reset: Int32;",
         "var count_2: Int32;",
         "empty.Clear();",
-        "reset = Cast<Int32>(0);",
+        "reset = 0;",
         "count_2 = count;",
     ] {
         assert!(output.text.contains(expected), "{}", output.text);
