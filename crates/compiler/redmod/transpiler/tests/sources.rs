@@ -241,6 +241,62 @@ fn selection_preserves_order_with_unsorted_negative_file_ids() {
 }
 
 #[test]
+fn shared_symbol_names_keep_hygiene_independent_across_modules_and_bodies() {
+    let sources = SourceMap::new();
+    sources.push_back(
+        "dependency.reds",
+        "module Dependency\nfunc Collision() {} class Host { public func Member() {} }",
+    );
+    let selected: Vec<_> = ["First", "Second"]
+        .into_iter()
+        .map(|module| {
+            sources.push_back(
+                format!("{module}.reds"),
+                format!(
+                    "module {module}\nfunc Echo(Collision: Int32) -> Int32 = Collision; \
+                     func Echo(Collision: Bool) -> Bool = Collision; \
+                     func Run(Member: Int32, Host: Int32) -> Int32 = Member;"
+                ),
+            )
+        })
+        .collect();
+    let interner = TypeInterner::default();
+    let analysis = analyze_sources(&sources, Symbols::with_default_types(), &interner).unwrap();
+    let output = analysis.transpile_selected(&selected).unwrap();
+    assert_eq!(analysis.transpile_selected(&selected).unwrap(), output);
+    for source in output {
+        let text = source.module.text;
+        assert!(text.contains("Echo(Collision_2: Int32)"), "{text}");
+        assert!(text.contains("Echo(Collision_2: Bool)"), "{text}");
+        assert!(
+            text.contains("Run(Member_2: Int32, Host_2: Int32)"),
+            "{text}"
+        );
+        assert!(text.contains("return Member_2;"), "{text}");
+        let (_, errors) = redscript_redmod_parser::parse_module(&text, source.file);
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+}
+
+#[test]
+#[ignore = "manual scaling probe; run with --ignored --nocapture"]
+fn transpile_function_scaling_probe() {
+    for count in [100, 1_000, 5_000] {
+        let sources = SourceMap::new();
+        let source: String = (0..count)
+            .map(|i| format!("func F{i}(F0: Int32) -> Int32 = F0;\n"))
+            .collect();
+        let selected = sources.push_back("probe.reds", source);
+        let interner = TypeInterner::default();
+        let analysis = analyze_sources(&sources, Symbols::with_default_types(), &interner).unwrap();
+        let start = std::time::Instant::now();
+        let output = analysis.transpile_selected(&[selected]).unwrap();
+        eprintln!("{count} functions: {:?}", start.elapsed());
+        assert_eq!(output[0].module.text.matches("function F").count(), count);
+    }
+}
+
+#[test]
 fn conditional_association_fails_with_source_provenance() {
     let sources = SourceMap::new();
     let selected = sources.push_back(

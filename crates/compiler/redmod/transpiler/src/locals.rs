@@ -318,10 +318,12 @@ mod tests {
             properties: redscript_compiler_frontend::ast::FunctionProperties::default(),
         };
         let signature = FunctionType::default();
-        let (text, _) = crate::body::Body::new(&function, &symbols, &signature, None)
-            .unwrap()
-            .emit_at(0)
-            .unwrap();
+        let symbol_names = crate::body::reserved_names(&symbols);
+        let (text, _) =
+            crate::body::Body::new(&function, &symbols, &signature, &symbol_names, None)
+                .unwrap()
+                .emit_at(0)
+                .unwrap();
         assert!(text.contains("var before: Int32;"), "{text}");
         assert!(text.contains("var inside: Int32;"), "{text}");
         assert!(text.contains("var fresh: Int32 = 1;"), "{text}");

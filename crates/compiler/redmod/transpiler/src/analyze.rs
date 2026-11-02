@@ -3,8 +3,9 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use redscript_community_ast::{self as ast, FileId, Item, SourceMap, SourceModule};
 use redscript_compiler_frontend::{
-    CompileErrorReporter, Evaluator, FieldId, FunctionType, LoweredCompilationUnit, MethodId,
-    Symbols, Type, TypeId, TypeInterner, parse_file, predef, process_sources,
+    CompileErrorReporter, Evaluator, FieldId, FreeFunctionIndex, FunctionType,
+    LoweredCompilationUnit, MethodId, Symbols, Type, TypeId, TypeInterner, parse_file, predef,
+    process_sources,
 };
 
 use crate::{
@@ -20,6 +21,7 @@ pub struct AnalyzedSources<'ctx> {
 
     unit: LoweredCompilationUnit<'ctx>,
     symbols: Symbols<'ctx>,
+    free_functions: HashMap<String, Vec<FreeFunctionIndex>>,
     /// Nonfatal community diagnostics, rendered with their original diagnostic codes.
     warnings: Vec<String>,
 }
@@ -90,12 +92,20 @@ pub fn analyze_sources<'ctx>(
         .map(|(index, (file, _))| (*file, index))
         .collect();
 
+    let mut free_functions: HashMap<_, Vec<_>> = HashMap::new();
+    for entry in symbols.free_functions() {
+        free_functions
+            .entry(entry.name().to_string())
+            .or_default()
+            .push(*entry.key());
+    }
     Ok(AnalyzedSources {
         modules,
         module_indices,
         interner,
         unit,
         symbols,
+        free_functions,
         warnings: diagnostics
             .iter()
             .map(|d| format!("[{}]: {d}", d.code()))
@@ -469,13 +479,13 @@ impl<'ctx> AnalyzedSources<'ctx> {
                         } else {
                             let name = format!("{prefix}{}", f.name.0);
                             unique(
-                                self.symbols
-                                    .free_functions()
-                                    .filter(|e| {
-                                        e.name().to_string() == name
-                                            && self.signature(file, f, e.func().type_())
-                                    })
-                                    .map(|e| R::Function(*e.key())),
+                                self.free_functions
+                                    .get(&name)
+                                    .into_iter()
+                                    .flatten()
+                                    .copied()
+                                    .filter(|&id| self.signature(file, f, self.symbols[id].type_()))
+                                    .map(R::Function),
                             )
                         }
                     }

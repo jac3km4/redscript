@@ -146,8 +146,9 @@ pub fn transpile<'ctx>(
     if !diagnostics.is_empty() {
         return Err(diagnostics);
     }
+    let symbol_names = body::reserved_names(symbols);
     for module in modules {
-        match declarations::emit(module, unit, symbols) {
+        match declarations::emit(module, unit, symbols, &symbol_names) {
             Ok(module) => output.push(module),
             Err(error) => diagnostics.push(error),
         }

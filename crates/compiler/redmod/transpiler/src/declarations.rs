@@ -15,11 +15,13 @@ pub fn emit<'ctx>(
     module: &TranspileModule<'_, 'ctx>,
     unit: &LoweredCompilationUnit<'ctx>,
     symbols: &Symbols<'ctx>,
+    symbol_names: &BTreeSet<String>,
 ) -> Result<TranspiledModule> {
     let mut emitter = Emitter {
         module,
         unit,
         symbols,
+        symbol_names,
         output: TranspiledModule {
             text: String::new(),
             mappings: Vec::new(),
@@ -71,6 +73,7 @@ struct Emitter<'a, 'ctx> {
     module: &'a TranspileModule<'a, 'ctx>,
     unit: &'a LoweredCompilationUnit<'ctx>,
     symbols: &'a Symbols<'ctx>,
+    symbol_names: &'a BTreeSet<String>,
     output: TranspiledModule,
     used: BTreeSet<DeclarationPath>,
     depth: usize,
@@ -343,7 +346,9 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                     ));
                 }
                 let body = body
-                    .map(|body| Body::new(body, self.symbols, signature, wrapper))
+                    .map(|body| {
+                        Body::new(body, self.symbols, signature, self.symbol_names, wrapper)
+                    })
                     .transpose()?;
                 if override_ && !callback {
                     self.output.text.push_str("override ");

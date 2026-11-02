@@ -18,12 +18,28 @@ pub(crate) struct Body<'a, 'ctx> {
     inline_declarations: BTreeSet<ir::Local>,
 }
 
+pub(crate) fn reserved_names(symbols: &Symbols<'_>) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    for entry in symbols.free_functions() {
+        names.extend(entry.name().into_iter().map(str::to_owned));
+    }
+    for (id, def) in symbols.types() {
+        names.extend(id.as_str().split('.').map(str::to_owned));
+        if let Some(agg) = def.schema().as_aggregate() {
+            for entry in agg.methods().iter() {
+                names.insert(entry.name().to_string());
+            }
+        }
+    }
+    names
+}
+
 impl<'a, 'ctx> Body<'a, 'ctx> {
     pub fn new(
         function: &'a LoweredFunction<'ctx>,
         symbols: &'a Symbols<'ctx>,
         signature: &'a FunctionType<'ctx>,
-
+        symbol_names: &BTreeSet<String>,
         wrapper: Option<MethodId<'ctx>>,
     ) -> Result<Self> {
         if !signature.type_params().is_empty() {
@@ -33,17 +49,6 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             ));
         }
         let mut occupied = BTreeSet::new();
-        for entry in symbols.free_functions() {
-            occupied.extend(entry.name().into_iter().map(str::to_owned));
-        }
-        for (id, def) in symbols.types() {
-            occupied.extend(id.as_str().split('.').map(str::to_owned));
-            if let Some(agg) = def.schema().as_aggregate() {
-                for entry in agg.methods().iter() {
-                    occupied.insert(entry.name().to_string());
-                }
-            }
-        }
         let preferred = |local: &ir::LocalInfo<'ctx>| match local.id {
             ir::Local::Param(i) => signature
                 .params()
@@ -51,15 +56,13 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 .map(redscript_compiler_frontend::Param::name),
             _ => local.name,
         };
-        let mut reserved = occupied.clone();
-        reserved.extend(
-            function
-                .locals
-                .iter()
-                .filter_map(&preferred)
-                .filter(|name| target::ident(name).is_ok())
-                .map(str::to_owned),
-        );
+        let reserved: BTreeSet<_> = function
+            .locals
+            .iter()
+            .filter_map(&preferred)
+            .filter(|name| target::ident(name).is_ok())
+            .map(str::to_owned)
+            .collect();
         let mut names = BTreeMap::new();
         names.insert(ir::Local::This, "this".to_owned());
         // Allocate authored bindings first so contextual temporary names can use
@@ -104,7 +107,8 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 });
             let mut name = base.clone();
             let mut suffix = 2;
-            while occupied.contains(&name)
+            while symbol_names.contains(&name)
+                || occupied.contains(&name)
                 || (reserved.contains(&name) && source_name != Some(name.as_str()))
             {
                 name = format!("{base}_{suffix}");
@@ -114,7 +118,10 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             names.insert(local.id, name);
         }
         let mut result_local = "__rst_result".to_owned();
-        while reserved.contains(&result_local) || !occupied.insert(result_local.clone()) {
+        while symbol_names.contains(&result_local)
+            || reserved.contains(&result_local)
+            || !occupied.insert(result_local.clone())
+        {
             result_local.push('_');
         }
         Ok(Self {
