@@ -417,19 +417,22 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             },
             _ => None,
         });
-        if let Some(id) = static_parent
+        let static_type = static_parent.map(|id| InferredTypeApp::from_id(id, self.symbols));
+        if let Some(typ) = static_type
             && let mut candidates = self
                 .symbols
-                .query_methods_by_name(id, member)
+                .query_methods_by_name(typ.id(), member)
                 .filter(|entry| entry.func().flags().is_static())
                 .scan(Vec::new(), |seen, entry| {
                     let hidden =
                         seen.iter()
                             .any(|previous: &crate::symbols::MethodEntry<'_, '_>| {
                                 previous.key().parent() != entry.key().parent()
-                                    && same_parameter_signature(
-                                        previous.func().type_(),
-                                        entry.func().type_(),
+                                    && same_static_parameter_signature(
+                                        previous,
+                                        &entry,
+                                        &typ,
+                                        self.symbols,
                                     )
                             });
                     if !hidden {
@@ -441,13 +444,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 .peekable()
             && candidates.peek().is_some()
         {
-            let parent_args = self.symbols[id]
-                .params()
-                .iter()
-                .map(|_| PolyType::fresh())
-                .collect::<Rc<_>>();
-            let typ = TypeApp::new(id, parent_args);
-
+            let id = typ.id();
             let resolved = self
                 .overload_resolver()
                 .name(member)
@@ -1202,6 +1199,47 @@ fn same_parameter_signature<'ctx>(lhs: &FunctionType<'ctx>, rhs: &FunctionType<'
         && rhs.is_valid()
         && lhs.type_params().len() == rhs.type_params().len()
         && lhs.param_types().eq(rhs.param_types())
+}
+
+fn same_static_parameter_signature<'ctx>(
+    lhs: &crate::symbols::MethodEntry<'_, 'ctx>,
+    rhs: &crate::symbols::MethodEntry<'_, 'ctx>,
+    receiver: &InferredTypeApp<'ctx>,
+    symbols: &Symbols<'ctx>,
+) -> bool {
+    let lhs_type = lhs.func().type_();
+    let rhs_type = rhs.func().type_();
+    if !lhs_type.is_valid()
+        || !rhs_type.is_valid()
+        || lhs_type.type_params().len() != rhs_type.type_params().len()
+    {
+        return false;
+    }
+    let parameters = |entry: &crate::symbols::MethodEntry<'_, 'ctx>| {
+        let base_env = receiver
+            .clone()
+            .base_type_env::<AnyBaseType>(entry.key().parent(), symbols)?;
+        // Method variables shadow parent variables, just as during resolution.
+        let env = base_env.push_scope(
+            entry
+                .func()
+                .type_()
+                .type_params()
+                .iter()
+                .map(|var| (var.name(), PolyType::from_type(&Type::Ctx(var.clone()))))
+                .collect(),
+        );
+        entry
+            .func()
+            .type_()
+            .param_types()
+            .map(|typ| PolyType::from_type_with_env(typ, &env).ok())
+            .collect::<Option<Vec<_>>>()
+    };
+    match (parameters(lhs), parameters(rhs)) {
+        (Some(lhs), Some(rhs)) => lhs == rhs,
+        _ => false,
+    }
 }
 
 fn more_specific_reference_signature<'ctx>(
