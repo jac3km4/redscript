@@ -50,13 +50,13 @@ pub fn lex<'src>(
                 Some("f") => str.parse().map(Token::Float).map_err(|_| error("Float", "use a finite Float value")),
                 Some(suffix) if !matches!(suffix, "ul" | "u" | "l" | "d") => Err(error("numeric", "unsupported numeric suffix")),
                 Some("ul") => str.parse().map(Token::Ulong).map_err(|_| error("Uint64", "use a value between 0 and 18446744073709551615")),
-                Some("u") => str.parse().map(Token::Uint).map_err(|_| error("Uint32", "use the `ul` suffix for a larger unsigned integer")),
+                Some("u") => str.parse().map(Token::Uint).map_err(|_| error("Uint32", "use a value between 0 and 4294967295")),
                 Some("l") if str == "9223372036854775808" => Ok(Token::LongMinMagnitude),
-                Some("l") => str.parse().map(Token::Long).map_err(|_| error("Int64", "use the `ul` suffix for a larger nonnegative integer")),
+                Some("l") => str.parse().map(Token::Long).map_err(|_| error("Int64", "use a value between -9223372036854775808 and 9223372036854775807")),
                 Some("d") => str.parse().map(Token::Double).map_err(|_| error("Double", "use a decimal number with the `d` suffix")),
                 _ if str.contains(['.', 'e', 'E']) => str.parse().map(Token::Float).map_err(|_| error("Float", "use the `d` suffix for a Double literal")),
                 _ if str == "2147483648" => Ok(Token::IntMinMagnitude),
-                _ => str.parse().map(Token::Int).or_else(|_| str.parse().map(Token::EnumInt)).map_err(|_| error("Int32", "use the `l` suffix for Int64 or `ul` for Uint64; use a decimal point or `d` suffix for floating-point values")),
+                _ => str.parse().map(Token::Int).or_else(|_| str.parse().map(Token::EnumInt)).map_err(|_| error("integer", "use a value between -9223372036854775808 and 9223372036854775807; add the `l` suffix for Int64 expressions")),
             };
             let result = result.and_then(|token| {
                 if matches!(token, Token::Float(n) if !n.is_finite())
