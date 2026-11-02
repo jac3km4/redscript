@@ -298,7 +298,7 @@ fn unsatisfied_bound_uses_correct_code() {
     assert_eq!(diagnostics[0].0, "UNSATISFIED_BOUND");
     assert_eq!(
         diagnostics[0].1,
-        "type `Chair` does not satisfy expected bound `Animal` for type parameter `T`"
+        "type `Chair` does not satisfy the requirement `Animal` declared for type parameter `T`"
     );
 }
 
@@ -358,7 +358,10 @@ fn inheritance_errors_explain_the_problem() {
         declaration_diagnostics("class First extends Second {}\nclass Second extends First {}");
     assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
     assert_eq!(diagnostics[0].0, "INVALID_BASE");
-    assert_eq!(diagnostics[0].1, "inheritance cycle detected");
+    assert_eq!(
+        diagnostics[0].1,
+        "inheritance cycle detected; a type cannot inherit from itself, directly or indirectly"
+    );
 }
 
 struct DisplayDiagnostics<'ctx>(Vec<Diagnostic<'ctx>>, &'ctx SourceMap);
