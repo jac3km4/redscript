@@ -1,8 +1,8 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use redscript_community_ast as ast;
 use redscript_compiler_frontend::{
-    FunctionType, LoweredFunction, MethodId, PolyType, QueryError, RefType, Symbols, Type,
+    FunctionType, LoweredFunction, MethodId, PolyType, QueryError, RefType, Symbols, Type, TypeId,
     TypeSchema, Variance, expr_type, ir, predef,
 };
 
@@ -422,6 +422,14 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
     }
 
     fn default_value(&self, typ: &Type<'ctx>) -> Result<String> {
+        self.default_value_inner(typ, &mut HashSet::new())
+    }
+
+    fn default_value_inner(
+        &self,
+        typ: &Type<'ctx>,
+        visiting: &mut HashSet<TypeId<'ctx>>,
+    ) -> Result<String> {
         let Type::Data(app) = typ else {
             return Err(error("unresolved default initialization", None));
         };
@@ -434,7 +442,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             return Ok("\"\"".into());
         }
         if id == predef::CNAME {
-            return Ok("n\"\"".into());
+            return Ok(target::cname("")?.to_string());
         }
         if id == predef::FLOAT {
             return Ok("0.0".into());
@@ -467,6 +475,53 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 .is_some_and(|a| !a.flags().is_struct() && !a.flags().is_never_ref())
         {
             return Ok("NULL".into());
+        }
+        if let Some(aggregate) = self
+            .symbols
+            .get_type(id)
+            .and_then(|def| def.schema().as_aggregate())
+            && aggregate.flags().is_struct()
+        {
+            // Spell every field explicitly in the shared constructor order instead
+            // of relying on target-only zero-argument construction. Native/imported
+            // schemas can omit engine fields despite looking complete.
+            if aggregate.flags().is_native()
+                || aggregate.flags().is_import_only()
+                || !aggregate.is_user_defined()
+                || aggregate.base().is_some()
+                || aggregate
+                    .fields()
+                    .iter()
+                    .any(|f| f.field().span().is_none())
+            {
+                return Err(error(
+                    "no verified target default/reset operation for native/imported or incomplete struct layouts",
+                    None,
+                ));
+            }
+            if aggregate.fields().len() > usize::from(u8::MAX) {
+                return Err(error(
+                    "struct default/reset exceeds 255 constructor fields",
+                    None,
+                ));
+            }
+            if !visiting.insert(id) {
+                return Err(error(
+                    "recursive struct default/reset layout is unsupported",
+                    None,
+                ));
+            }
+            let args = aggregate
+                .fields()
+                .iter()
+                .map(|field| self.default_value_inner(field.field().type_(), visiting))
+                .collect::<Result<Vec<_>>>()?;
+            visiting.remove(&id);
+            return Ok(format!(
+                "{}({})",
+                target::typ(typ, self.symbols)?,
+                args.join(", ")
+            ));
         }
         Err(error(
             "no verified target default/reset operation for this type",

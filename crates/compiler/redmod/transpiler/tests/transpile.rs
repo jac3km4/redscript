@@ -947,7 +947,7 @@ fn rejected_features_have_source_diagnostics() {
         ),
         (
             "struct-reset",
-            "struct Record { let value: Int32; } func Test() { let record: Record; }",
+            "native struct Record { let value: Int32; } func Test() { let record: Record; }",
             "default/reset",
         ),
     ] {
