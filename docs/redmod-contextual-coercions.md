@@ -48,8 +48,8 @@ changing overload selection.
 Methods use frontend name-group lookup on the emitted receiver's hierarchy,
 including inherited overloads and override deduplication, not unrelated classes.
 Free-function groups use the frontend's existing indexed overload lookup, without
-a duplicate index or whole-symbol scans. Ordinary calls without immediate
-erasures do not perform an overload query. Calls through static forwarders and
+a duplicate index or whole-symbol scans. Ordinary calls and local-place
+`AsRef` calls do not perform an overload query. Calls through static forwarders and
 wrapper original-call aliases do not supply coercion context. Generic calls and
 unsafe places retain their existing restrictions. `out` parameters require local
 identity, not a converted copy.

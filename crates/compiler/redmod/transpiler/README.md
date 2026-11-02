@@ -70,6 +70,14 @@ contracts fail with a source diagnostic rather than silently changing their ABI.
 Calls relying on callback results remain rejected.
 Every intrinsic is classified explicitly rather than emitted as an ordinary call.
 
+### Native String borrows
+
+Immediate exact non-out native `script_ref<String>` parameters support nonlocal
+`AsRef` operands without moving evaluation or materializing hoisted copies.
+Unique ordinary call names and a separately verified String concatenation
+signature preserve selection; arbitrary rvalue references remain rejected.
+See [bounded borrows and lifetime evidence](../../../../docs/redmod-as-ref.md).
+
 ### Struct defaults and resets
 
 Complete non-native source structs (including source dependencies) are reset with
