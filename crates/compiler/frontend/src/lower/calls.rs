@@ -884,7 +884,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 } else if index != 1
                     || ![ast::BinOp::And.name(), ast::BinOp::Or.name()].contains(&name)
                 {
-                    return Err(Error::UnsafeArrayEvaluation(args[index].span()));
+                    return Err(Error::UnsupportedSkipArgument(args[index].span()));
                 }
             }
         }
