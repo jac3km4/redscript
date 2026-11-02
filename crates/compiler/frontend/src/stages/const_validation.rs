@@ -17,6 +17,20 @@ struct ConstParameterWrite;
 #[error("cannot write through a const local")]
 struct ConstLocalWrite;
 
+#[derive(Debug, thiserror::Error)]
+#[error("forwarding a const {root} to a {target} may allow mutation")]
+struct ConstForwarding {
+    root: &'static str,
+    target: &'static str,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ConstViolation {
+    Write,
+    Forwarding,
+    ClosureForwarding,
+}
+
 #[derive(Debug, Clone, Copy)]
 enum ConstRoot {
     Parameter,
@@ -180,19 +194,36 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
         }
     }
 
-    fn reject(&mut self, expr: &ir::Expr<'ctx>) {
+    fn reject(&mut self, expr: &ir::Expr<'ctx>, violation: ConstViolation) {
         if let Some(root) = self.readonly_place(expr) {
-            let error: Box<dyn std::error::Error> = match root {
-                ConstRoot::Parameter | ConstRoot::ParameterAndLocal => {
-                    Box::new(ConstParameterWrite)
+            let (error, level): (Box<dyn std::error::Error>, _) = match violation {
+                ConstViolation::Write => {
+                    let error: Box<dyn std::error::Error> = match root {
+                        ConstRoot::Parameter | ConstRoot::ParameterAndLocal => {
+                            Box::new(ConstParameterWrite)
+                        }
+                        ConstRoot::Local { .. } => Box::new(ConstLocalWrite),
+                    };
+                    (error, DiagnosticLevel::Error)
                 }
-                ConstRoot::Local { .. } => Box::new(ConstLocalWrite),
+                ConstViolation::Forwarding | ConstViolation::ClosureForwarding => {
+                    let root = match root {
+                        ConstRoot::Parameter => "parameter",
+                        ConstRoot::Local { .. } => "local",
+                        ConstRoot::ParameterAndLocal => "parameter or local",
+                    };
+                    let target = match violation {
+                        ConstViolation::ClosureForwarding => "function value",
+                        _ => "non-const parameter",
+                    };
+                    (
+                        Box::new(ConstForwarding { root, target }),
+                        DiagnosticLevel::ErrorAllowedAtRuntime,
+                    )
+                }
             };
-            self.reporter.report(Diagnostic::Other(
-                error,
-                DiagnosticLevel::Error,
-                expr.span(),
-            ));
+            self.reporter
+                .report(Diagnostic::Other(error, level, expr.span()));
         }
     }
 
@@ -215,9 +246,9 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
         }
     }
 
-    fn reject_forwarding(&mut self, expr: &ir::Expr<'ctx>) {
+    fn reject_forwarding(&mut self, expr: &ir::Expr<'ctx>, violation: ConstViolation) {
         if !self.rebindable_handle(expr) {
-            self.reject(expr);
+            self.reject(expr, violation);
         }
     }
 
@@ -253,7 +284,7 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
                     Some(ConstRoot::Local { rebindable: true })
                 ))
         {
-            self.reject(place);
+            self.reject(place, ConstViolation::Write);
         }
         self.visit_expr(place);
         self.visit_expr(value);
@@ -287,20 +318,21 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
             )
         ) {
             if let Some(receiver) = call.args().first() {
-                self.reject(receiver);
+                self.reject(receiver, ConstViolation::Write);
             }
         } else if intrinsic.is_none() {
             for (arg, param) in call.args().iter().zip(params) {
-                if param.flags().is_out()
-                    || ((!self.policy.const_param_non_out_forwarding
-                        || matches!(
-                            self.readonly_place(arg),
-                            Some(ConstRoot::Local { .. } | ConstRoot::ParameterAndLocal)
-                        ))
-                        && !param.flags().is_const()
-                        && self.mutable_type(param.type_()))
+                if param.flags().is_out() {
+                    self.reject_forwarding(arg, ConstViolation::Write);
+                } else if (!self.policy.const_param_non_out_forwarding
+                    || matches!(
+                        self.readonly_place(arg),
+                        Some(ConstRoot::Local { .. } | ConstRoot::ParameterAndLocal)
+                    ))
+                    && !param.flags().is_const()
+                    && self.mutable_type(param.type_())
                 {
-                    self.reject_forwarding(arg);
+                    self.reject_forwarding(arg, ConstViolation::Forwarding);
                 }
             }
         }
@@ -319,7 +351,7 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
                             Some(ConstRoot::Local { .. } | ConstRoot::ParameterAndLocal)
                         ))
                 {
-                    self.reject_forwarding(arg);
+                    self.reject_forwarding(arg, ConstViolation::ClosureForwarding);
                 }
             }
         }
@@ -332,7 +364,7 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
                 Some(ConstRoot::Local { .. } | ConstRoot::ParameterAndLocal)
             )
         {
-            self.reject(receiver);
+            self.reject(receiver, ConstViolation::Write);
         }
         if let Some(receiver) = call.receiver() {
             self.visit_expr(receiver);

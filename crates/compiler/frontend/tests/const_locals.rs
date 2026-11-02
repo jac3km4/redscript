@@ -3,8 +3,8 @@ use std::rc::Rc;
 use redscript_community_ast::SourceMap;
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{
-    CompileErrorReporter, Evaluator, SemanticPolicy, Symbols, TypeInterner, parse_files,
-    process_sources_with_policy,
+    CompileErrorReporter, DiagnosticLevel, Evaluator, SemanticPolicy, Symbols, TypeInterner,
+    parse_files, process_sources_with_policy,
 };
 
 fn check(source: &str, expected: &[&str]) {
@@ -26,6 +26,15 @@ fn check_policy(source: &str, expected: &[&str], native: bool) {
 }
 
 fn check_with_policy(source: &str, expected: &[&str], policy: SemanticPolicy) {
+    check_diagnostics(source, expected, policy, &[]);
+}
+
+fn check_diagnostics(
+    source: &str,
+    expected: &[&str],
+    policy: SemanticPolicy,
+    levels: &[DiagnosticLevel],
+) {
     let sources = SourceMap::new();
     sources.populate_boot_lib();
     let file = sources.push_back("const.reds", source);
@@ -48,14 +57,26 @@ fn check_with_policy(source: &str, expected: &[&str], policy: SemanticPolicy) {
             .flat_map(|f| f.locals.iter())
             .any(|l| l.is_const)
     );
+    if !levels.is_empty() {
+        assert_eq!(levels.len(), expected.len());
+    }
     let spans = reporter
         .reported()
         .iter()
-        .map(|d| {
+        .enumerate()
+        .map(|(i, d)| {
+            let level = levels.get(i).copied().unwrap_or(DiagnosticLevel::Error);
+            assert_eq!(d.level(), level, "{d:?}");
+            let message = d.to_string();
             assert!(
-                d.to_string().contains("cannot write through a const local")
-                    || d.to_string()
-                        .contains("cannot write through a const parameter"),
+                if level == DiagnosticLevel::ErrorAllowedAtRuntime {
+                    message.starts_with("forwarding a const ")
+                        && (message.ends_with(" to a non-const parameter may allow mutation")
+                            || message.ends_with(" to a function value may allow mutation"))
+                } else {
+                    message == "cannot write through a const local"
+                        || message == "cannot write through a const parameter"
+                },
                 "{d:?}"
             );
             let span = d.span();
@@ -116,9 +137,14 @@ fn strict_declaration_initializers_are_the_only_binding_write_exception() {
 
 #[test]
 fn strict_forwarding_and_capture_provenance() {
-    check(
+    check_diagnostics(
         "class V {} func Take(v: V) {} func Out(out v: V) {} func F() { const x: V; Take(x); Out(x); }",
         &["x", "x"],
+        SemanticPolicy::default(),
+        &[
+            DiagnosticLevel::ErrorAllowedAtRuntime,
+            DiagnosticLevel::Error,
+        ],
     );
     check(
         "class V { public let field: Int32; } func F() { const x: V; let f: () -> Void = () -> { x.field = 1; }; }",
@@ -135,6 +161,89 @@ fn strict_forwarding_and_capture_provenance() {
     check(
         "class V { public let field: Int32; } func F() { const x: V; let f: () -> Void = () -> { const y: V; y.field = 1; }; }",
         &["y.field"],
+    );
+}
+
+#[test]
+fn possible_mutation_forwarding_is_compatible_but_writes_remain_hard() {
+    use DiagnosticLevel::{Error, ErrorAllowedAtRuntime};
+
+    check_diagnostics(
+        "class V { public let field: Int32; public func Change() {} } func Take(v: V) {} func Out(out v: V) {} func F(v: V) { const x: V = v; Take(x); Out(x); x = v; x.field = 1; x.Change(); }",
+        &["x", "x", "x", "x.field", "x"],
+        SemanticPolicy::default(),
+        &[ErrorAllowedAtRuntime, Error, Error, Error, Error],
+    );
+    check_diagnostics(
+        "func Take(v: [Int32]) {} func Out(out v: [Int32]) {} func F() { const x: [Int32]; Take(x); Out(x); x[0] = 1; ArrayClear(x); }",
+        &["x", "x", "x[0]", "x"],
+        SemanticPolicy::default(),
+        &[ErrorAllowedAtRuntime, Error, Error, Error],
+    );
+    for expr in ["b ? p : x", "b ? x : p"] {
+        check_diagnostics(
+            &format!(
+                "func Take(v: [Int32]) {{}} func F(const p: [Int32], b: Bool) {{ const x: [Int32]; Take({expr}); }}"
+            ),
+            &[expr],
+            SemanticPolicy::default(),
+            &[ErrorAllowedAtRuntime],
+        );
+    }
+    for expr in ["x", "x.items", "x.nested[0]"] {
+        check_diagnostics(
+            &format!(
+                "class V {{ public let items: [Int32]; public let nested: [[Int32]]; }} func Take(v: [Int32]) {{}} func F() {{ const x: {}; Take({expr}); }}",
+                if expr == "x" { "[Int32]" } else { "V" }
+            ),
+            &[expr],
+            SemanticPolicy::default(),
+            &[ErrorAllowedAtRuntime],
+        );
+    }
+    check_diagnostics(
+        "func Take(v: script_ref<Int32>) {} func F() { const x = 1; Take(AsRef(x)); }",
+        &["AsRef(x)"],
+        SemanticPolicy::default(),
+        &[ErrorAllowedAtRuntime],
+    );
+}
+
+#[test]
+fn closure_forwarding_without_const_flags_is_compatible() {
+    use DiagnosticLevel::{Error, ErrorAllowedAtRuntime};
+
+    check_diagnostics(
+        "func F(const p: [Int32], f: ([Int32]) -> Void, scalar: (Int32) -> Void) { const x: [Int32]; const n = 1; f(p); f(x); scalar(n); let g: () -> Void = () -> { f(x); x[0] = 1; }; }",
+        &["p", "x", "x", "x[0]"],
+        SemanticPolicy::default(),
+        &[
+            ErrorAllowedAtRuntime,
+            ErrorAllowedAtRuntime,
+            ErrorAllowedAtRuntime,
+            Error,
+        ],
+    );
+    check_diagnostics(
+        "class V {} func F(const p: V, f: (V) -> Void) { const x: V; f(p); f(x); }",
+        &[],
+        SemanticPolicy {
+            const_param_non_out_forwarding: true,
+            const_local_handle_rebinding: true,
+            ..SemanticPolicy::default()
+        },
+        &[],
+    );
+    // Native parameter forwarding is still permitted; local arrays retain their check.
+    check_diagnostics(
+        "func F(const p: [Int32], f: ([Int32]) -> Void) { const x: [Int32]; f(p); f(x); }",
+        &["x"],
+        SemanticPolicy {
+            const_param_non_out_forwarding: true,
+            const_local_handle_rebinding: true,
+            ..SemanticPolicy::default()
+        },
+        &[ErrorAllowedAtRuntime],
     );
 }
 

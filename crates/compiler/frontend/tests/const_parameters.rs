@@ -8,6 +8,24 @@ use redscript_compiler_frontend::{
 };
 
 fn check(source: &str, expected: &[&str]) {
+    check_level(
+        source,
+        expected,
+        DiagnosticLevel::Error,
+        "cannot write through a const parameter",
+    );
+}
+
+fn check_forwarding(source: &str, expected: &[&str]) {
+    check_level(
+        source,
+        expected,
+        DiagnosticLevel::ErrorAllowedAtRuntime,
+        "forwarding a const parameter to a non-const parameter may allow mutation",
+    );
+}
+
+fn check_level(source: &str, expected: &[&str], level: DiagnosticLevel, message: &str) {
     let sources = SourceMap::new();
     sources.populate_boot_lib();
     let file = sources.push_back("const.reds", source);
@@ -29,8 +47,8 @@ fn check(source: &str, expected: &[&str]) {
         .iter()
         .map(|diagnostic| {
             assert!(
-                matches!(diagnostic, Diagnostic::Other(error, DiagnosticLevel::Error, _)
-            if error.to_string() == "cannot write through a const parameter"),
+                matches!(diagnostic, Diagnostic::Other(error, actual, _)
+                    if *actual == level && error.to_string() == message),
                 "{source}: {diagnostic:?}"
             );
             let span = diagnostic.span();
@@ -77,7 +95,7 @@ fn strict_forwarding_checks_resolved_parameter_flags_and_types() {
         "func Take(value: Int32) {} func Forward(const value: Int32) { Take(value); }",
         &[],
     );
-    check(
+    check_forwarding(
         "func Take(value: [Int32]) {} func Forward(const value: [Int32]) { Take(value); }",
         &["value"],
     );
@@ -85,11 +103,11 @@ fn strict_forwarding_checks_resolved_parameter_flags_and_types() {
         "func Take(const value: [Int32]) {} func Forward(const value: [Int32]) { Take(value); }",
         &[],
     );
-    check(
+    check_forwarding(
         "class Value {} func Take(value: Value) {} func Forward(const value: Value) { Take(value); }",
         &["value"],
     );
-    check(
+    check_forwarding(
         "class Value {} class Calls { public static func Take(value: Value) {} public func Pass(value: Value) {} } func Forward(const value: Value, calls: Calls) { Calls.Take(value); calls.Pass(value); }",
         &["value", "value"],
     );
@@ -125,7 +143,7 @@ fn array_mutation_and_reference_wrappers_are_checked() {
         "@intrinsic(ArrayPush) func Push<T>(out array: [T], value: T)\nfunc Write(const value: [Int32]) { Push(value, 1); }",
         &["value"],
     );
-    check(
+    check_forwarding(
         "func Take(value: script_ref<Int32>) {} func Forward(const value: Int32) { Take(AsRef(value)); }",
         &["AsRef(value)"],
     );
@@ -154,7 +172,7 @@ fn strong_weak_conversions_preserve_readonly_provenance() {
             "WeakRefToRef(RefToWeakRef(value))",
         ),
     ] {
-        check(
+        check_forwarding(
             &format!(
                 "class Value {{}} func Take(value: {target_type}) {{}} func Forward(const value: {source_type}) {{ Take({conversion}); }}"
             ),
@@ -167,11 +185,11 @@ fn strong_weak_conversions_preserve_readonly_provenance() {
             &[],
         );
     }
-    check(
+    check_forwarding(
         "class Value {} func Take(value: ref<Value>) {} func Forward(const value: wref<Value>) { Take(value); }",
         &["value"],
     );
-    check(
+    check_forwarding(
         "class Value {} func Take(value: wref<Value>) {} func Forward(const value: ref<Value>) { Take(value); }",
         &["value"],
     );
@@ -187,15 +205,17 @@ fn conditional_roots_check_both_branches() {
         let source = format!(
             "func Take(value: [Int32]) {{}} func Forward(const value: [Int32], other: [Int32], flag: Bool) {{ Take({expr}); }}"
         );
-        check(&source, &[expr]);
+        check_forwarding(&source, &[expr]);
     }
 }
 
 #[test]
 fn closures_check_captures_without_confusing_parameter_indices() {
-    check(
+    check_level(
         "func Forward(const value: [Int32], f: ([Int32]) -> Void) { f(value); }",
         &["value"],
+        DiagnosticLevel::ErrorAllowedAtRuntime,
+        "forwarding a const parameter to a function value may allow mutation",
     );
     check(
         "func Write(const value: Int32) { let f: () -> Void = () -> { value = 1; }; }",
@@ -262,7 +282,26 @@ fn const_relaxations_are_independent_and_file_local_in_both_orders() {
                 "{:?}",
                 reporter.reported()
             );
-            assert!(reporter.reported().iter().all(|d| matches!(d, Diagnostic::Other(error, DiagnosticLevel::Error, _) if error.to_string() == "cannot write through a const parameter")), "{:?}", reporter.reported());
+            for (file, forwarding_count, hard_count) in [
+                (strict, 1, 3),
+                (relaxed, usize::from(!forwarding), 3 - usize::from(elements)),
+            ] {
+                for (level, expected) in [
+                    (DiagnosticLevel::ErrorAllowedAtRuntime, forwarding_count),
+                    (DiagnosticLevel::Error, hard_count),
+                ] {
+                    assert_eq!(
+                        reporter
+                            .reported()
+                            .iter()
+                            .filter(|d| d.span().file == file && d.level() == level)
+                            .count(),
+                        expected,
+                        "{:?}",
+                        reporter.reported()
+                    );
+                }
+            }
         }
     }
 }
