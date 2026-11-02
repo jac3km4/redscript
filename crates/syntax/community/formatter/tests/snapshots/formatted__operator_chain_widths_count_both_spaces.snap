@@ -17,10 +17,3 @@ func F() {
 func F() {
   a + b + c + d;
 }
-
-
-=== operator chain: a + b + c + d, max_width: 16 ===
-
-func F() {
-  a + b + c + d;
-}

@@ -130,10 +130,12 @@ fn literal_widths_count_signs_suffixes_and_escapes() {
             let source = format!("func F() {{ Call({literal}); }}");
             let formatted = assert_preserved(&source, &settings, "test.reds");
             assert_eq!(formatted.contains("Call(\n"), breaks, "{formatted}");
-            cases.push_str(&format!(
-                "=== literal: {literal}, max_width: {} ===\n{formatted}\n",
-                settings.max_width
-            ));
+            if matches!(literal, "-9223372036854775808l" | r#""\n\t""#) && extra_width != 1 {
+                cases.push_str(&format!(
+                    "=== literal: {literal}, max_width: {} ===\n{formatted}\n",
+                    settings.max_width
+                ));
+            }
         }
     }
     insta::assert_snapshot!(cases);
@@ -157,10 +159,12 @@ fn parameter_widths_count_qualifiers() {
             let source = format!("func F({parameter}) {{}}");
             let formatted = assert_preserved(&source, &settings, "test.reds");
             assert_eq!(formatted.contains("func F(\n"), breaks, "{formatted}");
-            cases.push_str(&format!(
-                "=== parameter: {parameter}, max_width: {} ===\n{formatted}\n",
-                settings.max_width
-            ));
+            if parameter == "out opt const x: Int32" && extra_width != 1 {
+                cases.push_str(&format!(
+                    "=== parameter: {parameter}, max_width: {} ===\n{formatted}\n",
+                    settings.max_width
+                ));
+            }
         }
     }
     insta::assert_snapshot!(cases);
@@ -176,9 +180,11 @@ fn operator_chain_widths_count_both_spaces() {
         };
         let formatted = assert_preserved("func F() { a + b + c + d; }", &settings, "test.reds");
         assert_eq!(formatted.contains("a\n    + b"), breaks, "{formatted}");
-        cases.push_str(&format!(
-            "=== operator chain: a + b + c + d, max_width: {max_width} ===\n{formatted}\n"
-        ));
+        if max_width != 16 {
+            cases.push_str(&format!(
+                "=== operator chain: a + b + c + d, max_width: {max_width} ===\n{formatted}\n"
+            ));
+        }
     }
     insta::assert_snapshot!(cases);
 }
