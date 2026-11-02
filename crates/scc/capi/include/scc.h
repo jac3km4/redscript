@@ -162,9 +162,10 @@ typedef struct SccApi {
    */
   scc_get_success *get_success;
   /**
-   * Copies the error message and returns the number of bytes copied, excluding
-   * the null terminator. On error, a nonempty buffer is null-terminated and the
-   * message is truncated to fit. Returns zero without touching the buffer on
+   * Copies the error message and its underlying causes, returning the number of
+   * bytes copied, excluding the null terminator. On error, a nonempty buffer is
+   * null-terminated and the message is truncated to fit. Returns zero without
+   * touching the buffer on
    * success or when buffer_size is zero. The buffer may be NULL when buffer_size
    * is zero; otherwise it must be writable for at least buffer_size bytes.
    * The result is only borrowed; copied bytes belong to the caller and remain
