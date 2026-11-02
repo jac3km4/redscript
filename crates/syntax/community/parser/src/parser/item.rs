@@ -118,15 +118,18 @@ fn function<'tok, 'src: 'tok>(
     .then_ignore(just(Token::Semicolon).or_not())
     .map(
         |(((((conversion, name), type_params), params), ret_ty), body)| {
+            let is_const_return = ret_ty
+                .as_ref()
+                .is_some_and(|(qualifier, _)| qualifier.is_some());
             Function::new(
                 name,
                 type_params.unwrap_or_default(),
                 params,
-                ret_ty.as_ref().map(|(_, ty)| Box::new(ty.clone())),
+                ret_ty.map(|(_, ty)| Box::new(ty)),
                 body,
             )
             .with_conversion(conversion)
-            .with_const_return(ret_ty.is_some_and(|(qualifier, _)| qualifier.is_some()))
+            .with_const_return(is_const_return)
         },
     )
     .erased()
@@ -306,6 +309,29 @@ mod tests {
 
     use super::*;
     use crate::{parse_item, parse_item_decl};
+
+    #[test]
+    fn function_return_types_keep_const_qualifiers_and_spans() {
+        for (source, expected_const, expected_type) in [
+            ("func Probe() -> const Int32;", true, Some("Int32")),
+            ("func Probe() -> Int32;", false, Some("Int32")),
+            ("func Probe() {}", false, None),
+        ] {
+            let (item, errors) = parse_item(source, FileId::from_i32(0));
+            assert!(errors.is_empty(), "{errors:?}");
+            let Item::Function(function) = item.unwrap() else {
+                panic!("expected a function");
+            };
+            assert_eq!(function.properties.is_const_return, expected_const);
+            assert_eq!(
+                function.return_type.map(|typ| {
+                    let (_, span) = *typ;
+                    &source[span.start as usize..span.end as usize]
+                }),
+                expected_type
+            );
+        }
+    }
 
     #[test]
     fn field_default_directive() {
