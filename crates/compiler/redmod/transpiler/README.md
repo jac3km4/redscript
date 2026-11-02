@@ -31,10 +31,17 @@ control flow, lowered for-in/interpolation, selected dynamic-array intrinsics,
 verified primitive/reference defaults, overrides and uniquely associated patches.
 Local names prefer authored spellings with deterministic, hygienic disambiguation
 by IR identity; compiler temporaries use purpose-based names such as `arrayLiteral`,
-`index` and `iterable`, with the same collision protection. Expressions use target
+`index` and `iterable`, or contextual names such as `valuesLiteral` and `itemIndex`
+when shared IR associates them with an authored binding. Authored names are allocated
+first and all generated names have the same collision protection. Reserved authored
+names retain a valid recognizable stem when possible. Class members are indented and
+major declarations are separated by blank lines. Expressions use target
 precedence and associativity to avoid redundant parentheses. Final single-branch
 checks with an `else { break; }` directly inside `while (true)` become early-exit
 guards, without moving condition prefixes or changing break/continue targets.
+Generated guards simplify Boolean negation and equality checks, but never invert
+ordered comparisons. Numeric spelling avoids redundant cast parentheses and uses
+plain `0` for Int32 defaults; other numeric widths retain explicit casts.
 Unconditional first assignments and non-array defaults merge with their local
 declarations at the existing execution site when no earlier or self-reference
 exists. Other declarations remain hoisted: branch/loop initialization, array

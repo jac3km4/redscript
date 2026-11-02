@@ -370,6 +370,19 @@ impl<'scope, 'ctx> Locals<'scope, 'ctx> {
         self.locals[index].initializer = Some(span);
     }
 
+    pub fn associate_temp(
+        &mut self,
+        id: ir::Local,
+        purpose: ir::TemporaryPurpose,
+        owner: ir::TemporaryOwner,
+    ) {
+        if let Ok(index) = self.locals.binary_search_by_key(&id, |local| local.id)
+            && self.locals[index].temporary_purpose == Some(purpose)
+        {
+            self.locals[index].temporary_owner = Some(owner);
+        }
+    }
+
     pub fn add_temp(
         &mut self,
         purpose: ir::TemporaryPurpose,

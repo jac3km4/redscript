@@ -183,6 +183,27 @@ fn convert_mapped(source: &str) -> redscript_redmod_transpiler::TranspiledModule
 }
 
 #[test]
+fn contextual_temporary_names_reserve_authored_names_and_shadowed_owners() {
+    let output = convert(
+        "native func OperatorAssignAdd(out a: Int32, b: Int32) -> Int32; \
+         native func OperatorLess(a: Int32, b: Int32) -> Bool; \
+         func Items() -> [Int32] { return [1]; } \
+         func Test() { let firstLiteral = 9; let first = [1]; \
+         for item in Items() { for item in Items() {} } }",
+    );
+    for expected in [
+        "var firstLiteral: Int32 = 9;",
+        "var firstLiteral_2: array<Int32>;",
+        "var itemIndex: Int32 = 0;",
+        "var item_2Index: Int32;",
+        "var itemIterable: array<Int32> = Items();",
+        "item_2Iterable = Items();",
+    ] {
+        assert!(output.contains(expected), "{expected}: {output}");
+    }
+}
+
+#[test]
 fn generated_guards_simplify_only_verified_boolean_negation() {
     let output = convert(
         "native func OperatorLogicNot(value: Bool) -> Bool; \
@@ -691,11 +712,11 @@ func Test() {
 "#,
     );
     for declaration in [
-        "var arrayLiteral_3: array<Int32>;",
-        "var arrayLiteral_4: array<Int32>;",
-        "var index_2: Int32 = 0;",
-        "var index_3: Int32;",
-        "var iterable_2: array<Int32> = Items();",
+        "var firstLiteral: array<Int32>;",
+        "var secondLiteral: array<Int32>;",
+        "var itemIndex: Int32 = 0;",
+        "var otherIndex: Int32;",
+        "var itemIterable: array<Int32> = Items();",
         "var item: Int32;",
         "var other: Int32;",
     ] {
@@ -728,7 +749,7 @@ func Test(flag: Bool) -> Int32 {
         "var count: Int32 = Tick();",
         "var zero: Int32 = 0;",
         "var text: String = \"\";",
-        "var values: array<Int32> = arrayLiteral;",
+        "var values: array<Int32> = valuesLiteral;",
         "var branchValue: Int32;",
         "var repeated: Int32;",
         "var reset: Int32;",

@@ -8,7 +8,7 @@ function Tick() -> Int32 {
 
 function Test(flag: Bool) -> Int32 {
     var empty: array<Int32>;
-    var arrayLiteral: array<Int32>;
+    var valuesLiteral: array<Int32>;
     var branchValue: Int32;
     var repeated: Int32;
     var reset: Int32;
@@ -17,9 +17,9 @@ function Test(flag: Bool) -> Int32 {
     var zero: Int32 = 0;
     var text: String = "";
     empty.Clear();
-    arrayLiteral.Resize(1);
-    arrayLiteral[0] = count;
-    var values: array<Int32> = arrayLiteral;
+    valuesLiteral.Resize(1);
+    valuesLiteral[0] = count;
+    var values: array<Int32> = valuesLiteral;
     if (flag) {
         branchValue = Tick();
     }

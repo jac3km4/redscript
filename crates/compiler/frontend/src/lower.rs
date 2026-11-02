@@ -459,6 +459,9 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     lhs_t = pointee;
                 }
                 let (mut rhs, rhs_t) = self.lower_expr_with(rhs, Some(&lhs_t), env)?;
+                if let ir::Expr::Local(destination, _) = &lhs {
+                    self.associate_array_destination(&rhs, *destination);
+                }
                 self.coerce(&mut rhs, rhs_t, lhs_t.clone(), env, rhs_span)?;
 
                 if lhs.is_prvalue(self.symbols) {
@@ -666,6 +669,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     return if let Some(value @ (_, value_span)) = value.as_deref() {
                         let (mut value, value_t) =
                             self.lower_expr_with(value, Some(&local.typ), env)?;
+                        self.associate_array_destination(&value, local.id);
                         self.coerce(&mut value, value_t, local.typ.clone(), env, *value_span)?;
                         self.locals.set_initializer(local.id, span);
                         Ok(ir::Expr::Assign {
@@ -685,6 +689,10 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     .transpose()?;
                 if let Some(value @ (_, value_span)) = value.as_deref() {
                     let (mut value, value_t) = self.lower_expr_with(value, typ.as_ref(), env)?;
+                    let array_temp = match &value {
+                        ir::Expr::Local(local, _) => Some(*local),
+                        _ => None,
+                    };
                     let typ = if let Some(typ) = typ {
                         self.coerce(&mut value, value_t, typ.clone(), env, *value_span)?;
                         typ
@@ -696,6 +704,13 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                             .add_const_var(Some(name), typ.clone(), name_span, is_const);
                     let local = env.define_local(name, local.clone());
                     self.locals.set_initializer(local, span);
+                    if let Some(temp) = array_temp {
+                        self.locals.associate_temp(
+                            temp,
+                            ir::TemporaryPurpose::ArrayLiteral,
+                            ir::TemporaryOwner::Destination(local),
+                        );
+                    }
 
                     ir::Expr::Assign {
                         place: ir::Expr::Local(local, name_span).into(),
@@ -871,6 +886,16 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             }
         };
         Ok(res)
+    }
+
+    fn associate_array_destination(&mut self, value: &ir::Expr<'ctx>, destination: ir::Local) {
+        if let ir::Expr::Local(temp, _) = value {
+            self.locals.associate_temp(
+                *temp,
+                ir::TemporaryPurpose::ArrayLiteral,
+                ir::TemporaryOwner::Destination(destination),
+            );
+        }
     }
 
     fn lower_array_lit(
@@ -1393,6 +1418,14 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 .add_var(Some(name), elem_t.clone(), name_span)
                 .clone(),
         );
+
+        for (temp, purpose) in [
+            (counter, ir::TemporaryPurpose::IterationIndex),
+            (array_local, ir::TemporaryPurpose::IterationIterable),
+        ] {
+            self.locals
+                .associate_temp(temp, purpose, ir::TemporaryOwner::IterationBinding(elem));
+        }
 
         let loop_body = {
             let (increment, _) = self

@@ -33,10 +33,10 @@ function Test(items: array<Int32>, enabled: Bool) -> String {
     var name_: Int32;
     var name__2: Int32;
     var result: String = "";
-    var index: Int32 = 0;
-    while (index < items.Size()) {
-        item = items[index];
-        index += 1;
+    var itemIndex: Int32 = 0;
+    while (itemIndex < items.Size()) {
+        item = items[itemIndex];
+        itemIndex += 1;
         scratch.Clear();
         zero = 0;
         scratch.PushBack(item);

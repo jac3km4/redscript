@@ -522,6 +522,14 @@ pub enum TemporaryPurpose {
     LoopEntered,
 }
 
+/// Source binding associated with a generated temporary, independent of its name.
+/// Local identities are scoped to the containing function or closure's local table.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum TemporaryOwner {
+    Destination(Local),
+    IterationBinding(Local),
+}
+
 #[derive(Debug, Clone)]
 pub struct LocalInfo<'ctx> {
     pub id: Local,
@@ -531,6 +539,7 @@ pub struct LocalInfo<'ctx> {
     pub initializer: Option<Span>,
     pub name: Option<&'ctx str>,
     pub temporary_purpose: Option<TemporaryPurpose>,
+    pub temporary_owner: Option<TemporaryOwner>,
     pub typ: PolyType<'ctx>,
     pub span: Option<Span>,
 }
@@ -548,6 +557,7 @@ impl<'ctx> LocalInfo<'ctx> {
             initializer: None,
             name,
             temporary_purpose: None,
+            temporary_owner: None,
             typ,
             span,
         }

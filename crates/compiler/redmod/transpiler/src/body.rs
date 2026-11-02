@@ -62,7 +62,19 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         );
         let mut names = BTreeMap::new();
         names.insert(ir::Local::This, "this".to_owned());
-        for local in &function.locals {
+        // Allocate authored bindings first so contextual temporary names can use
+        // the owner's final hygienic spelling, even when it was allocated later.
+        for local in function
+            .locals
+            .iter()
+            .filter(|local| local.temporary_purpose.is_none())
+            .chain(
+                function
+                    .locals
+                    .iter()
+                    .filter(|local| local.temporary_purpose.is_some()),
+            )
+        {
             target::typ(
                 &local
                     .typ
@@ -79,9 +91,12 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             let source_name = preferred(local).filter(|name| target::ident(name).is_ok());
             let candidate = preferred(local).and_then(authored_name);
             let base = candidate
-                .as_deref()
-                .or_else(|| local.temporary_purpose.map(temporary_name))
-                .map(str::to_owned)
+                .or_else(|| contextual_temporary_name(local, &names))
+                .or_else(|| {
+                    local
+                        .temporary_purpose
+                        .map(|purpose| temporary_name(purpose).to_owned())
+                })
                 .unwrap_or_else(|| match local.id {
                     ir::Local::Param(i) => format!("__rst_p{i}"),
                     ir::Local::Var(i) => format!("__rst_v{i}"),
@@ -1047,6 +1062,22 @@ fn authored_name(name: &str) -> Option<String> {
         let candidate = format!("{name}_");
         target::ident(&candidate).ok().map(str::to_owned)
     }
+}
+
+fn contextual_temporary_name(
+    local: &ir::LocalInfo<'_>,
+    names: &BTreeMap<ir::Local, String>,
+) -> Option<String> {
+    use ir::{TemporaryOwner as Owner, TemporaryPurpose as Purpose};
+
+    let (owner, suffix) = match (local.temporary_owner?, local.temporary_purpose?) {
+        (Owner::Destination(owner), Purpose::ArrayLiteral) => (owner, "Literal"),
+        (Owner::IterationBinding(owner), Purpose::IterationIndex) => (owner, "Index"),
+        (Owner::IterationBinding(owner), Purpose::IterationIterable) => (owner, "Iterable"),
+        _ => return None,
+    };
+    let name = format!("{}{suffix}", names.get(&owner)?);
+    target::ident(&name).ok().map(str::to_owned)
 }
 
 fn temporary_name(purpose: ir::TemporaryPurpose) -> &'static str {
