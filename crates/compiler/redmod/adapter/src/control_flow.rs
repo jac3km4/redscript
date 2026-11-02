@@ -33,6 +33,9 @@ pub(crate) fn apply(
     plans: &[LoopPlan],
     errors: &mut Vec<Error>,
 ) {
+    if plans.is_empty() {
+        return;
+    }
     let mut indexed = HashMap::with_capacity(plans.len());
     for plan in plans {
         if indexed.insert(plan.span, plan.kind).is_some() {
@@ -188,4 +191,43 @@ fn fix_block<'ctx>(
         result.push_back(stmt);
     }
     block.stmts = result;
+}
+
+#[cfg(test)]
+mod tests {
+    use redscript_community_ast::SourceMap;
+    use redscript_compiler_frontend::{CompileErrorReporter, Symbols, TypeInterner};
+
+    use super::*;
+
+    #[test]
+    fn empty_plans_preserve_function_allocations() {
+        let sources = SourceMap::new();
+        let source = "function Run(): Int32 { var value: Int32 = 1; return value; }";
+        let file = sources.push_back("flow.script", source);
+        let (parsed, errors) = crate::parse_file_with_metadata(source, file);
+        assert!(errors.is_empty(), "{errors:?}");
+        let interner = TypeInterner::default();
+        let mut reporter = CompileErrorReporter::default();
+        let (mut unit, _, mut errors) = crate::process_sources(
+            parsed,
+            [],
+            Symbols::with_default_types(),
+            &mut reporter,
+            &interner,
+        );
+        assert!(errors.is_empty(), "{errors:?}");
+        assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+        let function = unit.functions.values().next().unwrap();
+        assert!(!function.locals.is_empty());
+        let locals = function.locals.as_ptr();
+        let block = format!("{:?}", function.block);
+
+        apply(&mut unit, &[], &mut errors);
+
+        assert!(errors.is_empty(), "{errors:?}");
+        let function = unit.functions.values().next().unwrap();
+        assert_eq!(function.locals.as_ptr(), locals);
+        assert_eq!(format!("{:?}", function.block), block);
+    }
 }
