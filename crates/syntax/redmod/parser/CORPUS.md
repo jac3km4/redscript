@@ -29,5 +29,7 @@ reduce it to an authored fixture under `tests/data/` and snapshot the retained A
 or diagnostics. Preserve unsupported syntax and reject its semantics in the
 adapter—never obtain zero errors by silently skipping constructs.
 
-Remaining semantic and IDE work is tracked in the
-[roadmap](../../../../docs/redmod-support-roadmap.md).
+Current native semantics are documented in the
+[language guide](../../../../docs/redmod-language.md); remaining semantic and IDE
+work is tracked in [future work](../../../../docs/language-future-work.md).
+Historical syntax coverage above is not a certification of current HEAD.
