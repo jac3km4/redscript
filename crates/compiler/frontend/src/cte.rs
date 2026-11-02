@@ -88,11 +88,13 @@ pub enum Value {
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("expected a compile-time boolean expression")]
+    #[error(
+        "expected a compile-time boolean expression: use `true`, `false`, or `ModuleExists(\"Module.Name\")`, combined with `!`, `&&`, or `||`"
+    )]
     ExpectedBoolean(Span),
-    #[error("unsupported compile-time unary operator `{}`; only `!` is supported", unary_symbol(.0))]
+    #[error("unsupported compile-time operator `{}`; only `!` is supported here", unary_symbol(.0))]
     UnsupportedUnaryOperator(ast::UnOp, Span),
-    #[error("unsupported compile-time binary operator `{}`; only `&&` and `||` are supported", binary_symbol(.0))]
+    #[error("unsupported compile-time operator `{}`; only `&&` and `||` are supported here", binary_symbol(.0))]
     UnsupportedBinaryOperator(ast::BinOp, Span),
     #[error("unknown compile-time function{}; only `ModuleExists` is supported", .0.as_ref().map(|name| format!(" `{name}`")).unwrap_or_default())]
     UnknownFunction(Option<String>, Span),
@@ -262,7 +264,7 @@ mod tests {
                 assert_error(
                     source,
                     highlighted,
-                    "expected a compile-time boolean expression"
+                    "expected a compile-time boolean expression: use `true`, `false`, or `ModuleExists(\"Module.Name\")`, combined with `!`, `&&`, or `||`"
                 ),
                 Error::ExpectedBoolean(_)
             ));
@@ -275,9 +277,8 @@ mod tests {
             ("-42", ast::UnOp::Neg, "-"),
             ("~42", ast::UnOp::BitNot, "~"),
         ] {
-            let message = format!(
-                "unsupported compile-time unary operator `{symbol}`; only `!` is supported"
-            );
+            let message =
+                format!("unsupported compile-time operator `{symbol}`; only `!` is supported here");
             assert!(matches!(
                 assert_error(source, source, &message),
                 Error::UnsupportedUnaryOperator(actual, _) if actual == op
@@ -310,7 +311,7 @@ mod tests {
             ("value &= 1", ast::BinOp::AssignBitAnd, "&="),
         ] {
             let message = format!(
-                "unsupported compile-time binary operator `{symbol}`; only `&&` and `||` are supported"
+                "unsupported compile-time operator `{symbol}`; only `&&` and `||` are supported here"
             );
             assert!(matches!(
                 assert_error(source, source, &message),
