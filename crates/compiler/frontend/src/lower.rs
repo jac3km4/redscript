@@ -44,6 +44,7 @@ pub struct Lower<'scope, 'ctx> {
     does_return_value: bool,
     in_loop: bool,
     hoisted_declarations: crate::IndexMap<Span, Option<ir::LocalInfo<'ctx>>>,
+    array_guard_reports: Vec<Span>,
 }
 
 /// Collect explicitly typed locals in the current function, not nested closures.
@@ -101,6 +102,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             does_return_value: false,
             in_loop: false,
             hoisted_declarations: crate::IndexMap::default(),
+            array_guard_reports: Vec::new(),
         }
     }
 
@@ -453,7 +455,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         hint: Option<&PolyType<'ctx>>,
         env: &Env<'_, 'ctx>,
     ) -> LowerResult<'ctx, (ir::Expr<'ctx>, PolyType<'ctx>)> {
-        array_guard::check(source)?;
+        self.check_array_guard(source, false);
         let result = match expr {
             &ast::Expr::Ident(name) => self.resolve_local(name, env, *span)?,
             ast::Expr::Constant(cn) => {
@@ -727,7 +729,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                             .is_some_and(|typ| typ.id() == predef::ARRAY)
                     })
                 {
-                    array_guard::check(value)?;
+                    self.check_array_guard(value, false);
                     // Lower before introducing the binding: a shadowed name in the
                     // initializer must still resolve to the outer local.
                     let (elements, element_type) =

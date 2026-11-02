@@ -85,7 +85,7 @@ fn warning_help_and_parse_errors_list_accepted_values() {
             "default: warning",
             "--runtime-compatible",
             "match SCC",
-            "hard errors still",
+            "hard errors",
         ] {
             assert!(help.contains(text), "{help}");
         }
@@ -345,7 +345,14 @@ class Child extends Parent { private func Method() {} }
             false,
         ),
     ] {
-        fs::write(dir.0.join("test.reds"), source).unwrap();
+        fs::write(
+            dir.0.join("test.reds"),
+            format!(
+                "native class IScriptable {{}}
+{source}"
+            ),
+        )
+        .unwrap();
         for subcommand in ["compile", "lint"] {
             for runtime_compatible in [false, true] {
                 fs::write(dir.0.join("output.redscripts"), "keep me").unwrap();

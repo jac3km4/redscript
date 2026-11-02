@@ -143,7 +143,10 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 (MemberCall::FieldAccess(field), typ) => (field, typ),
             }
         } else {
-            array_guard::check_runtime_callee(args, *expr_span)?;
+            self.report_array_guard(
+                call_span,
+                array_guard::check_runtime_callee(args, *expr_span),
+            );
             self.lower_expr(expr, env)?
         };
 
@@ -478,7 +481,10 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             return Ok((MemberCall::MethodCall(call), call_t));
         }
 
-        array_guard::check_runtime_callee(args, *expr_span)?;
+        self.report_array_guard(
+            call_span,
+            array_guard::check_runtime_callee(args, *expr_span),
+        );
         let (mut ir, mut typ) = self.lower_expr(receiver, env)?;
         if let Some((RefType::Script, pointee)) = typ.strip_ref(self.symbols) {
             self.emit_reference_conversion(&mut ir, typ, ir::Intrinsic::Deref, env, *expr_span)?;
@@ -592,7 +598,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 .expect("static alias must at least accept a receiver");
             let span = ir.span();
             if param.flags().is_short_circuit() {
-                array_guard::check_lazy(receiver)?;
+                self.check_array_guard(receiver, true);
             }
             self.lower_arg(
                 &mut ir,
@@ -687,10 +693,10 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             .collect::<Result<Vec<_>, _>>()?;
 
         if filtered.peek().is_none() {
-            // Prefix construction cannot escape a skipped argument.
+            // Diagnose escaping prefixes without discarding the legacy call.
             for (arg, param) in args.clone().zip(primary.func().type_().params()) {
                 if param.flags().is_short_circuit() {
-                    array_guard::check_lazy(arg)?;
+                    self.check_array_guard(arg, true);
                 }
             }
             let type_env = receiver
@@ -898,7 +904,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         {
             if param.flags().is_short_circuit() && !matches!(args[index], ir::Expr::Nop(_)) {
                 if let Some(source) = source_args.get(index) {
-                    array_guard::check_lazy(source)?;
+                    self.check_array_guard(source, true);
                 } else if index != 1
                     || ![ast::BinOp::And.name(), ast::BinOp::Or.name()].contains(&name)
                 {

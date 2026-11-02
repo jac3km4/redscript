@@ -180,8 +180,10 @@ fn omitted_arguments_are_inert_before_array_prefixes() {
 }
 
 #[test]
-fn unsafe_array_prefixes_fail_closed_while_local_construction_remains_supported() {
-    let declarations = "func Read(value: Int32) -> Int32 = value;
+fn unsafe_array_prefixes_are_diagnosed_while_local_construction_remains_supported() {
+    let declarations = "native func OperatorLogicAnd(lhs: Bool, skip rhs: Bool) -> Bool;
+        native func OperatorEqual(lhs: Int32, rhs: Int32) -> Bool;
+        func Read(value: Int32) -> Int32 = value;
         func Take(value: Int32, values: [Int32]) {}
         func Size(values: [Int32]) -> Int32 = ArraySize(values);";
     for body in [

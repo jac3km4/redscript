@@ -205,9 +205,8 @@ impl Error<'_> {
 
     pub fn code(&self) -> &'static str {
         match self {
-            Self::UnsafeArrayEvaluation(_) | Self::UnsupportedSkipArgument(_) => {
-                "UNSAFE_ARRAY_EVALUATION"
-            }
+            Self::UnsafeArrayEvaluation(_) => "UNSAFE_ARRAY_EVALUATION",
+            Self::UnsupportedSkipArgument(_) => "UNSUPPORTED_SKIP_ARGUMENT",
             Self::Type(_, _) => "TYPE_ERR",
             Self::UnresolvedVar(_, _) => "UNRESOLVED_REF",
             Self::LocalRedefinition(_, _) => "SYM_REDEFINITION",
@@ -262,7 +261,8 @@ impl Error<'_> {
             Self::DeprecatedNameOf(_) | Self::CallingBaseStaticMethod { .. } => {
                 DiagnosticLevel::Warning
             }
-            Self::InvalidTemporary(_)
+            Self::UnsafeArrayEvaluation(_)
+            | Self::InvalidTemporary(_)
             | Self::NonFullyDefinedNativeStructConstruction { .. }
             | Self::InaccessibleMethod(_, _)
             | Self::InaccessibleField(_, _) => DiagnosticLevel::ErrorAllowedAtRuntime,
@@ -429,12 +429,8 @@ mod tests {
         let span = Span::new(0, 0, file);
         for (error, code) in [
             (
-                Error::UnsafeArrayEvaluation(span),
-                "UNSAFE_ARRAY_EVALUATION",
-            ),
-            (
                 Error::UnsupportedSkipArgument(span),
-                "UNSAFE_ARRAY_EVALUATION",
+                "UNSUPPORTED_SKIP_ARGUMENT",
             ),
             (
                 Error::UnsupportedNativeConversion(span),
@@ -450,6 +446,18 @@ mod tests {
             assert_eq!(error.level(), DiagnosticLevel::Error);
             assert!(error.is_fatal());
         }
+    }
+
+    #[test]
+    fn array_evaluation_errors_allow_runtime_compatibility() {
+        let sources = redscript_community_ast::SourceMap::new();
+        let file = sources.push_back("arrays.reds", "");
+        let span = Span::new(0, 0, file);
+        let error = Error::UnsafeArrayEvaluation(span);
+        assert_eq!(error.span(), span);
+        assert_eq!(error.code(), "UNSAFE_ARRAY_EVALUATION");
+        assert_eq!(error.level(), DiagnosticLevel::ErrorAllowedAtRuntime);
+        assert!(error.is_fatal());
     }
 
     #[test]

@@ -1,7 +1,30 @@
-//! Fail closed where statement-prefix array construction would change evaluation.
+//! Diagnose changed array evaluation while retaining legacy lowering for runtime compatibility.
 use redscript_community_ast::{BinOp, Expr, SourceExpr, Span, Spanned, StrPart};
 
-use super::{Error, LowerResult};
+use super::{Error, Lower, LowerResult};
+
+impl<'scope, 'ctx> Lower<'scope, 'ctx> {
+    pub(super) fn check_array_guard(&mut self, expr: &Spanned<SourceExpr<'ctx>>, lazy: bool) {
+        let result = if lazy { check_lazy(expr) } else { check(expr) };
+        self.report_array_guard(expr.1, result);
+    }
+
+    pub(super) fn report_array_guard(&mut self, scope: Span, result: LowerResult<'ctx, ()>) {
+        if let Err(error) = result {
+            // Recursive expression lowering and resolved-callee/skip checks can
+            // rediscover the same unsafe prefix. Report once for that subtree.
+            if self.array_guard_reports.iter().any(|reported| {
+                reported.file == scope.file
+                    && ((reported.start <= scope.start && scope.end <= reported.end)
+                        || (scope.start <= reported.start && reported.end <= scope.end))
+            }) {
+                return;
+            }
+            self.array_guard_reports.push(scope);
+            self.reporter.report(error);
+        }
+    }
+}
 
 pub(super) fn check<'ctx>(expr: &Spanned<SourceExpr<'ctx>>) -> LowerResult<'ctx, ()> {
     visit(expr, false).map(|_| ())

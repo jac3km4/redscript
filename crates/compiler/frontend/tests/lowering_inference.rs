@@ -36,7 +36,7 @@ fn diagnostic_messages(source: &str) -> Vec<(String, String)> {
 }
 
 #[test]
-fn lazy_arguments_reject_array_prefixes_before_lowering() {
+fn lazy_arguments_diagnose_unsafe_array_prefixes() {
     for source in [
         "native func Lazy(skip value: [Int32]); func Test() { Lazy([1]); }",
         "native func Lazy(skip value: [Int32]); native func Lazy(skip value: Bool); func Test() { Lazy([1]); }",
@@ -73,7 +73,7 @@ fn source_free_typed_calls_reject_user_lazy_parameters() {
         assert!(
             diagnostics
                 .iter()
-                .any(|(code, message)| code == "UNSAFE_ARRAY_EVALUATION"
+                .any(|(code, message)| code == "UNSUPPORTED_SKIP_ARGUMENT"
                     && message == "cannot check when this `skip` argument is evaluated because its source expression is unavailable"),
             "{source}: {diagnostics:?}"
         );
