@@ -9,19 +9,19 @@ error[INVALID_NEW_USE]: `NeverRef` cannot be constructed with the `new` operator
 10 |   let _ = new NeverRef(); // Error
    |           ^^^^^^^^^^^^^^
 
-error[UNEXPECTED_NON_REF]: expected `ref<MixedRef>`, found `MixedRef`: a `ref` is required here
+error[UNEXPECTED_NON_REF]: expected `ref<MixedRef>`, found `MixedRef`: expected a reference, but found a non-reference value
  --> tests/data/mixed-ref.reds:15:32
    |
 15 |   let withRef: ref<MixedRef> = MixedRef(); // Error
    |                                ^^^^^^^^^^
 
-error[UNEXPECTED_REF]: expected `MixedRef`, found `ref<MixedRef>`: a `ref` is not expected here
+error[UNEXPECTED_REF]: expected `MixedRef`, found `ref<MixedRef>`: expected a non-reference value, but found a reference
  --> tests/data/mixed-ref.reds:18:30
    |
 18 |   let withoutRef: MixedRef = new MixedRef(); // Error
    |                              ^^^^^^^^^^^^^^
 
-error[UNEXPECTED_REF]: expected `MixedRef`, found `ref<MixedRef>`: a `ref` is not expected here
+error[UNEXPECTED_REF]: expected `MixedRef`, found `ref<MixedRef>`: expected a non-reference value, but found a reference
  --> tests/data/mixed-ref.reds:22:21
    |
 22 |   let _: MixedRef = val as MixedRef; // Error

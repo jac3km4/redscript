@@ -29,9 +29,9 @@ pub enum Error<'ctx> {
     UnsupportedType(PolyType<'ctx>, Span),
     #[error("`{0}` has no member named `{1}`")]
     UnresolvedMember(TypeId<'ctx>, &'ctx str, Span),
-    #[error("multiple overloads match the types of the provided arguments:\n{}", sep_by(.0.iter(), "\n"))]
+    #[error("multiple functions or methods match the provided argument types:\n{}", sep_by(.0.iter(), "\n"))]
     MultipleMatchingOverloads(Rc<[FunctionSignature<'ctx, Immutable>]>, Span),
-    #[error("there's no matching `{0}` function")]
+    #[error("no matching function or method named `{0}`")]
     UnresolvedFunction(&'ctx str, Span),
     #[error(
         "cannot resolve `{0}`: a declaration has an invalid signature; fix its type errors first"
@@ -44,10 +44,10 @@ pub enum Error<'ctx> {
         found = .1
     )]
     InvalidArgCount(Vec<RangeInclusive<usize>>, usize, Span),
-    #[error("a required parameter cannot be omitted")]
+    #[error("a required argument cannot be omitted")]
     RequiredArgumentOmitted(Span),
     #[error(
-        "omitted arguments are only supported for optional parameters of function or method calls"
+        "an argument can only be omitted for an optional parameter in a function or method call"
     )]
     UnsupportedOmittedArgument(Span),
     #[error("cannot infer the type of this expression; consider adding type annotations")]
@@ -66,21 +66,21 @@ pub enum Error<'ctx> {
         "cannot infer the target type of this cast; specify it with `Cast<T>(value)` or a type annotation"
     )]
     UnknownStaticCastType(Span),
-    #[error(
-        "conversion declaration dispatch is not supported; its official selection semantics are not established"
-    )]
+    #[error("this conversion declaration is not supported for this use")]
     UnsupportedNativeConversion(Span),
+    #[error("multiple native conversion declarations match; cannot choose one")]
+    AmbiguousNativeConversion(Span),
     #[error("invalid number of type arguments: expected {0}, found {1}")]
     InvalidTypeArgCount(usize, usize, Span),
-    #[error("class constructors do not accept positional arguments")]
+    #[error("class constructors do not accept arguments")]
     ClassConstructorHasArguments(Span),
     #[error(
-        "function arity {0} exceeds maximum {max}",
+        "too many function parameters or arguments: found {0}, maximum is {max}",
         max = MAX_FN_ARITY
     )]
     UnsupportedArity(usize, Span),
     #[error(
-        "unsupported static array size: found {0} elements, maximum is {max}",
+        "static array length {0} exceeds the maximum supported length of {max}",
         max = MAX_STATIC_ARRAY_SIZE
     )]
     UnsupportedStaticArraySize(usize, Span),
@@ -94,17 +94,19 @@ pub enum Error<'ctx> {
     WrongStringLiteral(TypeId<'ctx>, char, Span),
     #[error("`{0}` is an abstract class and cannot be instantiated")]
     InstantiatingAbstract(TypeId<'ctx>, Span),
-    #[error("this type has no super type to refer to")]
+    #[error("cannot use `super`: this type has no base class")]
     NonExistentSuperType(Span),
-    #[error("cannot assign to this expression")]
+    #[error("cannot assign to this expression: it is not a writable location")]
     InvalidPlaceExpr(Span),
-    #[error(
-        "array literal initialization would change evaluation order or lazy execution; extract it to a local at its execution site"
-    )]
+    #[error("cannot preserve when expressions are evaluated during array literal initialization")]
     UnsafeArrayEvaluation(Span),
     #[error(
-        "the highlighted temporary value cannot be used in this expression; consider extracting it \
-        to a local"
+        "cannot check when this `skip` argument is evaluated because its source expression is unavailable"
+    )]
+    UnsupportedSkipArgument(Span),
+    #[error(
+        "this temporary value cannot be used here; consider storing it in a local variable \
+        without changing when it is evaluated"
     )]
     InvalidTemporary(Span),
     #[error("only constants can be used here")]
@@ -113,8 +115,8 @@ pub enum Error<'ctx> {
     DeprecatedNameOf(Span),
     #[error(
         "`{type_id}` is a native struct with an incomplete script definition; passing arguments to its \
-        constructor might result in undefined behavior. It can still be safely \
-        constructed without arguments: `{}()`"
+        constructor may cause crashes or incorrect runtime behavior. Construct it \
+        without arguments instead: `{}()`"
     , .type_id.simple_name())]
     NonFullyDefinedNativeStructConstruction { type_id: TypeId<'ctx>, span: Span },
     #[error("`case let` block must end with a `break` or `return` statement")]
@@ -131,9 +133,9 @@ pub enum Error<'ctx> {
     InaccessibleMethod(Box<InaccessibleMember<'ctx, MethodId<'ctx>>>, Span),
     #[error("{0}")]
     InaccessibleField(Box<InaccessibleMember<'ctx, FieldId<'ctx>>>, Span),
-    #[error("expected `{1}`, found `{0}`: a `ref` is not expected here")]
+    #[error("expected `{1}`, found `{0}`: expected a non-reference value, but found a reference")]
     UnexpectedRef(PolyType<'ctx>, PolyType<'ctx>, Span),
-    #[error("expected `{1}`, found `{0}`: a `ref` is required here")]
+    #[error("expected `{1}`, found `{0}`: expected a reference, but found a non-reference value")]
     UnexpectedNonRef(PolyType<'ctx>, PolyType<'ctx>, Span),
     #[error(
         "static method `{name}` is declared on `{type_id}`; qualify the call with `{type_id}.{name}(...)` instead of its subclass"
@@ -169,6 +171,7 @@ impl Error<'_> {
             | Self::InvalidDynCastType(_, _, span)
             | Self::UnknownStaticCastType(span)
             | Self::UnsupportedNativeConversion(span)
+            | Self::AmbiguousNativeConversion(span)
             | Self::InvalidTypeArgCount(_, _, span)
             | Self::ClassConstructorHasArguments(span)
             | Self::UnsupportedArity(_, span)
@@ -181,6 +184,7 @@ impl Error<'_> {
             | Self::NonExistentSuperType(span)
             | Self::InvalidPlaceExpr(span)
             | Self::UnsafeArrayEvaluation(span)
+            | Self::UnsupportedSkipArgument(span)
             | Self::InvalidTemporary(span)
             | Self::UnexpectedNonConstant(span)
             | Self::DeprecatedNameOf(span)
@@ -201,7 +205,9 @@ impl Error<'_> {
 
     pub fn code(&self) -> &'static str {
         match self {
-            Self::UnsafeArrayEvaluation(_) => "UNSAFE_ARRAY_EVALUATION",
+            Self::UnsafeArrayEvaluation(_) | Self::UnsupportedSkipArgument(_) => {
+                "UNSAFE_ARRAY_EVALUATION"
+            }
             Self::Type(_, _) => "TYPE_ERR",
             Self::UnresolvedVar(_, _) => "UNRESOLVED_REF",
             Self::LocalRedefinition(_, _) => "SYM_REDEFINITION",
@@ -222,7 +228,9 @@ impl Error<'_> {
             Self::InvalidConstructType(_) => "INVALID_CONSTRUCT",
             Self::InvalidDynCastType(_, _, _) => "INVALID_DYN_CAST",
             Self::UnknownStaticCastType(_) => "INVALID_STATIC_CAST",
-            Self::UnsupportedNativeConversion(_) => "UNSUPPORTED_NATIVE_CONVERSION",
+            Self::UnsupportedNativeConversion(_) | Self::AmbiguousNativeConversion(_) => {
+                "UNSUPPORTED_NATIVE_CONVERSION"
+            }
             Self::InvalidTypeArgCount(_, _, _) => "INVALID_TYPE_ARG_COUNT",
             Self::UnsupportedArity(_, _) => "UNSUPPORTED_ARITY",
             Self::UnsupportedStaticArraySize(_, _) => "UNSUPPORTED_ARRAY_SIZE",
@@ -341,7 +349,7 @@ pub enum TypeError<'ctx> {
     Mismatch(InferredType<'ctx>, InferredType<'ctx>),
     #[error("type error: `{0}` is not compatible with `{1}`")]
     Incompatible(InferredTypeApp<'ctx>, InferredTypeApp<'ctx>),
-    #[error("type error: cannot unify `{0}` and `{1}`")]
+    #[error("type error: cannot use `{0}` and `{1}` as the same type")]
     CannotUnify(InferredType<'ctx>, InferredType<'ctx>),
     #[error("type mismatch: found `{1}` when expected `{2}`\n  caused by: {0}")]
     Nested(Box<Self>, InferredType<'ctx>, InferredType<'ctx>),
@@ -380,7 +388,7 @@ impl fmt::Display for CoalesceError<'_> {
             Self::CannotCoalesce(lower, upper) => {
                 write!(
                     f,
-                    "cannot infer a single type; consider adding type annotations\n  inferred bounds: the type must be a supertype of `{lower}`"
+                    "cannot determine a single type; consider adding type annotations\n  inferred bounds: the type must be a supertype of `{lower}`"
                 )?;
                 if let Some(upper) = upper {
                     write!(f, " and a subtype of `{upper}`")
@@ -400,18 +408,63 @@ mod tests {
     use crate::types::Type;
 
     #[test]
+    fn context_free_errors_use_plain_wording() {
+        let sources = redscript_community_ast::SourceMap::new();
+        let file = sources.push_back("diagnostics.reds", "");
+        let span = Span::new(0, 0, file);
+        assert_eq!(
+            Error::UnresolvedFunction("Example", span).to_string(),
+            "no matching function or method named `Example`"
+        );
+        assert_eq!(
+            Error::NonExistentSuperType(span).to_string(),
+            "cannot use `super`: this type has no base class"
+        );
+    }
+
+    #[test]
+    fn reason_specific_errors_preserve_metadata() {
+        let sources = redscript_community_ast::SourceMap::new();
+        let file = sources.push_back("diagnostics.reds", "");
+        let span = Span::new(0, 0, file);
+        for (error, code) in [
+            (
+                Error::UnsafeArrayEvaluation(span),
+                "UNSAFE_ARRAY_EVALUATION",
+            ),
+            (
+                Error::UnsupportedSkipArgument(span),
+                "UNSAFE_ARRAY_EVALUATION",
+            ),
+            (
+                Error::UnsupportedNativeConversion(span),
+                "UNSUPPORTED_NATIVE_CONVERSION",
+            ),
+            (
+                Error::AmbiguousNativeConversion(span),
+                "UNSUPPORTED_NATIVE_CONVERSION",
+            ),
+        ] {
+            assert_eq!(error.span(), span);
+            assert_eq!(error.code(), code);
+            assert_eq!(error.level(), DiagnosticLevel::Error);
+            assert!(error.is_fatal());
+        }
+    }
+
+    #[test]
     fn coalesce_errors_explain_inference_bounds() {
         let lower = Type::nullary(predef::NOTHING);
         let upper = Type::nullary(predef::INT32);
         insta::assert_snapshot!(
             CoalesceError::CannotCoalesce(lower.clone(), Some(upper)),
             @r"
-        cannot infer a single type; consider adding type annotations
+        cannot determine a single type; consider adding type annotations
           inferred bounds: the type must be a supertype of `Nothing` and a subtype of `Int32`
         "
         );
         insta::assert_snapshot!(CoalesceError::CannotCoalesce(lower, None), @r"
-        cannot infer a single type; consider adding type annotations
+        cannot determine a single type; consider adding type annotations
           inferred bounds: the type must be a supertype of `Nothing`; no upper bound is known
         ");
     }

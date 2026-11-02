@@ -3,31 +3,31 @@ source: crates/compiler/frontend/tests/errors.rs
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/expr-checks.reds
 ---
-error[INVALID_PLACE]: cannot assign to this expression
+error[INVALID_PLACE]: cannot assign to this expression: it is not a writable location
  --> tests/data/expr-checks.reds:11:3
    |
 11 |   ReturnsInt() = 2;
    |   ^^^^^^^^^^^^
 
-error[INVALID_TEMP]: the highlighted temporary value cannot be used in this expression; consider extracting it to a local
+error[INVALID_TEMP]: this temporary value cannot be used here; consider storing it in a local variable without changing when it is evaluated
  --> tests/data/expr-checks.reds:13:4
    |
 13 |   (Struct(2)).x;
    |    ^^^^^^^^^
 
-error[INVALID_TEMP]: the highlighted temporary value cannot be used in this expression; consider extracting it to a local
+error[INVALID_TEMP]: this temporary value cannot be used here; consider storing it in a local variable without changing when it is evaluated
  --> tests/data/expr-checks.reds:15:13
    |
 15 |   ArraySize(ReturnsArray());
    |             ^^^^^^^^^^^^^^
 
-error[INVALID_TEMP]: the highlighted temporary value cannot be used in this expression; consider extracting it to a local
+error[INVALID_TEMP]: this temporary value cannot be used here; consider storing it in a local variable without changing when it is evaluated
  --> tests/data/expr-checks.reds:16:3
    |
 16 |   ReturnsArray()[0] = 2;
    |   ^^^^^^^^^^^^^^
 
-error[INVALID_TEMP]: the highlighted temporary value cannot be used in this expression; consider extracting it to a local
+error[INVALID_TEMP]: this temporary value cannot be used here; consider storing it in a local variable without changing when it is evaluated
  --> tests/data/expr-checks.reds:18:15
    |
 18 |   HasOutParam(2);
