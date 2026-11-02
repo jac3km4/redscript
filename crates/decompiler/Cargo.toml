@@ -11,6 +11,7 @@ redscript-community-formatter.workspace = true
 
 thiserror.workspace = true
 hashbrown.workspace = true
+log.workspace = true
 
 [dev-dependencies]
 redscript-compiler-api.workspace = true

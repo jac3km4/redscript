@@ -233,7 +233,7 @@ fn const_locals_emit_community_syntax() {
 }
 
 #[test]
-fn const_assignment_expression_requires_a_preservable_initializer() {
+fn const_assignment_expression_falls_back_to_mutable_local() {
     let mut bundle = ScriptBundle::default();
     let mut function = function(&mut bundle);
     let function_idx = bundle.define(function.clone());
@@ -266,18 +266,17 @@ fn const_assignment_expression_requires_a_preservable_initializer() {
     ] {
         let cf = build_control_flow(CodeIter::new(&code)).unwrap();
         for verbosity in [Verbosity::Quiet, Verbosity::Verbose] {
-            let error = decompile_block(&function, &bundle, &code, &cf, verbosity).unwrap_err();
-            assert!(matches!(
-                &error,
-                crate::error::Error::UnsupportedConstInitializer(name) if name == "x"
-            ));
-            assert!(error.to_string().contains("omit function bodies"));
+            let block = decompile_block(&function, &bundle, &code, &cf, verbosity).unwrap();
+            let output = format_block(&block);
+            assert!(output.contains("let x: Int32;"), "{output}");
+            assert!(!output.contains("const x:"), "{output}");
+            assert!(output.contains("x = 1"), "{output}");
         }
     }
 }
 
 #[test]
-fn wrapped_const_array_mutations_fail_closed_in_both_verbosity_modes() {
+fn wrapped_const_array_mutations_fall_back_in_both_verbosity_modes() {
     let mut bundle = ScriptBundle::default();
     let mut function = function(&mut bundle);
     let function_idx = bundle.define(function.clone());
@@ -305,11 +304,11 @@ fn wrapped_const_array_mutations_fail_closed_in_both_verbosity_modes() {
         code.extend([Instr::Local(local), Instr::Return, Instr::Nop]);
         let cf = build_control_flow(CodeIter::new(&code)).unwrap();
         for verbosity in [Verbosity::Quiet, Verbosity::Verbose] {
-            let error = decompile_block(&function, &bundle, &code, &cf, verbosity).unwrap_err();
-            assert!(matches!(
-                error,
-                crate::error::Error::UnsupportedConstInitializer(name) if name == "c"
-            ));
+            let block = decompile_block(&function, &bundle, &code, &cf, verbosity).unwrap();
+            let output = format_block(&block);
+            assert!(output.contains("let c: [Int32];"), "{output}");
+            assert!(!output.contains("const c:"), "{output}");
+            assert!(output.contains("ArrayClear("), "{output}");
         }
     }
 }

@@ -8,10 +8,6 @@ pub enum Error {
     DetachedSwitchBodies,
     #[error("Unexpected end of code")]
     UnexpectedEndOfCode,
-    #[error(
-        "Cannot preserve initializer for const local '{0}': initialization requiring hoisting or expanded writes is unsupported; omit function bodies to decompile declarations only"
-    )]
-    UnsupportedConstInitializer(String),
     #[error("Missing {1} in the pool at index {0}")]
     MissingPoolItem(u32, &'static str),
     #[error("Missing parameter end instruction")]

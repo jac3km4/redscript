@@ -705,12 +705,18 @@ impl<'scope, 'ctx: 'i, 'i> Decompiler<'scope, 'ctx, 'i> {
                 // initialization and assignments inside expressions cannot become
                 // later writes to an uninitialized const declaration. Read-only
                 // locals can retain their VM-default value without an initializer.
-                if local.flags().is_const() && self.written.contains(name.as_ref()) {
-                    return Err(Error::UnsupportedConstInitializer(name.to_string()));
+                let fallback = local.flags().is_const() && self.written.contains(name.as_ref());
+                if fallback {
+                    let function = self
+                        .bundle
+                        .try_get_item_hint(self.function.name(), "function name")?;
+                    log::warn!(
+                        "Cannot preserve initializer for const local '{name}' in function '{function}': initialization requires hoisting or expanded writes; emitting mutable let for this local"
+                    );
                 }
 
                 stmts.push(ast::Stmt::Let {
-                    is_const: local.flags().is_const(),
+                    is_const: local.flags().is_const() && !fallback,
                     name: expect_borrowed(name),
                     typ: Some(extract_type(local.type_(), self.bundle)?.into()),
                     value: None,

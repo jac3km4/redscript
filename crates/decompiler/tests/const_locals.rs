@@ -7,6 +7,38 @@ use redscript_compiler_frontend::{CompileErrorReporter, TypeInterner, infer_from
 use redscript_decompiler::{Settings, decompile_function};
 use redscript_io::{Class, ClassFlags, IndexedDefinition, ScriptBundle, Visibility};
 
+thread_local! {
+    static WARNINGS: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+struct WarningLogger;
+
+impl log::Log for WarningLogger {
+    fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+        metadata.level() == log::Level::Warn
+    }
+
+    fn log(&self, record: &log::Record<'_>) {
+        if self.enabled(record.metadata()) {
+            WARNINGS.with_borrow_mut(|warnings| warnings.push(record.args().to_string()));
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+fn with_warnings<T>(f: impl FnOnce() -> T) -> (T, Vec<String>) {
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        log::set_logger(&WarningLogger).unwrap();
+        log::set_max_level(log::LevelFilter::Warn);
+    });
+    WARNINGS.with_borrow_mut(Vec::clear);
+    let result = f();
+    let warnings = WARNINGS.with_borrow_mut(std::mem::take);
+    (result, warnings)
+}
+
 fn compile(source: &str) -> Vec<u8> {
     let sources = SourceMap::new();
     sources.populate_boot_lib();
@@ -21,7 +53,11 @@ fn compile(source: &str) -> Vec<u8> {
             .into_inner();
     let mut reporter = CompileErrorReporter::default();
     let (unit, symbols) = infer_from_sources(&sources, symbols, &mut reporter, &interner);
-    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+    assert!(
+        reporter.reported().is_empty(),
+        "{source}\n{:?}",
+        reporter.reported()
+    );
     mappings
         .into_monomorphizer(&sources)
         .monomorphize(&unit, &symbols, &mut bundle)
@@ -48,7 +84,9 @@ fn ordinary_const_declarations_roundtrip() {
                 _ => None,
             })
             .unwrap();
-        let item = decompile_function(function, &bundle, &Settings::default()).unwrap();
+        let (item, warnings) =
+            with_warnings(|| decompile_function(function, &bundle, &Settings::default()).unwrap());
+        assert!(warnings.is_empty(), "{warnings:?}");
         let output = item
             .as_fmt(FormatCtx::new(
                 &FormatSettings::default(),
@@ -90,7 +128,9 @@ fn read_only_default_const_variant_roundtrips() {
     );
     let local_name = &bundle[bundle[function.locals()[0]].name()];
     for settings in [Settings::default(), Settings::default().verbose()] {
-        let item = decompile_function(function, &bundle, &settings).unwrap();
+        let (item, warnings) =
+            with_warnings(|| decompile_function(function, &bundle, &settings).unwrap());
+        assert!(warnings.is_empty(), "{warnings:?}");
         let output = item
             .as_fmt(FormatCtx::new(
                 &FormatSettings::default(),
@@ -110,10 +150,10 @@ fn read_only_default_const_variant_roundtrips() {
 }
 
 #[test]
-fn expanded_const_array_initializers_fail_closed() {
+fn expanded_const_array_initializers_warn_and_only_downgrade_affected_local() {
     for value in ["[]", "[1, 2]"] {
         let bytes = compile(&format!(
-            "func Probe() -> Int32 {{ const values: [Int32] = {value}; return ArraySize(values); }}"
+            "func Probe() -> Int32 {{ const kept: Int32 = 7; const defaulted: Variant; const values: [Int32] = {value}; let mutable: Int32 = 1; ArraySize(values); mutable; return kept; }}"
         ));
         let bundle = ScriptBundle::from_bytes(&bytes).unwrap();
         let function = bundle
@@ -127,15 +167,48 @@ fn expanded_const_array_initializers_fail_closed() {
                 _ => None,
             })
             .unwrap();
+        let local_name = |prefix: &str| {
+            function
+                .locals()
+                .iter()
+                .map(|&local| bundle[bundle[local].name()].as_ref())
+                .find(|name| name.starts_with(prefix))
+                .unwrap()
+        };
         for settings in [Settings::default(), Settings::default().verbose()] {
-            let error = decompile_function(function, &bundle, &settings).unwrap_err();
-            assert_eq!(
-                error.to_string(),
-                format!(
-                    "Cannot preserve initializer for const local '{}': initialization requiring hoisting or expanded writes is unsupported; omit function bodies to decompile declarations only",
-                    bundle[bundle[function.locals()[0]].name()]
-                )
+            let (item, warnings) =
+                with_warnings(|| decompile_function(function, &bundle, &settings).unwrap());
+            assert_eq!(warnings.len(), 1, "{warnings:?}");
+            assert!(warnings[0].contains(local_name("values$")), "{warnings:?}");
+            assert!(
+                warnings[0].contains(bundle[function.name()].as_ref()),
+                "{warnings:?}"
             );
+            assert!(warnings[0].contains("emitting mutable let"), "{warnings:?}");
+            let output = item
+                .as_fmt(FormatCtx::new(
+                    &FormatSettings::default(),
+                    &HashMap::default(),
+                ))
+                .to_string();
+            for expected in [
+                format!("let {}: [Int32];", local_name("values$")),
+                format!("const {}: Int32 = 7;", local_name("kept$")),
+                format!("const {}: Variant;", local_name("defaulted$")),
+                format!("let {}: Int32 = 1;", local_name("mutable$")),
+            ] {
+                assert!(output.contains(&expected), "{output}");
+            }
+            let mut normalized = output;
+            for prefix in ["values", "kept", "defaulted", "mutable"] {
+                normalized = normalized.replace(local_name(&format!("{prefix}$")), prefix);
+            }
+            // Nonempty arrays currently emit Uint64 resize/index operands, which
+            // the compiler cannot recompile as Int32. Keep that separate from
+            // const fallback coverage.
+            if value == "[]" {
+                compile(&normalized);
+            }
         }
         assert!(
             decompile_function(
