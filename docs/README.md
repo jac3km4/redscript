@@ -20,13 +20,13 @@ language tutorial, see the [REDscript wiki](https://wiki.redmodding.org/redscrip
 
 | Topic | Contract |
 | --- | --- |
-| Const parameters and locals | [Strict community rules, native handle rebinding and analysis bounds](const-parameters.md) |
+| Const parameters and locals | [Per-mode forwarding diagnostics, native handle rebinding and analysis bounds](const-parameters.md) |
 | Assignments, script references, omitted arguments and field defaults | [Shared expression/default semantics and APIs](shared-expression-defaults.md) |
 | Enum ranges, widths and erased signedness | [Explicit enum storage](enum-storage.md) |
 | Conversion declarations and selection | [Exact native providers, bounded enum casts and recovery guards](conversion-declarations.md) |
 | Calls and inheritance | [Lookup, overloads, generated forwarders and override slots](lookup-inheritance.md) |
 | Switches and indexing | [Label order, fallthrough and OperatorArray](control-flow-operators.md) |
-| Lazy evaluation and array construction | [Skip parameters and statement-prefix restrictions](lazy-evaluation-limitations.md) |
+| Lazy evaluation and array construction | [Skip parameters, strict rejection and legacy compatibility risks](lazy-evaluation-limitations.md) |
 | Invalid signatures | [Preserved slots, unavailable bodies and fail-closed emission](invalid-signature-recovery.md) |
 | Native events | [Implicit Bool contracts, fallthrough and patch/export limits](redmod-events.md) |
 | Native array members | [Dynamic-array Grow and Count descriptors](redmod-array-descriptors.md) |
@@ -48,6 +48,10 @@ language tutorial, see the [REDscript wiki](https://wiki.redmodding.org/redscrip
 - Special types: [Void](types/Void.md), [Nothing](types/Nothing.md).
 
 ## Integration and evidence
+
+CLI `compile`/`lint` default to strict diagnostics; `--runtime-compatible` matches
+SCC's fatal threshold without guaranteeing correct legacy evaluation. See the
+[diagnostic mode contract](community-language.md#diagnostics-and-tool-boundaries).
 
 - [Adapter API](../crates/compiler/redmod/adapter/README.md) and
   [transpiler API](../crates/compiler/redmod/transpiler/README.md).

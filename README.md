@@ -38,7 +38,11 @@ REDscript provides extensive editor tooling, including a language server and a d
 See the [language guide](docs/README.md) for current community REDscript and native
 REDmod support, detailed semantics, known limitations, and future work. Historical
 investigations are separated from current contracts; acceptance or bytecode tests
-do not establish game-runtime compatibility.
+do not establish game-runtime compatibility. CLI `compile` and `lint` are strict
+by default; `--runtime-compatible` matches SCC's fatal-error threshold while still
+reporting runtime-tolerated diagnostics. It can retain unsafe legacy evaluation
+behavior, not guarantee correctness; see the
+[diagnostic mode contract](docs/community-language.md#diagnostics-and-tool-boundaries).
 
 ## Contributing
 

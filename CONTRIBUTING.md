@@ -56,6 +56,13 @@ than accepting them blindly. Bytecode snapshots do not verify game-runtime behav
 - Every assembly error must prevent saving output, even without a source span.
 - Lowering must preserve evaluation order and lazy evaluation. Keep generated
   initialization at the expression's execution point, including on loop back edges.
+  The explicit legacy-compatibility exception is `UNSAFE_ARRAY_EVALUATION`:
+  lowering reports `ErrorAllowedAtRuntime` and continues the legacy array-prefix
+  path. Strict mode rejects it; SCC and CLI `compile`/`lint --runtime-compatible`
+  tolerate it. That path can still reorder or eagerly evaluate expressions and
+  provides **no correctness guarantee**. Do not use compatibility acceptance as
+  evidence that evaluation order is preserved or as a precedent for new fallbacks.
+  Source-free `UNSUPPORTED_SKIP_ARGUMENT` remains a distinct hard error.
 - Switches change the break target, but must preserve the enclosing loop's continue
   target.
 - Treat malformed bundles as decoding errors: check indices, ranges, and address

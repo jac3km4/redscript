@@ -6,8 +6,14 @@ constness gaps.
 
 Const parameter flags are enforced by shared frontend analysis after function
 bodies have been lowered and calls resolved. Community source uses the strict
-policy by default. Diagnostics are shared frontend errors (`OTHER`, with message
-`cannot write through a const parameter`), not REDmod capability errors.
+semantic policy by default. Diagnostics are shared frontend errors (`OTHER`),
+not REDmod capability errors. Proven writes use hard `Error` severity with
+`cannot write through a const parameter` (or `const local`). Uncertain non-out
+mutable forwarding and function-value forwarding use `ErrorAllowedAtRuntime`
+with `forwarding a const ... may allow mutation`: strict mode rejects them,
+while CLI `--runtime-compatible` and SCC tolerate them. This does not establish
+that the callee is harmless or provide transitive immutability. See the
+[mode contract](community-language.md#diagnostics-and-tool-boundaries).
 
 Both policies reject assignment (including compound/value-producing assignment)
 to const parameters or their fields, explicit `out` forwarding, and mutating array
@@ -30,7 +36,12 @@ REDmod exceptions; both are false by default and true in the adapter's `POLICY`:
 Strict forwarding checks use resolved non-const parameter types: script/strong/
 weak references, arrays and class objects may expose mutable state. Known const
 parameters remain legal targets. Function-value calls have no parameter flags;
-strict analysis checks their resolved reference/container argument types instead.
+analysis checks their resolved reference/container argument types instead. These
+non-out checks diagnose possible mutation, not a proven write, and use the
+runtime-tolerated severity above. Direct assignment, explicit `out`, known
+mutating array intrinsics and the existing non-const local-receiver checks remain
+hard errors in both modes. Native semantic policy flags and their exemptions are
+unchanged; choosing a fatal threshold does not enable a native policy.
 User method receivers are not presumed mutating merely because a method is
 non-const: receiver effects are not characterized by this pass.
 
@@ -48,8 +59,10 @@ Strict community defaults allow the declaration initializer exactly once, for
 both inferred and explicitly typed const locals. All other binding assignments
 are rejected, including the first assignment after an uninitialized declaration;
 this is intentional, not definite-assignment analysis. Field/index writes,
-mutating array intrinsics, explicit `out` forwarding and ordinary forwarding to
-mutable reference/container parameters are also rejected.
+mutating array intrinsics and explicit `out` forwarding remain hard errors.
+Ordinary forwarding to mutable reference/container parameters and uncertain
+function-value forwarding are diagnosed at runtime-tolerated severity and rejected
+by the default strict threshold.
 Scalar by-value reads and forwarding to const parameters remain legal. Non-const
 instance methods on const local referents are rejected; const methods are legal.
 Parameter receiver behavior is unchanged.
@@ -89,10 +102,15 @@ is implied by the focused tests.
 
 The REDmod transpiler explicitly rejects const locals rather than dropping their
 qualifier or emitting native declarations with different initialization rules.
-Decompilation supports ordinary initialized const declarations, but errors when a
-const initializer would require unsafe hoisting (including expanded arrays and
-initialization inside expressions). It must not emit an uninitialized const
-binding followed by an illegal assignment.
+Decompilation preserves ordinary const declarations whose initializer can be
+reconstructed, as well as read-only const locals using their VM-default value.
+When a const initializer cannot be preserved at its execution site (including
+expanded array writes or initialization inside expressions), it logs a warning
+identifying the function and local and emits mutable `let` for that local only.
+Other initialized/default const locals keep their qualifier. This is a lossy
+source-recovery fallback, not a relaxation of compiler const rules; it avoids an
+uninitialized const followed by an illegal assignment. It does not add const-local
+support to the transpiler.
 
 ## Analysis bounds
 

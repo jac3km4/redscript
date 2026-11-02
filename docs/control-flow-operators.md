@@ -18,9 +18,13 @@ enclosing loop continue targets survive. The final-default bytecode layout is
 unchanged. Pattern cases reject fallthrough into a binding-dependent body,
 including from a preceding default.
 
-The decompiler does not reconstruct detached dispatch for first/middle defaults.
-It explicitly errors rather than silently moving case bodies into default;
-declaration-only decompilation remains available.
+The decompiler reconstructs grouped labels, backward-linked labels sharing a
+body, and detached dispatch with first/middle default bodies. It preserves matcher
+evaluation order, shared bodies, source body order and fallthrough where the layout
+can be proven. This is not arbitrary backward control flow: dispatch that moves
+backward between distinct bodies, cyclic/invalid links, or unprovable body/exit
+boundaries still errors rather than guessing. Declaration-only decompilation
+remains available.
 
 Contextual switch literals use the scrutinee's type. This does not enable all
 Variant switch rules or script-reference scrutinee adaptation. Lazy matcher/prefix

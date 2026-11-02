@@ -43,9 +43,11 @@ not introduce literals, defaults or arbitrary conversions.
   across static ancestry and prioritize real methods over equivalent generated
   receiver-first aliases. Specificity is bounded, not a numeric scoring system.
 - Source `skip` parameters retain lazy intent through source, symbols and bundles.
-  [Array-prefix safety](lazy-evaluation-limitations.md) rejects forms whose current
-  lowering would reorder effects or escape a lazy branch. Type-qualified static
-  calls can take array literals; runtime member and closure callees remain guarded.
+  [Array-prefix safety](lazy-evaluation-limitations.md) diagnoses forms whose current
+  lowering can reorder effects or escape a lazy branch. Strict mode rejects them;
+  runtime-compatible mode continues legacy lowering without a correctness guarantee.
+  Type-qualified static calls can take array literals; runtime member and closure
+  callees remain guarded.
 - Marked `implicit func Cast` / `explicit func Cast` declarations preserve intent,
   but do not enable arbitrary user-defined conversions. Ordinary unmarked `Cast`
   functions keep their existing behavior. The bounded marked-provider selection
@@ -56,9 +58,10 @@ not introduce literals, defaults or arbitrary conversions.
 [Const parameters and locals](const-parameters.md) use strict community rules.
 A const local's declaration initializer is permitted once; later assignment is
 not, even after an uninitialized declaration. Direct-root referent mutation,
-mutable forwarding and selected non-const methods are checked. This is not
-transitive alias/effect analysis, const-aware overload ranking, or general const
-field/return enforcement.
+mutable forwarding and selected non-const methods are checked. Uncertain non-out
+forwarding is runtime-tolerated; direct writes, explicit out forwarding and known
+mutations remain hard errors. This is not transitive alias/effect analysis,
+const-aware overload ranking, or general const field/return enforcement.
 
 Aggregate `default field = value;` directives support own and inherited fields in
 classes and structs. They are typed metadata, not constructor assignments. The
@@ -75,17 +78,31 @@ Runtime behavior has not been verified.
 
 ## Diagnostics and tool boundaries
 
+CLI `compile` and `lint` are strict by default: their fatal threshold is
+`DiagnosticLevel::ErrorAllowedAtRuntime`. `--runtime-compatible` changes it to
+`DiagnosticLevel::Error`, matching SCC's fatal threshold. Runtime-tolerated
+diagnostics are still reported by these CLI commands; hard errors still fail lint
+and prevent compile output. This changes fatality, not semantic policies or a
+promise of correct runtime behavior. Access/visibility diagnostics already use
+runtime-tolerated severity; this is not a new relaxation of lookup rules.
+
+Compiler API checking/compilation builders also default to the strict threshold;
+callers can set `fatal_diagnostic_level` explicitly. Diagnostic display/warning
+filters are separate from fatality.
+
 [Invalid signatures](invalid-signature-recovery.md) preserve parameter identity
 rather than deleting unknown types or fabricating Void returns. Invalid bodies
 are unavailable; valid siblings may still be analyzed. Returned IR or an IDE type
 query can include recovery and is not proof that compilation succeeded. Backend
 errors must prevent saving output.
 
-Decompilation preserves ordinary initialized const declarations, but rejects const
-locals that would require unsafe hoisting (such as expanded array initialization
-or an initializer inside an expression) rather than turning initialization into
-an illegal later assignment. Detached dispatch for non-final switch defaults is
-also explicitly unsupported; declaration-only decompilation remains available.
+Decompilation preserves reconstructable initialized const declarations and
+read-only VM-default const locals. If initialization requires hoisting or expanded
+writes, it warns with the function and local names and emits mutable `let` only
+for the affected local. It reconstructs grouped/backward-linked switch labels and
+first/middle default bodies when dispatch and body order are provable; unprovable
+layouts still fail. See [const export/decompilation](const-parameters.md#export-and-decompilation)
+and [switch semantics](control-flow-operators.md).
 
 The [REDmod transpiler](../crates/compiler/redmod/transpiler/README.md) uses typed
 community IR and returns diagnostics instead of partial source on unsupported

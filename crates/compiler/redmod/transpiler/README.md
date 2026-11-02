@@ -10,7 +10,11 @@ Unsupported input returns diagnostics, never partial output. The
 
 - Use `analyze_sources`, then `transpile_selected`, or the combined `transpile_sources`.
   All input files are analyzed as community sources; only selected `FileId`s are
-  emitted. Supply boot/engine dependencies explicitly and do not select them.
+  emitted. Library callers must supply boot/engine dependencies explicitly and
+  leave them unselected; the library does not implicitly load them. The
+  `transpile-redmod` CLI always loads boot as an implicit, unselected dependency,
+  even with `--bundle`. A bundle supplies baseline engine symbols, not a replacement
+  for boot intrinsics. CLI `--dependency` inputs are analyzed but not emitted.
 - Low-level `transpile` accepts `TranspileModule` bindings from structural
   `DeclarationPath`s to `ResolvedDeclaration`s. Retained AST, bindings, IR and
   symbols must come from the same successful compilation.
@@ -119,6 +123,8 @@ artifacts; old caches are not reused. The tool has normal local access and may
 write logs beside its executable. Use `validate_with_root` or
 `publish_mod_with_root` when base-game blobs require an explicit absolute root.
 The CLI exposes this through `transpile-redmod`, `--redmod` and `--game-root`.
+Transpilation remains strict; `compile`/`lint --runtime-compatible` does not relax
+its unsafe-prefix or const-local restrictions.
 
 ## Tests
 

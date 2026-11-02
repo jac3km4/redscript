@@ -88,8 +88,10 @@ fully resolved semantic signatures; this is not general variant-aware analysis.
   switch defaults preserve label/body order, fallthrough, one scrutinee evaluation
   and enclosing loop continues. See [control flow and indexing](control-flow-operators.md).
 - Source `skip` flags retain lazy call intent and serialized parameter flags.
-  Unsafe array prefixes and conservative source-free typed calls are rejected;
-  [lazy limitations](lazy-evaluation-limitations.md) defines the boundary.
+  Shared unsafe-array diagnostics reject output at the strict threshold but can
+  retain unsafe legacy lowering in runtime-compatible mode. Source-free typed
+  skip calls use a distinct hard error; native capability checks remain hard.
+  [Lazy limitations](lazy-evaluation-limitations.md) defines the boundary.
 - Dynamic-array descriptors include Size, PushBack, PopBack, Clear, Resize,
   Contains, FindFirst, FindLast, Insert, Remove, Erase and Last, plus
   [Grow and Count](redmod-array-descriptors.md). They require array places;

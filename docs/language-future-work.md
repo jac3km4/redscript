@@ -46,7 +46,9 @@ native source declaration proves an engine ABI.
 
 - Expression-local array construction is not implemented. Preserve lazy branches,
   callee/receiver/argument order, switch matcher execution and loop reevaluation
-  before relaxing [prefix safety guards](lazy-evaluation-limitations.md).
+  before removing [prefix safety diagnostics](lazy-evaluation-limitations.md).
+  Runtime-compatible mode currently tolerates them and retains potentially
+  reordered/eager legacy lowering; this is not a completed correctness fix.
 - Native initialized declaration groups and general value sequences need explicit
   evaluation/result rules. Broader prefix/postfix ordering and native float
   matching need independent characterization.
@@ -55,8 +57,9 @@ native source declaration proves an engine ABI.
   constructor argument, including excess arguments during recovery. Characterize
   zero/default construction and omitted field slots separately from partial
   positional construction and emitted default values.
-- Decompilation rejects detached switch dispatch for non-final defaults; reconstruct
-  the original label/body order before supporting it.
+- Broader decompiler switch layouts need provable matcher order, body fallthrough
+  and exit boundaries. Grouped/backward-linked shared-body labels and detached
+  first/middle defaults are supported; unprovable layouts remain rejected.
 
 ## Analysis, lookup and constness
 

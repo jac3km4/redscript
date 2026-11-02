@@ -37,8 +37,9 @@ values. Calls relying on callback results remain rejected by the transpiler.
 A transpile-to-adapter roundtrip checks signatures and return ownership, beyond
 native parser acceptance.
 
-The decompiler's rejection of detached dispatch for non-final switch defaults is
-separate from events; see [switch semantics](control-flow-operators.md).
+The decompiler's bounded reconstruction of grouped labels and detached dispatch
+for non-final switch defaults is separate from events; unprovable layouts still
+reject. See [switch semantics](control-flow-operators.md).
 
 ## Historical official evidence
 

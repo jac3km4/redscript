@@ -25,8 +25,9 @@ file-local and defaults to false. `implicit_members`, `public_fields`, and
 ## Const checks
 
 See [const parameters and locals](const-parameters.md) for strict community
-validation, narrow per-file native relaxations and alias/closure bounds. Constness
-is a direct-root validation contract, not transitive immutability.
+validation, runtime-tolerated uncertain forwarding, narrow per-file native
+relaxations and alias/closure bounds. Constness is a direct-root validation
+contract, not transitive immutability.
 
 ## Shared aggregate defaults
 
@@ -70,9 +71,10 @@ omitted slot there.
 ## Array literal evaluation boundary
 
 Array literals currently construct temporary arrays in statement prefixes, not
-inside expression bytecode. Shared lowering fails closed with
-`UNSAFE_ARRAY_EVALUATION` when this would move construction past an earlier
-observable expression or out of a lazy branch. This includes assignments inside
+inside expression bytecode. Shared lowering reports
+`UNSAFE_ARRAY_EVALUATION` (`ErrorAllowedAtRuntime`) when this could move
+construction past an earlier observable expression or out of a lazy branch.
+This includes assignments inside
 later array arguments/elements, complex assignment destinations with array RHSs,
 logical RHSs, and conditional arms. Literal-only nested arrays and ordinary local
 array initialization remain supported. Omitted argument slots have no evaluation
@@ -80,8 +82,12 @@ and are prefix-inert, so `Take(, [1])` is allowed when the first parameter is
 optional. Type-qualified static calls such as `Host.Take([1])` have no runtime
 callee evaluation and are accepted. Runtime member callees and closure/function-value
 callees remain guarded: a prefix could change the callable before it is read.
-The guard does not infer purity from function names. It deliberately rejects
-some pure expressions rather than silently changing their evaluation order.
+The guard does not infer purity from function names and can diagnose some pure
+expressions too. It reports the diagnostic and continues legacy lowering: strict
+mode rejects output, while runtime-compatible mode/SCC can emit the existing
+statement-prefix behavior. That behavior may reorder or eagerly evaluate
+expressions and has no correctness guarantee; the diagnostic is not an
+expression-local lowering fix.
 
 Extract the array to a local at its intended execution site, after any preceding
 effects; use explicit control flow for lazy branches. This guard is not a new
