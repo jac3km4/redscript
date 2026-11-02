@@ -56,6 +56,29 @@ pub(super) fn provider<'ctx>(
     Ok(Some(*selected.key()))
 }
 
+/// Only the characterized four-byte result/input cells are admitted here.
+pub(super) fn enum_fallback<'ctx>(
+    source: TypeId<'ctx>,
+    target: TypeId<'ctx>,
+    symbols: &Symbols<'ctx>,
+) -> Option<(ir::Intrinsic, TypeId<'ctx>)> {
+    let fits = |id: TypeId<'ctx>| {
+        symbols[id]
+            .schema()
+            .as_enum()
+            .filter(|e| e.variants().all(|(_, value)| i32::try_from(value).is_ok()))
+    };
+    if target == predef::INT32
+        && fits(source).is_some_and(|e| e.storage_size().is_none_or(|size| size <= 4))
+    {
+        Some((ir::Intrinsic::EnumInt, source))
+    } else if source == predef::INT32 && fits(target).is_some_and(|e| e.storage_size().is_none()) {
+        Some((ir::Intrinsic::IntEnum, target))
+    } else {
+        None
+    }
+}
+
 pub(super) fn call<'ctx>(
     function: FreeFunctionIndex,
     arg: ir::Expr<'ctx>,

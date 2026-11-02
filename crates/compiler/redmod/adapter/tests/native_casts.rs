@@ -500,3 +500,180 @@ fn native_provider_explicit_ambiguity_and_community_consumers_fail_closed() {
         |_, _, codes| assert_eq!(codes, ["UNSUPPORTED_NATIVE_CONVERSION"]),
     );
 }
+
+#[test]
+fn bounded_enum_casts_have_one_concrete_intrinsic_argument() {
+    for (definition, source, target, intrinsic) in [
+        (
+            "enum BoundedEnum { First = 0 }",
+            "BoundedEnum",
+            "Int32",
+            ir::Intrinsic::EnumInt,
+        ),
+        (
+            "enum BoundedEnum: Uint8 { First = 0 }",
+            "BoundedEnum",
+            "Int32",
+            ir::Intrinsic::EnumInt,
+        ),
+        (
+            "enum BoundedEnum: Int8 { First = -1 }",
+            "BoundedEnum",
+            "Int32",
+            ir::Intrinsic::EnumInt,
+        ),
+        (
+            "enum BoundedEnum: Uint16 { First = 65535 }",
+            "BoundedEnum",
+            "Int32",
+            ir::Intrinsic::EnumInt,
+        ),
+        (
+            "enum BoundedEnum: Uint32 { First = 2147483647 }",
+            "BoundedEnum",
+            "Int32",
+            ir::Intrinsic::EnumInt,
+        ),
+        (
+            "enum BoundedEnum: Int32 { First = -2147483648 }",
+            "BoundedEnum",
+            "Int32",
+            ir::Intrinsic::EnumInt,
+        ),
+        (
+            "enum BoundedEnum { First = 0 }",
+            "Int32",
+            "BoundedEnum",
+            ir::Intrinsic::IntEnum,
+        ),
+    ] {
+        analyze(
+            &format!(
+                "{definition} function Run(value: {source}): {target} {{ return ({target})value; }}"
+            ),
+            "",
+            false,
+            |unit, symbols, codes| {
+                assert!(codes.is_empty(), "{definition}: {codes:?}");
+                let ir::Expr::Call { call, .. } = returned(unit, symbols, "Run") else {
+                    panic!()
+                };
+                let ir::Call::FreeFunction {
+                    function,
+                    type_args,
+                    args,
+                } = &**call
+                else {
+                    panic!()
+                };
+                assert_eq!(symbols[*function].intrinsic(), Some(intrinsic));
+                assert_eq!(type_args.len(), 1);
+                assert_eq!(
+                    type_args[0].coalesced(symbols).unwrap().to_string(),
+                    "BoundedEnum"
+                );
+                assert!(matches!(&args[..], [ir::Expr::Local(..)]));
+            },
+        );
+    }
+}
+
+#[test]
+fn enum_casts_reject_uncharacterized_cells_and_keep_precedence() {
+    for (definition, source, target) in [
+        (
+            "enum BoundedEnum: Int64 { First = 0 }",
+            "BoundedEnum",
+            "Int32",
+        ),
+        (
+            "enum BoundedEnum: Uint32 { First = 2147483648 }",
+            "BoundedEnum",
+            "Int32",
+        ),
+        (
+            "enum BoundedEnum { First = 2147483648 }",
+            "BoundedEnum",
+            "Int32",
+        ),
+        ("enum BoundedEnum { First = 0 }", "BoundedEnum", "Int64"),
+        ("enum BoundedEnum { First = 0 }", "BoundedEnum", "Uint32"),
+        ("enum BoundedEnum { First = 0 }", "Int64", "BoundedEnum"),
+        ("enum BoundedEnum { First = 0 }", "Uint32", "BoundedEnum"),
+        (
+            "enum BoundedEnum: Uint8 { First = 0 }",
+            "Int32",
+            "BoundedEnum",
+        ),
+        (
+            "enum BoundedEnum: Int32 { First = 0 }",
+            "Int32",
+            "BoundedEnum",
+        ),
+        (
+            "enum BoundedEnum: Int64 { First = 0 }",
+            "Int32",
+            "BoundedEnum",
+        ),
+        (
+            "enum BoundedEnum { First = 2147483648 }",
+            "Int32",
+            "BoundedEnum",
+        ),
+        (
+            "enum BoundedEnum { First = 0 }",
+            "script_ref<BoundedEnum>",
+            "Int32",
+        ),
+    ] {
+        analyze(
+            &format!(
+                "{definition} function Run(value: {source}): {target} {{ return ({target})value; }}"
+            ),
+            "",
+            false,
+            |_, _, codes| assert!(!codes.is_empty(), "{definition}: {source} -> {target}"),
+        );
+    }
+    for (source, target) in [("BoundedEnum", "Int32"), ("Int32", "BoundedEnum")] {
+        analyze(
+            &format!(
+                "enum BoundedEnum {{ First = 0 }} function Run(value: {source}): {target} {{ return value; }}"
+            ),
+            "",
+            false,
+            |_, _, codes| assert!(!codes.is_empty()),
+        );
+        analyze(
+            &format!(
+                "enum BoundedEnum {{ First = 0 }} import cast(value: {source}): {target}; function Run(value: {source}): {target} {{ return ({target})value; }}"
+            ),
+            "",
+            false,
+            |unit, symbols, codes| {
+                assert!(codes.is_empty(), "{codes:?}");
+                converted(returned(unit, symbols, "Run"), symbols, source, target);
+            },
+        );
+        analyze(
+            &format!(
+                "enum BoundedEnum {{ First = 0 }} import cast(value: {source}): {target}; import implicit cast(value: {source}): {target}; function Run(value: {source}): {target} {{ return ({target})value; }}"
+            ),
+            "",
+            false,
+            |_, _, codes| assert_eq!(codes, ["UNSUPPORTED_NATIVE_CONVERSION"]),
+        );
+    }
+    analyze(
+        "enum BoundedEnum { First = 0 } function Run(value: BoundedEnum): Int32 { return (Int32)value; }",
+        "native func Cast(value: Bool) -> Int32;",
+        false,
+        |_, _, codes| assert!(!codes.is_empty()),
+    );
+    analyze(
+        "enum BoundedEnum { First = 0 }",
+        "func Run(value: BoundedEnum) -> Int32 { return Cast<Int32>(value); }",
+        false,
+        |_, _, codes| assert!(!codes.is_empty()),
+    );
+}

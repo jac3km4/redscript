@@ -643,3 +643,35 @@ fn explicit_provider_uses_native_binding_and_serializes_operand_once() {
     let tick = call_position(&bundle, &code, "Tick");
     assert!(cast < tick);
 }
+
+#[test]
+fn bounded_enum_casts_serialize_existing_opcodes_and_evaluate_once() {
+    let emitted = compile(
+        "enum BoundedEnum: Uint8 { First = 0 } enum DefaultEnum { First = 0 } import function TickEnum(): BoundedEnum; import function TickInt(): Int32; function Forward(): Int32 { return (Int32)TickEnum(); } function Reverse(): DefaultEnum { return (DefaultEnum)TickInt(); }",
+    );
+    let bytes = emitted.into_writeable().to_bytes().unwrap();
+    let bundle = ScriptBundle::from_bytes(&bytes).unwrap();
+    for (name, source, reverse) in [
+        ("Forward;", "TickEnum", false),
+        ("Reverse;", "TickInt", true),
+    ] {
+        let code = function(&bundle, name)
+            .body()
+            .code_iter()
+            .with_offsets()
+            .map(|(offset, instr)| (offset, instr.unwrap()))
+            .collect::<Vec<_>>();
+        let tick = call_position(&bundle, &code, source);
+        let conversions = code
+            .iter()
+            .enumerate()
+            .filter_map(|(i, (_, instr))| match (reverse, instr) {
+                (false, Instr::EnumToI32 { size: 4, .. })
+                | (true, Instr::I32ToEnum { size: 4, .. }) => Some(i),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(conversions.len(), 1);
+        assert!(conversions[0] < tick);
+    }
+}

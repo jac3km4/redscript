@@ -261,11 +261,34 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 conversions::fixed_id(expr_t),
                 conversions::fixed_id(&target_t),
             )
-            && let Some(function) =
-                conversions::provider(source, target, false, env, self.symbols, span)?
         {
-            let (expr, _) = native_arg.take().unwrap();
-            return Ok((conversions::call(function, expr, span), target_t));
+            if let Some(function) =
+                conversions::provider(source, target, false, env, self.symbols, span)?
+            {
+                let (expr, _) = native_arg.take().unwrap();
+                return Ok((conversions::call(function, expr, span), target_t));
+            }
+            if let Some((intrinsic, enum_id)) =
+                conversions::enum_fallback(source, target, self.symbols)
+            {
+                let (expr, expr_t) = native_arg.take().unwrap();
+                // The probe proved exact bounds. Commit to concrete operand/type
+                // arguments so intrinsic inference cannot strip or widen them.
+                let source_t = PolyType::nullary(source);
+                expr_t
+                    .constrain_base(&source_t, self.symbols)
+                    .with_span(span)?;
+                let (call, typ) = self
+                    .free_function_call_builder()
+                    .name(intrinsic)
+                    .expected_intrinsic(intrinsic)
+                    .type_args(&[PolyType::nullary(enum_id)])
+                    .args([(expr, source_t)])
+                    .env(env)
+                    .span(span)
+                    .build()?;
+                return Ok((ir::Expr::call(call, span), typ));
+            }
         }
         let mut candidates = env
             .query_free_functions("Cast", self.symbols)

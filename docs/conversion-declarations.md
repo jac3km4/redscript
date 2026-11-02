@@ -51,6 +51,22 @@ exact implicit diagnostic attribution), or normal type/overload errors when no
 exact declaration can be attributed. Implicit dispatch, chaining, numeric ranking,
 identity casts, general ToString, and weak-reference conversions are not enabled.
 
+## Bounded explicit enum casts
+
+After ordinary Cast precedence and exact provider selection, native explicit
+casts also admit enum -> Int32 when storage is absent or at most four bytes and
+all declared values fit signed Int32. Int64 storage is excluded even for small
+values. The reverse direction requires exact Int32 and an enum with default
+(absent) storage and all declared values fitting Int32; even explicitly written
+Int32 storage is outside the reverse slice.
+
+These use existing `EnumInt<E>` / `IntEnum<E>` with one concrete type argument,
+typed operands and the normal intrinsic checker. No new IR, metadata, opcode,
+integer widths, literal retyping or implicit enum conversion is introduced.
+Wrappers preserve the operand's execution point and evaluation count. Declared
+value checks are conservative eligibility, not a guarantee about every runtime
+enum/integer value.
+
 ## Fresh official characterization
 
 On 2026-11-01, `target/parity-investigation/step3_probe.py` used fresh directories
