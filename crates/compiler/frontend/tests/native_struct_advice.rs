@@ -42,7 +42,7 @@ fn new_on_value_types_preserves_argument_advice_without_class_error() {
         diagnostics,
         [(
             "INVALID_NEW_USE".into(),
-            "class constructors do not accept positional arguments".into(),
+            "class constructors do not accept arguments".into(),
         )]
     );
 }
