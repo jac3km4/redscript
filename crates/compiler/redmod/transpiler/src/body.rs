@@ -1300,10 +1300,16 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 if def.flags().is_callback() {
                     return Err(error("callback result/use is unsupported", None));
                 }
-                if !Self::simple_place(receiver) {
+                if !Self::simple_place(receiver)
+                    && !crate::receivers::inline_class_receiver(
+                        receiver,
+                        &self.type_of(receiver)?,
+                        self.symbols,
+                    )
+                {
                     return Err(error(
                         "method receiver needs verified materialization",
-                        None,
+                        Some(receiver.span()),
                     ));
                 }
                 let recv = if matches!(mode, ir::CallMode::ForceStatic) {
@@ -1312,7 +1318,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     }
                     "super".into()
                 } else {
-                    self.expr(receiver)?
+                    self.expr_at(receiver, 14)?
                 };
                 Ok(format!(
                     "{recv}.{}({})",

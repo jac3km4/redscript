@@ -70,6 +70,14 @@ contracts fail with a source diagnostic rather than silently changing their ABI.
 Calls relying on callback results remain rejected.
 Every intrinsic is classified explicitly rather than emitted as an ordinary call.
 
+### Compound method receivers
+
+Strong class-reference call chains, existing local-rooted fields and conditional
+receivers stay inline, preserving Context/argument and lazy execution boundaries.
+Struct write-back, nonlocal field accesses (feature6), array places and compound
+weak/script-reference receivers remain gated. See the
+[receiver contract and bytecode evidence](../../../../docs/redmod-method-receivers.md).
+
 ### Native String borrows
 
 Immediate exact non-out native `script_ref<String>` parameters support nonlocal

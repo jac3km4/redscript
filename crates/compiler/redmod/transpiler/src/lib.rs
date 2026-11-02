@@ -12,6 +12,7 @@ pub use analyze::{AnalyzedSources, TranspiledSource, analyze_sources, transpile_
 mod declarations;
 mod locals;
 pub mod package;
+mod receivers;
 mod source;
 mod target;
 pub use target::LiteralError;

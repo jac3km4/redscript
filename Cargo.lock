@@ -1147,11 +1147,13 @@ dependencies = [
 name = "redscript-redmod-transpiler"
 version = "1.0.0-preview.22"
 dependencies = [
+ "byte",
  "insta",
  "redscript-community-ast",
  "redscript-community-parser",
  "redscript-compiler-api",
  "redscript-compiler-frontend",
+ "redscript-io",
  "redscript-redmod-adapter",
  "redscript-redmod-parser",
 ]
