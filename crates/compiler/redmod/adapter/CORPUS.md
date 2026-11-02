@@ -307,6 +307,43 @@ Conversion selection, complete dependency/layout modeling, residual semantic
 triage and official binding/dispatch comparisons remain deferred. No full-corpus
 type-accuracy percentage, full language parity or runtime compatibility is claimed.
 
+## Bounded-conversion checkpoint (2026-11-02)
+
+Two fresh release runs at `afb485e`, including conversion commits `943bf74`,
+`2f3c5b6` and `1fc6efd`, produced **byte-identical copies of all seven reports**.
+Inputs remain 2,112 files / 21,873,807 bytes, embedded boot/default symbols and no
+game bundle. Unrelated in-progress frontend metadata changes were present.
+Reports are under `target/redmod-semantic-corpus-bounded-conversions/` and its
+`-replay` counterpart.
+
+| Metric | Pre-conversion (`33fa996`) | Current checkpoint |
+| --- | ---: | ---: |
+| Modules reaching processing | 2,112 | 2,112 |
+| Adapter processing errors | 0 | 0 |
+| Shared errors | 7,999 | 3,315 |
+| Shared warnings | 1,608 | 971 |
+| Unsupported native conversions | 5,275 | 815 |
+| Valid / invalid signatures | 53,875 / 0 | 53,875 / 0 |
+| Explicit bodies retained / unavailable | 38,861 / 0 | 38,861 / 0 |
+| Mapped expression spans | 875,426 | 901,495 |
+| Resolved / unresolved mapped queries | 872,731 / 2,695 | 898,793 / 2,702 |
+
+The error reduction is 58.56%, **not** an accuracy or parity percentage. Query
+availability can include recovery IR; more mapped expressions can expose more
+unresolved queries. Remaining errors include incomplete native constructors
+(1,078), unsupported conversions (815), unresolved functions (586), type errors
+(346), ambiguous overloads (190), arity errors (126), unresolved members (121),
+unresolved references (38), invalid temporaries (6), const-write errors (5) and
+unresolved types (4).
+
+Direct exact native provider dispatch and bounded explicit enum/Int32 fallbacks
+are now implemented; older fail-closed descriptions above are historical.
+Converted overload matching, scripted providers, general identity casts and
+wider enum conversion cells remain deferred. See
+[implementation findings](../../../../docs/conversion-implementation-notes.md) and
+[conversion contracts](../../../../docs/conversion-declarations.md).
+No fresh official-compiler, installed-binding or runtime comparison was performed.
+
 ## Reproduce and reduce
 
 Start from the exact location in `aggregate.tsv`, then inspect all occurrences in
