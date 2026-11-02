@@ -1,15 +1,14 @@
 ---
 source: crates/compiler/redmod/transpiler/tests/transpile.rs
-assertion_line: 291
 expression: output
 ---
-function Test(__rst_p0: Int32) -> Int32 {
-    var __rst_v1: Int32;
-    var __rst_v2: Int32;
+function Test(name_: Int32) -> Int32 {
+    var name__2: Int32;
+    var name__3: Int32;
     if (true) {
-        __rst_v1 = 1;
+        name__2 = 1;
     } else {
-        __rst_v2 = 2;
+        name__3 = 2;
     }
-    return __rst_p0;
+    return name_;
 }

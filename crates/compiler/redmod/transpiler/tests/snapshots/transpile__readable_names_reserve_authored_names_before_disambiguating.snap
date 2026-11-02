@@ -9,7 +9,7 @@ function Test(value: Int32) -> Int32 {
     if (true) {
         value_3 = 1;
     }
-    var __rst_v4: Int32 = 4;
+    var NULL_: Int32 = 4;
     var Test_2: Int32 = value_2;
     return value;
 }

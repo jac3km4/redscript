@@ -77,7 +77,9 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 return Err(error("duplicate local identity", local.span));
             }
             let source_name = preferred(local).filter(|name| target::ident(name).is_ok());
-            let base = source_name
+            let candidate = preferred(local).and_then(authored_name);
+            let base = candidate
+                .as_deref()
                 .or_else(|| local.temporary_purpose.map(temporary_name))
                 .map(str::to_owned)
                 .unwrap_or_else(|| match local.id {
@@ -973,6 +975,17 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 None,
             )),
         }
+    }
+}
+
+fn authored_name(name: &str) -> Option<String> {
+    if target::ident(name).is_ok() {
+        Some(name.to_owned())
+    } else {
+        // Appending a suffix repairs reserved words without guessing how to
+        // transliterate spellings that are not target identifiers at all.
+        let candidate = format!("{name}_");
+        target::ident(&candidate).ok().map(str::to_owned)
     }
 }
 

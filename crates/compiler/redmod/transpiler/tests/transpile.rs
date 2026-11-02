@@ -183,6 +183,20 @@ fn convert_mapped(source: &str) -> redscript_redmod_transpiler::TranspiledModule
 }
 
 #[test]
+fn reserved_authored_names_keep_hygienic_recognizable_stems() {
+    let output = convert(
+        "func Test(name: Int32) -> Int32 { let name_ = 2; \
+         if true { let name = name_; } else { let name = 3; } return name; }",
+    );
+    assert!(output.contains("function Test(name__2: Int32)"), "{output}");
+    assert!(output.contains("var name_: Int32 = 2;"), "{output}");
+    assert!(output.contains("var name__3: Int32;"), "{output}");
+    assert!(output.contains("var name__4: Int32;"), "{output}");
+    assert!(output.contains("return name__2;"), "{output}");
+    assert!(!output.contains("__rst_"), "{output}");
+}
+
+#[test]
 fn numeric_defaults_and_typed_literals_avoid_redundant_syntax() {
     let output = convert(
         "func Test() { let zero: Int32; let small: Int16 = 3; \
