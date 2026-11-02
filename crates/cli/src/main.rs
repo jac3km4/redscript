@@ -94,6 +94,9 @@ struct CompileOpts {
     /// minimum diagnostic level (accepted: pedantic, warning; default: warning)
     #[argh(option, short = 'L', default = "WarnOnLevel::Warning")]
     warn_level: WarnOnLevel,
+    /// match SCC: allow runtime-tolerated diagnostics; hard errors still prevent output
+    #[argh(switch)]
+    runtime_compatible: bool,
 }
 
 /// lint redscript source code
@@ -112,6 +115,9 @@ struct LintOpts {
     /// minimum diagnostic level (accepted: pedantic, warning; default: warning)
     #[argh(option, short = 'L', default = "WarnOnLevel::Warning")]
     warn_level: WarnOnLevel,
+    /// match SCC: allow runtime-tolerated diagnostics; hard errors still fail lint
+    #[argh(switch)]
+    runtime_compatible: bool,
 }
 
 /// format redscript source code
@@ -230,6 +236,14 @@ fn main() -> anyhow::Result<ExitCode> {
     }
 }
 
+fn fatal_diagnostic_level(runtime_compatible: bool) -> DiagnosticLevel {
+    if runtime_compatible {
+        DiagnosticLevel::Error
+    } else {
+        DiagnosticLevel::ErrorAllowedAtRuntime
+    }
+}
+
 fn compile(opts: CompileOpts) -> anyhow::Result<ExitCode> {
     let sources = load_sources(&opts.src)?;
     let (map, _f) = Map::with_options()
@@ -247,6 +261,7 @@ fn compile(opts: CompileOpts) -> anyhow::Result<ExitCode> {
         .sources(&sources)
         .type_interner(&interner)
         .diagnostics(&passes)
+        .fatal_diagnostic_level(fatal_diagnostic_level(opts.runtime_compatible))
         .compile()
         .with_context(|| {
             format!(
@@ -291,6 +306,7 @@ fn lint(opts: LintOpts) -> anyhow::Result<ExitCode> {
         .sources(&sources)
         .type_interner(&interner)
         .diagnostics(&passes)
+        .fatal_diagnostic_level(fatal_diagnostic_level(opts.runtime_compatible))
         .compile()
         .with_context(|| {
             format!(

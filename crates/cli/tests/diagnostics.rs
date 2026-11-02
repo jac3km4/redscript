@@ -83,6 +83,9 @@ fn warning_help_and_parse_errors_list_accepted_values() {
             "repeatable",
             "pedantic, warning",
             "default: warning",
+            "--runtime-compatible",
+            "match SCC",
+            "hard errors still",
         ] {
             assert!(help.contains(text), "{help}");
         }
@@ -312,6 +315,57 @@ fn formatter_continues_after_parse_errors() {
                     .unwrap()
                     .contains("func Valid() {\n}")
             ),
+        }
+    }
+}
+
+#[test]
+fn runtime_compatibility_allows_runtime_diagnostics_but_not_hard_errors() {
+    let dir = TestDir::new();
+    write_bundle(&dir);
+    for (source, diagnostic, compatible) in [
+        (
+            "class Example { private let value: Int32; }
+func Test(value: ref<Example>) -> Int32 { return value.value; }
+",
+            "INACCESSIBLE_FIELD",
+            true,
+        ),
+        (
+            "class Parent { public func Method() {} }
+class Child extends Parent { private func Method() {} }
+",
+            "LESS_VISIBLE_OVERRIDE",
+            true,
+        ),
+        (
+            "func Test() { MissingFunction(); }
+",
+            "MissingFunction",
+            false,
+        ),
+    ] {
+        fs::write(dir.0.join("test.reds"), source).unwrap();
+        for subcommand in ["compile", "lint"] {
+            for runtime_compatible in [false, true] {
+                fs::write(dir.0.join("output.redscripts"), "keep me").unwrap();
+                let mut command = source_command(&dir, subcommand);
+                command.args(["-s", "test.reds"]);
+                if runtime_compatible {
+                    command.arg("--runtime-compatible");
+                }
+                let output = command.output().unwrap();
+                let success = runtime_compatible && compatible;
+                assert_eq!(output.status.success(), success, "{}", stderr(&output));
+                assert!(stderr(&output).contains(diagnostic), "{output:?}");
+                let bytes = fs::read(dir.0.join("output.redscripts")).unwrap();
+                if success && subcommand == "compile" {
+                    ScriptBundle::from_bytes(&bytes).unwrap();
+                    assert_ne!(bytes, b"keep me");
+                } else {
+                    assert_eq!(bytes, b"keep me");
+                }
+            }
         }
     }
 }
