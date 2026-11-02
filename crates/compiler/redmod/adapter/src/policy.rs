@@ -32,8 +32,16 @@ const ARRAY_OPERATIONS: &[ArrayOperation] = &[
         intrinsic: ir::Intrinsic::ArrayResize,
     },
     ArrayOperation {
+        name: "Grow",
+        intrinsic: ir::Intrinsic::ArrayGrow,
+    },
+    ArrayOperation {
         name: "Contains",
         intrinsic: ir::Intrinsic::ArrayContains,
+    },
+    ArrayOperation {
+        name: "Count",
+        intrinsic: ir::Intrinsic::ArrayCount,
     },
     ArrayOperation {
         name: "FindFirst",
@@ -177,8 +185,17 @@ mod tests {
                 Some((operation.intrinsic, true)),
             );
             assert_eq!(member_intrinsic(predef::INT32, operation.name), None);
+            assert_eq!(member_intrinsic(predef::ARRAY1, operation.name), None);
         }
-        for unsupported in ["size", "ArraySize", "Count", "Grow", "Sort", "Unknown"] {
+        for unsupported in [
+            "size",
+            "ArraySize",
+            "ArrayCount",
+            "ArrayGrow",
+            "EraseFast",
+            "Sort",
+            "Unknown",
+        ] {
             assert_eq!(member_intrinsic(predef::ARRAY, unsupported), None);
         }
     }

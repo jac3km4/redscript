@@ -99,7 +99,9 @@ fn array_descriptors_cover_the_supported_members_and_boot_intrinsics() {
         PopBack -> ArrayPop
         Clear -> ArrayClear
         Resize -> ArrayResize
+        Grow -> ArrayGrow
         Contains -> ArrayContains
+        Count -> ArrayCount
         FindFirst -> ArrayFindFirst
         FindLast -> ArrayFindLast
         Insert -> ArrayInsert
