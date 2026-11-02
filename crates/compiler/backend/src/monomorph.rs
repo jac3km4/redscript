@@ -410,6 +410,7 @@ impl<'ctx> Monomorphizer<'ctx> {
                     let arg = self.type_(arg, symbols, bundle);
                     define_type(typ, PoolTypeKind::Array(arg), symbols, bundle)
                 }
+                (_, []) => define_type(typ, PoolTypeKind::Primitive, symbols, bundle),
                 (id, args) => {
                     if let [arg] = args
                         && let Some(size) = id.static_array_size()

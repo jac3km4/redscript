@@ -47,6 +47,10 @@ impl<'ctx> Symbols<'ctx> {
             type<> Cname;
             type<> ResRef;
             type<> TweakDbId;
+            type<> NodeRef;
+            type<> Cruid;
+            type<> LocalizationString;
+            type<> RedResourceReferenceScriptToken;
             type<> Float;
             type<> Double;
             type<> Int8;
