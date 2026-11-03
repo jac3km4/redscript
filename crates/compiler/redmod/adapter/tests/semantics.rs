@@ -467,6 +467,14 @@ fn arrays_are_type_checked_and_user_methods_keep_identity() {
 }
 
 #[test]
+fn omitted_optional_argument_before_array_literal_is_inert() {
+    let (errors, _) = check(
+        "function Take(optional value: Int32, values: array<Int32>) {} function Test() { Take(, [1]); }",
+    );
+    assert!(errors.is_empty(), "{errors:?}");
+}
+
+#[test]
 fn object_and_weak_truthiness_but_not_integer_truthiness() {
     let (errors, _) = check(
         "class Object {} function Test(o: Object, w: wref<Object>) { if (o && !w) {} while (o) { break; } }",

@@ -6,8 +6,9 @@ use crate::CapabilityError;
 type Result<T> = std::result::Result<T, (CapabilityError, Span)>;
 
 /// A native expression traversal returning whether a subtree emits array prefixes.
-/// Constants alone are safe to move past: even a local read can observe mutations
-/// performed by a later array initializer. No purity is inferred from call names.
+/// Constants and omitted arguments are safe to move past: even a local read can
+/// observe mutations performed by a later array initializer. No purity is inferred
+/// from call names.
 pub(crate) struct ArrayGuard;
 
 impl ArrayGuard {
@@ -31,7 +32,7 @@ impl ArrayGuard {
             if earlier_expression && array {
                 return Err(Self::reject(expr.1));
             }
-            earlier_expression |= !matches!(expr.0, Expr::Constant(_));
+            earlier_expression |= !matches!(expr.0, Expr::Constant(_) | Expr::Omitted);
             has_array |= array;
         }
         Ok(has_array)
