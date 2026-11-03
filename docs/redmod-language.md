@@ -145,8 +145,10 @@ not an in-game execution guarantee.
 variable-rooted arrays. Indexed struct and class elements support field reads;
 indexed class handles also support method calls. Class casts support field reads too.
 Call-rooted arrays remain unsupported because the official compiler requires an
-in-memory variable root. Other array operations retain their local-array guard;
-`ArrayGrow` and `ArrayCount` emit the native Grow/Count members on local arrays.
+in-memory variable root. Other emitted array operations also accept variable-rooted
+arrays when all additional arguments are locals or constants; compound arguments
+retain the local-array guard. `ArrayGrow` and `ArrayCount` emit native Grow/Count
+members. See [array field limits](redmod-field-reads.md#limits-and-place-semantics).
 
 Variable-rooted ordinary struct fields support writes and `out`, including
 `Deref(localScriptRef)` roots. Fields and indexed elements can supply scripted

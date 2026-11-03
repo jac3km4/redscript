@@ -1,4 +1,4 @@
-//! Feature 6 reads must not widen assignment, out, array or mutable receiver gates.
+//! Compound reads and array fields retain their place and evaluation guards.
 use redscript_community_ast::SourceMap;
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{Symbols, TypeInterner};
@@ -124,7 +124,7 @@ fn temporary_structs_and_nonlocal_reference_escapes_remain_rejected() {
             "out arguments require a local variable or a writable field",
         ),
         (
-            "ArrayPush(owner.values, true);",
+            "ArrayPush(Make().values, true);",
             "this array operation requires a local array",
         ),
         (
@@ -152,6 +152,46 @@ fn temporary_structs_and_nonlocal_reference_escapes_remain_rejected() {
         ))
         .is_ok()
     );
+}
+
+#[test]
+fn field_array_arguments_require_locals_or_constants() {
+    let definitions = "class Owner { public let values: [Int32]; } func Make() -> ref<Owner> { return new Owner(); } func Mutate(out owner: ref<Owner>) -> Int32 { owner = Make(); return 1; }";
+    for body in [
+        "ArrayPush(owner.values, value);",
+        "ArrayInsert(owner.values, 0, value);",
+        "ArrayResize(owner.values, 3);",
+    ] {
+        let text = emit(&format!(
+            "{definitions} func Test(owner: ref<Owner>, value: Int32) {{ {body} }}"
+        ))
+        .unwrap();
+        assert!(!text.contains("    var "), "{text}");
+    }
+    let references = "class Listener {} class Owner { public let listeners: [wref<Listener>]; public let strong: [ref<Listener>]; } func Test(owner: ref<Owner>, listener: ref<Listener>, weak: wref<Listener>) { ArrayPush(owner.listeners, listener); ArrayContains(owner.listeners, listener); ArrayRemove(owner.listeners, listener); ArrayPush(owner.strong, weak); }";
+    let text = emit(references).unwrap();
+    assert!(
+        text.contains("owner.listeners.PushBack(listener);"),
+        "{text}"
+    );
+    assert!(text.contains("owner.strong.PushBack(weak);"), "{text}");
+    for body in [
+        "ArrayPush(owner.values, Mutate(owner));",
+        "ArrayInsert(owner.values, Mutate(owner), value);",
+        "ArrayPush(Make().values, value);",
+        "ArrayPush(owner.values, owner.values[0]);",
+    ] {
+        let errors = emit(&format!(
+            "{definitions} func Test(owner: ref<Owner>, value: Int32) {{ {body} }}"
+        ))
+        .unwrap_err();
+        assert!(
+            errors.iter().any(|e| e
+                .message
+                .contains("this array operation requires a local array")),
+            "{body}: {errors:?}"
+        );
+    }
 }
 
 #[test]

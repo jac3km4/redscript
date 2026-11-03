@@ -937,7 +937,7 @@ fn rejected_features_have_source_diagnostics() {
         ),
         (
             "array-place",
-            "class Widget { let items: [Int32]; public func Test() { ArrayPush(this.items, 1); } }",
+            "class Widget { let items: [Int32]; public func Value() -> Int32 { return 1; } public func Test() { ArrayPush(this.items, this.Value()); } }",
             "this array operation requires a local array",
         ),
         (

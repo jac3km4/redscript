@@ -2,8 +2,8 @@
 source: crates/compiler/redmod/transpiler/tests/transpile.rs
 expression: "result.iter().map(|d| d.display(&sources).to_string()).collect::<String>()"
 ---
-error[REDMOD_TRANSPILE]: this array operation requires a local array
- --> rejected.reds:1:67
+error[REDMOD_TRANSPILE]: this array operation requires a local array, or a variable-rooted array with only local or constant arguments
+ --> rejected.reds:1:110
   |
-1 | class Widget { let items: [Int32]; public func Test() { ArrayPush(this.items, 1); } }
-  |                                                                   ^^^^^^^^^^
+1 | class Widget { let items: [Int32]; public func Value() -> Int32 { return 1; } public func Test() { ArrayPush(this.items, this.Value()); } }
+  |                                                                                                              ^^^^^^^^^^

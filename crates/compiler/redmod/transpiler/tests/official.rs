@@ -137,7 +137,8 @@ fn authored_transpiled_sources_compile_with_official_compiler() {
         }
         let inspected = matches!(
             *name,
-            "FieldArrayUnary"
+            "FieldArrayArguments"
+                | "FieldArrayUnary"
                 | "IndexedMethodReceivers"
                 | "ScriptTemporaryBorrow"
                 | "IndexedBorrow"
@@ -151,6 +152,75 @@ fn authored_transpiled_sources_compile_with_official_compiler() {
             let bytes =
                 std::fs::read(published.directory.join("r6/cache/final.redscripts")).unwrap();
             match *name {
+                "FieldArrayArguments" => {
+                    use redscript_io::Instr;
+                    let code = official_function_code(&bytes, "OfficialFieldArguments");
+                    let is_array_op = |op: &Instr| {
+                        matches!(
+                            op,
+                            Instr::ArrayResize(_)
+                                | Instr::ArrayGrow(_)
+                                | Instr::ArrayCountFast(_)
+                                | Instr::ArrayFindFirstFast(_)
+                                | Instr::ArrayFindLastFast(_)
+                                | Instr::ArrayContainsFast(_)
+                                | Instr::ArrayPush(_)
+                                | Instr::ArrayInsert(_)
+                                | Instr::ArrayRemoveFast(_)
+                                | Instr::ArrayErase(_)
+                        )
+                    };
+                    let arrays = code.iter().filter(|op| is_array_op(op)).count();
+                    assert_eq!(arrays, 10, "{code:?}");
+                    assert_eq!(
+                        code.iter()
+                            .filter(|op| matches!(op, Instr::ObjectField(_)))
+                            .count(),
+                        10,
+                        "{code:?}"
+                    );
+                    assert!(
+                        !code.iter().any(|op| matches!(
+                            op,
+                            Instr::Assign
+                                | Instr::InvokeStatic { .. }
+                                | Instr::InvokeVirtual { .. }
+                        )),
+                        "{code:?}"
+                    );
+                    let weak = official_function_code(&bytes, "AddWeak");
+                    assert_eq!(
+                        weak.iter()
+                            .filter(|op| matches!(op, Instr::WeakRefToRef))
+                            .count(),
+                        1,
+                        "{weak:?}"
+                    );
+                    let listener = official_function_code(&bytes, "Add");
+                    assert_eq!(
+                        listener
+                            .iter()
+                            .filter(|op| matches!(op, Instr::RefToWeakRef))
+                            .count(),
+                        3,
+                        "{listener:?}"
+                    );
+                    assert!(
+                        listener.iter().any(|op| matches!(op, Instr::ArrayPush(_))),
+                        "{listener:?}"
+                    );
+                    assert!(
+                        !listener
+                            .iter()
+                            .any(|op| matches!(op, Instr::Assign | Instr::Local(_))),
+                        "{listener:?}"
+                    );
+                    for pair in code.windows(2) {
+                        if is_array_op(&pair[0]) {
+                            assert!(matches!(pair[1], Instr::Context(_)), "{pair:?}");
+                        }
+                    }
+                }
                 "FieldArrayUnary" => {
                     use redscript_io::Instr;
                     for function in [
@@ -688,6 +758,34 @@ fn official_function_code(bytes: &[u8], name: &str) -> Vec<redscript_io::Instr> 
 }
 
 const FIXTURES: &[(&str, &str)] = &[
+    (
+        "FieldArrayArguments",
+        r#"class OfficialArgumentArrayOwner {
+            public let values: [Int32];
+            public let listeners: [wref<OfficialArgumentArrayOwner>];
+            public let strong: [ref<OfficialArgumentArrayOwner>];
+            public func AddWeak(listener: wref<OfficialArgumentArrayOwner>) {
+                ArrayPush(this.strong, listener);
+            }
+            public func Add(listener: ref<OfficialArgumentArrayOwner>) {
+                ArrayPush(this.listeners, listener);
+                ArrayContains(this.listeners, listener);
+                ArrayRemove(this.listeners, listener);
+            }
+        }
+func OfficialFieldArguments(owner: ref<OfficialArgumentArrayOwner>, value: Int32) {
+    ArrayResize(owner.values, 3);
+    ArrayGrow(owner.values, value);
+    ArrayCount(owner.values, value);
+    ArrayFindFirst(owner.values, value);
+    ArrayFindLast(owner.values, value);
+    ArrayContains(owner.values, value);
+    ArrayPush(owner.values, value);
+    ArrayInsert(owner.values, 0, value);
+    ArrayRemove(owner.values, value);
+    ArrayErase(owner.values, 0);
+}"#,
+    ),
     (
         "FieldArrayUnary",
         r#"class OfficialUnaryArrayOwner { public let values: [Int32]; }

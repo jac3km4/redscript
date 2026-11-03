@@ -43,7 +43,20 @@ and element assignments, with no copied array. The official probe checks direct
 `ArrayElement` instructions and no synthesized locals.
 The official compiler rejects call-rooted array receivers such as
 `Make().values.Size()`, even though reading a scalar field from `Make()` is legal.
-Other array operations retain their local-array guard.
+Operations with additional arguments (`ArrayResize`, `ArrayGrow`, `ArrayCount`,
+`ArrayFindFirst`, `ArrayFindLast`, `ArrayContains`, `ArrayPush`, `ArrayInsert`,
+`ArrayRemove` and `ArrayErase`) also accept variable-rooted arrays when each
+argument is a local or constant, optionally with an immediate typed strong/weak
+reference conversion. Element arguments use the array's element type as their
+conversion context. For example, `ArrayPush(this.listeners, listener)`
+emits `this.listeners.PushBack(listener)` directly. Calls, field reads and other
+compound arguments retain the local-array guard: they are not covered by this
+bounded evaluation-order check. No receiver is copied or hoisted.
+
+The authored `FieldArrayArguments` fixture in `tests/official.rs` compiles with
+v1.2.2 and checks all ten array instructions, their direct field receiver operands,
+and the absence of synthesized assignments or calls. This is code-generation
+evidence, not an in-game execution guarantee.
 
 Official v1.2.2 requires a variable parent scope for struct member access.
 Consequently a struct receiver must be a local-rooted field chain or an explicit

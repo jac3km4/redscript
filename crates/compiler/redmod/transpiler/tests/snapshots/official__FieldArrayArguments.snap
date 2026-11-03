@@ -1,0 +1,32 @@
+---
+source: crates/compiler/redmod/transpiler/tests/official.rs
+expression: source.module.text
+---
+class OfficialArgumentArrayOwner extends IScriptable {
+    public var values: array<Int32>;
+    public var listeners: array<wref<OfficialArgumentArrayOwner>>;
+    public var strong: array<OfficialArgumentArrayOwner>;
+
+    public function AddWeak(listener: wref<OfficialArgumentArrayOwner>) -> Void {
+        this.strong.PushBack(listener);
+    }
+
+    public function Add(listener: OfficialArgumentArrayOwner) -> Void {
+        this.listeners.PushBack(listener);
+        this.listeners.Contains(listener);
+        this.listeners.Remove(listener);
+    }
+}
+
+function OfficialFieldArguments(owner: OfficialArgumentArrayOwner, value: Int32) -> Void {
+    owner.values.Resize(3);
+    owner.values.Grow(value);
+    owner.values.Count(value);
+    owner.values.FindFirst(value);
+    owner.values.FindLast(value);
+    owner.values.Contains(value);
+    owner.values.PushBack(value);
+    owner.values.Insert(0, value);
+    owner.values.Remove(value);
+    owner.values.Erase(0);
+}

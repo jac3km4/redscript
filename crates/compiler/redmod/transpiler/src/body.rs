@@ -1545,21 +1545,55 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         let method = |name: &str| -> Result<String> {
             let recv = unary()?;
             if !Self::simple_place(recv)
-                && !(matches!(
-                    intrinsic,
-                    I::ArraySize | I::ArrayClear | I::ArrayPop | I::ArrayLast
-                ) && crate::field_reads::variable_rooted(recv, self.symbols))
+                && !(crate::field_reads::variable_rooted(recv, self.symbols)
+                    && args[1..].iter().all(|arg| {
+                        let operand = if let ir::Expr::Call { call, .. } = arg
+                            && let ir::Call::FreeFunction { function, args, .. } = &**call
+                            && matches!(
+                                self.symbols[*function].intrinsic(),
+                                Some(I::RefToWeakRef | I::WeakRefToRef)
+                            )
+                            && let [operand] = &args[..]
+                        {
+                            operand
+                        } else {
+                            arg
+                        };
+                        matches!(operand, ir::Expr::Local(..) | ir::Expr::Const(..))
+                    }))
             {
                 return Err(error(
-                    "this array operation requires a local array",
+                    "this array operation requires a local array, or a variable-rooted array with only local or constant arguments",
                     Some(recv.span()),
                 ));
             }
+            let Type::Data(array) = self.type_of(recv)? else {
+                return Err(error("unresolved array receiver", Some(recv.span())));
+            };
+            let [element] = array.args() else {
+                return Err(error("missing array element type", Some(recv.span())));
+            };
+            let index_type = Type::nullary(predef::INT32);
             Ok(format!(
                 "{}.{}({})",
                 self.expr_at(recv, 14)?,
                 name,
-                self.args(&args[1..])?
+                args[1..]
+                    .iter()
+                    .enumerate()
+                    .map(|(index, arg)| {
+                        let expected =
+                            if matches!(intrinsic, I::ArrayResize | I::ArrayGrow | I::ArrayErase)
+                                || (intrinsic == I::ArrayInsert && index == 0)
+                            {
+                                &index_type
+                            } else {
+                                element
+                            };
+                        self.contextual_expr(arg, expected)
+                    })
+                    .collect::<Result<Vec<_>>>()?
+                    .join(", ")
             ))
         };
         match intrinsic {
