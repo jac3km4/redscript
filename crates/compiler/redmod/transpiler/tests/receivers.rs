@@ -132,6 +132,17 @@ fn compound_receivers_stay_at_their_expression_sites() {
 }
 
 #[test]
+fn array_index_still_requires_a_variable_root() {
+    let errors = emit("class ArrayOwner { public let values: [Int32]; } func Make() -> ref<ArrayOwner> { return new ArrayOwner(); } func Test() -> Int32 { return Make().values[0]; }").unwrap_err();
+    assert!(
+        errors.iter().any(|e| e
+            .message
+            .contains("array indexing requires a variable-rooted array")),
+        "{errors:?}"
+    );
+}
+
+#[test]
 fn array_size_still_requires_a_variable_root() {
     let errors = emit(
         "class ArrayOwner { public let values: [Int32]; } func Make() -> ref<ArrayOwner> { return new ArrayOwner(); } func Test() -> Int32 { return ArraySize(Make().values); }",

@@ -775,13 +775,17 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 ))
             }
             ir::Expr::Index { array, index, .. } => {
-                if !Self::simple_place(array) {
+                if !crate::field_reads::variable_rooted(array, self.symbols) {
                     return Err(error(
-                        "array indexing requires a local array",
+                        "array indexing requires a variable-rooted array",
                         Some(e.span()),
                     ));
                 }
-                Ok(format!("{}[{}]", self.expr(array)?, self.expr(index)?))
+                Ok(format!(
+                    "{}[{}]",
+                    self.expr_at(array, 14)?,
+                    self.expr(index)?
+                ))
             }
             ir::Expr::Field {
                 receiver, field, ..
@@ -849,7 +853,9 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
     fn place(&self, e: &ir::Expr<'ctx>) -> Result<bool> {
         Ok(match e {
             ir::Expr::Local(..) => true,
-            ir::Expr::Index { array, .. } => Self::simple_place(array),
+            ir::Expr::Index { array, .. } => {
+                crate::field_reads::variable_rooted(array, self.symbols)
+            }
             ir::Expr::Field { receiver, .. } => {
                 let typ = self.type_of(receiver)?;
                 let script_deref = matches!(&**receiver, ir::Expr::Call { call, .. }

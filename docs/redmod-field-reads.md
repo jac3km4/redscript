@@ -27,10 +27,13 @@ through another receiver is supported within the declaring class.
 Read eligibility is isolated in `src/field_reads.rs`. Nested class-handle fields
 are also writable places and may be passed as `out` arguments, including through
 weak handles. Struct fields remain read-only in these compound paths; no struct
-copy is used as a substitute for write-back. Nonlocal `AsRef`, array indexing and
+copy is used as a substitute for write-back. Nonlocal `AsRef` and
 mutable struct receiver rules are unchanged.
 
 `ArraySize` supports variable-rooted array fields, including nested class fields.
+Array indexing likewise supports variable-rooted array fields for both reads
+and element assignments, with no copied array. The official probe checks direct
+`ArrayElement` instructions and no synthesized locals.
 The official compiler rejects call-rooted array receivers such as
 `Make().values.Size()`, even though reading a scalar field from `Make()` is legal.
 Other array operations retain their local-array guard.

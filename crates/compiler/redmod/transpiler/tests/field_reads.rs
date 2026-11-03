@@ -139,7 +139,6 @@ fn compound_reads_do_not_become_writable_places() {
             "MakeValue().Bump();",
             "AsRef requires a local variable here",
         ),
-        ("owner.values[0];", "array indexing requires a local array"),
         (
             "ArrayPush(owner.values, true);",
             "this array operation requires a local array",

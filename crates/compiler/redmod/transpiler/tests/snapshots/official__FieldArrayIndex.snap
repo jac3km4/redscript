@@ -1,0 +1,13 @@
+---
+source: crates/compiler/redmod/transpiler/tests/official.rs
+expression: source.module.text
+---
+class OfficialIndexOwner extends IScriptable {
+    public var values: array<Int32>;
+    public var child: OfficialIndexOwner;
+}
+
+function OfficialFieldIndex(owner: OfficialIndexOwner, index: Int32) -> Int32 {
+    owner.child.values[index] = 42;
+    return owner.values[index];
+}

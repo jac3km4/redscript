@@ -135,6 +135,31 @@ fn authored_transpiled_sources_compile_with_official_compiler() {
             assert!(bytes > 0);
             println!("{artifact}: {bytes} bytes");
         }
+        if *name == "FieldArrayIndex" {
+            let bytes =
+                std::fs::read(published.directory.join("r6/cache/final.redscripts")).unwrap();
+            let code = official_function_code(&bytes, "OfficialFieldIndex");
+            assert_eq!(
+                code.iter()
+                    .filter(|op| matches!(op, redscript_io::Instr::ArrayElement(_)))
+                    .count(),
+                2,
+                "{code:?}"
+            );
+            assert_eq!(
+                code.iter()
+                    .filter(|op| matches!(op, redscript_io::Instr::Assign))
+                    .count(),
+                1,
+                "{code:?}"
+            );
+            assert!(
+                !code
+                    .iter()
+                    .any(|op| matches!(op, redscript_io::Instr::Local(_))),
+                "{code:?}"
+            );
+        }
         if *name == "Literals" {
             let bytes =
                 std::fs::read(published.directory.join("r6/cache/final.redscripts")).unwrap();
@@ -399,7 +424,48 @@ fn literal_pool_reader_decodes_relative_offsets() {
     assert_eq!(literal_pool(&bytes, 92), vec![r"a\b"]);
 }
 
+// Decode only the named function: official external records need not be supported
+// by the full bundle reader. v1.2.2 prepends a 14-byte profiling instruction.
+fn official_function_code(bytes: &[u8], name: &str) -> Vec<redscript_io::Instr> {
+    use byte::BytesExt as _;
+    use redscript_io::{BundleReader, Definition, FunctionBody, Instr};
+    let reader = BundleReader::new(bytes).unwrap();
+    let word = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
+    let index = (1..word(84))
+        .find(|i| {
+            let at = word(80) as usize + *i as usize * 20;
+            u16::from_le_bytes(bytes[at + 16..at + 18].try_into().unwrap()) == 5
+                && reader.cnames().get(word(at)).unwrap().split(';').next() == Some(name)
+        })
+        .unwrap_or_else(|| panic!("missing {name}"));
+    let Definition::Function(function) = reader.definitions().get(index).unwrap() else {
+        panic!("expected function")
+    };
+    let FunctionBody::Raw { bytes: raw, .. } = function.body() else {
+        panic!("expected raw body")
+    };
+    assert_eq!(raw[0], 0x33);
+    let mut at = 14;
+    let mut code = Vec::<Instr>::new();
+    while at < raw.len() {
+        code.push(raw.read(&mut at, byte::LE).unwrap());
+    }
+    code.retain(|op| !matches!(op, Instr::Breakpoint(_)));
+    code
+}
+
 const FIXTURES: &[(&str, &str)] = &[
+    (
+        "FieldArrayIndex",
+        r#"class OfficialIndexOwner {
+    public let values: [Int32];
+    public let child: ref<OfficialIndexOwner>;
+}
+func OfficialFieldIndex(owner: ref<OfficialIndexOwner>, index: Int32) -> Int32 {
+    owner.child.values[index] = 42;
+    return owner.values[index];
+}"#,
+    ),
     (
         "ArrayGrowCount",
         r#"func OfficialGrowCount(values: [Int32]) -> Int32 {
