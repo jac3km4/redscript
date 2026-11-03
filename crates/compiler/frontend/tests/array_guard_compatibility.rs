@@ -131,6 +131,31 @@ fn runtime_member_and_expression_callees_report_once_and_keep_calls() {
 }
 
 #[test]
+fn type_qualified_static_callee_allows_array_arguments() {
+    common::analyze(
+        "array_compatibility.reds",
+        "class Host { public static func Take(values: [Int32]) {} }
+         func Run() { Host.Take([1]); Host.Take([]); }",
+        |_, _, _, reporter| {
+            assert!(reporter.reported().is_empty(), "{reporter:?}");
+        },
+    );
+}
+
+#[test]
+fn free_function_and_closure_without_array_prefix_remain_valid() {
+    common::analyze(
+        "array_compatibility.reds",
+        "func Take(values: [Int32]) {} func Run(f: ([Int32]) -> Int32, values: [Int32]) {
+             Take([1]); f(values);
+         }",
+        |_, _, _, reporter| {
+            assert!(reporter.reported().is_empty(), "{reporter:?}");
+        },
+    );
+}
+
+#[test]
 fn guarded_lazy_arguments_keep_legacy_eager_prefix_and_original_call() {
     for overload in ["", "native func Lazy(skip values: String);"] {
         check(
