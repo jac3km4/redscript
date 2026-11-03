@@ -46,8 +46,8 @@ major declarations are separated by blank lines. Expressions use target
 precedence and associativity to avoid redundant parentheses. Final single-branch
 checks with an `else { break; }` directly inside `while (true)` become early-exit
 guards, without moving condition prefixes or changing break/continue targets.
-Generated guards simplify Boolean negation and equality checks, but never invert
-ordered comparisons. Numeric spelling avoids redundant cast parentheses and uses
+Generated guards simplify Boolean negation and intrinsic equality checks, but
+preserve native equality operator selection and never invert ordered comparisons. Numeric spelling avoids redundant cast parentheses and uses
 plain `0` for Int32 defaults; other numeric widths retain explicit casts.
 Unconditional first assignments and non-array defaults merge with their local
 declarations at the existing execution site when no earlier or self-reference
@@ -68,6 +68,10 @@ Bool events. Their return expressions are preserved, not evaluated into discard
 locals followed by invalid bare returns. Void and other community callback result
 contracts fail with a source diagnostic rather than silently changing their ABI.
 Calls relying on callback results remain rejected.
+Assignments to `script_ref` destinations are emitted unchanged. In REDmod they
+write through the reference rather than rebinding it as community source does;
+this semantic difference is not diagnosed. Preserving community rebinding is
+[future work](../../../../docs/language-future-work.md).
 Every intrinsic is classified explicitly rather than emitted as an ordinary call.
 Reference `IsDefined` tests accept an immediate weak-to-strong promotion without
 emitting a strong temporary: the weak handle is compared directly with `NULL`,
@@ -83,7 +87,7 @@ conditional receivers stay inline, preserving Context/argument and lazy executio
 boundaries. REDmod supplies implicit weak-to-strong receiver promotions.
 Field assignments through local strong or weak class handles also stay inline.
 Struct write-back, array places and compound script-reference receivers remain gated. See the
-[receiver contract and bytecode evidence](../../../../docs/redmod-method-receivers.md).
+[receiver contract and bytecode evidence](../../../../docs/redmod-semantics.md#bounded-compound-method-receivers).
 
 ### Compound field reads
 
@@ -92,7 +96,7 @@ class/struct fields, and `Deref(localScriptRef).visualStateData.m_isIconic`.
 Struct member reads require a variable-rooted parent scope in official v1.2.2;
 call/conditional-rooted struct paths remain rejected. Writable places, `out`,
 mutable struct receivers and array gates are unchanged. See the
-[field-read contract and official evidence](../../../../docs/redmod-field-reads.md).
+[field-read contract and official evidence](../../../../docs/redmod-semantics.md#bounded-compound-field-reads).
 
 ### Native script-reference borrows
 
@@ -101,7 +105,7 @@ Immediate exact non-out native `script_ref<T>` parameters support nonlocal
 Ordinary native calls and operators share per-parameter conversion handling and
 overload checks, including mixed string concatenation. There is no operator-name
 or pointee-type allowlist; escaping and context-free borrows remain rejected.
-See [bounded borrows and lifetime evidence](../../../../docs/redmod-as-ref.md).
+See [bounded borrows and lifetime evidence](../../../../docs/redmod-semantics.md#bounded-native-and-scripted-script-reference-borrows).
 
 ### Struct defaults and resets
 
@@ -137,7 +141,7 @@ not exactly representable by the supported Float-cast path fail rather than narr
 Native parser acceptance alone does not establish transpiler numeric support.
 Explicit enum storage and its representable signed/unsigned values are preserved;
 wide enum initializers use unsuffixed native literals. See
-[enum storage](../../../../docs/enum-storage.md) for the Int64 minimum restriction
+[enum storage](../../../../docs/language-semantics.md#explicit-enum-storage) for the Int64 minimum restriction
 and bundle signedness limitations.
 
 ## Remaining work
@@ -156,7 +160,7 @@ and bundle signedness limitations.
 
 Const locals return a source diagnostic: native scalar const initialization does
 not share the community contract, so simply emitting `const` is not a safe fix.
-See [const semantics](../../../../docs/const-parameters.md). Custom generics,
+See [const semantics](../../../../docs/language-semantics.md#const-parameters-and-locals). Custom generics,
 lambdas/captures/function values, `mixedRef` and `neverRef` class-value emulation
 have no fallback. Assets/tweaks conversion, system-lookup
 rewriting and runtime patch workarounds are outside the current transpiler.

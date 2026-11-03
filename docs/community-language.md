@@ -19,9 +19,9 @@ Community `ref<T>` is a strong object handle and `wref<T>` a weak handle.
 not a strong handle. Wrapping/unwrapping script references composes with other
 coercions; assignment and out forwarding use community reference-storage rules
 rather than native write-through policy. See
-[shared expression semantics](shared-expression-defaults.md).
+[shared expression semantics](language-semantics.md#shared-expression-and-aggregate-default-apis).
 
-[Explicit enum storage](enum-storage.md) enforces integer ranges and preserves
+[Explicit enum storage](language-semantics.md#explicit-enum-storage) enforces integer ranges and preserves
 width. Omitted storage infers a signed width including zero. Bundles erase
 signedness, so decompiled storage is canonical rather than the authored signedness.
 The opaque engine primitives NodeRef, CRUID, LocalizationString and
@@ -38,12 +38,12 @@ not introduce literals, defaults or arbitrary conversions.
   `Call(42,,)` has a value and a hole. Native trailing commas differ.
 - Arrays have built-in Int32 indexing with writable-place semantics. Non-array
   indexing resolves `OperatorArray(receiver, key)` as a call, not a place. See
-  [switches and operators](control-flow-operators.md).
-- [Call lookup and inheritance](lookup-inheritance.md) retain applicable overloads
+  [switches and operators](language-semantics.md#switch-order-and-overloaded-indexing).
+- [Call lookup and inheritance](language-semantics.md#call-lookup-overloads-and-inheritance) retain applicable overloads
   across static ancestry and prioritize real methods over equivalent generated
   receiver-first aliases. Specificity is bounded, not a numeric scoring system.
 - Source `skip` parameters retain lazy intent through source, symbols and bundles.
-  [Array-prefix safety](lazy-evaluation-limitations.md) diagnoses forms whose current
+  [Array-prefix safety](language-semantics.md#lazy-evaluation-limitations) diagnoses forms whose current
   lowering can reorder effects or escape a lazy branch. Strict mode rejects them;
   runtime-compatible mode continues legacy lowering without a correctness guarantee.
   Type-qualified static calls can take array literals; runtime member and closure
@@ -51,11 +51,11 @@ not introduce literals, defaults or arbitrary conversions.
 - Marked `implicit func Cast` / `explicit func Cast` declarations preserve intent,
   but do not enable arbitrary user-defined conversions. Ordinary unmarked `Cast`
   functions keep their existing behavior. The bounded marked-provider selection
-  described in [conversion semantics](conversion-declarations.md) is native-only.
+  described in [conversion semantics](language-semantics.md#conversion-declarations-and-bounded-native-selection) is native-only.
 
 ## Constness and initialization
 
-[Const parameters and locals](const-parameters.md) use strict community rules.
+[Const parameters and locals](language-semantics.md#const-parameters-and-locals) use strict community rules.
 A const local's declaration initializer is permitted once; later assignment is
 not, even after an uninitialized declaration. Direct-root referent mutation,
 mutable forwarding and selected non-const methods are checked. Uncertain non-out
@@ -65,7 +65,7 @@ const-aware overload ranking, or general const field/return enforcement.
 
 Aggregate `default field = value;` directives support own and inherited fields in
 classes and structs. They are typed metadata, not constructor assignments. The
-[default contract](shared-expression-defaults.md#shared-aggregate-defaults)
+[default contract](language-semantics.md#shared-aggregate-defaults)
 defines duplicate precedence and supplying-class keys. Constant lowering is
 bounded to supported literal/enum forms, not general compile-time evaluation.
 
@@ -90,7 +90,7 @@ Compiler API checking/compilation builders also default to the strict threshold;
 callers can set `fatal_diagnostic_level` explicitly. Diagnostic display/warning
 filters are separate from fatality.
 
-[Invalid signatures](invalid-signature-recovery.md) preserve parameter identity
+[Invalid signatures](language-semantics.md#invalid-signature-recovery) preserve parameter identity
 rather than deleting unknown types or fabricating Void returns. Invalid bodies
 are unavailable; valid siblings may still be analyzed. Returned IR or an IDE type
 query can include recovery and is not proof that compilation succeeded. Backend
@@ -101,8 +101,8 @@ read-only VM-default const locals. If initialization requires hoisting or expand
 writes, it warns with the function and local names and emits mutable `let` only
 for the affected local. It reconstructs grouped/backward-linked switch labels and
 first/middle default bodies when dispatch and body order are provable; unprovable
-layouts still fail. See [const export/decompilation](const-parameters.md#export-and-decompilation)
-and [switch semantics](control-flow-operators.md).
+layouts still fail. See [const export/decompilation](language-semantics.md#export-and-decompilation)
+and [switch semantics](language-semantics.md#switch-order-and-overloaded-indexing).
 
 The [REDmod transpiler](../crates/compiler/redmod/transpiler/README.md) uses typed
 community IR and returns diagnostics instead of partial source on unsupported

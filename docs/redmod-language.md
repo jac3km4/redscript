@@ -44,8 +44,8 @@ availability is not semantic accuracy or permission to emit artifacts.
   scalar/string/struct/class/array/weak parameter and field forms compose with
   dereferencing/coercion. Native assignment/out places write through references.
   Ref locals/returns, nested refs, arrays of refs and mixed-reference forms remain
-  rejected. See [shared reference semantics](shared-expression-defaults.md).
-- [Enum storage](enum-storage.md) retains declared width/ranges. Omitted native
+  rejected. See [shared reference semantics](language-semantics.md#shared-expression-and-aggregate-default-apis).
+- [Enum storage](language-semantics.md#explicit-enum-storage) retains declared width/ranges. Omitted native
   storage currently follows inferred community widths, unlike official REDmod's
   four-byte default. Use explicit storage when representation matters.
 - NodeRef, CRUID, LocalizationString and redResourceReferenceScriptToken are shared
@@ -54,7 +54,7 @@ availability is not semantic accuracy or permission to emit artifacts.
 
 ## Calls, inheritance and conversions
 
-[Lookup and inheritance](lookup-inheritance.md) defines implicit member precedence,
+[Lookup and inheritance](language-semantics.md#call-lookup-overloads-and-inheritance) defines implicit member precedence,
 static ancestry/hiding, generated forwarders, bounded specificity, native original
 slot return covariance and persistent access. Implicit static calls retain their
 qualified type identity across modules, and generic static hiding compares
@@ -67,7 +67,7 @@ must match optional parameters and emit Nop. Unlike community syntax, a final
 comma retains a final hole. Authored parameter-default expressions are separate
 and unsupported.
 
-[Conversion declarations](conversion-declarations.md) preserve explicit/implicit
+[Conversion declarations](language-semantics.md#conversion-declarations-and-bounded-native-selection) preserve explicit/implicit
 intent without making providers ordinary overload candidates. Implemented native
 selection is bounded to unique exact native providers, guarded implicit coercions
 at known targets and selected explicit enum/Int32 conversions. There is no general
@@ -86,19 +86,19 @@ fully resolved semantic signatures; this is not general variant-aware analysis.
 
 - Native for/do-while fixups retain execution order and continue targets. Ordered
   switch defaults preserve label/body order, fallthrough, one scrutinee evaluation
-  and enclosing loop continues. See [control flow and indexing](control-flow-operators.md).
+  and enclosing loop continues. See [control flow and indexing](language-semantics.md#switch-order-and-overloaded-indexing).
 - Source `skip` flags retain lazy call intent and serialized parameter flags.
   Shared unsafe-array diagnostics reject output at the strict threshold but can
   retain unsafe legacy lowering in runtime-compatible mode. Source-free typed
   skip calls use a distinct hard error; native capability checks remain hard.
-  [Lazy limitations](lazy-evaluation-limitations.md) defines the boundary.
+  [Lazy limitations](language-semantics.md#lazy-evaluation-limitations) defines the boundary.
 - Dynamic-array descriptors include Size, PushBack, PopBack, Clear, Resize,
   Contains, FindFirst, FindLast, Insert, Remove, Erase and Last, plus
-  [Grow and Count](redmod-array-descriptors.md). They require array places;
+  [Grow and Count](redmod-semantics.md#redmod-dynamic-array-grow-and-count). They require array places;
   temporary receivers are rejected. Fixed-array members and EraseFast are not
   aliases to these operations, and native source does not expose arbitrary
   community intrinsic spellings.
-- [Const rules](const-parameters.md) retain native qualifiers. Parameter element
+- [Const rules](language-semantics.md#const-parameters-and-locals) retain native qualifiers. Parameter element
   writes/non-out forwarding have narrow native relaxations; const local class
   handles permit rebinding/handle forwarding, not referent mutation. Native const
   scalar/struct explicit initialization is rejected, unlike community const
@@ -111,20 +111,26 @@ fully resolved semantic signatures; this is not general variant-aware analysis.
 
 ## Defaults, events and output boundaries
 
-[Aggregate defaults](shared-expression-defaults.md#shared-aggregate-defaults)
+[Aggregate defaults](language-semantics.md#shared-aggregate-defaults)
 resolve typed own/inherited targets and merge metadata on declaring fields keyed
 by supplying class, with no initialization bytecode. Checking is intentionally
 stricter than official inherited defaults that accept some invalid text. These
 properties do not prove local or runtime construction/reset behavior.
 
-[Events](redmod-events.md) have implicit Bool contracts, legal fallthrough and no
+[Events](redmod-semantics.md#redmod-event-return-contract) have implicit Bool contracts, legal fallthrough and no
 synthetic default false return. Script semicolon events become empty implementations;
 imported prototypes retain callback identity without invented bodies. Importonly
 scripted members remain invalid. Bool patch metadata support is not a general
 claim of official wrapper/patch parity.
 
 Native struct construction needs verified completeness/layout; imported source
-fields alone are not sufficient evidence. Default/reset support, additional
+fields alone are not sufficient evidence. The transpiler can omit a local's first,
+unconditional default initialization when backward liveness proves no read before
+a whole-local overwrite. Branches and loop back edges participate in that proof;
+reads, borrows, `out` arguments and partial field writes keep the default. Repeated
+or conditional declarations retain resets, and switch occurrences are conservatively
+treated as reads. This does not infer native layouts or change Variant reset behavior.
+Unused declarations without overwrite evidence are not removed by this pass. Default/reset support, additional
 builtins, broader patches, contextual function values, float matching and
 prefix/postfix behavior remain bounded. Custom native generics, lambdas/function
 types, mixedRef/neverRef, unknown annotations and unverified metadata fail closed.
@@ -148,15 +154,15 @@ Call-rooted arrays remain unsupported because the official compiler requires an
 in-memory variable root. Other emitted array operations also accept variable-rooted
 arrays when all additional arguments are locals or constants; compound arguments
 retain the local-array guard. `ArrayGrow` and `ArrayCount` emit native Grow/Count
-members. See [array field limits](redmod-field-reads.md#limits-and-place-semantics).
+members. See [array field limits](redmod-semantics.md#limits-and-place-semantics).
 
 Variable-rooted ordinary struct fields support writes and `out`, including
 `Deref(localScriptRef)` roots. Fields and indexed elements can supply scripted
 `script_ref<T>` parameters without copies. Temporary arguments use invocation-owned
 borrows at exact non-out parameters, with the same lifetime-slot checks as native
 calls. Overload ambiguity, escaping references and unsupported borrow contexts
-remain guarded. See [field access](redmod-field-reads.md) and
-[script-reference borrowing](redmod-as-ref.md) for the evidence and limits.
+remain guarded. See [field access](redmod-semantics.md#bounded-compound-field-reads) and
+[script-reference borrowing](redmod-semantics.md#bounded-native-and-scripted-script-reference-borrows) for the evidence and limits.
 
 Resource and TweakDBID literals emit decoded backslashes literally, not with
 community escape spelling. Ordinary resource paths retain their pool identity.

@@ -82,7 +82,7 @@ For repeatability, run twice with separate output directories and compare the
 seven files. Record the compiler revision, working-tree changes and source/input
 fingerprints externally when using a run as a checkpoint. Historical observations
 are summarized in the [investigation archive](../../../../docs/language-investigations.md)
-and [conversion findings](../../../../docs/conversion-implementation-notes.md), not
+and [conversion findings](../../../../docs/language-investigations.md#conversion-investigation-archive), not
 maintained here as competing current baselines.
 
 ## Measurement limits

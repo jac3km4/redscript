@@ -34,7 +34,7 @@ Required follow-up:
 ## Conversions and native bindings
 
 The bounded provider and enum paths are implemented; see
-[conversion semantics](conversion-declarations.md). Remaining work includes
+[conversion semantics](language-semantics.md#conversion-declarations-and-bounded-native-selection). Remaining work includes
 conversion-aware overload applicability, scripted-provider eligibility and
 source/cache reconciliation, wider enum/integer cells, general identity/String
 conversions, native literal retyping, and qualified weak conversions. Do not add
@@ -46,7 +46,7 @@ native source declaration proves an engine ABI.
 
 - Expression-local array construction is not implemented. Preserve lazy branches,
   callee/receiver/argument order, switch matcher execution and loop reevaluation
-  before removing [prefix safety diagnostics](lazy-evaluation-limitations.md).
+  before removing [prefix safety diagnostics](language-semantics.md#lazy-evaluation-limitations).
   Runtime-compatible mode currently tolerates them and retains potentially
   reordered/eager legacy lowering; this is not a completed correctness fix.
 - Native initialized declaration groups and general value sequences need explicit
@@ -77,7 +77,8 @@ native source declaration proves an engine ABI.
 - Extend overload specificity beyond the currently bounded concrete reference
   signatures only with evidence (weak/script references, out, omitted/null slots,
   conversions and differing flags). Generic static hiding already substitutes
-  inherited parameter types; it is not outstanding work.
+  inherited parameter types for hiding; applicability still needs receiver
+  substitution as tracked below.
 - Const field/return enforcement, transitive alias/effect analysis and const-aware
   overload ranking remain incomplete. Nested closure capture IDs lack defining-scope
   identity. Characterize override out-flag ABI differences before relaxing checks.
@@ -85,7 +86,7 @@ native source declaration proves an engine ABI.
   targets, fixed-array operations, EraseFast and additional Variant members need
   precise contracts rather than aliases to superficially similar operations.
 - Retain transactional inference as a separate hardening goal; review the
-  [inference notes](type-inference-hardening.md) against the current solver before
+  [inference notes](language-semantics.md#type-inference-safeguards-and-hardening) against the current solver before
   implementation rather than replaying an old plan verbatim.
 
 ## Export, conditions and tooling
@@ -105,6 +106,103 @@ native source declaration proves an engine ABI.
 - IDE references/rename, completion/member indexing and range formatting must retain
   written provenance and snapshot ownership. Coordinate compiler/IDE dependency pins
   and validate both repositories when changing shared contracts.
+
+## Deferred frontend and REDmod review work
+
+The following work was identified by the review against `1.0.x`. These are
+outstanding issues, not supported behavior. Small fixes for omitted arguments,
+local receiver shadowing, optional-root cycle preservation and native equality
+negation were made separately. Assignments to script-reference destinations remain
+accepted with REDmod write-through semantics; preserving community rebinding
+remains future work.
+
+### Correctness: instantiated overload applicability and const forwarding
+
+- **Receiver substitution in overload applicability.**
+  `crates/compiler/frontend/src/lower/calls.rs` tests candidates using declared
+  parameter types before applying the receiver environment. With `Base<T>.Pick(T)`
+  and `Child extends Base<Int32>` declaring `Pick(Bool)`, `Child.Pick(true)` reports
+  ambiguity against the inherited generic candidate. Static hiding substitution
+  does not solve this applicability problem. Instantiate candidate parameters
+  before applicability and specificity comparisons without mutating inference.
+  Test inherited and child selections, method/free type arguments, declaration
+  order, and fresh inference variables.
+- **Instantiated const-forwarding checks.**
+  `crates/compiler/frontend/src/stages/const_validation.rs` classifies declared
+  parameter types. `Take<T>(value: T)` accepts a const array without the forwarding
+  diagnostic produced by an equivalent concrete array parameter. Use resolved
+  function and receiver type arguments when classifying parameter mutability.
+  Cover const parameters and locals, object/array arguments, and scalar/const
+  parameter controls. Preserve the file-local native policy exceptions.
+
+### Correctness: target symbol names and literal-only field defaults
+
+- **Import-aware target names.**
+  `crates/compiler/redmod/transpiler/src/body.rs` emits fully qualified free calls,
+  while `src/target.rs` emits qualified types. Snapshots include `Dependency.Value()`
+  and `Models.Value`, but the official import probe rejects qualified calls such
+  as `First.Pick(1)`. Introduce a target-name plan tied to resolved symbol identity,
+  imports and collisions; merely stripping namespaces can select another symbol.
+  Until the representation is verified, unsupported references should fail closed.
+  Test same-module and dependency calls/types, conflicting simple names, overloads,
+  and exact/wildcard imports through semantic roundtrips and optional official probes.
+- **Field-default formatting distinct from expressions.**
+  `crates/compiler/redmod/transpiler/src/declarations.rs` special-cases Uint32 but
+  otherwise uses expression formatting for literal-only field defaults. Int16,
+  Double and Int32 minimum values can become casts or arithmetic expressions.
+  Define an exhaustive field-default formatter with verified spellings or typed
+  rejection. Cover every constant kind and numeric boundary in fields separately
+  from local initializers, including added fields and official parser validation.
+- **Community script-reference rebinding.**
+  The transpiler emits assignments to `script_ref` destinations unchanged and does
+  not diagnose the semantic difference: REDmod writes through the reference,
+  whereas community source rebinds it. For example, emitted `a = b` modifies a
+  pointee instead of changing which place `a` references. Preserving community
+  rebinding requires a proven representation, including alias identity and
+  subsequent reads; successful target compilation does not establish equivalence.
+  Audit `out` reference forwarding under the same dialect distinction.
+
+### Array guard structure and safe static callees
+
+- Adapter `src/array_guard.rs` and transpiler `src/source.rs` reject member-shaped
+  callees with array arguments before resolution, including static `Host.Take([1])`.
+  Defer static-versus-runtime classification to resolved validation. Preserve the
+  runtime receiver/callee evaluation boundary; syntactic member access alone is
+  neither a safe exemption nor proof of observable receiver evaluation.
+- Frontend `src/lower.rs` recursively scans an expression subtree on each recursive
+  lowering call. Run structural guards once per expression root rather than
+  repeatedly scanning descendants, while retaining selected-overload/skip checks,
+  closure execution boundaries and diagnostic deduplication. Add a deep-expression
+  scaling test and preserve lazy/receiver/prior-operand regression coverage.
+
+### Test maintenance, without losing semantic coverage
+
+- Consolidate frontend lazy-array cases from `lowering_inference.rs`,
+  `overload_selection.rs` and `array_guard_compatibility.rs` into a matrix covering
+  single/overloaded calls and empty/nonempty/nested literals. Preserve selected
+  overload and lazy receiver distinctions. Merge fresh-local ambiguity coverage
+  from `indexed_applicability.rs` into `overload_selection.rs`, retaining declaration
+  order and crossing-signature cases. Snapshot diagnostic presentation once while
+  keeping code/count/severity and retained-IR assertions explicit.
+- Replace adapter `control_flow.rs`'s full debug-IR snapshot with a stable projection
+  of statement shape, call identities and continue targets. Keep execution-order
+  and backend jump tests: snapshots do not replace them. Move the weak default
+  hoisting smoke test in `semantics.rs` into the execution-based control-flow suite.
+  Use a metadata snapshot for the large manual expectation in `metadata.rs`, keeping
+  span assertions explicit.
+- Share transpiler emission/target-roundtrip harnesses and repeated overload
+  scenario construction, preserving separate conversion and borrow contracts.
+  Negative transpiler tests should establish successful frontend analysis before
+  asserting the intended export diagnostic. Combine repeated struct-default fixture
+  compilation into one emission snapshot plus reset-site and typed-IR assertions.
+- Replace raw byte-window opcode scans and function-name prefix matching in
+  transpiler `as_ref.rs` with bounded instruction decoding and exact identities,
+  reusing the approach in `official.rs` and `field_reads.rs`. Preserve explicit
+  version/layout checks and distinguish compiler acceptance from runtime evidence.
+- Adapter `CapabilityError::{OperatorDeclaration, EnumStorage, ConstReturn}` appear
+  obsolete, but the enum is publicly exported. Review API compatibility before
+  removing them and the stale const-return message assertion; const returns already
+  have positive semantic coverage.
 
 ## Evidence needed for parity claims
 

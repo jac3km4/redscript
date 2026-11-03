@@ -18,19 +18,34 @@ language tutorial, see the [REDscript wiki](https://wiki.redmodding.org/redscrip
 
 ## Detailed semantics
 
+Two references collect the detailed contracts, with topic and subsection navigation:
+
+- [Shared language semantics](language-semantics.md): declarations, initialization,
+  evaluation, lookup, inference and diagnostic recovery, including per-file dialect
+  differences.
+- [REDmod semantics and export contracts](redmod-semantics.md): imports, events,
+  array descriptors, field/method receivers, contextual coercions and borrowing.
+
+Use the topic links below to jump directly to a contract. Current safeguards and
+remaining design goals are distinguished within each reference.
+
 | Topic | Contract |
 | --- | --- |
-| Const parameters and locals | [Per-mode forwarding diagnostics, native handle rebinding and analysis bounds](const-parameters.md) |
-| Assignments, script references, omitted arguments and field defaults | [Shared expression/default semantics and APIs](shared-expression-defaults.md) |
-| Enum ranges, widths and erased signedness | [Explicit enum storage](enum-storage.md) |
-| Conversion declarations and selection | [Exact native providers, bounded enum casts and recovery guards](conversion-declarations.md) |
-| Calls and inheritance | [Lookup, overloads, generated forwarders and override slots](lookup-inheritance.md) |
-| Switches and indexing | [Label order, fallthrough and OperatorArray](control-flow-operators.md) |
-| Lazy evaluation and array construction | [Skip parameters, strict rejection and legacy compatibility risks](lazy-evaluation-limitations.md) |
-| Invalid signatures | [Preserved slots, unavailable bodies and fail-closed emission](invalid-signature-recovery.md) |
-| Native events | [Implicit Bool contracts, fallthrough and patch/export limits](redmod-events.md) |
-| Native array members | [Dynamic-array Grow and Count descriptors](redmod-array-descriptors.md) |
-| Inference | [Current safeguards and transactional hardening work](type-inference-hardening.md) |
+| Const parameters and locals | [Per-mode forwarding diagnostics, native handle rebinding and analysis bounds](language-semantics.md#const-parameters-and-locals) |
+| Assignments, script references, omitted arguments and field defaults | [Shared expression/default semantics and APIs](language-semantics.md#shared-expression-and-aggregate-default-apis) |
+| Enum ranges, widths and erased signedness | [Explicit enum storage](language-semantics.md#explicit-enum-storage) |
+| Conversion declarations and selection | [Exact native providers, bounded enum casts and recovery guards](language-semantics.md#conversion-declarations-and-bounded-native-selection) |
+| Calls and inheritance | [Lookup, overloads, generated forwarders and override slots](language-semantics.md#call-lookup-overloads-and-inheritance) |
+| Switches and indexing | [Label order, fallthrough and OperatorArray](language-semantics.md#switch-order-and-overloaded-indexing) |
+| Lazy evaluation and array construction | [Skip parameters, strict rejection and legacy compatibility risks](language-semantics.md#lazy-evaluation-limitations) |
+| Invalid signatures | [Preserved slots, unavailable bodies and fail-closed emission](language-semantics.md#invalid-signature-recovery) |
+| Native events | [Implicit Bool contracts, fallthrough and patch/export limits](redmod-semantics.md#redmod-event-return-contract) |
+| Native array members | [Dynamic-array Grow and Count descriptors](redmod-semantics.md#redmod-dynamic-array-grow-and-count) |
+| Native imports | [Exact/select directives, collision guards and qualified-name limitations](redmod-semantics.md#redmod-transpiler-imports) |
+| Native storage access | [Field reads and writable-place boundaries](redmod-semantics.md#bounded-compound-field-reads) |
+| Native method receivers | [Inline Context evaluation and deliberate limits](redmod-semantics.md#bounded-compound-method-receivers) |
+| Native reference adaptation | [Strong/weak coercions](redmod-semantics.md#bounded-redmod-strongweak-coercions) and [script-reference borrow lifetimes](redmod-semantics.md#bounded-native-and-scripted-script-reference-borrows) |
+| Inference | [Current safeguards and transactional hardening work](language-semantics.md#type-inference-safeguards-and-hardening) |
 
 ## Type reference
 
@@ -57,9 +72,10 @@ SCC's fatal threshold without guaranteeing correct legacy evaluation. See the
   [transpiler API](../crates/compiler/redmod/transpiler/README.md).
 - Optional [native parser corpus](../crates/syntax/redmod/parser/CORPUS.md) and
   [semantic corpus survey](../crates/compiler/redmod/adapter/CORPUS.md).
-- [Historical investigation summary](language-investigations.md) and
-  [conversion experiment findings](conversion-implementation-notes.md). These
-  preserve evidence and rejected approaches, not current validation results.
+- [Historical investigations](language-investigations.md): corpus findings,
+  official evidence limits and [conversion experiments](language-investigations.md#conversion-experiments-and-bounded-follow-up),
+  including rejected approaches and the narrower delivered follow-up. These are
+  historical evidence, not current validation results.
 - [Contribution rules and validation commands](../CONTRIBUTING.md).
 
 Compiler tests, official acceptance, decoded representation and runtime behavior
