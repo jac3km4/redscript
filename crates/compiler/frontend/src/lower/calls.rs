@@ -423,10 +423,15 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         call_span: Span,
     ) -> LowerResult<'ctx, (MemberCall<'ctx>, PolyType<'ctx>)> {
         let static_parent = static_parent.or_else(|| match receiver {
-            (ast::Expr::Ident(ident), _) => match env.types().get(ident) {
-                Some(&TypeRef::Id(id)) => Some(id),
-                _ => None,
-            },
+            (ast::Expr::Ident(ident), _)
+                if !env.types().policy(call_span).implicit_members
+                    || env.locals().get(ident).is_none() =>
+            {
+                match env.types().get(ident) {
+                    Some(&TypeRef::Id(id)) => Some(id),
+                    _ => None,
+                }
+            }
             _ => None,
         });
         let static_type = static_parent.map(|id| InferredTypeApp::from_id(id, self.symbols));
