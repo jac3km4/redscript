@@ -101,13 +101,17 @@ Complete non-native source structs (including source dependencies) are reset wit
 positional constructors in resolved field order, recursively supplying defaults
 for every field. Nested source structs, supported scalar defaults and null
 strong/weak class handles are supported; a truly empty source struct uses `Type()`.
+TweakDBID defaults use `T""`. Enums default to a resolved member whose value is
+exactly zero, including nested struct fields. The first member or an `Invalid`
+sentinel is not assumed to be zero. Enums without a declared zero member remain
+rejected. Enum-member lookup is memoized per type within each body.
 The constructor stays at each IR initialization site, including branch entries
 and loop back edges. No fresh temporary or field-by-field mutation replaces it.
 
 Native/imported structs remain rejected, even with a `fully_defined` symbol flag:
 the API has no versioned proof of engine layout completeness. Missing source/field
 provenance, base layouts, recursive value layouts, more than 255 fields, and fields
-without verified expression defaults (arrays, `script_ref`, enums, Variant, etc.)
+without verified expression defaults (arrays, `script_ref`, nonzero-only enums, Variant, etc.)
 also fail closed. Source dependency layouts must come from the same successful
 analysis, as required by the low-level API contract.
 
@@ -135,7 +139,7 @@ and bundle signedness limitations.
 | Inferred signatures, conditions, multiple wrappers and cross-module patches | Add finalized source identity facts and a variant-aware transpilation plan |
 | Array prefixes crossing lazy branches, switch matchers or prior operands | Preserve execution-site prerequisites in shared lowering before relaxing source guards |
 | Unsafe receivers, temporary/nonlocal places and strong/weak coercions | Add context-aware place/reference lowering; never mutate a copy as a substitute |
-| Native/imported struct, enum, Variant and fixed-array default resets | Verify complete layouts and target initialization/reset behavior |
+| Native/imported struct, zero-member-less enum, Variant and fixed-array default resets | Verify complete layouts and target initialization/reset behavior |
 | Const locals | Preserve verified initialization and mutation semantics; currently rejected rather than emitted as mutable |
 | Array count/grow/sort, `LongIntEnum`, variant inspection, `NameOf`, more `ToString`/`IsDefined` types | Add resolved typed mappings and official fixtures per operation |
 | `editable`, `instanceeditable`, `inlined`, `replicated`, `testonly` transpilation | Preserve verified declaration semantics rather than dropping flags |

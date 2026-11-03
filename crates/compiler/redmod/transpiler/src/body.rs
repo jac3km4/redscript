@@ -1,4 +1,5 @@
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::cell::RefCell;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use redscript_community_ast as ast;
 use redscript_compiler_frontend::{
@@ -17,6 +18,7 @@ pub(crate) struct Body<'a, 'ctx> {
     pub wrapper: Option<MethodId<'ctx>>,
     result_local: String,
     inline_declarations: BTreeSet<ir::Local>,
+    enum_defaults: RefCell<HashMap<TypeId<'ctx>, Option<&'ctx str>>>,
 }
 
 pub(crate) fn reserved_names(symbols: &Symbols<'_>) -> BTreeSet<String> {
@@ -134,6 +136,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             wrapper,
             result_local,
             inline_declarations: crate::locals::inline_declarations(&function.block, symbols)?,
+            enum_defaults: RefCell::new(HashMap::new()),
         })
     }
 
@@ -481,6 +484,34 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 .is_some_and(|a| !a.flags().is_struct() && !a.flags().is_never_ref())
         {
             return Ok("NULL".into());
+        }
+        if let Some(TypeSchema::Enum(enm)) = self
+            .symbols
+            .get_type(id)
+            .map(redscript_compiler_frontend::TypeDef::schema)
+        {
+            // Repeated local and nested-field resets inspect this enum only once
+            // per body. Zero need not be the first member or an Invalid sentinel.
+            let name = *self
+                .enum_defaults
+                .borrow_mut()
+                .entry(id)
+                .or_insert_with(|| {
+                    enm.variants()
+                        .find(|(_, value)| *value == 0)
+                        .map(|(name, _)| name)
+                });
+            let name = name.ok_or_else(|| {
+                error(
+                    format!("cannot default-initialize {typ}: no declared zero-valued member"),
+                    None,
+                )
+            })?;
+            return Ok(format!(
+                "{}.{}",
+                target::path(id.as_str())?,
+                target::ident(name)?
+            ));
         }
         if let Some(aggregate) = self
             .symbols

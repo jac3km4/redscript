@@ -90,6 +90,36 @@ fn tweakdbid_defaults_reset_locals_and_complete_struct_fields() {
 }
 
 #[test]
+fn enum_defaults_choose_zero_not_first_or_invalid_and_reset_in_place() {
+    let text = emit(
+        r#"enum Choice { First = 3, Zero = 0, Invalid = 4 }
+        struct Record { public let choice: Choice; }
+        func Test(again: Bool) {
+            let choice: Choice;
+            while again { let choice: Choice; choice = Choice.Invalid; }
+            let record: Record;
+        }"#,
+        "",
+    )
+    .unwrap();
+    assert!(text.contains("var choice: Choice = Choice.Zero;"), "{text}");
+    assert!(
+        text.contains("while (again) {\n        choice_2 = Choice.Zero;"),
+        "{text}"
+    );
+    assert!(text.contains("Record(Choice.Zero)"), "{text}");
+    let errors = emit(
+        "enum Choice { First = 3 } func Test() { let value: Choice; }",
+        "",
+    )
+    .unwrap_err();
+    assert!(
+        errors[0].message.contains("no declared zero-valued member"),
+        "{errors:?}"
+    );
+}
+
+#[test]
 fn source_dependency_layouts_and_empty_structs_are_complete() {
     let text = emit(
         "func Test() { let value: Record; let empty: Empty; }",
