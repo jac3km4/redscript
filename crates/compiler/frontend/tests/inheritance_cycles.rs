@@ -232,31 +232,45 @@ fn cycles_in_ancestors_terminate_in_any_module_order() {
 }
 
 #[test]
-fn explicit_root_self_base_is_still_diagnosed() {
+fn explicit_root_cycles_are_still_diagnosed_with_optional_root() {
     bounded(|| {
-        let sources = SourceMap::new();
-        sources.populate_boot_lib();
-        sources.push_back(
-            "root.reds",
-            "native class IScriptable extends IScriptable {}",
-        );
-        let interner = TypeInterner::default();
-        let mut reporter = CompileErrorReporter::default();
-        let (_, symbols) = infer_from_sources(
-            &sources,
-            Symbols::with_default_types(),
-            &mut reporter,
-            &interner,
-        );
-        assert!(matches!(
-            reporter.reported(),
-            [Diagnostic::CircularInheritance(_)]
-        ));
-        assert!(
-            symbols[interner.intern("IScriptable")]
-                .schema()
-                .base_type()
-                .is_none()
-        );
+        for optional_root in [false, true] {
+            for declarations in [
+                "native class IScriptable extends IScriptable {}",
+                "native class IScriptable extends Intermediate {} \
+                 native class Intermediate extends IScriptable {}",
+            ] {
+                let sources = SourceMap::new();
+                sources.populate_boot_lib();
+                sources.push_back("root.reds", declarations);
+                if optional_root {
+                    sources.push_back("serializable.reds", "native class ISerializable {}");
+                }
+                let interner = TypeInterner::default();
+                let mut reporter = CompileErrorReporter::default();
+                let (_, symbols) = infer_from_sources(
+                    &sources,
+                    Symbols::with_default_types(),
+                    &mut reporter,
+                    &interner,
+                );
+                assert!(
+                    matches!(reporter.reported(), [Diagnostic::CircularInheritance(_)]),
+                    "optional root: {optional_root}, {declarations}: {:?}",
+                    reporter.reported(),
+                );
+                for name in ["IScriptable", "Intermediate"] {
+                    if symbols.get_type(interner.intern(name)).is_some() {
+                        assert!(
+                            symbols
+                                .base_iter_with_self(interner.intern(name))
+                                .take(4)
+                                .count()
+                                < 4
+                        );
+                    }
+                }
+            }
+        }
     });
 }
