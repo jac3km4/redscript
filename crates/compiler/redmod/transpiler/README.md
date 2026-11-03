@@ -71,7 +71,10 @@ Calls relying on callback results remain rejected.
 Every intrinsic is classified explicitly rather than emitted as an ordinary call.
 Reference `IsDefined` tests accept an immediate weak-to-strong promotion without
 emitting a strong temporary: the weak handle is compared directly with `NULL`,
-including generated negated guards. Nested conversion chains remain rejected.
+including generated negated guards. Immediate typed initializers, assignments,
+returns and unambiguous arguments can combine strong/weak conversion with a class
+upcast. The destination must retain the conversion's reference kind; downcasts,
+competing overloads and nested conversion chains remain rejected.
 
 ### Compound method receivers
 

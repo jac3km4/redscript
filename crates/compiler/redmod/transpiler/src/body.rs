@@ -914,10 +914,15 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     _ => None,
                 })
             };
-            if &result != expected
-                || reference_kind(&source) != Some(from)
+            if reference_kind(&source) != Some(from)
                 || reference_kind(&result) != Some(to)
+                || reference_kind(expected) != Some(to)
                 || source.unwrap_ref_or_self() != result.unwrap_ref_or_self()
+                || !PolyType::from_type(result.unwrap_ref_or_self()).is_subtype_compatible(
+                    expected.unwrap_ref_or_self(),
+                    Variance::Covariant,
+                    self.symbols,
+                )
             {
                 return Err(invalid());
             }
@@ -926,6 +931,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             // inner conversion instead of cancelling a strong/weak round trip.
             target::typ(&result, self.symbols)?;
             target::typ(&source, self.symbols)?;
+            target::typ(expected, self.symbols)?;
             return self.expr_at(arg, 2);
         }
         self.expr(e)

@@ -422,12 +422,59 @@ fn repeated_calls_ignore_unrelated_free_function_groups() {
 }
 
 #[test]
+fn immediate_reference_conversions_allow_class_upcasts() {
+    let text = roundtrip(
+        r#"
+        class Base {
+            public static func Take(value: ref<Base>, other: ref<Base>) -> Bool { return true; }
+        }
+        class Value extends Base {}
+        func Strong(value: wref<Value>) -> ref<Base> { return WeakRefToRef(value); }
+        func Weak(value: ref<Value>) -> wref<Base> { return RefToWeakRef(value); }
+        func Test(value: wref<Value>, other: wref<Base>, strong: ref<Value>) -> Bool {
+            let base: ref<Base> = WeakRefToRef(value);
+            let observer: wref<Base> = RefToWeakRef(strong);
+            base = WeakRefToRef(value);
+            observer = RefToWeakRef(strong);
+            return Base.Take(value, other);
+        }
+    "#,
+    );
+    assert!(text.contains("return Base.Take(value, other);"), "{text}");
+    assert!(text.contains("base = value;"), "{text}");
+    assert!(text.contains("observer = strong;"), "{text}");
+    assert!(!text.contains("WeakRefToRef("), "{text}");
+    assert!(!text.contains("RefToWeakRef("), "{text}");
+}
+
+#[test]
+fn upcasts_do_not_bypass_competing_reference_overloads() {
+    let errors = emit(
+        r#"
+        class Base {}
+        class Value extends Base {}
+        func Take(value: ref<Base>) {}
+        func Take(value: wref<Value>) {}
+        func Test(value: wref<Value>) { Take(WeakRefToRef(value)); }
+    "#,
+    )
+    .unwrap_err();
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.message.contains("cannot convert this reference here")
+                || e.message.contains("MULTIPLE_MATCHING_OVERLOADS")),
+        "{errors:?}"
+    );
+}
+
+#[test]
 fn mismatched_sink_and_out_parameters_are_not_contextual_conversions() {
     for source in [
         "class Value {} func Test(weak: wref<Value>) { let w: wref<Value> = WeakRefToRef(weak); }",
         "class Value {} func Take(out value: ref<Value>) {} func Test(weak: wref<Value>) { Take(WeakRefToRef(weak)); }",
-        "class Base {} class Value extends Base {} func Test(weak: wref<Value>) -> ref<Base> { return WeakRefToRef(weak); }",
-        "class Base {} class Value extends Base {} func Take(value: ref<Base>) {} func Test(weak: wref<Value>) { Take(WeakRefToRef(weak)); }",
+        "class Base {} class Value extends Base {} func Test(weak: wref<Base>) -> ref<Value> { return WeakRefToRef(weak); }",
+        "class Base {} class Value extends Base {} func Take(value: ref<Value>) {} func Test(weak: wref<Base>) { Take(WeakRefToRef(weak)); }",
     ] {
         assert!(emit(source).is_err(), "{source}");
     }

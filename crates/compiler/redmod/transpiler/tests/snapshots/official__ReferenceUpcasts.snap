@@ -1,0 +1,26 @@
+---
+source: crates/compiler/redmod/transpiler/tests/official.rs
+expression: source.module.text
+---
+class OfficialRefBase extends IScriptable {
+    public static function Take(value: OfficialRefBase, other: OfficialRefBase) -> Bool {
+        return true;
+    }
+}
+
+class OfficialRefDerived extends OfficialRefBase {
+}
+
+function OfficialStrongBase(value: wref<OfficialRefDerived>) -> OfficialRefBase {
+    return value;
+}
+
+function OfficialWeakBase(value: OfficialRefDerived) -> wref<OfficialRefBase> {
+    return value;
+}
+
+function OfficialUpcastCall(value: wref<OfficialRefDerived>, other: wref<OfficialRefBase>) -> Bool {
+    var base: OfficialRefBase = value;
+    base = value;
+    return OfficialRefBase.Take(value, other);
+}

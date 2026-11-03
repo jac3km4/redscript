@@ -401,6 +401,20 @@ fn literal_pool_reader_decodes_relative_offsets() {
 
 const FIXTURES: &[(&str, &str)] = &[
     (
+        "ReferenceUpcasts",
+        r#"class OfficialRefBase {
+    public static func Take(value: ref<OfficialRefBase>, other: ref<OfficialRefBase>) -> Bool { return true; }
+}
+class OfficialRefDerived extends OfficialRefBase {}
+func OfficialStrongBase(value: wref<OfficialRefDerived>) -> ref<OfficialRefBase> { return WeakRefToRef(value); }
+func OfficialWeakBase(value: ref<OfficialRefDerived>) -> wref<OfficialRefBase> { return RefToWeakRef(value); }
+func OfficialUpcastCall(value: wref<OfficialRefDerived>, other: wref<OfficialRefBase>) -> Bool {
+    let base: ref<OfficialRefBase> = WeakRefToRef(value);
+    base = WeakRefToRef(value);
+    return OfficialRefBase.Take(value, other);
+}"#,
+    ),
+    (
         "WeakIsDefined",
         r#"class OfficialWeakOwner { public let handle: wref<OfficialWeakOwner>; }
 func OfficialGetWeak(values: [Int32]) -> wref<OfficialWeakOwner> { return null; }
