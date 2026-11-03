@@ -523,6 +523,75 @@ fn authored_transpiled_sources_compile_with_official_compiler() {
 
 #[test]
 #[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]
+fn raw_zero_argument_struct_construction_with_official_compiler() {
+    use redscript_io::Instr;
+
+    let validator = OfficialValidator {
+        executable: PathBuf::from(std::env::var_os("REDMOD_EXE").expect("set REDMOD_EXE")),
+        timeout: Duration::from_secs(60),
+    };
+    let root = PathBuf::from(std::env::var_os("REDMOD_GAME_ROOT").expect("set REDMOD_GAME_ROOT"));
+    let parent = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../target/redmod-official")
+        .join(format!(
+            "zero-argument-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+    for typ in [
+        "Vector2",
+        "ResRef",
+        "ItemID",
+        "inkAnimOptions",
+        "stimInvestigateData",
+    ] {
+        let directory = parent.join(typ);
+        std::fs::create_dir_all(directory.join("r6/scripts")).unwrap();
+        let source = format!(
+            "function OfficialZeroArgument(again: Bool) -> {typ} {{\n    var value: {typ} = {typ}();\n    while (again) {{ value = {typ}(); }}\n    return value;\n}}\n"
+        );
+        std::fs::write(directory.join("r6/scripts/authored.script"), source).unwrap();
+        let result = validator.validate_with_root(&directory, &root);
+        println!("{typ}: {}\n{result:?}", directory.display());
+        result.unwrap();
+        let bytes = std::fs::read(directory.join("r6/cache/final.redscripts")).unwrap();
+        let code = official_function_code(&bytes, "OfficialZeroArgument");
+        println!("{typ}: {code:?}");
+        std::fs::write(directory.join("probe-bytecode.txt"), format!("{code:#?}")).unwrap();
+        assert_eq!(
+            code.iter().filter(|op| matches!(op, Instr::Assign)).count(),
+            2,
+            "{code:?}"
+        );
+        assert_eq!(
+            code.iter()
+                .filter(|op| matches!(op, Instr::Construct { arg_count: 0, .. }))
+                .count(),
+            2,
+            "{code:?}"
+        );
+        assert!(
+            code.windows(3)
+                .filter(|ops| matches!(ops[0], Instr::Assign))
+                .all(|ops| matches!(
+                    (&ops[1], &ops[2]),
+                    (Instr::Local(_), Instr::Construct { arg_count: 0, .. })
+                )),
+            "{code:?}"
+        );
+        assert!(
+            code.iter()
+                .any(|op| matches!(op, Instr::Jump(jump) if i32::from(jump.target()) < 0)),
+            "{code:?}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]
 fn raw_inline_local_initializers_compile_with_official_compiler() {
     let executable = PathBuf::from(std::env::var_os("REDMOD_EXE").expect("set REDMOD_EXE"));
     let game_root =
