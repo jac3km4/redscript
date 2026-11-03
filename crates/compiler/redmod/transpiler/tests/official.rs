@@ -137,7 +137,8 @@ fn authored_transpiled_sources_compile_with_official_compiler() {
         }
         let inspected = matches!(
             *name,
-            "StructFieldPlaces"
+            "IndexedBorrow"
+                | "StructFieldPlaces"
                 | "ScriptFieldBorrow"
                 | "IndexedFieldReads"
                 | "FieldArrayIndex"
@@ -147,6 +148,42 @@ fn authored_transpiled_sources_compile_with_official_compiler() {
             let bytes =
                 std::fs::read(published.directory.join("r6/cache/final.redscripts")).unwrap();
             match *name {
+                "IndexedBorrow" => {
+                    use redscript_io::{Instr, InvokeFlags};
+                    let code = official_function_code(&bytes, "OfficialIndexedBorrow");
+                    assert_eq!(
+                        code.iter()
+                            .filter(|op| matches!(op, Instr::ArrayElement(_)))
+                            .count(),
+                        1,
+                        "{code:?}"
+                    );
+                    assert_eq!(
+                        code.iter()
+                            .filter(|op| matches!(op, Instr::AsRef(_)))
+                            .count(),
+                        1,
+                        "{code:?}"
+                    );
+                    assert_eq!(
+                        code.iter()
+                            .filter(|op| matches!(op, Instr::InvokeStatic { .. }))
+                            .count(),
+                        2,
+                        "{code:?}"
+                    );
+                    for op in &code {
+                        if let Instr::InvokeStatic { flags, .. } = op {
+                            assert_eq!(*flags, InvokeFlags::default(), "{code:?}");
+                        }
+                    }
+                    assert!(
+                        !code
+                            .iter()
+                            .any(|op| matches!(op, Instr::Assign | Instr::Local(_))),
+                        "{code:?}"
+                    );
+                }
                 "StructFieldPlaces" => {
                     let code = official_function_code(&bytes, "OfficialStructPlaces");
                     assert_eq!(
@@ -546,6 +583,16 @@ fn official_function_code(bytes: &[u8], name: &str) -> Vec<redscript_io::Instr> 
 }
 
 const FIXTURES: &[(&str, &str)] = &[
+    (
+        "IndexedBorrow",
+        r#"struct OfficialIndexedValue { public let count: Int32; }
+class OfficialIndexedBorrowOwner { public let values: [OfficialIndexedValue]; }
+func OfficialIndexedSet(value: script_ref<OfficialIndexedValue>) { Deref(value).count = 42; }
+func OfficialBorrowIndex(out index: Int32) -> Int32 { index = 1; return 0; }
+func OfficialIndexedBorrow(owner: ref<OfficialIndexedBorrowOwner>, index: Int32) {
+    OfficialIndexedSet(owner.values[OfficialBorrowIndex(index)]);
+}"#,
+    ),
     (
         "StructFieldPlaces",
         r#"struct OfficialPlaceInner { public let count: Int32; }

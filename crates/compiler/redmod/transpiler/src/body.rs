@@ -942,7 +942,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
     }
 
     fn borrow_place(&self, e: &ir::Expr<'ctx>) -> bool {
-        matches!(e, ir::Expr::Field { .. })
+        matches!(e, ir::Expr::Field { .. } | ir::Expr::Index { .. })
             && crate::field_reads::variable_rooted(e, self.symbols)
             && !e.is_prvalue(self.symbols)
     }

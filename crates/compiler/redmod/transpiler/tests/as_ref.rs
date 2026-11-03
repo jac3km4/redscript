@@ -35,6 +35,20 @@ fn scripted_field_borrows_keep_overload_and_place_guards() {
     }
 }
 
+#[test]
+fn scripted_index_borrows_keep_their_argument_site() {
+    let source = "struct Value { public let count: Int32; } class Owner { public let values: [Value]; } func Borrow(value: script_ref<Value>) {} func Index(out i: Int32) -> Int32 { i = 1; return 0; } func Test(owner: ref<Owner>, i: Int32) { Borrow(owner.values[Index(i)]); }";
+    let text = emit(source).unwrap();
+    assert!(text.contains("Borrow(owner.values[Index(i)]);"), "{text}");
+    let competing = source
+        .replace("func Test(", "func Borrow(value: Value) {} func Test(")
+        .replace(
+            "Borrow(owner.values[Index(i)])",
+            "Borrow(AsRef(owner.values[Index(i)]))",
+        );
+    assert!(emit(&competing).is_err());
+}
+
 const SOURCE: &str = r#"
 struct BorrowedValue { public let number: Int32; }
 class TextOwner { public let text: String; public let number: Int32; public let value: BorrowedValue; }

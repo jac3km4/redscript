@@ -51,11 +51,13 @@ restricted to String. Nonlocal `AsRef` in returns, reference initializers,
 assignments, standalone expressions, non-native temporary borrows, ambiguous overloads,
 `out` arguments and nested context-free conversions remains rejected.
 
-Stable variable-rooted fields may also be borrowed at an exact non-`out`
+Stable variable-rooted fields and array elements may also be borrowed at an exact non-`out`
 scripted parameter. They retain place identity rather than needing invocation-owned
 temporary storage. Competing overloads still block erasure, and call-rooted fields
 remain outside this scripted-borrow path. The official `ScriptFieldBorrow` probe
 checks `AsRef` and direct field access without synthesized locals or assignments.
+The `IndexedBorrow` probe additionally checks direct `AsRef`/`ArrayElement`, zero
+temporary flags and a single call to a side-effecting index function.
 
 ## Validation and evidence
 
