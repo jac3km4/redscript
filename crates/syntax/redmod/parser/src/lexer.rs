@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::fmt;
 
+use chumsky::container::Container;
 use chumsky::input::InputRef;
 use chumsky::prelude::*;
 
@@ -144,17 +145,78 @@ pub fn lex<'src>(
     let lf = text::newline().to(Token::LineFeed);
     let ws = text::inline_whitespace().at_least(1).to(Token::Whitespace);
 
-    choice((lf, ws, comment, str, num, word, symbol()))
-        .recover_with(skip_then_retry_until(any().ignored(), end()))
-        .map_with(|tok, e| (tok, e.span()))
-        .repeated()
-        .collect::<Vec<_>>()
-        .map(move |mut toks| {
-            if !keep_lf_and_comments {
-                toks.retain(|(tok, _)| !tok.is_ws_or_comment());
+    // Dispatch and fallback share these branches. Erase their types to avoid
+    // duplicating large combinator trees in optimized builds.
+    let lf = lf.boxed();
+    let ws = ws.boxed();
+    let comment = comment.boxed();
+    let str = str.boxed();
+    let num = num.boxed();
+    let word = word.boxed();
+    let symbol = symbol().boxed();
+    let fallback = choice((
+        lf.clone(),
+        ws.clone(),
+        comment.clone(),
+        str.clone(),
+        num.clone(),
+        word.clone(),
+        symbol.clone(),
+    ));
+    let retry = fallback.clone();
+
+    custom(move |inp| {
+        let before = inp.save();
+        let first = inp.next();
+        let second = inp.peek();
+        inp.rewind(before);
+        match first {
+            Some('\n' | '\r' | '\x0b' | '\x0c' | '\u{0085}' | '\u{2028}' | '\u{2029}') => {
+                inp.parse(lf.clone())
             }
-            toks
-        })
+            Some(' ' | '\t') => inp.parse(ws.clone()),
+            Some('/') if matches!(second, Some('/' | '*')) => inp.parse(comment.clone()),
+            Some('"' | '\'') => inp.parse(str.clone()),
+            // Unsupported community prefixes must still reach literal validation.
+            Some('n' | 'R' | 'T' | 's' | 'r' | 't') if second == Some('"') => {
+                inp.parse(str.clone())
+            }
+            Some('0'..='9') => inp.parse(num.clone()),
+            Some('.') if second.is_some_and(|c| c.is_ascii_digit()) => inp.parse(num.clone()),
+            Some('a'..='z' | 'A'..='Z' | '_') => inp.parse(word.clone()),
+            Some(c) if c.is_ascii_punctuation() => inp.parse(symbol.clone()),
+            _ => inp.parse(fallback.clone()),
+        }
+    })
+    // Preserve lexical alternatives and diagnostics when a specialized branch fails.
+    .or(retry)
+    .recover_with(skip_then_retry_until(any().ignored(), end()))
+    .map_with(move |tok, e| {
+        if !keep_lf_and_comments && tok.is_ws_or_comment() {
+            None
+        } else {
+            Some((tok, e.span()))
+        }
+    })
+    .repeated()
+    .collect::<TokenCollector<_>>()
+    .map(|toks| toks.0)
+}
+
+struct TokenCollector<T>(Vec<T>);
+
+impl<T> Default for TokenCollector<T> {
+    fn default() -> Self {
+        Self(Vec::new())
+    }
+}
+
+impl<T> Container<Option<T>> for TokenCollector<T> {
+    fn push(&mut self, item: Option<T>) {
+        if let Some(item) = item {
+            self.0.push(item);
+        }
+    }
 }
 
 fn string_end<'src>(delimiter: char) -> impl Parser<'src, &'src str, char, LexExtra<'src>> + Clone {
@@ -412,6 +474,67 @@ mod tests {
         let (tokens, errors) = lex(false).parse(src).into_output_errors();
         assert!(errors.is_empty(), "{errors:?}");
         tokens.unwrap()
+    }
+
+    #[test]
+    fn dispatch_distinguishes_leading_decimal_points_from_punctuation() {
+        assert_eq!(
+            tokens(".5 .25f .125d 1..2 .. .")
+                .into_iter()
+                .map(|(token, _)| token)
+                .collect::<Vec<_>>(),
+            vec![
+                Token::Float(0.5),
+                Token::Float(0.25),
+                Token::Double(0.125),
+                Token::Int(1),
+                Token::Period,
+                Token::Float(0.2),
+                Token::Period,
+                Token::Period,
+                Token::Period,
+            ]
+        );
+    }
+
+    #[test]
+    fn dispatch_keeps_unquoted_literal_prefixes_as_identifiers() {
+        assert_eq!(
+            tokens("n R T s r t name Resource Tweak")
+                .into_iter()
+                .map(|(token, _)| token)
+                .collect::<Vec<_>>(),
+            ["n", "R", "T", "s", "r", "t", "name", "Resource", "Tweak"].map(Token::Ident)
+        );
+    }
+
+    #[test]
+    fn significant_collection_preserves_docs_spans_and_diagnostics() {
+        for src in [
+            " \t\u{a0}\u{2003}\r\n/// doc\nNULL /* outer /* nested */ */ + .5 // end\n",
+            r#"n"Name" R"path" T"id" 'Name' s"unsupported" r"lowercase" t"lowercase""#,
+            "// ordinary\n//// ordinary\n/// retained\n# NULL",
+            " /* unterminated",
+            "T\"unterminated",
+        ] {
+            let (all, all_errors) = lex(true).parse(src).into_output_errors();
+            let (significant, errors) = lex(false).parse(src).into_output_errors();
+            assert_eq!(
+                significant,
+                all.map(|tokens| tokens
+                    .into_iter()
+                    .filter(|(token, _)| !token.is_ws_or_comment())
+                    .collect::<Vec<_>>()),
+                "{src:?}"
+            );
+            let diagnostics = |errors: Vec<Rich<'_, char>>| {
+                errors
+                    .into_iter()
+                    .map(|e| (e.to_string(), *e.span()))
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(diagnostics(errors), diagnostics(all_errors), "{src:?}");
+        }
     }
 
     #[test]

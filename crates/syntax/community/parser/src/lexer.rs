@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::{fmt, ops};
 
+use chumsky::container::Container;
 use chumsky::input::InputRef;
 use chumsky::prelude::*;
 
@@ -128,18 +129,79 @@ pub fn lex<'src>(
         let lf = text::newline().to(Token::LineFeed);
         let ws = text::inline_whitespace().at_least(1).to(Token::Whitespace);
 
-        choice((lf, ws, comment, str, interp_str(this), num, word, symbol()))
-            .recover_with(skip_then_retry_until(any().ignored(), end()))
-            .map_with(|tok, e| (tok, e.span()))
-            .repeated()
-            .collect::<Vec<_>>()
-            .map(move |mut toks| {
-                if !keep_lf_and_comments {
-                    toks.retain(|(tok, _)| !tok.is_ws_or_comment());
+        // Dispatch and fallback share these branches. Erase their types to avoid
+        // duplicating large combinator trees in optimized builds.
+        let lf = lf.boxed();
+        let ws = ws.boxed();
+        let comment = comment.boxed();
+        let str = str.boxed();
+        let interp = interp_str(this).boxed();
+        let num = num.boxed();
+        let word = word.boxed();
+        let symbol = symbol().boxed();
+        let fallback = choice((
+            lf.clone(),
+            ws.clone(),
+            comment.clone(),
+            str.clone(),
+            interp.clone(),
+            num.clone(),
+            word.clone(),
+            symbol.clone(),
+        ));
+        let retry = fallback.clone();
+
+        custom(move |inp| {
+            let before = inp.save();
+            let first = inp.next();
+            let second = inp.peek();
+            inp.rewind(before);
+            match first {
+                Some('\n' | '\r' | '\x0b' | '\x0c' | '\u{0085}' | '\u{2028}' | '\u{2029}') => {
+                    inp.parse(lf.clone())
                 }
-                toks
-            })
+                Some(' ' | '\t') => inp.parse(ws.clone()),
+                Some('/') if matches!(second, Some('/' | '*')) => inp.parse(comment.clone()),
+                Some('"') => inp.parse(str.clone()),
+                Some('n' | 'r' | 't') if second == Some('"') => inp.parse(str.clone()),
+                Some('s') if second == Some('"') => inp.parse(interp.clone()),
+                Some('0'..='9') => inp.parse(num.clone()),
+                Some('a'..='z' | 'A'..='Z' | '_') => inp.parse(word.clone()),
+                Some(c) if c.is_ascii_punctuation() => inp.parse(symbol.clone()),
+                _ => inp.parse(fallback.clone()),
+            }
+        })
+        // Malformed literals can fall back to another tokenization, e.g. an
+        // identifier followed by an ordinary string for an incomplete `s"...`.
+        .or(retry)
+        .recover_with(skip_then_retry_until(any().ignored(), end()))
+        .map_with(move |tok, e| {
+            if !keep_lf_and_comments && tok.is_ws_or_comment() {
+                None
+            } else {
+                Some((tok, e.span()))
+            }
+        })
+        .repeated()
+        .collect::<TokenCollector<_>>()
+        .map(|toks| toks.0)
     })
+}
+
+struct TokenCollector<T>(Vec<T>);
+
+impl<T> Default for TokenCollector<T> {
+    fn default() -> Self {
+        Self(Vec::new())
+    }
+}
+
+impl<T> Container<Option<T>> for TokenCollector<T> {
+    fn push(&mut self, item: Option<T>) {
+        if let Some(item) = item {
+            self.0.push(item);
+        }
+    }
 }
 
 fn string_end<'src>() -> impl Parser<'src, &'src str, char, LexExtra<'src>> + Clone {
@@ -696,6 +758,59 @@ mod tests {
             let (expr, errors) = crate::parse_expr(&src, file);
             assert!(errors.is_empty(), "{src:?}: {errors:?}");
             assert!(expr.is_some(), "{src:?}");
+        }
+    }
+
+    #[test]
+    fn incomplete_interpolations_fall_back_to_identifier_and_string() {
+        let file = FileId::from_i32(7);
+        for (src, content) in [(r#"s"\("#, "("), (r#"s"a \(foo"#, "a (foo")] {
+            for keep_comments in [false, true] {
+                let (tokens, errors) = if keep_comments {
+                    crate::lex_with_lf_and_comments(src, file)
+                } else {
+                    crate::lex(src, file)
+                };
+                let end = src.len() as u32;
+                assert_eq!(
+                    tokens.unwrap(),
+                    vec![
+                        (Token::Ident("s"), Span::new(0, 1, file)),
+                        (Token::Str(content.into()), Span::new(1, end, file)),
+                    ],
+                    "{src:?}"
+                );
+                let escape = src.find('(').unwrap() as u32;
+                assert_eq!(errors.len(), 2, "{src:?}: {errors:?}");
+                assert!(matches!(&errors[0], crate::Error::Lex(message, span)
+                    if message.starts_with("invalid escape")
+                        && *span == Span::new(escape, escape + 1, file)));
+                assert!(matches!(&errors[1], crate::Error::Lex(message, span)
+                    if message.starts_with("unterminated string literal")
+                        && *span == Span::new(end, end, file)));
+            }
+        }
+    }
+
+    #[test]
+    fn collecting_significant_tokens_preserves_docs_spans_and_errors() {
+        let file = FileId::from_i32(7);
+        for src in [
+            " \t\u{a0}\u{2003}\r\n/// doc\nfoo /* outer /* nested */ */ + 42 // end\n",
+            r#"n"name" r"res" t"id" s"value: \(foo+1)""#,
+            "// ordinary\n//// also ordinary\n/// retained\n# foo",
+            " \t/* unterminated",
+        ] {
+            let (all, all_errors) = crate::lex_with_lf_and_comments(src, file);
+            let (significant, errors) = crate::lex(src, file);
+            let expected = all.map(|tokens| {
+                tokens
+                    .into_iter()
+                    .filter(|(token, _)| !token.is_ws_or_comment())
+                    .collect::<Vec<_>>()
+            });
+            assert_eq!(significant, expected, "{src:?}");
+            assert_eq!(format!("{errors:?}"), format!("{all_errors:?}"), "{src:?}");
         }
     }
 
