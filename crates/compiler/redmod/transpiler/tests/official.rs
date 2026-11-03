@@ -401,6 +401,18 @@ fn literal_pool_reader_decodes_relative_offsets() {
 
 const FIXTURES: &[(&str, &str)] = &[
     (
+        "FieldArraySize",
+        r#"class OfficialArrayOwner {
+    public let values: [Int32];
+    public let child: ref<OfficialArrayOwner>;
+    public func Next() -> ref<OfficialArrayOwner> { return this.child; }
+}
+func OfficialFieldArraySize(owner: ref<OfficialArrayOwner>, enabled: Bool) -> Int32 {
+    if enabled { return ArraySize(owner.child.values); }
+    return ArraySize(owner.values);
+}"#,
+    ),
+    (
         "WeakFieldReads",
         r#"class OfficialWeakFieldOwner {
     public let handle: wref<OfficialWeakFieldOwner>;

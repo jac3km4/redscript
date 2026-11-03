@@ -34,7 +34,7 @@ pub(crate) fn inline_receiver<'ctx>(
 
 // v1.2.2 requires a variable parent scope for StructField. A class handle
 // returned by a call can be read, but does not make its struct fields places.
-fn variable_rooted(expr: &ir::Expr<'_>, symbols: &Symbols<'_>) -> bool {
+pub(crate) fn variable_rooted(expr: &ir::Expr<'_>, symbols: &Symbols<'_>) -> bool {
     match expr {
         ir::Expr::Local(..) => true,
         ir::Expr::Field { receiver, .. } => variable_rooted(receiver, symbols),

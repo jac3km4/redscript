@@ -1,0 +1,19 @@
+---
+source: crates/compiler/redmod/transpiler/tests/official.rs
+expression: source.module.text
+---
+class OfficialArrayOwner extends IScriptable {
+    public var values: array<Int32>;
+    public var child: OfficialArrayOwner;
+
+    public function Next() -> OfficialArrayOwner {
+        return this.child;
+    }
+}
+
+function OfficialFieldArraySize(owner: OfficialArrayOwner, enabled: Bool) -> Int32 {
+    if (enabled) {
+        return owner.child.values.Size();
+    }
+    return owner.values.Size();
+}

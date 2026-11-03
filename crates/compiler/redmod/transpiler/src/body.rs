@@ -1527,15 +1527,19 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         };
         let method = |name: &str| -> Result<String> {
             let recv = unary()?;
-            if !Self::simple_place(recv) {
+            if !Self::simple_place(recv)
+                && !(intrinsic == I::ArraySize
+                    && matches!(recv, ir::Expr::Field { .. })
+                    && crate::field_reads::variable_rooted(recv, self.symbols))
+            {
                 return Err(error(
-                    "array operations require a local array",
+                    "this array operation requires a local array",
                     Some(recv.span()),
                 ));
             }
             Ok(format!(
                 "{}.{}({})",
-                self.expr(recv)?,
+                self.expr_at(recv, 14)?,
                 name,
                 self.args(&args[1..])?
             ))

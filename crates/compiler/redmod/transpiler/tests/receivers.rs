@@ -126,6 +126,20 @@ fn compound_receivers_stay_at_their_expression_sites() {
 }
 
 #[test]
+fn array_size_still_requires_a_variable_root() {
+    let errors = emit(
+        "class ArrayOwner { public let values: [Int32]; } func Make() -> ref<ArrayOwner> { return new ArrayOwner(); } func Test() -> Int32 { return ArraySize(Make().values); }",
+    )
+    .unwrap_err();
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.message.contains("requires a local array")),
+        "{errors:?}"
+    );
+}
+
+#[test]
 fn struct_places_remain_rejected() {
     let structure = "struct Value { public let count: Int32; public static func Bump(self: script_ref<Value>) {} } class Holder { public let value: Value; }";
     for source in [
