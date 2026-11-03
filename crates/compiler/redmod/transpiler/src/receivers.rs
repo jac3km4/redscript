@@ -10,6 +10,17 @@ pub(crate) fn inline_class_receiver<'ctx>(
     typ: &Type<'ctx>,
     symbols: &Symbols<'ctx>,
 ) -> bool {
+    class_handle(typ, symbols)
+        && matches!(
+            expr,
+            ir::Expr::Call { .. }
+                | ir::Expr::Field { .. }
+                | ir::Expr::Conditional { .. }
+                | ir::Expr::DynCast { .. }
+        )
+}
+
+pub(crate) fn class_handle<'ctx>(typ: &Type<'ctx>, symbols: &Symbols<'ctx>) -> bool {
     if typ.ref_type() == Some(RefType::Script) {
         return false;
     }
@@ -27,11 +38,4 @@ pub(crate) fn inline_class_receiver<'ctx>(
                     && !agg.flags().is_never_ref()
                     && !agg.flags().is_mixed_ref()
             })
-        && matches!(
-            expr,
-            ir::Expr::Call { .. }
-                | ir::Expr::Field { .. }
-                | ir::Expr::Conditional { .. }
-                | ir::Expr::DynCast { .. }
-        )
 }

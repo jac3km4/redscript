@@ -858,8 +858,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 !script_deref
                     && (Self::simple_place(receiver)
                         || crate::receivers::inline_class_receiver(receiver, &typ, self.symbols))
-                    && typ.ref_type() != Some(RefType::Script)
-                    && matches!(typ.unwrap_ref_or_self(), Type::Data(app) if self.symbols.get_type(app.id()).and_then(|d| d.schema().as_aggregate()).is_some_and(|a| !a.flags().is_struct() && !a.flags().is_never_ref() && !a.flags().is_mixed_ref()))
+                    && crate::receivers::class_handle(&typ, self.symbols)
             }
             _ => false,
         })
