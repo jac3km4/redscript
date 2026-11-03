@@ -764,7 +764,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             ir::Expr::Assign { place, expr, .. } => {
                 if !self.place(place)? {
                     return Err(error(
-                        "assignment needs a local, a class local's field, or a local array's element",
+                        "assignment needs a local, a class-handle field, or a local array's element",
                         Some(e.span()),
                     ));
                 }
@@ -860,7 +860,8 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             ir::Expr::Index { array, .. } => Self::simple_place(array),
             ir::Expr::Field { receiver, .. } => {
                 let typ = self.type_of(receiver)?;
-                Self::simple_place(receiver)
+                (Self::simple_place(receiver)
+                    || crate::receivers::inline_class_receiver(receiver, &typ, self.symbols))
                     && typ.ref_type() != Some(RefType::Script)
                     && matches!(typ.unwrap_ref_or_self(), Type::Data(app) if self.symbols.get_type(app.id()).and_then(|d| d.schema().as_aggregate()).is_some_and(|a| !a.flags().is_struct() && !a.flags().is_never_ref() && !a.flags().is_mixed_ref()))
             }

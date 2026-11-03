@@ -1,0 +1,13 @@
+---
+source: crates/compiler/redmod/transpiler/tests/official.rs
+expression: source.module.text
+---
+class OfficialNestedOwner extends IScriptable {
+    public var child: OfficialNestedOwner;
+    public var count: Int32;
+}
+
+function OfficialNestedAssign(owner: OfficialNestedOwner, handle: wref<OfficialNestedOwner>) -> Void {
+    owner.child.count = 42;
+    handle.child.count = 43;
+}
