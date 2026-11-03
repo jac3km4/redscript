@@ -682,13 +682,8 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     ast::BinOp::from_name(&name)
                 }
                 Some(ir::Intrinsic::IsDefined) => {
-                    // Validate the supported reference type before spelling the inverse.
-                    self.expr(expr)?;
                     if let [arg] = &args[..] {
-                        return Ok(format!(
-                            "{} == NULL",
-                            self.expr_at(arg, binary_precedence(ast::BinOp::Eq))?
-                        ));
+                        return self.is_defined(arg, true);
                     }
                     None
                 }
@@ -1401,6 +1396,39 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         }
     }
 
+    fn is_defined(&self, arg: &ir::Expr<'ctx>, negated: bool) -> Result<String> {
+        let typ = self.type_of(arg)?;
+        let Type::Data(app) = typ.unwrap_ref_or_self() else {
+            return Err(error("unresolved IsDefined operand", None));
+        };
+        if !self
+            .symbols
+            .get_type(app.id())
+            .and_then(|d| d.schema().as_aggregate())
+            .is_some_and(|a| !a.flags().is_struct() && !a.flags().is_never_ref())
+        {
+            return Err(error("IsDefined requires a class reference", None));
+        }
+        // Testing a weak handle needs no strong temporary. Only remove the
+        // immediate promotion: inner conversions still retain their lifetimes.
+        let operand = if let ir::Expr::Call { call, .. } = arg
+            && let ir::Call::FreeFunction { function, args, .. } = &**call
+            && self.symbols[*function].intrinsic() == Some(ir::Intrinsic::WeakRefToRef)
+            && let [operand] = &args[..]
+            && self.type_of(operand)?.ref_type() == Some(RefType::Weak)
+            && self.type_of(operand)?.unwrap_ref_or_self() == typ.unwrap_ref_or_self()
+        {
+            operand
+        } else {
+            arg
+        };
+        let op = if negated { "==" } else { "!=" };
+        Ok(format!(
+            "{} {op} NULL",
+            self.expr_at(operand, binary_precedence(ast::BinOp::Ne))?
+        ))
+    }
+
     fn intrinsic(
         &self,
         intrinsic: ir::Intrinsic,
@@ -1477,26 +1505,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     None,
                 ))
             }
-            I::IsDefined => {
-                let typ = self.type_of(unary()?)?;
-                let inner = typ.unwrap_ref_or_self();
-                let Type::Data(app) = inner else {
-                    return Err(error("unresolved IsDefined operand", None));
-                };
-                if self
-                    .symbols
-                    .get_type(app.id())
-                    .and_then(|d| d.schema().as_aggregate())
-                    .is_some_and(|a| !a.flags().is_struct() && !a.flags().is_never_ref())
-                {
-                    Ok(format!(
-                        "{} != NULL",
-                        self.expr_at(unary()?, binary_precedence(ast::BinOp::Ne))?
-                    ))
-                } else {
-                    Err(error("IsDefined requires a class reference", None))
-                }
-            }
+            I::IsDefined => self.is_defined(unary()?, false),
             I::ToString => {
                 let typ = self.type_of(unary()?)?;
                 let Type::Data(app) = &typ else {

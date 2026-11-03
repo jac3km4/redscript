@@ -231,7 +231,8 @@ fn context_free_nested_and_branch_conversions_fail_closed() {
         "let w: wref<Value> = RefToWeakRef(WeakRefToRef(weak));",
         "let s: ref<Value> = WeakRefToRef(RefToWeakRef(strong));",
         "let s: ref<Value> = enabled ? WeakRefToRef(weak) : strong;",
-        "let s: ref<Value> = WeakRefToRef(weak); IsDefined(WeakRefToRef(weak));",
+        "IsDefined(WeakRefToRef(RefToWeakRef(strong)));",
+        "IsDefined(RefToWeakRef(strong));",
     ] {
         let source = format!(
             "class Value {{}} func Test(strong: ref<Value>, weak: wref<Value>, enabled: Bool) {{ {body} }}"
@@ -245,6 +246,30 @@ fn context_free_nested_and_branch_conversions_fail_closed() {
         );
         assert!(errors.iter().all(|e| e.span.is_some()), "{errors:?}");
     }
+}
+
+#[test]
+fn is_defined_checks_weak_handles_without_promoting_them() {
+    let text = emit(
+        r#"
+        class Value { public let weak: wref<Value>; }
+        native func OperatorLogicNot(value: Bool) -> Bool
+        func GetWeak(values: [Int32]) -> wref<Value> { return null; }
+        func Test(weak: wref<Value>, owner: ref<Value>) -> Bool {
+            IsDefined(weak);
+            IsDefined(WeakRefToRef(weak));
+            IsDefined(owner.weak);
+            while IsDefined(GetWeak([1])) { continue; }
+            return !IsDefined(WeakRefToRef(owner.weak));
+        }
+    "#,
+    )
+    .unwrap();
+    assert_eq!(text.matches("weak != NULL;").count(), 3, "{text}");
+    assert!(text.contains("GetWeak("), "{text}");
+    assert!(text.contains(") == NULL)"), "{text}");
+    assert!(text.contains("owner.weak != NULL"), "{text}");
+    assert!(!text.contains("WeakRefToRef"), "{text}");
 }
 
 #[test]

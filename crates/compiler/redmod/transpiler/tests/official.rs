@@ -401,6 +401,18 @@ fn literal_pool_reader_decodes_relative_offsets() {
 
 const FIXTURES: &[(&str, &str)] = &[
     (
+        "WeakIsDefined",
+        r#"class OfficialWeakOwner { public let handle: wref<OfficialWeakOwner>; }
+func OfficialGetWeak(values: [Int32]) -> wref<OfficialWeakOwner> { return null; }
+func OfficialWeakIsDefined(handle: wref<OfficialWeakOwner>, owner: ref<OfficialWeakOwner>) -> Bool {
+    IsDefined(handle);
+    IsDefined(WeakRefToRef(handle));
+    IsDefined(owner.handle);
+    while IsDefined(OfficialGetWeak([1])) { continue; }
+    return !IsDefined(WeakRefToRef(owner.handle));
+}"#,
+    ),
+    (
         "Literals",
         r#"public func OfficialTranspilePath() -> String = "assets\\widgets\\button";
 public func OfficialTranspileTrailingSlash() -> String = "assets\\";
@@ -431,7 +443,7 @@ fn authored_transpiled_sources() -> Vec<redscript_redmod_transpiler::TranspiledS
     // Analysis-only: the official compiler already knows the native operator.
     sources.push_back(
         "operators.reds",
-        "native func OperatorAdd(a: Int32, b: Int32) -> Int32;\nnative func OperatorNeg(value: Float) -> Float;\n",
+        "native func OperatorAdd(a: Int32, b: Int32) -> Int32;\nnative func OperatorNeg(value: Float) -> Float;\nnative func OperatorLogicNot(value: Bool) -> Bool;\n",
     );
     let selected: Vec<_> = FIXTURES
         .iter()

@@ -69,6 +69,9 @@ locals followed by invalid bare returns. Void and other community callback resul
 contracts fail with a source diagnostic rather than silently changing their ABI.
 Calls relying on callback results remain rejected.
 Every intrinsic is classified explicitly rather than emitted as an ordinary call.
+Reference `IsDefined` tests accept an immediate weak-to-strong promotion without
+emitting a strong temporary: the weak handle is compared directly with `NULL`,
+including generated negated guards. Nested conversion chains remain rejected.
 
 ### Compound method receivers
 

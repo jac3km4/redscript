@@ -1,0 +1,27 @@
+---
+source: crates/compiler/redmod/transpiler/tests/official.rs
+expression: source.module.text
+---
+class OfficialWeakOwner extends IScriptable {
+    public var handle: wref<OfficialWeakOwner>;
+}
+
+function OfficialGetWeak(values: array<Int32>) -> wref<OfficialWeakOwner> {
+    return NULL;
+}
+
+function OfficialWeakIsDefined(handle: wref<OfficialWeakOwner>, owner: OfficialWeakOwner) -> Bool {
+    var arrayLiteral: array<Int32>;
+    handle != NULL;
+    handle != NULL;
+    owner.handle != NULL;
+    while (true) {
+        arrayLiteral.Resize(1);
+        arrayLiteral[0] = 1;
+        if (OfficialGetWeak(arrayLiteral) == NULL) {
+            break;
+        }
+        continue;
+    }
+    return !(owner.handle != NULL);
+}
