@@ -1,0 +1,22 @@
+---
+source: crates/compiler/redmod/transpiler/tests/official.rs
+expression: source.module.text
+---
+class OfficialIndexedReceiver extends IScriptable {
+    public var objects: array<OfficialIndexedReceiver>;
+    public var weakObjects: array<wref<OfficialIndexedReceiver>>;
+
+    public function Read(value: Int32) -> Int32 {
+        return value;
+    }
+}
+
+function OfficialReceiverIndex(out index: Int32) -> Int32 {
+    index = 1;
+    return 0;
+}
+
+function OfficialIndexedMethod(owner: OfficialIndexedReceiver, index: Int32) -> Int32 {
+    owner.objects[OfficialReceiverIndex(index)].Read(42);
+    return owner.weakObjects[index].Read(43);
+}

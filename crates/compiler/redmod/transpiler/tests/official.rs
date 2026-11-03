@@ -137,7 +137,8 @@ fn authored_transpiled_sources_compile_with_official_compiler() {
         }
         let inspected = matches!(
             *name,
-            "ScriptTemporaryBorrow"
+            "IndexedMethodReceivers"
+                | "ScriptTemporaryBorrow"
                 | "IndexedBorrow"
                 | "StructFieldPlaces"
                 | "ScriptFieldBorrow"
@@ -149,6 +150,44 @@ fn authored_transpiled_sources_compile_with_official_compiler() {
             let bytes =
                 std::fs::read(published.directory.join("r6/cache/final.redscripts")).unwrap();
             match *name {
+                "IndexedMethodReceivers" => {
+                    use redscript_io::Instr;
+                    let code = official_function_code(&bytes, "OfficialIndexedMethod");
+                    assert_eq!(
+                        code.iter()
+                            .filter(|op| matches!(op, Instr::ArrayElement(_)))
+                            .count(),
+                        2,
+                        "{code:?}"
+                    );
+                    assert_eq!(
+                        code.iter()
+                            .filter(|op| matches!(op, Instr::WeakRefToRef))
+                            .count(),
+                        1,
+                        "{code:?}"
+                    );
+                    assert_eq!(
+                        code.iter()
+                            .filter(|op| matches!(op, Instr::InvokeStatic { .. }))
+                            .count(),
+                        3,
+                        "{code:?}"
+                    );
+                    assert_eq!(
+                        code.iter()
+                            .filter(|op| matches!(op, Instr::InvokeVirtual { .. }))
+                            .count(),
+                        0,
+                        "{code:?}"
+                    );
+                    assert!(
+                        !code
+                            .iter()
+                            .any(|op| matches!(op, Instr::Assign | Instr::Local(_))),
+                        "{code:?}"
+                    );
+                }
                 "ScriptTemporaryBorrow" => {
                     use redscript_io::{Instr, InvokeFlags};
                     let code = official_function_code(&bytes, "OfficialTemporaryProbe");
@@ -615,6 +654,19 @@ fn official_function_code(bytes: &[u8], name: &str) -> Vec<redscript_io::Instr> 
 }
 
 const FIXTURES: &[(&str, &str)] = &[
+    (
+        "IndexedMethodReceivers",
+        r#"class OfficialIndexedReceiver {
+    public let objects: [ref<OfficialIndexedReceiver>];
+    public let weakObjects: [wref<OfficialIndexedReceiver>];
+    public func Read(value: Int32) -> Int32 { return value; }
+}
+func OfficialReceiverIndex(out index: Int32) -> Int32 { index = 1; return 0; }
+func OfficialIndexedMethod(owner: ref<OfficialIndexedReceiver>, index: Int32) -> Int32 {
+    owner.objects[OfficialReceiverIndex(index)].Read(42);
+    return owner.weakObjects[index].Read(43);
+}"#,
+    ),
     (
         "ScriptTemporaryBorrow",
         r#"struct OfficialTemporaryValue { public let count: Int32; }

@@ -124,10 +124,6 @@ fn temporary_structs_and_nonlocal_reference_escapes_remain_rejected() {
             "out arguments require a local variable or a writable field",
         ),
         (
-            "MakeValue().Bump();",
-            "AsRef requires a local variable here",
-        ),
-        (
             "ArrayPush(owner.values, true);",
             "this array operation requires a local array",
         ),

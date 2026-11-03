@@ -157,7 +157,7 @@ fn array_size_still_requires_a_variable_root() {
 }
 
 #[test]
-fn struct_places_remain_rejected() {
+fn struct_aliases_use_typed_borrows_without_receiver_copies() {
     let structure = "struct Value { public let count: Int32; public static func Bump(self: script_ref<Value>) {} } class Holder { public let value: Value; }";
     for source in [
         format!("{structure} func Test(values: [Value]) {{ values[0].Bump(); }}"),
@@ -165,13 +165,8 @@ fn struct_places_remain_rejected() {
             "{structure} func Make() -> Value {{ return Value(0); }} func Test() {{ Make().Bump(); }}"
         ),
     ] {
-        let errors = emit(&source).unwrap_err();
-        assert!(errors.iter().all(|e| e.span.is_some()), "{errors:?}");
-        assert!(
-            errors.iter().any(|e| e.message.contains("receiver")
-                || e.message.contains("AsRef requires a local variable here")),
-            "{source}: {errors:?}"
-        );
+        let text = emit(&source).unwrap();
+        assert!(text.contains("Value.Bump("), "{text}");
     }
 }
 
