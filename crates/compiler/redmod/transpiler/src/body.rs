@@ -675,7 +675,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                         self.expr(expr)?;
                         return self.expr(arg);
                     }
-                    ast::BinOp::from_name(&name)
+                    None
                 }
                 Some(ir::Intrinsic::IsDefined) => {
                     if let [arg] = &args[..] {
@@ -694,15 +694,13 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 } else {
                     ast::BinOp::Eq
                 };
-                if def.intrinsic().is_none() {
-                    return self.binary_call(inverse, def.type_(), call);
-                }
                 self.expr(expr)?;
                 return self.binary(inverse, a, b);
             }
         }
-        // Do not invert ordered comparisons: NaNs and user-defined operators
-        // make apparently equivalent rewrites observably different.
+        // Preserve native operator selection: even equality's opposite operator
+        // may have a different signature or behavior. Ordered comparisons also
+        // cannot be inverted in the presence of NaNs.
         Ok(format!("!{}", self.expr_at(expr, 13)?))
     }
 

@@ -428,7 +428,11 @@ fn generated_equality_guards_reuse_native_argument_context() {
     "#,
     )
     .unwrap();
-    assert!(text.contains(") != \"value\")"), "{text}");
+    assert!(
+        text.contains("!(Read(arrayLiteral) == \"value\")"),
+        "{text}"
+    );
+    assert!(!text.contains(" != "), "{text}");
     assert!(!text.contains("AsRef("), "{text}");
 }
 
