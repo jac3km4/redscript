@@ -393,6 +393,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
             }
         }
 
+        self.symbols.ensure_serializable_base();
         self.validate_inheritance(results.iter().flat_map(InferStageModule::classes));
         self.validate_function_signatures();
         for module in &results {

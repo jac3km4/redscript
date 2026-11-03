@@ -53,6 +53,104 @@ fn root_has_no_implicit_base_and_ordinary_classes_still_do() {
 }
 
 #[test]
+fn serializable_is_the_optional_global_root() {
+    bounded(|| {
+        for declarations in [
+            vec!["class ISerializable {}"],
+            vec![
+                "native class ISerializable {}",
+                "native class IScriptable {}",
+            ],
+            vec!["class IScriptable {}", "class ISerializable {}"],
+            vec![
+                "class IScriptable extends Intermediate {}",
+                "class Intermediate extends ISerializable {}",
+                "class ISerializable {}",
+            ],
+        ] {
+            let sources = SourceMap::new();
+            sources.populate_boot_lib();
+            for (index, declaration) in declarations.iter().enumerate() {
+                sources.push_back(format!("root{index}.reds"), *declaration);
+            }
+            sources.push_back(
+                "child.reds",
+                "class Child {} func Upcast(value: Child) -> ISerializable { return value; }",
+            );
+            let interner = TypeInterner::default();
+            let mut reporter = CompileErrorReporter::default();
+            let (_, symbols) = infer_from_sources(
+                &sources,
+                Symbols::with_default_types(),
+                &mut reporter,
+                &interner,
+            );
+            assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+            assert!(
+                symbols[interner.intern("ISerializable")]
+                    .schema()
+                    .base_type()
+                    .is_none()
+            );
+            let expected_base = if declarations.len() == 3 {
+                "Intermediate"
+            } else {
+                "ISerializable"
+            };
+            assert_eq!(
+                symbols[interner.intern("IScriptable")]
+                    .schema()
+                    .base_type()
+                    .unwrap()
+                    .id(),
+                interner.intern(expected_base),
+            );
+            assert_eq!(
+                symbols[interner.intern("Child")]
+                    .schema()
+                    .base_type()
+                    .unwrap()
+                    .id(),
+                interner.intern("IScriptable"),
+            );
+        }
+    });
+}
+
+#[test]
+fn module_scoped_serializable_is_an_ordinary_class() {
+    let sources = SourceMap::new();
+    sources.populate_boot_lib();
+    sources.push_back(
+        "scoped.reds",
+        "module Example\npublic class ISerializable {}",
+    );
+    let interner = TypeInterner::default();
+    let mut reporter = CompileErrorReporter::default();
+    let (_, symbols) = infer_from_sources(
+        &sources,
+        Symbols::with_default_types(),
+        &mut reporter,
+        &interner,
+    );
+    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+    assert!(
+        symbols[interner.intern("IScriptable")]
+            .schema()
+            .base_type()
+            .is_none()
+    );
+    assert_eq!(
+        symbols[interner.intern("Example.ISerializable")]
+            .schema()
+            .base_type()
+            .unwrap()
+            .id(),
+        interner.intern("IScriptable"),
+    );
+}
+
+#[test]
 fn cycles_in_ancestors_terminate_in_any_module_order() {
     bounded(|| {
         for declarations in [

@@ -276,6 +276,7 @@ impl<'ctx> CompilationInputs<'ctx> {
             }
         }
 
+        inputs.symbols.ensure_serializable_base();
         Ok(inputs)
     }
 

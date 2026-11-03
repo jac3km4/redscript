@@ -200,6 +200,7 @@ pub mod predef {
         BOOL => "Bool",
         VARIANT => "Variant",
         ISCRIPTABLE => "IScriptable",
+        ISERIALIZABLE => "ISerializable",
 
         VOID => "Void",
         NOTHING => "Nothing",

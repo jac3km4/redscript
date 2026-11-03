@@ -282,7 +282,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                 }
             })
             .or_else(|| {
-                (is_struct.not() && id != predef::ISCRIPTABLE)
+                (is_struct.not() && id != predef::ISCRIPTABLE && id != predef::ISERIALIZABLE)
                     .then(|| TypeApp::nullary(predef::ISCRIPTABLE))
             });
 
