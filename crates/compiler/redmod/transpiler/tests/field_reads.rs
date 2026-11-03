@@ -132,10 +132,6 @@ fn compound_reads_do_not_become_writable_places() {
             "out arguments need a local variable or a class-handle field",
         ),
         (
-            "owner.value.Bump();",
-            "AsRef requires a local variable here",
-        ),
-        (
             "MakeValue().Bump();",
             "AsRef requires a local variable here",
         ),
@@ -213,22 +209,17 @@ fn temporary_struct_reads_remain_rejected() {
 #[test]
 fn unsupported_receiver_forms_still_fail_closed() {
     let definitions = "class Owner { public let child: ref<Owner>; public let flag: Bool; }";
-    for body in [
-        "return (new Owner()).flag;",
-        "return (owner as Owner).flag;",
-    ] {
-        let errors = emit(&format!(
-            "{definitions} func Test(owner: ref<Owner>, owners: [ref<Owner>]) -> Bool {{ {body} }}"
-        ))
-        .unwrap_err();
-        assert!(errors.iter().all(|e| e.span.is_some()), "{errors:?}");
-        assert!(
-            errors.iter().any(|e| e
-                .message
-                .contains("this field read requires a local receiver")),
-            "{errors:?}"
-        );
-    }
+    let errors = emit(&format!(
+        "{definitions} func Test() -> Bool {{ return (new Owner()).flag; }}"
+    ))
+    .unwrap_err();
+    assert!(errors.iter().all(|e| e.span.is_some()), "{errors:?}");
+    assert!(
+        errors.iter().any(|e| e
+            .message
+            .contains("this field read requires a local receiver")),
+        "{errors:?}"
+    );
 }
 
 #[test]

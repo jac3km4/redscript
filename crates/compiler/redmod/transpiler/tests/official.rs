@@ -499,6 +499,15 @@ fn official_function_code(bytes: &[u8], name: &str) -> Vec<redscript_io::Instr> 
 
 const FIXTURES: &[(&str, &str)] = &[
     (
+        "CastFieldReads",
+        r#"class OfficialFieldBase {}
+class OfficialFieldDerived extends OfficialFieldBase { public let count: Int32; }
+func OfficialCastField(owner: ref<OfficialFieldBase>, enabled: Bool) -> Int32 {
+    if enabled { return (owner as OfficialFieldDerived).count; }
+    return (null as OfficialFieldDerived).count;
+}"#,
+    ),
+    (
         "ScriptFieldBorrow",
         r#"struct OfficialBorrowValue { public let count: Int32; }
 class OfficialBorrowOwner { public let value: OfficialBorrowValue; }

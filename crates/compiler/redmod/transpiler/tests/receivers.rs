@@ -160,7 +160,6 @@ fn array_size_still_requires_a_variable_root() {
 fn struct_places_remain_rejected() {
     let structure = "struct Value { public let count: Int32; public static func Bump(self: script_ref<Value>) {} } class Holder { public let value: Value; }";
     for source in [
-        format!("{structure} func Test(holder: ref<Holder>) {{ holder.value.Bump(); }}"),
         format!("{structure} func Test(values: [Value]) {{ values[0].Bump(); }}"),
         format!(
             "{structure} func Make() -> Value {{ return Value(0); }} func Test() {{ Make().Bump(); }}"

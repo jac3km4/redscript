@@ -32,6 +32,7 @@ pub(crate) fn inline_receiver<'ctx>(
                 | ir::Expr::Call { .. }
                 | ir::Expr::Conditional { .. }
                 | ir::Expr::Index { .. }
+                | ir::Expr::DynCast { .. }
         )
 }
 

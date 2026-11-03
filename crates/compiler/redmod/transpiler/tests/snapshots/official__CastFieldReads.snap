@@ -1,0 +1,17 @@
+---
+source: crates/compiler/redmod/transpiler/tests/official.rs
+expression: source.module.text
+---
+class OfficialFieldBase extends IScriptable {
+}
+
+class OfficialFieldDerived extends OfficialFieldBase {
+    public var count: Int32;
+}
+
+function OfficialCastField(owner: OfficialFieldBase, enabled: Bool) -> Int32 {
+    if (enabled) {
+        return (owner as OfficialFieldDerived).count;
+    }
+    return (NULL as OfficialFieldDerived).count;
+}
