@@ -401,6 +401,17 @@ fn literal_pool_reader_decodes_relative_offsets() {
 
 const FIXTURES: &[(&str, &str)] = &[
     (
+        "CastReceivers",
+        r#"class OfficialCastBase {}
+class OfficialCastOwner extends OfficialCastBase {
+    public func Read(value: Int32) -> Int32 { return value; }
+}
+func OfficialCastReceiver(owner: ref<OfficialCastBase>, enabled: Bool) -> Int32 {
+    if enabled { return (owner as OfficialCastOwner).Read(42); }
+    return (null as OfficialCastOwner).Read(43);
+}"#,
+    ),
+    (
         "PersistentReceivers",
         r#"class OfficialPersistentOwner {
     public persistent let count: Int32;

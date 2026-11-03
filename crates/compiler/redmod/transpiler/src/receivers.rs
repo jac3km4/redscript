@@ -29,6 +29,9 @@ pub(crate) fn inline_class_receiver<'ctx>(
             })
         && matches!(
             expr,
-            ir::Expr::Call { .. } | ir::Expr::Field { .. } | ir::Expr::Conditional { .. }
+            ir::Expr::Call { .. }
+                | ir::Expr::Field { .. }
+                | ir::Expr::Conditional { .. }
+                | ir::Expr::DynCast { .. }
         )
 }

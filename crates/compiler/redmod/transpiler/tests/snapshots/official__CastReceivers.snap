@@ -1,0 +1,19 @@
+---
+source: crates/compiler/redmod/transpiler/tests/official.rs
+expression: source.module.text
+---
+class OfficialCastBase extends IScriptable {
+}
+
+class OfficialCastOwner extends OfficialCastBase {
+    public function Read(value: Int32) -> Int32 {
+        return value;
+    }
+}
+
+function OfficialCastReceiver(owner: OfficialCastBase, enabled: Bool) -> Int32 {
+    if (enabled) {
+        return (owner as OfficialCastOwner).Read(42);
+    }
+    return (NULL as OfficialCastOwner).Read(43);
+}
