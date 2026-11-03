@@ -759,6 +759,10 @@ fn official_function_code(bytes: &[u8], name: &str) -> Vec<redscript_io::Instr> 
 
 const FIXTURES: &[(&str, &str)] = &[
     (
+        "OverwrittenNativeDefault",
+        "func OfficialOverwriteVector(enabled: Bool, input: Vector2) -> Vector2 { let value: Vector2; while enabled { value = input; if enabled { return value; } } value = input; return value; }",
+    ),
+    (
         "FieldArrayArguments",
         r#"class OfficialArgumentArrayOwner {
             public let values: [Int32];
@@ -1017,7 +1021,7 @@ fn authored_transpiled_sources() -> Vec<redscript_redmod_transpiler::TranspiledS
     // Analysis-only: the official compiler already knows the native operator.
     sources.push_back(
         "operators.reds",
-        "native func OperatorAdd(a: Int32, b: Int32) -> Int32;\nnative func OperatorNeg(value: Float) -> Float;\nnative func OperatorLogicNot(value: Bool) -> Bool;\n",
+        "native struct Vector2 { public let X: Float; public let Y: Float; }\nnative func OperatorAdd(a: Int32, b: Int32) -> Int32;\nnative func OperatorNeg(value: Float) -> Float;\nnative func OperatorLogicNot(value: Bool) -> Bool;\n",
     );
     let selected: Vec<_> = FIXTURES
         .iter()

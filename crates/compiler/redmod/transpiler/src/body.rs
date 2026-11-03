@@ -18,6 +18,7 @@ pub(crate) struct Body<'a, 'ctx> {
     pub wrapper: Option<MethodId<'ctx>>,
     result_local: String,
     inline_declarations: BTreeSet<ir::Local>,
+    omitted_defaults: BTreeSet<(ir::Local, ast::Span)>,
     enum_defaults: RefCell<HashMap<TypeId<'ctx>, Option<&'ctx str>>>,
 }
 
@@ -127,6 +128,12 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         {
             result_local.push('_');
         }
+        let mut inline_declarations = crate::locals::inline_declarations(&function.block, symbols)?;
+        let omitted_defaults =
+            crate::defaults::overwritten_defaults(&function.block, &inline_declarations);
+        for (local, _) in &omitted_defaults {
+            inline_declarations.remove(local);
+        }
         Ok(Self {
             function,
             symbols,
@@ -135,7 +142,8 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
 
             wrapper,
             result_local,
-            inline_declarations: crate::locals::inline_declarations(&function.block, symbols)?,
+            inline_declarations,
+            omitted_defaults,
             enum_defaults: RefCell::new(HashMap::new()),
         })
     }
@@ -378,7 +386,13 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     }
                 }
             }
-            ir::Stmt::InitDefault { local, typ, .. } => {
+            ir::Stmt::InitDefault {
+                local, typ, span, ..
+            } => {
+                if self.omitted_defaults.remove(&(*local, *span)) {
+                    text.truncate(text.len() - pad.len());
+                    return Ok(());
+                }
                 let inline = self.inline_declarations.remove(local);
                 let name = self.local(*local)?;
                 let typ = typ

@@ -1,0 +1,15 @@
+---
+source: crates/compiler/redmod/transpiler/tests/official.rs
+expression: source.module.text
+---
+function OfficialOverwriteVector(enabled: Bool, input: Vector2) -> Vector2 {
+    var value: Vector2;
+    while (enabled) {
+        value = input;
+        if (enabled) {
+            return value;
+        }
+    }
+    value = input;
+    return value;
+}

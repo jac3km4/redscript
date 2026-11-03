@@ -1,0 +1,15 @@
+---
+source: crates/compiler/redmod/transpiler/tests/default_elision.rs
+expression: text
+---
+function Test(enabled: Bool, input: Value) -> Value {
+    var value: Value;
+    while (enabled) {
+        if (enabled) {
+            value = Make();
+            Read(value);
+        }
+    }
+    value = input;
+    return value;
+}
