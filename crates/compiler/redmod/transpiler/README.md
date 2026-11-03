@@ -240,6 +240,21 @@ cargo test -p redscript-redmod-transpiler --locked --test struct_defaults -- --i
 
 Evidence artifacts are retained under `target/redmod-official/struct-defaults-*`.
 
+### Uint32 literal evidence
+
+All Uint32 values are supported without widening to Int64: expressions emit
+`Cast<Uint32>` from the signed 32-bit bit pattern; field defaults use unsigned
+decimal literals because the native field-default grammar rejects casts.
+The opt-in `uint32_literals` test passed official compiler v1.2.2 and decoded
+exact constants/defaults for 0, 1, 2147483647, 2147483648, 3670998070 and 4294967295.
+This is compiler/representation evidence, not in-game execution. Int64/Uint64
+range restrictions remain unchanged. Reproduce with `REDMOD_EXE` and
+`REDMOD_GAME_ROOT` set:
+
+```sh
+cargo test -p redscript-redmod-transpiler --locked --test uint32_literals -- --include-ignored --nocapture
+```
+
 See [future work](../../../../docs/language-future-work.md) for remaining
 capabilities and evidence required before broadening support. Historical official
 observations above are not a certification of current HEAD or game behavior.

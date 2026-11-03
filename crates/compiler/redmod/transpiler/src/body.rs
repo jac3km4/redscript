@@ -1661,11 +1661,13 @@ pub(crate) fn constant<'ctx>(c: &ir::Const<'ctx>, symbols: &Symbols<'ctx>) -> Re
         C::I64(v) if i32::try_from(*v).is_ok() => cast(v.to_string()),
         C::U8(v) => cast(v.to_string()),
         C::U16(v) => cast(v.to_string()),
-        C::U32(v) if i32::try_from(*v).is_ok() => cast(v.to_string()),
+        // The target has no unsigned suffix. Its Uint32 cast preserves the
+        // signed operand's bits, including the full upper half of the range.
+        C::U32(v) => cast((*v as i32).to_string()),
         C::U64(v) if i32::try_from(*v).is_ok() => cast(v.to_string()),
         C::F32(v) if v.is_finite() => Ok(float_literal(*v)),
         C::F64(v) if v.is_finite() && f64::from(*v as f32) == *v => cast(float_literal(*v as f32)),
-        C::I64(_) | C::U32(_) | C::U64(_) | C::F32(_) | C::F64(_) => Err(error(
+        C::I64(_) | C::U64(_) | C::F32(_) | C::F64(_) => Err(error(
             "numeric literal needs unverified target range/precision support",
             None,
         )),

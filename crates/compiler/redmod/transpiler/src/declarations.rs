@@ -312,9 +312,14 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                         .ok_or_else(|| {
                             error("field initializer has no retained typed constant", None)
                         })?;
-                    self.output
-                        .text
-                        .push_str(&format!(" = {}", constant(value, self.symbols)?));
+                    // Native field defaults have a literal-only grammar. Unlike
+                    // expressions, a Uint32 default accepts the unsigned decimal
+                    // spelling directly and rejects Cast<Uint32>(...).
+                    let value = match value {
+                        ir::Const::U32(value) => value.to_string(),
+                        value => constant(value, self.symbols)?,
+                    };
+                    self.output.text.push_str(&format!(" = {value}"));
                 }
                 self.output.text.push_str(";\n");
             }
