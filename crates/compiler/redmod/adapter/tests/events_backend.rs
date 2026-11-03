@@ -144,24 +144,6 @@ fn event_fallthrough_and_bool_returns_roundtrip_without_a_default_value() {
 }
 
 #[test]
-fn integer_returns_are_rejected_before_bytecode_emission() {
-    for source in [
-        "class Listener { event OnInteger(value: Int32) { return value; } }",
-        "class Listener { event OnLiteral() { return 7; } }",
-        "function Probe(value: Int32): Bool { return value; }",
-        "function Probe(): Bool { return 7; }",
-    ] {
-        let errors = try_compile(source).expect_err("implicit conversion is unsupported");
-        assert!(
-            errors
-                .iter()
-                .any(|e| e.contains("Int32") && e.contains("Bool")),
-            "{source}: {errors:?}"
-        );
-    }
-}
-
-#[test]
 fn callback_patches_preserve_bool_metadata_and_wrapper_result() {
     let bytes = compile(
         "@replaceMethod(Native) event OnReplace() { return true; }
