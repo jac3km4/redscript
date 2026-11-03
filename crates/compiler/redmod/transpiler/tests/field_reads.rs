@@ -129,7 +129,7 @@ fn temporary_structs_and_nonlocal_reference_escapes_remain_rejected() {
         ),
         (
             "AsRef(owner.value);",
-            "AsRef requires a local variable here",
+            "nonlocal AsRef requires an immediate exact non-out script_ref<T> call parameter",
         ),
     ] {
         let source = format!(

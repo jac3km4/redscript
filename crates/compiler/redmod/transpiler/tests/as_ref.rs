@@ -58,6 +58,32 @@ fn scripted_temporary_borrows_preserve_call_sites_and_guards() {
     assert!(emit(&competing).is_err());
 }
 
+#[test]
+fn borrow_diagnostics_explain_context_and_overload_failures() {
+    for (source, expected) in [
+        (
+            "func Test() { AsRef(42); }",
+            "immediate exact non-out script_ref<T> call parameter",
+        ),
+        (
+            "native func Take(value: script_ref<String>, number: Int32) native func Take(value: String, number: Float) func Test(number: Int32) { Take(AsRef(\"temporary\"), number); }",
+            "competing overloads",
+        ),
+        (
+            "func Take(out value: script_ref<Int32>) {} func Test() { Take(AsRef(42)); }",
+            "out",
+        ),
+    ] {
+        let errors = emit(source).unwrap_err();
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.message.contains(expected) && e.span.is_some()),
+            "{errors:?}"
+        );
+    }
+}
+
 const SOURCE: &str = r#"
 struct BorrowedValue { public let number: Int32; }
 class TextOwner { public let text: String; public let number: Int32; public let value: BorrowedValue; }
@@ -351,7 +377,7 @@ fn mixed_numeric_siblings_do_not_prove_borrow_overloads_disjoint() {
         assert!(
             errors
                 .iter()
-                .any(|e| e.message.contains("AsRef requires a local variable here")),
+                .any(|e| e.message.contains("competing overloads")),
             "{source}: {errors:?}"
         );
     }

@@ -957,7 +957,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         {
             let invalid = || {
                 error(
-                    "cannot use AsRef on this expression here; pass a local variable",
+                    "borrow requires an exact script_ref<T> parameter and an operand of type T",
                     Some(e.span()),
                 )
             };
@@ -970,9 +970,14 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             if self.type_of(e)? != *expected
                 || expected.ref_type() != Some(RefType::Script)
                 || &self.type_of(arg)? != expected.unwrap_ref_or_self()
-                || (arg.is_prvalue(self.symbols) && slot >= u16::BITS as usize)
             {
                 return Err(invalid());
+            }
+            if arg.is_prvalue(self.symbols) && slot >= u16::BITS as usize {
+                return Err(error(
+                    "temporary borrow exceeds the invocation's 16 argument lifetime slots",
+                    Some(e.span()),
+                ));
             }
             return self.expr_at(arg, minimum);
         }
@@ -1012,6 +1017,22 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             && !param.flags().is_out()
         {
             return self.borrowed_arg(arg, param.type_(), slot, minimum);
+        }
+        if self.erased_operand(arg).is_some()
+            && let ir::Expr::Call { call, .. } = arg
+            && let ir::Call::FreeFunction { function, .. } = &**call
+            && self.symbols[*function].intrinsic() == Some(ir::Intrinsic::AsRef)
+        {
+            let message = if signature
+                .params()
+                .get(slot)
+                .is_some_and(|p| p.flags().is_out())
+            {
+                "nonlocal AsRef cannot supply an out parameter"
+            } else {
+                "cannot recreate this borrow: generic or competing overloads may change call selection"
+            };
+            return Err(error(message, Some(arg.span())));
         }
         self.expr_at(arg, minimum)
     }
@@ -1578,7 +1599,10 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             I::Deref => self.expr(unary()?),
             I::AsRef => {
                 if !Self::simple_place(unary()?) {
-                    return Err(error("AsRef requires a local variable here", None));
+                    return Err(error(
+                        "nonlocal AsRef requires an immediate exact non-out script_ref<T> call parameter",
+                        None,
+                    ));
                 }
                 self.expr(unary()?)
             }
