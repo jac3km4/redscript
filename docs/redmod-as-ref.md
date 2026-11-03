@@ -1,4 +1,4 @@
-# Bounded native script-reference borrows
+# Bounded native and scripted script-reference borrows
 
 The transpiler accepts nonlocal `AsRef` operands only at an immediate, exact,
 non-`out` `script_ref<T>` parameter, with an operand of exactly `T`. Native and
@@ -73,8 +73,9 @@ still native-only.
 order, exact parameter types/flags, return types and per-argument temporary
 classification through the full adapter API. It also covers fields, array
 elements, side-effecting siblings, lazy expressions, loop back edges, precedence,
-negative escape/competing-overload cases, native methods, and positive
-`Int32`/wrong-arity overload and unrelated-class method cases.
+negative escape/competing-overload cases, native methods, scripted field/index/
+temporary borrows, and positive `Int32`/wrong-arity overload and unrelated-class
+method cases.
 
 The opt-in official test was run on 2026-11-02 with trusted local REDscript
 compiler v1.2.2, with zero errors/warnings and fresh compiled/hash artifacts. It

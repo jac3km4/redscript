@@ -1,4 +1,4 @@
-# Bounded compound method receivers (feature5)
+# Bounded compound method receivers
 
 The transpiler emits ordinary strong and weak class-reference receivers inline
 for method call results (including chains), already-supported local-rooted fields,
@@ -34,15 +34,15 @@ identity. This is not a general materialization algorithm.
 
 ## Deliberate limits
 
-- Compound script-reference receivers, value structs, custom generic,
-  `mixedRef` and `neverRef` value emulation are not enabled.
+- Compound script-reference receivers, general value-struct materialization,
+  custom generic, `mixedRef` and `neverRef` value emulation are not enabled.
 - Fields and indexed elements can supply a stable `AsRef` to scripted parameters,
   including struct method aliases. Temporary values use invocation-owned borrows
   at exact typed parameters, not synthesized mutable receiver locals.
 - Variable-rooted array fields support `ArraySize`, `ArrayClear`, `ArrayPop`
   and `ArrayLast`; other array operations still
   require locals. Nested class-handle fields support assignments and `out` arguments.
-- [Feature6 field reads](redmod-field-reads.md) now independently permits bounded
+- [Field reads](redmod-field-reads.md) independently permit bounded
   `Make().field` and `owner.child.field` reads. Variable-rooted ordinary struct
   fields also support writes/out; call-rooted struct values remain unsupported.
 - Class handles from indexed arrays can call methods directly, including weak
@@ -54,9 +54,11 @@ identity. This is not a general materialization algorithm.
 ## Tests and evidence
 
 `crates/compiler/redmod/transpiler/tests/receivers.rs` snapshots emitted source,
-passes it through the full native adapter, and checks retained struct/place
-rejections. Feature6 read coverage is in the separate `field_reads` tests. The authored fixture includes nested side-effecting receiver
-calls, arguments rebinding the original reference, conditional receiver arms,
+passes it through the full native adapter, and checks typed struct method aliases
+alongside retained temporary-struct and class script-reference place rejections.
+Field-read coverage is in the separate `field_reads` tests. The authored fixture
+includes nested side-effecting receiver calls, arguments rebinding the original
+reference, conditional receiver arms,
 branch-local calls, lazy RHS expressions, loop reevaluation/continue and a
 null-returning receiver.
 
@@ -64,8 +66,8 @@ On 2026-11-02 the opt-in official test passed against local REDscript compiler
 v1.2.2 using `validate-mod-scripts -compile -root ... -directory ...` (optimizations
 disabled, profiling enabled). The validator required fresh compiled/hash artifacts
 and the final commandlet success marker. Result: **0 errors, 3 warnings** (constexpr
-and unused-local diagnostics). Existing reports for feature4 establish borrowed
-argument lifetime masks, not receiver ordering; this feature has its own probe.
+and unused-local diagnostics). Existing borrowed-argument reports establish
+lifetime masks, not receiver ordering; method receivers have their own probe.
 
 The named `ReceiverProbe` bytecode is decoded and asserted, not merely scanned
 for acceptance. Checks cover exact nested call sequences and invocation flags,

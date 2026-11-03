@@ -1,4 +1,4 @@
-# Bounded compound field reads (feature6)
+# Bounded compound field reads
 
 Field reads use direct native postfix syntax, without receiver temporaries,
 null guards, synthetic defaults, or lifted evaluation. Supported examples:
@@ -59,16 +59,18 @@ access with no synthesized local or assignment.
 
 Compound script-reference values (other than explicit Deref), custom generic,
 `mixedRef`/class `neverRef` emulation, assignment/construction receivers,
-array materialization and arbitrary nonlocal borrows are not enabled. Feature5's
-method receiver type gate is unchanged; newly readable fields do not authorize
-mutable struct methods.
+array materialization and arbitrary nonlocal borrows are not enabled. The
+method receiver type gate is unchanged; struct method aliases require an exact
+typed borrow context rather than field-read eligibility alone.
 
 ## Tests and official evidence
 
 `tests/field_reads.rs` snapshots generated source and passes it through the full
-native adapter. Negative tests cover temporary struct writes/out and borrows,
-AsRef, arrays, temporary structs and unsupported receiver shapes. Feature5 tests
-continue to cover their original receiver contract independently.
+native adapter. Negative tests cover temporary struct writes/out, standalone
+nonlocal `AsRef`, array operations that require locals, call-rooted/temporary
+struct reads and unsupported receiver shapes. Scripted field, index and temporary
+borrows are positive cases in `tests/as_ref.rs`, not blanket rejections. Method
+receiver tests cover their receiver contract independently.
 
 On 2026-11-02 the opt-in field-read test passed against trusted local official
 REDscript compiler **v1.2.2**, optimizations disabled and profiling enabled:
