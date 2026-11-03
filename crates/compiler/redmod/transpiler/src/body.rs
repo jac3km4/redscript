@@ -440,7 +440,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             ));
         };
         let id = app.id();
-        target::typ(typ, self.symbols)?;
+        let type_text = target::typ(typ, self.symbols)?;
         if id == predef::BOOL {
             return Ok("false".into());
         }
@@ -473,7 +473,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         ]
         .contains(&id)
         {
-            return Ok(format!("Cast<{}>(0)", target::typ(typ, self.symbols)?));
+            return Ok(format!("Cast<{type_text}>(0)"));
         }
         if id == predef::WREF
             || id == predef::REF
@@ -556,11 +556,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 .map(|field| self.default_value_inner(field.field().type_(), visiting))
                 .collect::<Result<Vec<_>>>()?;
             visiting.remove(&id);
-            return Ok(format!(
-                "{}({})",
-                target::typ(typ, self.symbols)?,
-                args.join(", ")
-            ));
+            return Ok(format!("{type_text}({})", args.join(", ")));
         }
         Err(error(
             format!("cannot default-initialize {typ}; provide an explicit value"),
