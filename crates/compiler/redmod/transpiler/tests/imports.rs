@@ -22,8 +22,9 @@ fn exact_and_select_imports_do_not_widen_to_modules() {
         )
         .unwrap();
         let text = &output[0].module.text;
-        assert!(text.contains("@using \"Models.Value\";"), "{text}");
-        assert!(!text.contains("@using \"Models\";"), "{text}");
+        assert!(text.contains("@module \"Consumer\"\n\n"), "{text}");
+        assert!(text.contains("@using \"Models.Value\"\n"), "{text}");
+        assert!(!text.contains("@using \"Models\""), "{text}");
         assert!(!text.contains("Unselected"), "{text}");
         assert!(
             text.contains("value: Models.Value) -> Models.Value"),
@@ -33,7 +34,7 @@ fn exact_and_select_imports_do_not_widen_to_modules() {
         // Qualified type emission is a separate, existing target limitation.
         // Check the import grammar independently rather than claiming a roundtrip.
         let (parsed, errors) =
-            redscript_redmod_parser::parse_module("@using \"Models.Value\";", selected);
+            redscript_redmod_parser::parse_module("@using \"Models.Value\"\n", selected);
         assert!(errors.is_empty(), "{errors:?}");
         assert!(parsed.is_some());
     }
@@ -54,9 +55,9 @@ fn select_imports_keep_each_symbol_and_the_whole_overload_family() {
     )
     .unwrap();
     let text = &output[0].module.text;
-    assert!(text.contains("@using \"Models.Choose\";"), "{text}");
-    assert!(text.contains("@using \"Models.Value\";"), "{text}");
-    assert!(!text.contains("@using \"Models\";"), "{text}");
+    assert!(text.contains("@using \"Models.Choose\"\n"), "{text}");
+    assert!(text.contains("@using \"Models.Value\"\n"), "{text}");
+    assert!(!text.contains("@using \"Models\""), "{text}");
     assert!(text.contains("Models.Choose(1)"), "{text}");
     assert!(text.contains("value: Models.Value"), "{text}");
 }
@@ -79,7 +80,12 @@ fn exact_import_selects_the_whole_overload_family() {
     )
     .unwrap();
     assert!(output[0].module.text.contains("Helpers.Choose(\"chosen\")"));
-    assert!(output[0].module.text.contains("@using \"Helpers.Choose\";"));
+    assert!(
+        output[0]
+            .module
+            .text
+            .contains("@using \"Helpers.Choose\"\n")
+    );
 }
 
 #[test]
@@ -112,7 +118,7 @@ fn import_planning_does_not_revalidate_global_target_name_collisions() {
                 output[0]
                     .module
                     .text
-                    .contains("@using \"Models.Collision\";")
+                    .contains("@using \"Models.Collision\"\n")
             );
         }
     }
@@ -133,8 +139,8 @@ fn unrelated_type_and_function_collisions_do_not_require_widening() {
     )
     .unwrap();
     let text = &output[0].module.text;
-    assert!(text.contains("@using \"Models.Wanted\";"), "{text}");
-    assert!(!text.contains("@using \"Models\";"), "{text}");
+    assert!(text.contains("@using \"Models.Wanted\"\n"), "{text}");
+    assert!(!text.contains("@using \"Models\""), "{text}");
     assert!(text.contains("Consumer.Choose(1)"), "{text}");
 }
 
@@ -156,7 +162,7 @@ fn private_conflicts_in_unselected_dependencies_do_not_block_imports() {
         &interner,
     )
     .unwrap();
-    assert!(output[0].module.text.contains("@using \"Models.Wanted\";"));
+    assert!(output[0].module.text.contains("@using \"Models.Wanted\"\n"));
 }
 
 #[test]
@@ -184,7 +190,7 @@ fn symbol_module_prefix_overlap_cannot_widen_imports() {
         &interner,
     )
     .unwrap();
-    assert!(output[0].module.text.contains("@using \"Models.Pick\";"));
+    assert!(output[0].module.text.contains("@using \"Models.Pick\"\n"));
 
     let errors = transpile_sources(
         &sources,
@@ -254,7 +260,91 @@ fn wildcard_imports_keep_the_existing_contract() {
         &interner,
     )
     .unwrap();
-    assert!(output[0].module.text.contains("@using \"Models\";"));
+    assert!(output[0].module.text.contains("@using \"Models\"\n"));
+}
+
+fn emitted_directive_sources(import: &str) -> Vec<String> {
+    let sources = SourceMap::new();
+    sources.populate_boot_lib();
+    let library = sources.push_back(
+        "library.reds",
+        "module DirectiveLibrary public func First() -> Int32 { return 1; } public func Second() -> Int32 { return 2; }",
+    );
+    let consumer = sources.push_back(
+        "consumer.reds",
+        format!("module DirectiveConsumer {import} public func DirectiveProbe() -> Int32 {{ return 1; }}"),
+    );
+    let interner = TypeInterner::default();
+    transpile_sources(
+        &sources,
+        &[library, consumer],
+        Symbols::with_default_types(),
+        &interner,
+    )
+    .unwrap()
+    .into_iter()
+    .map(|output| output.module.text)
+    .collect()
+}
+
+#[test]
+fn emitted_directives_have_no_semicolons() {
+    let mut snapshot = String::new();
+    for import in [
+        "",
+        "import DirectiveLibrary.First",
+        "import DirectiveLibrary.{First, Second}",
+        "import DirectiveLibrary.*",
+    ] {
+        snapshot.push_str(&format!("=== {import:?} ===\n"));
+        for text in emitted_directive_sources(import) {
+            for line in text.lines().filter(|line| line.starts_with('@')) {
+                assert!(!line.ends_with(';'), "{line}");
+            }
+            snapshot.push_str(&text);
+        }
+    }
+    insta::assert_snapshot!(snapshot);
+}
+
+#[test]
+#[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]
+fn emitted_directives_with_official_compiler() {
+    use std::path::PathBuf;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    use redscript_redmod_transpiler::validate::OfficialValidator;
+
+    let validator = OfficialValidator {
+        executable: PathBuf::from(std::env::var_os("REDMOD_EXE").expect("set REDMOD_EXE")),
+        timeout: Duration::from_secs(60),
+    };
+    let game = PathBuf::from(std::env::var_os("REDMOD_GAME_ROOT").expect("set REDMOD_GAME_ROOT"));
+    let parent = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../target/redmod-official")
+        .join(format!(
+            "imports-emitted-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+    for (name, import) in [
+        ("Module", ""),
+        ("Exact", "import DirectiveLibrary.First"),
+        ("Select", "import DirectiveLibrary.{First, Second}"),
+        ("Wildcard", "import DirectiveLibrary.*"),
+    ] {
+        let directory = parent.join(name);
+        std::fs::create_dir_all(directory.join("r6/scripts")).unwrap();
+        // Write emitted sources unchanged; qualified-reference support is separate.
+        for (index, text) in emitted_directive_sources(import).iter().enumerate() {
+            std::fs::write(directory.join(format!("r6/scripts/{index}.script")), text).unwrap();
+        }
+        let report = validator.validate_with_root(&directory, &game).unwrap();
+        println!("{name}: {}\n{}", directory.display(), report.stdout);
+    }
 }
 
 #[test]

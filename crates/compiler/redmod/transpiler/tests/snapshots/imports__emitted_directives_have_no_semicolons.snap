@@ -1,0 +1,71 @@
+---
+source: crates/compiler/redmod/transpiler/tests/imports.rs
+expression: snapshot
+---
+=== "" ===
+@module "DirectiveLibrary"
+
+function First() -> Int32 {
+    return 1;
+}
+
+function Second() -> Int32 {
+    return 2;
+}
+@module "DirectiveConsumer"
+
+function DirectiveProbe() -> Int32 {
+    return 1;
+}
+=== "import DirectiveLibrary.First" ===
+@module "DirectiveLibrary"
+
+function First() -> Int32 {
+    return 1;
+}
+
+function Second() -> Int32 {
+    return 2;
+}
+@module "DirectiveConsumer"
+
+@using "DirectiveLibrary.First"
+
+function DirectiveProbe() -> Int32 {
+    return 1;
+}
+=== "import DirectiveLibrary.{First, Second}" ===
+@module "DirectiveLibrary"
+
+function First() -> Int32 {
+    return 1;
+}
+
+function Second() -> Int32 {
+    return 2;
+}
+@module "DirectiveConsumer"
+
+@using "DirectiveLibrary.First"
+@using "DirectiveLibrary.Second"
+
+function DirectiveProbe() -> Int32 {
+    return 1;
+}
+=== "import DirectiveLibrary.*" ===
+@module "DirectiveLibrary"
+
+function First() -> Int32 {
+    return 1;
+}
+
+function Second() -> Int32 {
+    return 2;
+}
+@module "DirectiveConsumer"
+
+@using "DirectiveLibrary"
+
+function DirectiveProbe() -> Int32 {
+    return 1;
+}

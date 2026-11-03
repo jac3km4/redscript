@@ -4,7 +4,9 @@ The transpiler translates `import M.Name` to `@using "M.Name"` and
 `import M.{First, Second}` to separate symbol-level `@using` directives. It does
 **not** widen either form to `@using "M"`. A function import selects the complete
 resolved overload family, as in community source. Wildcard imports retain their
-existing module-level translation.
+existing module-level translation. Emitted `@module` and `@using` directives end
+at the newline, without semicolons; the official compiler rejects directive
+semicolons.
 
 Exact/select support is bounded:
 
@@ -29,10 +31,9 @@ This is import planning, **not certification that the entire emitted program
 compiles with REDmod**. Existing typed emission uses qualified type names and
 qualified free-function calls. Official REDscript v1.2.2 rejects the tested
 qualified type spelling in signatures and the tested qualified free-function
-call. It also rejects the transpiler's existing semicolon spelling after
-`@module`/`@using`. These are separate target-emission limitations, not a reason
-to widen imports. Unrelated global type collisions elsewhere in the inputs are
-also not solved by import planning.
+call. These remain separate target-emission limitations, not a reason to widen
+imports. Unrelated global type collisions elsewhere in the inputs are also not
+solved by import planning.
 
 ## Native evidence (2026-11-02)
 
@@ -54,9 +55,14 @@ Local official compiler v1.2.2 probes established:
 The separate `tests/imports.rs` integration suite checks exact/select output,
 resolved qualified references, overload families, selected-module non-widening,
 analysis-only/private dependencies and wildcard compatibility. Its
-opt-in native tests use raw native source without directive semicolons to isolate
-lookup behavior; they do not claim an emitted-source roundtrip or runtime parity.
-Run them against a trusted installation with:
+opt-in native lookup test uses raw native source to isolate lookup behavior.
+The emitted-source probe writes transpiler output unchanged for module-only,
+exact, select and wildcard cases, without qualified references. All four cases
+passed official compiler v1.2.2 on 2026-11-03 with zero errors (only constexpr
+suggestions). This certifies the tested directive spelling, not qualified-name
+support, general import-use roundtrips or runtime parity. The same emitted source
+is covered by a default-test snapshot. Run the native tests against a trusted
+installation with:
 
 ```sh
 REDMOD_EXE='.../redMod.exe' REDMOD_GAME_ROOT='.../Cyberpunk 2077' \
@@ -65,4 +71,5 @@ REDMOD_EXE='.../redMod.exe' REDMOD_GAME_ROOT='.../Cyberpunk 2077' \
 
 Each native invocation is bounded to 60 seconds and requires the final success
 marker plus fresh nonempty cache artifacts for acceptance. Evidence is retained
-under `target/redmod-official/imports-*`.
+under `target/redmod-official/imports-*` (including `imports-emitted-*` for
+unchanged emitted-source probes).

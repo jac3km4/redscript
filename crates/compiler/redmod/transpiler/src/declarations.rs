@@ -33,7 +33,7 @@ pub fn emit<'ctx>(
     };
     if let Some(path) = &module.source.path {
         emitter.output.text.push_str(&format!(
-            "@module {};\n\n",
+            "@module {}\n\n",
             target::string(target::path(&path.segments.join("."))?)?
         ));
     }
@@ -131,7 +131,7 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
             for name in self.import_paths(import)? {
                 self.output
                     .text
-                    .push_str(&format!("@using {};\n", target::string(&name)?));
+                    .push_str(&format!("@using {}\n", target::string(&name)?));
             }
             return Ok(());
         }

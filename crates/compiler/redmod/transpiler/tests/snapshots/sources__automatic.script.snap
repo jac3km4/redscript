@@ -2,9 +2,9 @@
 source: crates/compiler/redmod/transpiler/tests/sources.rs
 expression: "output[0].module.text"
 ---
-@module "Authored";
+@module "Authored"
 
-@using "Dependency";
+@using "Dependency"
 
 function Echo(value: Int32) -> Int32 {
     return value;
