@@ -83,6 +83,15 @@ arguments rebind the original weak field. Decoded bytecode asserts five
 nested call order and Context exits after complete argument lists. Weak receivers
 remain inline; no field is re-read by synthesized code after argument evaluation.
 
+Assignments to fields of local strong or weak class handles also stay inline.
+The assignment-place check unwraps the handle before checking the class schema,
+without admitting struct, script-reference, `mixedRef` or `neverRef` value places.
+The official `ReceiverWeakAssignments` probe covers scalar writes, object
+construction, and an RHS that rebinds the original weak local. Its decoded
+bytecode asserts `Assign`, `Context`, `WeakRefToRef`, receiver parameter and field
+selection in that order, with no synthesized locals. The listing is retained as
+`assignment-bytecode.txt` beside the method probe.
+
 ```sh
 cargo test -p redscript-redmod-transpiler --locked --test receivers
 # Set REDMOD_EXE / REDMOD_GAME_ROOT to a trusted local installation first:

@@ -81,6 +81,7 @@ competing overloads and nested conversion chains remain rejected.
 Strong and weak class-reference call chains, existing local-rooted fields and
 conditional receivers stay inline, preserving Context/argument and lazy execution
 boundaries. REDmod supplies implicit weak-to-strong receiver promotions.
+Field assignments through local strong or weak class handles also stay inline.
 Struct write-back, array places and compound script-reference receivers remain gated. See the
 [receiver contract and bytecode evidence](../../../../docs/redmod-method-receivers.md).
 

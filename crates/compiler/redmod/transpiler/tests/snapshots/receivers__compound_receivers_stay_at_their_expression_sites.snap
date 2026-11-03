@@ -46,6 +46,17 @@ function ReceiverNull() -> ReceiverOwner {
     return NULL;
 }
 
+function ReceiverReplaceWeak(out handle: wref<ReceiverOwner>, replacement: ReceiverOwner) -> ReceiverOwner {
+    handle = replacement;
+    return replacement;
+}
+
+function ReceiverWeakAssignments(handle: wref<ReceiverOwner>, replacement: ReceiverOwner) -> Void {
+    handle.count = 42;
+    handle.child = new ReceiverOwner;
+    handle.child = ReceiverReplaceWeak(handle, replacement);
+}
+
 import function OperatorLogicAnd(a: Bool, b: Bool) -> Bool;
 
 import function OperatorAdd(a: Int32, b: Int32) -> Int32;

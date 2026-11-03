@@ -42,6 +42,15 @@ func ReceiverRebind(owner: ref<ReceiverOwner>) -> Int32 {
     return 1;
 }
 func ReceiverNull() -> ref<ReceiverOwner> { return null; }
+func ReceiverReplaceWeak(out handle: wref<ReceiverOwner>, replacement: ref<ReceiverOwner>) -> ref<ReceiverOwner> {
+    handle = replacement;
+    return replacement;
+}
+func ReceiverWeakAssignments(handle: wref<ReceiverOwner>, replacement: ref<ReceiverOwner>) {
+    handle.count = 42;
+    handle.child = new ReceiverOwner();
+    handle.child = ReceiverReplaceWeak(handle, replacement);
+}
 native func OperatorLogicAnd(a: Bool, b: Bool) -> Bool
 native func OperatorAdd(a: Int32, b: Int32) -> Int32
 func ReceiverProbe(enabled: Bool, owner: ref<ReceiverOwner>, other: ref<ReceiverOwner>, steps: Int32) -> Bool {
@@ -84,6 +93,9 @@ fn compound_receivers_stay_at_their_expression_sites() {
     assert!(text.contains("ReceiverWeak(owner).Read(ReceiverRebind(owner));"));
     assert!(text.contains("owner.handle.Read(owner.handle.Entry(ReceiverRebind(owner)));"));
     assert!(!text.contains("WeakRefToRef("));
+    assert!(text.contains("handle.count = 42;"));
+    assert!(text.contains("handle.child = new ReceiverOwner;"));
+    assert!(text.contains("handle.child = ReceiverReplaceWeak(handle, replacement);"));
 
     // Run the full native adapter, not just its parser, including native ref erasure.
     let sources = SourceMap::new();
@@ -134,6 +146,22 @@ fn struct_places_remain_rejected() {
 }
 
 #[test]
+fn weak_field_assignments_do_not_enable_struct_or_script_reference_places() {
+    for source in [
+        "struct Value { public let count: Int32; } func Test(value: Value) { value.count = 1; }",
+        "class Owner { public let count: Int32; } func Test(value: script_ref<Owner>) { Deref(value).count = 1; }",
+    ] {
+        let errors = emit(source).unwrap_err();
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.message.contains("assignment needs")),
+            "{errors:?}"
+        );
+    }
+}
+
+#[test]
 #[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]
 fn receivers_with_official_compiler() {
     use std::path::{Path, PathBuf};
@@ -171,43 +199,82 @@ fn receivers_with_official_compiler() {
     // Decode only function records: official external placeholders/profiling
     // records are not necessarily supported by the full bundle reader.
     let word = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
-    let probe = (1..word(84))
-        .filter(|i| {
-            let at = word(80) as usize + *i as usize * 20;
-            u16::from_le_bytes(bytes[at + 16..at + 18].try_into().unwrap()) == 5
-                && reader
-                    .cnames()
-                    .get(word(at))
-                    .unwrap()
-                    .starts_with("ReceiverProbe;")
-        })
-        .map(|i| reader.definitions().get(i).unwrap())
-        .find_map(|def| match def {
-            Definition::Function(f)
-                if reader
-                    .cnames()
-                    .get(f.name())
-                    .unwrap()
-                    .starts_with("ReceiverProbe;") =>
-            {
-                Some(f)
-            }
-            _ => None,
-        })
-        .unwrap();
+    let function = |name: &str| {
+        (1..word(84))
+            .filter(|i| {
+                let at = word(80) as usize + *i as usize * 20;
+                u16::from_le_bytes(bytes[at + 16..at + 18].try_into().unwrap()) == 5
+                    && reader.cnames().get(word(at)).unwrap().starts_with(name)
+            })
+            .map(|i| reader.definitions().get(i).unwrap())
+            .find_map(|def| match def {
+                Definition::Function(f)
+                    if reader.cnames().get(f.name()).unwrap().starts_with(name) =>
+                {
+                    Some(f)
+                }
+                _ => None,
+            })
+            .unwrap()
+    };
     // Official v1.2.2 uses a 14-byte profiling preamble, unlike the shared
     // reader's Profile layout. Decode this named probe after that preamble,
     // bounded by its physical record; do not use a guessed virtual code length.
     use byte::BytesExt as _;
-    let redscript_io::FunctionBody::Raw { bytes: raw, .. } = probe.body() else {
-        panic!("expected serialized probe")
+    let decode = |name: &str| {
+        let probe = function(name);
+        let redscript_io::FunctionBody::Raw { bytes: raw, .. } = probe.body() else {
+            panic!("expected serialized probe")
+        };
+        assert_eq!(raw[0], 0x33);
+        let mut at = 14;
+        let mut code = Vec::<Instr>::new();
+        while at < raw.len() {
+            code.push(raw.read(&mut at, byte::LE).unwrap());
+        }
+        code
     };
-    assert_eq!(raw[0], 0x33);
-    let mut at = 14;
-    let mut code = Vec::<Instr>::new();
-    while at < raw.len() {
-        code.push(raw.read(&mut at, byte::LE).unwrap());
+    let assignments = decode("ReceiverWeakAssignments;");
+    std::fs::write(
+        directory.join("assignment-bytecode.txt"),
+        format!("{assignments:#?}"),
+    )
+    .unwrap();
+    assert_eq!(
+        assignments
+            .iter()
+            .filter(|op| matches!(op, Instr::WeakRefToRef))
+            .count(),
+        3
+    );
+    assert_eq!(
+        assignments
+            .iter()
+            .filter(|op| matches!(op, Instr::Assign))
+            .count(),
+        3
+    );
+    // The place's promoted receiver is evaluated before the RHS call that
+    // rebinds the original weak local. No synthesized local/copy is involved.
+    let ops = assignments
+        .iter()
+        .filter(|op| !matches!(op, Instr::Breakpoint(_)))
+        .collect::<Vec<_>>();
+    for (i, op) in ops
+        .iter()
+        .enumerate()
+        .filter(|(_, op)| matches!(op, Instr::Assign))
+    {
+        assert!(matches!(ops[i + 1], Instr::Context(_)), "{op:?}: {ops:?}");
+        assert!(matches!(ops[i + 2], Instr::WeakRefToRef), "{ops:?}");
+        assert!(matches!(ops[i + 3], Instr::Param(_)), "{ops:?}");
+        assert!(matches!(ops[i + 4], Instr::ObjectField(_)), "{ops:?}");
     }
+    assert!(
+        !assignments.iter().any(|op| matches!(op, Instr::Local(_))),
+        "{assignments:?}"
+    );
+    let code = decode("ReceiverProbe;");
     let mut listing = String::new();
     let mut offset = 0i32;
     let mut contexts = Vec::new();

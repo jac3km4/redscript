@@ -861,7 +861,8 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             ir::Expr::Field { receiver, .. } => {
                 let typ = self.type_of(receiver)?;
                 Self::simple_place(receiver)
-                    && matches!(typ, Type::Data(app) if self.symbols.get_type(app.id()).and_then(|d| d.schema().as_aggregate()).is_some_and(|a| !a.flags().is_struct() && !a.flags().is_never_ref()))
+                    && typ.ref_type() != Some(RefType::Script)
+                    && matches!(typ.unwrap_ref_or_self(), Type::Data(app) if self.symbols.get_type(app.id()).and_then(|d| d.schema().as_aggregate()).is_some_and(|a| !a.flags().is_struct() && !a.flags().is_never_ref() && !a.flags().is_mixed_ref()))
             }
             _ => false,
         })
