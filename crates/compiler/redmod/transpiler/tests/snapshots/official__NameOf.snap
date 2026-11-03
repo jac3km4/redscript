@@ -1,0 +1,32 @@
+---
+source: crates/compiler/redmod/transpiler/tests/official.rs
+expression: source.module.text
+---
+@module "OfficialNames"
+
+class Named extends IScriptable {
+}
+
+function PrimitiveName() -> CName {
+    return 'Int32';
+}
+
+function LegacyName() -> CName {
+    return 'Int32';
+}
+
+function ClassName() -> CName {
+    return 'OfficialNames.Named';
+}
+
+function ArrayName() -> CName {
+    return 'array<Int32>';
+}
+
+function NestedArrayName() -> CName {
+    return 'array<array<Int32>>';
+}
+
+function WeakName() -> CName {
+    return 'wref<OfficialNames.Named>';
+}

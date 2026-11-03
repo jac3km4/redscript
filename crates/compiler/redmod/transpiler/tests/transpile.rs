@@ -820,6 +820,14 @@ fn user_function_named_like_intrinsic_stays_a_function() {
 }
 
 #[test]
+fn user_function_named_name_of_stays_a_function() {
+    let output = convert(
+        "module Custom func NameOf(value: Int32) -> CName = n\"custom\" func Test() -> CName = NameOf(1)",
+    );
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn inherited_method_uses_resolved_override() {
     let output = convert(
         "class Base { public func Value() -> Int32 = 1 } class Child extends Base { public func Value() -> Int32 = 2 }",

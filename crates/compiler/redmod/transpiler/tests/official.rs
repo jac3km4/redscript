@@ -892,6 +892,17 @@ fn official_function_code(bytes: &[u8], name: &str) -> Vec<redscript_io::Instr> 
 
 const FIXTURES: &[(&str, &str)] = &[
     (
+        "NameOf",
+        r#"module OfficialNames
+class Named {}
+public func PrimitiveName() -> CName = NameOf<Int32>();
+public func LegacyName() -> CName = NameOf(Int32);
+public func ClassName() -> CName = NameOf<Named>();
+public func ArrayName() -> CName = NameOf<[Int32]>();
+public func NestedArrayName() -> CName = NameOf<[[Int32]]>();
+public func WeakName() -> CName = NameOf<wref<Named>>();"#,
+    ),
+    (
         "ToString",
         r#"enum OfficialStringEnum { Zero = 0, One = 1 }
 struct OfficialStringStruct { public let value: Int32; }

@@ -1,0 +1,13 @@
+---
+source: crates/compiler/redmod/transpiler/tests/transpile.rs
+expression: output
+---
+@module "Custom"
+
+function NameOf(value: Int32) -> CName {
+    return 'custom';
+}
+
+function Test() -> CName {
+    return Custom.NameOf(1);
+}

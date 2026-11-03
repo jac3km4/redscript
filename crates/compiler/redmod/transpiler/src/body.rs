@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use redscript_community_ast as ast;
+use redscript_compiler_frontend::utils::ScopedMap;
 use redscript_compiler_frontend::{
     FunctionType, LoweredFunction, MethodId, PolyType, QueryError, RefType, Symbols, Type, TypeId,
     TypeSchema, Variance, expr_type, ir, predef,
@@ -1281,7 +1282,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     .get_free_function(*function)
                     .ok_or_else(|| error("missing resolved function", None))?;
                 if let Some(intrinsic) = def.intrinsic() {
-                    return self.intrinsic(intrinsic, args, whole);
+                    return self.intrinsic(intrinsic, type_args, args, whole);
                 }
                 self.check_out(def.type_(), args)?;
                 if let Some(alias) = def.method_alias() {
@@ -1497,6 +1498,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
     fn intrinsic(
         &self,
         intrinsic: ir::Intrinsic,
+        type_args: &[ir::Type<'ctx>],
         args: &[ir::Expr<'ctx>],
         whole: &ir::Expr<'ctx>,
     ) -> Result<String> {
@@ -1639,14 +1641,24 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 };
                 Ok(format!("{name}({})", self.expr(unary()?)?))
             }
+            I::NameOf => {
+                let [typ] = type_args else {
+                    return Err(error("missing NameOf type argument", None));
+                };
+                let typ = typ
+                    .coalesced(self.symbols)
+                    .map_err(|_| error("unresolved NameOf type argument", None))?
+                    .mono(&ScopedMap::default())
+                    .map_err(|_| error("unresolved NameOf type argument", None))?;
+                Ok(target::cname(&typ.to_string())?.to_string())
+            }
             I::ArraySort
             | I::ArraySortByPredicate
             | I::LongIntEnum
             | I::VariantIsDefined
             | I::VariantIsRef
             | I::VariantIsArray
-            | I::VariantTypeName
-            | I::NameOf => Err(error(
+            | I::VariantTypeName => Err(error(
                 format!("{} is not supported", intrinsic.name()),
                 None,
             )),
