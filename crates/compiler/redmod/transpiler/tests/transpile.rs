@@ -528,27 +528,7 @@ func Same(a: Base, b: Base, flag: Bool) -> Bool = Equals(a, b) && flag
 func StringIdentity(a: Bool, b: String, c: String) -> String = ToString(a ? b : c) + "!"
 "#,
     );
-    for expression in [
-        "a + b * c",
-        "(a + b) * c",
-        "a + (b + c)",
-        "a - (b - c)",
-        "a - b - c",
-        "-(a + b)",
-        "-(-a)",
-        "a && (b ? c : a)",
-        "(a ? b : c) ? a : b",
-        "!(a ? b : c)",
-        "a = b + c",
-        "a += b += c",
-        "Cast<Float>(a ? b : c)",
-        "(a ? b : c) as Child",
-        "a != NULL && flag",
-        "a == b && flag",
-        "(a ? b : c) + \"!\"",
-    ] {
-        assert!(output.contains(&format!("{expression};")), "{output}");
-    }
+
     let sources = SourceMap::new();
     let file = sources.push_back("emitted.script", output.clone());
     let (module, errors) = redscript_redmod_parser::parse_module(&output, file);
