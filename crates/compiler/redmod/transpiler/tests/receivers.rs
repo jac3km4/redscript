@@ -106,7 +106,11 @@ fn struct_places_remain_rejected() {
     ] {
         let errors = emit(&source).unwrap_err();
         assert!(errors.iter().all(|e| e.span.is_some()), "{errors:?}");
-        assert!(errors.iter().any(|e| e.message.contains("receiver") || e.message.contains("stable local place")), "{source}: {errors:?}");
+        assert!(
+            errors.iter().any(|e| e.message.contains("receiver")
+                || e.message.contains("AsRef requires a local variable here")),
+            "{source}: {errors:?}"
+        );
     }
 }
 

@@ -45,7 +45,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
     ) -> Result<Self> {
         if !signature.type_params().is_empty() {
             return Err(error(
-                "custom generic functions are unsupported",
+                "generic functions are not supported; use concrete parameter and return types",
                 Some(function.span),
             ));
         }
@@ -431,7 +431,10 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         visiting: &mut HashSet<TypeId<'ctx>>,
     ) -> Result<String> {
         let Type::Data(app) = typ else {
-            return Err(error("unresolved default initialization", None));
+            return Err(error(
+                format!("cannot default-initialize unresolved type {typ}"),
+                None,
+            ));
         };
         let id = app.id();
         target::typ(typ, self.symbols)?;
@@ -495,19 +498,21 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     .any(|f| f.field().span().is_none())
             {
                 return Err(error(
-                    "no verified target default/reset operation for native/imported or incomplete struct layouts",
+                    format!(
+                        "cannot default-initialize {typ} with native or incomplete fields; provide an explicit value"
+                    ),
                     None,
                 ));
             }
             if aggregate.fields().len() > usize::from(u8::MAX) {
                 return Err(error(
-                    "struct default/reset exceeds 255 constructor fields",
+                    format!("cannot default-initialize {typ}: more than 255 constructor fields"),
                     None,
                 ));
             }
             if !visiting.insert(id) {
                 return Err(error(
-                    "recursive struct default/reset layout is unsupported",
+                    format!("cannot default-initialize {typ}: its fields are recursive"),
                     None,
                 ));
             }
@@ -524,7 +529,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             ));
         }
         Err(error(
-            "no verified target default/reset operation for this type",
+            format!("cannot default-initialize {typ}; provide an explicit value"),
             None,
         ))
     }
@@ -690,7 +695,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
     pub fn expr(&self, e: &ir::Expr<'ctx>) -> Result<String> {
         if matches!(e, ir::Expr::Nop(_)) {
             return Err(error(
-                "absent argument slots require call-slot emission",
+                "an omitted argument cannot be used as a value",
                 Some(e.span()),
             ));
         }
@@ -730,7 +735,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             ir::Expr::Assign { place, expr, .. } => {
                 if !self.place(place)? {
                     return Err(error(
-                        "unsafe assignment place requires reference/write-back lowering",
+                        "assignment needs a local, a class local's field, or a local array's element",
                         Some(e.span()),
                     ));
                 }
@@ -743,7 +748,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             ir::Expr::Index { array, index, .. } => {
                 if !Self::simple_place(array) {
                     return Err(error(
-                        "array indexing requires a local receiver",
+                        "array indexing requires a local array",
                         Some(e.span()),
                     ));
                 }
@@ -760,7 +765,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     )
                 {
                     return Err(error(
-                        "field read requires a stable local or verified inline receiver",
+                        "this field read requires a local receiver",
                         Some(e.span()),
                     ));
                 }
@@ -772,7 +777,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     && !matches!(&**receiver, ir::Expr::Local(ir::Local::This, _))
                 {
                     return Err(error(
-                        "external persistent-field access is unsupported",
+                        "persistent fields can only be accessed through this",
                         Some(e.span()),
                     ));
                 }
@@ -807,9 +812,10 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             )),
             ir::Expr::Call { call, .. } => self.call(call, e),
             ir::Expr::Nop(_) => unreachable!("absent slots are rejected above"),
-            ir::Expr::NewClosure { .. } | ir::Expr::Capture(..) => {
-                Err(error("lambdas/captures are unsupported", Some(e.span())))
-            }
+            ir::Expr::NewClosure { .. } | ir::Expr::Capture(..) => Err(error(
+                "lambdas are not supported; use a named function or method",
+                Some(e.span()),
+            )),
         };
         result.map_err(|mut err| {
             if err.span.is_none() {
@@ -844,7 +850,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         {
             let invalid = || {
                 error(
-                    "strong/weak reference coercion requires an exact contextual target",
+                    "cannot convert this reference here; use a typed local, assignment, or return",
                     Some(e.span()),
                 )
             };
@@ -912,7 +918,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         {
             let invalid = || {
                 error(
-                    "AsRef requires an exact native borrowed argument",
+                    "cannot use AsRef on this expression here; pass a local variable",
                     Some(e.span()),
                 )
             };
@@ -1158,7 +1164,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         for (param, arg) in signature.params().iter().zip(args) {
             if param.flags().is_out() && !Self::simple_place(arg) {
                 return Err(error(
-                    "out arguments require local identity; copying a place is unsafe",
+                    "out arguments must be local variables",
                     Some(arg.span()),
                 ));
             }
@@ -1245,14 +1251,17 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     }
                 }
                 if !type_args.is_empty() || !def.type_().type_params().is_empty() {
-                    return Err(error("custom generic calls are unsupported", None));
+                    return Err(error(
+                        "generic function calls are not supported; call a function with concrete types",
+                        None,
+                    ));
                 }
                 if matches!(
                     name.as_str(),
                     "RoundF" | "AngleNormalize" | "AngleDistance" | "AngleApproach" | "LerpAngleF"
                 ) && def.flags().is_native()
                 {
-                    return Err(error("helper unavailable in REDmod", None));
+                    return Err(error(format!("{name} is not supported"), None));
                 }
 
                 Ok(format!(
@@ -1269,7 +1278,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 args,
             } => {
                 if !parent_type_args.is_empty() || !type_args.is_empty() {
-                    return Err(error("generic method calls are unsupported", None));
+                    return Err(error("generic method calls need concrete types", None));
                 }
                 let (name, def) = self
                     .symbols
@@ -1277,10 +1286,16 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     .ok_or_else(|| error("missing resolved method", None))?;
                 self.check_out(def.type_(), args)?;
                 if !def.type_().type_params().is_empty() {
-                    return Err(error("custom generic methods are unsupported", None));
+                    return Err(error(
+                        "generic methods need concrete parameter and return types",
+                        None,
+                    ));
                 }
                 if def.flags().is_callback() {
-                    return Err(error("callback result/use is unsupported", None));
+                    return Err(error(
+                        "callbacks cannot be called directly; move shared code to a regular method",
+                        None,
+                    ));
                 }
                 Ok(format!(
                     "{}.{}({})",
@@ -1297,7 +1312,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 ..
             } => {
                 if !type_args.is_empty() {
-                    return Err(error("generic method calls are unsupported", None));
+                    return Err(error("generic method calls need concrete types", None));
                 }
                 let (name, def) = self
                     .symbols
@@ -1305,10 +1320,16 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     .ok_or_else(|| error("missing resolved method", None))?;
                 self.check_out(def.type_(), call.args())?;
                 if !def.type_().type_params().is_empty() {
-                    return Err(error("custom generic methods are unsupported", None));
+                    return Err(error(
+                        "generic methods need concrete parameter and return types",
+                        None,
+                    ));
                 }
                 if def.flags().is_callback() {
-                    return Err(error("callback result/use is unsupported", None));
+                    return Err(error(
+                        "callbacks cannot be called directly; move shared code to a regular method",
+                        None,
+                    ));
                 }
                 if !Self::simple_place(receiver)
                     && !crate::receivers::inline_class_receiver(
@@ -1318,13 +1339,16 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     )
                 {
                     return Err(error(
-                        "method receiver needs verified materialization",
+                        "method calls require a local variable or a strong-reference receiver",
                         Some(receiver.span()),
                     ));
                 }
                 let recv = if matches!(mode, ir::CallMode::ForceStatic) {
                     if !matches!(&**receiver, ir::Expr::Local(ir::Local::This, _)) {
-                        return Err(error("unsupported static dispatch receiver", None));
+                        return Err(error(
+                            "a super method call must use this as its receiver",
+                            None,
+                        ));
                     }
                     "super".into()
                 } else {
@@ -1336,7 +1360,10 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     self.call_args(def.type_(), call.args(), call, def.flags().is_native(),)?
                 ))
             }
-            ir::Call::Closure { .. } => Err(error("function values are unsupported", None)),
+            ir::Call::Closure { .. } => Err(error(
+                "function values are not supported; call a named function or method directly",
+                None,
+            )),
         }
     }
 
@@ -1362,7 +1389,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             let recv = unary()?;
             if !Self::simple_place(recv) {
                 return Err(error(
-                    "array intrinsic requires a local place, not a copied receiver",
+                    "array operations require a local array",
                     Some(recv.span()),
                 ));
             }
@@ -1404,7 +1431,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             I::Deref => self.expr(unary()?),
             I::AsRef => {
                 if !Self::simple_place(unary()?) {
-                    return Err(error("AsRef requires a stable local place", None));
+                    return Err(error("AsRef requires a local variable here", None));
                 }
                 self.expr(unary()?)
             }
@@ -1412,7 +1439,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 // REDmod assignment/call contexts perform strong/weak coercions.
                 // An explicit cast to wref<T> is not a verified target operation.
                 Err(error(
-                    "strong/weak reference coercion requires verified contextual target lowering",
+                    "cannot convert this reference here; use a typed local, assignment, or return",
                     None,
                 ))
             }
@@ -1433,15 +1460,12 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                         self.expr_at(unary()?, binary_precedence(ast::BinOp::Ne))?
                     ))
                 } else {
-                    Err(error(
-                        "IsDefined only supports resolved reference classes",
-                        None,
-                    ))
+                    Err(error("IsDefined requires a class reference", None))
                 }
             }
             I::ToString => {
                 let typ = self.type_of(unary()?)?;
-                let Type::Data(app) = typ else {
+                let Type::Data(app) = &typ else {
                     return Err(error("unresolved ToString operand", None));
                 };
                 let id = app.id();
@@ -1458,7 +1482,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 } else if id == predef::CNAME {
                     "NameToString"
                 } else {
-                    return Err(error("no verified ToString mapping for operand type", None));
+                    return Err(error(format!("ToString does not support {typ}"), None));
                 };
                 Ok(format!("{name}({value})"))
             }
@@ -1472,7 +1496,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             | I::VariantIsArray
             | I::VariantTypeName
             | I::NameOf => Err(error(
-                format!("unsupported intrinsic {}", intrinsic.name()),
+                format!("{} is not supported", intrinsic.name()),
                 None,
             )),
         }

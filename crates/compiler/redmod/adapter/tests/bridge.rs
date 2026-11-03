@@ -76,6 +76,50 @@ fn native_capabilities_fail_closed_with_typed_actionable_errors() {
 }
 
 #[test]
+fn common_capability_messages_are_concise_and_source_facing() {
+    for (kind, message) in [
+        (
+            CapabilityError::InitializedLocalGroup,
+            "initializing multiple locals in one declaration is not supported; declare each separately with its intended initial value",
+        ),
+        (
+            CapabilityError::FieldGroup,
+            "initializing multiple fields in one declaration is not supported; declare each separately with its intended initial value",
+        ),
+        (
+            CapabilityError::Modifier(redscript_redmod_ast::Modifier::Export),
+            "modifier 'export' is not supported on this declaration",
+        ),
+        (
+            CapabilityError::Modifier(redscript_redmod_ast::Modifier::Mutable),
+            "modifier 'mutable' is not supported on this declaration",
+        ),
+        (
+            CapabilityError::ConstReturn,
+            "const return values are not supported",
+        ),
+        (
+            CapabilityError::UnsafeArrayEvaluation,
+            "this array literal cannot be evaluated here without changing when expressions run",
+        ),
+        (
+            CapabilityError::Metadata,
+            "use [key = \"value\"] on a field or [profile = \"label\"] on a function",
+        ),
+        (
+            CapabilityError::DefaultDirective,
+            "default requires a class or struct field and a literal or enum member value",
+        ),
+        (
+            CapabilityError::BodylessValueMethod,
+            "this method returns a value and needs a body; add its implementation",
+        ),
+    ] {
+        assert_eq!(kind.to_string(), message);
+    }
+}
+
+#[test]
 fn syntax_failures_do_not_expose_recovered_shared_modules() {
     let (module, errors) = parse_file_with_metadata("function Run() { Use(1 + ); }", file());
     assert!(module.is_none());

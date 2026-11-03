@@ -184,7 +184,9 @@ fn community_callback_contracts_are_not_rewritten() {
         |_, _, _| {},
     );
     assert!(
-        errors.iter().any(|e| e.contains("base callback must have")),
+        errors
+            .iter()
+            .any(|e| e.contains("inherited callback must return Bool")),
         "{errors:?}"
     );
 }

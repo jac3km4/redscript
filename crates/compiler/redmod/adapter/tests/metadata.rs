@@ -163,7 +163,7 @@ fn annotation_preparation_preserves_key_value_and_entry_spans() {
 
 #[test]
 fn nonfield_targets_and_nonstring_values_fail_with_typed_capability_errors() {
-    insta::assert_snapshot!(CapabilityError::Metadata.to_string(), @"bracket metadata requires a field and string literal values");
+    insta::assert_snapshot!(CapabilityError::Metadata.to_string(), @r#"use [key = "value"] on a field or [profile = "label"] on a function"#);
     let cases = [
         (
             r#"[category = "Test"] class Host {}"#,

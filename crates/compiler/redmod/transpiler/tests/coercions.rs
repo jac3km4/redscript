@@ -238,9 +238,9 @@ fn context_free_nested_and_branch_conversions_fail_closed() {
         );
         let errors = emit(&source).unwrap_err();
         assert!(
-            errors
-                .iter()
-                .any(|e| e.message.contains("strong/weak reference coercion")),
+            errors.iter().any(|e| e.message.contains(
+                "cannot convert this reference here; use a typed local, assignment, or return"
+            )),
             "{body}: {errors:?}"
         );
         assert!(errors.iter().all(|e| e.span.is_some()), "{errors:?}");
@@ -258,10 +258,9 @@ fn viable_reference_overloads_do_not_change_selection_after_erasure() {
         );
         let errors = emit(&source).unwrap_err();
         assert!(
-            errors
-                .iter()
-                .any(|e| e.message.contains("strong/weak reference coercion")
-                    || e.message.contains("MULTIPLE_MATCHING_OVERLOADS")),
+            errors.iter().any(|e| e.message.contains(
+                "cannot convert this reference here; use a typed local, assignment, or return"
+            ) || e.message.contains("MULTIPLE_MATCHING_OVERLOADS")),
             "{errors:?}"
         );
     }
@@ -276,10 +275,9 @@ fn viable_reference_overloads_do_not_change_selection_after_erasure() {
     )
     .unwrap_err();
     assert!(
-        errors
-            .iter()
-            .any(|e| e.message.contains("strong/weak reference coercion")
-                || e.message.contains("MULTIPLE_MATCHING_OVERLOADS")),
+        errors.iter().any(|e| e.message.contains(
+            "cannot convert this reference here; use a typed local, assignment, or return"
+        ) || e.message.contains("MULTIPLE_MATCHING_OVERLOADS")),
         "{errors:?}"
     );
 }
@@ -328,10 +326,9 @@ fn inherited_viable_method_overloads_still_block_erasure() {
     )
     .unwrap_err();
     assert!(
-        errors
-            .iter()
-            .any(|e| e.message.contains("strong/weak reference coercion")
-                || e.message.contains("MULTIPLE_MATCHING_OVERLOADS")),
+        errors.iter().any(|e| e.message.contains(
+            "cannot convert this reference here; use a typed local, assignment, or return"
+        ) || e.message.contains("MULTIPLE_MATCHING_OVERLOADS")),
         "{errors:?}"
     );
 }
@@ -350,9 +347,9 @@ fn mixed_numeric_siblings_do_not_prove_reference_overloads_disjoint() {
         );
         let errors = emit(&source).unwrap_err();
         assert!(
-            errors
-                .iter()
-                .any(|e| e.message.contains("strong/weak reference coercion")),
+            errors.iter().any(|e| e.message.contains(
+                "cannot convert this reference here; use a typed local, assignment, or return"
+            )),
             "{source}: {errors:?}"
         );
     }

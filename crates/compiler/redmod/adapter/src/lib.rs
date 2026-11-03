@@ -82,7 +82,7 @@ impl fmt::Display for ConditionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidCondition => f.write_str(
-                "condition must be ModuleExists(\"module\") or !ModuleExists(\"module\")",
+                "unsupported condition; use ModuleExists(\"module\") or !ModuleExists(\"module\")",
             ),
             Self::Evaluation(message) => f.write_str(message),
             Self::TooManyVersions { limit } => write!(

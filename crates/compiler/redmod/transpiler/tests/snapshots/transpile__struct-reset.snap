@@ -2,7 +2,7 @@
 source: crates/compiler/redmod/transpiler/tests/transpile.rs
 expression: "result.iter().map(|d| d.display(&sources).to_string()).collect::<String>()"
 ---
-error[REDMOD_TRANSPILE]: no verified target default/reset operation for native/imported or incomplete struct layouts
+error[REDMOD_TRANSPILE]: cannot default-initialize Record with native or incomplete fields; provide an explicit value
  --> rejected.reds:1:58
   |
 1 | native struct Record { let value: Int32; } func Test() { let record: Record; }

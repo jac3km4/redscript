@@ -31,7 +31,7 @@ fn has_array(expr: &Spanned<SourceExpr<'_>>) -> bool {
 fn check_pair(before: &Spanned<SourceExpr<'_>>, after: &Spanned<SourceExpr<'_>>) -> Result<()> {
     if has_array(after) && !matches!(before.0, ast::Expr::Constant(_)) {
         return Err(error(
-            "array prefix may reorder an earlier operand; bind operands explicitly",
+            "this array may run before the left operand; evaluate both in order using local variables",
             Some(after.1),
         ));
     }
@@ -43,7 +43,7 @@ fn check_siblings(exprs: &[Spanned<SourceExpr<'_>>]) -> Result<()> {
     for expr in exprs {
         if earlier_expression && has_array(expr) {
             return Err(error(
-                "array prefix may reorder an earlier argument; bind arguments explicitly",
+                "this array may run before an earlier argument; evaluate arguments in order using local variables",
                 Some(expr.1),
             ));
         }
@@ -62,7 +62,7 @@ impl<'src> AstVisitor<'src, WithSpan> for Guard {
     fn visit_node(&mut self, node: ast::AstNode<'_, 'src, WithSpan>) -> Result<()> {
         if let ast::AstNode::Stmt((ast::Stmt::Let { is_const: true, .. }, span)) = node {
             return Err(error(
-                "const locals are unsupported: REDmod initialization semantics differ",
+                "const locals are not supported; use let if the local does not need to be constant",
                 Some(*span),
             ));
         }
@@ -72,7 +72,7 @@ impl<'src> AstVisitor<'src, WithSpan> for Guard {
     fn visit_array_lit(&mut self, elems: &[Spanned<SourceExpr<'src>>]) -> Result<()> {
         if self.lazy {
             return Err(error(
-                "array literal in lazy operand has no retained control-flow provenance; bind the array in the selected branch explicitly",
+                "array literals are not supported here; create the array inside an explicit if branch",
                 elems.first().map(|(_, span)| *span),
             ));
         }
@@ -104,7 +104,7 @@ impl<'src> AstVisitor<'src, WithSpan> for Guard {
         check_siblings(args)?;
         if args.iter().any(has_array) && !matches!(callee.0, ast::Expr::Ident(_)) {
             return Err(error(
-                "array prefix may reorder receiver evaluation; bind arguments explicitly",
+                "this array may run before the receiver; evaluate the receiver and arguments in order using locals",
                 Some(callee.1),
             ));
         }
@@ -118,7 +118,7 @@ impl<'src> AstVisitor<'src, WithSpan> for Guard {
             if let ast::StrPart::Expr(expr) = part {
                 if earlier_expression && has_array(expr) {
                     return Err(error(
-                        "array prefix may reorder an earlier interpolation expression; bind interpolation operands explicitly",
+                        "this array may reorder string expressions; evaluate them in order using local variables",
                         Some(expr.1),
                     ));
                 }
@@ -137,7 +137,7 @@ impl<'src> AstVisitor<'src, WithSpan> for Guard {
             && has_array(expr)
         {
             return Err(error(
-                "array prefix in switch matcher has no retained conditional evaluation provenance; bind the matcher array explicitly",
+                "array literals are not supported in case expressions; use if/else branches instead",
                 Some(expr.1),
             ));
         }
@@ -152,7 +152,7 @@ impl<'src> AstVisitor<'src, WithSpan> for Guard {
     ) -> Result<()> {
         if has_array(rhs) && !matches!(lhs.0, ast::Expr::Ident(_)) {
             return Err(error(
-                "array prefix may reorder assignment place evaluation",
+                "this array may run before the assignment target; evaluate the target before creating the array",
                 Some(lhs.1),
             ));
         }

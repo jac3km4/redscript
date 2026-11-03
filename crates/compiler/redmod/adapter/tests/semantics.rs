@@ -171,7 +171,7 @@ fn semantic_errors_expose_typed_kinds_and_preserve_diagnostics() {
         (
             "func Test(x: ref<Object>) {}",
             SemanticError::UnsupportedType,
-            "unsupported REDmod reference or generic type",
+            "this reference or generic type is not supported",
         ),
     ] {
         let sources = SourceMap::new();
@@ -401,7 +401,7 @@ fn persistent_checks_reach_nested_reads_and_places() {
     assert!(
         errors
             .iter()
-            .all(|error| error.contains("persistent fields")),
+            .all(|error| error.contains("persistent field")),
         "{errors:?}"
     );
 }
@@ -435,7 +435,9 @@ fn duplicate_names_are_function_wide() {
     let file = sources.push_back("test.script", source);
     let (_, errors) = parse_file_with_metadata(source, file);
     assert!(
-        errors.iter().any(|e| e.to_string().contains("duplicate")),
+        errors.iter().any(|e| e
+            .to_string()
+            .contains("this name is already used in the function")),
         "{errors:?}"
     );
     assert_eq!(errors[0].span().file, file);
@@ -480,7 +482,9 @@ fn override_requires_a_resolved_matching_signature() {
         "class Base { public function F(x: Int32) {} } class Child extends Base { public function F(x: Int32) {} }",
     );
     assert!(
-        errors.iter().any(|e| e.contains("requires override")),
+        errors
+            .iter()
+            .any(|e| e.contains("add override if replacement is intended")),
         "{errors:?}"
     );
     let (errors, _) = check(
@@ -493,7 +497,7 @@ fn override_requires_a_resolved_matching_signature() {
     assert!(
         errors
             .iter()
-            .any(|e| e.contains("no matching base signature")),
+            .any(|e| e.contains("no inherited method matches this override")),
         "{errors:?}"
     );
 }

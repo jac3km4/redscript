@@ -5,4 +5,4 @@ input_file: crates/compiler/redmod/adapter/tests/data/event-errors.script
 ---
 REDMOD_SEMANTICS [15..40]: events must omit visibility or be protected
 REDMOD_SEMANTICS [44..73]: events cannot be static, final or const
-REDMOD_SEMANTICS [78..95]: events require a class or method annotation target
+REDMOD_SEMANTICS [78..95]: declare the event inside a class or use a method patch annotation

@@ -48,61 +48,64 @@ impl fmt::Display for CapabilityError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let message = match self {
             Self::ForLoop => {
-                "for loops require REDmod metadata processing; use parse_file_with_metadata and process_sources"
+                "this tool entry point does not support for loops; integrations must use parse_file_with_metadata and process_sources"
             }
             Self::DoWhileLoop => {
-                "do-while loops require REDmod metadata processing; use parse_file_with_metadata and process_sources"
+                "this tool entry point does not support do-while loops; integrations must use parse_file_with_metadata and process_sources"
             }
-            Self::SequenceExpression => {
-                "comma expressions have no shared value/ordering representation"
-            }
+            Self::SequenceExpression => "comma expressions are not supported here",
             Self::OmittedArgument => {
-                "omitted argument slots are not supported; provide explicit arguments"
+                "omitted arguments are not supported here; supply a value only if it preserves the parameter's default behavior"
             }
 
             Self::UnsafeArrayEvaluation => {
-                "array literal prefixes may change conditional evaluation or operand order; bind the array explicitly at its intended execution point"
+                "this array literal cannot be evaluated here without changing when expressions run"
             }
 
             Self::InitializedLocalGroup => {
-                "initialized local groups require explicit per-binding initializers; split the declaration"
+                "initializing multiple locals in one declaration is not supported; declare each separately with its intended initial value"
             }
             Self::FieldGroup => {
-                "initialized field groups require explicit per-field initializers; split the declaration"
+                "initializing multiple fields in one declaration is not supported; declare each separately with its intended initial value"
             }
-            Self::OperatorDeclaration => {
-                "this operator declaration has no supported shared dispatch representation"
-            }
+            Self::OperatorDeclaration => "this operator declaration is not supported",
 
             Self::InvalidOperatorSignature(message) | Self::InvalidConversionSignature(message) => {
                 message
             }
-            Self::EnumStorage => "explicit enum storage types are not supported",
-            Self::Metadata => "bracket metadata requires a field and string literal values",
+            Self::EnumStorage => "this enum storage type is not supported",
+            Self::Metadata => {
+                "use [key = \"value\"] on a field or [profile = \"label\"] on a function"
+            }
             Self::DefaultDirective => {
-                "default directives require an aggregate field target and a literal or enum member"
+                "default requires a class or struct field and a literal or enum member value"
             }
             Self::HintDirective => {
-                "hint directives require a same-aggregate field target and string value"
+                "invalid hint directive: target a field declared in the same class or struct and use a quoted string value"
             }
-            Self::ConstReturn => "const return semantics are not supported",
+            Self::ConstReturn => "const return values are not supported",
             Self::BodylessValueMethod => {
-                "non-imported native methods returning a value require a body"
+                "this method returns a value and needs a body; add its implementation"
             }
             Self::Modifier(modifier) => {
                 return write!(
                     f,
-                    "REDmod modifier {modifier:?} has no implemented semantic mapping"
+                    "modifier '{}' is not supported on this declaration",
+                    format!("{modifier:?}").to_ascii_lowercase()
                 );
             }
 
-            Self::SwitchLabelOrder => "switch defaults must be unique",
-            Self::ControlFlowLocalLimit => "loop lowering exceeds the typed local limit",
+            Self::SwitchLabelOrder => {
+                "a switch can have only one default label; combine the default cases"
+            }
+            Self::ControlFlowLocalLimit => {
+                "processing this loop exceeds the local variable limit; split the function into smaller functions"
+            }
             Self::ControlFlowProvenance => {
-                "loop lowering provenance was changed or lost; retain the parsed REDmod module and its control-flow plan together"
+                "internal error: loop information was lost; integrations must pass the complete ParsedModule to process_sources"
             }
             Self::RecoveredExpression => {
-                "recovered syntax cannot be lowered; fix the syntax errors first"
+                "fix the reported syntax errors before analyzing this code"
             }
         };
         f.write_str(message)

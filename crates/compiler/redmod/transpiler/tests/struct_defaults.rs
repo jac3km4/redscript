@@ -99,7 +99,9 @@ fn unsupported_fields_and_native_layouts_fail_closed_with_spans() {
     ] {
         let errors = emit("func Test() { let record: Record; }", dependency).unwrap_err();
         assert!(
-            errors.iter().any(|e| e.message.contains("default/reset")),
+            errors
+                .iter()
+                .any(|e| e.message.contains("cannot default-initialize")),
             "{dependency}: {errors:?}"
         );
         assert!(errors.iter().all(|e| e.span.is_some()), "{errors:?}");
@@ -158,9 +160,9 @@ fn complete_native_flags_do_not_substitute_for_a_verified_schema() {
     );
     let errors = transpile_sources(&sources, &[file], symbols, &interner).unwrap_err();
     assert!(
-        errors
-            .iter()
-            .any(|e| e.message.contains("native/imported or incomplete")),
+        errors.iter().any(|e| e
+            .message
+            .contains("cannot default-initialize Record with native or incomplete fields")),
         "{errors:?}"
     );
 }
@@ -246,7 +248,9 @@ fn low_level_recursive_and_unproven_layouts_fail_closed() {
         )
         .unwrap_err();
         assert!(
-            errors.iter().any(|e| e.message.contains("default/reset")),
+            errors
+                .iter()
+                .any(|e| e.message.contains("cannot default-initialize")),
             "{mode}: {errors:?}"
         );
         assert!(errors.iter().all(|e| e.span.is_some()), "{errors:?}");

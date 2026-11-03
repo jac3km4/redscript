@@ -938,17 +938,17 @@ fn rejected_features_have_source_diagnostics() {
         (
             "array-place",
             "class Widget { let items: [Int32]; public func Test() { ArrayPush(this.items, 1); } }",
-            "local place",
+            "array operations require a local array",
         ),
         (
             "out-place",
             "func Set(out value: Int32) {} class Widget { let value: Int32; public func Test() { Set(this.value); } }",
-            "out arguments",
+            "out arguments must be local variables",
         ),
         (
             "struct-reset",
             "native struct Record { let value: Int32; } func Test() { let record: Record; }",
-            "default/reset",
+            "cannot default-initialize Record",
         ),
     ] {
         let sources = SourceMap::new();

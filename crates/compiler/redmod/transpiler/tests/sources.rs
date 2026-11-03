@@ -101,7 +101,7 @@ fn incompatible_callback_contracts_fail_without_output() {
         assert!(
             errors
                 .iter()
-                .any(|e| e.message.contains("Bool callback return contract")),
+                .any(|e| e.message.contains("callbacks must return Bool")),
             "{declaration}: {errors:?}"
         );
         assert!(
@@ -128,7 +128,7 @@ fn incompatible_callback_contracts_fail_without_output() {
     assert!(
         errors
             .iter()
-            .any(|e| e.message.contains("Bool callback return contract")),
+            .any(|e| e.message.contains("callbacks must return Bool")),
         "{errors:?}"
     );
 }
@@ -156,7 +156,7 @@ fn const_locals_fail_closed_with_source_diagnostics() {
         assert_eq!(errors.len(), 1, "{errors:?}");
         let error = &errors[0];
         assert!(
-            error.message.contains("const locals are unsupported"),
+            error.message.contains("const locals are not supported"),
             "{error:?}"
         );
         let span = error.span.unwrap();
@@ -477,7 +477,7 @@ fn eager_interpolation_and_switch_prefixes_are_rejected() {
         (
             "switch-prefix",
             "func Test(out x: Int32) { switch Read(x) { case 0: break; case Check([Set(x)]): break; } }",
-            "switch matcher",
+            "case expressions",
         ),
     ] {
         let sources = SourceMap::new();

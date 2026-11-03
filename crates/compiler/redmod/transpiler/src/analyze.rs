@@ -247,7 +247,7 @@ impl<'ctx> AnalyzedSources<'ctx> {
                 };
                 if targets.contains(&id) {
                     return Err(error(
-                        "competing replacements for the same resolved target/signature across analyzed sources; lowered body ownership is ambiguous",
+                        "multiple @replaceMethod declarations target the same method; keep only one replacement",
                         Some(*span),
                     ));
                 }
@@ -362,7 +362,7 @@ impl<'ctx> AnalyzedSources<'ctx> {
             let result = (|| {
                 if decl.annotations.iter().any(|(a, _)| a.name == "if") {
                     return Err(error(
-                        "automatic association rejects conditional declarations; inactive bodies have no resolved identity",
+                        "@if declarations are not supported; select the version for your dependencies and remove the other versions",
                         Some(*span),
                     ));
                 }
@@ -374,10 +374,13 @@ impl<'ctx> AnalyzedSources<'ctx> {
                 });
                 let owner = if let Some((a, _)) = patch {
                     let [(ast::Expr::Ident(name), _)] = &a.args[..] else {
-                        return Err(error("patch requires one resolved class name", Some(*span)));
+                        return Err(error(
+                            "patch annotations require one class name, for example @addMethod(PlayerPuppet)",
+                            Some(*span),
+                        ));
                     };
                     Some(self.type_id(file, name).ok_or_else(|| {
-                        error("ambiguous or unavailable patch class", Some(*span))
+                        error("cannot resolve the class in this patch annotation; check its name and imports", Some(*span))
                     })?)
                 } else {
                     parent
@@ -393,7 +396,7 @@ impl<'ctx> AnalyzedSources<'ctx> {
                     Item::Class(c) | Item::Struct(c) => {
                         if !c.type_params.is_empty() {
                             return Err(error(
-                                "custom generic declarations are unsupported",
+                                "custom generic declarations are not supported; use concrete parameter and field types",
                                 Some(*span),
                             ));
                         }
@@ -426,7 +429,7 @@ impl<'ctx> AnalyzedSources<'ctx> {
                     Item::Function(f) => {
                         if !f.type_params.is_empty() {
                             return Err(error(
-                                "custom generic declarations are unsupported",
+                                "custom generic declarations are not supported; use concrete parameter and field types",
                                 Some(*span),
                             ));
                         }
@@ -492,7 +495,7 @@ impl<'ctx> AnalyzedSources<'ctx> {
                 };
                 let Some(binding) = binding else {
                     return Err(error(
-                        "declaration has no unique resolved name/signature association (inactive, ambiguous, inferred signature, or multiple wrappers)",
+                        "cannot identify this declaration; add explicit parameter and return types and check for duplicate wrappers",
                         Some(*span),
                     ));
                 };

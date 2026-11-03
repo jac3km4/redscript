@@ -2,4 +2,4 @@
 source: crates/compiler/redmod/transpiler/tests/transpile.rs
 expression: "diagnostics[0].to_string()"
 ---
-embedded delimiter has no verified REDmod literal spelling
+cannot emit a quote inside this literal

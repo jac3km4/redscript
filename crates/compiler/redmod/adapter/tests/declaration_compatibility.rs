@@ -84,7 +84,7 @@ fn override_out_flags_must_match_in_both_directions() {
         ));
         assert_eq!(errors.len(), 1, "{errors:?}");
         assert!(
-            errors[0].contains("override parameter out flags differ from the base signature"),
+            errors[0].contains("match each parameter's out modifier to the inherited method"),
             "{errors:?}"
         );
     }

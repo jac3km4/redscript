@@ -114,35 +114,56 @@ fn compound_reads_do_not_become_writable_places() {
         func Take(out flag: Bool) {}
     "#;
     for (body, diagnostic) in [
-        ("owner.child.flag = true;", "unsafe assignment place"),
-        ("Make().flag = true;", "unsafe assignment place"),
-        ("owner.value.flag = true;", "unsafe assignment place"),
-        ("Deref(value).flag = true;", "unsafe assignment place"),
+        (
+            "owner.child.flag = true;",
+            "assignment needs a local, a class local's field, or a local array's element",
+        ),
+        (
+            "Make().flag = true;",
+            "assignment needs a local, a class local's field, or a local array's element",
+        ),
+        (
+            "owner.value.flag = true;",
+            "assignment needs a local, a class local's field, or a local array's element",
+        ),
+        (
+            "Deref(value).flag = true;",
+            "assignment needs a local, a class local's field, or a local array's element",
+        ),
         ("MakeValue().flag = true;", "INVALID_TEMP"),
         (
             "Take(owner.child.flag);",
-            "out arguments require local identity",
+            "out arguments must be local variables",
         ),
-        ("Take(Make().flag);", "out arguments require local identity"),
+        (
+            "Take(Make().flag);",
+            "out arguments must be local variables",
+        ),
         (
             "Take(owner.value.flag);",
-            "out arguments require local identity",
+            "out arguments must be local variables",
         ),
         (
             "Take(Deref(value).flag);",
-            "out arguments require local identity",
+            "out arguments must be local variables",
         ),
-        ("owner.value.Bump();", "AsRef requires a stable local place"),
-        ("MakeValue().Bump();", "AsRef requires a stable local place"),
         (
-            "owner.values[0];",
-            "array indexing requires a local receiver",
+            "owner.value.Bump();",
+            "AsRef requires a local variable here",
         ),
+        (
+            "MakeValue().Bump();",
+            "AsRef requires a local variable here",
+        ),
+        ("owner.values[0];", "array indexing requires a local array"),
         (
             "ArrayPush(owner.values, true);",
-            "array intrinsic requires a local place",
+            "array operations require a local array",
         ),
-        ("AsRef(owner.value);", "AsRef requires a stable local place"),
+        (
+            "AsRef(owner.value);",
+            "AsRef requires a local variable here",
+        ),
     ] {
         let source = format!(
             "{definitions} func Test(owner: ref<Owner>, value: script_ref<Value>) {{ {body} }}"
@@ -180,9 +201,9 @@ fn call_rooted_struct_fields_remain_rejected() {
         .unwrap_err();
         assert!(errors.iter().all(|e| e.span.is_some()));
         assert!(
-            errors
-                .iter()
-                .any(|e| e.message.contains("verified inline receiver")),
+            errors.iter().any(|e| e
+                .message
+                .contains("this field read requires a local receiver")),
             "{errors:?}"
         );
     }
@@ -220,9 +241,9 @@ fn unsupported_receiver_forms_still_fail_closed() {
         .unwrap_err();
         assert!(errors.iter().all(|e| e.span.is_some()), "{errors:?}");
         assert!(
-            errors
-                .iter()
-                .any(|e| e.message.contains("verified inline receiver")),
+            errors.iter().any(|e| e
+                .message
+                .contains("this field read requires a local receiver")),
             "{errors:?}"
         );
     }

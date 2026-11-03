@@ -2,7 +2,7 @@
 source: crates/compiler/redmod/transpiler/tests/sources.rs
 expression: "errors.iter().map(|e| e.display(&sources).to_string()).collect::<String>()"
 ---
-error[REDMOD_TRANSPILE]: automatic association rejects conditional declarations; inactive bodies have no resolved identity
+error[REDMOD_TRANSPILE]: @if declarations are not supported; select the version for your dependencies and remove the other versions
  --> conditional.reds:1:1
   |
 1 | @if(false)

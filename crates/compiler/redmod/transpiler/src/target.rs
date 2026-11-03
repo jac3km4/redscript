@@ -7,7 +7,7 @@ use crate::{Result, error};
 pub fn ident(name: &str) -> Result<&str> {
     if !redscript_redmod_parser::is_target_identifier(name) {
         return Err(error(
-            format!("invalid or reserved target identifier `{name}`"),
+            format!("invalid or reserved output name `{name}`"),
             None,
         ));
     }
@@ -22,7 +22,10 @@ pub fn path(name: &str) -> Result<&str> {
 
 pub fn typ<'ctx>(typ: &Type<'ctx>, symbols: &Symbols<'ctx>) -> Result<String> {
     let Type::Data(app) = typ else {
-        return Err(error("unresolved/custom generic type is unsupported", None));
+        return Err(error(
+            "cannot emit this type; use a concrete, non-generic type",
+            None,
+        ));
     };
     let id = app.id();
     let args = app.args();
@@ -30,14 +33,20 @@ pub fn typ<'ctx>(typ: &Type<'ctx>, symbols: &Symbols<'ctx>) -> Result<String> {
         .get_type(id)
         .ok_or_else(|| error("missing resolved type", None))?;
     if id.is_fn() {
-        return Err(error("lambdas and function values are unsupported", None));
+        return Err(error(
+            "function values are not supported; call a named function directly",
+            None,
+        ));
     }
     if def
         .schema()
         .as_aggregate()
         .is_some_and(|a| a.flags().is_mixed_ref())
     {
-        return Err(error("mixedRef types are unsupported", None));
+        return Err(error(
+            "mixedRef types are not supported by the transpiler",
+            None,
+        ));
     }
     if def
         .schema()
@@ -45,7 +54,7 @@ pub fn typ<'ctx>(typ: &Type<'ctx>, symbols: &Symbols<'ctx>) -> Result<String> {
         .is_some_and(|a| a.flags().is_never_ref() && !a.flags().is_struct())
     {
         return Err(error(
-            "neverRef classes have no verified target value semantics",
+            "neverRef classes are not supported by the transpiler",
             None,
         ));
     }
@@ -60,7 +69,10 @@ pub fn typ<'ctx>(typ: &Type<'ctx>, symbols: &Symbols<'ctx>) -> Result<String> {
                 .and_then(|d| d.schema().as_aggregate())
                 .is_some_and(|a| !a.flags().is_struct() && !a.flags().is_never_ref())
             {
-                return Err(error("strong ref requires a target reference class", None));
+                return Err(error(
+                    "ref<T> requires a class type, not a struct or primitive",
+                    None,
+                ));
             }
             return Ok(inner_text);
         }
@@ -78,7 +90,10 @@ pub fn typ<'ctx>(typ: &Type<'ctx>, symbols: &Symbols<'ctx>) -> Result<String> {
         }
     }
     if !args.is_empty() || !def.params().is_empty() {
-        return Err(error("custom generic types are unsupported", None));
+        return Err(error(
+            "custom generic types are not supported; use a concrete type",
+            None,
+        ));
     }
     if matches!(def.schema(), TypeSchema::Primitive) && id == predef::NOTHING {
         return Err(error("Nothing has no target type", None));
@@ -98,11 +113,11 @@ pub enum LiteralError {
 impl fmt::Display for LiteralError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Self::EmbeddedDelimiter => "embedded delimiter has no verified REDmod literal spelling",
-            Self::Nul => "NUL has no verified REDmod literal spelling",
-            Self::UnverifiedControl => "unverified control character in REDmod literal",
+            Self::EmbeddedDelimiter => "cannot emit a quote inside this literal",
+            Self::Nul => "cannot emit a NUL character inside a literal",
+            Self::UnverifiedControl => "cannot emit this control character inside a literal",
             Self::UnverifiedResource => {
-                "raw backslashes or controls are unverified in R/T literals"
+                "resource and TweakDBID literals cannot contain backslashes or control characters"
             }
         })
     }
@@ -177,7 +192,7 @@ mod tests {
             let error = ident(name).unwrap_err();
             assert_eq!(
                 error.message,
-                format!("invalid or reserved target identifier `{name}`")
+                format!("invalid or reserved output name `{name}`")
             );
             assert_eq!(error.span, None);
             assert_eq!(error.declaration, None);
@@ -201,7 +216,7 @@ mod tests {
         ] {
             assert_eq!(
                 path(name).unwrap_err().message,
-                format!("invalid or reserved target identifier `{invalid}`")
+                format!("invalid or reserved output name `{invalid}`")
             );
         }
     }

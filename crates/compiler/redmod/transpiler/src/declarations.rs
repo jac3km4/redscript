@@ -123,7 +123,10 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                 || !decl.qualifiers.is_empty()
                 || decl.visibility.is_some()
             {
-                return Err(error("unsupported import metadata", None));
+                return Err(error(
+                    "imports cannot have annotations, modifiers, or visibility",
+                    None,
+                ));
             }
             for name in self.import_paths(import)? {
                 self.output
@@ -140,7 +143,7 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
             Q::EDITABLE | Q::INSTANCE_EDITABLE | Q::INLINE | Q::REPLICATED | Q::TEST_ONLY,
         ) {
             return Err(error(
-                "editable, instanceeditable, inlined, replicated and testonly qualifiers are not supported by REDmod transpile",
+                "editable, instanceeditable, inlined, replicated and testonly modifiers are not supported by the transpiler",
                 Some(span),
             ));
         }
@@ -205,7 +208,10 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                     .as_aggregate()
                     .ok_or_else(|| error("bound type is not an aggregate", None))?;
                 if !source.type_params.is_empty() || !def.params().is_empty() {
-                    return Err(error("custom generic declarations are unsupported", None));
+                    return Err(error(
+                        "custom generic declarations are not supported; use concrete parameter and field types",
+                        None,
+                    ));
                 }
                 target::typ(&Type::nullary(id), self.symbols)?;
                 self.output
@@ -315,7 +321,10 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
             Item::Function(source) => {
                 crate::source::validate(source)?;
                 if !source.type_params.is_empty() {
-                    return Err(error("custom generic declarations are unsupported", None));
+                    return Err(error(
+                        "custom generic declarations are not supported; use concrete parameter and field types",
+                        None,
+                    ));
                 }
                 let (name, signature, body, override_, wrapper) = self.function(resolved)?;
                 if name != source.name.0 {
@@ -328,17 +337,20 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                     self.validate_patch(id.parent())?;
                 }
                 if !signature.type_params().is_empty() {
-                    return Err(error("custom generic declarations are unsupported", None));
+                    return Err(error(
+                        "custom generic declarations are not supported; use concrete parameter and field types",
+                        None,
+                    ));
                 }
                 if callback && !member && !patch {
-                    return Err(error("callback requires member context", None));
+                    return Err(error("callbacks must be declared inside a class", None));
                 }
                 if callback
                     && (*signature.return_type() != Type::nullary(predef::BOOL)
                         || signature.is_const_return())
                 {
                     return Err(error(
-                        "REDmod events require a non-const Bool callback return contract",
+                        "callbacks must return Bool without const; Void callbacks are not supported",
                         Some(span),
                     ));
                 }
@@ -490,7 +502,10 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
         });
         let patch = patches.next();
         if patches.next().is_some() {
-            return Err(error("multiple patch annotations are unsupported", None));
+            return Err(error(
+                "use only one of @addField, @addMethod, @wrapMethod, or @replaceMethod per declaration",
+                None,
+            ));
         }
         let expected = match resolved {
             R::AddedMethod(id) => Some(("addMethod", id.parent())),
@@ -502,7 +517,10 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
         match (expected, patch) {
             (Some((kind, parent)), Some((annotation, _))) if annotation.name == kind && !member => {
                 let [(ast::Expr::Ident(name), _)] = &annotation.args[..] else {
-                    return Err(error("patch requires one class identifier", None));
+                    return Err(error(
+                        "patch annotations require one class name, for example @addMethod(PlayerPuppet)",
+                        None,
+                    ));
                 };
                 if *name != parent.simple_name() && *name != parent.as_str() {
                     return Err(error("patch annotation and resolved parent disagree", None));
@@ -542,11 +560,14 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
             .and_then(|d| d.schema().as_aggregate())
             .ok_or_else(|| error("patch target is not an aggregate", None))?;
         if agg.flags().is_import_only() {
-            return Err(error("patching importonly classes is unsupported", None));
+            return Err(error(
+                "cannot add, wrap, or replace members of an importonly class",
+                None,
+            ));
         }
         if self.unit.classes.contains_key(&parent) {
             return Err(error(
-                "patching source-defined classes is unsafe in REDmod",
+                "cannot patch a class declared in these sources; edit its declaration instead",
                 None,
             ));
         }
@@ -618,7 +639,10 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                 continue;
             }
             if a.name == "mixedRef" {
-                return Err(error("mixedRef types are unsupported", Some(*span)));
+                return Err(error(
+                    "mixedRef types are not supported by the transpiler",
+                    Some(*span),
+                ));
             }
             if !matches!(
                 a.name,
@@ -629,7 +653,7 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                     | "wrapMethod"
             ) {
                 return Err(error(
-                    format!("unsupported target annotation @{}", a.name),
+                    format!("annotation @{} is not supported by the transpiler", a.name),
                     Some(*span),
                 ));
             }
@@ -675,6 +699,9 @@ fn metadata_expr(expr: &ast::SourceExpr<'_>) -> Result<String> {
                 .collect::<Result<Vec<_>>>()?
                 .join(", ")
         )),
-        _ => Err(error("unsupported annotation expression", None)),
+        _ => Err(error(
+            "annotation arguments must be supported literal values or names",
+            None,
+        )),
     }
 }

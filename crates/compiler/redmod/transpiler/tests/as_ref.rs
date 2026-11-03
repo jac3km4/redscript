@@ -274,7 +274,7 @@ fn mixed_numeric_siblings_do_not_prove_borrow_overloads_disjoint() {
         assert!(
             errors
                 .iter()
-                .any(|e| e.message.contains("AsRef requires a stable local place")),
+                .any(|e| e.message.contains("AsRef requires a local variable here")),
             "{source}: {errors:?}"
         );
     }
