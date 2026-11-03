@@ -151,7 +151,7 @@ and bundle signedness limitations.
 | Inferred signatures, conditions, multiple wrappers and cross-module patches | Add finalized source identity facts and a variant-aware transpilation plan |
 | Array prefixes crossing lazy branches, switch matchers or prior operands | Preserve execution-site prerequisites in shared lowering before relaxing source guards |
 | Unsafe receivers, temporary/nonlocal places and strong/weak coercions | Add context-aware place/reference lowering; never mutate a copy as a substitute |
-| Native/imported struct, zero-member-less enum, Variant and fixed-array default resets | Verify complete layouts and target initialization/reset behavior |
+| Zero-member-less enum, Variant and fixed-array default resets | Verify target initialization/reset behavior; native/import-only structs emit `Type()` |
 | Const locals | Preserve verified initialization and mutation semantics; currently rejected rather than emitted as mutable |
 | Array count/grow/sort, `LongIntEnum`, variant inspection, `NameOf`, more `ToString`/`IsDefined` types | Add resolved typed mappings and official fixtures per operation |
 | `editable`, `instanceeditable`, `inlined`, `replicated`, `testonly` transpilation | Preserve verified declaration semantics rather than dropping flags |
@@ -236,15 +236,23 @@ Int32, Bool, Float, String, CName and strong/weak class references, with reset
 assignments retained inside a loop and a branch. Fresh compiled/hash artifacts
 and the final success marker were required. It also accepted raw zero-argument
 source/empty struct, `inkAnimOptions()` and `ItemID()` probes. This is compilation
-and typing evidence, not proof of runtime defaults, reset effects or native layout
-completeness, and does not justify a blanket `Type()` fallback.
+and typing evidence, not proof of runtime defaults or native layout completeness.
+Scripted, native and import-only struct defaults now uniformly emit `Type()`;
+explicit positional constructor expressions remain unchanged.
 
 The shared frontend constructor API instead requires every field argument for a
-complete source struct; emitted positional defaults pass the full REDmod adapter
-API too. Official `core/ui/animationPlaybackOptions.script` exposes 12 fields for
+complete source struct; zero-argument target default construction is not enabled
+by that community API. The transpiler's generated source is checked against the
+official compiler rather than claiming an adapter roundtrip for that syntax. Official `core/ui/animationPlaybackOptions.script` exposes 12 fields for
 `inkAnimOptions`, including an enum, but supplies no completeness proof;
-`core/data/itemID.script` declares `ItemID` as `importonly` without fields. Neither
-native default/reset is enabled. Reproduce with `REDMOD_EXE`/`REDMOD_GAME_ROOT`:
+`core/data/itemID.script` declares `ItemID` as `importonly` without fields.
+Struct defaults now emit `Type()` without depending on that field list.
+The separate official zero-argument probe verifies `Vector2`, `ResRef`, `ItemID`,
+`inkAnimOptions` and `stimInvestigateData`: each emits zero-argument Construct
+instructions at entry and on the loop back edge. The transpiled `NativeDefaults`
+and `ScriptDefaults` fixtures also check repeated zero-argument reset bytecode,
+including nested scripted fields, arrays and Variant storage. This is code-generation evidence,
+not an in-game execution guarantee. Reproduce with `REDMOD_EXE`/`REDMOD_GAME_ROOT`:
 
 ```sh
 cargo test -p redscript-redmod-transpiler --locked --test struct_defaults -- --include-ignored --nocapture

@@ -1,0 +1,14 @@
+---
+source: crates/compiler/redmod/transpiler/tests/official.rs
+expression: source.module.text
+---
+function OfficialNativeDefault(again: Bool) -> Vector2 {
+    var repeated: Vector2;
+    var value: Vector2 = Vector2();
+    while (again) {
+        repeated = Vector2();
+        repeated.X = 42.0;
+        value = repeated;
+    }
+    return value;
+}

@@ -1,4 +1,4 @@
-//! Complete source layouts use positional constructors, never a blanket Type().
+//! Struct defaults use zero-argument construction at each declaration site.
 use redscript_community_ast::SourceMap;
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{Symbols, TypeInterner};
@@ -47,67 +47,28 @@ func ResetStructs(again: Bool) {
 "#;
 
 #[test]
-fn nested_defaults_follow_field_order_and_keep_each_reset_site() {
-    let text = emit(SOURCE, "").unwrap();
-    let value =
-        "DefaultPair(DefaultLeaf(0, false, 0.0), DefaultLeaf(0, false, 0.0), NULL, NULL, \"\", '')";
-    assert!(
-        text.contains(&format!("var pair: DefaultPair = {value};")),
-        "{text}"
-    );
-    assert!(
-        text.contains(&format!("while (again) {{\n        pair_2 = {value};")),
-        "{text}"
-    );
-    assert!(
-        text.contains(&format!("if (again) {{\n        pair_3 = {value};")),
-        "{text}"
-    );
-    assert_eq!(text.matches(value).count(), 3, "{text}");
-    assert!(text.contains("var pair_2: DefaultPair;"), "{text}");
-    assert!(text.contains("var pair_3: DefaultPair;"), "{text}");
-    assert!(!text.contains("DefaultPair()"), "{text}");
+fn nested_defaults_keep_each_reset_site() {
+    insta::assert_snapshot!(emit(SOURCE, "").unwrap());
 }
 
 #[test]
-fn tweakdbid_defaults_reset_locals_and_complete_struct_fields() {
+fn scalar_defaults_remain_explicit() {
     let text = emit(
-        r#"struct Record { public let id: TweakDBID; }
+        r#"enum Choice { First = 3, Zero = 0, Invalid = 4 }
         func Test(again: Bool) {
             let id: TweakDBID;
-            while again { let id: TweakDBID; id = t"dirty"; }
-            let record: Record;
+            let choice: Choice;
+            while again { let choice: Choice; choice = Choice.Invalid; }
         }"#,
         "",
     )
     .unwrap();
     assert!(text.contains("var id: TweakDBID = T\"\";"), "{text}");
-    assert!(
-        text.contains("while (again) {\n        id_2 = T\"\";"),
-        "{text}"
-    );
-    assert!(text.contains("Record(T\"\")"), "{text}");
-}
-
-#[test]
-fn enum_defaults_choose_zero_not_first_or_invalid_and_reset_in_place() {
-    let text = emit(
-        r#"enum Choice { First = 3, Zero = 0, Invalid = 4 }
-        struct Record { public let choice: Choice; }
-        func Test(again: Bool) {
-            let choice: Choice;
-            while again { let choice: Choice; choice = Choice.Invalid; }
-            let record: Record;
-        }"#,
-        "",
-    )
-    .unwrap();
     assert!(text.contains("var choice: Choice = Choice.Zero;"), "{text}");
     assert!(
         text.contains("while (again) {\n        choice_2 = Choice.Zero;"),
         "{text}"
     );
-    assert!(text.contains("Record(Choice.Zero)"), "{text}");
     let errors = emit(
         "enum Choice { First = 3 } func Test() { let value: Choice; }",
         "",
@@ -120,197 +81,39 @@ fn enum_defaults_choose_zero_not_first_or_invalid_and_reset_in_place() {
 }
 
 #[test]
-fn source_dependency_layouts_and_empty_structs_are_complete() {
-    let text = emit(
-        "func Test() { let value: Record; let empty: Empty; }",
-        "struct Record { public let z: Int32; public let a: Bool; } struct Empty {}",
-    )
-    .unwrap();
-    assert!(
-        text.contains("var value: Record = Record(0, false);"),
-        "{text}"
-    );
-    assert!(text.contains("var empty: Empty = Empty();"), "{text}");
-}
-
-#[test]
-fn unsupported_fields_and_native_layouts_fail_closed_with_spans() {
+fn defaults_do_not_enumerate_fields_or_require_visible_layouts() {
     for dependency in [
         "native struct Record {}",
         "native struct Record { public let value: Int32; }",
-        "struct Record { public let values: [Int32]; }",
-        "struct Record { public let values: [Int32; 2]; }",
-        "struct Record { public let value: Variant; }",
+        "importonly struct Record {}",
+        "struct Record { public let values: [Int32]; public let value: Variant; }",
         "enum Choice { First = 1 } struct Record { public let value: Choice; }",
-        "native struct ItemID {} struct Record { public let value: ItemID; }",
-        "native struct inkAnimOptions { public let loop: Bool; } struct Record { public let value: inkAnimOptions; }",
-        "struct Inner { public let values: [Int32]; } struct Record { public let value: Inner; }",
-        "struct Inner { public let count: Int32; } struct Record { public let value: script_ref<Inner>; }",
+        "native struct Native {} struct Record { public let value: Native; }",
+        "struct Record { public let id: TweakDBID; }",
+        "struct Inner { public let value: Int32; } struct Record { public let value: Inner; }",
+        "struct Record {}",
     ] {
-        let errors = emit("func Test() { let record: Record; }", dependency).unwrap_err();
+        let text = emit("func Test(again: Bool) { let value: Record; while again { let nested: Record; nested; } }", dependency).unwrap();
+        assert!(text.contains("var value: Record = Record();"), "{text}");
         assert!(
-            errors
-                .iter()
-                .any(|e| e.message.contains("cannot default-initialize")),
-            "{dependency}: {errors:?}"
+            text.contains("while (again) {\n        nested = Record();"),
+            "{text}"
         );
-        assert!(errors.iter().all(|e| e.span.is_some()), "{errors:?}");
     }
+    let fields = (0..256)
+        .map(|i| format!("public let f{i}: Int32;"))
+        .collect::<String>();
+    let text = emit(
+        "func Test() { let value: Record; }",
+        &format!("struct Record {{ {fields} }}"),
+    )
+    .unwrap();
+    assert!(text.contains("var value: Record = Record();"), "{text}");
 }
 
 #[test]
-fn generated_defaults_typecheck_through_the_full_target_api() {
-    let text = emit(SOURCE, "").unwrap();
-    let sources = SourceMap::new();
-    sources.populate_boot_lib();
-    let file = sources.push_back("defaults.script", text.clone());
-    let (parsed, errors) = redscript_redmod_adapter::parse_file_with_metadata(&text, file);
-    assert!(errors.is_empty(), "{errors:?}");
-    let dependencies = sources
-        .files()
-        .filter(|(id, _)| *id != file)
-        .map(|(id, source)| {
-            let (module, errors) = redscript_community_parser::parse_module(source.source(), id);
-            assert!(errors.is_empty(), "{errors:?}");
-            module.unwrap()
-        })
-        .collect::<Vec<_>>();
-    let interner = TypeInterner::default();
-    let mut reporter = redscript_compiler_frontend::CompileErrorReporter::default();
-    let (unit, _, errors) = redscript_redmod_adapter::process_sources(
-        parsed,
-        dependencies,
-        Symbols::with_default_types(),
-        &mut reporter,
-        &interner,
-    );
-    assert!(errors.is_empty(), "{errors:?}");
-    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
-    assert_eq!(unit.functions.len(), 1);
-}
-
-#[test]
-fn complete_native_flags_do_not_substitute_for_a_verified_schema() {
-    use redscript_compiler_frontend::{Aggregate, AggregateFlags, TypeDef, TypeSchema};
-    let sources = SourceMap::new();
-    let file = sources.push_back("default.reds", "func Test() { let record: Record; }");
-    sources.populate_boot_lib();
-    let interner = TypeInterner::default();
-    let mut symbols = Symbols::with_default_types();
-    let mut aggregate = Aggregate::default();
-    aggregate.set_flags(
-        AggregateFlags::default()
-            .with_is_struct(true)
-            .with_is_native(true)
-            .with_is_fully_defined(true),
-    );
-    symbols.add_type(
-        interner.intern("Record"),
-        TypeDef::new([], TypeSchema::Aggregate(Box::new(aggregate)), []),
-    );
-    let errors = transpile_sources(&sources, &[file], symbols, &interner).unwrap_err();
-    assert!(
-        errors.iter().any(|e| e
-            .message
-            .contains("cannot default-initialize Record with native or incomplete fields")),
-        "{errors:?}"
-    );
-}
-
-#[test]
-fn low_level_recursive_and_unproven_layouts_fail_closed() {
-    use std::collections::BTreeMap;
-
-    use redscript_compiler_frontend::{Field, FieldFlags, Type, TypeApp, TypeSchema};
-    use redscript_redmod_transpiler::{
-        DeclarationPath, ResolvedDeclaration, TranspileModule, analyze_sources, transpile,
-    };
-
-    let sources = SourceMap::new();
-    let file = sources.push_back("use.reds", "func Test() { let record: Record; }");
-    let dependency = sources.push_back("record.reds", "struct Record {}");
-    sources.populate_boot_lib();
-    let interner = TypeInterner::default();
-    let analysis = analyze_sources(&sources, Symbols::with_default_types(), &interner).unwrap();
-    let id = interner.get("Record").unwrap();
-    let function = *analysis
-        .symbols()
-        .free_functions()
-        .find(|e| e.name().to_string() == "Test")
-        .unwrap()
-        .key();
-    let module = &analysis
-        .modules()
-        .iter()
-        .find(|(id, _)| *id == file)
-        .unwrap()
-        .1;
-    for mode in ["recursive", "missing-field-span", "base", "import-only"] {
-        let mut symbols = analysis.symbols().clone();
-        let TypeSchema::Aggregate(aggregate) = symbols[id].schema_mut() else {
-            panic!("struct schema")
-        };
-        match mode {
-            "recursive" => {
-                aggregate
-                    .fields_mut()
-                    .add(
-                        "selfValue",
-                        Field::new(
-                            FieldFlags::default(),
-                            Type::nullary(id),
-                            [],
-                            [],
-                            Some(redscript_community_ast::Span::new(0, 1, dependency)),
-                        ),
-                    )
-                    .unwrap();
-            }
-            "missing-field-span" => {
-                aggregate
-                    .fields_mut()
-                    .add(
-                        "hidden",
-                        Field::new(
-                            FieldFlags::default(),
-                            Type::nullary(redscript_compiler_frontend::predef::INT32),
-                            [],
-                            [],
-                            None,
-                        ),
-                    )
-                    .unwrap();
-            }
-            "base" => aggregate.set_base(Some(TypeApp::new(id, []))),
-            "import-only" => aggregate.set_flags(aggregate.flags().with_is_import_only(true)),
-            _ => unreachable!(),
-        }
-        let errors = transpile(
-            &[TranspileModule {
-                source: module,
-                bindings: BTreeMap::from([(
-                    DeclarationPath(vec![0]),
-                    ResolvedDeclaration::Function(function),
-                )]),
-            }],
-            analysis.unit(),
-            &symbols,
-        )
-        .unwrap_err();
-        assert!(
-            errors
-                .iter()
-                .any(|e| e.message.contains("cannot default-initialize")),
-            "{mode}: {errors:?}"
-        );
-        assert!(errors.iter().all(|e| e.span.is_some()), "{errors:?}");
-    }
-}
-
-#[test]
-fn shared_constructor_api_requires_all_complete_source_fields() {
+fn community_explicit_constructors_still_require_all_fields() {
     use redscript_redmod_transpiler::analyze_sources;
-
     for (args, valid) in [("", false), ("0", false), ("0, false", true)] {
         let sources = SourceMap::new();
         sources.push_back("constructor.reds", format!("struct Record {{ public let count: Int32; public let flag: Bool; }} func Test() -> Record {{ return Record({args}); }}"));
@@ -322,24 +125,6 @@ fn shared_constructor_api_requires_all_complete_source_fields() {
             "Record({args})"
         );
     }
-}
-
-#[test]
-fn constructor_bytecode_field_limit_fails_closed() {
-    let fields = (0..256)
-        .map(|i| format!("public let f{i}: Int32;"))
-        .collect::<String>();
-    let errors = emit(
-        "func Test() { let record: Record; }",
-        &format!("struct Record {{ {fields} }}"),
-    )
-    .unwrap_err();
-    assert!(
-        errors
-            .iter()
-            .any(|e| e.message.contains("255 constructor fields")),
-        "{errors:?}"
-    );
 }
 
 #[test]
@@ -374,6 +159,11 @@ fn struct_constructors_with_official_compiler() {
             true,
         ),
         (
+            "DeclaredDefaults",
+            "struct ProbeDefaults { var value: Int32; default value = 42; } function Probe() -> ProbeDefaults { var value: ProbeDefaults = ProbeDefaults(); return value; }",
+            true,
+        ),
+        (
             "WrongFieldType",
             "struct ProbeTyped { var value: Int32; } function Probe() { var value: ProbeTyped; value = ProbeTyped(false); }",
             false,
@@ -381,16 +171,6 @@ fn struct_constructors_with_official_compiler() {
         (
             "EmptyStruct",
             "struct ProbeEmpty {} function Probe() { var value: ProbeEmpty; value = ProbeEmpty(); }",
-            true,
-        ),
-        (
-            "NativeAnim",
-            "function Probe() { var value: inkAnimOptions; value = inkAnimOptions(); }",
-            true,
-        ),
-        (
-            "NativeItem",
-            "function Probe() { var value: ItemID; value = ItemID(); }",
             true,
         ),
     ] {

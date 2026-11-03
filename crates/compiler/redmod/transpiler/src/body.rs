@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use redscript_community_ast as ast;
 use redscript_compiler_frontend::{
@@ -439,14 +439,6 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
     }
 
     fn default_value(&self, typ: &Type<'ctx>) -> Result<String> {
-        self.default_value_inner(typ, &mut HashSet::new())
-    }
-
-    fn default_value_inner(
-        &self,
-        typ: &Type<'ctx>,
-        visiting: &mut HashSet<TypeId<'ctx>>,
-    ) -> Result<String> {
         let Type::Data(app) = typ else {
             return Err(error(
                 format!("cannot default-initialize unresolved type {typ}"),
@@ -533,44 +525,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             .and_then(|def| def.schema().as_aggregate())
             && aggregate.flags().is_struct()
         {
-            // Spell every field explicitly in the shared constructor order instead
-            // of relying on target-only zero-argument construction. Native/imported
-            // schemas can omit engine fields despite looking complete.
-            if aggregate.flags().is_native()
-                || aggregate.flags().is_import_only()
-                || !aggregate.is_user_defined()
-                || aggregate.base().is_some()
-                || aggregate
-                    .fields()
-                    .iter()
-                    .any(|f| f.field().span().is_none())
-            {
-                return Err(error(
-                    format!(
-                        "cannot default-initialize {typ} with native or incomplete fields; provide an explicit value"
-                    ),
-                    None,
-                ));
-            }
-            if aggregate.fields().len() > usize::from(u8::MAX) {
-                return Err(error(
-                    format!("cannot default-initialize {typ}: more than 255 constructor fields"),
-                    None,
-                ));
-            }
-            if !visiting.insert(id) {
-                return Err(error(
-                    format!("cannot default-initialize {typ}: its fields are recursive"),
-                    None,
-                ));
-            }
-            let args = aggregate
-                .fields()
-                .iter()
-                .map(|field| self.default_value_inner(field.field().type_(), visiting))
-                .collect::<Result<Vec<_>>>()?;
-            visiting.remove(&id);
-            return Ok(format!("{type_text}({})", args.join(", ")));
+            return Ok(format!("{type_text}()"));
         }
         Err(error(
             format!("cannot default-initialize {typ}; provide an explicit value"),

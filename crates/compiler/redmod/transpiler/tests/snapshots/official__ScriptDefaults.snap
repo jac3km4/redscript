@@ -1,0 +1,25 @@
+---
+source: crates/compiler/redmod/transpiler/tests/official.rs
+expression: source.module.text
+---
+struct OfficialScriptLeaf {
+    public var count: Int32;
+}
+
+struct OfficialScriptValue {
+    public var leaf: OfficialScriptLeaf;
+    public var text: String;
+    public var values: array<Int32>;
+    public var dynamic: Variant;
+}
+
+function OfficialScriptDefault(again: Bool) -> OfficialScriptValue {
+    var repeated: OfficialScriptValue;
+    var value: OfficialScriptValue = OfficialScriptValue();
+    while (again) {
+        repeated = OfficialScriptValue();
+        repeated.text = "dirty";
+        value = repeated;
+    }
+    return value;
+}

@@ -30,7 +30,8 @@ fn whole_local_assignments_make_native_defaults_unnecessary() {
         "let value: Value; while enabled { if enabled { continue; } value = input; Read(value); } return input;",
     ] {
         let result = emit(body);
-        assert!(result.is_ok(), "{body}: {result:?}");
+        let text = result.unwrap();
+        assert!(!text.contains("Value()"), "{body}: {text}");
     }
 }
 
@@ -55,13 +56,8 @@ fn reads_partial_writes_and_repeated_declarations_keep_defaults() {
         "if enabled { let value: Value; value = input; Read(value); } return input;",
         "let value: Value; switch enabled { case true: value = input; break; default: value = input; } return value;",
     ] {
-        let errors = emit(body).unwrap_err();
-        assert!(
-            errors
-                .iter()
-                .any(|e| e.message.contains("cannot default-initialize Value")),
-            "{body}: {errors:?}"
-        );
+        let text = emit(body).unwrap();
+        assert!(text.contains("= Value();"), "{body}: {text}");
     }
 }
 
@@ -89,6 +85,7 @@ fn unused_native_defaults_are_not_silently_discarded() {
         "let value: Value; return input;",
         "let value: Value; return input; value = input;",
     ] {
-        assert!(emit(body).is_err(), "{body}");
+        let text = emit(body).unwrap();
+        assert!(text.contains("= Value();"), "{body}: {text}");
     }
 }

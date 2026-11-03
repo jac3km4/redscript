@@ -1,0 +1,38 @@
+---
+source: crates/compiler/redmod/transpiler/tests/struct_defaults.rs
+expression: "emit(SOURCE, \"\").unwrap()"
+---
+class DefaultObject extends IScriptable {
+}
+
+struct DefaultLeaf {
+    public var count: Int32;
+    public var enabled: Bool;
+    public var weight: Float;
+}
+
+struct DefaultPair {
+    public var first: DefaultLeaf;
+    public var second: DefaultLeaf;
+    public var strong: DefaultObject;
+    public var observer: wref<DefaultObject>;
+    public var label: String;
+    public var tag: CName;
+}
+
+function ResetStructs(again: Bool) -> Void {
+    var pair_2: DefaultPair;
+    var pair_3: DefaultPair;
+    var pair: DefaultPair = DefaultPair();
+    while (again) {
+        pair_2 = DefaultPair();
+        pair_2 = DefaultPair(DefaultLeaf(42, true, 1.0), DefaultLeaf(1, true, 2.0), NULL, NULL, "dirty", 'dirty');
+        if (again) {
+            continue;
+        }
+        break;
+    }
+    if (again) {
+        pair_3 = DefaultPair();
+    }
+}

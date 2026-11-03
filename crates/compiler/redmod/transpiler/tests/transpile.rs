@@ -925,11 +925,6 @@ fn rejected_features_have_source_diagnostics() {
             "func Set(out value: Int32) {} struct Value { public let count: Int32; } class Owner { public let value: Value; } func Make() -> ref<Owner> { return new Owner(); } func Test() { Set(Make().value.count); }",
             "out arguments require a local variable or a writable field",
         ),
-        (
-            "struct-reset",
-            "native struct Record { let value: Int32; } func Test() { let record: Record; }",
-            "cannot default-initialize Record",
-        ),
     ] {
         let sources = SourceMap::new();
         sources.push_back("rejected.reds", source);

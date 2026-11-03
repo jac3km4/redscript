@@ -137,7 +137,9 @@ fn authored_transpiled_sources_compile_with_official_compiler() {
         }
         let inspected = matches!(
             *name,
-            "FieldArrayArguments"
+            "ScriptDefaults"
+                | "NativeDefaults"
+                | "FieldArrayArguments"
                 | "FieldArrayUnary"
                 | "IndexedMethodReceivers"
                 | "ScriptTemporaryBorrow"
@@ -152,6 +154,37 @@ fn authored_transpiled_sources_compile_with_official_compiler() {
             let bytes =
                 std::fs::read(published.directory.join("r6/cache/final.redscripts")).unwrap();
             match *name {
+                "ScriptDefaults" | "NativeDefaults" => {
+                    use redscript_io::Instr;
+                    let function = if *name == "ScriptDefaults" {
+                        "OfficialScriptDefault"
+                    } else {
+                        "OfficialNativeDefault"
+                    };
+                    let code = official_function_code(&bytes, function);
+                    assert_eq!(
+                        code.iter()
+                            .filter(|op| matches!(op, Instr::Construct { arg_count: 0, .. }))
+                            .count(),
+                        2,
+                        "{code:?}"
+                    );
+                    assert!(
+                        code.windows(3)
+                            .filter(|ops| matches!(ops[2], Instr::Construct { arg_count: 0, .. }))
+                            .all(|ops| matches!(
+                                (&ops[0], &ops[1]),
+                                (Instr::Assign, Instr::Local(_))
+                            )),
+                        "{code:?}"
+                    );
+                    assert!(
+                        code.iter().any(
+                            |op| matches!(op, Instr::Jump(jump) if i32::from(jump.target()) < 0)
+                        ),
+                        "{code:?}"
+                    );
+                }
                 "FieldArrayArguments" => {
                     use redscript_io::Instr;
                     let code = official_function_code(&bytes, "OfficialFieldArguments");
@@ -858,6 +891,14 @@ fn official_function_code(bytes: &[u8], name: &str) -> Vec<redscript_io::Instr> 
 }
 
 const FIXTURES: &[(&str, &str)] = &[
+    (
+        "ScriptDefaults",
+        "struct OfficialScriptLeaf { public let count: Int32; } struct OfficialScriptValue { public let leaf: OfficialScriptLeaf; public let text: String; public let values: [Int32]; public let dynamic: Variant; } func OfficialScriptDefault(again: Bool) -> OfficialScriptValue { let value: OfficialScriptValue; while again { let repeated: OfficialScriptValue; repeated.text = \"dirty\"; value = repeated; } return value; }",
+    ),
+    (
+        "NativeDefaults",
+        "func OfficialNativeDefault(again: Bool) -> Vector2 { let value: Vector2; while again { let repeated: Vector2; repeated.X = 42.0; value = repeated; } return value; }",
+    ),
     (
         "OverwrittenNativeDefault",
         "func OfficialOverwriteVector(enabled: Bool, input: Vector2) -> Vector2 { let value: Vector2; while enabled { value = input; if enabled { return value; } } value = input; return value; }",

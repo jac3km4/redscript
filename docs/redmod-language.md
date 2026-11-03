@@ -123,8 +123,14 @@ imported prototypes retain callback identity without invented bodies. Importonly
 scripted members remain invalid. Bool patch metadata support is not a general
 claim of official wrapper/patch parity.
 
-Native struct construction needs verified completeness/layout; imported source
-fields alone are not sufficient evidence. The transpiler can omit a local's first,
+All struct defaults emit `Type()`, delegating construction to the engine rather
+than enumerating fields or inferring layouts from imported fields. Explicit reset assignments
+remain at repeated declaration sites. Official v1.2.2 probes cover `Vector2`,
+`ResRef`, `ItemID`, `inkAnimOptions` and `stimInvestigateData`, including zero-argument
+Construct bytecode inside a loop; a scripted nested-struct fixture verifies the
+same emitted instruction. This is not in-game verification. Explicit positional
+constructor expressions retain their original field arguments.
+The transpiler can omit a local's first,
 unconditional default initialization when backward liveness proves no read before
 a whole-local overwrite. Branches and loop back edges participate in that proof;
 reads, borrows, `out` arguments and partial field writes keep the default. Repeated
