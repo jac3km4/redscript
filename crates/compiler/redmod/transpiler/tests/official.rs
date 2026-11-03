@@ -137,7 +137,8 @@ fn authored_transpiled_sources_compile_with_official_compiler() {
         }
         let inspected = matches!(
             *name,
-            "IndexedBorrow"
+            "ScriptTemporaryBorrow"
+                | "IndexedBorrow"
                 | "StructFieldPlaces"
                 | "ScriptFieldBorrow"
                 | "IndexedFieldReads"
@@ -148,6 +149,37 @@ fn authored_transpiled_sources_compile_with_official_compiler() {
             let bytes =
                 std::fs::read(published.directory.join("r6/cache/final.redscripts")).unwrap();
             match *name {
+                "ScriptTemporaryBorrow" => {
+                    use redscript_io::{Instr, InvokeFlags};
+                    let code = official_function_code(&bytes, "OfficialTemporaryProbe");
+                    let calls = code
+                        .iter()
+                        .filter_map(|op| match op {
+                            Instr::InvokeStatic { flags, .. } => Some(*flags),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>();
+                    let mut temporary = InvokeFlags::default();
+                    temporary.set_is_rvalue_ref(0);
+                    assert_eq!(calls, [temporary, InvokeFlags::default()], "{code:?}");
+                    assert_eq!(
+                        code.iter()
+                            .filter(|op| matches!(op, Instr::AsRef(_)))
+                            .count(),
+                        1,
+                        "{code:?}"
+                    );
+                    assert!(
+                        matches!(code.first(), Some(Instr::JumpIfFalse(_))),
+                        "{code:?}"
+                    );
+                    assert!(
+                        !code
+                            .iter()
+                            .any(|op| matches!(op, Instr::Assign | Instr::Local(_))),
+                        "{code:?}"
+                    );
+                }
                 "IndexedBorrow" => {
                     use redscript_io::{Instr, InvokeFlags};
                     let code = official_function_code(&bytes, "OfficialIndexedBorrow");
@@ -583,6 +615,16 @@ fn official_function_code(bytes: &[u8], name: &str) -> Vec<redscript_io::Instr> 
 }
 
 const FIXTURES: &[(&str, &str)] = &[
+    (
+        "ScriptTemporaryBorrow",
+        r#"struct OfficialTemporaryValue { public let count: Int32; }
+func OfficialTemporaryMake() -> OfficialTemporaryValue { return OfficialTemporaryValue(42); }
+func OfficialTemporaryTake(value: script_ref<OfficialTemporaryValue>) -> Int32 { return Deref(value).count; }
+func OfficialTemporaryProbe(enabled: Bool) -> Int32 {
+    if enabled { return OfficialTemporaryTake(OfficialTemporaryMake()); }
+    return 0;
+}"#,
+    ),
     (
         "IndexedBorrow",
         r#"struct OfficialIndexedValue { public let count: Int32; }

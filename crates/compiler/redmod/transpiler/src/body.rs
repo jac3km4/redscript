@@ -941,12 +941,6 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         self.expr(e)
     }
 
-    fn borrow_place(&self, e: &ir::Expr<'ctx>) -> bool {
-        matches!(e, ir::Expr::Field { .. } | ir::Expr::Index { .. })
-            && crate::field_reads::variable_rooted(e, self.symbols)
-            && !e.is_prvalue(self.symbols)
-    }
-
     // A temporary script reference is owned by its invocation, not by a
     // synthesized local. Keep the operand inline so the target recreates both
     // AsRef and the invocation's rvalue-reference bit at the same argument slot.
@@ -1000,7 +994,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         let contextual = self.call_context(signature, args, call, native)?;
         args.iter()
             .enumerate()
-            .map(|(i, arg)| self.call_arg(signature, arg, i, contextual.then_some(native), 2))
+            .map(|(i, arg)| self.call_arg(signature, arg, i, contextual, 2))
             .collect::<Result<Vec<_>>>()
             .map(|v| v.join(", "))
     }
@@ -1010,26 +1004,14 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         signature: &FunctionType<'ctx>,
         arg: &ir::Expr<'ctx>,
         slot: usize,
-        contextual_native: Option<bool>,
+        contextual: bool,
         minimum: u8,
     ) -> Result<String> {
-        if let Some(native) = contextual_native
+        if contextual
             && let Some(param) = signature.params().get(slot)
             && !param.flags().is_out()
         {
-            let stable_borrow = matches!(arg, ir::Expr::Call { call, .. }
-                if matches!(&**call, ir::Call::FreeFunction { function, args, .. }
-                    if self.symbols[*function].intrinsic() == Some(ir::Intrinsic::AsRef)
-                        && matches!(&args[..], [operand] if self.borrow_place(operand))));
-            if native || stable_borrow {
-                return self.borrowed_arg(arg, param.type_(), slot, minimum);
-            }
-            let text = self.contextual_expr(arg, param.type_())?;
-            return if self.precedence(arg)? < minimum {
-                Ok(format!("({text})"))
-            } else {
-                Ok(text)
-            };
+            return self.borrowed_arg(arg, param.type_(), slot, minimum);
         }
         self.expr_at(arg, minimum)
     }
@@ -1050,7 +1032,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 signature,
                 &args[0],
                 0,
-                contextual.then_some(true),
+                contextual,
                 precedence + u8::from(right_associative)
             )?,
             binary_token(op),
@@ -1058,17 +1040,13 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 signature,
                 &args[1],
                 1,
-                contextual.then_some(true),
+                contextual,
                 precedence + u8::from(!right_associative)
             )?
         ))
     }
 
-    fn erased_operand<'e>(
-        &self,
-        arg: &'e ir::Expr<'ctx>,
-        native: bool,
-    ) -> Option<&'e ir::Expr<'ctx>> {
+    fn erased_operand<'e>(&self, arg: &'e ir::Expr<'ctx>) -> Option<&'e ir::Expr<'ctx>> {
         let ir::Expr::Call { call, .. } = arg else {
             return None;
         };
@@ -1078,11 +1056,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         let [operand] = &args[..] else { return None };
         match self.symbols[*function].intrinsic()? {
             ir::Intrinsic::RefToWeakRef | ir::Intrinsic::WeakRefToRef => Some(operand),
-            ir::Intrinsic::AsRef
-                if !Self::simple_place(operand) && (native || self.borrow_place(operand)) =>
-            {
-                Some(operand)
-            }
+            ir::Intrinsic::AsRef if !Self::simple_place(operand) => Some(operand),
             _ => None,
         }
     }
@@ -1102,7 +1076,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 .params()
                 .get(i)
                 .filter(|p| !p.flags().is_out())
-                .and_then(|_| self.erased_operand(arg, native))
+                .and_then(|_| self.erased_operand(arg))
         };
         // Ordinary calls and stable local AsRef operands do not query overloads.
         if !signature.type_params().is_empty()
@@ -1195,7 +1169,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                         )
             })
         };
-        // Recreating the same native borrow at every rewritten slot
+        // Recreating the same borrow at every rewritten slot
         // leaves overload ranking unchanged. Other argument types are untouched;
         // unlike strong/weak conversions, borrowing adds no competing value type.
         let same_borrows = |candidate: &FunctionType<'ctx>, candidate_native: bool| {
@@ -1348,8 +1322,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                         && let [a] = &args[..]
                     {
                         let contextual = self.call_context(def.type_(), args, call, true)?;
-                        let operand =
-                            self.call_arg(def.type_(), a, 0, contextual.then_some(true), 13)?;
+                        let operand = self.call_arg(def.type_(), a, 0, contextual, 13)?;
                         return Ok(if op == ast::UnOp::Neg && operand.starts_with('-') {
                             format!("-({operand})")
                         } else {
@@ -1472,7 +1445,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 Ok(format!(
                     "{recv}.{}({})",
                     target::ident(name)?,
-                    self.call_args(def.type_(), call.args(), call, def.flags().is_native(),)?
+                    self.call_args(def.type_(), call.args(), call, def.flags().is_native())?
                 ))
             }
             ir::Call::Closure { .. } => Err(error(

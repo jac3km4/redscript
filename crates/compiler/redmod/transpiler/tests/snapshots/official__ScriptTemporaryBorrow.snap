@@ -1,0 +1,22 @@
+---
+source: crates/compiler/redmod/transpiler/tests/official.rs
+expression: source.module.text
+---
+struct OfficialTemporaryValue {
+    public var count: Int32;
+}
+
+function OfficialTemporaryMake() -> OfficialTemporaryValue {
+    return OfficialTemporaryValue(42);
+}
+
+function OfficialTemporaryTake(value: script_ref<OfficialTemporaryValue>) -> Int32 {
+    return value.count;
+}
+
+function OfficialTemporaryProbe(enabled: Bool) -> Int32 {
+    if (enabled) {
+        return OfficialTemporaryTake(OfficialTemporaryMake());
+    }
+    return 0;
+}

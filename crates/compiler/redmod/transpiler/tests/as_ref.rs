@@ -23,16 +23,10 @@ fn scripted_field_borrows_keep_overload_and_place_guards() {
         ))
         .is_ok()
     );
-    for source in [
-        format!(
-            "{definitions} func Borrow(value: String) {{}} func Test(owner: ref<Owner>) {{ Borrow(AsRef(owner.text)); }}"
-        ),
-        format!(
-            "{definitions} func Make() -> ref<Owner> {{ return new Owner(); }} func Test() {{ Borrow(Make().text); }}"
-        ),
-    ] {
-        assert!(emit(&source).is_err(), "{source}");
-    }
+    let competing = format!(
+        "{definitions} func Borrow(value: String) {{}} func Test(owner: ref<Owner>) {{ Borrow(AsRef(owner.text)); }}"
+    );
+    assert!(emit(&competing).is_err());
 }
 
 #[test]
@@ -46,6 +40,21 @@ fn scripted_index_borrows_keep_their_argument_site() {
             "Borrow(owner.values[Index(i)])",
             "Borrow(AsRef(owner.values[Index(i)]))",
         );
+    assert!(emit(&competing).is_err());
+}
+
+#[test]
+fn scripted_temporary_borrows_preserve_call_sites_and_guards() {
+    let source = "struct Value { public let count: Int32; } func Make() -> Value { return Value(42); } func Take(value: script_ref<Value>) -> Bool { return true; } native func OperatorLogicAnd(a: Bool, b: Bool) -> Bool func Test(enabled: Bool) -> Bool { while enabled && Take(Make()) { continue; } return Take(Make()); }";
+    let text = emit(source).unwrap();
+    assert!(text.contains("while (enabled && Take(Make()))"), "{text}");
+    assert!(text.contains("return Take(Make());"), "{text}");
+    let competing = source
+        .replace(
+            "func Test(",
+            "func Take(value: Value) -> Bool { return false; } func Test(",
+        )
+        .replace("Take(Make())", "Take(AsRef(Make()))");
     assert!(emit(&competing).is_err());
 }
 
@@ -239,12 +248,11 @@ fn roundtrip_restores_exact_signatures_and_temporary_argument_slots() {
 }
 
 #[test]
-fn escaping_nested_untyped_and_non_native_temporaries_fail_closed() {
+fn escaping_nested_untyped_and_out_borrows_fail_closed() {
     for source in [
         "func Test() { AsRef(\"value\"); }",
         "func Test() -> script_ref<String> { return AsRef(\"value\"); }",
         "func Test() { let value: script_ref<String> = AsRef(\"value\"); }",
-        "func Take(value: script_ref<String>) {} func Test() { Take(AsRef(\"value\")); }",
         "native func Take(value: script_ref<Int32>) func Test() { Take(AsRef(true)); }",
         "native func Take(value: script_ref<Int32>) native func Take(value: Int32) func Test() { Take(AsRef(42)); }",
         "native func Take(out value: script_ref<Int32>) func Test() { Take(AsRef(42)); }",
@@ -610,13 +618,22 @@ fn temporary_argument_mask_is_bounded_but_local_identity_is_unchanged() {
         .collect::<Vec<_>>()
         .join(", ");
     let args = vec!["0"; 16].join(", ");
-    let source = format!(
-        "native func Take({prefix}, value: script_ref<String>) func Test() {{ Take({args}, AsRef(\"temporary\")); }}"
-    );
-    assert!(emit(&source).is_err());
-    assert!(emit("native func Take(value: script_ref<String>) func Test(value: String) { Take(AsRef(value)); }").is_ok());
-    let scalar = format!(
-        "native func Take({prefix}, value: script_ref<Int32>) func Test() {{ Take({args}, AsRef(42)); }}"
-    );
-    assert!(emit(&scalar).is_err());
+    for (modifier, body) in [("native ", ""), ("", "{} ")] {
+        for (ty, temporary) in [("String", "\"temporary\""), ("Int32", "42")] {
+            let declaration =
+                format!("{modifier}func Take({prefix}, value: script_ref<{ty}>) {body}");
+            let source =
+                format!("{declaration} func Test() {{ Take({args}, AsRef({temporary})); }}");
+            let diagnostics = emit(&source).unwrap_err();
+            assert!(
+                diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.message.contains("16 argument lifetime slots")),
+                "{source}: {diagnostics:?}"
+            );
+            let local =
+                format!("{declaration} func Test(value: {ty}) {{ Take({args}, AsRef(value)); }}");
+            assert!(emit(&local).is_ok(), "{local}");
+        }
+    }
 }

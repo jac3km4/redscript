@@ -1,7 +1,8 @@
 # Bounded native script-reference borrows
 
 The transpiler accepts nonlocal `AsRef` operands only at an immediate, exact,
-non-`out` native `script_ref<T>` parameter, with an operand of exactly `T`. Ordinary free/static/instance
+non-`out` `script_ref<T>` parameter, with an operand of exactly `T`. Native and
+scripted callees share borrowing; ordinary free/static/instance
 calls and native operators share parameter-context handling and overload checks.
 An unrelated `Int32` or wrong-arity overload does not block borrowing; a competing
 String/value-reference signature does. Methods query only the emitted receiver's
@@ -41,23 +42,30 @@ sites. Existing receiver/place restrictions still apply inside the operand.
 marks a direct `AsRef(prvalue)` argument in the enclosing invocation's 16-bit
 rvalue-reference mask. This requests call-owned temporary storage; a borrowed
 local/field/index instead retains place identity. New temporary borrows beyond
-slot 15 fail closed. Keeping the immediate native typed parameter recreates the
+slot 15 fail closed. Keeping the immediate typed parameter recreates the
 target `AsRef` and its invocation lifetime metadata without extending storage to
 a whole function or reusing it across loop iterations.
 
 This is an invocation-scoped ABI contract, not an escape analysis or a promise
 that arbitrary native code cannot retain an invalid pointer. The pointee is not
 restricted to String. Nonlocal `AsRef` in returns, reference initializers,
-assignments, standalone expressions, non-native temporary borrows, ambiguous overloads,
+assignments, standalone expressions, ambiguous overloads,
 `out` arguments and nested context-free conversions remains rejected.
 
 Stable variable-rooted fields and array elements may also be borrowed at an exact non-`out`
 scripted parameter. They retain place identity rather than needing invocation-owned
-temporary storage. Competing overloads still block erasure, and call-rooted fields
-remain outside this scripted-borrow path. The official `ScriptFieldBorrow` probe
+temporary storage. Competing overloads still block erasure. Temporary values and
+call-rooted fields are accepted at unique scripted sinks too, using the same
+invocation lifetime handling as native sinks. The official `ScriptFieldBorrow` probe
 checks `AsRef` and direct field access without synthesized locals or assignments.
 The `IndexedBorrow` probe additionally checks direct `AsRef`/`ArrayElement`, zero
 temporary flags and a single call to a side-effecting index function.
+
+The official `ScriptTemporaryBorrow` probe confirms a scripted struct-result
+borrow sets slot 0's rvalue-reference bit, keeps `AsRef` inline inside its branch,
+and introduces no local or assignment. Native/scripted overload mixtures retain
+the conservative noncompetition guard; the same-borrow overload exception is
+still native-only.
 
 ## Validation and evidence
 
