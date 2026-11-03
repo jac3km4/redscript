@@ -1,0 +1,19 @@
+---
+source: crates/compiler/redmod/transpiler/tests/official.rs
+expression: source.module.text
+---
+struct OfficialBorrowValue {
+    public var count: Int32;
+}
+
+class OfficialBorrowOwner extends IScriptable {
+    public var value: OfficialBorrowValue;
+}
+
+function OfficialBorrowSet(value: script_ref<OfficialBorrowValue>) -> Int32 {
+    return value.count;
+}
+
+function OfficialScriptBorrow(owner: OfficialBorrowOwner) -> Void {
+    OfficialBorrowSet(owner.value);
+}

@@ -135,6 +135,28 @@ fn authored_transpiled_sources_compile_with_official_compiler() {
             assert!(bytes > 0);
             println!("{artifact}: {bytes} bytes");
         }
+        if *name == "ScriptFieldBorrow" {
+            let bytes =
+                std::fs::read(published.directory.join("r6/cache/final.redscripts")).unwrap();
+            let code = official_function_code(&bytes, "OfficialScriptBorrow");
+            assert!(
+                code.iter()
+                    .any(|op| matches!(op, redscript_io::Instr::AsRef(_))),
+                "{code:?}"
+            );
+            assert!(
+                code.iter()
+                    .any(|op| matches!(op, redscript_io::Instr::ObjectField(_))),
+                "{code:?}"
+            );
+            assert!(
+                !code.iter().any(|op| matches!(
+                    op,
+                    redscript_io::Instr::Local(_) | redscript_io::Instr::Assign
+                )),
+                "{code:?}"
+            );
+        }
         if *name == "IndexedFieldReads" {
             let bytes =
                 std::fs::read(published.directory.join("r6/cache/final.redscripts")).unwrap();
@@ -476,6 +498,13 @@ fn official_function_code(bytes: &[u8], name: &str) -> Vec<redscript_io::Instr> 
 }
 
 const FIXTURES: &[(&str, &str)] = &[
+    (
+        "ScriptFieldBorrow",
+        r#"struct OfficialBorrowValue { public let count: Int32; }
+class OfficialBorrowOwner { public let value: OfficialBorrowValue; }
+func OfficialBorrowSet(value: script_ref<OfficialBorrowValue>) -> Int32 { return Deref(value).count; }
+func OfficialScriptBorrow(owner: ref<OfficialBorrowOwner>) { OfficialBorrowSet(owner.value); }"#,
+    ),
     (
         "IndexedFieldReads",
         r#"struct OfficialIndexValue { public let count: Int32; }

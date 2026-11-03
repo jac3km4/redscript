@@ -48,8 +48,14 @@ a whole function or reusing it across loop iterations.
 This is an invocation-scoped ABI contract, not an escape analysis or a promise
 that arbitrary native code cannot retain an invalid pointer. The pointee is not
 restricted to String. Nonlocal `AsRef` in returns, reference initializers,
-assignments, standalone expressions, non-native calls, ambiguous overloads,
+assignments, standalone expressions, non-native temporary borrows, ambiguous overloads,
 `out` arguments and nested context-free conversions remains rejected.
+
+Stable variable-rooted fields may also be borrowed at an exact non-`out`
+scripted parameter. They retain place identity rather than needing invocation-owned
+temporary storage. Competing overloads still block erasure, and call-rooted fields
+remain outside this scripted-borrow path. The official `ScriptFieldBorrow` probe
+checks `AsRef` and direct field access without synthesized locals or assignments.
 
 ## Validation and evidence
 

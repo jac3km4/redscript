@@ -13,6 +13,28 @@ fn emit(source: &str) -> Result<String, Vec<redscript_redmod_transpiler::Transpi
         .map(|output| output[0].module.text.clone())
 }
 
+#[test]
+fn scripted_field_borrows_keep_overload_and_place_guards() {
+    let definitions =
+        "class Owner { public let text: String; } func Borrow(value: script_ref<String>) {}";
+    assert!(
+        emit(&format!(
+            "{definitions} func Test(owner: ref<Owner>) {{ Borrow(owner.text); }}"
+        ))
+        .is_ok()
+    );
+    for source in [
+        format!(
+            "{definitions} func Borrow(value: String) {{}} func Test(owner: ref<Owner>) {{ Borrow(AsRef(owner.text)); }}"
+        ),
+        format!(
+            "{definitions} func Make() -> ref<Owner> {{ return new Owner(); }} func Test() {{ Borrow(Make().text); }}"
+        ),
+    ] {
+        assert!(emit(&source).is_err(), "{source}");
+    }
+}
+
 const SOURCE: &str = r#"
 struct BorrowedValue { public let number: Int32; }
 class TextOwner { public let text: String; public let number: Int32; public let value: BorrowedValue; }

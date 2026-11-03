@@ -940,6 +940,12 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         self.expr(e)
     }
 
+    fn borrow_place(&self, e: &ir::Expr<'ctx>) -> bool {
+        matches!(e, ir::Expr::Field { .. })
+            && crate::field_reads::variable_rooted(e, self.symbols)
+            && !e.is_prvalue(self.symbols)
+    }
+
     // A temporary script reference is owned by its invocation, not by a
     // synthesized local. Keep the operand inline so the target recreates both
     // AsRef and the invocation's rvalue-reference bit at the same argument slot.
@@ -1010,7 +1016,11 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             && let Some(param) = signature.params().get(slot)
             && !param.flags().is_out()
         {
-            if native {
+            let stable_borrow = matches!(arg, ir::Expr::Call { call, .. }
+                if matches!(&**call, ir::Call::FreeFunction { function, args, .. }
+                    if self.symbols[*function].intrinsic() == Some(ir::Intrinsic::AsRef)
+                        && matches!(&args[..], [operand] if self.borrow_place(operand))));
+            if native || stable_borrow {
                 return self.borrowed_arg(arg, param.type_(), slot, minimum);
             }
             let text = self.contextual_expr(arg, param.type_())?;
@@ -1067,7 +1077,11 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         let [operand] = &args[..] else { return None };
         match self.symbols[*function].intrinsic()? {
             ir::Intrinsic::RefToWeakRef | ir::Intrinsic::WeakRefToRef => Some(operand),
-            ir::Intrinsic::AsRef if native && !Self::simple_place(operand) => Some(operand),
+            ir::Intrinsic::AsRef
+                if !Self::simple_place(operand) && (native || self.borrow_place(operand)) =>
+            {
+                Some(operand)
+            }
             _ => None,
         }
     }
