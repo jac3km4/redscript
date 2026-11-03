@@ -135,10 +135,53 @@ fn authored_transpiled_sources_compile_with_official_compiler() {
             assert!(bytes > 0);
             println!("{artifact}: {bytes} bytes");
         }
+        if *name == "StructFieldPlaces" {
+            let bytes =
+                std::fs::read(published.directory.join("r6/cache/final.redscripts")).unwrap();
+            let code = official_function_code(&bytes, "OfficialStructPlaces");
+            assert_eq!(
+                code.iter()
+                    .filter(|op| matches!(op, redscript_io::Instr::Assign))
+                    .count(),
+                2,
+                "{code:?}"
+            );
+            assert_eq!(
+                code.iter()
+                    .filter(|op| matches!(op, redscript_io::Instr::StructField(_)))
+                    .count(),
+                8,
+                "{code:?}"
+            );
+            assert!(
+                !code
+                    .iter()
+                    .any(|op| matches!(op, redscript_io::Instr::Local(_))),
+                "{code:?}"
+            );
+        }
         if *name == "ScriptFieldBorrow" {
             let bytes =
                 std::fs::read(published.directory.join("r6/cache/final.redscripts")).unwrap();
             let code = official_function_code(&bytes, "OfficialScriptBorrow");
+            for op in &code {
+                if let redscript_io::Instr::InvokeStatic { flags, .. } = op {
+                    assert_eq!(*flags, redscript_io::InvokeFlags::default(), "{code:?}");
+                }
+            }
+            let callee = official_function_code(&bytes, "OfficialBorrowSet");
+            assert!(
+                callee
+                    .iter()
+                    .any(|op| matches!(op, redscript_io::Instr::Assign)),
+                "{callee:?}"
+            );
+            assert!(
+                callee
+                    .iter()
+                    .any(|op| matches!(op, redscript_io::Instr::Deref(_))),
+                "{callee:?}"
+            );
             assert!(
                 code.iter()
                     .any(|op| matches!(op, redscript_io::Instr::AsRef(_))),
@@ -499,6 +542,19 @@ fn official_function_code(bytes: &[u8], name: &str) -> Vec<redscript_io::Instr> 
 
 const FIXTURES: &[(&str, &str)] = &[
     (
+        "StructFieldPlaces",
+        r#"struct OfficialPlaceInner { public let count: Int32; }
+struct OfficialPlaceOuter { public let inner: OfficialPlaceInner; }
+class OfficialPlaceOwner { public let value: OfficialPlaceOuter; }
+func OfficialPlaceSet(out value: Int32) { value = 42; }
+func OfficialStructPlaces(owner: ref<OfficialPlaceOwner>, value: script_ref<OfficialPlaceOuter>) {
+    owner.value.inner.count = 41;
+    OfficialPlaceSet(owner.value.inner.count);
+    Deref(value).inner.count = 43;
+    OfficialPlaceSet(Deref(value).inner.count);
+}"#,
+    ),
+    (
         "CastFieldReads",
         r#"class OfficialFieldBase {}
 class OfficialFieldDerived extends OfficialFieldBase { public let count: Int32; }
@@ -511,7 +567,7 @@ func OfficialCastField(owner: ref<OfficialFieldBase>, enabled: Bool) -> Int32 {
         "ScriptFieldBorrow",
         r#"struct OfficialBorrowValue { public let count: Int32; }
 class OfficialBorrowOwner { public let value: OfficialBorrowValue; }
-func OfficialBorrowSet(value: script_ref<OfficialBorrowValue>) -> Int32 { return Deref(value).count; }
+func OfficialBorrowSet(value: script_ref<OfficialBorrowValue>) { Deref(value).count = 42; }
 func OfficialScriptBorrow(owner: ref<OfficialBorrowOwner>) { OfficialBorrowSet(owner.value); }"#,
     ),
     (

@@ -26,9 +26,13 @@ through another receiver is supported within the declaring class.
 
 Read eligibility is isolated in `src/field_reads.rs`. Nested class-handle fields
 are also writable places and may be passed as `out` arguments, including through
-weak handles. Struct fields remain read-only in these compound paths; no struct
-copy is used as a substitute for write-back. Nonlocal `AsRef` and
-mutable struct receiver rules are unchanged.
+weak handles. Variable-rooted ordinary struct fields also support assignments
+and `out` arguments, including nested fields and `Deref(localScriptRef)` roots.
+No struct copy or write-back scheme is introduced. The official probe checks
+direct nested `StructField` access, exactly the source's assignments and no
+synthesized locals. Temporary/call-rooted struct places remain rejected.
+Stable fields may be borrowed by scripted `script_ref<T>` parameters; see
+[borrow semantics](redmod-as-ref.md).
 
 `ArraySize` supports variable-rooted array fields, including nested class fields.
 Array indexing likewise supports variable-rooted array fields for both reads
@@ -40,8 +44,8 @@ Other array operations retain their local-array guard.
 
 Official v1.2.2 requires a variable parent scope for struct member access.
 Consequently a struct receiver must be a local-rooted field chain or an explicit
-`Deref(localScriptRef)` (possibly followed by fields). These are **read** paths,
-not new writable places. `Select(...).data.visualStateData`, conditional-rooted
+`Deref(localScriptRef)` (possibly followed by fields). The same variable-rooted
+storage requirement applies to struct writes. `Select(...).data.visualStateData`, conditional-rooted
 struct paths, and temporary struct call/conditional results remain rejected.
 Class call/conditional chains may still read scalar or handle fields directly.
 Class casts also support direct field reads, with parentheses at postfix
@@ -59,7 +63,7 @@ mutable struct methods.
 ## Tests and official evidence
 
 `tests/field_reads.rs` snapshots generated source and passes it through the full
-native adapter. Negative tests cover struct writes/out, mutable struct methods,
+native adapter. Negative tests cover temporary struct writes/out and borrows,
 AsRef, arrays, temporary structs and unsupported receiver shapes. Feature5 tests
 continue to cover their original receiver contract independently.
 

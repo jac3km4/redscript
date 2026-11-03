@@ -10,8 +10,8 @@ class OfficialBorrowOwner extends IScriptable {
     public var value: OfficialBorrowValue;
 }
 
-function OfficialBorrowSet(value: script_ref<OfficialBorrowValue>) -> Int32 {
-    return value.count;
+function OfficialBorrowSet(value: script_ref<OfficialBorrowValue>) -> Void {
+    value.count = 42;
 }
 
 function OfficialScriptBorrow(owner: OfficialBorrowOwner) -> Void {

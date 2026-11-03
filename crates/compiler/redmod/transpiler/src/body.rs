@@ -764,7 +764,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             ir::Expr::Assign { place, expr, .. } => {
                 if !self.place(place)? {
                     return Err(error(
-                        "assignment needs a local, a class-handle field, or a local array's element",
+                        "assignment requires a writable variable-rooted place or a class-handle field",
                         Some(e.span()),
                     ));
                 }
@@ -861,10 +861,11 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 let script_deref = matches!(&**receiver, ir::Expr::Call { call, .. }
                     if matches!(&**call, ir::Call::FreeFunction { function, .. }
                         if self.symbols[*function].intrinsic() == Some(ir::Intrinsic::Deref)));
-                !script_deref
+                (!script_deref
                     && (Self::simple_place(receiver)
                         || crate::receivers::inline_class_receiver(receiver, &typ, self.symbols))
-                    && crate::receivers::class_handle(&typ, self.symbols)
+                    && crate::receivers::class_handle(&typ, self.symbols))
+                    || crate::field_reads::struct_place(receiver, &typ, self.symbols)
             }
             _ => false,
         })
@@ -1299,7 +1300,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     || (matches!(arg, ir::Expr::Field { .. }) && self.place(arg)?))
             {
                 return Err(error(
-                    "out arguments need a local variable or a class-handle field",
+                    "out arguments require a local variable or a writable field",
                     Some(arg.span()),
                 ));
             }

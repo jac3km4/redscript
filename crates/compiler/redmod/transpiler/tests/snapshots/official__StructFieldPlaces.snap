@@ -1,0 +1,26 @@
+---
+source: crates/compiler/redmod/transpiler/tests/official.rs
+expression: source.module.text
+---
+struct OfficialPlaceInner {
+    public var count: Int32;
+}
+
+struct OfficialPlaceOuter {
+    public var inner: OfficialPlaceInner;
+}
+
+class OfficialPlaceOwner extends IScriptable {
+    public var value: OfficialPlaceOuter;
+}
+
+function OfficialPlaceSet(out value: Int32) -> Void {
+    value = 42;
+}
+
+function OfficialStructPlaces(owner: OfficialPlaceOwner, value: script_ref<OfficialPlaceOuter>) -> Void {
+    owner.value.inner.count = 41;
+    OfficialPlaceSet(owner.value.inner.count);
+    value.inner.count = 43;
+    OfficialPlaceSet(value.inner.count);
+}

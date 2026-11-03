@@ -36,13 +36,14 @@ identity. This is not a general materialization algorithm.
 
 - Compound script-reference receivers, value structs, custom generic,
   `mixedRef` and `neverRef` value emulation are not enabled.
-- Struct receiver aliases requiring a nonlocal `AsRef` still fail closed; neither
-  fields nor array elements are copied into mutable value receivers.
+- Variable-rooted fields can supply a stable `AsRef` to scripted parameters,
+  including struct method aliases. Temporary struct receivers still fail closed;
+  fields and array elements are never copied into mutable value receivers.
 - Variable-rooted array fields support `ArraySize`; other array operations still
   require locals. Nested class-handle fields support assignments and `out` arguments.
 - [Feature6 field reads](redmod-field-reads.md) now independently permits bounded
-  `Make().field` and `owner.child.field` reads. Mutable struct receivers remain
-  unsupported.
+  `Make().field` and `owner.child.field` reads. Variable-rooted ordinary struct
+  fields also support writes/out; call-rooted struct values remain unsupported.
 - Index, assignment and construction compound receivers remain outside
   this bounded slice. Existing simple local receivers are unchanged.
 

@@ -36,6 +36,19 @@ pub(crate) fn inline_receiver<'ctx>(
         )
 }
 
+pub(crate) fn struct_place<'ctx>(
+    expr: &ir::Expr<'ctx>,
+    typ: &Type<'ctx>,
+    symbols: &Symbols<'ctx>,
+) -> bool {
+    typ.ref_type() != Some(RefType::Script)
+        && matches!(typ.unwrap_ref_or_self(), Type::Data(app)
+            if app.args().is_empty() && symbols.get_type(app.id())
+                .and_then(|def| def.schema().as_aggregate())
+                .is_some_and(|agg| agg.flags().is_struct() && !agg.flags().is_mixed_ref()))
+        && variable_rooted(expr, symbols)
+}
+
 // v1.2.2 requires a variable parent scope for StructField. A class handle
 // returned by a call can be read, but does not make its struct fields places.
 pub(crate) fn variable_rooted(expr: &ir::Expr<'_>, symbols: &Symbols<'_>) -> bool {

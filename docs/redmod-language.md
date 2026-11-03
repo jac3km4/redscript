@@ -141,9 +141,17 @@ Official v1.2.2 authored compilation probes cover these forms; the `out` probe a
 checks direct field bytecode with no synthesized local/copy assignment. This is
 not an in-game execution guarantee.
 
-`ArraySize` accepts variable-rooted array fields. Call-rooted arrays remain
-unsupported because the official compiler requires an in-memory variable root.
-Other array operations retain their local-array guard.
+`ArraySize` and indexing accept variable-rooted array fields. Indexed struct and
+class elements support field reads; class casts support field reads too.
+Call-rooted arrays remain unsupported because the official compiler requires an
+in-memory variable root. Other array operations retain their local-array guard;
+`ArrayGrow` and `ArrayCount` emit the native Grow/Count members on local arrays.
+
+Variable-rooted ordinary struct fields support writes and `out`, including
+`Deref(localScriptRef)` roots. Stable fields can supply scripted `script_ref<T>`
+parameters without temporary copies; overload ambiguity and temporary scripted
+borrows remain guarded. See [field access](redmod-field-reads.md) and
+[script-reference borrowing](redmod-as-ref.md) for the evidence and limits.
 
 Resource and TweakDBID literals emit decoded backslashes literally, not with
 community escape spelling. Ordinary resource paths retain their pool identity.

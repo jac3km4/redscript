@@ -105,7 +105,7 @@ fn compound_reads_stay_inline_and_round_trip() {
 }
 
 #[test]
-fn compound_reads_do_not_become_writable_places() {
+fn temporary_structs_and_nonlocal_reference_escapes_remain_rejected() {
     let definitions = r#"
         struct Value { public let flag: Bool; public static func Bump(self: script_ref<Value>) {} }
         class Owner { public let child: ref<Owner>; public let value: Value; public let flag: Bool; public let values: [Bool]; }
@@ -115,21 +115,13 @@ fn compound_reads_do_not_become_writable_places() {
     "#;
     for (body, diagnostic) in [
         (
-            "owner.value.flag = true;",
-            "assignment needs a local, a class-handle field, or a local array's element",
-        ),
-        (
-            "Deref(value).flag = true;",
-            "assignment needs a local, a class-handle field, or a local array's element",
+            "Make().value.flag = true;",
+            "assignment requires a writable variable-rooted place",
         ),
         ("MakeValue().flag = true;", "INVALID_TEMP"),
         (
-            "Take(owner.value.flag);",
-            "out arguments need a local variable or a class-handle field",
-        ),
-        (
-            "Take(Deref(value).flag);",
-            "out arguments need a local variable or a class-handle field",
+            "Take(Make().value.flag);",
+            "out arguments require a local variable or a writable field",
         ),
         (
             "MakeValue().Bump();",

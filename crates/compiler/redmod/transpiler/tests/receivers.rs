@@ -176,16 +176,16 @@ fn struct_places_remain_rejected() {
 }
 
 #[test]
-fn weak_field_assignments_do_not_enable_struct_or_script_reference_places() {
+fn temporary_struct_and_class_script_reference_places_remain_rejected() {
     for source in [
-        "struct Value { public let count: Int32; } func Test(value: Value) { value.count = 1; }",
+        "struct Value { public let count: Int32; } class Owner { public let value: Value; } func Make() -> ref<Owner> { return new Owner(); } func Test() { Make().value.count = 1; }",
         "class Owner { public let count: Int32; } func Test(value: script_ref<Owner>) { Deref(value).count = 1; }",
     ] {
         let errors = emit(source).unwrap_err();
         assert!(
             errors
                 .iter()
-                .any(|e| e.message.contains("assignment needs")),
+                .any(|e| e.message.contains("assignment requires")),
             "{errors:?}"
         );
     }

@@ -648,7 +648,7 @@ fn unsupported_intrinsic_reports_source_and_no_artifacts() {
     let sources = SourceMap::new();
     sources.push_back(
         "unsupported.reds",
-        "func Test(a: [Int32]) -> Int32 { return ArrayCount(a, 1); }",
+        "func Test(a: [Int32]) { ArraySort(a); }",
     );
     let interner = TypeInterner::default();
     let (modules, unit, symbols) = analyze(&sources, &interner);
@@ -942,8 +942,8 @@ fn rejected_features_have_source_diagnostics() {
         ),
         (
             "out-place",
-            "func Set(out value: Int32) {} struct Value { public let count: Int32; } func Test(value: Value) { Set(value.count); }",
-            "out arguments need a local variable or a class-handle field",
+            "func Set(out value: Int32) {} struct Value { public let count: Int32; } class Owner { public let value: Value; } func Make() -> ref<Owner> { return new Owner(); } func Test() { Set(Make().value.count); }",
+            "out arguments require a local variable or a writable field",
         ),
         (
             "struct-reset",
