@@ -294,8 +294,13 @@ impl<'ctx> Method<'ctx> {
 
 pub trait FunctionKind<'ctx> {
     fn type_(&self) -> &FunctionType<'ctx>;
+
     fn intrinsic(&self) -> Option<ir::Intrinsic> {
         None
+    }
+
+    fn scope_priority(&self) -> u32 {
+        0
     }
 }
 
@@ -316,6 +321,11 @@ impl<'ctx> FunctionKind<'ctx> for Method<'ctx> {
     fn type_(&self) -> &FunctionType<'ctx> {
         &self.typ
     }
+
+    #[inline]
+    fn scope_priority(&self) -> u32 {
+        u32::from(self.flags().is_static_forwarder())
+    }
 }
 
 impl<'ctx, A: FunctionKind<'ctx>> FunctionKind<'ctx> for &A {
@@ -327,6 +337,11 @@ impl<'ctx, A: FunctionKind<'ctx>> FunctionKind<'ctx> for &A {
     #[inline]
     fn intrinsic(&self) -> Option<ir::Intrinsic> {
         (*self).intrinsic()
+    }
+
+    #[inline]
+    fn scope_priority(&self) -> u32 {
+        (*self).scope_priority()
     }
 }
 

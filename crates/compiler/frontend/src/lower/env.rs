@@ -64,7 +64,7 @@ impl<'scope, 'ctx> Env<'scope, 'ctx> {
         name: &'a str,
         symbols: &'scope Symbols<'ctx>,
     ) -> impl Iterator<Item = FunctionEntry<FreeFunctionIndex, &'a str, &'scope FreeFunction<'ctx>>>
-    {
+    + Clone {
         self.funcs
             .scope_iter()
             .filter_map(|map| map.get(name))

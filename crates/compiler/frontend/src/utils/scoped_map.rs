@@ -115,7 +115,7 @@ impl<K, V> From<IndexMap<K, V>> for ScopedMap<'_, K, V> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ScopeIter<'a, 'b, K, V> {
     map: Option<&'a ScopedMap<'b, K, V>>,
 }

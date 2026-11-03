@@ -64,7 +64,7 @@ fn analyze(source: &str, check: impl FnOnce(&[String], &[String])) {
 }
 
 #[test]
-fn unique_pairwise_reference_signature_wins_in_either_order() {
+fn unique_reference_signature_wins_in_either_order() {
     for declarations in [
         "func Pick(value: Base) -> Int32 = 1; func Pick(value: Child) -> Int32 = 2;",
         "func Pick(value: Child) -> Int32 = 2; func Pick(value: Base) -> Int32 = 1;",
@@ -126,6 +126,39 @@ fn crossing_preferences_null_holes_and_optional_overlap_stay_ambiguous() {
 }
 
 #[test]
+fn deepest_reference_signature_wins_among_multiple_candidates() {
+    for declarations in [
+        "func Pick(value: Base) -> Int32 = 1; func Pick(value: Middle) -> Int32 = 2; func Pick(value: Child) -> Int32 = 3;",
+        "func Pick(value: Child) -> Int32 = 3; func Pick(value: Middle) -> Int32 = 2; func Pick(value: Base) -> Int32 = 1;",
+    ] {
+        analyze(
+            &format!(
+                "class Base {{}} class Middle extends Base {{}} class Child extends Middle {{}} {declarations} func Run(value: Child) -> Int32 {{ return Pick(value); }}"
+            ),
+            |codes, targets| {
+                assert!(codes.is_empty(), "{codes:?}");
+                assert_eq!(targets, ["free(Child)"]);
+            },
+        );
+    }
+}
+
+#[test]
+fn unequal_reference_scores_do_not_resolve_crossing_preferences() {
+    for declarations in [
+        "func Pick(a: Child, b: Base) {} func Pick(a: Base, b: Middle) {}",
+        "func Pick(a: Base, b: Middle) {} func Pick(a: Child, b: Base) {}",
+    ] {
+        analyze(
+            &format!(
+                "class Base {{}} class Middle extends Base {{}} class Child extends Middle {{}} {declarations} func Run(value: Child) {{ Pick(value, value); }}"
+            ),
+            |codes, _| assert_eq!(codes, ["MULTIPLE_MATCHING_OVERLOADS"]),
+        );
+    }
+}
+
+#[test]
 fn out_parameters_remain_invariant() {
     analyze(
         "class Base {} class Child extends Base {} func Pick(out value: Base) -> Int32 = 1; func Pick(out value: Child) -> Int32 = 2; func Run(value: Child) -> Int32 { return Pick(value); }",
@@ -174,6 +207,31 @@ fn inherited_real_method_beats_child_forwarder() {
             assert_eq!(targets, ["instance Base(Int32)"]);
         },
     );
+}
+
+#[test]
+fn scope_priority_precedes_specificity_but_only_for_viable_methods() {
+    for declarations in [
+        "public func Pick(value: Base) -> Int32 = 1; public static func Pick(self: Host, value: Child) -> Int32 = 2;",
+        "public static func Pick(self: Host, value: Child) -> Int32 = 2; public func Pick(value: Base) -> Int32 = 1;",
+    ] {
+        analyze(
+            &format!(
+                "class Base {{}} class Child extends Base {{}} class Root {{}} class Host extends Root {{ {declarations} public func Other(value: Int32) -> Int32 = 3; public static func Other(self: Host, value: String) -> Int32 = 4; }} func Run(host: Host, value: Child) -> Int32 {{ return host.Pick(value); }} func RunFallback(host: Host) -> Int32 {{ return host.Other(\"x\"); }}"
+            ),
+            |codes, targets| {
+                assert!(codes.is_empty(), "{codes:?}");
+                assert!(
+                    targets.contains(&"instance Host(Base)".into()),
+                    "{targets:?}"
+                );
+                assert!(
+                    targets.contains(&"static Host(Host,String)".into()),
+                    "{targets:?}"
+                );
+            },
+        );
+    }
 }
 
 #[test]

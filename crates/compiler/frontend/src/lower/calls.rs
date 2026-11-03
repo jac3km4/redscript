@@ -1,4 +1,14 @@
+use std::cell::RefCell;
+use std::ops::RangeInclusive;
+
 use super::*;
+
+#[derive(Default)]
+struct OverloadDiagnostics {
+    invalid_signature: bool,
+    invalid_slot: Option<Span>,
+    arg_ranges: Vec<RangeInclusive<usize>>,
+}
 
 #[bon]
 impl<'scope, 'ctx> Lower<'scope, 'ctx> {
@@ -397,8 +407,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             env,
             span,
             allow_provider && !param.flags().is_out(),
-        )?;
-        Ok(())
+        )
     }
 
     #[builder(finish_fn = build)]
@@ -537,23 +546,10 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             (upper_bound, ir::CallMode::Normal)
         };
 
-        let candidates = self
+        let mut candidates = self
             .symbols
             .query_methods_by_name(upper_bound.id(), member)
             .filter(|entry| !entry.func().flags().is_static())
-            .collect::<Vec<_>>();
-        // A forwarder is an alias for a static declaration, not another instance
-        // slot. A real method with that signature wins, including inherited ones.
-        let mut candidates = candidates
-            .iter()
-            .filter(|entry| {
-                !entry.func().flags().is_static_forwarder()
-                    || !candidates.iter().any(|real| {
-                        !real.func().flags().is_static_forwarder()
-                            && same_parameter_signature(real.func().type_(), entry.func().type_())
-                    })
-            })
-            .cloned()
             .peekable();
         if candidates.peek().is_none() {
             let (field_expr, field_t, _) = self
@@ -628,7 +624,9 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             IntoIter = impl ExactSizeIterator<Item = &'a Spanned<ast::SourceExpr<'ctx>>> + Clone,
         >,
         #[builder(default)] type_args: &[Spanned<ast::SourceType<'ctx>>],
-        candidates: impl IntoIterator<Item = FunctionEntry<Key, Name, Func>>,
+        candidates: impl IntoIterator<
+            IntoIter = impl Iterator<Item = FunctionEntry<Key, Name, Func>> + Clone,
+        >,
         receiver: Option<InferredTypeApp<'ctx>>,
         type_hint: Option<&PolyType<'ctx>>,
         env: &Env<'_, 'ctx>,
@@ -643,9 +641,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         let args = args.into_iter();
         let argc = args.len();
 
-        let mut invalid_signature = false;
-        let mut invalid_slot = None;
-        let mut arg_ranges = Vec::new();
+        let diagnostics = RefCell::new(OverloadDiagnostics::default());
         let mut filtered = candidates
             .into_iter()
             .filter(|f| {
@@ -653,16 +649,16 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     return false;
                 }
                 if !f.func().type_().is_valid() {
-                    invalid_signature = true;
+                    diagnostics.borrow_mut().invalid_signature = true;
                     return false;
                 }
                 let range = f.func().type_().min_args()..=f.func().type_().max_args();
-                arg_ranges.push(range.clone());
+                diagnostics.borrow_mut().arg_ranges.push(range.clone());
                 if !range.contains(&argc) {
                     return false;
                 }
                 if !crate::arguments::accepts_slots(args.clone(), f.func().type_().params()) {
-                    invalid_slot = args
+                    diagnostics.borrow_mut().invalid_slot = args
                         .clone()
                         .zip(f.func().type_().params())
                         .find(|((expr, _), param)| {
@@ -676,6 +672,11 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             .peekable();
 
         let Some(primary) = filtered.next() else {
+            let OverloadDiagnostics {
+                invalid_signature,
+                invalid_slot,
+                arg_ranges,
+            } = diagnostics.into_inner();
             return if invalid_signature {
                 Err(Error::InvalidFunctionSignature(name, span))
             } else if let Some(span) = invalid_slot {
@@ -788,7 +789,9 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         arg_types: &[PolyType<'ctx>],
         #[builder(default)] source_args: &[&Spanned<ast::SourceExpr<'ctx>>],
         #[builder(default)] type_args: &[PolyType<'ctx>],
-        candidates: impl IntoIterator<Item = FunctionEntry<Key, Name, Func>>,
+        candidates: impl IntoIterator<
+            IntoIter = impl Iterator<Item = FunctionEntry<Key, Name, Func>> + Clone,
+        >,
         fallback: Option<FunctionEntry<Key, Name, Func>>,
         receiver: Option<InferredTypeApp<'ctx>>,
         env: &Env<'_, 'ctx>,
@@ -798,78 +801,49 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         Key: FunctionKey<'ctx> + Copy,
         Func: FunctionKind<'ctx> + Copy,
     {
-        fn match_by_subtype<'a, 'ctx, It, Key, Name, Func>(
-            it: It,
-            arg_types: &'a [PolyType<'ctx>],
-            args: &'a [ir::Expr<'ctx>],
-            symbols: &'a Symbols<'ctx>,
-        ) -> impl Iterator<Item = FunctionEntry<Key, Name, Func>> + use<'a, 'ctx, It, Key, Name, Func>
-        where
-            It: IntoIterator<Item = FunctionEntry<Key, Name, Func>>,
-            Func: FunctionKind<'ctx> + Copy,
-        {
-            it.into_iter().filter(move |entry| {
-                accepts_typed_args(entry.func(), arg_types, args.iter(), symbols)
+        let candidates = candidates.into_iter();
+        let matches = || {
+            candidates.clone().enumerate().filter(|(_, entry)| {
+                accepts_typed_args(entry.func(), arg_types, args.iter(), self.symbols)
             })
-        }
-
-        let mut arg_ranges = Vec::new();
-        let mut invalid_signature = false;
-        let candidates = candidates.into_iter().filter(|entry| {
-            if entry.func().type_().conversion().is_some() {
-                return false;
-            }
-            if !entry.func().type_().is_valid() {
-                invalid_signature = true;
-                return false;
-            }
-            arg_ranges.push(entry.func().type_().min_args()..=entry.func().type_().max_args());
-            true
-        });
-        let matches =
-            match_by_subtype(candidates, arg_types, args, self.symbols).collect::<Vec<_>>();
-        let fallback = fallback.filter(|entry| {
-            entry.func().type_().conversion().is_none()
-                && entry.func().type_().is_valid()
-                && (entry.func().type_().min_args()..=entry.func().type_().max_args())
-                    .contains(&args.len())
-        });
-        let Some(selected) = matches.first().or(fallback.as_ref()) else {
-            return Err(if invalid_signature {
-                Error::InvalidFunctionSignature(name, span)
-            } else if !arg_ranges.is_empty()
-                && arg_ranges.iter().all(|range| !range.contains(&args.len()))
-            {
-                Error::InvalidArgCount(arg_ranges, args.len(), span)
-            } else {
-                Error::UnresolvedFunction(name, span)
-            });
         };
-
-        let selected = if matches.len() <= 1 {
-            selected
-        } else {
-            // Compare declarations without constraining argument inference. Only
-            // commit coercions after a unique undominated signature is known.
-            let mut best = matches.iter().filter(|candidate| {
-                !matches.iter().any(|other| {
-                    more_specific_reference_signature(
+        // Scope precedence applies only to viable overloads. Within that scope,
+        // a dominating signature must have a strictly higher specificity score.
+        let primary = matches().max_by_key(|(_, entry)| {
+            (
+                std::cmp::Reverse(entry.func().scope_priority()),
+                reference_signature_score(entry.func().type_(), self.symbols),
+            )
+        });
+        let has_match = primary.is_some();
+        let selected = if let Some((index, primary)) = primary {
+            let scope_matches = || {
+                matches().filter(|(_, entry)| {
+                    entry.func().scope_priority() == primary.func().scope_priority()
+                })
+            };
+            // Replay instead of retaining candidates. Indices identify the same
+            // occurrence without treating duplicate signatures as one overload.
+            if !scope_matches().all(|(other_index, other)| {
+                index == other_index
+                    || reference_signature_dominates(
+                        primary.func().type_(),
                         other.func().type_(),
-                        candidate.func().type_(),
                         args,
                         arg_types,
                         self.symbols,
                     )
-                })
-            });
-            let primary = best.next();
-            if let Some(primary) = primary
-                && best.next().is_none()
-            {
-                primary
-            } else {
-                let signatures = matches
-                    .iter()
+            }) {
+                let signatures = candidates
+                    .filter(|entry| {
+                        entry.func().scope_priority() == primary.func().scope_priority()
+                            && accepts_typed_args(
+                                entry.func(),
+                                arg_types,
+                                args.iter(),
+                                self.symbols,
+                            )
+                    })
                     .map(|entry| {
                         let typ = entry.func().type_();
                         FunctionSignature::new(name, typ.params(), typ.return_type().clone())
@@ -877,6 +851,35 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     .collect();
                 return Err(Error::MultipleMatchingOverloads(signatures, span));
             }
+            primary
+        } else if let Some(fallback) = fallback.filter(|entry| {
+            entry.func().type_().conversion().is_none()
+                && entry.func().type_().is_valid()
+                && (entry.func().type_().min_args()..=entry.func().type_().max_args())
+                    .contains(&args.len())
+        }) {
+            fallback
+        } else {
+            let mut arg_ranges = Vec::new();
+            for entry in candidates {
+                let typ = entry.func().type_();
+                if typ.conversion().is_some() {
+                    continue;
+                }
+                if !typ.is_valid() {
+                    return Err(Error::InvalidFunctionSignature(name, span));
+                }
+                arg_ranges.push(typ.min_args()..=typ.max_args());
+            }
+            return Err(
+                if !arg_ranges.is_empty()
+                    && arg_ranges.iter().all(|range| !range.contains(&args.len()))
+                {
+                    Error::InvalidArgCount(arg_ranges, args.len(), span)
+                } else {
+                    Error::UnresolvedFunction(name, span)
+                },
+            );
         };
 
         let type_env = receiver
@@ -894,21 +897,18 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         // The source array guard already checks logical RHS operands as lazy;
         // generated logical calls also use prefix-free operands. Other typed
         // callers need source to establish that initialization cannot escape.
-        for (index, param) in selected
-            .func()
-            .type_()
-            .params()
+        for (index, (arg, param)) in args
             .iter()
-            .take(args.len())
+            .zip(selected.func().type_().params())
             .enumerate()
         {
-            if param.flags().is_short_circuit() && !matches!(args[index], ir::Expr::Nop(_)) {
+            if param.flags().is_short_circuit() && !matches!(arg, ir::Expr::Nop(_)) {
                 if let Some(source) = source_args.get(index) {
                     self.check_array_guard(source, true);
                 } else if index != 1
                     || ![ast::BinOp::And.name(), ast::BinOp::Or.name()].contains(&name)
                 {
-                    return Err(Error::UnsupportedSkipArgument(args[index].span()));
+                    return Err(Error::UnsupportedSkipArgument(arg.span()));
                 }
             }
         }
@@ -932,7 +932,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 param,
                 env,
                 span,
-                !matches.is_empty(),
+                has_match,
             )?;
         }
 
@@ -1200,13 +1200,6 @@ fn is_literal_or_negated_literal(expr: &ast::SourceExpr<'_>) -> bool {
             if matches!(expr.0, ast::Expr::Constant(_)))
 }
 
-fn same_parameter_signature<'ctx>(lhs: &FunctionType<'ctx>, rhs: &FunctionType<'ctx>) -> bool {
-    lhs.is_valid()
-        && rhs.is_valid()
-        && lhs.type_params().len() == rhs.type_params().len()
-        && lhs.param_types().eq(rhs.param_types())
-}
-
 fn same_static_parameter_signature<'ctx>(
     lhs: &crate::symbols::MethodEntry<'_, 'ctx>,
     rhs: &crate::symbols::MethodEntry<'_, 'ctx>,
@@ -1248,7 +1241,35 @@ fn same_static_parameter_signature<'ctx>(
     }
 }
 
-fn more_specific_reference_signature<'ctx>(
+// Inheritance depth is monotonic under reference specificity. Unsupported
+// parameter kinds contribute zero; the dominance check still rejects them when
+// they differ, without constraining argument inference.
+fn reference_signature_score<'ctx>(
+    signature: &FunctionType<'ctx>,
+    symbols: &Symbols<'ctx>,
+) -> usize {
+    signature
+        .param_types()
+        .filter_map(|typ| {
+            let typ = match typ.strip_ref() {
+                Some((RefType::Strong, typ)) => typ,
+                None => typ,
+                _ => return None,
+            };
+            let Type::Data(typ) = typ else {
+                return None;
+            };
+            (typ.args().is_empty()
+                && symbols[typ.id()]
+                    .schema()
+                    .as_aggregate()
+                    .is_some_and(|agg| !agg.flags().is_struct()))
+            .then(|| symbols.base_iter_with_self(typ.id()).count())
+        })
+        .sum()
+}
+
+fn reference_signature_dominates<'ctx>(
     lhs: &FunctionType<'ctx>,
     rhs: &FunctionType<'ctx>,
     args: &[ir::Expr<'ctx>],

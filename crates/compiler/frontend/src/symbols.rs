@@ -322,7 +322,7 @@ impl<'ctx> Symbols<'ctx> {
     fn base_iter_with_self_with_mode<Mode: BaseMode>(
         &self,
         typ: TypeId<'ctx>,
-    ) -> impl Iterator<Item = (TypeId<'ctx>, &Aggregate<'ctx>)> + use<'_, 'ctx, Mode> {
+    ) -> impl Iterator<Item = (TypeId<'ctx>, &Aggregate<'ctx>)> + Clone + use<'_, 'ctx, Mode> {
         let pair = |id| Some((id, self.get_type(id)?.schema.as_aggregate()?));
         iter::successors(pair(typ), move |(_, agg)| pair(Mode::base(agg)?.id()))
     }
@@ -331,7 +331,7 @@ impl<'ctx> Symbols<'ctx> {
     pub fn base_iter_with_self(
         &self,
         typ: TypeId<'ctx>,
-    ) -> impl Iterator<Item = (TypeId<'ctx>, &Aggregate<'ctx>)> + use<'_, 'ctx> {
+    ) -> impl Iterator<Item = (TypeId<'ctx>, &Aggregate<'ctx>)> + Clone + use<'_, 'ctx> {
         self.base_iter_with_self_with_mode::<AnyBaseType>(typ)
     }
 
@@ -339,7 +339,7 @@ impl<'ctx> Symbols<'ctx> {
     pub fn supertype_iter_with_self(
         &self,
         typ: TypeId<'ctx>,
-    ) -> impl Iterator<Item = (TypeId<'ctx>, &Aggregate<'ctx>)> + use<'_, 'ctx> {
+    ) -> impl Iterator<Item = (TypeId<'ctx>, &Aggregate<'ctx>)> + Clone + use<'_, 'ctx> {
         self.base_iter_with_self_with_mode::<AnySupertype>(typ)
     }
 
@@ -347,7 +347,7 @@ impl<'ctx> Symbols<'ctx> {
         &'a self,
         typ: TypeId<'ctx>,
         name: &'a str,
-    ) -> impl Iterator<Item = MethodEntry<'a, 'ctx>> + use<'a, 'ctx> {
+    ) -> impl Iterator<Item = MethodEntry<'a, 'ctx>> + Clone + use<'a, 'ctx> {
         self.base_iter_with_self(typ)
             .flat_map(|(id, agg)| {
                 agg.methods().by_name(name).map(move |entry| {
@@ -360,7 +360,7 @@ impl<'ctx> Symbols<'ctx> {
     pub fn query_methods<'a>(
         &'a self,
         typ: TypeId<'ctx>,
-    ) -> impl Iterator<Item = MethodEntry<'a, 'ctx>> + use<'a, 'ctx> {
+    ) -> impl Iterator<Item = MethodEntry<'a, 'ctx>> + Clone + use<'a, 'ctx> {
         self.base_iter_with_self(typ)
             .flat_map(|(id, agg)| {
                 agg.methods().iter().map(move |entry| {
@@ -740,7 +740,10 @@ impl<N, V> FunctionMap<N, V>
 where
     N: Eq + Hash,
 {
-    pub fn by_name<Q>(&self, name: &Q) -> impl Iterator<Item = FunctionEntry<FunctionIndex, &N, &V>>
+    pub fn by_name<Q>(
+        &self,
+        name: &Q,
+    ) -> impl Iterator<Item = FunctionEntry<FunctionIndex, &N, &V>> + Clone
     where
         N: Borrow<Q>,
         Q: ?Sized + Hash + Eq,
@@ -789,7 +792,7 @@ where
 
     pub fn iter(
         &self,
-    ) -> impl Iterator<Item = FunctionEntry<FunctionIndex, &N, &V>> + use<'_, N, V> {
+    ) -> impl Iterator<Item = FunctionEntry<FunctionIndex, &N, &V>> + Clone + use<'_, N, V> {
         self.map
             .iter()
             .enumerate()
@@ -1184,8 +1187,8 @@ impl fmt::Display for QualifiedName<'_> {
 pub struct FieldRedefinition;
 
 #[inline]
-fn method_dedup<'ctx: 'a, 'a>() -> impl FnMut(MethodEntry<'a, 'ctx>) -> Option<MethodEntry<'a, 'ctx>>
-{
+fn method_dedup<'ctx: 'a, 'a>()
+-> impl FnMut(MethodEntry<'a, 'ctx>) -> Option<MethodEntry<'a, 'ctx>> + Clone {
     let mut dedup = HashSet::new();
     move |entry| {
         if let Some(overridden) = entry.func().overriden() {
