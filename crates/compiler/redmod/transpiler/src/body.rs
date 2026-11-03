@@ -1558,24 +1558,12 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             let recv = unary()?;
             if !Self::simple_place(recv)
                 && !(crate::field_reads::variable_rooted(recv, self.symbols)
-                    && args[1..].iter().all(|arg| {
-                        let operand = if let ir::Expr::Call { call, .. } = arg
-                            && let ir::Call::FreeFunction { function, args, .. } = &**call
-                            && matches!(
-                                self.symbols[*function].intrinsic(),
-                                Some(I::RefToWeakRef | I::WeakRefToRef)
-                            )
-                            && let [operand] = &args[..]
-                        {
-                            operand
-                        } else {
-                            arg
-                        };
-                        matches!(operand, ir::Expr::Local(..) | ir::Expr::Const(..))
-                    }))
+                    && args[1..]
+                        .iter()
+                        .all(|arg| crate::effects::non_mutating(arg, self.symbols)))
             {
                 return Err(error(
-                    "this array operation requires a local array, or a variable-rooted array with only local or constant arguments",
+                    "this array operation requires a local array, or a variable-rooted array with non-mutating arguments",
                     Some(recv.span()),
                 ));
             }

@@ -11,6 +11,7 @@ mod body;
 pub use analyze::{AnalyzedSources, TranspiledSource, analyze_sources, transpile_sources};
 mod declarations;
 mod defaults;
+mod effects;
 mod field_reads;
 mod locals;
 pub mod package;

@@ -300,16 +300,20 @@ The official compiler rejects call-rooted array receivers such as
 Operations with additional arguments (`ArrayResize`, `ArrayGrow`, `ArrayCount`,
 `ArrayFindFirst`, `ArrayFindLast`, `ArrayContains`, `ArrayPush`, `ArrayInsert`,
 `ArrayRemove` and `ArrayErase`) also accept variable-rooted arrays when each
-argument is a local or constant, optionally with an immediate typed strong/weak
-reference conversion. Element arguments use the array's element type as their
-conversion context. For example, `ArrayPush(this.listeners, listener)`
-emits `this.listeners.PushBack(listener)` directly. Calls, field reads and other
-compound arguments retain the local-array guard: they are not covered by this
-bounded evaluation-order check. No receiver is copied or hoisted.
+argument is non-mutating. The shared effect check accepts locals, constants, null,
+field chains, indexing with non-mutating indices, dynamic casts and conditionals
+whose operands are non-mutating. Resolved strong/weak conversions and dereferences
+are checked recursively; arbitrary calls, assignments and allocation remain guarded.
+Target expression/type eligibility is still checked independently. Element arguments
+use the array's element type as their conversion context. For example,
+`ArrayContains(this.blockedAddresses, siteData.address)` emits
+`this.blockedAddresses.Contains(siteData.address)` directly. No receiver is copied
+or hoisted.
 
 The authored `FieldArrayArguments` fixture in `tests/official.rs` compiles with
 v1.2.2 and checks all ten array instructions, their direct field receiver operands,
-and the absence of synthesized assignments or calls. This is code-generation
+and the absence of synthesized assignments or calls. Additional probes cover
+struct-field arguments and indexed reads from the receiver array. This is code-generation
 evidence, not an in-game execution guarantee.
 
 Official v1.2.2 requires a variable parent scope for struct member access.

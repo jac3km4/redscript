@@ -155,12 +155,16 @@ fn temporary_structs_and_nonlocal_reference_escapes_remain_rejected() {
 }
 
 #[test]
-fn field_array_arguments_require_locals_or_constants() {
-    let definitions = "class Owner { public let values: [Int32]; } func Make() -> ref<Owner> { return new Owner(); } func Mutate(out owner: ref<Owner>) -> Int32 { owner = Make(); return 1; }";
+fn field_array_arguments_require_non_mutating_expressions() {
+    let definitions = "struct Data { public let count: Int32; } class Owner { public let child: ref<Owner>; public let data: Data; public let values: [Int32]; } func Make() -> ref<Owner> { return new Owner(); } func Mutate(out owner: ref<Owner>) -> Int32 { owner = Make(); return 1; }";
     for body in [
         "ArrayPush(owner.values, value);",
         "ArrayInsert(owner.values, 0, value);",
         "ArrayResize(owner.values, 3);",
+        "ArrayPush(owner.values, owner.data.count);",
+        "ArrayPush(owner.values, owner.child.data.count);",
+        "ArrayPush(owner.values, owner.values[0]);",
+        "ArrayPush(owner.values, true ? owner.data.count : value);",
     ] {
         let text = emit(&format!(
             "{definitions} func Test(owner: ref<Owner>, value: Int32) {{ {body} }}"
@@ -179,7 +183,10 @@ fn field_array_arguments_require_locals_or_constants() {
         "ArrayPush(owner.values, Mutate(owner));",
         "ArrayInsert(owner.values, Mutate(owner), value);",
         "ArrayPush(Make().values, value);",
-        "ArrayPush(owner.values, owner.values[0]);",
+        "ArrayPush(owner.values, owner.values[Mutate(owner)]);",
+        "ArrayPush(owner.values, Make().data.count);",
+        "ArrayPush(owner.values, true ? value : Mutate(owner));",
+        "ArrayPush(owner.values, value = 1);",
     ] {
         let errors = emit(&format!(
             "{definitions} func Test(owner: ref<Owner>, value: Int32) {{ {body} }}"

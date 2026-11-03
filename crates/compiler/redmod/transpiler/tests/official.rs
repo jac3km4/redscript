@@ -188,6 +188,37 @@ fn authored_transpiled_sources_compile_with_official_compiler() {
                         )),
                         "{code:?}"
                     );
+                    let fields = official_function_code(&bytes, "HasAddress");
+                    assert!(
+                        fields.iter().any(|op| matches!(op, Instr::StructField(_))),
+                        "{fields:?}"
+                    );
+                    assert!(
+                        fields.iter().any(|op| matches!(
+                            op,
+                            Instr::ArrayContains(_) | Instr::ArrayContainsFast(_)
+                        )),
+                        "{fields:?}"
+                    );
+                    assert!(
+                        !fields
+                            .iter()
+                            .any(|op| matches!(op, Instr::Assign | Instr::Local(_))),
+                        "{fields:?}"
+                    );
+                    let indexed = official_function_code(&bytes, "PushIndexed");
+                    assert!(
+                        indexed
+                            .iter()
+                            .any(|op| matches!(op, Instr::ArrayElement(_))),
+                        "{indexed:?}"
+                    );
+                    assert!(
+                        !indexed
+                            .iter()
+                            .any(|op| matches!(op, Instr::Assign | Instr::Local(_))),
+                        "{indexed:?}"
+                    );
                     let weak = official_function_code(&bytes, "AddWeak");
                     assert_eq!(
                         weak.iter()
@@ -764,7 +795,15 @@ const FIXTURES: &[(&str, &str)] = &[
     ),
     (
         "FieldArrayArguments",
-        r#"class OfficialArgumentArrayOwner {
+        r#"struct OfficialArgumentData { public let address: String; }
+class OfficialArgumentArrayOwner {
+            public let addresses: [String];
+            public func HasAddress(data: OfficialArgumentData) -> Bool {
+                return ArrayContains(this.addresses, data.address);
+            }
+            public func PushIndexed(index: Int32) {
+                ArrayPush(this.values, this.values[index]);
+            }
             public let values: [Int32];
             public let listeners: [wref<OfficialArgumentArrayOwner>];
             public let strong: [ref<OfficialArgumentArrayOwner>];

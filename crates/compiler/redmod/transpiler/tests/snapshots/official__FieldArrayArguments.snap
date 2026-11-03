@@ -2,7 +2,21 @@
 source: crates/compiler/redmod/transpiler/tests/official.rs
 expression: source.module.text
 ---
+struct OfficialArgumentData {
+    public var address: String;
+}
+
 class OfficialArgumentArrayOwner extends IScriptable {
+    public var addresses: array<String>;
+
+    public function HasAddress(data: OfficialArgumentData) -> Bool {
+        return this.addresses.Contains(data.address);
+    }
+
+    public function PushIndexed(index: Int32) -> Void {
+        this.values.PushBack(this.values[index]);
+    }
+
     public var values: array<Int32>;
     public var listeners: array<wref<OfficialArgumentArrayOwner>>;
     public var strong: array<OfficialArgumentArrayOwner>;
