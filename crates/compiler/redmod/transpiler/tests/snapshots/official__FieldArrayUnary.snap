@@ -1,0 +1,19 @@
+---
+source: crates/compiler/redmod/transpiler/tests/official.rs
+expression: source.module.text
+---
+class OfficialUnaryArrayOwner extends IScriptable {
+    public var values: array<Int32>;
+}
+
+function OfficialFieldClear(owner: OfficialUnaryArrayOwner) -> Void {
+    owner.values.Clear();
+}
+
+function OfficialFieldPop(owner: OfficialUnaryArrayOwner) -> Int32 {
+    return owner.values.PopBack();
+}
+
+function OfficialFieldLast(owner: OfficialUnaryArrayOwner) -> Int32 {
+    return owner.values.Last();
+}

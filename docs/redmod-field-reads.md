@@ -34,7 +34,10 @@ synthesized locals. Temporary/call-rooted struct places remain rejected.
 Stable fields may be borrowed by scripted `script_ref<T>` parameters; see
 [borrow semantics](redmod-as-ref.md).
 
-`ArraySize` supports variable-rooted array fields, including nested class fields.
+`ArraySize`, `ArrayClear`, `ArrayPop` and `ArrayLast` support variable-rooted
+arrays, including nested class fields. These have no later argument that could
+replace the receiver. Official probes check direct Clear/Pop/Last instructions
+on fields without synthesized copies.
 Array indexing likewise supports variable-rooted array fields for both reads
 and element assignments, with no copied array. The official probe checks direct
 `ArrayElement` instructions and no synthesized locals.

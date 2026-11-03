@@ -1528,9 +1528,10 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         let method = |name: &str| -> Result<String> {
             let recv = unary()?;
             if !Self::simple_place(recv)
-                && !(intrinsic == I::ArraySize
-                    && matches!(recv, ir::Expr::Field { .. })
-                    && crate::field_reads::variable_rooted(recv, self.symbols))
+                && !(matches!(
+                    intrinsic,
+                    I::ArraySize | I::ArrayClear | I::ArrayPop | I::ArrayLast
+                ) && crate::field_reads::variable_rooted(recv, self.symbols))
             {
                 return Err(error(
                     "this array operation requires a local array",

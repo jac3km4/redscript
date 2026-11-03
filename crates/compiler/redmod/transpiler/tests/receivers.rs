@@ -143,17 +143,16 @@ fn array_index_still_requires_a_variable_root() {
 }
 
 #[test]
-fn array_size_still_requires_a_variable_root() {
-    let errors = emit(
-        "class ArrayOwner { public let values: [Int32]; } func Make() -> ref<ArrayOwner> { return new ArrayOwner(); } func Test() -> Int32 { return ArraySize(Make().values); }",
-    )
-    .unwrap_err();
-    assert!(
-        errors
-            .iter()
-            .any(|e| e.message.contains("requires a local array")),
-        "{errors:?}"
-    );
+fn array_unary_operations_still_require_a_variable_root() {
+    for call in ["ArraySize", "ArrayClear", "ArrayPop", "ArrayLast"] {
+        let errors = emit(&format!("class ArrayOwner {{ public let values: [Int32]; }} func Make() -> ref<ArrayOwner> {{ return new ArrayOwner(); }} func Test() {{ {call}(Make().values); }}")).unwrap_err();
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.message.contains("requires a local array")),
+            "{errors:?}"
+        );
+    }
 }
 
 #[test]

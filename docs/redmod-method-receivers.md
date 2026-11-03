@@ -39,7 +39,8 @@ identity. This is not a general materialization algorithm.
 - Fields and indexed elements can supply a stable `AsRef` to scripted parameters,
   including struct method aliases. Temporary values use invocation-owned borrows
   at exact typed parameters, not synthesized mutable receiver locals.
-- Variable-rooted array fields support `ArraySize`; other array operations still
+- Variable-rooted array fields support `ArraySize`, `ArrayClear`, `ArrayPop`
+  and `ArrayLast`; other array operations still
   require locals. Nested class-handle fields support assignments and `out` arguments.
 - [Feature6 field reads](redmod-field-reads.md) now independently permits bounded
   `Make().field` and `owner.child.field` reads. Variable-rooted ordinary struct

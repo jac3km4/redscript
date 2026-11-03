@@ -137,7 +137,8 @@ fn authored_transpiled_sources_compile_with_official_compiler() {
         }
         let inspected = matches!(
             *name,
-            "IndexedMethodReceivers"
+            "FieldArrayUnary"
+                | "IndexedMethodReceivers"
                 | "ScriptTemporaryBorrow"
                 | "IndexedBorrow"
                 | "StructFieldPlaces"
@@ -150,6 +151,39 @@ fn authored_transpiled_sources_compile_with_official_compiler() {
             let bytes =
                 std::fs::read(published.directory.join("r6/cache/final.redscripts")).unwrap();
             match *name {
+                "FieldArrayUnary" => {
+                    use redscript_io::Instr;
+                    for function in [
+                        "OfficialFieldClear",
+                        "OfficialFieldPop",
+                        "OfficialFieldLast",
+                    ] {
+                        let code = official_function_code(&bytes, function);
+                        assert_eq!(
+                            code.iter()
+                                .filter(|op| matches!(op, Instr::ObjectField(_)))
+                                .count(),
+                            1,
+                            "{code:?}"
+                        );
+                        assert_eq!(
+                            code.iter()
+                                .filter(|op| matches!(
+                                    op,
+                                    Instr::ArrayClear(_) | Instr::ArrayPop(_) | Instr::ArrayLast(_)
+                                ))
+                                .count(),
+                            1,
+                            "{code:?}"
+                        );
+                        assert!(
+                            !code
+                                .iter()
+                                .any(|op| matches!(op, Instr::Assign | Instr::Local(_))),
+                            "{code:?}"
+                        );
+                    }
+                }
                 "IndexedMethodReceivers" => {
                     use redscript_io::Instr;
                     let code = official_function_code(&bytes, "OfficialIndexedMethod");
@@ -654,6 +688,13 @@ fn official_function_code(bytes: &[u8], name: &str) -> Vec<redscript_io::Instr> 
 }
 
 const FIXTURES: &[(&str, &str)] = &[
+    (
+        "FieldArrayUnary",
+        r#"class OfficialUnaryArrayOwner { public let values: [Int32]; }
+func OfficialFieldClear(owner: ref<OfficialUnaryArrayOwner>) { ArrayClear(owner.values); }
+func OfficialFieldPop(owner: ref<OfficialUnaryArrayOwner>) -> Int32 { return ArrayPop(owner.values); }
+func OfficialFieldLast(owner: ref<OfficialUnaryArrayOwner>) -> Int32 { return ArrayLast(owner.values); }"#,
+    ),
     (
         "IndexedMethodReceivers",
         r#"class OfficialIndexedReceiver {
