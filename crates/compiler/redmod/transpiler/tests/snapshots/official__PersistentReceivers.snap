@@ -1,0 +1,16 @@
+---
+source: crates/compiler/redmod/transpiler/tests/official.rs
+expression: source.module.text
+---
+class OfficialPersistentOwner extends IScriptable {
+    public persistent var count: Int32;
+
+    public function Next() -> OfficialPersistentOwner {
+        return this;
+    }
+
+    public function Read(owner: OfficialPersistentOwner) -> Int32 {
+        owner.count = 42;
+        return owner.Next().count;
+    }
+}

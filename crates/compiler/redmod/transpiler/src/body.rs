@@ -798,18 +798,10 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                         Some(e.span()),
                     ));
                 }
-                let (name, field) = self
+                let (name, _) = self
                     .symbols
                     .get_field(*field)
                     .ok_or_else(|| error("missing resolved field", None))?;
-                if field.flags().is_persistent()
-                    && !matches!(&**receiver, ir::Expr::Local(ir::Local::This, _))
-                {
-                    return Err(error(
-                        "persistent fields can only be accessed through this",
-                        Some(e.span()),
-                    ));
-                }
                 Ok(format!(
                     "{}.{}",
                     self.expr_at(receiver, 14)?,

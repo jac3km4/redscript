@@ -401,6 +401,17 @@ fn literal_pool_reader_decodes_relative_offsets() {
 
 const FIXTURES: &[(&str, &str)] = &[
     (
+        "PersistentReceivers",
+        r#"class OfficialPersistentOwner {
+    public persistent let count: Int32;
+    public func Next() -> ref<OfficialPersistentOwner> { return this; }
+    public func Read(owner: ref<OfficialPersistentOwner>) -> Int32 {
+        owner.count = 42;
+        return owner.Next().count;
+    }
+}"#,
+    ),
+    (
         "NestedAssignments",
         r#"class OfficialNestedOwner {
     public let child: ref<OfficialNestedOwner>;
