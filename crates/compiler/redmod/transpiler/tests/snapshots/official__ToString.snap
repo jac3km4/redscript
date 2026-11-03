@@ -1,0 +1,55 @@
+---
+source: crates/compiler/redmod/transpiler/tests/official.rs
+expression: source.module.text
+---
+enum OfficialStringEnum {
+    Zero = 0,
+    One = 1,
+}
+
+struct OfficialStringStruct {
+    public var value: Int32;
+}
+
+class OfficialStringObject extends IScriptable {
+}
+
+function OfficialStringEnumValue(value: OfficialStringEnum) -> String {
+    return value as String;
+}
+
+function OfficialStringStructValue(value: OfficialStringStruct) -> String {
+    return value as String;
+}
+
+function OfficialStringConditional(flag: Bool, a: OfficialStringEnum, b: OfficialStringEnum) -> String {
+    return (flag ? a : b) as String;
+}
+
+function OfficialStringNested(value: OfficialStringEnum) -> Variant {
+    return value as String as Variant;
+}
+
+function OfficialStringObjectValue(value: OfficialStringObject) -> String {
+    return value as String;
+}
+
+function OfficialStringWeakValue(value: wref<OfficialStringObject>) -> String {
+    return (value as OfficialStringObject) as String;
+}
+
+function OfficialStringArrayValue(value: array<Int32>) -> String {
+    return value as String;
+}
+
+function OfficialStringVariantValue(value: Variant) -> String {
+    return value as String;
+}
+
+function OfficialStringUintValue(value: Uint64) -> String {
+    return value as String;
+}
+
+function OfficialStringResourceValue(value: ResRef) -> String {
+    return value as String;
+}

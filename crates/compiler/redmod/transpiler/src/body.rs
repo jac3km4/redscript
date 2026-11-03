@@ -572,6 +572,9 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                         args.first()
                             .ok_or_else(|| error("missing intrinsic operand", None))?,
                     )?
+                } else if def.intrinsic() == Some(ir::Intrinsic::ToString) {
+                    // General string conversion is emitted as an `as String` cast.
+                    12
                 } else if matches!(
                     def.intrinsic(),
                     Some(
@@ -1606,9 +1609,8 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     return Err(error("unresolved ToString operand", None));
                 };
                 let id = app.id();
-                let value = self.expr(unary()?)?;
                 if id == predef::STRING {
-                    return Ok(value);
+                    return self.expr(unary()?);
                 }
                 let name = if id == predef::INT32 {
                     "IntToString"
@@ -1619,9 +1621,23 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 } else if id == predef::CNAME {
                     "NameToString"
                 } else {
-                    return Err(error(format!("ToString does not support {typ}"), None));
+                    let operand = unary()?;
+                    let value = if let ir::Expr::Call { call, .. } = operand
+                        && let ir::Call::FreeFunction { function, args, .. } = &**call
+                        && self.symbols[*function].intrinsic() == Some(I::WeakRefToRef)
+                        && let [arg] = &args[..]
+                    {
+                        format!(
+                            "({} as {})",
+                            self.expr_at(arg, 12)?,
+                            target::typ(&typ, self.symbols)?
+                        )
+                    } else {
+                        self.expr_at(operand, 12)?
+                    };
+                    return Ok(format!("{value} as String"));
                 };
-                Ok(format!("{name}({value})"))
+                Ok(format!("{name}({})", self.expr(unary()?)?))
             }
             I::ArraySort
             | I::ArraySortByPredicate

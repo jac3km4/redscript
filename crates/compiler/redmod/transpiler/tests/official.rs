@@ -892,6 +892,23 @@ fn official_function_code(bytes: &[u8], name: &str) -> Vec<redscript_io::Instr> 
 
 const FIXTURES: &[(&str, &str)] = &[
     (
+        "ToString",
+        r#"enum OfficialStringEnum { Zero = 0, One = 1 }
+struct OfficialStringStruct { public let value: Int32; }
+class OfficialStringObject {}
+public func OfficialStringEnumValue(value: OfficialStringEnum) -> String = ToString(value);
+public func OfficialStringStructValue(value: OfficialStringStruct) -> String = ToString(value);
+public func OfficialStringConditional(flag: Bool, a: OfficialStringEnum, b: OfficialStringEnum) -> String = ToString(flag ? a : b);
+public func OfficialStringNested(value: OfficialStringEnum) -> Variant = ToVariant(ToString(value));
+public func OfficialStringObjectValue(value: ref<OfficialStringObject>) -> String = ToString(value);
+public func OfficialStringWeakValue(value: wref<OfficialStringObject>) -> String = ToString(value);
+
+public func OfficialStringArrayValue(value: [Int32]) -> String = ToString(value);
+public func OfficialStringVariantValue(value: Variant) -> String = ToString(value);
+public func OfficialStringUintValue(value: Uint64) -> String = ToString(value);
+public func OfficialStringResourceValue(value: ResRef) -> String = ToString(value);"#,
+    ),
+    (
         "ScriptDefaults",
         "struct OfficialScriptLeaf { public let count: Int32; } struct OfficialScriptValue { public let leaf: OfficialScriptLeaf; public let text: String; public let values: [Int32]; public let dynamic: Variant; } func OfficialScriptDefault(again: Bool) -> OfficialScriptValue { let value: OfficialScriptValue; while again { let repeated: OfficialScriptValue; repeated.text = \"dirty\"; value = repeated; } return value; }",
     ),

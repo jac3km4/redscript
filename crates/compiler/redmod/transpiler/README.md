@@ -35,7 +35,10 @@ Unsupported input returns diagnostics, never partial output. The
 Explicit typed signatures/locals, ordinary calls/operators/casts, structured IR
 control flow, lowered for-in/interpolation, selected dynamic-array intrinsics,
 verified primitive/reference and complete source-struct defaults, overrides and
-uniquely associated patches.
+uniquely associated patches. `ToString` has no operand-type whitelist: existing
+primitive native mappings and string identity are preserved, and other operands
+use REDmod's `value as String` conversion. Weak operands retain their explicit
+strong-reference conversion before string conversion.
 Local names prefer authored spellings with deterministic, hygienic disambiguation
 by IR identity; compiler temporaries use purpose-based names such as `arrayLiteral`,
 `index` and `iterable`, or contextual names such as `valuesLiteral` and `itemIndex`
@@ -153,7 +156,7 @@ and bundle signedness limitations.
 | Unsafe receivers, temporary/nonlocal places and strong/weak coercions | Add context-aware place/reference lowering; never mutate a copy as a substitute |
 | Zero-member-less enum, Variant and fixed-array default resets | Verify target initialization/reset behavior; native/import-only structs emit `Type()` |
 | Const locals | Preserve verified initialization and mutation semantics; currently rejected rather than emitted as mutable |
-| Array count/grow/sort, `LongIntEnum`, variant inspection, `NameOf`, more `ToString`/`IsDefined` types | Add resolved typed mappings and official fixtures per operation |
+| Array count/grow/sort, `LongIntEnum`, variant inspection, `NameOf`, more `IsDefined` types | Add resolved typed mappings and official fixtures per operation |
 | `editable`, `instanceeditable`, `inlined`, `replicated`, `testonly` transpilation | Preserve verified declaration semantics rather than dropping flags |
 | Exact/select imports, unknown metadata, global replacements and broader conditions | Extend declaration/target planning without widening imports or guessing ownership |
 | Wider integer/Double ranges and literal controls | Establish exact official constant-pool values before accepting new spellings |
