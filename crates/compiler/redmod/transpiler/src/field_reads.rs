@@ -8,7 +8,7 @@ pub(crate) fn inline_receiver<'ctx>(
     typ: &Type<'ctx>,
     symbols: &Symbols<'ctx>,
 ) -> bool {
-    if matches!(typ.ref_type(), Some(RefType::Weak | RefType::Script)) {
+    if typ.ref_type() == Some(RefType::Script) {
         return false;
     }
     let Type::Data(app) = typ.unwrap_ref_or_self() else {

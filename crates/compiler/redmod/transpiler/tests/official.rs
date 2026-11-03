@@ -401,6 +401,18 @@ fn literal_pool_reader_decodes_relative_offsets() {
 
 const FIXTURES: &[(&str, &str)] = &[
     (
+        "WeakFieldReads",
+        r#"class OfficialWeakFieldOwner {
+    public let handle: wref<OfficialWeakFieldOwner>;
+    public let count: Int32;
+    public func Next() -> wref<OfficialWeakFieldOwner> { return this.handle; }
+}
+func OfficialWeakFieldRead(owner: ref<OfficialWeakFieldOwner>, enabled: Bool) -> Int32 {
+    if enabled { return owner.handle.count; }
+    return owner.Next().count;
+}"#,
+    ),
+    (
         "CastReceivers",
         r#"class OfficialCastBase {}
 class OfficialCastOwner extends OfficialCastBase {

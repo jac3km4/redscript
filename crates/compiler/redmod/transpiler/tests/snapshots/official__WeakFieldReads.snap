@@ -1,0 +1,19 @@
+---
+source: crates/compiler/redmod/transpiler/tests/official.rs
+expression: source.module.text
+---
+class OfficialWeakFieldOwner extends IScriptable {
+    public var handle: wref<OfficialWeakFieldOwner>;
+    public var count: Int32;
+
+    public function Next() -> wref<OfficialWeakFieldOwner> {
+        return this.handle;
+    }
+}
+
+function OfficialWeakFieldRead(owner: OfficialWeakFieldOwner, enabled: Bool) -> Int32 {
+    if (enabled) {
+        return owner.handle.count;
+    }
+    return owner.Next().count;
+}
