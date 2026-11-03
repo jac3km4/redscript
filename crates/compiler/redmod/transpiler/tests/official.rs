@@ -135,131 +135,136 @@ fn authored_transpiled_sources_compile_with_official_compiler() {
             assert!(bytes > 0);
             println!("{artifact}: {bytes} bytes");
         }
-        if *name == "StructFieldPlaces" {
+        let inspected = matches!(
+            *name,
+            "StructFieldPlaces"
+                | "ScriptFieldBorrow"
+                | "IndexedFieldReads"
+                | "FieldArrayIndex"
+                | "Literals"
+        );
+        if inspected {
             let bytes =
                 std::fs::read(published.directory.join("r6/cache/final.redscripts")).unwrap();
-            let code = official_function_code(&bytes, "OfficialStructPlaces");
-            assert_eq!(
-                code.iter()
-                    .filter(|op| matches!(op, redscript_io::Instr::Assign))
-                    .count(),
-                2,
-                "{code:?}"
-            );
-            assert_eq!(
-                code.iter()
-                    .filter(|op| matches!(op, redscript_io::Instr::StructField(_)))
-                    .count(),
-                8,
-                "{code:?}"
-            );
-            assert!(
-                !code
-                    .iter()
-                    .any(|op| matches!(op, redscript_io::Instr::Local(_))),
-                "{code:?}"
-            );
-        }
-        if *name == "ScriptFieldBorrow" {
-            let bytes =
-                std::fs::read(published.directory.join("r6/cache/final.redscripts")).unwrap();
-            let code = official_function_code(&bytes, "OfficialScriptBorrow");
-            for op in &code {
-                if let redscript_io::Instr::InvokeStatic { flags, .. } = op {
-                    assert_eq!(*flags, redscript_io::InvokeFlags::default(), "{code:?}");
+            match *name {
+                "StructFieldPlaces" => {
+                    let code = official_function_code(&bytes, "OfficialStructPlaces");
+                    assert_eq!(
+                        code.iter()
+                            .filter(|op| matches!(op, redscript_io::Instr::Assign))
+                            .count(),
+                        2,
+                        "{code:?}"
+                    );
+                    assert_eq!(
+                        code.iter()
+                            .filter(|op| matches!(op, redscript_io::Instr::StructField(_)))
+                            .count(),
+                        8,
+                        "{code:?}"
+                    );
+                    assert!(
+                        !code
+                            .iter()
+                            .any(|op| matches!(op, redscript_io::Instr::Local(_))),
+                        "{code:?}"
+                    );
                 }
+                "ScriptFieldBorrow" => {
+                    let code = official_function_code(&bytes, "OfficialScriptBorrow");
+                    for op in &code {
+                        if let redscript_io::Instr::InvokeStatic { flags, .. } = op {
+                            assert_eq!(*flags, redscript_io::InvokeFlags::default(), "{code:?}");
+                        }
+                    }
+                    let callee = official_function_code(&bytes, "OfficialBorrowSet");
+                    assert!(
+                        callee
+                            .iter()
+                            .any(|op| matches!(op, redscript_io::Instr::Assign)),
+                        "{callee:?}"
+                    );
+                    assert!(
+                        callee
+                            .iter()
+                            .any(|op| matches!(op, redscript_io::Instr::Deref(_))),
+                        "{callee:?}"
+                    );
+                    assert!(
+                        code.iter()
+                            .any(|op| matches!(op, redscript_io::Instr::AsRef(_))),
+                        "{code:?}"
+                    );
+                    assert!(
+                        code.iter()
+                            .any(|op| matches!(op, redscript_io::Instr::ObjectField(_))),
+                        "{code:?}"
+                    );
+                    assert!(
+                        !code.iter().any(|op| matches!(
+                            op,
+                            redscript_io::Instr::Local(_) | redscript_io::Instr::Assign
+                        )),
+                        "{code:?}"
+                    );
+                }
+                "IndexedFieldReads" => {
+                    for function in ["OfficialIndexStruct", "OfficialIndexClass"] {
+                        let code = official_function_code(&bytes, function);
+                        assert_eq!(
+                            code.iter()
+                                .filter(|op| matches!(op, redscript_io::Instr::ArrayElement(_)))
+                                .count(),
+                            1,
+                            "{code:?}"
+                        );
+                        assert!(
+                            !code.iter().any(|op| matches!(
+                                op,
+                                redscript_io::Instr::Local(_) | redscript_io::Instr::Assign
+                            )),
+                            "{code:?}"
+                        );
+                    }
+                }
+                "FieldArrayIndex" => {
+                    let code = official_function_code(&bytes, "OfficialFieldIndex");
+                    assert_eq!(
+                        code.iter()
+                            .filter(|op| matches!(op, redscript_io::Instr::ArrayElement(_)))
+                            .count(),
+                        2,
+                        "{code:?}"
+                    );
+                    assert_eq!(
+                        code.iter()
+                            .filter(|op| matches!(op, redscript_io::Instr::Assign))
+                            .count(),
+                        1,
+                        "{code:?}"
+                    );
+                    assert!(
+                        !code
+                            .iter()
+                            .any(|op| matches!(op, redscript_io::Instr::Local(_))),
+                        "{code:?}"
+                    );
+                }
+                "Literals" => {
+                    let strings = literal_pool(&bytes, 92);
+                    for expected in [
+                        r"assets\widgets\button",
+                        r"assets\",
+                        r"\n\t\u{22}\\",
+                        "first\n  second",
+                    ] {
+                        assert!(strings.contains(&expected), "missing String {expected:?}");
+                    }
+                    let cnames = literal_pool(&bytes, 44);
+                    assert!(cnames.contains(&r"raw\name\"));
+                }
+                _ => unreachable!(),
             }
-            let callee = official_function_code(&bytes, "OfficialBorrowSet");
-            assert!(
-                callee
-                    .iter()
-                    .any(|op| matches!(op, redscript_io::Instr::Assign)),
-                "{callee:?}"
-            );
-            assert!(
-                callee
-                    .iter()
-                    .any(|op| matches!(op, redscript_io::Instr::Deref(_))),
-                "{callee:?}"
-            );
-            assert!(
-                code.iter()
-                    .any(|op| matches!(op, redscript_io::Instr::AsRef(_))),
-                "{code:?}"
-            );
-            assert!(
-                code.iter()
-                    .any(|op| matches!(op, redscript_io::Instr::ObjectField(_))),
-                "{code:?}"
-            );
-            assert!(
-                !code.iter().any(|op| matches!(
-                    op,
-                    redscript_io::Instr::Local(_) | redscript_io::Instr::Assign
-                )),
-                "{code:?}"
-            );
-        }
-        if *name == "IndexedFieldReads" {
-            let bytes =
-                std::fs::read(published.directory.join("r6/cache/final.redscripts")).unwrap();
-            for function in ["OfficialIndexStruct", "OfficialIndexClass"] {
-                let code = official_function_code(&bytes, function);
-                assert_eq!(
-                    code.iter()
-                        .filter(|op| matches!(op, redscript_io::Instr::ArrayElement(_)))
-                        .count(),
-                    1,
-                    "{code:?}"
-                );
-                assert!(
-                    !code.iter().any(|op| matches!(
-                        op,
-                        redscript_io::Instr::Local(_) | redscript_io::Instr::Assign
-                    )),
-                    "{code:?}"
-                );
-            }
-        }
-        if *name == "FieldArrayIndex" {
-            let bytes =
-                std::fs::read(published.directory.join("r6/cache/final.redscripts")).unwrap();
-            let code = official_function_code(&bytes, "OfficialFieldIndex");
-            assert_eq!(
-                code.iter()
-                    .filter(|op| matches!(op, redscript_io::Instr::ArrayElement(_)))
-                    .count(),
-                2,
-                "{code:?}"
-            );
-            assert_eq!(
-                code.iter()
-                    .filter(|op| matches!(op, redscript_io::Instr::Assign))
-                    .count(),
-                1,
-                "{code:?}"
-            );
-            assert!(
-                !code
-                    .iter()
-                    .any(|op| matches!(op, redscript_io::Instr::Local(_))),
-                "{code:?}"
-            );
-        }
-        if *name == "Literals" {
-            let bytes =
-                std::fs::read(published.directory.join("r6/cache/final.redscripts")).unwrap();
-            let strings = literal_pool(&bytes, 92);
-            for expected in [
-                r"assets\widgets\button",
-                r"assets\",
-                r"\n\t\u{22}\\",
-                "first\n  second",
-            ] {
-                assert!(strings.contains(&expected), "missing String {expected:?}");
-            }
-            let cnames = literal_pool(&bytes, 44);
-            assert!(cnames.contains(&r"raw\name\"));
         }
         assert_eq!(
             validator
