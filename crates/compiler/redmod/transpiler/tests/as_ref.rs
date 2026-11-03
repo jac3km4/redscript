@@ -1,4 +1,4 @@
-//! Borrowed String operands retain their invocation slot and temporary lifetime.
+//! Borrowed operands retain their invocation slot and temporary lifetime.
 use redscript_community_ast::{SourceMap, Span};
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{Symbols, TypeInterner, ir};
@@ -14,16 +14,45 @@ fn emit(source: &str) -> Result<String, Vec<redscript_redmod_transpiler::Transpi
 }
 
 const SOURCE: &str = r#"
-class TextOwner { public let text: String; }
+struct BorrowedValue { public let number: Int32; }
+class TextOwner { public let text: String; public let number: Int32; public let value: BorrowedValue; }
+native func BorrowInt(value: script_ref<Int32>, number: Int32)
+native func BorrowInt(value: script_ref<Int32>, number: Float)
+native func BorrowValue(value: script_ref<BorrowedValue>)
 native func MakeText() -> String
 native func First() -> Int32
 native func Last() -> Int32
 native func Borrow(first: Int32, value: script_ref<String>, last: Int32) -> Bool
 native func OperatorAdd(a: script_ref<String>, b: script_ref<String>) -> String
+native func OperatorAdd(a: Int32, b: script_ref<String>) -> String
+native func OperatorAdd(a: Float, b: script_ref<String>) -> String
+native func OperatorAdd(a: Bool, b: script_ref<String>) -> String
+native func OperatorAdd(a: script_ref<String>, b: Int32) -> String
+native func OperatorAdd(a: script_ref<String>, b: Float) -> String
+native func OperatorAdd(a: script_ref<String>, b: Bool) -> String
 native func OperatorLogicAnd(a: Bool, b: Bool) -> Bool
+native func OperatorEqual(a: script_ref<String>, b: script_ref<String>) -> Bool
+native func OperatorNotEqual(a: script_ref<String>, b: script_ref<String>) -> Bool
+native func OperatorBitNot(value: script_ref<String>) -> String
+native func ReadMixed(value: script_ref<String>, number: Int32) -> String
+native func ReadMixed(value: script_ref<String>, number: Float) -> String
 native func GetLocalizedText(key: script_ref<String>) -> String
 func Test(enabled: Bool, owner: ref<TextOwner>, texts: [String], index: Int32) -> String {
+    BorrowInt(AsRef(42), index);
+    BorrowInt(owner.number, index);
+    BorrowValue(BorrowedValue(index));
+    BorrowValue(owner.value);
     Borrow(First(), AsRef(MakeText()), Last());
+    Borrow(First(), owner.number + " / " + index, Last());
+    Borrow(First(), "value: " + index, Last());
+    Borrow(First(), "value: " + 1.5, Last());
+    Borrow(First(), 1.5 + " value", Last());
+    Borrow(First(), "value: " + enabled, Last());
+    Borrow(First(), enabled + " value", Last());
+    Borrow(First(), ReadMixed(MakeText(), index), Last());
+    Borrow(First(), ~AsRef(MakeText()), Last());
+    let equal: Bool = MakeText() == "value";
+    let different: Bool = MakeText() != "value";
     Borrow(First(), owner.text, Last());
     Borrow(First(), texts[index], Last());
     while enabled && Borrow(First(), MakeText(), Last()) { continue; }
@@ -180,7 +209,10 @@ fn escaping_nested_untyped_and_non_native_temporaries_fail_closed() {
         "func Test() -> script_ref<String> { return AsRef(\"value\"); }",
         "func Test() { let value: script_ref<String> = AsRef(\"value\"); }",
         "func Take(value: script_ref<String>) {} func Test() { Take(AsRef(\"value\")); }",
-        "native func Take(value: script_ref<Int32>) func Test() { Take(AsRef(42)); }",
+        "native func Take(value: script_ref<Int32>) func Test() { Take(AsRef(true)); }",
+        "native func Take(value: script_ref<Int32>) native func Take(value: Int32) func Test() { Take(AsRef(42)); }",
+        "native func Take(out value: script_ref<Int32>) func Test() { Take(AsRef(42)); }",
+        "func Test() -> script_ref<Int32> { return AsRef(42); }",
         "native func Take(out value: script_ref<String>) func Test() { Take(AsRef(\"value\")); }",
         "native func Take(value: script_ref<String>) native func Take(value: String) func Test() { Take(AsRef(\"value\")); }",
         "native func Take(value: script_ref<String>) func Test() { Take(Deref(AsRef(\"value\"))); }",
@@ -212,11 +244,12 @@ fn conditional_and_right_nested_string_operands_keep_grouping() {
 }
 
 #[test]
-fn ambiguous_methods_and_unsupported_operators_do_not_supply_borrow_context() {
+fn competing_value_and_non_native_overloads_do_not_supply_borrow_context() {
     for source in [
         "native class Owner { public native func Read(value: script_ref<String>) -> Bool public native func Read(value: String) -> Bool } func Test(owner: ref<Owner>) { owner.Read(AsRef(\"temporary\")); }",
-        "native func OperatorEqual(a: script_ref<String>, b: script_ref<String>) -> Bool func Test() -> Bool { return AsRef(\"a\") == AsRef(\"b\"); }",
         "native func OperatorAdd(a: script_ref<String>, b: script_ref<String>) -> String native func OperatorAdd(a: String, b: String) -> String func Test() -> String { return AsRef(\"a\") + AsRef(\"b\"); }",
+        "native func OperatorAdd(a: Int32, b: script_ref<String>) -> String native func OperatorAdd(a: Int32, b: String) -> String func Test(value: Int32) -> String { return value + AsRef(\"a\"); }",
+        "native func OperatorAdd(a: script_ref<String>, b: Int32) -> String func OperatorAdd(a: script_ref<String>, b: Float) -> String { return \"\"; } func Test(value: Int32) -> String { return AsRef(\"a\") + value; }",
     ] {
         assert!(emit(source).is_err(), "{source}");
     }
@@ -308,10 +341,25 @@ fn unique_borrow_with_null_sibling_keeps_native_context() {
 }
 
 #[test]
-fn optional_string_operator_is_not_a_verified_fixed_signature() {
-    assert!(emit(
+fn optional_operator_parameters_use_the_same_argument_context() {
+    let text = emit(
         "native func OperatorAdd(a: script_ref<String>, opt b: script_ref<String>) -> String func Test() -> String { return AsRef(\"a\") + AsRef(\"b\"); }"
-    ).is_err());
+    ).unwrap();
+    assert!(text.contains("return \"a\" + \"b\";"), "{text}");
+}
+
+#[test]
+fn generated_equality_guards_reuse_native_argument_context() {
+    let text = emit(
+        r#"
+        native func OperatorEqual(a: script_ref<String>, b: script_ref<String>) -> Bool
+        native func Read(values: [Int32]) -> String
+        func Test() { while Read([1]) == "value" { continue; } }
+    "#,
+    )
+    .unwrap();
+    assert!(text.contains(") != \"value\")"), "{text}");
+    assert!(!text.contains("AsRef("), "{text}");
 }
 
 #[test]
@@ -395,7 +443,7 @@ fn official_invocations(bytes: &[u8], probe: &str, callee_prefix: &str) -> Vec<(
 
 #[test]
 #[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]
-fn borrowed_strings_with_official_compiler() {
+fn borrowed_values_with_official_compiler() {
     use std::path::{Path, PathBuf};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -418,6 +466,13 @@ fn borrowed_strings_with_official_compiler() {
     // Real engine signatures come from the trusted installation, not invented
     // imports. Compare temporary and stable-place invocation lifetime metadata.
     let source = r#"
+        struct AsRefValue { public let number: Int32; }
+        native func AsRefTakeInt(value: script_ref<Int32>)
+        native func AsRefTakeValue(value: script_ref<AsRefValue>)
+        func AsRefMakeInt() -> Int32 { return 42; }
+        func AsRefScalar() { AsRefTakeInt(AsRef(AsRefMakeInt())); }
+        func AsRefMakeValue(number: Int32) -> AsRefValue { return AsRefValue(number); }
+        func AsRefStruct(number: Int32) { AsRefTakeValue(AsRef(AsRefMakeValue(number))); }
         native func GetLocalizedText(key: script_ref<String>) -> String
         native func OperatorAdd(a: script_ref<String>, b: script_ref<String>) -> String
         func AsRefTemporary() -> String { return GetLocalizedText(AsRef("LocKey#" + "42")); }
@@ -428,6 +483,19 @@ fn borrowed_strings_with_official_compiler() {
         }
         native func OperatorLogicAnd(a: Bool, b: Bool) -> Bool
         native func StrContains(value: script_ref<String>, part: script_ref<String>) -> Bool
+        native func OperatorAdd(a: Int32, b: script_ref<String>) -> String
+        native func OperatorAdd(a: Float, b: script_ref<String>) -> String
+        native func OperatorAdd(a: Bool, b: script_ref<String>) -> String
+        native func OperatorAdd(a: script_ref<String>, b: Int32) -> String
+        native func OperatorAdd(a: script_ref<String>, b: Float) -> String
+        native func OperatorAdd(a: script_ref<String>, b: Bool) -> String
+        class AsRefNumbers { public let lhs: Int32; public let rhs: Int32; }
+        func AsRefMixed(values: ref<AsRefNumbers>) -> String { return values.lhs + " / " + values.rhs; }
+        func AsRefMixedReverse(value: Int32) -> String { return "value: " + value; }
+        func AsRefMixedFloat(value: Float) -> String { return value + " / " + value; }
+        func AsRefMixedBool(value: Bool) -> String { return value + " / " + value; }
+        native func OperatorAssignAdd(a: script_ref<String>, b: script_ref<String>) -> String
+        func AsRefAssign(value: String) -> String { value += GetLocalizedText("LocKey#42"); return value; }
         func AsRefLocal(value: String) -> String { return GetLocalizedText(AsRef(value)); }
         func AsRefInterpolation(value: String) -> String { return s"Label: \(GetLocalizedText(value))"; }
     "#;
@@ -438,10 +506,23 @@ fn borrowed_strings_with_official_compiler() {
         .collect::<Vec<_>>()
         .join("\n");
     std::fs::create_dir_all(directory.join("r6/scripts")).unwrap();
+    // Typed script sinks exercise the target's generic borrowing ABI without
+    // inventing native imports absent from the trusted engine installation.
+    let body = format!(
+        "{body}\nfunction AsRefTakeInt(value: script_ref<Int32>);\nfunction AsRefTakeValue(value: script_ref<AsRefValue>);\n"
+    );
     std::fs::write(directory.join("r6/scripts/authored.script"), &body).unwrap();
     let report = validator.validate_with_root(&directory, &root).unwrap();
     println!("{}\n{}", directory.display(), report.stdout);
     let bytes = std::fs::read(directory.join("r6/cache/final.redscripts")).unwrap();
+    assert_eq!(
+        official_invocations(&bytes, "AsRefScalar;", "AsRefTakeInt;"),
+        [(1, 0x66)]
+    );
+    assert_eq!(
+        official_invocations(&bytes, "AsRefStruct;", "AsRefTakeValue;"),
+        [(1, 0x66)]
+    );
     // 0x66 is AsRef. The temporary is call-owned (bit 0); the local is
     // borrowed by identity without allocating call-owned temporary storage.
     assert_eq!(
@@ -468,6 +549,22 @@ fn borrowed_strings_with_official_compiler() {
         official_invocations(&bytes, "AsRefInterpolation", "OperatorAdd;"),
         [(2, 0x66)]
     );
+    // Literals borrow stable pooled storage (mask 0). The outer concatenation
+    // owns the inner String result in slot 0, before evaluating the last value.
+    for probe in ["AsRefMixed;", "AsRefMixedFloat;", "AsRefMixedBool;"] {
+        let calls = official_invocations(&bytes, probe, "OperatorAdd;");
+        assert_eq!(calls.len(), 2, "{probe}: {calls:?}");
+        assert_eq!(calls[0], (1, 0x66), "{probe}");
+        assert_eq!(calls[1].0, 0, "{probe}");
+    }
+    assert_eq!(
+        official_invocations(&bytes, "AsRefMixedReverse;", "OperatorAdd;"),
+        [(0, 0x66)]
+    );
+    assert_eq!(
+        official_invocations(&bytes, "AsRefAssign;", "OperatorAssignAdd;"),
+        [(2, 0x66)]
+    );
 }
 
 #[test]
@@ -482,4 +579,8 @@ fn temporary_argument_mask_is_bounded_but_local_identity_is_unchanged() {
     );
     assert!(emit(&source).is_err());
     assert!(emit("native func Take(value: script_ref<String>) func Test(value: String) { Take(AsRef(value)); }").is_ok());
+    let scalar = format!(
+        "native func Take({prefix}, value: script_ref<Int32>) func Test() {{ Take({args}, AsRef(42)); }}"
+    );
+    assert!(emit(&scalar).is_err());
 }

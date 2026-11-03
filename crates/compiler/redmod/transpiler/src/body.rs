@@ -693,16 +693,16 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 && let [a, b] = &args[..]
                 && self.type_of(expr)? == Type::nullary(predef::BOOL)
             {
+                let inverse = if op == ast::BinOp::Eq {
+                    ast::BinOp::Ne
+                } else {
+                    ast::BinOp::Eq
+                };
+                if def.intrinsic().is_none() {
+                    return self.binary_call(inverse, def.type_(), call);
+                }
                 self.expr(expr)?;
-                return self.binary(
-                    if op == ast::BinOp::Eq {
-                        ast::BinOp::Ne
-                    } else {
-                        ast::BinOp::Eq
-                    },
-                    a,
-                    b,
-                );
+                return self.binary(inverse, a, b);
             }
         }
         // Do not invert ordered comparisons: NaNs and user-defined operators
@@ -957,12 +957,9 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             if Self::simple_place(arg) {
                 return self.expr_at(e, minimum);
             }
-            // Initially bound to String: this is the verified native temporary
-            // ABI, not a general script-reference escape/lifetime analysis.
-            let string = Type::nullary(predef::STRING);
             if self.type_of(e)? != *expected
-                || *expected != Type::app(predef::SCRIPT_REF, [string.clone()])
-                || self.type_of(arg)? != string
+                || expected.ref_type() != Some(RefType::Script)
+                || &self.type_of(arg)? != expected.unwrap_ref_or_self()
                 || (arg.is_prvalue(self.symbols) && slot >= u16::BITS as usize)
             {
                 return Err(invalid());
@@ -987,22 +984,64 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         let contextual = self.call_context(signature, args, call, native)?;
         args.iter()
             .enumerate()
-            .map(|(i, arg)| {
-                if contextual
-                    && let Some(param) = signature.params().get(i)
-                    && !param.flags().is_out()
-                {
-                    if native {
-                        self.borrowed_arg(arg, param.type_(), i, 2)
-                    } else {
-                        self.contextual_expr(arg, param.type_())
-                    }
-                } else {
-                    self.expr(arg)
-                }
-            })
+            .map(|(i, arg)| self.call_arg(signature, arg, i, contextual.then_some(native), 2))
             .collect::<Result<Vec<_>>>()
             .map(|v| v.join(", "))
+    }
+
+    fn call_arg(
+        &self,
+        signature: &FunctionType<'ctx>,
+        arg: &ir::Expr<'ctx>,
+        slot: usize,
+        contextual_native: Option<bool>,
+        minimum: u8,
+    ) -> Result<String> {
+        if let Some(native) = contextual_native
+            && let Some(param) = signature.params().get(slot)
+            && !param.flags().is_out()
+        {
+            if native {
+                return self.borrowed_arg(arg, param.type_(), slot, minimum);
+            }
+            let text = self.contextual_expr(arg, param.type_())?;
+            return if self.precedence(arg)? < minimum {
+                Ok(format!("({text})"))
+            } else {
+                Ok(text)
+            };
+        }
+        self.expr_at(arg, minimum)
+    }
+
+    fn binary_call(
+        &self,
+        op: ast::BinOp,
+        signature: &FunctionType<'ctx>,
+        call: &ir::Call<'ctx>,
+    ) -> Result<String> {
+        let args = call.args();
+        let contextual = self.call_context(signature, args, call, true)?;
+        let precedence = binary_precedence(op);
+        let right_associative = op.assoc() == ast::Assoc::Right;
+        Ok(format!(
+            "{} {} {}",
+            self.call_arg(
+                signature,
+                &args[0],
+                0,
+                contextual.then_some(true),
+                precedence + u8::from(right_associative)
+            )?,
+            binary_token(op),
+            self.call_arg(
+                signature,
+                &args[1],
+                1,
+                contextual.then_some(true),
+                precedence + u8::from(!right_associative)
+            )?
+        ))
     }
 
     fn erased_operand<'e>(
@@ -1042,10 +1081,12 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 .and_then(|_| self.erased_operand(arg, native))
         };
         // Ordinary calls and stable local AsRef operands do not query overloads.
-        if !args
-            .iter()
-            .enumerate()
-            .any(|(i, arg)| rewritten(i, arg).is_some())
+        if !signature.type_params().is_empty()
+            || matches!(call, ir::Call::FreeFunction { type_args, .. } if !type_args.is_empty())
+            || !args
+                .iter()
+                .enumerate()
+                .any(|(i, arg)| rewritten(i, arg).is_some())
         {
             return Ok(false);
         }
@@ -1130,11 +1171,48 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                         )
             })
         };
+        // Recreating the same native borrow at every rewritten slot
+        // leaves overload ranking unchanged. Other argument types are untouched;
+        // unlike strong/weak conversions, borrowing adds no competing value type.
+        let same_borrows = |candidate: &FunctionType<'ctx>, candidate_native: bool| {
+            native
+                && candidate_native
+                && signature.type_params().is_empty()
+                && candidate.type_params().is_empty()
+                && signature.params().len() == candidate.params().len()
+                && signature
+                    .params()
+                    .iter()
+                    .zip(candidate.params())
+                    .enumerate()
+                    .all(|(i, (selected, other))| {
+                        if selected.flags().into_bits() != other.flags().into_bits() {
+                            return false;
+                        }
+                        let Some(arg) = args.get(i).filter(|arg| rewritten(i, arg).is_some())
+                        else {
+                            return true;
+                        };
+                        let ir::Expr::Call { call, .. } = arg else {
+                            return false;
+                        };
+                        let ir::Call::FreeFunction { function, .. } = &**call else {
+                            return false;
+                        };
+                        self.symbols[*function].intrinsic() == Some(ir::Intrinsic::AsRef)
+                            && selected.type_() == other.type_()
+                            && selected.type_().ref_type() == Some(RefType::Script)
+                    })
+        };
         Ok(match call {
             ir::Call::FreeFunction { function, .. } => self
                 .symbols
                 .free_function_overloads(*function)
-                .all(|entry| entry.key() == function || !viable(entry.func().type_())),
+                .all(|entry| {
+                    entry.key() == function
+                        || same_borrows(entry.func().type_(), entry.func().flags().is_native())
+                        || !viable(entry.func().type_())
+                }),
             ir::Call::Static {
                 parent_id, method, ..
             } => {
@@ -1144,6 +1222,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     .all(|entry| {
                         entry.key() == method
                             || !entry.func().flags().is_static()
+                            || same_borrows(entry.func().type_(), entry.func().flags().is_native())
                             || !viable(entry.func().type_())
                     })
             }
@@ -1175,6 +1254,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     .all(|entry| {
                         entry.key() == method
                             || entry.func().flags().is_static()
+                            || same_borrows(entry.func().type_(), entry.func().flags().is_native())
                             || !viable(entry.func().type_())
                     })
             }
@@ -1233,38 +1313,16 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 // Operators and Cast must be resolved native built-ins, not same-name user functions.
                 if def.flags().is_native() {
                     if let Some(op) = ast::BinOp::from_name(&name)
-                        && let [a, b] = &args[..]
+                        && args.len() == 2
                     {
-                        // String concatenation has a verified native signature.
-                        // Other overloaded operators must not gain a borrowed
-                        // argument context merely because their name is native.
-                        let string = Type::nullary(predef::STRING);
-                        let borrowed = Type::app(predef::SCRIPT_REF, [string.clone()]);
-                        if op == ast::BinOp::Add
-                            && def.type_().return_type() == &string
-                            && def.type_().params().len() == 2
-                            && def.type_().type_params().is_empty()
-                            && type_args.is_empty()
-                            && def.type_().params().iter().all(|p| {
-                                p.type_() == &borrowed
-                                    && !p.flags().is_out()
-                                    && !p.flags().is_optional()
-                            })
-                        {
-                            if !self.call_context(def.type_(), args, call, true)? {
-                                return self.binary(op, a, b);
-                            }
-                            let precedence = binary_precedence(op);
-                            let left = self.borrowed_arg(a, &borrowed, 0, precedence)?;
-                            let right = self.borrowed_arg(b, &borrowed, 1, precedence + 1)?;
-                            return Ok(format!("{left} + {right}"));
-                        }
-                        return self.binary(op, a, b);
+                        return self.binary_call(op, def.type_(), call);
                     }
                     if let Some(op) = ast::UnOp::from_name(&name)
                         && let [a] = &args[..]
                     {
-                        let operand = self.expr_at(a, 13)?;
+                        let contextual = self.call_context(def.type_(), args, call, true)?;
+                        let operand =
+                            self.call_arg(def.type_(), a, 0, contextual.then_some(true), 13)?;
                         return Ok(if op == ast::UnOp::Neg && operand.starts_with('-') {
                             format!("-({operand})")
                         } else {

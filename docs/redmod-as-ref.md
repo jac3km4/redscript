@@ -1,26 +1,33 @@
-# Bounded native String borrows (feature4)
+# Bounded native script-reference borrows
 
 The transpiler accepts nonlocal `AsRef` operands only at an immediate, exact,
-non-`out` native `script_ref<String>` parameter. Ordinary free/static/instance
-calls require no competing viable overload after the immediate argument rewrites.
+non-`out` native `script_ref<T>` parameter, with an operand of exactly `T`. Ordinary free/static/instance
+calls and native operators share parameter-context handling and overload checks.
 An unrelated `Int32` or wrong-arity overload does not block borrowing; a competing
 String/value-reference signature does. Methods query only the emitted receiver's
 hierarchy, including inherited candidates, not unrelated classes. Existing
 local-place support is unchanged and does not trigger an overload query.
 
-Native String `+` has a separate exact signature gate: two required, non-out
-`script_ref<String>` parameters returning String, without generic parameters. Competing String/value-reference
-signatures reject rather than risking overload reselection. Other operators do
-not inherit this context. Generic calls, wrappers and callbacks retain their
-existing restrictions. Ordinary calls and String operators share the same lazy
-call planner: free functions use the frontend's existing indexed overload groups,
-without a duplicate index or whole-symbol scans. Overload queries occur only for
-immediate rewrites. Unknown generic substitutions block
-erasure. Numeric sibling arguments remain possibly compatible across the full
-built-in numeric family, regardless of literal spelling or shared subtype checks.
-Null/bottom and unknown types are not treated as disjoint. Optional slots use
-arity checks, and `out` flags do not prove noncompetition. This proves absence of
-competition, not target-specific overload ranking.
+Borrowing is supplied per resolved parameter slot, not by an operator-name or
+scalar-type allowlist. String concatenation, other native binary/unary operators,
+and ordinary native calls use the same argument emitter, with the appropriate
+precedence and associativity for each spelling. Generated inverted equality
+guards use it too. Generic calls, wrappers and callbacks retain their existing
+restrictions.
+
+Native overloads may coexist when every rewritten argument recreates the same
+exact `script_ref<T>` borrow, parameter flags agree, and other argument types remain
+untouched. This preserves the existing overload ranking without reimplementing
+it. Competing String/value-reference signatures still reject. Strong/weak
+reference conversions do not use this exception.
+
+Free functions use the frontend's existing indexed overload groups, without a
+duplicate index or whole-symbol scans. Overload queries occur only for immediate
+rewrites. Unknown generic substitutions block erasure. For other competitors,
+numeric siblings remain possibly compatible across the full built-in numeric
+family, regardless of literal spelling or shared subtype checks. Null/bottom and
+unknown types are not treated as disjoint. Optional slots use arity checks, and
+`out` flags do not prove noncompetition.
 
 The operand stays inline at its original argument slot. No prefix statement,
 hoisted local or copy is introduced. Conditional operands and nested right-hand
@@ -39,11 +46,10 @@ target `AsRef` and its invocation lifetime metadata without extending storage to
 a whole function or reusing it across loop iterations.
 
 This is an invocation-scoped ABI contract, not an escape analysis or a promise
-that arbitrary native code cannot retain an invalid pointer. New support is
-bounded to String. Nonlocal `AsRef` in returns, reference initializers,
+that arbitrary native code cannot retain an invalid pointer. The pointee is not
+restricted to String. Nonlocal `AsRef` in returns, reference initializers,
 assignments, standalone expressions, non-native calls, ambiguous overloads,
-`out` arguments and nested context-free conversions remains rejected. Supporting
-other pointee types or escaping references needs separate lifetime evidence.
+`out` arguments and nested context-free conversions remains rejected.
 
 ## Validation and evidence
 
@@ -63,6 +69,17 @@ checks named probe definition ranges for native invocation operands/flags:
 - Nested localization/concatenation: masks 1 and 0 on the respective localization
   calls, mask 2 on concatenation (constant String storage needs no temporary).
 - Lazy and repeated loop `StrContains` calls: mask 1 at each call site.
+- Mixed `Int32`, `Float`, and `Bool` concatenations (rerun on 2026-11-03): mask 0
+  for the inner literal borrow and mask 1 for the outer concatenation's temporary
+  String result. Both left- and right-hand String parameter slots are covered.
+  The expanded fixture compiles with zero errors/warnings.
+- Native `+=` borrows its nonlocal RHS in slot 1 (mask 2), confirming the shared
+  operator path is not limited to `+`.
+- Non-String scalar and struct function results recreate `AsRef` with temporary
+  mask 1 (rerun on 2026-11-03). These use authored typed script sinks in the
+  official fixture, not invented engine imports. The expanded fixture compiles
+  with zero errors and one constexpr suggestion; native-context selection is
+  covered separately by the source/target IR round trip.
 
 Official constant String storage differs from the community prvalue
 classification; literal arguments do not require identical temporary bits. These

@@ -90,12 +90,13 @@ call/conditional-rooted struct paths remain rejected. Writable places, `out`,
 mutable struct receivers and array gates are unchanged. See the
 [field-read contract and official evidence](../../../../docs/redmod-field-reads.md).
 
-### Native String borrows
+### Native script-reference borrows
 
-Immediate exact non-out native `script_ref<String>` parameters support nonlocal
+Immediate exact non-out native `script_ref<T>` parameters support nonlocal
 `AsRef` operands without moving evaluation or materializing hoisted copies.
-Unique ordinary call names and a separately verified String concatenation
-signature preserve selection; arbitrary rvalue references remain rejected.
+Ordinary native calls and operators share per-parameter conversion handling and
+overload checks, including mixed string concatenation. There is no operator-name
+or pointee-type allowlist; escaping and context-free borrows remain rejected.
 See [bounded borrows and lifetime evidence](../../../../docs/redmod-as-ref.md).
 
 ### Struct defaults and resets
