@@ -1,0 +1,8 @@
+---
+source: crates/compiler/redmod/transpiler/tests/official.rs
+expression: source.module.text
+---
+function OfficialGrowCount(values: array<Int32>) -> Int32 {
+    values.Grow(2);
+    return values.Count(42);
+}

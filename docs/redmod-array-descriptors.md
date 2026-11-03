@@ -23,7 +23,12 @@ cannot mutate const parameters or const locals; Count can read either. Existing
 script-reference receiver unwrapping and ordinary user-method resolution remain
 unchanged.
 
-This is a descriptor-only addition. Fixed-array member operations and
+The community-to-REDmod transpiler also emits `ArrayGrow` and `ArrayCount` as
+these members on local arrays. Its existing array receiver guard still applies.
+The authored `ArrayGrowCount` snapshot and optional official compiler fixture
+cover both spellings.
+
+This does not add new shared array instructions. Fixed-array member operations and
 `EraseFast` are not enabled or aliased. Names are case-sensitive, and explicit
 community-style `ArrayGrow(values, amount)` / `ArrayCount(values, value)` calls
 remain unavailable in native source.

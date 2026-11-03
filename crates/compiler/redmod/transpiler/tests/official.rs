@@ -401,6 +401,13 @@ fn literal_pool_reader_decodes_relative_offsets() {
 
 const FIXTURES: &[(&str, &str)] = &[
     (
+        "ArrayGrowCount",
+        r#"func OfficialGrowCount(values: [Int32]) -> Int32 {
+    ArrayGrow(values, 2);
+    return ArrayCount(values, 42);
+}"#,
+    ),
+    (
         "FieldOutArguments",
         r#"class OfficialOutOwner {
     public let count: Int32;

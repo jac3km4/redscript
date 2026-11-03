@@ -1569,6 +1569,8 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             I::ArrayClear => method("Clear"),
             I::ArraySize => method("Size"),
             I::ArrayResize => method("Resize"),
+            I::ArrayGrow => method("Grow"),
+            I::ArrayCount => method("Count"),
             I::ArrayFindFirst => method("FindFirst"),
             I::ArrayFindLast => method("FindLast"),
             I::ArrayContains => method("Contains"),
@@ -1618,9 +1620,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 };
                 Ok(format!("{name}({value})"))
             }
-            I::ArrayCount
-            | I::ArrayGrow
-            | I::ArraySort
+            I::ArraySort
             | I::ArraySortByPredicate
             | I::LongIntEnum
             | I::VariantIsDefined
