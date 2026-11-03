@@ -135,6 +135,27 @@ fn authored_transpiled_sources_compile_with_official_compiler() {
             assert!(bytes > 0);
             println!("{artifact}: {bytes} bytes");
         }
+        if *name == "IndexedFieldReads" {
+            let bytes =
+                std::fs::read(published.directory.join("r6/cache/final.redscripts")).unwrap();
+            for function in ["OfficialIndexStruct", "OfficialIndexClass"] {
+                let code = official_function_code(&bytes, function);
+                assert_eq!(
+                    code.iter()
+                        .filter(|op| matches!(op, redscript_io::Instr::ArrayElement(_)))
+                        .count(),
+                    1,
+                    "{code:?}"
+                );
+                assert!(
+                    !code.iter().any(|op| matches!(
+                        op,
+                        redscript_io::Instr::Local(_) | redscript_io::Instr::Assign
+                    )),
+                    "{code:?}"
+                );
+            }
+        }
         if *name == "FieldArrayIndex" {
             let bytes =
                 std::fs::read(published.directory.join("r6/cache/final.redscripts")).unwrap();
@@ -455,6 +476,21 @@ fn official_function_code(bytes: &[u8], name: &str) -> Vec<redscript_io::Instr> 
 }
 
 const FIXTURES: &[(&str, &str)] = &[
+    (
+        "IndexedFieldReads",
+        r#"struct OfficialIndexValue { public let count: Int32; }
+class OfficialIndexContainer {
+    public let objects: [ref<OfficialIndexContainer>];
+    public let values: [OfficialIndexValue];
+    public let count: Int32;
+}
+func OfficialIndexStruct(owner: ref<OfficialIndexContainer>, index: Int32) -> Int32 {
+    return owner.values[index].count;
+}
+func OfficialIndexClass(owner: ref<OfficialIndexContainer>, index: Int32) -> Int32 {
+    return owner.objects[index].count;
+}"#,
+    ),
     (
         "FieldArrayIndex",
         r#"class OfficialIndexOwner {

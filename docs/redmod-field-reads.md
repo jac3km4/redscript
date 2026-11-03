@@ -44,9 +44,12 @@ Consequently a struct receiver must be a local-rooted field chain or an explicit
 not new writable places. `Select(...).data.visualStateData`, conditional-rooted
 struct paths, and temporary struct call/conditional results remain rejected.
 Class call/conditional chains may still read scalar or handle fields directly.
+Variable-rooted indexed arrays support both struct and class element field reads,
+such as `owner.values[i].count`; the official probe checks direct `ArrayElement`
+access with no synthesized local or assignment.
 
 Compound script-reference values (other than explicit Deref), custom generic,
-`mixedRef`/class `neverRef` emulation, index/cast/assignment/construction receivers,
+`mixedRef`/class `neverRef` emulation, cast/assignment/construction receivers,
 array materialization and arbitrary nonlocal borrows are not enabled. Feature5's
 method receiver type gate is unchanged; newly readable fields do not authorize
 mutable struct methods.

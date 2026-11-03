@@ -216,7 +216,6 @@ fn unsupported_receiver_forms_still_fail_closed() {
     for body in [
         "return (new Owner()).flag;",
         "return (owner as Owner).flag;",
-        "return owners[0].flag;",
     ] {
         let errors = emit(&format!(
             "{definitions} func Test(owner: ref<Owner>, owners: [ref<Owner>]) -> Bool {{ {body} }}"

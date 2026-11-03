@@ -28,7 +28,10 @@ pub(crate) fn inline_receiver<'ctx>(
             })
         && matches!(
             expr,
-            ir::Expr::Field { .. } | ir::Expr::Call { .. } | ir::Expr::Conditional { .. }
+            ir::Expr::Field { .. }
+                | ir::Expr::Call { .. }
+                | ir::Expr::Conditional { .. }
+                | ir::Expr::Index { .. }
         )
 }
 
@@ -38,6 +41,7 @@ pub(crate) fn variable_rooted(expr: &ir::Expr<'_>, symbols: &Symbols<'_>) -> boo
     match expr {
         ir::Expr::Local(..) => true,
         ir::Expr::Field { receiver, .. } => variable_rooted(receiver, symbols),
+        ir::Expr::Index { array, .. } => variable_rooted(array, symbols),
         ir::Expr::Call { call, .. } => {
             matches!(&**call, ir::Call::FreeFunction { function, args, .. }
                 if symbols.get_free_function(*function).is_some_and(|(_, def)| def.intrinsic() == Some(ir::Intrinsic::Deref))
