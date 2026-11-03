@@ -51,6 +51,12 @@ func ReceiverWeakAssignments(handle: wref<ReceiverOwner>, replacement: ref<Recei
     handle.child = new ReceiverOwner();
     handle.child = ReceiverReplaceWeak(handle, replacement);
 }
+func ReceiverWriteOut(out value: Int32) { value = 42; }
+func ReceiverFieldOut(owner: ref<ReceiverOwner>, handle: wref<ReceiverOwner>) {
+    ReceiverWriteOut(owner.count);
+    ReceiverWriteOut(owner.child.count);
+    ReceiverWriteOut(handle.count);
+}
 native func OperatorLogicAnd(a: Bool, b: Bool) -> Bool
 native func OperatorAdd(a: Int32, b: Int32) -> Int32
 func ReceiverProbe(enabled: Bool, owner: ref<ReceiverOwner>, other: ref<ReceiverOwner>, steps: Int32) -> Bool {
@@ -287,6 +293,31 @@ fn receivers_with_official_compiler() {
     assert!(
         !assignments.iter().any(|op| matches!(op, Instr::Local(_))),
         "{assignments:?}"
+    );
+    let out = decode("ReceiverFieldOut;");
+    std::fs::write(directory.join("out-bytecode.txt"), format!("{out:#?}")).unwrap();
+    assert_eq!(
+        out.iter()
+            .filter(|op| matches!(op, Instr::ObjectField(_)))
+            .count(),
+        4
+    );
+    assert_eq!(
+        out.iter()
+            .filter(|op| matches!(op, Instr::WeakRefToRef))
+            .count(),
+        1
+    );
+    assert_eq!(
+        out.iter()
+            .filter(|op| matches!(op, Instr::InvokeStatic { .. }))
+            .count(),
+        3
+    );
+    assert!(
+        !out.iter()
+            .any(|op| matches!(op, Instr::Assign | Instr::Local(_))),
+        "{out:?}"
     );
     let code = decode("ReceiverProbe;");
     let mut listing = String::new();

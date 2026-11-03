@@ -57,6 +57,16 @@ function ReceiverWeakAssignments(handle: wref<ReceiverOwner>, replacement: Recei
     handle.child = ReceiverReplaceWeak(handle, replacement);
 }
 
+function ReceiverWriteOut(out value: Int32) -> Void {
+    value = 42;
+}
+
+function ReceiverFieldOut(owner: ReceiverOwner, handle: wref<ReceiverOwner>) -> Void {
+    ReceiverWriteOut(owner.count);
+    ReceiverWriteOut(owner.child.count);
+    ReceiverWriteOut(handle.count);
+}
+
 import function OperatorLogicAnd(a: Bool, b: Bool) -> Bool;
 
 import function OperatorAdd(a: Int32, b: Int32) -> Int32;

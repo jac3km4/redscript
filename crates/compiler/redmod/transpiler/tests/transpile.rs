@@ -938,12 +938,12 @@ fn rejected_features_have_source_diagnostics() {
         (
             "array-place",
             "class Widget { let items: [Int32]; public func Test() { ArrayPush(this.items, 1); } }",
-            "array operations require a local array",
+            "this array operation requires a local array",
         ),
         (
             "out-place",
-            "func Set(out value: Int32) {} class Widget { let value: Int32; public func Test() { Set(this.value); } }",
-            "out arguments must be local variables",
+            "func Set(out value: Int32) {} struct Value { public let count: Int32; } func Test(value: Value) { Set(value.count); }",
+            "out arguments need a local variable or a class-handle field",
         ),
         (
             "struct-reset",

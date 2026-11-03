@@ -2,8 +2,8 @@
 source: crates/compiler/redmod/transpiler/tests/transpile.rs
 expression: "result.iter().map(|d| d.display(&sources).to_string()).collect::<String>()"
 ---
-error[REDMOD_TRANSPILE]: out arguments must be local variables
- --> rejected.reds:1:89
+error[REDMOD_TRANSPILE]: out arguments need a local variable or a class-handle field
+ --> rejected.reds:1:103
   |
-1 | func Set(out value: Int32) {} class Widget { let value: Int32; public func Test() { Set(this.value); } }
-  |                                                                                         ^^^^^^^^^^
+1 | func Set(out value: Int32) {} struct Value { public let count: Int32; } func Test(value: Value) { Set(value.count); }
+  |                                                                                                       ^^^^^^^^^^^

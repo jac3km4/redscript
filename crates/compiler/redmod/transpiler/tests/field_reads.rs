@@ -115,37 +115,21 @@ fn compound_reads_do_not_become_writable_places() {
     "#;
     for (body, diagnostic) in [
         (
-            "owner.child.flag = true;",
-            "assignment needs a local, a class local's field, or a local array's element",
-        ),
-        (
-            "Make().flag = true;",
-            "assignment needs a local, a class local's field, or a local array's element",
-        ),
-        (
             "owner.value.flag = true;",
-            "assignment needs a local, a class local's field, or a local array's element",
+            "assignment needs a local, a class-handle field, or a local array's element",
         ),
         (
             "Deref(value).flag = true;",
-            "assignment needs a local, a class local's field, or a local array's element",
+            "assignment needs a local, a class-handle field, or a local array's element",
         ),
         ("MakeValue().flag = true;", "INVALID_TEMP"),
         (
-            "Take(owner.child.flag);",
-            "out arguments must be local variables",
-        ),
-        (
-            "Take(Make().flag);",
-            "out arguments must be local variables",
-        ),
-        (
             "Take(owner.value.flag);",
-            "out arguments must be local variables",
+            "out arguments need a local variable or a class-handle field",
         ),
         (
             "Take(Deref(value).flag);",
-            "out arguments must be local variables",
+            "out arguments need a local variable or a class-handle field",
         ),
         (
             "owner.value.Bump();",
@@ -158,7 +142,7 @@ fn compound_reads_do_not_become_writable_places() {
         ("owner.values[0];", "array indexing requires a local array"),
         (
             "ArrayPush(owner.values, true);",
-            "array operations require a local array",
+            "this array operation requires a local array",
         ),
         (
             "AsRef(owner.value);",

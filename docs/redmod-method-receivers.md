@@ -2,7 +2,7 @@
 
 The transpiler emits ordinary strong and weak class-reference receivers inline
 for method call results (including chains), already-supported local-rooted fields,
-and conditional expressions. For example:
+conditional expressions, and class casts. For example:
 
 ```reds
 Select(owner).Next().Read(Rebind(owner));
@@ -38,11 +38,12 @@ identity. This is not a general materialization algorithm.
   `mixedRef` and `neverRef` value emulation are not enabled.
 - Struct receiver aliases requiring a nonlocal `AsRef` still fail closed; neither
   fields nor array elements are copied into mutable value receivers.
-- Array receiver/place and `out` argument restrictions are unchanged.
+- Variable-rooted array fields support `ArraySize`; other array operations still
+  require locals. Nested class-handle fields support assignments and `out` arguments.
 - [Feature6 field reads](redmod-field-reads.md) now independently permits bounded
-  `Make().field` and `owner.child.field` reads. It does not broaden writable places
-  or mutable struct receivers.
-- Cast, index, assignment and construction compound receivers remain outside
+  `Make().field` and `owner.child.field` reads. Mutable struct receivers remain
+  unsupported.
+- Index, assignment and construction compound receivers remain outside
   this bounded slice. Existing simple local receivers are unchanged.
 
 ## Tests and evidence

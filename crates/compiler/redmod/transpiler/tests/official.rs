@@ -401,6 +401,21 @@ fn literal_pool_reader_decodes_relative_offsets() {
 
 const FIXTURES: &[(&str, &str)] = &[
     (
+        "FieldOutArguments",
+        r#"class OfficialOutOwner {
+    public let count: Int32;
+    public let child: ref<OfficialOutOwner>;
+    public func Next() -> ref<OfficialOutOwner> { return this.child; }
+}
+func OfficialSetOut(out value: Int32) { value = 42; }
+func OfficialFieldOut(owner: ref<OfficialOutOwner>, handle: wref<OfficialOutOwner>) {
+    OfficialSetOut(owner.count);
+    OfficialSetOut(owner.child.count);
+    OfficialSetOut(handle.count);
+    OfficialSetOut(owner.Next().count);
+}"#,
+    ),
+    (
         "FieldArraySize",
         r#"class OfficialArrayOwner {
     public let values: [Int32];

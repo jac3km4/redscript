@@ -131,6 +131,27 @@ types, mixedRef/neverRef, unknown annotations and unverified metadata fail close
 See [future work](language-future-work.md), including the unresolved backend
 Variant reset risk and the separate transpiler restrictions.
 
+## Community source export compatibility
+
+The transpiler emits supported receiver expressions inline, without hoisting or
+copying them: nested class-field assignments, class fields passed as `out`, class
+casts used as method receivers, and compound weak-handle field reads. Persistent
+fields use frontend ownership/access checking, not a blanket `this`-only rule.
+Official v1.2.2 authored compilation probes cover these forms; the `out` probe also
+checks direct field bytecode with no synthesized local/copy assignment. This is
+not an in-game execution guarantee.
+
+`ArraySize` accepts variable-rooted array fields. Call-rooted arrays remain
+unsupported because the official compiler requires an in-memory variable root.
+Other array operations retain their local-array guard.
+
+Resource and TweakDBID literals emit decoded backslashes literally, not with
+community escape spelling. Ordinary resource paths retain their pool identity.
+Leading/repeated backslashes in resource paths are rejected because the official
+compiler normalizes them; TweakDBID backslashes remain raw. Embedded quotes, NUL
+and unsupported controls still fail. The optional `resource_literals` probe
+compares the compiled literal pools with the input values.
+
 ## Evidence and validation
 
 Optional [parser](../crates/syntax/redmod/parser/CORPUS.md) and

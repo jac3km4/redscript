@@ -1,0 +1,23 @@
+---
+source: crates/compiler/redmod/transpiler/tests/official.rs
+expression: source.module.text
+---
+class OfficialOutOwner extends IScriptable {
+    public var count: Int32;
+    public var child: OfficialOutOwner;
+
+    public function Next() -> OfficialOutOwner {
+        return this.child;
+    }
+}
+
+function OfficialSetOut(out value: Int32) -> Void {
+    value = 42;
+}
+
+function OfficialFieldOut(owner: OfficialOutOwner, handle: wref<OfficialOutOwner>) -> Void {
+    OfficialSetOut(owner.count);
+    OfficialSetOut(owner.child.count);
+    OfficialSetOut(handle.count);
+    OfficialSetOut(owner.Next().count);
+}

@@ -18,15 +18,22 @@ Nested ordinary class handles and struct values retain their native
 `Context`/`ObjectField` versus `StructField` nesting. Conditional class receivers
 are parenthesized at postfix precedence. Calls and dereferences remain at their
 original expression sites, including branches, lazy RHSs and loop conditions.
-The existing expression/type, persistent-field and call checks still apply.
+The existing expression/type and call checks still apply. Persistent fields use
+frontend access checking rather than a transpiler-only `this` restriction; access
+through another receiver is supported within the declaring class.
 
 ## Limits and place semantics
 
-Read eligibility is isolated in `src/field_reads.rs`; neither `Body::place`,
-`check_out`, `AsRef`, array indexing/intrinsic guards nor mutable struct receiver
-rules are widened. Compound assignments and `out` arguments are rejected even
-when the same expression is readable. Existing single local-rooted class-field
-writes remain supported. No struct copy is used as a substitute for write-back.
+Read eligibility is isolated in `src/field_reads.rs`. Nested class-handle fields
+are also writable places and may be passed as `out` arguments, including through
+weak handles. Struct fields remain read-only in these compound paths; no struct
+copy is used as a substitute for write-back. Nonlocal `AsRef`, array indexing and
+mutable struct receiver rules are unchanged.
+
+`ArraySize` supports variable-rooted array fields, including nested class fields.
+The official compiler rejects call-rooted array receivers such as
+`Make().values.Size()`, even though reading a scalar field from `Make()` is legal.
+Other array operations retain their local-array guard.
 
 Official v1.2.2 requires a variable parent scope for struct member access.
 Consequently a struct receiver must be a local-rooted field chain or an explicit
@@ -35,7 +42,7 @@ not new writable places. `Select(...).data.visualStateData`, conditional-rooted
 struct paths, and temporary struct call/conditional results remain rejected.
 Class call/conditional chains may still read scalar or handle fields directly.
 
-Compound weak/script-reference values (other than explicit Deref), custom generic,
+Compound script-reference values (other than explicit Deref), custom generic,
 `mixedRef`/class `neverRef` emulation, index/cast/assignment/construction receivers,
 array materialization and arbitrary nonlocal borrows are not enabled. Feature5's
 method receiver type gate is unchanged; newly readable fields do not authorize
@@ -44,7 +51,7 @@ mutable struct methods.
 ## Tests and official evidence
 
 `tests/field_reads.rs` snapshots generated source and passes it through the full
-native adapter. Negative tests cover compound writes/out, mutable struct methods,
+native adapter. Negative tests cover struct writes/out, mutable struct methods,
 AsRef, arrays, temporary structs and unsupported receiver shapes. Feature5 tests
 continue to cover their original receiver contract independently.
 
