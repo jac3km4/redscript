@@ -108,6 +108,7 @@ pub enum LiteralError {
     Nul,
     UnverifiedControl,
     UnverifiedResource,
+    NormalizedResource,
 }
 
 impl fmt::Display for LiteralError {
@@ -116,8 +117,11 @@ impl fmt::Display for LiteralError {
             Self::EmbeddedDelimiter => "cannot emit a quote inside this literal",
             Self::Nul => "cannot emit a NUL character inside a literal",
             Self::UnverifiedControl => "cannot emit this control character inside a literal",
+            Self::NormalizedResource => {
+                "REDmod normalizes leading or repeated resource path separators"
+            }
             Self::UnverifiedResource => {
-                "resource and TweakDBID literals cannot contain backslashes or control characters"
+                "resource and TweakDBID literals cannot contain control characters"
             }
         })
     }
@@ -140,6 +144,16 @@ pub fn cname(value: &str) -> Result<StringLiteral<'_>> {
     literal(value, '\'', false)
 }
 
+pub fn resource_path(value: &str) -> Result<StringLiteral<'_>> {
+    if value.starts_with('\\') || value.contains("\\\\") {
+        let kind = LiteralError::NormalizedResource;
+        let mut diagnostic = error(kind.to_string(), None);
+        diagnostic.literal_error = Some(kind);
+        return Err(diagnostic);
+    }
+    resource_string(value)
+}
+
 pub fn resource_string(value: &str) -> Result<StringLiteral<'_>> {
     literal(value, '"', true)
 }
@@ -152,7 +166,7 @@ fn literal(value: &str, delimiter: char, resource: bool) -> Result<StringLiteral
             Some(LiteralError::Nul)
         } else if c.is_control() && c != '\n' {
             Some(LiteralError::UnverifiedControl)
-        } else if resource && (c == '\\' || c.is_control()) {
+        } else if resource && c.is_control() {
             Some(LiteralError::UnverifiedResource)
         } else {
             None
@@ -262,11 +276,9 @@ mod tests {
             cname("can't").unwrap_err().literal_error,
             Some(LiteralError::EmbeddedDelimiter)
         );
-        for value in [r"path\", "first\nsecond"] {
-            assert_eq!(
-                resource_string(value).unwrap_err().literal_error,
-                Some(LiteralError::UnverifiedResource)
-            );
-        }
+        assert_eq!(
+            resource_string("first\nsecond").unwrap_err().literal_error,
+            Some(LiteralError::UnverifiedResource)
+        );
     }
 }

@@ -1732,7 +1732,7 @@ pub(crate) fn constant<'ctx>(c: &ir::Const<'ctx>, symbols: &Symbols<'ctx>) -> Re
     match c {
         C::Str(s) => Ok(target::string(s)?.to_string()),
         C::CName(s) => Ok(target::cname(s)?.to_string()),
-        C::ResRef(s) => Ok(format!("R{}", target::resource_string(s)?)),
+        C::ResRef(s) => Ok(format!("R{}", target::resource_path(s)?)),
         C::TweakDbId(s) => Ok(format!("T{}", target::resource_string(s)?)),
         C::EnumVariant(id) => {
             let (name, _) = symbols
