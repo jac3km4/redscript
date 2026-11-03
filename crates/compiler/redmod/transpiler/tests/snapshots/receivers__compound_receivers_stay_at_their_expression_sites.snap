@@ -4,6 +4,12 @@ expression: text
 ---
 class ReceiverOwner extends IScriptable {
     public var child: ReceiverOwner;
+    public var handle: wref<ReceiverOwner>;
+
+    public function Entry(value: Int32) -> Int32 {
+        return value;
+    }
+
     public var count: Int32;
 
     public function Next(out steps: Int32) -> ReceiverOwner {
@@ -27,6 +33,15 @@ function ReceiverMutate(out value: ReceiverOwner) -> Int32 {
     return 1;
 }
 
+function ReceiverWeak(value: ReceiverOwner) -> wref<ReceiverOwner> {
+    return value.handle;
+}
+
+function ReceiverRebind(owner: ReceiverOwner) -> Int32 {
+    owner.handle = owner.child;
+    return 1;
+}
+
 function ReceiverNull() -> ReceiverOwner {
     return NULL;
 }
@@ -38,6 +53,10 @@ import function OperatorAdd(a: Int32, b: Int32) -> Int32;
 function ReceiverProbe(enabled: Bool, owner: ReceiverOwner, other: ReceiverOwner, steps: Int32) -> Bool {
     ReceiverSelect(steps, owner).Next(steps).Read(ReceiverMutate(owner));
     owner.child.Read(ReceiverMutate(owner));
+    owner.handle.Read(ReceiverRebind(owner));
+    ReceiverWeak(owner).Read(ReceiverRebind(owner));
+    owner.handle.Read(owner.handle.Entry(ReceiverRebind(owner)));
+    owner.handle.Read(ReceiverRebind(owner));
     (enabled ? ReceiverSelect(steps, owner) : ReceiverSelect(steps, other)).Read(ReceiverMutate(owner));
     if (enabled) {
         ReceiverSelect(steps, owner).Read(ReceiverMutate(owner));

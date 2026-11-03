@@ -75,10 +75,10 @@ including generated negated guards. Nested conversion chains remain rejected.
 
 ### Compound method receivers
 
-Strong class-reference call chains, existing local-rooted fields and conditional
-receivers stay inline, preserving Context/argument and lazy execution boundaries.
-Struct write-back, array places and compound weak/script-reference receivers
-remain gated. See the
+Strong and weak class-reference call chains, existing local-rooted fields and
+conditional receivers stay inline, preserving Context/argument and lazy execution
+boundaries. REDmod supplies implicit weak-to-strong receiver promotions.
+Struct write-back, array places and compound script-reference receivers remain gated. See the
 [receiver contract and bytecode evidence](../../../../docs/redmod-method-receivers.md).
 
 ### Compound field reads

@@ -16,6 +16,8 @@ fn emit(source: &str) -> Result<String, Vec<redscript_redmod_transpiler::Transpi
 const SOURCE: &str = r#"
 class ReceiverOwner {
     public let child: ref<ReceiverOwner>;
+    public let handle: wref<ReceiverOwner>;
+    public func Entry(value: Int32) -> Int32 { return value; }
     public let count: Int32;
     public func Next(out steps: Int32) -> ref<ReceiverOwner> {
         steps = steps + 1;
@@ -34,12 +36,21 @@ func ReceiverMutate(out value: ref<ReceiverOwner>) -> Int32 {
     value = new ReceiverOwner();
     return 1;
 }
+func ReceiverWeak(value: ref<ReceiverOwner>) -> wref<ReceiverOwner> { return value.handle; }
+func ReceiverRebind(owner: ref<ReceiverOwner>) -> Int32 {
+    owner.handle = owner.child;
+    return 1;
+}
 func ReceiverNull() -> ref<ReceiverOwner> { return null; }
 native func OperatorLogicAnd(a: Bool, b: Bool) -> Bool
 native func OperatorAdd(a: Int32, b: Int32) -> Int32
 func ReceiverProbe(enabled: Bool, owner: ref<ReceiverOwner>, other: ref<ReceiverOwner>, steps: Int32) -> Bool {
     ReceiverSelect(steps, owner).Next(steps).Read(ReceiverMutate(owner));
     owner.child.Read(ReceiverMutate(owner));
+    owner.handle.Read(ReceiverRebind(owner));
+    ReceiverWeak(owner).Read(ReceiverRebind(owner));
+    owner.handle.Read(owner.handle.Entry(ReceiverRebind(owner)));
+    WeakRefToRef(owner.handle).Read(ReceiverRebind(owner));
     (enabled ? ReceiverSelect(steps, owner) : ReceiverSelect(steps, other)).Read(ReceiverMutate(owner));
     if enabled { ReceiverSelect(steps, owner).Read(ReceiverMutate(owner)); }
     while enabled && ReceiverSelect(steps, owner).Read(ReceiverMutate(owner)) { continue; }
@@ -65,6 +76,14 @@ fn compound_receivers_stay_at_their_expression_sites() {
         2
     );
     assert!(text.contains("return ReceiverNull().Read(ReceiverMutate(owner));"));
+    assert_eq!(
+        text.matches("owner.handle.Read(ReceiverRebind(owner));")
+            .count(),
+        2
+    );
+    assert!(text.contains("ReceiverWeak(owner).Read(ReceiverRebind(owner));"));
+    assert!(text.contains("owner.handle.Read(owner.handle.Entry(ReceiverRebind(owner)));"));
+    assert!(!text.contains("WeakRefToRef("));
 
     // Run the full native adapter, not just its parser, including native ref erasure.
     let sources = SourceMap::new();
@@ -225,6 +244,21 @@ fn receivers_with_official_compiler() {
     std::fs::write(directory.join("probe-bytecode.txt"), &listing).unwrap();
     println!("{listing}");
     assert!(contexts.len() >= 9, "{listing}");
+    // Each implicit promotion occurs inside the method Context, before the
+    // receiver field/call and before any argument can rebind its source.
+    let promotions = code
+        .iter()
+        .enumerate()
+        .filter(|(_, op)| matches!(op, Instr::WeakRefToRef))
+        .collect::<Vec<_>>();
+    assert_eq!(promotions.len(), 5, "{listing}");
+    for (i, _) in promotions {
+        assert!(matches!(code[i - 1], Instr::Context(_)), "{listing}");
+        assert!(
+            matches!(code[i + 1], Instr::Context(_) | Instr::InvokeStatic { .. }),
+            "{listing}"
+        );
+    }
     assert!(
         code.iter().any(|i| matches!(i, Instr::Skip(_))),
         "{listing}"
@@ -276,6 +310,15 @@ fn receivers_with_official_compiler() {
             vec![select, next, read, mutate],
             vec![select, next],
             vec![read, mutate],
+            vec![read, "ReceiverRebind;ReceiverOwner"],
+            vec![
+                "ReceiverWeak;ReceiverOwner",
+                read,
+                "ReceiverRebind;ReceiverOwner"
+            ],
+            vec![read, "Entry;Int32", "ReceiverRebind;ReceiverOwner"],
+            vec!["Entry;Int32", "ReceiverRebind;ReceiverOwner"],
+            vec![read, "ReceiverRebind;ReceiverOwner"],
             vec![select, select, read, mutate],
             vec![select, read, mutate],
             vec![select, read, mutate],

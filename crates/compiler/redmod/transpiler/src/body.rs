@@ -1418,6 +1418,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                         None,
                     ));
                 }
+                let receiver = self.method_receiver(receiver)?;
                 if !Self::simple_place(receiver)
                     && !crate::receivers::inline_class_receiver(
                         receiver,
@@ -1426,12 +1427,12 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     )
                 {
                     return Err(error(
-                        "method calls require a local variable or a strong-reference receiver",
+                        "method calls require a local variable or a class-reference receiver",
                         Some(receiver.span()),
                     ));
                 }
                 let recv = if matches!(mode, ir::CallMode::ForceStatic) {
-                    if !matches!(&**receiver, ir::Expr::Local(ir::Local::This, _)) {
+                    if !matches!(receiver, ir::Expr::Local(ir::Local::This, _)) {
                         return Err(error(
                             "a super method call must use this as its receiver",
                             None,
@@ -1452,6 +1453,25 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 None,
             )),
         }
+    }
+
+    fn method_receiver<'e>(&self, receiver: &'e ir::Expr<'ctx>) -> Result<&'e ir::Expr<'ctx>> {
+        // Instance-call IR normally retains the weak receiver and its ref kind.
+        // Explicit immediate promotions can also be recreated by REDmod's Context.
+        if let ir::Expr::Call { call, .. } = receiver
+            && let ir::Call::FreeFunction { function, args, .. } = &**call
+            && self.symbols[*function].intrinsic() == Some(ir::Intrinsic::WeakRefToRef)
+            && let [operand] = &args[..]
+        {
+            let source = self.type_of(operand)?;
+            let result = self.type_of(receiver)?;
+            if source.ref_type() == Some(RefType::Weak)
+                && source.unwrap_ref_or_self() == result.unwrap_ref_or_self()
+            {
+                return Ok(operand);
+            }
+        }
+        Ok(receiver)
     }
 
     fn is_defined(&self, arg: &ir::Expr<'ctx>, negated: bool) -> Result<String> {

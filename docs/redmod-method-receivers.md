@@ -1,19 +1,23 @@
 # Bounded compound method receivers (feature5)
 
-The transpiler emits ordinary strong class-reference receivers inline for method
-call results (including chains), already-supported local-rooted fields, and
-conditional expressions. For example:
+The transpiler emits ordinary strong and weak class-reference receivers inline
+for method call results (including chains), already-supported local-rooted fields,
+and conditional expressions. For example:
 
 ```reds
 Select(owner).Next().Read(Rebind(owner));
 owner.child.Read(Rebind(owner));
 (enabled ? Select(owner) : Select(other)).Read(Rebind(owner));
+owner.handle.Read(owner.handle.Entry(Rebind(owner))); // handle is wref
 ```
 
 Conditional receivers are parenthesized at postfix precedence. No local, prefix,
 copy, null guard or synthetic default result is introduced. The existing typed
 call, argument, generic, callback and dispatch checks still apply. `super` remains
-restricted to its resolved `this` receiver.
+restricted to its resolved `this` receiver. REDmod performs implicit weak-to-strong
+promotion inside the method's Context. An immediate explicit `WeakRefToRef`
+receiver is emitted as its underlying weak expression; nested conversions are
+not recursively erased.
 
 ## Why not mechanically spill temporaries?
 
@@ -30,7 +34,7 @@ identity. This is not a general materialization algorithm.
 
 ## Deliberate limits
 
-- Compound weak/script-reference receivers, value structs, custom generic,
+- Compound script-reference receivers, value structs, custom generic,
   `mixedRef` and `neverRef` value emulation are not enabled.
 - Struct receiver aliases requiring a nonlocal `AsRef` still fail closed; neither
   fields nor array elements are copied into mutable value receivers.
@@ -71,6 +75,13 @@ bounded instruction decoding. This is compiler/code-generation evidence for the
 existing Context ABI, **not an in-game observation** of null return defaults,
 reference lifetime/destruction timing or runtime side effects. Runtime tests and
 broader receiver forms require separate evidence.
+
+On 2026-11-03 the expanded official fixture also passed for weak fields,
+weak-returning calls, immediate explicit promotion, and nested calls whose
+arguments rebind the original weak field. Decoded bytecode asserts five
+`WeakRefToRef` instructions directly inside receiver Contexts, as well as exact
+nested call order and Context exits after complete argument lists. Weak receivers
+remain inline; no field is re-read by synthesized code after argument evaluation.
 
 ```sh
 cargo test -p redscript-redmod-transpiler --locked --test receivers
