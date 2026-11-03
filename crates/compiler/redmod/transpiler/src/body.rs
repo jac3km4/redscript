@@ -447,6 +447,9 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         if id == predef::CNAME {
             return Ok(target::cname("")?.to_string());
         }
+        if id == predef::TWEAK_DB_ID {
+            return constant(&ir::Const::TweakDbId("".into()), self.symbols);
+        }
         if id == predef::FLOAT {
             return Ok("0.0".into());
         }

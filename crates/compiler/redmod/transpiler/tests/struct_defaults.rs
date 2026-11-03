@@ -70,6 +70,26 @@ fn nested_defaults_follow_field_order_and_keep_each_reset_site() {
 }
 
 #[test]
+fn tweakdbid_defaults_reset_locals_and_complete_struct_fields() {
+    let text = emit(
+        r#"struct Record { public let id: TweakDBID; }
+        func Test(again: Bool) {
+            let id: TweakDBID;
+            while again { let id: TweakDBID; id = t"dirty"; }
+            let record: Record;
+        }"#,
+        "",
+    )
+    .unwrap();
+    assert!(text.contains("var id: TweakDBID = T\"\";"), "{text}");
+    assert!(
+        text.contains("while (again) {\n        id_2 = T\"\";"),
+        "{text}"
+    );
+    assert!(text.contains("Record(T\"\")"), "{text}");
+}
+
+#[test]
 fn source_dependency_layouts_and_empty_structs_are_complete() {
     let text = emit(
         "func Test() { let value: Record; let empty: Empty; }",
