@@ -188,7 +188,7 @@ impl<'ctx> AnalyzedSources<'ctx> {
     // declaration, including dependencies and conditional variants, before using
     // that table: neither its body nor its span can establish source ownership.
     fn check_replacements(&self) -> Result<()> {
-        let mut targets = Vec::new();
+        let mut targets = HashSet::new();
         for (file, module) in &self.modules {
             self.collect_replacements(*file, &module.items, &[], &mut targets)?;
         }
@@ -200,7 +200,7 @@ impl<'ctx> AnalyzedSources<'ctx> {
         file: FileId,
         items: &[(ast::SourceItemDecl<'ctx>, ast::Span)],
         path: &[usize],
-        targets: &mut Vec<MethodId<'ctx>>,
+        targets: &mut HashSet<MethodId<'ctx>>,
     ) -> Result<()> {
         for (index, (decl, span)) in items.iter().enumerate() {
             let mut indices = path.to_vec();
@@ -245,13 +245,12 @@ impl<'ctx> AnalyzedSources<'ctx> {
                         Some(*span),
                     ));
                 };
-                if targets.contains(&id) {
+                if !targets.insert(id) {
                     return Err(error(
                         "multiple @replaceMethod declarations target the same method; keep only one replacement",
                         Some(*span),
                     ));
                 }
-                targets.push(id);
                 Ok(())
             })();
             result.map_err(|mut e| {
