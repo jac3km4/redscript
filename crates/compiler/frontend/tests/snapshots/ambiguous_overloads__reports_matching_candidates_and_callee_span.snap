@@ -3,8 +3,8 @@ source: crates/compiler/frontend/tests/ambiguous_overloads.rs
 expression: diagnostic.display(&sources).unwrap()
 ---
 error[MULTIPLE_MATCHING_OVERLOADS]: multiple functions or methods match the provided argument types:
-  func Choose(value: First) -> Int32
   func Choose(value: Second) -> Int32
+  func Choose(value: First) -> Int32
  --> tests/data/ambiguous-overloads/unrelated-classes.reds:15:18
    |
 15 |   let _: Int32 = Choose(null);

@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::cmp;
 use std::ops::RangeInclusive;
 
 use super::*;
@@ -807,48 +808,42 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         Func: FunctionKind<'ctx> + Copy,
     {
         let candidates = candidates.into_iter();
-        let matches = || {
-            candidates.clone().enumerate().filter(|(_, entry)| {
-                accepts_typed_args(entry.func(), arg_types, args.iter(), self.symbols)
-            })
-        };
         // Scope precedence applies only to viable overloads. Within that scope,
         // a dominating signature must have a strictly higher specificity score.
-        let primary = matches().max_by_key(|(_, entry)| {
-            (
-                std::cmp::Reverse(entry.func().scope_priority()),
-                reference_signature_score(entry.func().type_(), self.symbols),
-            )
-        });
+        let primary = candidates
+            .clone()
+            .enumerate()
+            .filter(|(_, entry)| {
+                accepts_typed_args(entry.func(), arg_types, args.iter(), self.symbols)
+            })
+            .max_by_key(|(_, entry)| {
+                (
+                    cmp::Reverse(entry.func().scope_priority()),
+                    reference_signature_score(entry.func().type_(), self.symbols),
+                )
+            });
         let has_match = primary.is_some();
         let selected = if let Some((index, primary)) = primary {
-            let scope_matches = || {
-                matches().filter(|(_, entry)| {
-                    entry.func().scope_priority() == primary.func().scope_priority()
+            let other_matches = candidates
+                .enumerate()
+                .filter(|(other_index, other)| {
+                    *other_index != index
+                        && other.func().scope_priority() == primary.func().scope_priority()
+                        && accepts_typed_args(other.func(), arg_types, args.iter(), self.symbols)
+                        && !reference_signature_dominates(
+                            primary.func().type_(),
+                            other.func().type_(),
+                            args,
+                            arg_types,
+                            self.symbols,
+                        )
                 })
-            };
-            // Replay instead of retaining candidates. Indices identify the same
-            // occurrence without treating duplicate signatures as one overload.
-            if !scope_matches().all(|(other_index, other)| {
-                index == other_index
-                    || reference_signature_dominates(
-                        primary.func().type_(),
-                        other.func().type_(),
-                        args,
-                        arg_types,
-                        self.symbols,
-                    )
-            }) {
-                let signatures = candidates
-                    .filter(|entry| {
-                        entry.func().scope_priority() == primary.func().scope_priority()
-                            && accepts_typed_args(
-                                entry.func(),
-                                arg_types,
-                                args.iter(),
-                                self.symbols,
-                            )
-                    })
+                .map(|(_, entry)| entry)
+                .collect::<Vec<_>>();
+
+            if !other_matches.is_empty() {
+                let signatures = iter::once(primary)
+                    .chain(other_matches)
                     .map(|entry| {
                         let typ = entry.func().type_();
                         FunctionSignature::new(name, typ.params(), typ.return_type().clone())
@@ -856,12 +851,13 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     .collect();
                 return Err(Error::MultipleMatchingOverloads(signatures, span));
             }
+
             primary
         } else if let Some(fallback) = fallback.filter(|entry| {
-            entry.func().type_().conversion().is_none()
-                && entry.func().type_().is_valid()
-                && (entry.func().type_().min_args()..=entry.func().type_().max_args())
-                    .contains(&args.len())
+            let typ = entry.func().type_();
+            typ.conversion().is_none()
+                && typ.is_valid()
+                && (typ.min_args()..=typ.max_args()).contains(&args.len())
         }) {
             fallback
         } else {
