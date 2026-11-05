@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   check:
+    name: Checks
     uses: ./.github/workflows/check.yml
 
   package:
@@ -22,7 +23,7 @@ jobs:
         include:
           - os: windows-latest
             suffix: windows
-          - os: macos-14
+          - os: macos-15
             suffix: macos
     with:
       os: ${{ matrix.os }}

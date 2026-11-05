@@ -52,7 +52,7 @@ jobs:
 
   test-macos:
     name: Test portable crates (macOS)
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
