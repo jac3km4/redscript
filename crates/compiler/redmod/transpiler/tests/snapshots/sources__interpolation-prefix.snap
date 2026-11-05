@@ -2,7 +2,7 @@
 source: crates/compiler/redmod/transpiler/tests/sources.rs
 expression: "errors.iter().map(|e| e.display(&sources).to_string()).collect::<String>()"
 ---
-error[REDMOD_TRANSPILE]: community analysis [UNSAFE_ARRAY_EVALUATION]: cannot preserve when expressions are evaluated during array literal initialization
+error[REDMOD_TRANSPILE]: this array may reorder string expressions; evaluate them in order using local variables
  --> rejected.reds:1:52
   |
 1 | func Test(out x: Int32) -> String = s"\(Read(x)) \(Check([Set(x)]))";

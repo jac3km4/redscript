@@ -57,9 +57,8 @@ than accepting them blindly. Bytecode snapshots do not verify game-runtime behav
 - Lowering must preserve evaluation order and lazy evaluation. Keep generated
   initialization at the expression's execution point, including on loop back edges.
   The explicit legacy-compatibility exception is `UNSAFE_ARRAY_EVALUATION`:
-  lowering reports `ErrorAllowedAtRuntime` and continues the legacy array-prefix
-  path. Strict mode rejects it; SCC and CLI `compile`/`lint --runtime-compatible`
-  tolerate it. That path can still reorder or eagerly evaluate expressions and
+  lowering reports a warning and continues the legacy array-prefix path in all
+  modes. That path can still reorder or eagerly evaluate expressions and
   provides **no correctness guarantee**. Do not use compatibility acceptance as
   evidence that evaluation order is preserved or as a precedent for new fallbacks.
   Source-free `UNSUPPORTED_SKIP_ARGUMENT` remains a distinct hard error.

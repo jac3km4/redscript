@@ -324,7 +324,7 @@ omitted slot there.
 
 Array literals currently construct temporary arrays in statement prefixes, not
 inside expression bytecode. Shared lowering reports
-`UNSAFE_ARRAY_EVALUATION` (`ErrorAllowedAtRuntime`) when this could move
+`UNSAFE_ARRAY_EVALUATION` (`Warning`) when this could move
 construction past an earlier observable expression or out of a lazy branch.
 This includes assignments inside
 later array arguments/elements, complex assignment destinations with array RHSs,
@@ -335,9 +335,8 @@ optional. Type-qualified static calls such as `Host.Take([1])` have no runtime
 callee evaluation and are accepted. Runtime member callees and closure/function-value
 callees remain guarded: a prefix could change the callable before it is read.
 The guard does not infer purity from function names and can diagnose some pure
-expressions too. It reports the diagnostic and continues legacy lowering: strict
-mode rejects output, while runtime-compatible mode/SCC can emit the existing
-statement-prefix behavior. That behavior may reorder or eagerly evaluate
+expressions too. It reports a warning and continues legacy lowering in all modes, emitting the
+existing statement-prefix behavior. That behavior may reorder or eagerly evaluate
 expressions and has no correctness guarantee; the diagnostic is not an
 expression-local lowering fix.
 
@@ -575,12 +574,11 @@ also checks its source receiver. An earlier eager argument may construct an arra
 without making a later prefix-free skipped argument unsafe. Unselected lazy
 overloads do not diagnose an otherwise safe eager call.
 
-`UNSAFE_ARRAY_EVALUATION` has severity `ErrorAllowedAtRuntime`. Lowering reports
-it and continues the legacy statement-prefix path rather than dropping the call
-or body. Strict CLI `compile`/`lint` and default compiler API thresholds reject
-output; CLI `--runtime-compatible` and SCC tolerate this severity. Compatibility
-can therefore retain reordered or eager array evaluation, including outside a
-lazy branch; it is **not a correctness guarantee**. Hard errors still prevent
+`UNSAFE_ARRAY_EVALUATION` has severity `Warning`. Lowering reports it and
+continues the legacy statement-prefix path rather than dropping the call or body.
+The warning does not prevent output in strict or runtime-compatible modes.
+Emitted code can therefore retain reordered or eager array evaluation, including
+outside a lazy branch; it is **not a correctness guarantee**. Hard errors still prevent
 output. See the [mode contract](community-language.md#diagnostics-and-tool-boundaries).
 
 These source checks deliberately diagnose some forms that could be safe with more

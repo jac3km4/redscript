@@ -98,7 +98,9 @@ pub enum Error<'ctx> {
     NonExistentSuperType(Span),
     #[error("cannot assign to this expression: it is not a writable location")]
     InvalidPlaceExpr(Span),
-    #[error("cannot preserve when expressions are evaluated during array literal initialization")]
+    #[error(
+        "this array literal may be evaluated earlier than expected; consider assigning it to a local variable first"
+    )]
     UnsafeArrayEvaluation(Span),
     #[error(
         "cannot check when this `skip` argument is evaluated because its source expression is unavailable"
@@ -258,11 +260,10 @@ impl Error<'_> {
 
     pub fn level(&self) -> DiagnosticLevel {
         match self {
-            Self::DeprecatedNameOf(_) | Self::CallingBaseStaticMethod { .. } => {
-                DiagnosticLevel::Warning
-            }
-            Self::UnsafeArrayEvaluation(_)
-            | Self::InvalidTemporary(_)
+            Self::DeprecatedNameOf(_)
+            | Self::CallingBaseStaticMethod { .. }
+            | Self::UnsafeArrayEvaluation(_) => DiagnosticLevel::Warning,
+            Self::InvalidTemporary(_)
             | Self::NonFullyDefinedNativeStructConstruction { .. }
             | Self::InaccessibleMethod(_, _)
             | Self::InaccessibleField(_, _) => DiagnosticLevel::ErrorAllowedAtRuntime,
@@ -271,7 +272,10 @@ impl Error<'_> {
     }
 
     pub fn is_fatal(&self) -> bool {
-        !matches!(self, Self::DeprecatedNameOf(_))
+        !matches!(
+            self,
+            Self::DeprecatedNameOf(_) | Self::UnsafeArrayEvaluation(_)
+        )
     }
 }
 
@@ -449,15 +453,19 @@ mod tests {
     }
 
     #[test]
-    fn array_evaluation_errors_allow_runtime_compatibility() {
+    fn unsafe_array_evaluation_is_a_non_fatal_warning() {
         let sources = redscript_community_ast::SourceMap::new();
         let file = sources.push_back("arrays.reds", "");
         let span = Span::new(0, 0, file);
         let error = Error::UnsafeArrayEvaluation(span);
         assert_eq!(error.span(), span);
         assert_eq!(error.code(), "UNSAFE_ARRAY_EVALUATION");
-        assert_eq!(error.level(), DiagnosticLevel::ErrorAllowedAtRuntime);
-        assert!(error.is_fatal());
+        assert_eq!(
+            error.to_string(),
+            "this array literal may be evaluated earlier than expected; consider assigning it to a local variable first"
+        );
+        assert_eq!(error.level(), DiagnosticLevel::Warning);
+        assert!(!error.is_fatal());
     }
 
     #[test]

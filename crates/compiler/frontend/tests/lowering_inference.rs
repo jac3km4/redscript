@@ -48,7 +48,7 @@ fn lazy_arguments_diagnose_unsafe_array_prefixes() {
             diagnostics
                 .iter()
                 .any(|(code, message)| code == "UNSAFE_ARRAY_EVALUATION"
-                    && message == "cannot preserve when expressions are evaluated during array literal initialization"),
+                    && message == "this array literal may be evaluated earlier than expected; consider assigning it to a local variable first"),
             "{source}: {diagnostics:?}"
         );
     }

@@ -467,12 +467,12 @@ fn eager_interpolation_and_switch_prefixes_are_rejected() {
         (
             "lazy-array",
             "func CheckArray(values: [Int32]) -> Bool = true func Test(flag: Bool) -> Bool = flag ? CheckArray([1]) : false",
-            "UNSAFE_ARRAY_EVALUATION",
+            "array literals are not supported here",
         ),
         (
             "interpolation-prefix",
             r#"func Test(out x: Int32) -> String = s"\(Read(x)) \(Check([Set(x)]))";"#,
-            "UNSAFE_ARRAY_EVALUATION",
+            "this array may reorder string expressions",
         ),
         (
             "switch-prefix",

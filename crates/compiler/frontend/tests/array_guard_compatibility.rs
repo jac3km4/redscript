@@ -11,11 +11,8 @@ fn check(source: &str, inspect: impl FnOnce(&ir::Block<'_>, &Symbols<'_>)) {
             assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
             let diagnostic = &diagnostics[0];
             assert_eq!(diagnostic.code(), "UNSAFE_ARRAY_EVALUATION");
-            assert_eq!(diagnostic.level(), DiagnosticLevel::ErrorAllowedAtRuntime);
-            // Strict compiler/transpiler analysis still rejects this diagnostic;
-            // the SCC Error threshold can retain the legacy emitted program.
-            assert!(diagnostic.is_error());
-            assert!(diagnostic.level() < DiagnosticLevel::Error);
+            assert_eq!(diagnostic.level(), DiagnosticLevel::Warning);
+            assert!(!diagnostic.is_error());
             let entry = symbols
                 .free_functions()
                 .find(|entry| entry.name().to_string() == "Run")
@@ -223,7 +220,7 @@ fn distinct_unsafe_statements_each_report_once() {
                 reporter
                     .reported()
                     .iter()
-                    .all(|diagnostic| diagnostic.level() == DiagnosticLevel::ErrorAllowedAtRuntime)
+                    .all(|diagnostic| diagnostic.level() == DiagnosticLevel::Warning)
             );
             let entry = symbols
                 .free_functions()
