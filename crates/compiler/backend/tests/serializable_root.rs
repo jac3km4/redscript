@@ -106,7 +106,7 @@ fn binary_root_methods_are_linked_after_connecting_the_hierarchy() {
             let int_type = bundle.define(PoolType::new(int_name, TypeKind::Primitive));
             let mut classes = vec![];
             for name in names {
-                let is_serializable = name == "ISerializable";
+                let is_root = name != "BinaryChild";
                 let pool_name = bundle.cnames_mut().add(name);
                 let class = bundle.define(Class::new(
                     pool_name,
@@ -120,7 +120,7 @@ fn binary_root_methods_are_linked_after_connecting_the_hierarchy() {
                         Visibility::Public,
                         FunctionFlags::default()
                             .with_is_native(true)
-                            .with_is_final(is_serializable),
+                            .with_is_final(is_root),
                     )
                     .with_class(Some(class))
                     .with_source(None);
@@ -182,6 +182,12 @@ fn binary_root_methods_are_linked_after_connecting_the_hierarchy() {
                      child.Check(); child.Check(1);
                  }",
             );
+            let invalid_sources = SourceMap::new();
+            invalid_sources.populate_boot_lib();
+            invalid_sources.push_back(
+                "override.reds",
+                "class InvalidChild extends IScriptable { public func Check() {} }",
+            );
             let interner = TypeInterner::default();
             let flags = TypeFlagRegistry::default();
             for symbols in [
@@ -228,12 +234,62 @@ fn binary_root_methods_are_linked_after_connecting_the_hierarchy() {
                         .query_methods(predef::ISERIALIZABLE)
                         .all(|entry| { !entry.func().flags().is_final() })
                 );
+                assert!(
+                    symbols
+                        .query_methods_by_name(predef::ISCRIPTABLE, "Check")
+                        .all(|entry| entry.func().flags().is_final())
+                );
+                let mut reporter = CompileErrorReporter::default();
+                infer_from_sources(&invalid_sources, symbols.clone(), &mut reporter, &interner);
+                assert!(
+                    matches!(
+                        reporter.reported(),
+                        [
+                            redscript_compiler_frontend::Diagnostic::FinalMethodOverride(
+                                "Check",
+                                _
+                            )
+                        ]
+                    ),
+                    "{:?}",
+                    reporter.reported()
+                );
+
                 let mut reporter = CompileErrorReporter::default();
                 infer_from_sources(&sources, symbols, &mut reporter, &interner);
                 assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
             }
         }
     }
+}
+
+#[test]
+fn scriptable_methods_stay_final_without_serializable() {
+    let mut bundle = ScriptBundle::default();
+    let name = bundle.cnames_mut().add("IScriptable");
+    let class = bundle.define(Class::new(name, Visibility::Public, ClassFlags::default()));
+    let name = bundle.cnames_mut().add("IsA");
+    let function = bundle.define(
+        Function::new(
+            name,
+            Visibility::Public,
+            FunctionFlags::default()
+                .with_is_native(true)
+                .with_is_final(true),
+        )
+        .with_class(Some(class))
+        .with_source(None),
+    );
+    bundle[class].add_method(function);
+    let interner = TypeInterner::default();
+    let symbols =
+        CompilationInputs::load_without_mapping(&bundle, &interner, &TypeFlagRegistry::default())
+            .unwrap();
+    let method = symbols
+        .query_methods_by_name(predef::ISCRIPTABLE, "IsA")
+        .next()
+        .unwrap();
+    assert!(method.func().flags().is_final());
 }
 
 #[test]

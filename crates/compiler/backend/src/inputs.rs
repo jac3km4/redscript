@@ -296,10 +296,9 @@ impl<'ctx> CompilationInputs<'ctx> {
                 if let Some(&base) = virtuals.get(&name) {
                     method.set_overriden(base);
                 }
-                if !method.flags().is_final()
-                    && !method.flags().is_static()
-                    && !method.flags().is_static_forwarder()
-                {
+                // Final methods still replace the inherited slot; finality is
+                // checked separately when validating source overrides.
+                if !method.flags().is_static() && !method.flags().is_static_forwarder() {
                     virtuals.insert(name, id);
                 }
             }
