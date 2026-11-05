@@ -70,5 +70,47 @@ This project includes various tools for working with REDscript, such as a compil
 - **`dotfile`** - Parses the configuration `.redscript` file.
 - **`code-edit`** - Provides source code edits used by tooling and migrations.
 
-### Component Diagram
-<img width="100%" height="750px" src="https://mermaid.ink/svg/pako:eNqtlFGPmkAQx78Kmb5wicciIgpNmiiI-tCk6fl04MMKq1KBJbtLojV-9y5LtXfN0TZeH0iWYf7_38yyO2dIaErAgx3D1V5bBXGpaZMoBl-GNX1FjuIhhrX2-PhJm-rRF8w4YeuHj03aVEX9aPK0WquArwKBruRFleWEaSGjpSBlKk1aVaCSZtHyayuaqffwlWiKk8NLTahy5tH0JEhTb6ucq-hCjwIZbJU_8xdtZS-KWupRSFmBhbglLdWHiVo3T5JnyUE2FcNeiIp7CO0ysa83hjRH33AyOBQ2YiTlCcsqgQQjBPUN0ziihGFBOOKnUuAjqtQexSCNnmjNEhJDY8_FKSfSPqE5Zd4H03Td7fYX1383F3PRAfW7oMH90OuOo-3tB7_JDrrYs39lb3K6-QsbcZagjBmMd1Qx66oi_A87sLme1jfRYRd6fv8GZLTtuOTiD03Pu8iL-5tOb1etA7rogi7ffcC31wvcgV7-joaeHGtZCt4W55z0oCDSoHmHs7r0IPakkBaeXKaYHRqzixRVuHymtABPsFrKGK13-5tJXaWyqCDDcmIWtyiTB4Awn9alAG8wspQJeGc4gmePjb5jjhzHMftDxxr24ASeMzYcyxpZjm2btuU67qUH3xXUNMa2PRi5tpT0zfHQGvSApJmg7HM7qtXEvvwAQCLa_g"/>
+### Architecture Overview
+
+Each dialect has its own parser, syntax tree, and formatter. Community REDscript
+feeds the compiler frontend directly; the partial REDmod adapter bridges supported
+native syntax into the same semantic analysis and lowering pipeline. The frontend
+produces typed IR, which the backend monomorphizes and assembles into bytecode.
+The `io` crate reads existing script bundles and writes the updated bundles.
+
+The compiler API coordinates community compilation and diagnostics for callers
+such as the CLI and SCC integration (`scc/cli` → `scc/capi` → `scc/core`). The
+separate [language server](https://github.com/jac3km4/redscript-ide) reuses the
+syntax and semantic tooling for editor features.
+
+```mermaid
+flowchart TD
+    Community["Community REDscript source (.reds)"] --> CommunityParser["Community parser"]
+    CommunityParser --> CommunityAST["Community AST"]
+    Redmod["Native REDmod source (.script)"] --> RedmodParser["REDmod parser"]
+    RedmodParser --> RedmodAST["REDmod AST"]
+
+    CommunityAST --> Frontend["Compiler frontend: analysis and lowering"]
+    RedmodAST --> Adapter["REDmod adapter: supported subset"]
+    Adapter --> Frontend
+    Frontend --> IR["Typed IR and symbols"]
+    IR --> Backend["Compiler backend: monomorphization and assembly"]
+    Backend --> IO["io: script bundle encoding / decoding"]
+    IO --> Bundle["REDengine script bundle"]
+
+    Bundle --> Decompiler["Decompiler"]
+    Decompiler --> CommunityAST
+    CommunityAST --> CommunityFormatter["Community formatter"]
+    CommunityFormatter --> CommunityOutput["Formatted community source"]
+    Redmod --> RedmodFormatter["REDmod formatter"]
+    RedmodFormatter --> RedmodOutput["Formatted REDmod source"]
+
+    CommunityAST --> Transpiler["Community-to-REDmod transpiler"]
+    IR --> Transpiler
+    Transpiler --> RedmodOutput
+```
+
+Arrows show the main data flow, not every crate dependency. The transpiler uses
+retained community declarations and typed IR to emit REDmod source; it does not
+invoke the official compiler. REDmod analysis and transpilation are partial and
+do not guarantee game-runtime compatibility.
