@@ -475,7 +475,7 @@ fn invalid_places_types_readonly_writes_and_unsafe_array_prefixes_still_fail() {
     let source = "function Bad(const value: Int32): Int32 { return value = 1; }";
     let sources = SourceMap::new();
     analyze(source, "", |_, _, codes| {
-        assert_eq!(codes, ["CONST_PARAMETER_WRITE"])
+        assert_eq!(codes, ["CONST_PARAMETER_WRITE"]);
     });
     for source in [
         "function Bad(flag: Bool) { var a: array<Int32>; return flag ? (a = [1]) : a; }",
