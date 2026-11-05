@@ -69,7 +69,7 @@ fn check_diagnostics(
             assert_eq!(d.level(), level, "{d:?}");
             let message = d.to_string();
             assert!(
-                if level == DiagnosticLevel::ErrorAllowedAtRuntime {
+                if level == DiagnosticLevel::Warning {
                     message.starts_with("forwarding a const ")
                         && (message.ends_with(" to a non-const parameter may allow mutation")
                             || message.ends_with(" to a function value may allow mutation"))
@@ -81,7 +81,7 @@ fn check_diagnostics(
             );
             assert_eq!(
                 d.code(),
-                if level == DiagnosticLevel::ErrorAllowedAtRuntime {
+                if level == DiagnosticLevel::Warning {
                     "CONST_FORWARDING"
                 } else if message == "cannot write through a const local" {
                     "CONST_LOCAL_WRITE"
@@ -151,10 +151,7 @@ fn strict_forwarding_and_capture_provenance() {
         "class V {} func Take(v: V) {} func Out(out v: V) {} func F() { const x: V; Take(x); Out(x); }",
         &["x", "x"],
         SemanticPolicy::default(),
-        &[
-            DiagnosticLevel::ErrorAllowedAtRuntime,
-            DiagnosticLevel::Error,
-        ],
+        &[DiagnosticLevel::Warning, DiagnosticLevel::Error],
     );
     check(
         "class V { public let field: Int32; } func F() { const x: V; let f: () -> Void = () -> { x.field = 1; }; }",
@@ -175,20 +172,20 @@ fn strict_forwarding_and_capture_provenance() {
 }
 
 #[test]
-fn possible_mutation_forwarding_is_compatible_but_writes_remain_hard() {
-    use DiagnosticLevel::{Error, ErrorAllowedAtRuntime};
+fn possible_mutation_forwarding_warns_but_writes_remain_errors() {
+    use DiagnosticLevel::{Error, Warning};
 
     check_diagnostics(
         "class V { public let field: Int32; public func Change() {} } func Take(v: V) {} func Out(out v: V) {} func F(v: V) { const x: V = v; Take(x); Out(x); x = v; x.field = 1; x.Change(); }",
         &["x", "x", "x", "x.field", "x"],
         SemanticPolicy::default(),
-        &[ErrorAllowedAtRuntime, Error, Error, Error, Error],
+        &[Warning, Error, Error, Error, Error],
     );
     check_diagnostics(
         "func Take(v: [Int32]) {} func Out(out v: [Int32]) {} func F() { const x: [Int32]; Take(x); Out(x); x[0] = 1; ArrayClear(x); }",
         &["x", "x", "x[0]", "x"],
         SemanticPolicy::default(),
-        &[ErrorAllowedAtRuntime, Error, Error, Error],
+        &[Warning, Error, Error, Error],
     );
     for expr in ["b ? p : x", "b ? x : p"] {
         check_diagnostics(
@@ -197,7 +194,7 @@ fn possible_mutation_forwarding_is_compatible_but_writes_remain_hard() {
             ),
             &[expr],
             SemanticPolicy::default(),
-            &[ErrorAllowedAtRuntime],
+            &[Warning],
         );
     }
     for expr in ["x", "x.items", "x.nested[0]"] {
@@ -208,31 +205,26 @@ fn possible_mutation_forwarding_is_compatible_but_writes_remain_hard() {
             ),
             &[expr],
             SemanticPolicy::default(),
-            &[ErrorAllowedAtRuntime],
+            &[Warning],
         );
     }
     check_diagnostics(
         "func Take(v: script_ref<Int32>) {} func F() { const x = 1; Take(AsRef(x)); }",
         &["AsRef(x)"],
         SemanticPolicy::default(),
-        &[ErrorAllowedAtRuntime],
+        &[Warning],
     );
 }
 
 #[test]
-fn closure_forwarding_without_const_flags_is_compatible() {
-    use DiagnosticLevel::{Error, ErrorAllowedAtRuntime};
+fn closure_forwarding_without_const_flags_warns() {
+    use DiagnosticLevel::{Error, Warning};
 
     check_diagnostics(
         "func F(const p: [Int32], f: ([Int32]) -> Void, scalar: (Int32) -> Void) { const x: [Int32]; const n = 1; f(p); f(x); scalar(n); let g: () -> Void = () -> { f(x); x[0] = 1; }; }",
         &["p", "x", "x", "x[0]"],
         SemanticPolicy::default(),
-        &[
-            ErrorAllowedAtRuntime,
-            ErrorAllowedAtRuntime,
-            ErrorAllowedAtRuntime,
-            Error,
-        ],
+        &[Warning, Warning, Warning, Error],
     );
     check_diagnostics(
         "class V {} func F(const p: V, f: (V) -> Void) { const x: V; f(p); f(x); }",
@@ -253,7 +245,7 @@ fn closure_forwarding_without_const_flags_is_compatible() {
             const_local_handle_rebinding: true,
             ..SemanticPolicy::default()
         },
-        &[ErrorAllowedAtRuntime],
+        &[Warning],
     );
 }
 

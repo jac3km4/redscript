@@ -219,7 +219,7 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
                     (
                         Box::new(ConstForwarding { root, target }),
                         "CONST_FORWARDING",
-                        DiagnosticLevel::ErrorAllowedAtRuntime,
+                        DiagnosticLevel::Warning,
                     )
                 }
             };

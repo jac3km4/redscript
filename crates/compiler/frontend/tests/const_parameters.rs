@@ -20,7 +20,7 @@ fn check_forwarding(source: &str, expected: &[&str]) {
     check_level(
         source,
         expected,
-        DiagnosticLevel::ErrorAllowedAtRuntime,
+        DiagnosticLevel::Warning,
         "forwarding a const parameter to a non-const parameter may allow mutation",
     );
 }
@@ -222,7 +222,7 @@ fn closures_check_captures_without_confusing_parameter_indices() {
     check_level(
         "func Forward(const value: [Int32], f: ([Int32]) -> Void) { f(value); }",
         &["value"],
-        DiagnosticLevel::ErrorAllowedAtRuntime,
+        DiagnosticLevel::Warning,
         "forwarding a const parameter to a function value may allow mutation",
     );
     check(
@@ -295,7 +295,7 @@ fn const_relaxations_are_independent_and_file_local_in_both_orders() {
                 (relaxed, usize::from(!forwarding), 3 - usize::from(elements)),
             ] {
                 for (level, expected) in [
-                    (DiagnosticLevel::ErrorAllowedAtRuntime, forwarding_count),
+                    (DiagnosticLevel::Warning, forwarding_count),
                     (DiagnosticLevel::Error, hard_count),
                 ] {
                     assert_eq!(
