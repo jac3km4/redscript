@@ -175,6 +175,17 @@ impl<'ctx> FreeFunction<'ctx> {
         }
     }
 
+    pub(super) fn use_serializable_root(&mut self) {
+        if self.intrinsic != Some(ir::Intrinsic::IsDefined) {
+            return;
+        }
+        if let [param] = &mut *self.type_.params
+            && param.typ == Type::nullary(predef::ISCRIPTABLE)
+        {
+            param.typ = Type::nullary(predef::ISERIALIZABLE);
+        }
+    }
+
     pub fn new_alias(type_: FunctionType<'ctx>, alias: MethodId<'ctx>, span: Option<Span>) -> Self {
         Self {
             type_,

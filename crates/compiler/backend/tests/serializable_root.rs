@@ -2,9 +2,55 @@ use redscript_compiler_api::ast::SourceMap;
 use redscript_compiler_api::{SourceMapExt, TypeFlagRegistry};
 use redscript_compiler_backend::CompilationInputs;
 use redscript_compiler_frontend::{
-    CompileErrorReporter, Symbols, TypeInterner, infer_from_sources, predef,
+    CompileErrorReporter, Symbols, Type, TypeInterner, infer_from_sources, ir, predef,
 };
 use redscript_io::{Class, ClassFlags, ScriptBundle, Visibility};
+
+fn assert_is_defined_parameter<'ctx>(
+    symbols: &Symbols<'ctx>,
+    root: redscript_compiler_frontend::TypeId<'ctx>,
+) {
+    let mut found = false;
+    for entry in symbols.free_functions() {
+        match entry.func().intrinsic() {
+            Some(ir::Intrinsic::IsDefined) => {
+                assert_eq!(
+                    entry.func().type_().params()[0].type_(),
+                    &Type::nullary(root),
+                );
+                found = true;
+            }
+            Some(ir::Intrinsic::VariantIsDefined) => {
+                assert_eq!(
+                    entry.func().type_().params()[0].type_(),
+                    &Type::nullary(predef::VARIANT)
+                );
+            }
+            _ => {}
+        }
+    }
+    assert!(found);
+}
+
+#[test]
+fn is_defined_keeps_scriptable_without_serializable() {
+    let sources = SourceMap::new();
+    sources.populate_boot_lib();
+    sources.push_back(
+        "check.reds",
+        "func Check(value: IScriptable) -> Bool = IsDefined(value);",
+    );
+    let interner = TypeInterner::default();
+    let mut reporter = CompileErrorReporter::default();
+    let (_, symbols) = infer_from_sources(
+        &sources,
+        Symbols::with_default_types(),
+        &mut reporter,
+        &interner,
+    );
+    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+    assert_is_defined_parameter(&symbols, predef::ISCRIPTABLE);
+}
 
 fn assert_root(symbols: &Symbols<'_>) {
     assert!(
@@ -91,11 +137,20 @@ fn roots_can_be_split_between_source_and_binary() {
         sources.push_back("root.reds", source);
         sources.push_back(
             "child.reds",
-            "class Child {} func Upcast(value: Child) -> ISerializable { return value; }",
+            "class Child {} func Upcast(value: Child) -> ISerializable { return value; }
+             func Check(value: ISerializable, weak: wref<ISerializable>, child: Child, variant: Variant) {
+                 let _: Bool = IsDefined(value);
+                 let _: Bool = IsDefined(weak);
+                 let _: Bool = IsDefined(child);
+                 let empty: ISerializable = null;
+                 let _: Bool = IsDefined(empty);
+                 let _: Bool = IsDefined(variant);
+             }",
         );
         let mut reporter = CompileErrorReporter::default();
         let (_, symbols) = infer_from_sources(&sources, symbols, &mut reporter, &interner);
         assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
         assert_root(&symbols);
+        assert_is_defined_parameter(&symbols, predef::ISERIALIZABLE);
     }
 }

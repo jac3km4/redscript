@@ -111,7 +111,8 @@ impl<'ctx> Symbols<'ctx> {
         self.types.entry(id).or_insert(def);
     }
 
-    /// Connect the optional engine root without replacing an existing path to it or a cycle.
+    /// Adapt reference intrinsics to the optional engine root and connect it without
+    /// replacing an existing path to it or a cycle.
     pub fn ensure_serializable_base(&mut self) {
         if self
             .get_type(predef::ISERIALIZABLE)
@@ -119,6 +120,11 @@ impl<'ctx> Symbols<'ctx> {
             .is_none()
         {
             return;
+        }
+        for overloads in self.free_funcs.map.values_mut() {
+            for (_, func) in overloads.iter_mut() {
+                func.use_serializable_root();
+            }
         }
         let mut visited = HashSet::<TypeId<'ctx>>::default();
         for (id, _) in self.base_iter_with_self(predef::ISCRIPTABLE) {
