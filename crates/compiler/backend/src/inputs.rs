@@ -144,7 +144,10 @@ impl<'ctx> CompilationInputs<'ctx> {
                         let flags = MethodFlags::new()
                             .with_is_static(method.flags().is_static())
                             .with_is_const(method.flags().is_const())
-                            .with_is_final(method.flags().is_final())
+                            // Engine root methods must participate in override linking.
+                            .with_is_final(
+                                method.flags().is_final() && cls_id != predef::ISERIALIZABLE,
+                            )
                             .with_is_native(method.flags().is_native())
                             .with_is_callback(method.flags().is_callback())
                             .with_is_unimplemented(

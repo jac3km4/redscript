@@ -106,6 +106,7 @@ fn binary_root_methods_are_linked_after_connecting_the_hierarchy() {
             let int_type = bundle.define(PoolType::new(int_name, TypeKind::Primitive));
             let mut classes = vec![];
             for name in names {
+                let is_serializable = name == "ISerializable";
                 let pool_name = bundle.cnames_mut().add(name);
                 let class = bundle.define(Class::new(
                     pool_name,
@@ -117,7 +118,9 @@ fn binary_root_methods_are_linked_after_connecting_the_hierarchy() {
                     let function = Function::new(
                         name,
                         Visibility::Public,
-                        FunctionFlags::default().with_is_native(true),
+                        FunctionFlags::default()
+                            .with_is_native(true)
+                            .with_is_final(is_serializable),
                     )
                     .with_class(Some(class))
                     .with_source(None);
@@ -135,6 +138,22 @@ fn binary_root_methods_are_linked_after_connecting_the_hierarchy() {
                             function
                         }
                     });
+                    bundle[class].add_method(function);
+                }
+                for (method_name, is_static) in [(name, false), ("Static", true)] {
+                    let method_name = bundle.cnames_mut().add(method_name);
+                    let function = bundle.define(
+                        Function::new(
+                            method_name,
+                            Visibility::Public,
+                            FunctionFlags::default()
+                                .with_is_native(true)
+                                .with_is_final(true)
+                                .with_is_static(is_static),
+                        )
+                        .with_class(Some(class))
+                        .with_source(None),
+                    );
                     bundle[class].add_method(function);
                 }
                 classes.push((name, class));
@@ -191,6 +210,24 @@ fn binary_root_methods_are_linked_after_connecting_the_hierarchy() {
                     }
                 }
 
+                for name in ["ISerializable", "IScriptable", "BinaryChild"] {
+                    let methods = symbols[interner.intern(name)]
+                        .schema()
+                        .as_aggregate()
+                        .unwrap()
+                        .methods();
+                    for method_name in [name, "Static"] {
+                        assert!(methods.by_name(method_name).all(|entry| {
+                            entry.func().flags().is_final() == (name != "ISerializable")
+                                && entry.func().overriden().is_none()
+                        }));
+                    }
+                }
+                assert!(
+                    symbols
+                        .query_methods(predef::ISERIALIZABLE)
+                        .all(|entry| { !entry.func().flags().is_final() })
+                );
                 let mut reporter = CompileErrorReporter::default();
                 infer_from_sources(&sources, symbols, &mut reporter, &interner);
                 assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
