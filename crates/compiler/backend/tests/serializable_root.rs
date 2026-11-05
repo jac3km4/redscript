@@ -95,98 +95,83 @@ fn binary_serializable_becomes_the_root_in_either_definition_order() {
 }
 
 #[test]
-fn binary_root_methods_are_linked_after_connecting_the_hierarchy() {
-    for names in [
-        ["ISerializable", "IScriptable", "BinaryChild"],
-        ["BinaryChild", "IScriptable", "ISerializable"],
+fn identical_final_native_is_a_methods_on_both_roots_are_unambiguous() {
+    for roots in [
+        ["ISerializable", "IScriptable"],
+        ["IScriptable", "ISerializable"],
     ] {
-        for explicit_base in [false, true] {
+        for (method_name, added_from_source) in
+            [("IsA", true), ("IsA", false), ("IsA;CName", false)]
+        {
             let mut bundle = ScriptBundle::default();
-            let int_name = bundle.cnames_mut().add("Int32");
-            let int_type = bundle.define(PoolType::new(int_name, TypeKind::Primitive));
-            let mut classes = vec![];
-            for name in names {
-                let is_root = name != "BinaryChild";
-                let pool_name = bundle.cnames_mut().add(name);
+            let name = bundle.cnames_mut().add("CName");
+            let cname_type = bundle.define(PoolType::new(name, TypeKind::Primitive));
+            let name = bundle.cnames_mut().add("Bool");
+            let bool_type = bundle.define(PoolType::new(name, TypeKind::Primitive));
+            for root in roots {
+                let name = bundle.cnames_mut().add(root);
                 let class = bundle.define(Class::new(
-                    pool_name,
+                    name,
                     Visibility::Public,
-                    ClassFlags::default(),
+                    ClassFlags::default().with_is_native(true),
                 ));
-                for (name, parameter) in [("Check;", false), ("Check;Int32", true)] {
-                    let name = bundle.cnames_mut().add(name);
-                    let function = Function::new(
+                if root == "ISerializable" && added_from_source {
+                    continue;
+                }
+                let name = bundle.cnames_mut().add(method_name);
+                let function = Function::new(
+                    name,
+                    Visibility::Public,
+                    FunctionFlags::default()
+                        .with_is_native(true)
+                        .with_is_final(true),
+                )
+                .with_class(Some(class))
+                .with_return_type(Some(bool_type))
+                .with_source(None);
+                let function = bundle.define_and_init(function, |bundle, index, function| {
+                    let name = bundle.cnames_mut().add("className");
+                    let parameter = bundle.define(Parameter::new(
                         name,
-                        Visibility::Public,
-                        FunctionFlags::default()
-                            .with_is_native(true)
-                            .with_is_final(is_root),
-                    )
-                    .with_class(Some(class))
-                    .with_source(None);
-                    let function = bundle.define_and_init(function, |bundle, index, function| {
-                        if parameter {
-                            let name = bundle.cnames_mut().add("value");
-                            let param = bundle.define(Parameter::new(
-                                name,
-                                index,
-                                int_type,
-                                ParameterFlags::default(),
-                            ));
-                            function.with_parameters([param])
-                        } else {
-                            function
-                        }
-                    });
-                    bundle[class].add_method(function);
-                }
-                for (method_name, is_static) in [(name, false), ("Static", true)] {
-                    let method_name = bundle.cnames_mut().add(method_name);
-                    let function = bundle.define(
-                        Function::new(
-                            method_name,
-                            Visibility::Public,
-                            FunctionFlags::default()
-                                .with_is_native(true)
-                                .with_is_final(true)
-                                .with_is_static(is_static),
-                        )
-                        .with_class(Some(class))
-                        .with_source(None),
-                    );
-                    bundle[class].add_method(function);
-                }
-                classes.push((name, class));
-            }
-            let class = |name| classes.iter().find(|(n, _)| *n == name).unwrap().1;
-            bundle[class("BinaryChild")] = bundle[class("BinaryChild")]
-                .clone()
-                .with_base(Some(class("IScriptable")));
-            if explicit_base {
-                bundle[class("IScriptable")] = bundle[class("IScriptable")]
-                    .clone()
-                    .with_base(Some(class("ISerializable")));
+                        index,
+                        cname_type,
+                        ParameterFlags::default(),
+                    ));
+                    function.with_parameters([parameter])
+                });
+                bundle[class].add_method(function);
             }
 
             let sources = SourceMap::new();
             sources.populate_boot_lib();
+            if added_from_source {
+                sources.push_back(
+                    "codeware.reds",
+                    "@addMethod(ISerializable)
+                     public final native func IsA(className: CName) -> Bool;",
+                );
+            }
             sources.push_back(
-                "calls.reds",
-                "class Child extends BinaryChild {
-                     public func Check() {}
+                "is_a.reds",
+                "class Child {
+                     public func Test(className: CName) -> Bool = this.IsA(className);
                  }
-                 func Calls(root: ISerializable, script: IScriptable, binary: BinaryChild, child: Child) {
-                     root.Check(); root.Check(1);
-                     script.Check(); script.Check(1);
-                     binary.Check(); binary.Check(1);
-                     child.Check(); child.Check(1);
-                 }",
+                 func FromRoot(value: ISerializable, className: CName) -> Bool = value.IsA(className);
+                 func FromScriptable(value: IScriptable, className: CName) -> Bool = value.IsA(className);
+                 func FromChild(value: Child, className: CName) -> Bool = value.IsA(className);",
             );
             let invalid_sources = SourceMap::new();
             invalid_sources.populate_boot_lib();
+            if added_from_source {
+                invalid_sources.push_back(
+                    "codeware.reds",
+                    "@addMethod(ISerializable)
+                     public final native func IsA(className: CName) -> Bool;",
+                );
+            }
             invalid_sources.push_back(
-                "override.reds",
-                "class InvalidChild extends IScriptable { public func Check() {} }",
+                "invalid.reds",
+                "class InvalidChild { public func IsA(className: CName) -> Bool = false; }",
             );
             let interner = TypeInterner::default();
             let flags = TypeFlagRegistry::default();
@@ -197,70 +182,145 @@ fn binary_root_methods_are_linked_after_connecting_the_hierarchy() {
                     .0,
                 CompilationInputs::load_without_mapping(&bundle, &interner, &flags).unwrap(),
             ] {
-                for (name, parent) in [
-                    ("IScriptable", "ISerializable"),
-                    ("BinaryChild", "IScriptable"),
-                ] {
-                    let methods = symbols
-                        .query_methods_by_name(interner.intern(name), "Check")
-                        .collect::<Vec<_>>();
-                    assert_eq!(methods.len(), 2);
-                    for method in methods {
-                        assert_eq!(method.key().parent(), interner.intern(name));
-                        let base = method.func().overriden().unwrap();
-                        assert_eq!(base.parent(), interner.intern(parent));
-                        assert_eq!(
-                            symbols[base].type_().params().len(),
-                            method.func().type_().params().len(),
-                        );
-                    }
-                }
-
-                for name in ["ISerializable", "IScriptable", "BinaryChild"] {
-                    let methods = symbols[interner.intern(name)]
-                        .schema()
-                        .as_aggregate()
-                        .unwrap()
-                        .methods();
-                    for method_name in [name, "Static"] {
-                        assert!(methods.by_name(method_name).all(|entry| {
-                            entry.func().flags().is_final() == (name != "ISerializable")
-                                && entry.func().overriden().is_none()
-                        }));
-                    }
-                }
-                assert!(
-                    symbols
-                        .query_methods(predef::ISERIALIZABLE)
-                        .all(|entry| { !entry.func().flags().is_final() })
-                );
-                assert!(
-                    symbols
-                        .query_methods_by_name(predef::ISCRIPTABLE, "Check")
-                        .all(|entry| entry.func().flags().is_final())
-                );
                 let mut reporter = CompileErrorReporter::default();
                 infer_from_sources(&invalid_sources, symbols.clone(), &mut reporter, &interner);
                 assert!(
                     matches!(
                         reporter.reported(),
-                        [
-                            redscript_compiler_frontend::Diagnostic::FinalMethodOverride(
-                                "Check",
-                                _
-                            )
-                        ]
+                        [redscript_compiler_frontend::Diagnostic::FinalMethodOverride("IsA", _)]
                     ),
                     "{:?}",
                     reporter.reported()
                 );
-
                 let mut reporter = CompileErrorReporter::default();
-                infer_from_sources(&sources, symbols, &mut reporter, &interner);
-                assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+                let (_, symbols) = infer_from_sources(&sources, symbols, &mut reporter, &interner);
+                assert!(
+                    reporter.reported().is_empty(),
+                    "{roots:?}, {method_name}, added={added_from_source}: {:?}",
+                    reporter.reported()
+                );
+                let methods = symbols
+                    .query_methods_by_name(predef::ISCRIPTABLE, "IsA")
+                    .collect::<Vec<_>>();
+                assert_eq!(methods.len(), 1, "{roots:?}, {method_name}: {methods:?}");
+                let method = &methods[0];
+                assert_eq!(method.key().parent(), predef::ISCRIPTABLE);
+                assert!(method.func().flags().is_final());
+                let base = method.func().overriden().unwrap();
+                assert_eq!(base.parent(), predef::ISERIALIZABLE);
+                assert!(symbols[base].flags().is_final());
+                assert_eq!(method.func().type_().params()[0].name(), "className");
+                assert_eq!(
+                    method.func().type_().params()[0].type_(),
+                    &Type::nullary(predef::CNAME)
+                );
+                assert_eq!(
+                    method.func().type_().return_type(),
+                    &Type::nullary(predef::BOOL)
+                );
+
+                assert_eq!(
+                    symbols
+                        .query_methods_by_name(interner.intern("Child"), "IsA")
+                        .count(),
+                    1
+                );
             }
         }
     }
+}
+
+#[test]
+fn root_reconciliation_does_not_hide_distinct_overloads_or_static_methods() {
+    let mut bundle = ScriptBundle::default();
+    for root in ["IScriptable", "ISerializable"] {
+        let name = bundle.cnames_mut().add(root);
+        bundle.define(Class::new(
+            name,
+            Visibility::Public,
+            ClassFlags::default().with_is_native(true),
+        ));
+    }
+    let sources = SourceMap::new();
+    sources.populate_boot_lib();
+    sources.push_back(
+        "overloads.reds",
+        "@addMethod(IScriptable)
+         public final native func IsA(className: CName) -> Bool;
+         @addMethod(ISerializable)
+         public final native func IsA(className: Int32) -> Bool;
+         @addMethod(IScriptable)
+         public final native static func Check() -> Bool;
+         @addMethod(ISerializable)
+         public final native static func Check() -> Bool;
+         func CheckName(value: IScriptable, name: CName) -> Bool = value.IsA(name);
+         func CheckIndex(value: IScriptable, index: Int32) -> Bool = value.IsA(index);",
+    );
+    let interner = TypeInterner::default();
+    let symbols =
+        CompilationInputs::load_without_mapping(&bundle, &interner, &TypeFlagRegistry::default())
+            .unwrap();
+    let mut reporter = CompileErrorReporter::default();
+    let (_, symbols) = infer_from_sources(&sources, symbols, &mut reporter, &interner);
+    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+    for name in ["IsA", "Check"] {
+        let methods = symbols
+            .query_methods_by_name(predef::ISCRIPTABLE, name)
+            .collect::<Vec<_>>();
+        assert_eq!(methods.len(), 2);
+        assert!(
+            methods
+                .iter()
+                .all(|entry| entry.func().overriden().is_none())
+        );
+    }
+}
+
+#[test]
+fn source_added_root_methods_keep_covariant_clone_returns() {
+    let mut bundle = ScriptBundle::default();
+    for root in ["IScriptable", "ISerializable"] {
+        let name = bundle.cnames_mut().add(root);
+        bundle.define(Class::new(
+            name,
+            Visibility::Public,
+            ClassFlags::default().with_is_native(true),
+        ));
+    }
+    let sources = SourceMap::new();
+    sources.populate_boot_lib();
+    sources.push_back(
+        "clone.reds",
+        "@addMethod(IScriptable)
+         public final native func Clone() -> ref<IScriptable>;
+         @addMethod(ISerializable)
+         public final native func Clone() -> ref<ISerializable>;
+         func FromRoot(value: ISerializable) -> ISerializable = value.Clone();
+         func FromScriptable(value: IScriptable) -> IScriptable = value.Clone();",
+    );
+    let interner = TypeInterner::default();
+    let (symbols, mappings) =
+        CompilationInputs::load(&bundle, &interner, &TypeFlagRegistry::default())
+            .unwrap()
+            .into_inner();
+    let mut reporter = CompileErrorReporter::default();
+    let (unit, symbols) = infer_from_sources(&sources, symbols, &mut reporter, &interner);
+    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+    for root in [predef::ISCRIPTABLE, predef::ISERIALIZABLE] {
+        let methods = symbols
+            .query_methods_by_name(root, "Clone")
+            .collect::<Vec<_>>();
+        assert_eq!(methods.len(), 1);
+        assert!(methods[0].func().flags().is_final());
+        assert_eq!(
+            methods[0].func().type_().return_type(),
+            &Type::nullary(root)
+        );
+    }
+    mappings
+        .into_monomorphizer(&sources)
+        .monomorphize(&unit, &symbols, &mut bundle)
+        .unwrap();
 }
 
 #[test]

@@ -137,6 +137,70 @@ impl<'ctx> Symbols<'ctx> {
         }
     }
 
+    /// Connect duplicated engine-root declarations after source annotations have
+    /// added methods to the imported roots. Both declarations retain finality.
+    pub(crate) fn link_serializable_methods(&mut self) {
+        let Some(scriptable) = self[predef::ISCRIPTABLE].schema().as_aggregate() else {
+            return;
+        };
+        let Some(serializable) = self
+            .get_type(predef::ISERIALIZABLE)
+            .and_then(|def| def.schema().as_aggregate())
+        else {
+            return;
+        };
+        if scriptable.is_user_defined()
+            || serializable.is_user_defined()
+            || !self
+                .base_iter_with_self(predef::ISCRIPTABLE)
+                .any(|(id, _)| id == predef::ISERIALIZABLE)
+        {
+            return;
+        }
+
+        let eligible = |method: &Method<'ctx>| {
+            let flags = method.flags();
+            method.type_().is_valid()
+                && method.type_().type_params().is_empty()
+                && flags.is_native()
+                && !flags.is_static()
+                && !flags.is_static_forwarder()
+        };
+        let mut links = vec![];
+        for entry in scriptable.methods().iter() {
+            let method = entry.func();
+            if !eligible(method) || method.overriden().is_some() {
+                continue;
+            }
+            let signature = method.type_();
+            let mut candidates = serializable
+                .methods()
+                .by_name(**entry.name())
+                .filter(|base| {
+                    let base_method = base.func();
+                    let base_signature = base_method.type_();
+                    eligible(base_method)
+                        && base_signature.param_types().eq(signature.param_types())
+                        && self.compatible_override_return(
+                            signature.return_type(),
+                            base_signature.return_type(),
+                        )
+                });
+            if let (Some(base), None) = (candidates.next(), candidates.next()) {
+                links.push((
+                    MethodId::new(predef::ISCRIPTABLE, *entry.key()),
+                    MethodId::new(predef::ISERIALIZABLE, *base.key()),
+                ));
+            }
+        }
+        for (method, base) in links {
+            self.get_method_mut(method)
+                .expect("root method should exist")
+                .1
+                .set_overriden(base);
+        }
+    }
+
     #[inline]
     pub fn get_free_function(
         &self,
