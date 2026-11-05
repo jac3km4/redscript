@@ -196,15 +196,15 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
 
     fn reject(&mut self, expr: &ir::Expr<'ctx>, violation: ConstViolation) {
         if let Some(root) = self.readonly_place(expr) {
-            let (error, level): (Box<dyn std::error::Error>, _) = match violation {
+            let (error, code, level): (Box<dyn std::error::Error>, _, _) = match violation {
                 ConstViolation::Write => {
-                    let error: Box<dyn std::error::Error> = match root {
+                    let (error, code): (Box<dyn std::error::Error>, _) = match root {
                         ConstRoot::Parameter | ConstRoot::ParameterAndLocal => {
-                            Box::new(ConstParameterWrite)
+                            (Box::new(ConstParameterWrite), "CONST_PARAMETER_WRITE")
                         }
-                        ConstRoot::Local { .. } => Box::new(ConstLocalWrite),
+                        ConstRoot::Local { .. } => (Box::new(ConstLocalWrite), "CONST_LOCAL_WRITE"),
                     };
-                    (error, DiagnosticLevel::Error)
+                    (error, code, DiagnosticLevel::Error)
                 }
                 ConstViolation::Forwarding | ConstViolation::ClosureForwarding => {
                     let root = match root {
@@ -218,12 +218,13 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
                     };
                     (
                         Box::new(ConstForwarding { root, target }),
+                        "CONST_FORWARDING",
                         DiagnosticLevel::ErrorAllowedAtRuntime,
                     )
                 }
             };
             self.reporter
-                .report(Diagnostic::Other(error, level, expr.span()));
+                .report(Diagnostic::Custom(error, code, level, expr.span()));
         }
     }
 

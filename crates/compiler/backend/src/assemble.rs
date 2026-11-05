@@ -1041,6 +1041,20 @@ pub enum AssembleError<'ctx> {
 }
 
 impl AssembleError<'_> {
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::LabelTooDistant => "JUMP_OFFSET_OVERFLOW",
+            Self::InvalidFunctionSignature(_) => "INVALID_FUNCTION_SIGNATURE",
+            Self::InvalidControlFlow(..) => "INVALID_CONTROL_FLOW",
+            Self::TooManyArguments(..) => "TOO_MANY_ARGUMENTS",
+            Self::TemporaryReferenceArgument(..) => "TEMPORARY_REFERENCE_ARGUMENT",
+            Self::InvalidIntrinsic(..) => "INVALID_INTRINSIC",
+            Self::InvalidFunctionClass(_) => "INVALID_FUNCTION_CLASS",
+            Self::Coalesce(..) => "COALESCE_ERR",
+            Self::Decoding(_) => "DECODING_ERR",
+        }
+    }
+
     pub fn span(&self) -> Option<Span> {
         match self {
             Self::InvalidFunctionSignature(span) => *span,
@@ -1088,18 +1102,21 @@ mod diagnostic_tests {
             "`break` cannot be used here; a loop or switch is required"
         );
         assert_eq!(error.span(), Some(span));
+        assert_eq!(error.code(), "INVALID_CONTROL_FLOW");
         let error = AssembleError::TooManyArguments(256, span);
         assert_eq!(
             error.to_string(),
             "struct construction has 256 arguments; the bytecode limit is 255"
         );
         assert_eq!(error.span(), Some(span));
+        assert_eq!(error.code(), "TOO_MANY_ARGUMENTS");
         let error = AssembleError::TemporaryReferenceArgument(17, span);
         assert_eq!(
             error.to_string(),
             "argument 17 requires a temporary-reference flag; bytecode supports these flags only for the first 16 arguments"
         );
         assert_eq!(error.span(), Some(span));
+        assert_eq!(error.code(), "TEMPORARY_REFERENCE_ARGUMENT");
         assert_eq!(
             AssembleError::LabelTooDistant.to_string(),
             "jump offset exceeds the signed 16-bit bytecode limit; reduce the size of this function"

@@ -170,8 +170,10 @@ impl<'ctx> Compilation<'ctx> {
         let mut monomorph = self.mappings.into_monomorphizer(self.sources);
         if let Err(err) = monomorph.monomorphize(&self.unit, &self.symbols, &mut self.bundle) {
             if let Some(span) = err.span() {
-                self.diagnostics.push(Diagnostic::Other(
+                let code = err.code();
+                self.diagnostics.push(Diagnostic::Custom(
                     Box::new(err),
+                    code,
                     DiagnosticLevel::Error,
                     span,
                 ));
@@ -520,8 +522,9 @@ mod tests {
         let diagnostics = Diagnostics::from(vec![
             Diagnostic::MissingFunctionBody(ast::Span::new(0, 1, z)),
             Diagnostic::UnusedLocal(ast::Span::new(0, 1, a)),
-            Diagnostic::Other(
+            Diagnostic::Custom(
                 Box::new(NeverFormat),
+                "FILTERED_DIAGNOSTIC",
                 DiagnosticLevel::Pedantic,
                 ast::Span::new(0, 1, a),
             ),
@@ -577,8 +580,9 @@ mod tests {
             let file = sources.push_back("policy.reds", "func Test() {}\n");
             let interner = TypeInterner::default();
             let diagnostic = || {
-                Diagnostic::Other(
+                Diagnostic::Custom(
                     Box::new(std::io::Error::other("runtime-allowed error")),
+                    "RUNTIME_ALLOWED_ERROR",
                     DiagnosticLevel::ErrorAllowedAtRuntime,
                     ast::Span::new(0, 1, file),
                 )

@@ -175,7 +175,7 @@ fn omitted_arguments_are_inert_before_array_prefixes() {
     analyze(
         "class Value {} func Take(opt unused: Int32, values: [Int32], value: ref<Value>) {}
          func Test(const value: wref<Value>) { Take(, [1], WeakRefToRef(value),); }",
-        |_, _, codes| assert_eq!(codes, ["OTHER"]),
+        |_, _, codes| assert_eq!(codes, ["CONST_FORWARDING"]),
     );
 }
 

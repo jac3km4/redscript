@@ -126,8 +126,14 @@ pub enum Diagnostic<'ctx> {
     LessVisibleOverride(Visibility, Span),
     #[error("override return type is incompatible with the inherited signature")]
     OverrideReturnTypeMismatch(Span),
+    /// An extension diagnostic with a caller-defined stable code.
     #[error("{0}")]
-    Other(Box<dyn std::error::Error + 'ctx>, DiagnosticLevel, Span),
+    Custom(
+        Box<dyn std::error::Error + 'ctx>,
+        &'static str,
+        DiagnosticLevel,
+        Span,
+    ),
 }
 
 impl<'ctx> Diagnostic<'ctx> {
@@ -145,7 +151,7 @@ impl<'ctx> Diagnostic<'ctx> {
             Self::ImportIsPrivate(_, _) | Self::LessVisibleOverride(_, _) => {
                 DiagnosticLevel::ErrorAllowedAtRuntime
             }
-            Self::Other(_, level, _) => *level,
+            Self::Custom(_, _, level, _) => *level,
             _ => DiagnosticLevel::Error,
         }
     }
@@ -207,7 +213,7 @@ impl<'ctx> Diagnostic<'ctx> {
             | Self::InvalidStructVariance(span)
             | Self::LessVisibleOverride(_, span)
             | Self::OverrideReturnTypeMismatch(span)
-            | Self::Other(_, _, span) => *span,
+            | Self::Custom(_, _, _, span) => *span,
         }
     }
 
@@ -260,7 +266,7 @@ impl<'ctx> Diagnostic<'ctx> {
             Self::InvalidStructVariance(_) => "INVALID_STRUCT_VARIANCE",
             Self::LessVisibleOverride(_, _) => "LESS_VISIBLE_OVERRIDE",
             Self::OverrideReturnTypeMismatch(_) => "OVERRIDE_RETURN_TYPE_MISMATCH",
-            Self::Other(_, _, _) => "OTHER",
+            Self::Custom(_, code, _, _) => code,
         }
     }
 
@@ -515,6 +521,31 @@ mod tests {
             assert_eq!(diagnostic.span(), span);
             assert!(diagnostic.related_locations().next().is_none());
         }
+    }
+
+    #[test]
+    fn custom_diagnostics_preserve_metadata_and_message() {
+        let sources = ast::SourceMap::new();
+        let file = sources.push_back("custom.reds", "value");
+        let span = Span::new(0, 5, file);
+        let diagnostic = Diagnostic::Custom(
+            Box::new(std::io::Error::other("custom diagnostic")),
+            "CUSTOM_DIAGNOSTIC",
+            DiagnosticLevel::Warning,
+            span,
+        );
+        assert_eq!(diagnostic.code(), "CUSTOM_DIAGNOSTIC");
+        assert_eq!(diagnostic.level(), DiagnosticLevel::Warning);
+        assert_eq!(diagnostic.span(), span);
+        assert_eq!(diagnostic.to_string(), "custom diagnostic");
+        assert!(!diagnostic.is_error());
+        assert!(
+            diagnostic
+                .display(&sources)
+                .unwrap()
+                .to_string()
+                .contains("warning[CUSTOM_DIAGNOSTIC]")
+        );
     }
 
     #[test]

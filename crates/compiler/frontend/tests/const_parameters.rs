@@ -47,9 +47,17 @@ fn check_level(source: &str, expected: &[&str], level: DiagnosticLevel, message:
         .iter()
         .map(|diagnostic| {
             assert!(
-                matches!(diagnostic, Diagnostic::Other(error, actual, _)
+                matches!(diagnostic, Diagnostic::Custom(error, _, actual, _)
                     if *actual == level && error.to_string() == message),
                 "{source}: {diagnostic:?}"
+            );
+            assert_eq!(
+                diagnostic.code(),
+                if level == DiagnosticLevel::Error {
+                    "CONST_PARAMETER_WRITE"
+                } else {
+                    "CONST_FORWARDING"
+                }
             );
             let span = diagnostic.span();
             assert_eq!(span.file, file);

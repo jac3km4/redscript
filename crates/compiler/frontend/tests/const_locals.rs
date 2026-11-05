@@ -79,6 +79,16 @@ fn check_diagnostics(
                 },
                 "{d:?}"
             );
+            assert_eq!(
+                d.code(),
+                if level == DiagnosticLevel::ErrorAllowedAtRuntime {
+                    "CONST_FORWARDING"
+                } else if message == "cannot write through a const local" {
+                    "CONST_LOCAL_WRITE"
+                } else {
+                    "CONST_PARAMETER_WRITE"
+                }
+            );
             let span = d.span();
             assert_eq!(span.file, file);
             &source[span.start as usize..span.end as usize]

@@ -50,7 +50,7 @@ fn assert_const_write(reporter: &CompileErrorReporter<'_>, source: &str) {
     assert!(
         reporter.reported().iter().all(|diagnostic| matches!(
             diagnostic,
-            Diagnostic::Other(error, DiagnosticLevel::Error, _)
+            Diagnostic::Custom(error, "CONST_PARAMETER_WRITE", DiagnosticLevel::Error, _)
                 if error.to_string() == "cannot write through a const parameter"
         )),
         "{source}: {:?}",
@@ -329,7 +329,7 @@ fn native_const_relaxations_do_not_leak_into_community_sources() {
     analyze(
         "function Native(const value: ref<array<Int32>>) { value[0] = 7; }",
         "func Community(const value: [Int32]) { value[0] = 7; }",
-        |_, _, codes| assert_eq!(codes, ["OTHER"]),
+        |_, _, codes| assert_eq!(codes, ["CONST_PARAMETER_WRITE"]),
     );
 }
 
