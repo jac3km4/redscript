@@ -52,11 +52,7 @@ impl<'ctx> CompilationInputs<'ctx> {
         type_flags: &TypeFlagRegistry,
     ) -> Result<Self, Error> {
         let mut inputs = CompilationInputs::default();
-        let mut virtual_map: HashMap<
-            TypeId<'ctx>,
-            HashMap<CNameIndex, MethodId<'ctx>, BuildIdentityHasher<u32>>,
-            BuildIdentityHasher<usize>,
-        > = HashMap::default();
+        let mut loaded_classes = vec![];
 
         for def in bundle.indexed_definitions() {
             match def {
@@ -132,10 +128,7 @@ impl<'ctx> CompilationInputs<'ctx> {
                             .map_err(|_| Error::DuplicateField(field_idx.into()))?;
                     }
 
-                    let mut virtuals = base
-                        .as_ref()
-                        .and_then(|base| virtual_map.get(&base.id()).cloned())
-                        .unwrap_or_default();
+                    let mut loaded_methods = vec![];
                     let mut script_ref_receiver_methods = vec![];
 
                     for &method_idx in cls.methods() {
@@ -146,6 +139,7 @@ impl<'ctx> CompilationInputs<'ctx> {
                             Error::MissingPoolItem("method name", method.name().into())
                         })?;
                         let name = demangled_name(assert_borrowed(name));
+                        let pool_name = method.name();
 
                         let flags = MethodFlags::new()
                             .with_is_static(method.flags().is_static())
@@ -158,7 +152,6 @@ impl<'ctx> CompilationInputs<'ctx> {
                             )
                             .with_visibility(Visibility::Public);
                         let func_t = load_function_type(method, bundle, interner, type_flags)?;
-                        let base = virtuals.get(&method.name()).copied();
 
                         let idx = methods.add_with(name, |idx| {
                             // Handle static methods that accept the struct by reference as the first
@@ -172,27 +165,26 @@ impl<'ctx> CompilationInputs<'ctx> {
                                 let func_t = func_t.clone().with_params(rem);
                                 let flags =
                                     flags.with_is_static(false).with_is_static_forwarder(true);
-                                let method = Method::new(flags, func_t, base, [], None)
+                                let method = Method::new(flags, func_t, None, [], None)
                                     .with_aliased(MethodId::new(cls_id, idx));
-                                script_ref_receiver_methods.push((name, method));
+                                script_ref_receiver_methods.push((name, pool_name, method));
                             }
 
-                            Method::new(flags, func_t, base, [], None)
+                            Method::new(flags, func_t, None, [], None)
                         });
                         mappings.methods.insert(idx, method_idx);
 
-                        let method_id = MethodId::new(cls_id, idx);
-                        if !method.flags().is_final() && !method.flags().is_static() {
-                            virtuals.insert(method.name(), method_id);
-                        }
+                        loaded_methods.push((pool_name, MethodId::new(cls_id, idx)));
                     }
 
-                    for (name, method) in script_ref_receiver_methods {
+                    for (name, pool_name, method) in script_ref_receiver_methods {
                         // Avoid adding an alias when it could conflict with an existing method.
                         if methods.by_name(name).count() > 1 {
                             continue;
                         }
-                        methods.add(name, method);
+
+                        let idx = methods.add(name, method);
+                        loaded_methods.push((pool_name, MethodId::new(cls_id, idx)));
                     }
 
                     let type_flags = type_flags.get(cls_name.as_ref());
@@ -219,7 +211,7 @@ impl<'ctx> CompilationInputs<'ctx> {
                             .insert(TypeApp::nullary(cls_id), mappings);
                     }
 
-                    virtual_map.insert(cls_id, virtuals);
+                    loaded_classes.push((cls_id, loaded_methods));
                 }
                 IndexedDefinition::Enum(idx, enm) => {
                     let name = bundle
@@ -277,6 +269,39 @@ impl<'ctx> CompilationInputs<'ctx> {
         }
 
         inputs.symbols.ensure_serializable_base();
+
+        // The optional engine root must be connected before linking virtual slots.
+        // Pool definition order need not match the resulting inheritance order.
+        loaded_classes
+            .sort_by_cached_key(|(id, _)| inputs.symbols.base_iter_with_self(*id).count());
+        let mut virtual_map: HashMap<
+            TypeId<'ctx>,
+            HashMap<CNameIndex, MethodId<'ctx>, BuildIdentityHasher<u32>>,
+            BuildIdentityHasher<usize>,
+        > = HashMap::default();
+        for (cls_id, methods) in loaded_classes {
+            let mut virtuals = inputs.symbols[cls_id]
+                .schema()
+                .base_type()
+                .and_then(|base| virtual_map.get(&base.id()).cloned())
+                .unwrap_or_default();
+            for (name, id) in methods {
+                let (_, method) = inputs
+                    .symbols
+                    .get_method_mut(id)
+                    .expect("method should exist");
+                if let Some(&base) = virtuals.get(&name) {
+                    method.set_overriden(base);
+                }
+                if !method.flags().is_final()
+                    && !method.flags().is_static()
+                    && !method.flags().is_static_forwarder()
+                {
+                    virtuals.insert(name, id);
+                }
+            }
+            virtual_map.insert(cls_id, virtuals);
+        }
         Ok(inputs)
     }
 
