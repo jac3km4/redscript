@@ -326,10 +326,10 @@ Array literals currently construct temporary arrays in statement prefixes, not
 inside expression bytecode. Shared lowering reports
 `UNSAFE_ARRAY_EVALUATION` (`Warning`) when this could move
 construction past an earlier observable expression or out of a lazy branch.
-This includes assignments inside
-later array arguments/elements, complex assignment destinations with array RHSs,
-logical RHSs, and conditional arms. Literal-only nested arrays and ordinary local
-array initialization remain supported. Omitted argument slots have no evaluation
+This includes assignments inside later array arguments/elements, logical RHSs,
+and conditional arms. Assignment to a place expression does not itself trigger
+this warning for an array RHS; subexpressions on both sides remain checked.
+Literal-only nested arrays and ordinary local array initialization remain supported. Omitted argument slots have no evaluation
 and are prefix-inert, so `Take(, [1])` is allowed when the first parameter is
 optional. Type-qualified static calls such as `Host.Take([1])` have no runtime
 callee evaluation and are accepted. Runtime member callees and closure/function-value

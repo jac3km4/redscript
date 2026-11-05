@@ -123,9 +123,6 @@ fn visit<'ctx>((expr, span): &Spanned<SourceExpr<'ctx>>, lazy: bool) -> LowerRes
         Expr::Assign { lhs, rhs } => {
             let first = visit(lhs, lazy)?;
             let second = visit(rhs, lazy)?;
-            if second && !matches!(lhs.0, Expr::Ident(_)) {
-                return Err(Error::UnsafeArrayEvaluation(lhs.1));
-            }
             Ok(first || second)
         }
         Expr::Conditional { cond, then, else_ } => {

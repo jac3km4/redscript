@@ -61,9 +61,16 @@ fn eager_call_keeps_array_prefix_and_all_arguments() {
 
 #[test]
 fn indexed_assignment_keeps_original_destination_and_copy() {
-    check(
+    common::analyze(
+        "array_assignment.reds",
         "func Run() { let values: [[Int32]]; values[0] = [1]; }",
-        |block, _| {
+        |_, unit, symbols, reporter| {
+            assert!(reporter.reported().is_empty(), "{reporter:?}");
+            let entry = symbols
+                .free_functions()
+                .find(|entry| entry.name().to_string() == "Run")
+                .unwrap();
+            let block = &unit.functions[entry.key()].block;
             assert_eq!(block.stmts.len(), 3, "{block:?}");
             let ir::Stmt::InitArray { local, .. } = &block.stmts[1] else {
                 panic!("{block:?}")
@@ -77,6 +84,32 @@ fn indexed_assignment_keeps_original_destination_and_copy() {
             assert!(matches!(&**place, ir::Expr::Index { .. }));
             assert!(matches!(&**expr, ir::Expr::Local(id, _) if id == local));
         },
+    );
+}
+
+#[test]
+fn place_assignments_do_not_warn_about_array_rhs() {
+    for source in [
+        "func Run() { let values: [Int32]; values = [1]; }",
+        "class Host { public let values: [Int32]; } func Run(host: Host) { host.values = [1]; }",
+        "class Host { public let values: [Int32]; } func Run(host: Host) { let read: () -> Void = () -> { host.values = [1]; }; }",
+        "func Run() { let x = 0; let values: [[Int32]]; values[x = 1] = [x = 2]; }",
+        "func Run(values: script_ref<[Int32]>) { Deref(values) = [1]; }",
+        "func Run() { let values: [Int32]; let write: () -> Void = () -> { values = [1]; }; }",
+    ] {
+        common::analyze("array_assignment.reds", source, |_, _, _, reporter| {
+            assert!(reporter.reported().is_empty(), "{source}: {reporter:?}");
+        });
+    }
+}
+
+#[test]
+fn place_assignments_still_check_unsafe_rhs_subexpressions() {
+    check(
+        "native func Read(values: [Int32]) -> Int32;
+         class Host { public let values: [Int32]; }
+         func Run(host: Host) { host.values = [true ? Read([1]) : 0]; }",
+        |_, _| {},
     );
 }
 

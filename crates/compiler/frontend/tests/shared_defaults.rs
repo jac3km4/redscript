@@ -192,7 +192,6 @@ fn unsafe_array_prefixes_are_diagnosed_while_local_construction_remains_supporte
         "let x = 0; let values = [Read(x), Size([x = 1])];",
         "let x = 0; let value = false && Size([x = 1]) == 1;",
         "let x = 0; let value = true ? Size([x = 1]) : 0;",
-        "let x = 0; let values: [[Int32]]; values[x = 1] = [x = 2];",
     ] {
         analyze(
             &format!("{declarations} func Test() {{ {body} }}"),
