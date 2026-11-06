@@ -1321,7 +1321,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                         return Ok(format!(
                             "Cast<{}>({})",
                             target::typ(&self.type_of(whole)?, self.symbols)?,
-                            self.expr(&args[0])?
+                            self.expr_at(&args[0], 14)?
                         ));
                     }
                 }

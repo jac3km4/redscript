@@ -533,6 +533,7 @@ func NotChoice(a: Bool, b: Bool, c: Bool) -> Bool = !(a ? b : c)
 func Assign(a: Int32, b: Int32, c: Int32) -> Int32 { a = b + c; return a; }
 func Compound(a: Int32, b: Int32, c: Int32) -> Int32 { a += b += c; return a; }
 func CastChoice(a: Bool, b: Int32, c: Int32) -> Float = Cast<Float>(a ? b : c)
+func CastAdd(a: Int32, b: Int32) -> Float = Cast<Float>(a + b)
 class Base {}
 class Child extends Base {}
 func CastReceiver(a: Bool, b: Base, c: Base) -> Child = (a ? b : c) as Child
