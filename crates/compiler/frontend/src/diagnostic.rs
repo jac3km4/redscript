@@ -148,9 +148,9 @@ impl<'ctx> Diagnostic<'ctx> {
             | Self::UnusedLocal(_)
             | Self::AddFieldConflict(_)
             | Self::ReplaceMethodConflict(_, _, _, _) => DiagnosticLevel::Warning,
-            Self::ImportIsPrivate(_, _) | Self::LessVisibleOverride(_, _) => {
-                DiagnosticLevel::ErrorAllowedAtRuntime
-            }
+            Self::ImportIsPrivate(_, _)
+            | Self::LessVisibleOverride(_, _)
+            | Self::DuplicateMethodAnnotation(_) => DiagnosticLevel::ErrorAllowedAtRuntime,
             Self::Custom(_, _, level, _) => *level,
             _ => DiagnosticLevel::Error,
         }
