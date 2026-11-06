@@ -171,12 +171,13 @@ impl<'ctx> Monomorphizer<'ctx> {
                     .map(|entry| (class.methods()[entry.key()], &repr.methods[entry.key()]))
                     .collect::<Vec<_>>();
 
+                let owner = bundle[bundle[class.index()].name()].to_string();
                 for (idx, default) in &repr.fields {
                     let mangled = MangledConstant::new(default, symbols);
                     let field_idx = bundle[class.index()].fields_mut()[usize::from(*idx)];
                     merge_default(
                         &mut bundle[field_idx],
-                        typ.id().as_str(),
+                        &owner,
                         mangled.to_string(),
                     );
                 }
