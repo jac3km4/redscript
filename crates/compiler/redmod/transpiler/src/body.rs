@@ -787,8 +787,8 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             } => Ok(format!(
                 "{} ? {} : {}",
                 self.expr_at(condition, 3)?,
-                self.expr(then)?,
-                self.expr(else_)?
+                self.expr_at(then, 2)?,
+                self.expr_at(else_, 2)?
             )),
             ir::Expr::DynCast {
                 expr, target_type, ..

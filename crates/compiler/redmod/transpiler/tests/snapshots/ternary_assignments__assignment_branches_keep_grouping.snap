@@ -1,0 +1,27 @@
+---
+source: crates/compiler/redmod/transpiler/tests/ternary_assignments.rs
+expression: "support::emit(SOURCE, \"\")"
+---
+import function OperatorAssignAdd(out left: Int32, right: Int32) -> Int32;
+
+import function OperatorAssignSubtract(out left: Int32, right: Int32) -> Int32;
+
+function TernaryStores(flag: Bool, left: Int32, right: Int32) -> Int32 {
+    return flag ? (left = 1) : (right = 2);
+}
+
+function TernaryCompound(flag: Bool, left: Int32, right: Int32) -> Int32 {
+    return flag ? (left += 3) : (right -= 4);
+}
+
+function TernaryNested(flag: Bool, other: Bool, left: Int32, right: Int32) -> Int32 {
+    return flag ? other ? (left = 5) : (right += 6) : other ? (left -= 7) : (right = 8);
+}
+
+function TernaryCondition(flag: Bool, other: Bool, left: Int32, right: Int32) -> Int32 {
+    return (flag ? (other = true) : (other = false)) ? (left = 9) : (right = 10);
+}
+
+function TernaryChained(flag: Bool, left: Int32, right: Int32) -> Int32 {
+    return flag ? (left = right = 11) : (right += left += 12);
+}
