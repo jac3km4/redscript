@@ -87,3 +87,20 @@ fn roundtrip_encode() {
     let defs = bundle.definitions().cloned().collect::<Vec<_>>();
     assert_eq!(&defs, &[Definition::Type(typ)]);
 }
+
+#[test]
+fn measure_matches_written_bytes_exactly_without_trailing_byte() {
+    use redscript_io::byte::{Measure, TryWrite};
+
+    let mut bundle = ScriptBundle::default();
+    let name = bundle.cnames_mut().add("test");
+    bundle.define(Type::new(name, TypeKind::Class));
+
+    let writeable = bundle.into_writeable();
+    let measured_len = writeable.measure(());
+    let mut bytes = vec![0u8; measured_len];
+    let written = writeable.try_write(&mut bytes, redscript_io::byte::LE).unwrap();
+
+    assert_eq!(written, measured_len);
+    assert_eq!(writeable.to_bytes().unwrap().len(), written);
+}
