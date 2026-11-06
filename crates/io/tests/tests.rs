@@ -99,7 +99,9 @@ fn measure_matches_written_bytes_exactly_without_trailing_byte() {
     let writeable = bundle.into_writeable();
     let measured_len = writeable.measure(());
     let mut bytes = vec![0u8; measured_len];
-    let written = writeable.try_write(&mut bytes, redscript_io::byte::LE).unwrap();
+    let written = writeable
+        .try_write(&mut bytes, redscript_io::byte::LE)
+        .unwrap();
 
     assert_eq!(written, measured_len);
     assert_eq!(writeable.to_bytes().unwrap().len(), written);

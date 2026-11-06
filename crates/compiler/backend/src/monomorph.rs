@@ -175,11 +175,7 @@ impl<'ctx> Monomorphizer<'ctx> {
                 for (idx, default) in &repr.fields {
                     let mangled = MangledConstant::new(default, symbols);
                     let field_idx = bundle[class.index()].fields_mut()[usize::from(*idx)];
-                    merge_default(
-                        &mut bundle[field_idx],
-                        &owner,
-                        mangled.to_string(),
-                    );
+                    merge_default(&mut bundle[field_idx], &owner, mangled.to_string());
                 }
 
                 let env = typ.type_env(symbols);

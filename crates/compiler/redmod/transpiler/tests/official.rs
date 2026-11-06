@@ -1,13 +1,12 @@
 //! Opt-in conformance checks against a locally installed, trusted official compiler.
 use std::path::Path;
 
-use redscript_test_support::{OfficialBundle, OfficialCompiler, unique_directory};
-
 use redscript_community_ast::SourceMap;
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{Symbols, TypeInterner};
 use redscript_redmod_transpiler::package::{ScriptArtifact, publish_mod_with_root};
 use redscript_redmod_transpiler::transpile_sources;
+use redscript_test_support::{OfficialBundle, OfficialCompiler, unique_directory};
 
 #[test]
 #[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]

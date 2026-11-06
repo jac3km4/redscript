@@ -4,7 +4,6 @@ mod support;
 use redscript_community_ast::SourceMap;
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{Symbols, TypeInterner};
-
 use support::try_emit_source as emit;
 
 const SOURCE: &str = r#"
