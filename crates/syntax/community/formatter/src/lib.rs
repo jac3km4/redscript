@@ -1125,7 +1125,7 @@ where
             write!(
                 f,
                 "{padding}{}{trailing}{padding}",
-                SepBy::new(iter.clone(), ", ", *ctx)
+                SepBy::new(iter.clone(), separator, *ctx)
             )
         }
     }
@@ -1844,5 +1844,14 @@ mod operator_tests {
             assert_eq!(op.as_fmt(ctx).to_string(), symbol);
             assert_eq!(op.approx_width(), symbol.len());
         }
+    }
+
+    #[test]
+    fn sep_by_multiline_uses_custom_separator_on_single_line() {
+        let prefixes = HashMap::default();
+        let ctx = FormatCtx::new(&FormatSettings::DEFAULT, &prefixes);
+        let items = ["a", "b", "c"];
+        let formatted = SepByMultiline::new(items.into_iter(), "; ", ctx).to_string();
+        assert_eq!(formatted, "a; b; c");
     }
 }
