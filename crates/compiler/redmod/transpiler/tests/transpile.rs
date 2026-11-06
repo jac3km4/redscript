@@ -402,6 +402,19 @@ fn explicit_enum_storage_is_exported_without_narrowing() {
 }
 
 #[test]
+fn enum_declarations_omit_visibility_markers() {
+    let output = convert(
+        r#"
+module A
+public enum T { Zero = 0, One = 1 }
+private enum Hidden { Zero = 0 }
+public native enum NativeT { Zero = 0 }
+"#,
+    );
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn lazy_branches_and_loop_back_edges_keep_initialization_in_place() {
     let output = convert(
         r#"
