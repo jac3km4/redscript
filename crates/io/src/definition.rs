@@ -821,7 +821,7 @@ impl<'i> Function<'i> {
     /// Sets the `body` of this object.
     pub fn set_body(&mut self, body: FunctionBody<'i>) {
         self.flags.set_has_body(!body.is_empty());
-        if matches!(self.body, FunctionBody::Code(_)) {
+        if matches!(body, FunctionBody::Code(_)) {
             self.flags.set_has_extra_parameters(false);
         }
         self.body = body;
@@ -1896,5 +1896,24 @@ mod tests {
             };
             assert!(Definition::try_read(&[], (ENDIANESS, header)).is_err());
         }
+    }
+
+    #[test]
+    fn clears_has_extra_parameters_when_setting_code_body() {
+        let mut func = Function::new(
+            CNameIndex::UNDEFINED,
+            Visibility::Public,
+            FunctionFlags::default()
+                .with_has_body(true)
+                .with_has_extra_parameters(true),
+        )
+        .with_body(FunctionBody::Raw {
+            max_offset: 1,
+            bytes: Cow::Borrowed(&[0x00]),
+        });
+
+        assert!(func.flags().has_extra_parameters());
+        func.set_code(vec![Instr::Nop]);
+        assert!(!func.flags().has_extra_parameters());
     }
 }
