@@ -1,57 +1,10 @@
-use redscript_community_ast::SourceMap;
-use redscript_compiler_api::{SourceMapExt, TypeFlagRegistry};
-use redscript_compiler_backend::CompilationInputs;
-use redscript_compiler_frontend::{CompileErrorReporter, TypeInterner};
-use redscript_io::{
-    Class, ClassFlags, Function, IndexedDefinition, Instr, ScriptBundle, Visibility,
-};
-use redscript_redmod_adapter::{parse_file_with_metadata, process_sources};
+mod support;
+
+use redscript_io::{Instr, ScriptBundle};
+use support::function;
 
 fn compile(source: &str) -> ScriptBundle<'static> {
-    let sources = SourceMap::new();
-    sources.populate_boot_lib();
-    let file = sources.push_back("selection.script", source);
-    let (parsed, errors) = parse_file_with_metadata(source, file);
-    assert!(errors.is_empty(), "{errors:?}");
-    let dependencies = sources
-        .files()
-        .filter(|(id, _)| *id != file)
-        .map(|(id, source)| {
-            let (module, errors) = redscript_community_parser::parse_module(source.source(), id);
-            assert!(errors.is_empty(), "{errors:?}");
-            module.unwrap()
-        })
-        .collect::<Vec<_>>();
-    let interner = TypeInterner::default();
-    let mut bundle = ScriptBundle::default();
-    let name = bundle.cnames_mut().add("IScriptable");
-    bundle.define(Class::new(name, Visibility::Public, ClassFlags::default()));
-    let (symbols, mappings) =
-        CompilationInputs::load(&bundle, &interner, &TypeFlagRegistry::default())
-            .unwrap()
-            .into_inner();
-    let mut reporter = CompileErrorReporter::default();
-    let (unit, symbols, errors) =
-        process_sources(parsed, dependencies, symbols, &mut reporter, &interner);
-    assert!(errors.is_empty(), "{errors:?}");
-    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
-    mappings
-        .into_monomorphizer(&sources)
-        .monomorphize(&unit, &symbols, &mut bundle)
-        .unwrap();
-    bundle.into_owned()
-}
-
-fn function<'a>(bundle: &'a ScriptBundle<'_>, name: &str) -> &'a Function<'a> {
-    bundle
-        .indexed_definitions()
-        .find_map(|def| match def {
-            IndexedDefinition::Function(_, function) if &*bundle[function.name()] == name => {
-                Some(function)
-            }
-            _ => None,
-        })
-        .unwrap_or_else(|| panic!("missing function {name}"))
+    support::compile(source, "selection.script", &[], support::empty_bundle())
 }
 
 fn calls(bundle: &ScriptBundle<'_>, name: &str) -> Vec<String> {

@@ -1,32 +1,18 @@
 //! Opt-in conformance checks against a locally installed, trusted official compiler.
-use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::path::Path;
+
+use redscript_test_support::{OfficialBundle, OfficialCompiler, unique_directory};
 
 use redscript_community_ast::SourceMap;
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{Symbols, TypeInterner};
 use redscript_redmod_transpiler::package::{ScriptArtifact, publish_mod_with_root};
 use redscript_redmod_transpiler::transpile_sources;
-use redscript_redmod_transpiler::validate::OfficialValidator;
 
 #[test]
 #[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]
 fn semicolon_event_contracts_with_official_compiler() {
-    let validator = OfficialValidator {
-        executable: PathBuf::from(std::env::var_os("REDMOD_EXE").expect("set REDMOD_EXE")),
-        timeout: Duration::from_secs(60),
-    };
-    let root = PathBuf::from(std::env::var_os("REDMOD_GAME_ROOT").expect("set REDMOD_GAME_ROOT"));
-    let parent = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../../target/parity-integration/official-events")
-        .join(format!(
-            "{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+    let compiler = OfficialCompiler::from_env();
     let sources = SourceMap::new();
     let selected = sources.push_back("callback.reds", "class ReviewBoolCallback { protected cb func OnReview(value: Bool) -> Bool { if value { return false; } return value; } }");
     sources.populate_boot_lib();
@@ -62,28 +48,15 @@ fn semicolon_event_contracts_with_official_compiler() {
             false,
         ),
     ] {
-        let directory = parent.join(name);
-        std::fs::create_dir_all(directory.join("r6/scripts")).unwrap();
-        std::fs::write(directory.join("r6/scripts/authored.script"), source).unwrap();
-        let result = validator.validate_with_root(&directory, &root);
-        println!("{name}: {}\n{result:?}", directory.display());
-        assert_eq!(result.is_ok(), accepted, "{name}: {result:?}");
-        if name == "FreeValuePrototype" {
-            assert!(
-                result
-                    .as_ref()
-                    .unwrap_err()
-                    .to_string()
-                    .contains("must return a value")
-            );
-        }
-        if name == "ImportOnlyEvent" {
-            assert!(
-                result
-                    .unwrap_err()
-                    .to_string()
-                    .contains("cannot have scripted properties nor methods")
-            );
+        if accepted {
+            compiler.compile(name, source);
+        } else {
+            let diagnostic = match name {
+                "FreeValuePrototype" => "must return a value",
+                "ImportOnlyEvent" => "cannot have scripted properties nor methods",
+                _ => unreachable!(),
+            };
+            compiler.reject(name, source, diagnostic);
         }
     }
 }
@@ -91,17 +64,8 @@ fn semicolon_event_contracts_with_official_compiler() {
 #[test]
 #[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]
 fn authored_transpiled_sources_compile_with_official_compiler() {
-    let executable = PathBuf::from(std::env::var_os("REDMOD_EXE").expect("set REDMOD_EXE"));
-    let game_root =
-        PathBuf::from(std::env::var_os("REDMOD_GAME_ROOT").expect("set REDMOD_GAME_ROOT"));
-    let validator = OfficialValidator {
-        executable,
-        timeout: Duration::from_secs(60),
-    };
-    let parent = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../../target/redmod-official")
-        .join(format!("integration-{}", std::process::id()));
-    std::fs::create_dir_all(&parent).unwrap();
+    let compiler = OfficialCompiler::from_env();
+    let parent = unique_directory("integration");
 
     let output = authored_transpiled_sources();
     for ((name, _), source) in FIXTURES.iter().zip(&output) {
@@ -112,8 +76,8 @@ fn authored_transpiled_sources_compile_with_official_compiler() {
                 path: Path::new("authored.script"),
                 source,
             }],
-            &validator,
-            &game_root,
+            &compiler.validator,
+            &compiler.game_root,
         )
         .unwrap();
         let report = published.validation.unwrap();
@@ -527,7 +491,7 @@ fn authored_transpiled_sources_compile_with_official_compiler() {
                     );
                 }
                 "Literals" => {
-                    let strings = literal_pool(&bytes, 92);
+                    let strings = OfficialBundle::new(&bytes).literal_pool(92);
                     for expected in [
                         r"assets\widgets\button",
                         r"assets\",
@@ -536,15 +500,16 @@ fn authored_transpiled_sources_compile_with_official_compiler() {
                     ] {
                         assert!(strings.contains(&expected), "missing String {expected:?}");
                     }
-                    let cnames = literal_pool(&bytes, 44);
+                    let cnames = OfficialBundle::new(&bytes).literal_pool(44);
                     assert!(cnames.contains(&r"raw\name\"));
                 }
                 _ => unreachable!(),
             }
         }
         assert_eq!(
-            validator
-                .validate_with_root(&published.directory, &game_root)
+            compiler
+                .validator
+                .validate_with_root(&published.directory, &compiler.game_root)
                 .unwrap_err()
                 .kind(),
             std::io::ErrorKind::AlreadyExists
@@ -559,21 +524,7 @@ fn authored_transpiled_sources_compile_with_official_compiler() {
 fn raw_zero_argument_struct_construction_with_official_compiler() {
     use redscript_io::Instr;
 
-    let validator = OfficialValidator {
-        executable: PathBuf::from(std::env::var_os("REDMOD_EXE").expect("set REDMOD_EXE")),
-        timeout: Duration::from_secs(60),
-    };
-    let root = PathBuf::from(std::env::var_os("REDMOD_GAME_ROOT").expect("set REDMOD_GAME_ROOT"));
-    let parent = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../../target/redmod-official")
-        .join(format!(
-            "zero-argument-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+    let compiler = OfficialCompiler::from_env();
     for typ in [
         "Vector2",
         "ResRef",
@@ -581,16 +532,12 @@ fn raw_zero_argument_struct_construction_with_official_compiler() {
         "inkAnimOptions",
         "stimInvestigateData",
     ] {
-        let directory = parent.join(typ);
-        std::fs::create_dir_all(directory.join("r6/scripts")).unwrap();
         let source = format!(
             "function OfficialZeroArgument(again: Bool) -> {typ} {{\n    var value: {typ} = {typ}();\n    while (again) {{ value = {typ}(); }}\n    return value;\n}}\n"
         );
-        std::fs::write(directory.join("r6/scripts/authored.script"), source).unwrap();
-        let result = validator.validate_with_root(&directory, &root);
-        println!("{typ}: {}\n{result:?}", directory.display());
-        result.unwrap();
-        let bytes = std::fs::read(directory.join("r6/cache/final.redscripts")).unwrap();
+        let output = compiler.compile(&format!("zero-argument-{typ}"), &source);
+        let directory = &output.directory;
+        let bytes = output.bundle_bytes();
         let code = official_function_code(&bytes, "OfficialZeroArgument");
         println!("{typ}: {code:?}");
         std::fs::write(directory.join("probe-bytecode.txt"), format!("{code:#?}")).unwrap();
@@ -626,25 +573,7 @@ fn raw_zero_argument_struct_construction_with_official_compiler() {
 #[test]
 #[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]
 fn raw_inline_local_initializers_compile_with_official_compiler() {
-    let executable = PathBuf::from(std::env::var_os("REDMOD_EXE").expect("set REDMOD_EXE"));
-    let game_root =
-        PathBuf::from(std::env::var_os("REDMOD_GAME_ROOT").expect("set REDMOD_GAME_ROOT"));
-    let validator = OfficialValidator {
-        executable,
-        timeout: Duration::from_secs(60),
-    };
-    let parent = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../../target/redmod-official")
-        .join(format!(
-            "inline-initializers-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-    std::fs::create_dir_all(parent.parent().unwrap()).unwrap();
-    std::fs::create_dir(&parent).unwrap();
+    let compiler = OfficialCompiler::from_env();
 
     // Authored REDmod, deliberately bypassing transpilation and snapshot fixtures.
     // Compilation proves acceptance/typing only, not runtime order or side effects.
@@ -686,47 +615,16 @@ function OfficialInlineReferences() -> OfficialInlineWidget {
 "#,
         ),
     ];
-    let mut failures = Vec::new();
     for (name, source) in fixtures {
-        let directory = parent.join(name);
-        std::fs::create_dir_all(directory.join("r6/scripts")).unwrap();
-        std::fs::write(directory.join("r6/scripts/authored.script"), source).unwrap();
-        println!("{name}: {}", directory.display());
-        match validator.validate_with_root(&directory, &game_root) {
-            Ok(report) => {
-                println!(
-                    "{}",
-                    report.stdout.replace("\r\r\n", "\n").replace("\r\n", "\n")
-                );
-                if !report.stderr.is_empty() {
-                    failures.push(format!("{name}: {}", report.stderr));
-                }
-            }
-            Err(error) => failures.push(format!("{name}: {error}")),
-        }
+        let output = compiler.compile(name, source);
+        assert!(output.stderr.is_empty(), "{name}: {}", output.stderr);
     }
-    // Retain scripts, logs, and fresh cache artifacts under target as evidence.
-    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
 #[test]
 #[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]
 fn authored_enum_storage_matches_official_bounds_and_bundle_representation() {
-    let validator = OfficialValidator {
-        executable: PathBuf::from(std::env::var_os("REDMOD_EXE").expect("set REDMOD_EXE")),
-        timeout: Duration::from_secs(60),
-    };
-    let root = PathBuf::from(std::env::var_os("REDMOD_GAME_ROOT").expect("set REDMOD_GAME_ROOT"));
-    let parent = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../../target/redmod-official")
-        .join(format!(
-            "enum-storage-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+    let compiler = OfficialCompiler::from_env();
     let cases = [
         (
             "Legal",
@@ -765,43 +663,12 @@ fn authored_enum_storage_matches_official_bounds_and_bundle_representation() {
         ),
     ];
     for (name, source, expected_error) in cases {
-        let directory = parent.join(name);
-        std::fs::create_dir_all(directory.join("r6/scripts")).unwrap();
-        std::fs::write(directory.join("r6/scripts/authored.script"), source).unwrap();
-        println!("{name}: {}", directory.display());
-        let result = validator.validate_with_root(&directory, &root);
         if let Some(expected) = expected_error {
-            let message = result.unwrap_err().to_string();
-            assert!(message.contains(expected), "{message}");
+            compiler.reject(name, source, expected);
         } else {
-            result.unwrap();
-            let bytes = std::fs::read(directory.join("r6/cache/final.redscripts")).unwrap();
-            let names = literal_pool(&bytes, 44);
-            let word = |offset| {
-                u32::from_le_bytes(bytes.get(offset..offset + 4).unwrap().try_into().unwrap())
-                    as usize
-            };
-            let start = word(80);
-            let count = word(84);
-            let enums = (0..count)
-                .filter_map(|i| {
-                    let header = start + i * 20;
-                    let tag = u16::from_le_bytes(
-                        bytes
-                            .get(header + 16..header + 18)
-                            .unwrap()
-                            .try_into()
-                            .unwrap(),
-                    );
-                    (tag == 3).then(|| {
-                        let offset = word(header + 8);
-                        (
-                            names[word(header)],
-                            bytes.get(offset..offset + word(header + 12)).unwrap(),
-                        )
-                    })
-                })
-                .collect::<std::collections::BTreeMap<_, _>>();
+            let output = compiler.compile(name, source);
+            let bytes = output.bundle_bytes();
+            let bundle = OfficialBundle::new(&bytes);
             for (name, width) in [
                 ("I8", 1),
                 ("U8", 1),
@@ -812,81 +679,38 @@ fn authored_enum_storage_matches_official_bounds_and_bundle_representation() {
                 ("I64", 8),
                 ("Default", 4),
             ] {
-                assert_eq!(enums[name][1], width, "{name}");
+                assert_eq!(bundle.definition(name, 3)[1], width, "{name}");
             }
             // The member index differs; visibility, size, count and native flag do not.
-            assert_eq!(&enums["Signed"][..6], &enums["Unsigned"][..6]);
-            assert_eq!(enums["Signed"].last(), enums["Unsigned"].last());
+            assert_eq!(
+                &bundle.definition("Signed", 3)[..6],
+                &bundle.definition("Unsigned", 3)[..6]
+            );
+            assert_eq!(
+                bundle.definition("Signed", 3).last(),
+                bundle.definition("Unsigned", 3).last()
+            );
         }
     }
 }
 
-// Read only bounded version-14 literal tables, not definitions (which may use
-// official layouts unsupported by the full decompiler). Offsets follow io/bundle.rs.
-fn literal_pool(bytes: &[u8], table: usize) -> Vec<&str> {
-    fn word(bytes: &[u8], offset: usize) -> usize {
-        u32::from_le_bytes(bytes.get(offset..offset + 4).unwrap().try_into().unwrap()) as usize
-    }
-    assert_eq!(bytes.get(..4), Some(b"REDS".as_slice()));
-    assert_eq!(word(bytes, 4), 14);
-    let data_start = word(bytes, 32);
-    let data_end = data_start.checked_add(word(bytes, 36)).unwrap();
-    let data = bytes.get(data_start..data_end).unwrap();
-    let start = word(bytes, table);
-    let size = word(bytes, table + 4).checked_mul(4).unwrap();
-    bytes
-        .get(start..start.checked_add(size).unwrap())
-        .unwrap()
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|entry| {
-            let offset = word(entry, 0);
-            let remaining = data.get(offset..).unwrap();
-            let end = remaining.iter().position(|&b| b == 0).unwrap();
-            std::str::from_utf8(&remaining[..end]).unwrap()
-        })
-        .collect()
-}
-
 #[test]
 fn literal_pool_reader_decodes_relative_offsets() {
-    let mut bytes = vec![0_u8; 112];
-    bytes[..4].copy_from_slice(b"REDS");
-    for (offset, value) in [(4, 14_u32), (32, 108), (36, 4), (92, 104), (96, 1)] {
-        bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
-    }
-    bytes[108..].copy_from_slice(b"a\\b\0");
-    assert_eq!(literal_pool(&bytes, 92), vec![r"a\b"]);
+    let mut bundle = redscript_io::ScriptBundle::default();
+    bundle.strings_mut().add("padding");
+    bundle.strings_mut().add(r"a");
+    let bytes = bundle.into_writeable().to_bytes().unwrap();
+    assert_eq!(
+        OfficialBundle::new(&bytes).literal_pool(92),
+        vec!["padding", r"a"]
+    );
 }
 
-// Decode only the named function: official external records need not be supported
-// by the full bundle reader. v1.2.2 prepends a 14-byte profiling instruction.
+// These feature assertions intentionally ignore debug breakpoints. Other probes
+// retain them when checking virtual instruction offsets and control-flow bounds.
 fn official_function_code(bytes: &[u8], name: &str) -> Vec<redscript_io::Instr> {
-    use byte::BytesExt as _;
-    use redscript_io::{BundleReader, Definition, FunctionBody, Instr};
-    let reader = BundleReader::new(bytes).unwrap();
-    let word = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
-    let index = (1..word(84))
-        .find(|i| {
-            let at = word(80) as usize + *i as usize * 20;
-            u16::from_le_bytes(bytes[at + 16..at + 18].try_into().unwrap()) == 5
-                && reader.cnames().get(word(at)).unwrap().split(';').next() == Some(name)
-        })
-        .unwrap_or_else(|| panic!("missing {name}"));
-    let Definition::Function(function) = reader.definitions().get(index).unwrap() else {
-        panic!("expected function")
-    };
-    let FunctionBody::Raw { bytes: raw, .. } = function.body() else {
-        panic!("expected raw body")
-    };
-    assert_eq!(raw[0], 0x33);
-    let mut at = 14;
-    let mut code = Vec::<Instr>::new();
-    while at < raw.len() {
-        code.push(raw.read(&mut at, byte::LE).unwrap());
-    }
-    code.retain(|op| !matches!(op, Instr::Breakpoint(_)));
+    let mut code = OfficialBundle::new(bytes).function_code_prefix(&format!("{name};"));
+    code.retain(|op| !matches!(op, redscript_io::Instr::Breakpoint(_)));
     code
 }
 

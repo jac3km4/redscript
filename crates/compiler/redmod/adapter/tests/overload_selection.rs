@@ -1,43 +1,26 @@
+mod support;
+
 use redscript_community_ast::SourceMap;
-use redscript_compiler_api::SourceMapExt;
-use redscript_compiler_frontend::{
-    CompileErrorReporter, LoweredCompilationUnit, Symbols, TypeInterner, ir,
-};
-use redscript_redmod_adapter::{parse_file_with_metadata, process_sources};
+use redscript_compiler_frontend::{LoweredCompilationUnit, Symbols, ir};
+use redscript_redmod_adapter::parse_file_with_metadata;
 
 fn analyze(
     source: &str,
     check: impl for<'ctx> FnOnce(&LoweredCompilationUnit<'ctx>, &Symbols<'ctx>, &[String]),
 ) {
-    let sources = SourceMap::new();
-    sources.populate_boot_lib();
-    let file = sources.push_back("selection.script", source);
-    let (parsed, errors) = parse_file_with_metadata(source, file);
-    assert!(errors.is_empty(), "{errors:?}");
-    let dependencies = sources
-        .files()
-        .filter(|(id, _)| *id != file)
-        .map(|(id, source)| {
-            let (module, errors) = redscript_community_parser::parse_module(source.source(), id);
-            assert!(errors.is_empty(), "{errors:?}");
-            module.unwrap()
-        })
-        .collect::<Vec<_>>();
-    let interner = TypeInterner::default();
-    let mut reporter = CompileErrorReporter::default();
-    let (unit, symbols, errors) = process_sources(
-        parsed,
-        dependencies,
-        Symbols::with_default_types(),
-        &mut reporter,
-        &interner,
+    support::analyze(
+        source,
+        "selection.script",
+        &[],
+        |unit, symbols, _, errors, reporter| {
+            let errors = errors
+                .iter()
+                .map(ToString::to_string)
+                .chain(reporter.reported().iter().map(ToString::to_string))
+                .collect::<Vec<_>>();
+            check(unit, symbols, &errors);
+        },
     );
-    let errors = errors
-        .iter()
-        .map(ToString::to_string)
-        .chain(reporter.reported().iter().map(ToString::to_string))
-        .collect::<Vec<_>>();
-    check(&unit, &symbols, &errors);
 }
 
 #[test]

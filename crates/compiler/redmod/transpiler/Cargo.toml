@@ -10,6 +10,7 @@ redscript-community-ast.workspace = true
 redscript-compiler-frontend.workspace = true
 
 [dev-dependencies]
+redscript-test-support.workspace = true
 byte.workspace = true
 redscript-io.workspace = true
 redscript-redmod-adapter.workspace = true

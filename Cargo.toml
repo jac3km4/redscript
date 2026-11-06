@@ -8,6 +8,7 @@ members = [
     "crates/syntax/redmod/parser",
     "crates/syntax/redmod/formatter",
     "crates/io",
+    "crates/test-support",
     "crates/compiler/frontend",
     "crates/compiler/backend",
     "crates/compiler/api",
@@ -37,6 +38,7 @@ redscript-redmod-formatter.path = "crates/syntax/redmod/formatter"
 redscript-redmod-adapter.path = "crates/compiler/redmod/adapter"
 redscript-redmod-transpiler.path = "crates/compiler/redmod/transpiler"
 redscript-io.path = "crates/io"
+redscript-test-support.path = "crates/test-support"
 redscript-compiler-frontend.path = "crates/compiler/frontend"
 redscript-compiler-backend.path = "crates/compiler/backend"
 redscript-compiler-api.path = "crates/compiler/api"

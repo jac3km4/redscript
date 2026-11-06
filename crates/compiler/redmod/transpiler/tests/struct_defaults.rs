@@ -1,23 +1,10 @@
 //! Struct defaults use zero-argument construction at each declaration site.
+mod support;
 use redscript_community_ast::SourceMap;
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{Symbols, TypeInterner};
-use redscript_redmod_transpiler::{TranspileDiagnostic, transpile_sources};
 
-fn emit(source: &str, dependency: &str) -> Result<String, Vec<TranspileDiagnostic>> {
-    let sources = SourceMap::new();
-    let selected = sources.push_back("struct-defaults.reds", source);
-    sources.push_back("dependency.reds", dependency);
-    sources.populate_boot_lib();
-    let interner = TypeInterner::default();
-    transpile_sources(
-        &sources,
-        &[selected],
-        Symbols::with_default_types(),
-        &interner,
-    )
-    .map(|output| output[0].module.text.clone())
-}
+use support::try_emit as emit;
 
 const SOURCE: &str = r#"
 class DefaultObject {}
@@ -130,26 +117,7 @@ fn community_explicit_constructors_still_require_all_fields() {
 #[test]
 #[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]
 fn struct_constructors_with_official_compiler() {
-    use std::path::{Path, PathBuf};
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
-    use redscript_redmod_transpiler::validate::OfficialValidator;
-
-    let validator = OfficialValidator {
-        executable: PathBuf::from(std::env::var_os("REDMOD_EXE").expect("set REDMOD_EXE")),
-        timeout: Duration::from_secs(60),
-    };
-    let root = PathBuf::from(std::env::var_os("REDMOD_GAME_ROOT").expect("set REDMOD_GAME_ROOT"));
-    let parent = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../../target/redmod-official")
-        .join(format!(
-            "struct-defaults-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+    let compiler = redscript_test_support::OfficialCompiler::from_env();
     let generated = emit(SOURCE, "").unwrap();
     for (name, source, accepted) in [
         ("TranspiledDefaults", generated.as_str(), true),
@@ -174,11 +142,10 @@ fn struct_constructors_with_official_compiler() {
             true,
         ),
     ] {
-        let directory = parent.join(name);
-        std::fs::create_dir_all(directory.join("r6/scripts")).unwrap();
-        std::fs::write(directory.join("r6/scripts/authored.script"), source).unwrap();
-        let result = validator.validate_with_root(&directory, &root);
-        println!("{name}: {}\n{result:?}", directory.display());
-        assert_eq!(result.is_ok(), accepted, "{name}: {result:?}");
+        if accepted {
+            compiler.compile(name, source);
+        } else {
+            compiler.reject(name, source, "Unable to convert from 'Bool' to 'Int32'");
+        }
     }
 }

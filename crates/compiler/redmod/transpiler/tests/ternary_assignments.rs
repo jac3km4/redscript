@@ -22,11 +22,14 @@ func TernaryChained(flag: Bool, left: Int32, right: Int32) -> Int32 {
 
 #[test]
 fn assignment_branches_keep_grouping() {
-    insta::assert_snapshot!(support::emit(SOURCE, ""));
+    insta::assert_snapshot!(support::emit_parsed(SOURCE, ""));
 }
 
 #[test]
 #[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]
 fn assignment_branches_with_official_compiler() {
-    support::validate_official("ternary-assignments", &support::emit(SOURCE, ""));
+    redscript_test_support::OfficialCompiler::from_env().compile(
+        "ternary-assignments",
+        &support::without_synthetic_operator_imports(&support::emit_parsed(SOURCE, "")),
+    );
 }

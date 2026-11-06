@@ -1,0 +1,14 @@
+[package]
+name = "redscript-test-support"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+byte.workspace = true
+redscript-io.workspace = true
+redscript-redmod-transpiler.workspace = true
+
+[lints]
+workspace = true
