@@ -1,17 +1,10 @@
 //! Feature 5: retain receiver Context boundaries, never spill mutable value places.
+mod support;
+
 use redscript_community_ast::SourceMap;
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{Symbols, TypeInterner};
-use redscript_redmod_transpiler::transpile_sources;
-
-fn emit(source: &str) -> Result<String, Vec<redscript_redmod_transpiler::TranspileDiagnostic>> {
-    let sources = SourceMap::new();
-    let file = sources.push_back("receivers.reds", source);
-    sources.populate_boot_lib();
-    let interner = TypeInterner::default();
-    transpile_sources(&sources, &[file], Symbols::with_default_types(), &interner)
-        .map(|output| output[0].module.text.clone())
-}
+use support::try_emit_source as emit;
 
 const SOURCE: &str = r#"
 class ReceiverOwner {
@@ -188,77 +181,22 @@ fn temporary_struct_and_class_script_reference_places_remain_rejected() {
 #[test]
 #[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]
 fn receivers_with_official_compiler() {
-    use std::path::{Path, PathBuf};
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use redscript_io::Instr;
+    use redscript_test_support::{OfficialBundle, OfficialCompiler};
 
-    use redscript_io::{BundleReader, Definition, Instr};
-    use redscript_redmod_transpiler::validate::OfficialValidator;
-    let validator = OfficialValidator {
-        executable: PathBuf::from(std::env::var_os("REDMOD_EXE").expect("set REDMOD_EXE")),
-        timeout: Duration::from_secs(60),
-    };
-    let root = PathBuf::from(std::env::var_os("REDMOD_GAME_ROOT").expect("set REDMOD_GAME_ROOT"));
-    let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../../target/redmod-official")
-        .join(format!(
-            "receivers-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
     let generated = emit(SOURCE).unwrap();
     let body = generated
         .lines()
         .filter(|line| !line.starts_with("import function"))
         .collect::<Vec<_>>()
         .join("\n");
-    std::fs::create_dir_all(directory.join("r6/scripts")).unwrap();
-    std::fs::write(directory.join("r6/scripts/authored.script"), &body).unwrap();
-    let report = validator.validate_with_root(&directory, &root).unwrap();
-    println!("{}\n{}", directory.display(), report.stdout);
-    let bytes = std::fs::read(directory.join("r6/cache/final.redscripts")).unwrap();
-    let reader = BundleReader::new(&bytes).unwrap();
-    // Decode only function records: official external placeholders/profiling
-    // records are not necessarily supported by the full bundle reader.
-    let word = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
-    let function = |name: &str| {
-        (1..word(84))
-            .filter(|i| {
-                let at = word(80) as usize + *i as usize * 20;
-                u16::from_le_bytes(bytes[at + 16..at + 18].try_into().unwrap()) == 5
-                    && reader.cnames().get(word(at)).unwrap().starts_with(name)
-            })
-            .map(|i| reader.definitions().get(i).unwrap())
-            .find_map(|def| match def {
-                Definition::Function(f)
-                    if reader.cnames().get(f.name()).unwrap().starts_with(name) =>
-                {
-                    Some(f)
-                }
-                _ => None,
-            })
-            .unwrap()
-    };
-    // Official v1.2.2 uses a 14-byte profiling preamble, unlike the shared
-    // reader's Profile layout. Decode this named probe after that preamble,
-    // bounded by its physical record; do not use a guessed virtual code length.
-    use byte::BytesExt as _;
-    let decode = |name: &str| {
-        let probe = function(name);
-        let redscript_io::FunctionBody::Raw { bytes: raw, .. } = probe.body() else {
-            panic!("expected serialized probe")
-        };
-        assert_eq!(raw[0], 0x33);
-        let mut at = 14;
-        let mut code = Vec::<Instr>::new();
-        while at < raw.len() {
-            code.push(raw.read(&mut at, byte::LE).unwrap());
-        }
-        code
-    };
-    let assignments = decode("ReceiverWeakAssignments;");
+    let output = OfficialCompiler::from_env().compile("receivers", &body);
+    output.assert_version("v1.2.2");
+    let directory = &output.directory;
+    let bytes = output.bundle_bytes();
+    let bundle = OfficialBundle::new(&bytes);
+    let cnames = bundle.literal_pool(44);
+    let assignments = bundle.function_code_prefix("ReceiverWeakAssignments;");
     std::fs::write(
         directory.join("assignment-bytecode.txt"),
         format!("{assignments:#?}"),
@@ -298,7 +236,7 @@ fn receivers_with_official_compiler() {
         !assignments.iter().any(|op| matches!(op, Instr::Local(_))),
         "{assignments:?}"
     );
-    let out = decode("ReceiverFieldOut;");
+    let out = bundle.function_code_prefix("ReceiverFieldOut;");
     std::fs::write(directory.join("out-bytecode.txt"), format!("{out:#?}")).unwrap();
     assert_eq!(
         out.iter()
@@ -323,7 +261,7 @@ fn receivers_with_official_compiler() {
             .any(|op| matches!(op, Instr::Assign | Instr::Local(_))),
         "{out:?}"
     );
-    let code = decode("ReceiverProbe;");
+    let code = bundle.function_code_prefix("ReceiverProbe;");
     let mut listing = String::new();
     let mut offset = 0i32;
     let mut contexts = Vec::new();
@@ -335,14 +273,13 @@ fn receivers_with_official_compiler() {
             } => {
                 assert_eq!(*flags, redscript_io::InvokeFlags::default());
                 let index: u32 = (*function).into();
-                let at = word(80) as usize + index as usize * 20;
-                format!("call {} {flags:?}", reader.cnames().get(word(at)).unwrap())
+                format!("call {} {flags:?}", bundle.definition_name(index))
             }
             Instr::InvokeVirtual {
                 function, flags, ..
             } => {
                 assert_eq!(*flags, redscript_io::InvokeFlags::default());
-                format!("call {} {flags:?}", reader.cnames().get(*function).unwrap())
+                format!("call {} {flags:?}", cnames[u32::from(*function) as usize])
             }
             _ => format!("{instr:?}"),
         };

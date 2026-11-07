@@ -1,50 +1,25 @@
-use redscript_community_ast::SourceMap;
-use redscript_compiler_api::SourceMapExt;
-use redscript_compiler_frontend::{
-    CompileErrorReporter, LoweredCompilationUnit, Symbols, TypeInterner, Visibility,
-};
-use redscript_redmod_adapter::{parse_file_with_metadata, process_sources};
+mod support;
+
+use redscript_compiler_frontend::{LoweredCompilationUnit, Symbols, TypeInterner, Visibility};
 
 fn analyze(
     source: &str,
     dependency: &str,
     inspect: impl for<'ctx> FnOnce(&LoweredCompilationUnit<'ctx>, &Symbols<'ctx>, &'ctx TypeInterner),
 ) -> Vec<String> {
-    let sources = SourceMap::new();
-    sources.populate_boot_lib();
-    sources.push_back("dependency.reds", dependency);
-    let file = sources.push_back("declarations.script", source);
-    let (parsed, errors) = parse_file_with_metadata(source, file);
-    assert!(errors.is_empty(), "{errors:?}");
-    let dependencies = sources
-        .files()
-        .filter(|(id, _)| *id != file)
-        .map(|(id, file)| {
-            let (module, errors) = redscript_community_parser::parse_module(file.source(), id);
-            assert!(errors.is_empty(), "{errors:?}");
-            module.unwrap()
-        })
-        .collect::<Vec<_>>();
-    let interner = TypeInterner::default();
-    let mut reporter = CompileErrorReporter::default();
-    let (unit, symbols, errors) = process_sources(
-        parsed,
-        dependencies,
-        Symbols::with_default_types(),
-        &mut reporter,
-        &interner,
-    );
-    inspect(&unit, &symbols, &interner);
-    errors
-        .into_iter()
-        .map(|error| error.to_string())
-        .chain(
-            reporter
-                .into_reported()
-                .into_iter()
-                .map(|error| error.to_string()),
-        )
-        .collect()
+    support::analyze(
+        source,
+        "declarations.script",
+        &[("dependency.reds", dependency)],
+        |unit, symbols, interner, errors, reporter| {
+            inspect(unit, symbols, interner);
+            errors
+                .iter()
+                .map(ToString::to_string)
+                .chain(reporter.reported().iter().map(ToString::to_string))
+                .collect()
+        },
+    )
 }
 
 #[test]

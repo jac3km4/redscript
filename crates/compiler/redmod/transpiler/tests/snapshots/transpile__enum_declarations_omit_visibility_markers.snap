@@ -1,0 +1,18 @@
+---
+source: crates/compiler/redmod/transpiler/tests/transpile.rs
+expression: output
+---
+@module "A"
+
+enum T {
+    Zero = 0,
+    One = 1,
+}
+
+enum Hidden {
+    Zero = 0,
+}
+
+import enum NativeT {
+    Zero = 0,
+}

@@ -1,17 +1,11 @@
 //! Contextual coercions must survive a target-source round trip, not just parse.
+mod support;
+
 use redscript_community_ast::{SourceMap, Span};
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{Symbols, TypeInterner, ir};
-use redscript_redmod_transpiler::{analyze_sources, transpile_sources};
-
-fn emit(source: &str) -> Result<String, Vec<redscript_redmod_transpiler::TranspileDiagnostic>> {
-    let sources = SourceMap::new();
-    let file = sources.push_back("coercions.reds", source);
-    sources.populate_boot_lib();
-    let interner = TypeInterner::default();
-    transpile_sources(&sources, &[file], Symbols::with_default_types(), &interner)
-        .map(|output| output[0].module.text.clone())
-}
+use redscript_redmod_transpiler::analyze_sources;
+use support::try_emit_source as emit;
 
 struct Calls<'a, 'ctx> {
     symbols: &'a Symbols<'ctx>,

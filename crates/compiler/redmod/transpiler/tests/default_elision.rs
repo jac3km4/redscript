@@ -1,20 +1,11 @@
 //! Whole-local overwrite proofs must not mistake partial writes or borrows for initialization.
-use redscript_community_ast::SourceMap;
-use redscript_compiler_api::SourceMapExt;
-use redscript_compiler_frontend::{Symbols, TypeInterner};
-use redscript_redmod_transpiler::{TranspileDiagnostic, transpile_sources};
+mod support;
 
-fn emit(body: &str) -> Result<String, Vec<TranspileDiagnostic>> {
-    let sources = SourceMap::new();
-    sources.populate_boot_lib();
-    sources.push_back("native.reds", "native struct Value { public let count: Int32; } native func Make() -> Value native func Read(value: Value) native func Borrow(value: script_ref<Value>) native func Write(out value: Value) native func OperatorLogicAnd(a: Bool, b: Bool) -> Bool");
-    let file = sources.push_back(
-        "test.reds",
-        format!("func Test(enabled: Bool, input: Value) -> Value {{ {body} }}"),
-    );
-    let interner = TypeInterner::default();
-    transpile_sources(&sources, &[file], Symbols::with_default_types(), &interner)
-        .map(|output| output[0].module.text.clone())
+fn emit(body: &str) -> Result<String, Vec<redscript_redmod_transpiler::TranspileDiagnostic>> {
+    support::try_emit(
+        &format!("func Test(enabled: Bool, input: Value) -> Value {{ {body} }}"),
+        "native struct Value { public let count: Int32; } native func Make() -> Value native func Read(value: Value) native func Borrow(value: script_ref<Value>) native func Write(out value: Value) native func OperatorLogicAnd(a: Bool, b: Bool) -> Bool",
+    )
 }
 
 #[test]
@@ -63,13 +54,10 @@ fn reads_partial_writes_and_repeated_declarations_keep_defaults() {
 
 #[test]
 fn repeated_handle_defaults_still_reset_before_borrowing() {
-    let sources = SourceMap::new();
-    sources.populate_boot_lib();
-    let file = sources.push_back("reset.reds", "class Object {} native func Borrow(value: script_ref<ref<Object>>) func Test(again: Bool, input: ref<Object>) { while again { let value: ref<Object>; Borrow(value); value = input; } }");
-    let interner = TypeInterner::default();
-    let output =
-        transpile_sources(&sources, &[file], Symbols::with_default_types(), &interner).unwrap();
-    let text = &output[0].module.text;
+    let text = support::emit(
+        "class Object {} native func Borrow(value: script_ref<ref<Object>>) func Test(again: Bool, input: ref<Object>) { while again { let value: ref<Object>; Borrow(value); value = input; } }",
+        "",
+    );
     assert!(
         text.contains(
             "while (again) {\n        value = NULL;\n        Borrow(value);\n        value = input;"

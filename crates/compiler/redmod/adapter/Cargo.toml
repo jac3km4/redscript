@@ -11,6 +11,7 @@ redscript-compiler-frontend.workspace = true
 redscript-redmod-parser.workspace = true
 
 [dev-dependencies]
+redscript-test-support.workspace = true
 insta.workspace = true
 redscript-compiler-api.workspace = true
 redscript-compiler-backend.workspace = true

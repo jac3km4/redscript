@@ -434,21 +434,7 @@ fn declaration_and_use_types_are_checked_by_shared_resolution() {
 #[test]
 #[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]
 fn authored_official_operator_and_conversion_characterization() {
-    use std::path::PathBuf;
-    use std::process::Command;
-
-    let executable = PathBuf::from(std::env::var_os("REDMOD_EXE").expect("set REDMOD_EXE"));
-    let root = PathBuf::from(std::env::var_os("REDMOD_GAME_ROOT").expect("set REDMOD_GAME_ROOT"));
-    let parent = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../../target/redmod-official")
-        .join(format!(
-            "native-operators-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+    let compiler = redscript_test_support::OfficialCompiler::from_env();
     for (name, source, diagnostic) in [
         (
             "operators",
@@ -506,29 +492,11 @@ fn authored_official_operator_and_conversion_characterization() {
             Some("must have a return value"),
         ),
     ] {
-        let directory = parent.join(name);
-        std::fs::create_dir_all(directory.join("r6/scripts")).unwrap();
-        std::fs::write(directory.join("r6/scripts/authored.script"), source).unwrap();
-        let output = Command::new(&executable)
-            .args(["validate-mod-scripts", "-compile", "-root"])
-            .arg(&root)
-            .arg("-directory")
-            .arg(&directory)
-            .output()
-            .unwrap();
-        std::fs::write(directory.join("stdout.log"), &output.stdout).unwrap();
-        std::fs::write(directory.join("stderr.log"), &output.stderr).unwrap();
-        let log = format!(
-            "{}{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
+        let name = format!("native-operators-{name}");
         if let Some(diagnostic) = diagnostic {
-            assert!(!output.status.success(), "{name}: {log}");
-            assert!(log.contains(diagnostic), "{name}: {log}");
+            compiler.reject(&name, source, diagnostic);
         } else {
-            assert!(output.status.success(), "{name}: {log}");
+            compiler.compile(&name, source);
         }
-        println!("{name}: {}", directory.display());
     }
 }

@@ -1,17 +1,10 @@
 //! Compound reads and array fields retain their place and evaluation guards.
+mod support;
+
 use redscript_community_ast::SourceMap;
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{Symbols, TypeInterner};
-use redscript_redmod_transpiler::transpile_sources;
-
-fn emit(source: &str) -> Result<String, Vec<redscript_redmod_transpiler::TranspileDiagnostic>> {
-    let sources = SourceMap::new();
-    let file = sources.push_back("field_reads.reds", source);
-    sources.populate_boot_lib();
-    let interner = TypeInterner::default();
-    transpile_sources(&sources, &[file], Symbols::with_default_types(), &interner)
-        .map(|output| output[0].module.text.clone())
-}
+use support::try_emit_source as emit;
 
 const SOURCE: &str = r#"
 struct FieldVisual { public let m_isIconic: Bool; }
@@ -260,70 +253,20 @@ fn unsupported_receiver_forms_still_fail_closed() {
 #[test]
 #[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]
 fn field_reads_with_official_compiler() {
-    use std::path::{Path, PathBuf};
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use redscript_io::Instr;
+    use redscript_test_support::{OfficialBundle, OfficialCompiler};
 
-    use byte::BytesExt as _;
-    use redscript_io::{BundleReader, Definition, Instr};
-    use redscript_redmod_transpiler::validate::OfficialValidator;
-
-    let validator = OfficialValidator {
-        executable: PathBuf::from(std::env::var_os("REDMOD_EXE").expect("set REDMOD_EXE")),
-        timeout: Duration::from_secs(60),
-    };
-    let root = PathBuf::from(std::env::var_os("REDMOD_GAME_ROOT").expect("set REDMOD_GAME_ROOT"));
-    let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../../target/redmod-official")
-        .join(format!(
-            "field-reads-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
     let generated = emit(SOURCE).unwrap();
     let body = generated
         .lines()
         .filter(|line| !line.starts_with("import function"))
         .collect::<Vec<_>>()
         .join("\n");
-    std::fs::create_dir_all(directory.join("r6/scripts")).unwrap();
-    std::fs::write(directory.join("r6/scripts/authored.script"), &body).unwrap();
-    let report = validator.validate_with_root(&directory, &root).unwrap();
-    println!("{}\n{}", directory.display(), report.stdout);
-    assert!(
-        report.stdout.contains("v1.2.2"),
-        "profiling layout requires v1.2.2"
-    );
-    let bytes = std::fs::read(directory.join("r6/cache/final.redscripts")).unwrap();
-    let reader = BundleReader::new(&bytes).unwrap();
-    let word = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
-    // Decode only named authored functions, bounded by their physical records.
-    // Official external placeholders and the 14-byte v1.2.2 profiling preamble
-    // are not supported by the general bundle decoder.
-    let decode = |name: &str| {
-        let index = (1..word(84))
-            .find(|i| {
-                let at = word(80) as usize + *i as usize * 20;
-                u16::from_le_bytes(bytes[at + 16..at + 18].try_into().unwrap()) == 5
-                    && reader.cnames().get(word(at)).unwrap().split(';').next() == Some(name)
-            })
-            .unwrap();
-        let Definition::Function(function) = reader.definitions().get(index).unwrap() else {
-            panic!("expected function")
-        };
-        let redscript_io::FunctionBody::Raw { bytes: raw, .. } = function.body() else {
-            panic!("expected raw body")
-        };
-        assert_eq!(raw[0], 0x33);
-        let mut at = 14;
-        let mut code = Vec::<Instr>::new();
-        while at < raw.len() {
-            code.push(raw.read(&mut at, byte::LE).unwrap());
-        }
-        code
-    };
+    let output = OfficialCompiler::from_env().compile("field-reads", &body);
+    output.assert_version("v1.2.2");
+    let directory = &output.directory;
+    let bytes = output.bundle_bytes();
+    let bundle = OfficialBundle::new(&bytes);
     let mut listing = String::new();
     for name in [
         "FieldDeref",
@@ -333,7 +276,7 @@ fn field_reads_with_official_compiler() {
         "FieldNullRead",
         "FieldProbe",
     ] {
-        let code = decode(name);
+        let code = bundle.function_code_prefix(&format!("{name};"));
         let mut offsets = Vec::new();
         let mut offset = 0i32;
         let mut calls = Vec::new();
@@ -347,10 +290,8 @@ fn field_reads_with_official_compiler() {
                     assert_eq!(*flags, redscript_io::InvokeFlags::default());
                     let index: u32 = (*function).into();
                     Some(
-                        reader
-                            .cnames()
-                            .get(word(word(80) as usize + index as usize * 20))
-                            .unwrap()
+                        bundle
+                            .definition_name(index)
                             .split(';')
                             .next()
                             .unwrap()

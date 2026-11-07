@@ -71,7 +71,11 @@ function Compound(a: Int32, b: Int32, c: Int32) -> Int32 {
 }
 
 function CastChoice(a: Bool, b: Int32, c: Int32) -> Float {
-    return Cast<Float>(a ? b : c);
+    return Cast<Float>((a ? b : c));
+}
+
+function CastAdd(a: Int32, b: Int32) -> Float {
+    return Cast<Float>((a + b));
 }
 
 class Base extends IScriptable {

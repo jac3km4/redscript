@@ -1112,6 +1112,7 @@ dependencies = [
  "redscript-io",
  "redscript-redmod-ast",
  "redscript-redmod-parser",
+ "redscript-test-support",
 ]
 
 [[package]]
@@ -1156,6 +1157,16 @@ dependencies = [
  "redscript-io",
  "redscript-redmod-adapter",
  "redscript-redmod-parser",
+ "redscript-test-support",
+]
+
+[[package]]
+name = "redscript-test-support"
+version = "1.0.0-preview.22"
+dependencies = [
+ "byte",
+ "redscript-io",
+ "redscript-redmod-transpiler",
 ]
 
 [[package]]

@@ -506,28 +506,9 @@ fn eager_interpolation_and_switch_prefixes_are_rejected() {
     }
 }
 
-struct Temp(std::path::PathBuf);
-impl Temp {
-    fn new() -> Self {
-        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let p = std::env::temp_dir().join(format!(
-            "redmod-transpile-test-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&p).unwrap();
-        Self(p)
-    }
-}
-impl Drop for Temp {
-    fn drop(&mut self) {
-        drop(std::fs::remove_dir_all(&self.0));
-    }
-}
-
 #[test]
 fn package_publishes_new_mod_and_preserves_existing_destination() {
-    let temp = Temp::new();
+    let directory = redscript_test_support::unique_directory("transpiler-package");
     let sources = SourceMap::new();
     let selected = sources.push_back("simple.reds", "public func Value() -> Int32 = 1;");
     sources.populate_boot_lib();
@@ -543,20 +524,20 @@ fn package_publishes_new_mod_and_preserves_existing_destination() {
         path: Path::new("nested/simple.script"),
         source: &output[0],
     }];
-    let published = publish_mod(&temp.0, "Example", &scripts, None).unwrap();
+    let published = publish_mod(&directory, "Example", &scripts, None).unwrap();
     assert_eq!(
         std::fs::read_to_string(&published.scripts[0].path).unwrap(),
         output[0].module.text
     );
     assert_eq!(published.scripts[0].mappings, output[0].module.mappings);
     assert_eq!(
-        publish_mod(&temp.0, "Example", &scripts, None)
+        publish_mod(&directory, "Example", &scripts, None)
             .unwrap_err()
             .kind(),
         std::io::ErrorKind::AlreadyExists
     );
     assert_eq!(
-        publish_mod(&temp.0, "bad.name", &scripts, None)
+        publish_mod(&directory, "bad.name", &scripts, None)
             .unwrap_err()
             .kind(),
         std::io::ErrorKind::InvalidInput
@@ -570,7 +551,7 @@ fn package_publishes_new_mod_and_preserves_existing_destination() {
     ] {
         assert_eq!(
             publish_mod(
-                &temp.0,
+                &directory,
                 "Unsafe",
                 &[ScriptArtifact {
                     path: Path::new(path),
@@ -594,26 +575,26 @@ fn package_publishes_new_mod_and_preserves_existing_destination() {
         },
     ];
     assert_eq!(
-        publish_mod(&temp.0, "Duplicate", &duplicate, None)
+        publish_mod(&directory, "Duplicate", &duplicate, None)
             .unwrap_err()
             .kind(),
         std::io::ErrorKind::InvalidInput
     );
     let validator = OfficialValidator {
-        executable: temp.0.join("missing-redMod.exe"),
+        executable: directory.join("missing-redMod.exe"),
         timeout: Duration::from_millis(100),
     };
-    assert!(publish_mod(&temp.0, "Failed", &scripts, Some(&validator)).is_err());
-    assert!(!temp.0.join("Failed").exists());
-    assert_eq!(std::fs::read_dir(&temp.0).unwrap().count(), 1);
+    assert!(publish_mod(&directory, "Failed", &scripts, Some(&validator)).is_err());
+    assert!(!directory.join("Failed").exists());
+    assert_eq!(std::fs::read_dir(&directory).unwrap().count(), 1);
 }
 
 // An authored process stub exercises invocation/timeout/output contracts; it is
 // deliberately not an official compiler conformance test.
 #[test]
 fn validator_requires_final_stage_and_bounds_execution() {
-    let temp = Temp::new();
-    let stub = temp.0.join("validator.rs");
+    let directory = redscript_test_support::unique_directory("transpiler-package");
+    let stub = directory.join("validator.rs");
     std::fs::write(
         &stub,
         r#"
@@ -641,9 +622,7 @@ fn main() {
 "#,
     )
     .unwrap();
-    let executable = temp
-        .0
-        .join(format!("success{}", std::env::consts::EXE_SUFFIX));
+    let executable = directory.join(format!("success{}", std::env::consts::EXE_SUFFIX));
     assert!(
         std::process::Command::new("rustc")
             .arg(&stub)
@@ -665,7 +644,7 @@ fn main() {
     )
     .unwrap();
     let published = publish_mod(
-        &temp.0,
+        &directory,
         "FinalName",
         &[ScriptArtifact {
             path: Path::new("simple.script"),
@@ -681,22 +660,20 @@ fn main() {
         std::fs::read_to_string(published.directory.join("observed-mod-name")).unwrap(),
         "FinalName"
     );
-    assert!(!temp.0.join("Dependencies").exists());
+    assert!(!directory.join("Dependencies").exists());
     assert!(
-        !std::fs::read_dir(&temp.0).unwrap().any(|e| e
+        !std::fs::read_dir(&directory).unwrap().any(|e| e
             .unwrap()
             .file_name()
             .to_string_lossy()
             .contains("stage-"))
     );
     for mode in ["success", "preliminary", "failure", "timeout"] {
-        let path = temp
-            .0
-            .join(format!("{mode}{}", std::env::consts::EXE_SUFFIX));
+        let path = directory.join(format!("{mode}{}", std::env::consts::EXE_SUFFIX));
         if mode != "success" {
             std::fs::copy(&executable, &path).unwrap();
         }
-        let directory = temp.0.join(format!("mod-{mode}"));
+        let directory = directory.join(format!("mod-{mode}"));
         std::fs::create_dir(&directory).unwrap();
         let validator = OfficialValidator {
             executable: path,
@@ -719,15 +696,15 @@ fn main() {
 
 #[test]
 fn validator_rejects_stale_outputs_before_invocation() {
-    let temp = Temp::new();
-    std::fs::create_dir_all(temp.0.join("r6/cache")).unwrap();
-    std::fs::write(temp.0.join("r6/cache/final.redscripts"), "stale").unwrap();
+    let directory = redscript_test_support::unique_directory("transpiler-package");
+    std::fs::create_dir_all(directory.join("r6/cache")).unwrap();
+    std::fs::write(directory.join("r6/cache/final.redscripts"), "stale").unwrap();
     let validator = OfficialValidator {
-        executable: temp.0.join("missing-redMod.exe"),
+        executable: directory.join("missing-redMod.exe"),
         timeout: Duration::from_millis(100),
     };
     assert_eq!(
-        validator.validate(&temp.0).unwrap_err().kind(),
+        validator.validate(&directory).unwrap_err().kind(),
         std::io::ErrorKind::AlreadyExists
     );
 }

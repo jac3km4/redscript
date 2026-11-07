@@ -1,67 +1,16 @@
-use redscript_community_ast::SourceMap;
-use redscript_compiler_api::{SourceMapExt, TypeFlagRegistry};
+mod support;
+
+use redscript_compiler_api::TypeFlagRegistry;
 use redscript_compiler_backend::CompilationInputs;
-use redscript_compiler_frontend::{CompileErrorReporter, TypeInterner};
-use redscript_io::{
-    Class, ClassFlags, Function, IndexedDefinition, Instr, ScriptBundle, TypeKind, Visibility,
-};
-use redscript_redmod_adapter::{parse_file_with_metadata, process_sources};
+use redscript_compiler_frontend::TypeInterner;
+use redscript_io::{Instr, ScriptBundle, TypeKind};
+use support::{code_with_prefix as code, function_with_prefix as function};
 
 fn compile(source: &str) -> Vec<u8> {
-    let sources = SourceMap::new();
-    sources.populate_boot_lib();
-    let file = sources.push_back("references.script", source);
-    let (parsed, errors) = parse_file_with_metadata(source, file);
-    assert!(errors.is_empty(), "{errors:?}");
-    let dependencies = sources
-        .files()
-        .filter(|(id, _)| *id != file)
-        .map(|(id, file)| {
-            let (module, errors) = redscript_community_parser::parse_module(file.source(), id);
-            assert!(errors.is_empty(), "{errors:?}");
-            module.unwrap()
-        })
-        .collect::<Vec<_>>();
-    let interner = TypeInterner::default();
-    let mut bundle = ScriptBundle::default();
-    let name = bundle.cnames_mut().add("IScriptable");
-    bundle.define(Class::new(name, Visibility::Public, ClassFlags::default()));
-    let (symbols, mappings) =
-        CompilationInputs::load(&bundle, &interner, &TypeFlagRegistry::default())
-            .unwrap()
-            .into_inner();
-    let mut reporter = CompileErrorReporter::default();
-    let (unit, symbols, errors) =
-        process_sources(parsed, dependencies, symbols, &mut reporter, &interner);
-    assert!(errors.is_empty(), "{errors:?}");
-    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
-    mappings
-        .into_monomorphizer(&sources)
-        .monomorphize(&unit, &symbols, &mut bundle)
-        .unwrap();
-    bundle.into_writeable().to_bytes().unwrap()
-}
-
-fn function<'a>(bundle: &'a ScriptBundle<'_>, prefix: &str) -> &'a Function<'a> {
-    bundle
-        .indexed_definitions()
-        .find_map(|def| match def {
-            IndexedDefinition::Function(_, function)
-                if bundle[function.name()].starts_with(prefix) =>
-            {
-                Some(function)
-            }
-            _ => None,
-        })
+    support::compile(source, "references.script", &[], support::empty_bundle())
+        .into_writeable()
+        .to_bytes()
         .unwrap()
-}
-
-fn code(bundle: &ScriptBundle<'_>, prefix: &str) -> Vec<Instr> {
-    function(bundle, prefix)
-        .body()
-        .code_iter()
-        .map(Result::unwrap)
-        .collect()
 }
 
 #[test]

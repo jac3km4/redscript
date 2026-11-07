@@ -1,0 +1,45 @@
+---
+source: crates/compiler/redmod/transpiler/tests/cast_operands.rs
+expression: "support::emit(SOURCE, CASTS)"
+---
+import function OperatorAdd(left: Int32, right: Int32) -> Int32;
+
+import function OperatorNeg(value: Int32) -> Int32;
+
+import function OperatorAssignAdd(out left: Int32, right: Int32) -> Int32;
+
+function CastOperandIdentity(value: Int32) -> Int32 {
+    return value;
+}
+
+function CastOperandLocal(value: Int32) -> Float {
+    return Cast<Float>(value);
+}
+
+function CastOperandCall(value: Int32) -> Float {
+    return Cast<Float>(CastOperandIdentity(value));
+}
+
+function CastOperandUnary(value: Int32) -> Float {
+    return Cast<Float>((-value));
+}
+
+function CastOperandSum(left: Int32, right: Int32) -> Float {
+    return Cast<Float>((left + right));
+}
+
+function CastOperandChoice(flag: Bool, left: Int32, right: Int32) -> Float {
+    return Cast<Float>((flag ? left : right));
+}
+
+function CastOperandAssign(left: Int32, right: Int32) -> Float {
+    return Cast<Float>((left = right));
+}
+
+function CastOperandCompound(left: Int32, right: Int32) -> Float {
+    return Cast<Float>((left += right));
+}
+
+function CastOperandNested(value: Float) -> Float {
+    return Cast<Float>(Cast<Int32>(value));
+}
