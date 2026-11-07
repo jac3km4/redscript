@@ -650,8 +650,7 @@ impl<Ctx: Copy> Measure<Ctx> for WriteableBundle<'_> {
             + self.bundle.strings.len() * mem::size_of::<u32>()
             + self
                 .bundle
-                .definitions
-                .iter()
+                .definitions()
                 .map(|def| def.measure(ctx))
                 .sum::<usize>()
     }

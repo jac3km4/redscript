@@ -1,43 +1,14 @@
 use redscript_community_ast::{self as ast, SourceMap};
-use redscript_compiler_api::{SourceMapExt, TypeFlagRegistry};
+use redscript_compiler_api::TypeFlagRegistry;
 use redscript_compiler_backend::CompilationInputs;
 use redscript_compiler_frontend::{CompileErrorReporter, TypeInterner};
-use redscript_io::{Class, ClassFlags, IndexedDefinition, ScriptBundle, Visibility};
+use redscript_io::{IndexedDefinition, ScriptBundle};
 use redscript_redmod_adapter::{CapabilityError, Error, parse_file_with_metadata, process_sources};
 
+mod support;
+
 fn compile(source: &str) -> ScriptBundle<'static> {
-    let sources = SourceMap::new();
-    sources.populate_boot_lib();
-    let file = sources.push_back("properties.script", source);
-    let (parsed, errors) = parse_file_with_metadata(source, file);
-    assert!(errors.is_empty(), "{errors:?}");
-    let dependencies = sources
-        .files()
-        .filter(|(id, _)| *id != file)
-        .map(|(id, source)| {
-            let (module, errors) = redscript_community_parser::parse_module(source.source(), id);
-            assert!(errors.is_empty(), "{errors:?}");
-            module.unwrap()
-        })
-        .collect::<Vec<_>>();
-    let interner = TypeInterner::default();
-    let mut bundle = ScriptBundle::default();
-    let name = bundle.cnames_mut().add("IScriptable");
-    bundle.define(Class::new(name, Visibility::Public, ClassFlags::default()));
-    let (symbols, mappings) =
-        CompilationInputs::load(&bundle, &interner, &TypeFlagRegistry::default())
-            .unwrap()
-            .into_inner();
-    let mut reporter = CompileErrorReporter::default();
-    let (unit, symbols, errors) =
-        process_sources(parsed, dependencies, symbols, &mut reporter, &interner);
-    assert!(errors.is_empty(), "{errors:?}");
-    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
-    mappings
-        .into_monomorphizer(&sources)
-        .monomorphize(&unit, &symbols, &mut bundle)
-        .unwrap();
-    bundle.into_owned()
+    support::compile(source, "properties.script", &[], support::empty_bundle())
 }
 
 #[test]
@@ -442,22 +413,7 @@ fn profile_label_and_field_profile_have_distinct_paths() {
 #[test]
 #[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]
 fn official_properties_flags_and_unrepresented_metadata() {
-    use std::path::PathBuf;
-    use std::process::{Command, Stdio};
-    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-
-    let executable = PathBuf::from(std::env::var_os("REDMOD_EXE").expect("set REDMOD_EXE"));
-    let root = PathBuf::from(std::env::var_os("REDMOD_GAME_ROOT").expect("set REDMOD_GAME_ROOT"));
-    let parent = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../../target/redmod-official")
-        .join(format!(
-            "native-properties-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+    let compiler = redscript_test_support::OfficialCompiler::from_env();
     for (name, source, diagnostic) in [
         (
             "plain",
@@ -515,57 +471,18 @@ fn official_properties_flags_and_unrepresented_metadata() {
             None,
         ),
     ] {
-        let directory = parent.join(name);
-        std::fs::create_dir_all(directory.join("r6/scripts")).unwrap();
-        std::fs::write(directory.join("r6/scripts/authored.script"), source).unwrap();
-        let stdout = std::fs::File::create(directory.join("stdout.log")).unwrap();
-        let stderr = std::fs::File::create(directory.join("stderr.log")).unwrap();
-        let mut child = Command::new(&executable)
-            .current_dir(executable.parent().unwrap())
-            .args(["validate-mod-scripts", "-compile", "-root"])
-            .arg(&root)
-            .arg("-directory")
-            .arg(&directory)
-            .stdout(Stdio::from(stdout))
-            .stderr(Stdio::from(stderr))
-            .spawn()
-            .unwrap();
-        let start = Instant::now();
-        let status = loop {
-            if let Some(status) = child.try_wait().unwrap() {
-                break status;
-            }
-            if start.elapsed() > Duration::from_secs(60) {
-                child.kill().unwrap();
-                child.wait().unwrap();
-                panic!("official compiler timed out: {}", directory.display());
-            }
-            std::thread::sleep(Duration::from_millis(25));
-        };
-        let log = std::fs::read_to_string(directory.join("stdout.log")).unwrap();
-        println!("{name}: {}", directory.display());
+        let probe = format!("native-properties-{name}");
         if let Some(diagnostic) = diagnostic {
-            assert!(!status.success(), "{log}");
-            assert!(log.contains(diagnostic), "{log}");
+            compiler.reject(&probe, source, diagnostic);
             continue;
         }
-        assert!(status.success(), "{log}");
-        assert!(
-            log.contains("Commandlet validate-mod-scripts has succeeded"),
-            "{log}"
-        );
-        for artifact in ["final.redscripts", "final.redscripts.h64"] {
-            assert!(
-                std::fs::metadata(directory.join("r6/cache").join(artifact))
-                    .unwrap()
-                    .len()
-                    > 0
-            );
-        }
-        let bytes = std::fs::read(directory.join("r6/cache/final.redscripts")).unwrap();
+        let output = compiler.compile(&probe, source);
+        output.assert_version("v1.2.2");
+        let bytes = output.bundle_bytes();
+        let bundle = redscript_test_support::OfficialBundle::new(&bytes);
         match name {
             "plain" | "mutable" | "instance" | "mutable-instance" | "explicit-const" => {
-                let field = official_definition(&bytes, "value", 8);
+                let field = bundle.definition("value", 8);
                 let flags = u16::from_le_bytes(field[5..7].try_into().unwrap());
                 assert_eq!(
                     flags & 0x4a,
@@ -579,7 +496,7 @@ fn official_properties_flags_and_unrepresented_metadata() {
                     }
                 );
                 if name == "plain" {
-                    let function = official_definition(&bytes, "Run;", 5);
+                    let function = bundle.definition("Run;", 5);
                     assert_eq!(function[17], 0); // Return const, separate from method flags.
                     assert_eq!(function[22], 0x33); // Profile instruction.
                     assert_eq!(function[35], 0); // Profiling disabled by default.
@@ -596,7 +513,7 @@ fn official_properties_flags_and_unrepresented_metadata() {
                 }
             }
             "profile" => {
-                let function = official_definition(&bytes, "Run;", 5);
+                let function = bundle.definition("Run;", 5);
                 assert_eq!(function[22], 0x33);
                 assert_eq!(function[35], 1); // [profile] changes executable metadata.
                 use redscript_io::byte::TryRead;
@@ -619,9 +536,9 @@ fn official_properties_flags_and_unrepresented_metadata() {
                 });
                 assert_eq!(marker, Some(official_marker));
             }
-            "const-return" => assert_eq!(official_definition(&bytes, "Run;", 5)[17], 1),
+            "const-return" => assert_eq!(bundle.definition("Run;", 5)[17], 1),
             "typed-field" => {
-                let field = official_definition(&bytes, "value", 8);
+                let field = bundle.definition("value", 8);
                 assert!(
                     field
                         .windows(b"runtimeProperty".len())
@@ -631,32 +548,9 @@ fn official_properties_flags_and_unrepresented_metadata() {
             }
             "class-metadata" => {
                 // Acceptance alone does not establish preserved class metadata.
-                assert_eq!(official_definition(&bytes, "ProbeHost", 1).len(), 7);
+                assert_eq!(bundle.definition("ProbeHost", 1).len(), 7);
             }
             _ => {}
         }
     }
-}
-
-// These authored probes have fixed signatures. Read raw official definitions to
-// distinguish the return-const byte and profiling payload from method flags.
-fn official_definition<'a>(bytes: &'a [u8], name: &str, tag: u16) -> &'a [u8] {
-    let word = |offset| u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
-    assert_eq!(&bytes[..4], b"REDS");
-    assert_eq!(word(4), 14);
-    let names = word(44);
-    let data = word(32);
-    for i in 0..word(84) {
-        let offset = word(80) + i * 20;
-        if u16::from_le_bytes(bytes[offset + 16..offset + 18].try_into().unwrap()) != tag {
-            continue;
-        }
-        let start = data + word(names + word(offset) * 4);
-        let end = start + bytes[start..].iter().position(|b| *b == 0).unwrap();
-        if &bytes[start..end] == name.as_bytes() {
-            let start = word(offset + 8);
-            return &bytes[start..start + word(offset + 12)];
-        }
-    }
-    panic!("missing official definition {name}")
 }

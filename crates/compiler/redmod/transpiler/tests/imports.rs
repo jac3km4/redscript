@@ -307,69 +307,45 @@ fn emitted_directives_have_no_semicolons() {
     insta::assert_snapshot!(snapshot);
 }
 
+// Module/using directives apply to an entire file; preserve file boundaries.
+fn validate_official_files(
+    compiler: &redscript_test_support::OfficialCompiler,
+    name: &str,
+    sources: &[String],
+    diagnostic: Option<&str>,
+) {
+    let sources = sources.iter().map(String::as_str).collect::<Vec<_>>();
+    if let Some(diagnostic) = diagnostic {
+        compiler.reject_files(name, &sources, diagnostic);
+    } else {
+        compiler.compile_files(name, &sources);
+    }
+}
+
 #[test]
 #[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]
 fn emitted_directives_with_official_compiler() {
-    use std::path::PathBuf;
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
-    use redscript_redmod_transpiler::validate::OfficialValidator;
-
-    let validator = OfficialValidator {
-        executable: PathBuf::from(std::env::var_os("REDMOD_EXE").expect("set REDMOD_EXE")),
-        timeout: Duration::from_secs(60),
-    };
-    let game = PathBuf::from(std::env::var_os("REDMOD_GAME_ROOT").expect("set REDMOD_GAME_ROOT"));
-    let parent = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../../target/redmod-official")
-        .join(format!(
-            "imports-emitted-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+    let compiler = redscript_test_support::OfficialCompiler::from_env();
     for (name, import) in [
         ("Module", ""),
         ("Exact", "import DirectiveLibrary.First"),
         ("Select", "import DirectiveLibrary.{First, Second}"),
         ("Wildcard", "import DirectiveLibrary.*"),
     ] {
-        let directory = parent.join(name);
-        std::fs::create_dir_all(directory.join("r6/scripts")).unwrap();
-        // Write emitted sources unchanged; qualified-reference support is separate.
-        for (index, text) in emitted_directive_sources(import).iter().enumerate() {
-            std::fs::write(directory.join(format!("r6/scripts/{index}.script")), text).unwrap();
-        }
-        let report = validator.validate_with_root(&directory, &game).unwrap();
-        println!("{name}: {}\n{}", directory.display(), report.stdout);
+        // Keep emitted directives unchanged; qualified-reference support is separate.
+        validate_official_files(
+            &compiler,
+            &format!("imports-emitted-{name}"),
+            &emitted_directive_sources(import),
+            None,
+        );
     }
 }
 
 #[test]
 #[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]
 fn native_symbol_using_does_not_expose_other_functions() {
-    use std::path::PathBuf;
-    use std::time::Duration;
-
-    use redscript_redmod_transpiler::validate::OfficialValidator;
-
-    let validator = OfficialValidator {
-        executable: PathBuf::from(std::env::var_os("REDMOD_EXE").expect("set REDMOD_EXE")),
-        timeout: Duration::from_secs(60),
-    };
-    let game = PathBuf::from(std::env::var_os("REDMOD_GAME_ROOT").expect("set REDMOD_GAME_ROOT"));
-    let parent = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../../target/redmod-official")
-        .join(format!(
-            "imports-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+    let compiler = redscript_test_support::OfficialCompiler::from_env();
     for (name, directive, call, accepted) in [
         ("Exact", "First.Pick", "Pick(1)", true),
         ("Overload", "First.Pick", "Pick(1.0)", true),
@@ -378,36 +354,29 @@ fn native_symbol_using_does_not_expose_other_functions() {
         ("Qualified", "First.Pick", "First.Pick(1)", false),
         ("ModuleOverlap", "First.Pick", "Extra(1)", true),
     ] {
-        let directory = parent.join(name);
-        std::fs::create_dir_all(directory.join("r6/scripts")).unwrap();
-        std::fs::write(directory.join("r6/scripts/library.script"), "@module \"First\"\nfunction Pick(value: Int32) -> Int32 { return value; } function Pick(value: Float) -> Float { return value; } function Other(value: Int32) -> Int32 { return value; }").unwrap();
+        let mut sources = vec![String::from(
+            "@module \"First\"\nfunction Pick(value: Int32) -> Int32 { return value; } function Pick(value: Float) -> Float { return value; } function Other(value: Int32) -> Int32 { return value; }",
+        )];
         if name == "ModuleOverlap" {
-            std::fs::write(
-                directory.join("r6/scripts/nested.script"),
+            sources.push(String::from(
                 "@module \"First.Pick\"\nfunction Extra(value: Int32) -> Int32 { return value; }",
-            )
-            .unwrap();
+            ));
         }
         let result = if name == "Overload" { "Float" } else { "Int32" };
-        std::fs::write(
-            directory.join("r6/scripts/use.script"),
-            format!("@using \"{directive}\"\nfunction Run() -> {result} {{ return {call}; }}"),
-        )
-        .unwrap();
-        let validation = validator.validate_with_root(&directory, &game);
-        println!(
-            "{name}: {} (accepted: {})",
-            directory.display(),
-            validation.is_ok()
+        sources.push(format!(
+            "@using \"{directive}\"\nfunction Run() -> {result} {{ return {call}; }}"
+        ));
+        validate_official_files(
+            &compiler,
+            &format!("imports-{name}"),
+            &sources,
+            if accepted {
+                None
+            } else if name == "Unselected" {
+                Some("was not declared as Used")
+            } else {
+                Some("Invalid identifier in global scope 'First'")
+            },
         );
-        assert_eq!(validation.is_ok(), accepted, "{name}: {validation:?}");
-        if name == "Unselected" {
-            assert!(
-                validation
-                    .unwrap_err()
-                    .to_string()
-                    .contains("was not declared as Used")
-            );
-        }
     }
 }

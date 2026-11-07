@@ -402,6 +402,19 @@ fn explicit_enum_storage_is_exported_without_narrowing() {
 }
 
 #[test]
+fn enum_declarations_omit_visibility_markers() {
+    let output = convert(
+        r#"
+module A
+public enum T { Zero = 0, One = 1 }
+private enum Hidden { Zero = 0 }
+public native enum NativeT { Zero = 0 }
+"#,
+    );
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn lazy_branches_and_loop_back_edges_keep_initialization_in_place() {
     let output = convert(
         r#"
@@ -520,6 +533,7 @@ func NotChoice(a: Bool, b: Bool, c: Bool) -> Bool = !(a ? b : c)
 func Assign(a: Int32, b: Int32, c: Int32) -> Int32 { a = b + c; return a; }
 func Compound(a: Int32, b: Int32, c: Int32) -> Int32 { a += b += c; return a; }
 func CastChoice(a: Bool, b: Int32, c: Int32) -> Float = Cast<Float>(a ? b : c)
+func CastAdd(a: Int32, b: Int32) -> Float = Cast<Float>(a + b)
 class Base {}
 class Child extends Base {}
 func CastReceiver(a: Bool, b: Base, c: Base) -> Child = (a ? b : c) as Child

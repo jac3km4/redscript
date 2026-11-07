@@ -164,10 +164,10 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
             )
         });
         let callback = decl.qualifiers.contains(Q::CALLBACK);
-        // Official REDmod accepts visibility on members, not free functions.
+        // Official REDmod accepts visibility on members, not free functions or enums.
         if !patch
             && !callback
-            && (member || !matches!(decl.item, Item::Function(_)))
+            && (member || !matches!(decl.item, Item::Function(_) | Item::Enum(_)))
             && let Some(vis) = decl.visibility
         {
             self.output.text.push_str(match vis {

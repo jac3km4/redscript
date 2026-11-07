@@ -1,8 +1,8 @@
 //! Raw native resource/TweakDBID spelling and opt-in official identity evidence.
+mod support;
+
 use redscript_community_ast::SourceMap;
-use redscript_compiler_api::SourceMapExt;
-use redscript_compiler_frontend::{Symbols, TypeInterner};
-use redscript_redmod_transpiler::{LiteralError, TranspileDiagnostic, transpile_sources};
+use redscript_redmod_transpiler::LiteralError;
 
 const VALUES: &[&str] = &[
     r"base\gameplay\gui\common\buttonhints.inkwidget",
@@ -10,19 +10,7 @@ const VALUES: &[&str] = &[
     "café\\widget",
 ];
 
-fn emit(source: &str) -> Result<String, Vec<TranspileDiagnostic>> {
-    let sources = SourceMap::new();
-    let selected = sources.push_back("resource-literals.reds", source);
-    sources.populate_boot_lib();
-    let interner = TypeInterner::default();
-    transpile_sources(
-        &sources,
-        &[selected],
-        Symbols::with_default_types(),
-        &interner,
-    )
-    .map(|output| output[0].module.text.clone())
-}
+use support::try_emit_source as emit;
 
 fn expressions() -> String {
     let mut source = String::new();
@@ -122,109 +110,33 @@ fn resource_and_tweak_literals_still_reject_unrepresentable_values() {
 #[test]
 #[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]
 fn raw_backslash_identity_with_official_compiler() {
-    use std::path::{Path, PathBuf};
-    use std::process::{Command, Stdio};
-    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+    use redscript_io::Instr;
+    use redscript_test_support::{OfficialBundle, OfficialCompiler};
 
-    use byte::BytesExt as _;
-    use redscript_io::{BundleReader, Definition, FunctionBody, Instr};
-
-    let executable = PathBuf::from(std::env::var_os("REDMOD_EXE").expect("set REDMOD_EXE"));
-    let root = PathBuf::from(std::env::var_os("REDMOD_GAME_ROOT").expect("set REDMOD_GAME_ROOT"));
-    assert!(executable.is_absolute() && root.is_absolute());
-    let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../../target/redmod-official")
-        .join(format!(
-            "resource-literals-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-    std::fs::create_dir_all(directory.join("r6/scripts")).unwrap();
-    let directory = std::path::absolute(directory).unwrap();
-    std::fs::write(
-        directory.join("r6/scripts/authored.script"),
-        emit(&expressions()).unwrap(),
-    )
-    .unwrap();
-    // The executable also writes logs in its working directory, so keep that
-    // under target as well as the compiled bundle. The game root is input only.
-    let stdout = std::fs::File::create_new(directory.join("stdout.log")).unwrap();
-    let stderr = std::fs::File::create_new(directory.join("stderr.log")).unwrap();
-    let mut child = Command::new(executable)
-        .current_dir(&directory)
-        .args(["validate-mod-scripts", "-compile", "-root"])
-        .arg(root)
-        .arg("-directory")
-        .arg(&directory)
-        .stdin(Stdio::null())
-        .stdout(stdout)
-        .stderr(stderr)
-        .spawn()
-        .unwrap();
-    let started = Instant::now();
-    let status = loop {
-        if let Some(status) = child.try_wait().unwrap() {
-            break status;
-        }
-        if started.elapsed() >= Duration::from_secs(60) {
-            child.kill().unwrap();
-            child.wait().unwrap();
-            panic!(
-                "official literal validation timed out: {}",
-                directory.display()
-            );
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    };
-    let log = std::fs::read_to_string(directory.join("stdout.log")).unwrap();
-    println!("{}\n{log}", directory.display());
-    assert!(status.success(), "{status}: {log}");
-    assert!(
-        log.contains("Commandlet validate-mod-scripts has succeeded"),
-        "{log}"
-    );
-    assert!(log.contains("v1.2.2"), "profiling layout requires v1.2.2");
-    let bytes = std::fs::read(directory.join("r6/cache/final.redscripts")).unwrap();
-    let reader = BundleReader::new(&bytes).unwrap();
-    let word = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
+    let source = emit(&expressions()).unwrap();
+    let output = OfficialCompiler::from_env().compile("resource-literals", &source);
+    output.assert_version("v1.2.2");
+    let directory = &output.directory;
+    let bytes = output.bundle_bytes();
+    let bundle = OfficialBundle::new(&bytes);
+    let resources = bundle.literal_pool(68);
+    let tweak_ids = bundle.literal_pool(56);
     let mut listing = String::new();
     let mut mismatches = Vec::new();
     for (i, expected) in VALUES.iter().enumerate() {
         for prefix in ['r', 't'] {
             let name = format!("Literal{prefix}{i}");
-            let index = (1..word(84))
-                .find(|i| {
-                    let at = word(80) as usize + *i as usize * 20;
-                    u16::from_le_bytes(bytes[at + 16..at + 18].try_into().unwrap()) == 5
-                        && reader.cnames().get(word(at)).unwrap().split(';').next() == Some(&name)
-                })
-                .unwrap_or_else(|| panic!("missing {name}"));
-            let Definition::Function(function) = reader.definitions().get(index).unwrap() else {
-                panic!("expected function")
-            };
-            let FunctionBody::Raw { bytes: raw, .. } = function.body() else {
-                panic!("expected raw body")
-            };
-            // Official v1.2.2 has a 14-byte profiling preamble.
-            assert_eq!(raw[0], 0x33);
-            let mut at = 14;
-            let mut code = Vec::<Instr>::new();
-            while at < raw.len() {
-                code.push(raw.read(&mut at, byte::LE).unwrap());
-            }
+            let code = bundle.function_code_prefix(&format!("{name};"));
             let ops = code
                 .iter()
                 .filter(|op| !matches!(op, Instr::Breakpoint(_)))
                 .collect::<Vec<_>>();
             let actual = match ops.as_slice() {
                 [Instr::Return, Instr::ResourceConst(index), Instr::Nop] if prefix == 'r' => {
-                    reader.resources().get(*index).unwrap()
+                    resources[u32::from(*index) as usize]
                 }
                 [Instr::Return, Instr::TweakDbIdConst(index), Instr::Nop] if prefix == 't' => {
-                    reader.tweakdb_ids().get(*index).unwrap()
+                    tweak_ids[u32::from(*index) as usize]
                 }
                 _ => panic!("{name}: unexpected body {code:?}"),
             };

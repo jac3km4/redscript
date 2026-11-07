@@ -286,32 +286,15 @@ fn community_parser_accepts_argument_holes() {
 }
 
 #[test]
-#[ignore = "requires freshly compiled official omitted-slot fixtures"]
+#[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]
 fn official_bytecode_retains_optional_slots() {
-    let bytes = std::fs::read(
-        std::env::var_os("OMITTED_OFFICIAL_BUNDLE").expect("set OMITTED_OFFICIAL_BUNDLE"),
-    )
-    .unwrap();
-    // Official definition layouts are not all supported by ScriptBundle. Bound
-    // this characterization to the named function's version-14 definition body.
-    let word = |offset| u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
-    assert_eq!(&bytes[..4], b"REDS");
-    assert_eq!(word(4), 14);
-    let names = (0..word(48))
-        .map(|i| {
-            let start = word(32) + word(word(44) + i * 4);
-            let end = bytes[start..].iter().position(|b| *b == 0).unwrap() + start;
-            std::str::from_utf8(&bytes[start..end]).unwrap()
-        })
-        .collect::<Vec<_>>();
-    let body = (0..word(84))
-        .find_map(|i| {
-            let header = word(80) + i * 20;
-            (u16::from_le_bytes(bytes[header + 16..header + 18].try_into().unwrap()) == 5
-                && names[word(header)] == "OmittedRun;")
-                .then(|| &bytes[word(header + 8)..word(header + 8) + word(header + 12)])
-        })
-        .unwrap();
+    let output = redscript_test_support::OfficialCompiler::from_env().compile(
+        "omitted-arguments",
+        "function OmittedTarget(optional a: Int32, b: Int32, optional c: String) {} function OmittedRun() { OmittedTarget(, 42, ); }",
+    );
+    let bytes = output.bundle_bytes();
+    let bundle = redscript_test_support::OfficialBundle::new(&bytes);
+    let body = bundle.definition("OmittedRun;", 5);
     // Nop, I32Const(42), Nop, ParamEnd, Nop (function terminator).
     assert!(
         body.ends_with(&[0x00, 0x06, 42, 0, 0, 0, 0x00, 0x26, 0x00]),

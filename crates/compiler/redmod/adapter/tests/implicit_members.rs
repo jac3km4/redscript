@@ -1,38 +1,18 @@
-use redscript_community_ast::SourceMap;
-use redscript_compiler_api::SourceMapExt;
-use redscript_compiler_frontend::{CompileErrorReporter, Symbols, TypeInterner};
-use redscript_redmod_adapter::{parse_file_with_metadata, process_sources};
+mod support;
 
 fn check(source: &str, dependency: &str) -> Vec<String> {
-    let sources = SourceMap::new();
-    sources.populate_boot_lib();
-    sources.push_back("dependency.reds", dependency);
-    let file = sources.push_back("test.script", source);
-    let interner = TypeInterner::default();
-    let (parsed, errors) = parse_file_with_metadata(source, file);
-    assert!(errors.is_empty(), "{errors:?}");
-    let dependencies = sources
-        .files()
-        .filter(|(id, _)| *id != file)
-        .map(|(id, file)| {
-            let (module, errors) = redscript_community_parser::parse_module(file.source(), id);
-            assert!(errors.is_empty(), "{errors:?}");
-            module.unwrap()
-        })
-        .collect::<Vec<_>>();
-    let mut reporter = CompileErrorReporter::default();
-    let (_, _, errors) = process_sources(
-        parsed,
-        dependencies,
-        Symbols::with_default_types(),
-        &mut reporter,
-        &interner,
-    );
-    errors
-        .into_iter()
-        .map(|e| e.to_string())
-        .chain(reporter.into_reported().into_iter().map(|e| e.to_string()))
-        .collect()
+    support::analyze(
+        source,
+        "test.script",
+        &[("dependency.reds", dependency)],
+        |_, _, _, errors, reporter| {
+            errors
+                .iter()
+                .map(ToString::to_string)
+                .chain(reporter.reported().iter().map(ToString::to_string))
+                .collect()
+        },
+    )
 }
 
 #[test]

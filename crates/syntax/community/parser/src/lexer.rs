@@ -50,7 +50,7 @@ pub fn lex<'src>(
                 Some("d") => str.parse().map(Token::Double).map_err(|_| {
                     error("Double", "use a decimal number with the `d` suffix")
                 }),
-                _ if str.contains('.') => str.parse().map(Token::Float).map_err(|_| {
+                _ if str.contains(['.', 'e', 'E']) => str.parse().map(Token::Float).map_err(|_| {
                     error("Float", "use the `d` suffix for a Double literal")
                 }),
                 _ if str == "2147483648" => Ok(Token::IntMinMagnitude),
@@ -873,7 +873,7 @@ mod tests {
             ("9223372036854775809l", "Int64", "`ul`"),
             ("18446744073709551616ul", "Uint64", "18446744073709551615"),
             ("1.5u", "Uint32", "remove the integer suffix"),
-            ("1e3", "Int32", "decimal point"),
+            ("1e3u", "Uint32", "remove the integer suffix"),
         ] {
             let (_, errors) = lex(false).parse(src).into_output_errors();
             assert!(
@@ -883,6 +883,58 @@ mod tests {
                 }),
                 "{src}: {errors:?}"
             );
+        }
+    }
+
+    #[test]
+    fn scientific_notation_without_decimal_point_lexes_as_float() {
+        let file = FileId::from_i32(0);
+        for (source, expected) in [
+            ("1e3", Token::Float(1000.0)),
+            ("2E-1", Token::Float(0.2)),
+            ("1e+003", Token::Float(1000.0)),
+            ("2147483648e0", Token::Float(2_147_483_648.0)),
+            ("1e3d", Token::Double(1000.0)),
+            ("2E-1d", Token::Double(0.2)),
+        ] {
+            for lex in [crate::lex, crate::lex_with_lf_and_comments] {
+                let (tokens, errors) = lex(source, file);
+                assert!(errors.is_empty(), "{source}: {errors:?}");
+                assert_eq!(
+                    tokens.unwrap(),
+                    vec![(expected.clone(), Span::new(0, source.len() as u32, file))],
+                    "{source}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn scientific_notation_preserves_signs_and_member_boundaries() {
+        let file = FileId::from_i32(0);
+        let source = "-2E-1+1e3.Member";
+        for lex in [crate::lex, crate::lex_with_lf_and_comments] {
+            let (tokens, errors) = lex(source, file);
+            assert!(errors.is_empty(), "{errors:?}");
+            assert_eq!(
+                tokens.unwrap(),
+                vec![
+                    (Token::Minus, Span::new(0, 1, file)),
+                    (Token::Float(0.2), Span::new(1, 5, file)),
+                    (Token::Plus, Span::new(5, 6, file)),
+                    (Token::Float(1000.0), Span::new(6, 9, file)),
+                    (Token::Period, Span::new(9, 10, file)),
+                    (Token::Ident("Member"), Span::new(10, 16, file)),
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn scientific_notation_rejects_missing_exponents_and_integer_suffixes() {
+        for source in ["1e", "1e+", "1E-", "1e3u", "1e3l", "1e3ul"] {
+            let (_, errors) = crate::parse_expr(source, FileId::from_i32(0));
+            assert!(!errors.is_empty(), "{source} must not be accepted");
         }
     }
 

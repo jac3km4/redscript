@@ -1,32 +1,15 @@
-use redscript_community_ast::SourceMap;
-use redscript_compiler_api::{SourceMapExt, TypeFlagRegistry};
-use redscript_compiler_backend::CompilationInputs;
-use redscript_compiler_frontend::{CompileErrorReporter, TypeInterner};
+mod support;
+
 use redscript_io::{
     Class, ClassFlags, Function, IndexedDefinition, Instr, ScriptBundle, Visibility,
 };
-use redscript_redmod_adapter::{parse_file_with_metadata, process_sources};
+use support::function;
 
 fn compile(source: &str) -> ScriptBundle<'static> {
     compile_with_native_root(source, false)
 }
 
 fn compile_with_native_root(source: &str, native_root: bool) -> ScriptBundle<'static> {
-    let sources = SourceMap::new();
-    sources.populate_boot_lib();
-    let file = sources.push_back("slots.script", source);
-    let (parsed, errors) = parse_file_with_metadata(source, file);
-    assert!(errors.is_empty(), "{errors:?}");
-    let dependencies = sources
-        .files()
-        .filter(|(id, _)| *id != file)
-        .map(|(id, source)| {
-            let (module, errors) = redscript_community_parser::parse_module(source.source(), id);
-            assert!(errors.is_empty(), "{errors:?}");
-            module.unwrap()
-        })
-        .collect::<Vec<_>>();
-    let interner = TypeInterner::default();
     let mut bundle = ScriptBundle::default();
     let name = bundle.cnames_mut().add("IScriptable");
     let root = bundle.define(Class::new(name, Visibility::Public, ClassFlags::default()));
@@ -52,32 +35,7 @@ fn compile_with_native_root(source: &str, native_root: bool) -> ScriptBundle<'st
         );
         bundle[class].add_method(method);
     }
-    let (symbols, mappings) =
-        CompilationInputs::load(&bundle, &interner, &TypeFlagRegistry::default())
-            .unwrap()
-            .into_inner();
-    let mut reporter = CompileErrorReporter::default();
-    let (unit, symbols, errors) =
-        process_sources(parsed, dependencies, symbols, &mut reporter, &interner);
-    assert!(errors.is_empty(), "{errors:?}");
-    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
-    mappings
-        .into_monomorphizer(&sources)
-        .monomorphize(&unit, &symbols, &mut bundle)
-        .unwrap();
-    bundle.into_owned()
-}
-
-fn function<'a>(bundle: &'a ScriptBundle<'_>, name: &str) -> &'a Function<'a> {
-    bundle
-        .indexed_definitions()
-        .find_map(|def| match def {
-            IndexedDefinition::Function(_, function) if &*bundle[function.name()] == name => {
-                Some(function)
-            }
-            _ => None,
-        })
-        .unwrap_or_else(|| panic!("missing function {name}"))
+    support::compile(source, "slots.script", &[], bundle)
 }
 
 #[test]

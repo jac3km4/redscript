@@ -1,7 +1,7 @@
 //! Optional official compiler invocation. Successful validation is not a runtime guarantee.
 use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 use std::{io, thread};
 
@@ -18,12 +18,42 @@ pub struct ValidationReport {
     pub stderr: String,
 }
 
+/// A completed compiler process, distinct from spawn, timeout and filesystem errors.
+#[derive(Debug)]
+pub struct OfficialInvocation {
+    pub status: ExitStatus,
+    pub report: ValidationReport,
+    pub fresh_outputs: bool,
+}
+
+impl OfficialInvocation {
+    pub fn has_success_marker(&self) -> bool {
+        self.report
+            .stdout
+            .lines()
+            .chain(self.report.stderr.lines())
+            .any(final_success)
+    }
+
+    /// Apply the production validation contract to a completed invocation.
+    pub fn into_validation_report(self) -> io::Result<ValidationReport> {
+        if !self.status.success() || !self.has_success_marker() || !self.fresh_outputs {
+            return Err(io::Error::other(format!(
+                "official REDmod validation failed: status={}; final success marker and fresh nonempty cache artifacts required\n{}\n{}",
+                self.status, self.report.stdout, self.report.stderr
+            )));
+        }
+        Ok(self.report)
+    }
+}
+
 impl OfficialValidator {
     /// Run against a dedicated staging directory. Existing output/cache logs are
     /// rejected, so stale artifacts cannot be mistaken for this invocation's result.
     /// The supplied executable is trusted and may read the local game installation.
     pub fn validate(&self, mod_directory: &Path) -> io::Result<ValidationReport> {
-        self.validate_inner(mod_directory, None)
+        self.invoke_inner(mod_directory, None, false)?
+            .into_validation_report()
     }
 
     /// Use an explicit game root for installations without base-game blobs beside
@@ -33,20 +63,35 @@ impl OfficialValidator {
         mod_directory: &Path,
         game_root: &Path,
     ) -> io::Result<ValidationReport> {
-        if !game_root.is_absolute() {
+        self.invoke_inner(mod_directory, Some(game_root), false)?
+            .into_validation_report()
+    }
+
+    /// Run in the disposable mod directory and return a completed process without
+    /// interpreting a nonzero exit as an infrastructure failure. Missing outputs
+    /// are allowed (a rejected source need not produce them); malformed artifacts,
+    /// spawn failures and timeouts are errors. Logs and outputs are never removed.
+    pub fn invoke_with_root(
+        &self,
+        mod_directory: &Path,
+        game_root: &Path,
+    ) -> io::Result<OfficialInvocation> {
+        self.invoke_inner(mod_directory, Some(game_root), true)
+    }
+
+    fn invoke_inner(
+        &self,
+        mod_directory: &Path,
+        game_root: Option<&Path>,
+        disposable_cwd: bool,
+    ) -> io::Result<OfficialInvocation> {
+        if game_root.is_some_and(|root| !root.is_absolute()) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "validator game root must be absolute",
             ));
         }
-        self.validate_inner(mod_directory, Some(game_root))
-    }
 
-    fn validate_inner(
-        &self,
-        mod_directory: &Path,
-        game_root: Option<&Path>,
-    ) -> io::Result<ValidationReport> {
         if !self.executable.is_absolute() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -77,11 +122,13 @@ impl OfficialValidator {
         // Files, not unread pipes: large compiler logs cannot deadlock the child.
         let mut command = Command::new(&self.executable);
         command
-            .current_dir(
+            .current_dir(if disposable_cwd {
+                directory.as_path()
+            } else {
                 self.executable
                     .parent()
-                    .expect("absolute executable parent"),
-            )
+                    .expect("absolute executable parent")
+            })
             .arg("validate-mod-scripts")
             .arg("-compile");
         if let Some(root) = game_root {
@@ -114,26 +161,25 @@ impl OfficialValidator {
             stdout: String::from_utf8_lossy(&fs::read(stdout_path)?).into_owned(),
             stderr: String::from_utf8_lossy(&fs::read(stderr_path)?).into_owned(),
         };
-        let fresh_outputs = ["final.redscripts", "final.redscripts.h64"]
-            .iter()
-            .all(|name| {
-                fs::symlink_metadata(cache.join(name))
-                    .is_ok_and(|m| m.file_type().is_file() && m.len() > 0)
-            });
-        if !status.success()
-            || !report
-                .stdout
-                .lines()
-                .chain(report.stderr.lines())
-                .any(final_success)
-            || !fresh_outputs
-        {
-            return Err(io::Error::other(format!(
-                "official REDmod validation failed: status={status}; final success marker and fresh nonempty cache artifacts required\n{}\n{}",
-                report.stdout, report.stderr
-            )));
+        let mut fresh_outputs = true;
+        for name in ["final.redscripts", "final.redscripts.h64"] {
+            match fs::symlink_metadata(cache.join(name)) {
+                Ok(metadata) if metadata.file_type().is_file() && metadata.len() > 0 => {}
+                Ok(_) => {
+                    return Err(io::Error::other(format!(
+                        "invalid official compiler artifact: {}",
+                        cache.join(name).display()
+                    )));
+                }
+                Err(error) if error.kind() == io::ErrorKind::NotFound => fresh_outputs = false,
+                Err(error) => return Err(error),
+            }
         }
-        Ok(report)
+        Ok(OfficialInvocation {
+            status,
+            report,
+            fresh_outputs,
+        })
     }
 }
 

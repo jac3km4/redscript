@@ -1,17 +1,11 @@
 //! Borrowed operands retain their invocation slot and temporary lifetime.
+mod support;
+
 use redscript_community_ast::{SourceMap, Span};
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{Symbols, TypeInterner, ir};
-use redscript_redmod_transpiler::{analyze_sources, transpile_sources};
-
-fn emit(source: &str) -> Result<String, Vec<redscript_redmod_transpiler::TranspileDiagnostic>> {
-    let sources = SourceMap::new();
-    let file = sources.push_back("as-ref.reds", source);
-    sources.populate_boot_lib();
-    let interner = TypeInterner::default();
-    transpile_sources(&sources, &[file], Symbols::with_default_types(), &interner)
-        .map(|output| output[0].module.text.clone())
-}
+use redscript_redmod_transpiler::analyze_sources;
+use support::try_emit_source as emit;
 
 #[test]
 fn scripted_field_borrows_keep_overload_and_place_guards() {
@@ -467,76 +461,39 @@ fn native_methods_use_only_their_immediate_non_out_parameter() {
     assert!(text.contains("Receiver.ReadStatic(MakeText());"), "{text}");
 }
 
-// Decode only bounded v14 name/header tables and match a known invocation
-// prefix inside a named probe. Full official definition decoding is not assumed.
-fn official_invocations(bytes: &[u8], probe: &str, callee_prefix: &str) -> Vec<(u16, u8)> {
-    let word = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap()) as usize;
-    assert_eq!(&bytes[..4], b"REDS");
-    assert_eq!(word(4), 14);
-    let names = (0..word(48))
-        .map(|i| {
-            let start = word(32) + word(word(44) + i * 4);
-            let end = bytes[start..].iter().position(|b| *b == 0).unwrap() + start;
-            std::str::from_utf8(&bytes[start..end]).unwrap()
+// Keep the invocation mask and first-argument borrowing assertions local;
+// shared decoding retains breakpoints and stays within the named physical body.
+fn official_invocations(bytes: &[u8], probe: &str, callee_prefix: &str) -> Vec<(u16, bool)> {
+    use redscript_io::Instr;
+    let bundle = redscript_test_support::OfficialBundle::new(bytes);
+    let code = bundle.function_code_prefix(probe);
+    code.windows(2)
+        .filter_map(|ops| {
+            let Instr::InvokeStatic {
+                function, flags, ..
+            } = &ops[0]
+            else {
+                return None;
+            };
+            if !bundle
+                .definition_name((*function).into())
+                .starts_with(callee_prefix)
+            {
+                return None;
+            }
+            let mask = (0..16)
+                .filter(|bit| flags.is_rvalue_ref(*bit))
+                .fold(0, |mask, bit| mask | (1 << bit));
+            Some((mask, matches!(ops[1], Instr::AsRef(_))))
         })
-        .collect::<Vec<_>>();
-    let definitions = (0..word(84))
-        .map(|i| {
-            let at = word(80) + i * 20;
-            (
-                names[word(at)],
-                word(at + 8),
-                word(at + 12),
-                u16::from_le_bytes(bytes[at + 16..at + 18].try_into().unwrap()),
-            )
-        })
-        .collect::<Vec<_>>();
-    let (_, start, size, _) = definitions
-        .iter()
-        .find(|(name, _, _, tag)| *tag == 5 && name.starts_with(probe))
-        .unwrap();
-    let body = &bytes[*start..*start + *size];
-    let mut calls = Vec::new();
-    for window in body.windows(12) {
-        if window[0] != 0x24 {
-            continue;
-        }
-        let index = u32::from_le_bytes(window[5..9].try_into().unwrap()) as usize;
-        if definitions
-            .get(index)
-            .is_some_and(|(name, _, _, tag)| *tag == 5 && name.starts_with(callee_prefix))
-        {
-            calls.push((
-                u16::from_le_bytes(window[9..11].try_into().unwrap()),
-                window[11],
-            ));
-        }
-    }
-    calls
+        .collect()
 }
 
 #[test]
 #[ignore = "requires REDMOD_EXE and REDMOD_GAME_ROOT pointing to a trusted local installation"]
 fn borrowed_values_with_official_compiler() {
-    use std::path::{Path, PathBuf};
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use redscript_test_support::OfficialCompiler;
 
-    use redscript_redmod_transpiler::validate::OfficialValidator;
-    let validator = OfficialValidator {
-        executable: PathBuf::from(std::env::var_os("REDMOD_EXE").expect("set REDMOD_EXE")),
-        timeout: Duration::from_secs(60),
-    };
-    let root = PathBuf::from(std::env::var_os("REDMOD_GAME_ROOT").expect("set REDMOD_GAME_ROOT"));
-    let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../../target/redmod-official")
-        .join(format!(
-            "as-ref-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
     // Real engine signatures come from the trusted installation, not invented
     // imports. Compare temporary and stable-place invocation lifetime metadata.
     let source = r#"
@@ -579,65 +536,64 @@ fn borrowed_values_with_official_compiler() {
         .filter(|line| !line.starts_with("import function"))
         .collect::<Vec<_>>()
         .join("\n");
-    std::fs::create_dir_all(directory.join("r6/scripts")).unwrap();
     // Typed script sinks exercise the target's generic borrowing ABI without
     // inventing native imports absent from the trusted engine installation.
     let body = format!(
         "{body}\nfunction AsRefTakeInt(value: script_ref<Int32>);\nfunction AsRefTakeValue(value: script_ref<AsRefValue>);\n"
     );
-    std::fs::write(directory.join("r6/scripts/authored.script"), &body).unwrap();
-    let report = validator.validate_with_root(&directory, &root).unwrap();
-    println!("{}\n{}", directory.display(), report.stdout);
-    let bytes = std::fs::read(directory.join("r6/cache/final.redscripts")).unwrap();
+    let output = OfficialCompiler::from_env().compile("as-ref", &body);
+    output.assert_version("v1.2.2");
+    let bytes = output.bundle_bytes();
     assert_eq!(
         official_invocations(&bytes, "AsRefScalar;", "AsRefTakeInt;"),
-        [(1, 0x66)]
+        [(1, true)]
     );
     assert_eq!(
         official_invocations(&bytes, "AsRefStruct;", "AsRefTakeValue;"),
-        [(1, 0x66)]
+        [(1, true)]
     );
-    // 0x66 is AsRef. The temporary is call-owned (bit 0); the local is
+    // The boolean records an AsRef first argument. The temporary is call-owned
+    // (bit 0); the local is
     // borrowed by identity without allocating call-owned temporary storage.
     assert_eq!(
         official_invocations(&bytes, "AsRefTemporary", "GetLocalizedText"),
-        [(1, 0x66)]
+        [(1, true)]
     );
     assert_eq!(
         official_invocations(&bytes, "AsRefNested", "GetLocalizedText"),
-        [(1, 0x66), (0, 0x66)]
+        [(1, true), (0, true)]
     );
     assert_eq!(
         official_invocations(&bytes, "AsRefNested", "OperatorAdd;"),
-        [(2, 0x66)]
+        [(2, true)]
     );
     assert_eq!(
         official_invocations(&bytes, "AsRefLoop", "StrContains"),
-        [(1, 0x66), (1, 0x66)]
+        [(1, true), (1, true)]
     );
     assert_eq!(
         official_invocations(&bytes, "AsRefLocal", "GetLocalizedText"),
-        [(0, 0x66)]
+        [(0, true)]
     );
     assert_eq!(
         official_invocations(&bytes, "AsRefInterpolation", "OperatorAdd;"),
-        [(2, 0x66)]
+        [(2, true)]
     );
     // Literals borrow stable pooled storage (mask 0). The outer concatenation
     // owns the inner String result in slot 0, before evaluating the last value.
     for probe in ["AsRefMixed;", "AsRefMixedFloat;", "AsRefMixedBool;"] {
         let calls = official_invocations(&bytes, probe, "OperatorAdd;");
         assert_eq!(calls.len(), 2, "{probe}: {calls:?}");
-        assert_eq!(calls[0], (1, 0x66), "{probe}");
+        assert_eq!(calls[0], (1, true), "{probe}");
         assert_eq!(calls[1].0, 0, "{probe}");
     }
     assert_eq!(
         official_invocations(&bytes, "AsRefMixedReverse;", "OperatorAdd;"),
-        [(0, 0x66)]
+        [(0, true)]
     );
     assert_eq!(
         official_invocations(&bytes, "AsRefAssign;", "OperatorAssignAdd;"),
-        [(2, 0x66)]
+        [(2, true)]
     );
 }
 

@@ -1,57 +1,27 @@
 use std::collections::HashSet;
 
+mod support;
+
 use redscript_community_ast::SourceMap;
 use redscript_compiler_api::{SourceMapExt, TypeFlagRegistry};
 use redscript_compiler_backend::CompilationInputs;
 use redscript_compiler_frontend::{CompileErrorReporter, TypeInterner};
-use redscript_io::{
-    Class, ClassFlags, FieldFlags, Function, IndexedDefinition, Instr, LocalFlags, ScriptBundle,
-    Visibility,
-};
-use redscript_redmod_adapter::{parse_file_with_metadata, process_sources};
+use redscript_io::{FieldFlags, Function, IndexedDefinition, Instr, LocalFlags, ScriptBundle};
 
 fn compile(source: &str) -> ScriptBundle<'static> {
-    let sources = SourceMap::new();
-    sources.populate_boot_lib();
-    sources.push_back(
-        "helpers.reds",
-        "native func Less(a: Int32, b: Int32) -> Bool;
-         native func Inc(value: Int32) -> Int32;
-         native func OuterStep(); native func InnerStep();
-         native func DoCondition() -> Bool;
-         native func OuterContinue(); native func InnerContinue(); native func DoContinue();",
-    );
-    let file = sources.push_back("backend.script", source);
-    let (parsed, errors) = parse_file_with_metadata(source, file);
-    assert!(errors.is_empty(), "{errors:?}");
-    let dependencies = sources
-        .files()
-        .filter(|(id, _)| *id != file)
-        .map(|(id, file)| {
-            let (module, errors) = redscript_community_parser::parse_module(file.source(), id);
-            assert!(errors.is_empty(), "{errors:?}");
-            module.unwrap()
-        })
-        .collect::<Vec<_>>();
-
-    let interner = TypeInterner::default();
-    let mut bundle = ScriptBundle::default();
-    let name = bundle.cnames_mut().add("IScriptable");
-    bundle.define(Class::new(name, Visibility::Public, ClassFlags::default()));
-    let (symbols, mappings) =
-        CompilationInputs::load(&bundle, &interner, &TypeFlagRegistry::default())
-            .unwrap()
-            .into_inner();
-    let mut reporter = CompileErrorReporter::default();
-    let (unit, symbols, errors) =
-        process_sources(parsed, dependencies, symbols, &mut reporter, &interner);
-    assert!(errors.is_empty(), "{errors:?}");
-    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
-    mappings
-        .into_monomorphizer(&sources)
-        .monomorphize(&unit, &symbols, &mut bundle)
-        .unwrap();
-    bundle.into_owned()
+    support::compile(
+        source,
+        "backend.script",
+        &[(
+            "helpers.reds",
+            "native func Less(a: Int32, b: Int32) -> Bool;
+             native func Inc(value: Int32) -> Int32;
+             native func OuterStep(); native func InnerStep();
+             native func DoCondition() -> Bool;
+             native func OuterContinue(); native func InnerContinue(); native func DoContinue();",
+        )],
+        support::empty_bundle(),
+    )
 }
 
 fn function<'a>(bundle: &'a ScriptBundle<'_>, name: &str) -> &'a Function<'a> {
