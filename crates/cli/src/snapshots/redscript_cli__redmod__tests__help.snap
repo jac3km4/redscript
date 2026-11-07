@@ -2,7 +2,7 @@
 source: crates/cli/src/redmod.rs
 expression: help.output
 ---
-Usage: redscript-cli transpile-redmod [-s <src...>] [--dependency <dependency...>] [-b <bundle>] -o <output> [--redmod <redmod>] [--game-root <game-root>] [--timeout <timeout>]
+Usage: redscript-cli transpile-redmod [-s <src...>] [--dependency <dependency...>] [-b <bundle>] -o <output> [--redmod <redmod>] [--game-root <game-root>] [--mod-name <mod-name>] [--timeout <timeout>]
 
 transpile community redscript sources as a new REDmod script package
 
@@ -19,6 +19,7 @@ Options:
                     optional validation
   --game-root       absolute game installation root for base blobs (requires
                     --redmod)
+  --mod-name        optionally override mod name (default: --src folder name)
   --timeout         official validation timeout in positive, finite seconds
                     (default: 60)
   --help, help      display usage information
