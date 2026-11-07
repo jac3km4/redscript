@@ -1,8 +1,7 @@
 ---
 source: crates/syntax/community/formatter/tests/formatted.rs
-expression: module
+expression: formatted
 input_file: crates/syntax/community/formatter/tests/data/module.reds
-snapshot_kind: text
 ---
 module Test.Module
 

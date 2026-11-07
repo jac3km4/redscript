@@ -6,18 +6,18 @@ class DefaultObject extends IScriptable {
 }
 
 struct DefaultLeaf {
-    public var count: Int32;
-    public var enabled: Bool;
-    public var weight: Float;
+    public var m_count: Int32;
+    public var m_enabled: Bool;
+    public var m_weight: Float;
 }
 
 struct DefaultPair {
-    public var first: DefaultLeaf;
-    public var second: DefaultLeaf;
-    public var strong: DefaultObject;
-    public var observer: wref<DefaultObject>;
-    public var label: String;
-    public var tag: CName;
+    public var m_first: DefaultLeaf;
+    public var m_second: DefaultLeaf;
+    public var m_strong: DefaultObject;
+    public var m_observer: wref<DefaultObject>;
+    public var m_label: String;
+    public var m_tag: CName;
 }
 
 function ResetStructs(again: Bool) -> Void {

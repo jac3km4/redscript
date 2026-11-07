@@ -3,14 +3,14 @@ source: crates/compiler/redmod/transpiler/tests/official.rs
 expression: source.module.text
 ---
 struct OfficialScriptLeaf {
-    public var count: Int32;
+    public var m_count: Int32;
 }
 
 struct OfficialScriptValue {
-    public var leaf: OfficialScriptLeaf;
-    public var text: String;
-    public var values: array<Int32>;
-    public var dynamic: Variant;
+    public var m_leaf: OfficialScriptLeaf;
+    public var m_text: String;
+    public var m_values: array<Int32>;
+    public var m_dynamic: Variant;
 }
 
 function OfficialScriptDefault(again: Bool) -> OfficialScriptValue {
@@ -18,7 +18,7 @@ function OfficialScriptDefault(again: Bool) -> OfficialScriptValue {
     var value: OfficialScriptValue = OfficialScriptValue();
     while (again) {
         repeated = OfficialScriptValue();
-        repeated.text = "dirty";
+        repeated.m_text = "dirty";
         value = repeated;
     }
     return value;

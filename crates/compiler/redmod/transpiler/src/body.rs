@@ -1,11 +1,11 @@
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use redscript_community_ast as ast;
 use redscript_compiler_frontend::utils::ScopedMap;
 use redscript_compiler_frontend::{
-    FunctionType, LoweredFunction, MethodId, PolyType, QueryError, RefType, Symbols, Type, TypeId,
-    TypeSchema, Variance, expr_type, ir, predef,
+    FieldId, FunctionType, LoweredFunction, MethodId, PolyType, QueryError, RefType, Symbols, Type,
+    TypeId, TypeSchema, Variance, expr_type, ir, predef,
 };
 
 use crate::{Result, SourceMapping, error, target};
@@ -17,6 +17,7 @@ pub(crate) struct Body<'a, 'ctx> {
     pub names: BTreeMap<ir::Local, String>,
 
     pub wrapper: Option<MethodId<'ctx>>,
+    renamed_fields: &'a HashSet<FieldId<'ctx>>,
     result_local: String,
     inline_declarations: BTreeSet<ir::Local>,
     omitted_defaults: BTreeSet<(ir::Local, ast::Span)>,
@@ -45,6 +46,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         symbols: &'a Symbols<'ctx>,
         signature: &'a FunctionType<'ctx>,
         symbol_names: &BTreeSet<String>,
+        renamed_fields: &'a HashSet<FieldId<'ctx>>,
         wrapper: Option<MethodId<'ctx>>,
     ) -> Result<Self> {
         if !signature.type_params().is_empty() {
@@ -142,6 +144,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             names,
 
             wrapper,
+            renamed_fields,
             result_local,
             inline_declarations,
             omitted_defaults,
@@ -774,8 +777,13 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     .get_field(*field)
                     .ok_or_else(|| error("missing resolved field", None))?;
                 Ok(format!(
-                    "{}.{}",
+                    "{}.{}{}",
                     self.expr_at(receiver, 14)?,
+                    if self.renamed_fields.contains(field) {
+                        "m_"
+                    } else {
+                        ""
+                    },
                     target::ident(name)?
                 ))
             }

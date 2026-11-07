@@ -19,9 +19,9 @@ function Run() -> Int32 {
 }
 
 class Widget extends IScriptable {
-    var value: Int32;
+    var m_value: Int32;
 
     public function Read() -> Int32 {
-        return this.value;
+        return this.m_value;
     }
 }

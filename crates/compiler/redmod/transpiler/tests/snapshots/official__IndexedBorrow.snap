@@ -3,15 +3,15 @@ source: crates/compiler/redmod/transpiler/tests/official.rs
 expression: source.module.text
 ---
 struct OfficialIndexedValue {
-    public var count: Int32;
+    public var m_count: Int32;
 }
 
 class OfficialIndexedBorrowOwner extends IScriptable {
-    public var values: array<OfficialIndexedValue>;
+    public var m_values: array<OfficialIndexedValue>;
 }
 
 function OfficialIndexedSet(value: script_ref<OfficialIndexedValue>) -> Void {
-    value.count = 42;
+    value.m_count = 42;
 }
 
 function OfficialBorrowIndex(out index: Int32) -> Int32 {
@@ -20,5 +20,5 @@ function OfficialBorrowIndex(out index: Int32) -> Int32 {
 }
 
 function OfficialIndexedBorrow(owner: OfficialIndexedBorrowOwner, index: Int32) -> Void {
-    OfficialIndexedSet(owner.values[OfficialBorrowIndex(index)]);
+    OfficialIndexedSet(owner.m_values[OfficialBorrowIndex(index)]);
 }

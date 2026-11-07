@@ -1,6 +1,6 @@
 ---
 source: crates/compiler/redmod/transpiler/tests/ternary_assignments.rs
-expression: "support::emit(SOURCE, \"\")"
+expression: "support::emit_parsed(SOURCE, \"\")"
 ---
 import function OperatorAssignAdd(out left: Int32, right: Int32) -> Int32;
 

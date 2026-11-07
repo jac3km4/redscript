@@ -151,6 +151,14 @@ pub fn transpile<'ctx>(
         return Err(diagnostics);
     }
     let symbol_names = body::reserved_names(symbols);
+    let renamed_fields: HashSet<_> = modules
+        .iter()
+        .flat_map(|module| &module.bindings)
+        .filter_map(|(path, binding)| match binding {
+            ResolvedDeclaration::Field(id) if path.0.len() > 1 => Some(*id),
+            _ => None,
+        })
+        .collect();
     // Only selected modules are emitted. Analysis-only source dependencies do
     // not introduce target modules or widen symbol-level @using directives.
     let mut target_modules = BTreeSet::new();
@@ -162,7 +170,14 @@ pub fn transpile<'ctx>(
         }
     }
     for module in modules {
-        match declarations::emit(module, unit, symbols, &symbol_names, &target_modules) {
+        match declarations::emit(
+            module,
+            unit,
+            symbols,
+            &symbol_names,
+            &target_modules,
+            &renamed_fields,
+        ) {
             Ok(module) => output.push(module),
             Err(error) => diagnostics.push(error),
         }

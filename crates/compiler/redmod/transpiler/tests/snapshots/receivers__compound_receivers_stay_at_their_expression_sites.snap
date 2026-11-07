@@ -3,22 +3,22 @@ source: crates/compiler/redmod/transpiler/tests/receivers.rs
 expression: text
 ---
 class ReceiverOwner extends IScriptable {
-    public var child: ReceiverOwner;
-    public var handle: wref<ReceiverOwner>;
+    public var m_child: ReceiverOwner;
+    public var m_handle: wref<ReceiverOwner>;
 
     public function Entry(value: Int32) -> Int32 {
         return value;
     }
 
-    public var count: Int32;
+    public var m_count: Int32;
 
     public function Next(out steps: Int32) -> ReceiverOwner {
         steps = steps + 1;
-        return this.child;
+        return this.m_child;
     }
 
     public function Read(value: Int32) -> Bool {
-        this.count = this.count + value;
+        this.m_count = this.m_count + value;
         return true;
     }
 }
@@ -34,11 +34,11 @@ function ReceiverMutate(out value: ReceiverOwner) -> Int32 {
 }
 
 function ReceiverWeak(value: ReceiverOwner) -> wref<ReceiverOwner> {
-    return value.handle;
+    return value.m_handle;
 }
 
 function ReceiverRebind(owner: ReceiverOwner) -> Int32 {
-    owner.handle = owner.child;
+    owner.m_handle = owner.m_child;
     return 1;
 }
 
@@ -52,9 +52,9 @@ function ReceiverReplaceWeak(out handle: wref<ReceiverOwner>, replacement: Recei
 }
 
 function ReceiverWeakAssignments(handle: wref<ReceiverOwner>, replacement: ReceiverOwner) -> Void {
-    handle.count = 42;
-    handle.child = new ReceiverOwner;
-    handle.child = ReceiverReplaceWeak(handle, replacement);
+    handle.m_count = 42;
+    handle.m_child = new ReceiverOwner;
+    handle.m_child = ReceiverReplaceWeak(handle, replacement);
 }
 
 function ReceiverWriteOut(out value: Int32) -> Void {
@@ -62,9 +62,9 @@ function ReceiverWriteOut(out value: Int32) -> Void {
 }
 
 function ReceiverFieldOut(owner: ReceiverOwner, handle: wref<ReceiverOwner>) -> Void {
-    ReceiverWriteOut(owner.count);
-    ReceiverWriteOut(owner.child.count);
-    ReceiverWriteOut(handle.count);
+    ReceiverWriteOut(owner.m_count);
+    ReceiverWriteOut(owner.m_child.m_count);
+    ReceiverWriteOut(handle.m_count);
 }
 
 import function OperatorLogicAnd(a: Bool, b: Bool) -> Bool;
@@ -73,11 +73,11 @@ import function OperatorAdd(a: Int32, b: Int32) -> Int32;
 
 function ReceiverProbe(enabled: Bool, owner: ReceiverOwner, other: ReceiverOwner, steps: Int32) -> Bool {
     ReceiverSelect(steps, owner).Next(steps).Read(ReceiverMutate(owner));
-    owner.child.Read(ReceiverMutate(owner));
-    owner.handle.Read(ReceiverRebind(owner));
+    owner.m_child.Read(ReceiverMutate(owner));
+    owner.m_handle.Read(ReceiverRebind(owner));
     ReceiverWeak(owner).Read(ReceiverRebind(owner));
-    owner.handle.Read(owner.handle.Entry(ReceiverRebind(owner)));
-    owner.handle.Read(ReceiverRebind(owner));
+    owner.m_handle.Read(owner.m_handle.Entry(ReceiverRebind(owner)));
+    owner.m_handle.Read(ReceiverRebind(owner));
     (enabled ? ReceiverSelect(steps, owner) : ReceiverSelect(steps, other)).Read(ReceiverMutate(owner));
     if (enabled) {
         ReceiverSelect(steps, owner).Read(ReceiverMutate(owner));

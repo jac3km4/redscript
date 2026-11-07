@@ -3,7 +3,7 @@ source: crates/compiler/redmod/transpiler/tests/official.rs
 expression: source.module.text
 ---
 struct OfficialTemporaryValue {
-    public var count: Int32;
+    public var m_count: Int32;
 }
 
 function OfficialTemporaryMake() -> OfficialTemporaryValue {
@@ -11,7 +11,7 @@ function OfficialTemporaryMake() -> OfficialTemporaryValue {
 }
 
 function OfficialTemporaryTake(value: script_ref<OfficialTemporaryValue>) -> Int32 {
-    return value.count;
+    return value.m_count;
 }
 
 function OfficialTemporaryProbe(enabled: Bool) -> Int32 {

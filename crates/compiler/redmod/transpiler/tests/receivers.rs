@@ -72,7 +72,7 @@ fn compound_receivers_stay_at_their_expression_sites() {
     let text = emit(SOURCE).unwrap();
     insta::assert_snapshot!(text);
     assert!(text.contains("ReceiverSelect(steps, owner).Next(steps).Read(ReceiverMutate(owner))"));
-    assert!(text.contains("owner.child.Read(ReceiverMutate(owner))"));
+    assert!(text.contains("owner.m_child.Read(ReceiverMutate(owner))"));
     assert!(
         text.contains(
             "(enabled ? ReceiverSelect(steps, owner) : ReceiverSelect(steps, other)).Read("
@@ -85,16 +85,16 @@ fn compound_receivers_stay_at_their_expression_sites() {
     );
     assert!(text.contains("return ReceiverNull().Read(ReceiverMutate(owner));"));
     assert_eq!(
-        text.matches("owner.handle.Read(ReceiverRebind(owner));")
+        text.matches("owner.m_handle.Read(ReceiverRebind(owner));")
             .count(),
         2
     );
     assert!(text.contains("ReceiverWeak(owner).Read(ReceiverRebind(owner));"));
-    assert!(text.contains("owner.handle.Read(owner.handle.Entry(ReceiverRebind(owner)));"));
+    assert!(text.contains("owner.m_handle.Read(owner.m_handle.Entry(ReceiverRebind(owner)));"));
     assert!(!text.contains("WeakRefToRef("));
-    assert!(text.contains("handle.count = 42;"));
-    assert!(text.contains("handle.child = new ReceiverOwner;"));
-    assert!(text.contains("handle.child = ReceiverReplaceWeak(handle, replacement);"));
+    assert!(text.contains("handle.m_count = 42;"));
+    assert!(text.contains("handle.m_child = new ReceiverOwner;"));
+    assert!(text.contains("handle.m_child = ReceiverReplaceWeak(handle, replacement);"));
 
     // Run the full native adapter, not just its parser, including native ref erasure.
     let sources = SourceMap::new();

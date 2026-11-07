@@ -3,11 +3,11 @@ source: crates/compiler/redmod/transpiler/tests/official.rs
 expression: source.module.text
 ---
 class OfficialOutOwner extends IScriptable {
-    public var count: Int32;
-    public var child: OfficialOutOwner;
+    public var m_count: Int32;
+    public var m_child: OfficialOutOwner;
 
     public function Next() -> OfficialOutOwner {
-        return this.child;
+        return this.m_child;
     }
 }
 
@@ -16,8 +16,8 @@ function OfficialSetOut(out value: Int32) -> Void {
 }
 
 function OfficialFieldOut(owner: OfficialOutOwner, handle: wref<OfficialOutOwner>) -> Void {
-    OfficialSetOut(owner.count);
-    OfficialSetOut(owner.child.count);
-    OfficialSetOut(handle.count);
-    OfficialSetOut(owner.Next().count);
+    OfficialSetOut(owner.m_count);
+    OfficialSetOut(owner.m_child.m_count);
+    OfficialSetOut(handle.m_count);
+    OfficialSetOut(owner.Next().m_count);
 }

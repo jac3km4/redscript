@@ -3,7 +3,7 @@ source: crates/compiler/redmod/transpiler/tests/official.rs
 expression: source.module.text
 ---
 class OfficialWeakOwner extends IScriptable {
-    public var handle: wref<OfficialWeakOwner>;
+    public var m_handle: wref<OfficialWeakOwner>;
 }
 
 function OfficialGetWeak(values: array<Int32>) -> wref<OfficialWeakOwner> {
@@ -14,7 +14,7 @@ function OfficialWeakIsDefined(handle: wref<OfficialWeakOwner>, owner: OfficialW
     var arrayLiteral: array<Int32>;
     handle != NULL;
     handle != NULL;
-    owner.handle != NULL;
+    owner.m_handle != NULL;
     while (true) {
         arrayLiteral.Resize(1);
         arrayLiteral[0] = 1;
@@ -23,5 +23,5 @@ function OfficialWeakIsDefined(handle: wref<OfficialWeakOwner>, owner: OfficialW
         }
         continue;
     }
-    return !(owner.handle != NULL);
+    return !(owner.m_handle != NULL);
 }

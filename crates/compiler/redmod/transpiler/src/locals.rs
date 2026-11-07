@@ -74,6 +74,8 @@ pub(crate) fn inline_declarations<'ctx>(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use redscript_community_ast::{SourceMap, Span};
     use redscript_compiler_frontend::{
         FreeFunction, FunctionType, LoweredFunction, Param, ParamFlags, PolyType, TypeApp,
@@ -319,11 +321,17 @@ mod tests {
         };
         let signature = FunctionType::default();
         let symbol_names = crate::body::reserved_names(&symbols);
-        let (text, _) =
-            crate::body::Body::new(&function, &symbols, &signature, &symbol_names, None)
-                .unwrap()
-                .emit_at(0)
-                .unwrap();
+        let (text, _) = crate::body::Body::new(
+            &function,
+            &symbols,
+            &signature,
+            &symbol_names,
+            &HashSet::default(),
+            None,
+        )
+        .unwrap()
+        .emit_at(0)
+        .unwrap();
         assert!(text.contains("var before: Int32;"), "{text}");
         assert!(text.contains("var inside: Int32;"), "{text}");
         assert!(text.contains("var fresh: Int32 = 1;"), "{text}");
