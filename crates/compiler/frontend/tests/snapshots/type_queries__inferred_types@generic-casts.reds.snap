@@ -1,5 +1,6 @@
 ---
 source: crates/compiler/frontend/tests/type_queries.rs
+assertion_line: 71
 expression: output
 input_file: crates/compiler/frontend/tests/data/type-queries/generic-casts.reds
 ---
