@@ -4,8 +4,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use redscript_community_ast::{self as ast, FileId, Item, SourceMap, SourceModule};
 use redscript_compiler_frontend::{
     CompileErrorReporter, Evaluator, FieldId, FreeFunctionIndex, FunctionType,
-    LoweredCompilationUnit, MethodId, Symbols, Type, TypeId, TypeInterner, parse_file, predef,
-    process_sources,
+    LoweredCompilationUnit, MethodId, QualifiedName, Symbols, Type, TypeId, TypeInterner,
+    parse_file, predef, process_sources,
 };
 
 use crate::{
@@ -162,12 +162,14 @@ impl<'ctx> AnalyzedSources<'ctx> {
             };
             let source = &self.modules[index].1;
             let mut bindings = BTreeMap::new();
-            let prefix = source
-                .path
-                .as_ref()
-                .map(|p| format!("{}.", p.segments.join(".")))
-                .unwrap_or_default();
-            match self.associate(file, &source.items, &prefix, None, &[], &mut bindings) {
+            match self.associate(
+                file,
+                &source.items,
+                source.path.as_ref(),
+                None,
+                &[],
+                &mut bindings,
+            ) {
                 Ok(()) => requests.push(TranspileModule { source, bindings }),
                 Err(e) => errors.push(e),
             }
@@ -349,7 +351,7 @@ impl<'ctx> AnalyzedSources<'ctx> {
         &self,
         file: FileId,
         items: &[(ast::SourceItemDecl<'ctx>, ast::Span)],
-        prefix: &str,
+        module: Option<&ast::Path<'ctx>>,
         parent: Option<TypeId<'ctx>>,
         path: &[usize],
         out: &mut BTreeMap<DeclarationPath, R<'ctx>>,
@@ -399,23 +401,16 @@ impl<'ctx> AnalyzedSources<'ctx> {
                                 Some(*span),
                             ));
                         }
-                        let name = c.name.0.to_string();
                         let id = self
-                            .resolved_type(&name)
+                            .type_id(file, c.name.0)
                             .ok_or_else(|| error("unavailable resolved class", Some(*span)))?;
                         out.insert(key.clone(), R::Type(id));
-                        return self.associate(file, &c.items, prefix, Some(id), &indices, out);
+                        return self.associate(file, &c.items, module, Some(id), &indices, out);
                     }
-                    Item::Enum(e) => {
-                        let name = e.name.0.to_string();
-                        unique(
-                            self.unit
-                                .enums
-                                .iter()
-                                .filter(|id| id.as_str() == name)
-                                .map(|&id| R::Type(id)),
-                        )
-                    }
+                    Item::Enum(e) => self
+                        .type_id(file, e.name.0)
+                        .filter(|id| self.unit.enums.contains(id))
+                        .map(R::Type),
                     Item::Let(f) => owner.and_then(|owner| {
                         let agg = self.symbols.get_type(owner)?.schema().as_aggregate()?;
                         unique(
@@ -479,7 +474,9 @@ impl<'ctx> AnalyzedSources<'ctx> {
                                     )
                                 })
                         } else {
-                            let name = format!("{prefix}{}", f.name.0);
+                            let path = module.map_or(&[][..], |path| path.segments.as_ref());
+                            let name =
+                                QualifiedName::from_base_and_name(path, f.name.0).to_string();
                             unique(
                                 self.free_functions
                                     .get(&name)
