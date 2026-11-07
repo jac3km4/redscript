@@ -3,5 +3,5 @@ source: crates/compiler/redmod/adapter/tests/fixtures.rs
 expression: output
 input_file: crates/compiler/redmod/adapter/tests/data/conditions.script
 ---
-function at 239: return=Int32
-function at 44: return=Int32
+function at 233: return=Int32
+function at 43: return=Int32
