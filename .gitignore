@@ -2,3 +2,4 @@
 final.redscripts.modded
 /REDmodLog.txt
 /modioErrorLog.json
+**/*.env
