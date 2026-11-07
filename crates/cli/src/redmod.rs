@@ -37,6 +37,9 @@ pub(crate) struct TranspileOpts {
     /// absolute game installation root for base blobs (requires --redmod)
     #[argh(option)]
     game_root: Option<PathBuf>,
+    /// optionally override mod name (default: --src folder name)
+    #[argh(option)]
+    mod_name: Option<String>,
     /// official validation timeout in positive, finite seconds (default: 60)
     #[argh(
         option,
@@ -60,11 +63,19 @@ fn parse_timeout(value: &str) -> Result<Duration, String> {
 
 pub(crate) fn transpile(opts: TranspileOpts) -> anyhow::Result<ExitCode> {
     ensure!(!opts.src.is_empty(), "at least one --src is required");
-    let name = opts
+    let mut name = opts
         .output
         .file_name()
         .and_then(|n| n.to_str())
-        .context("--output must name a new mod directory")?;
+        .context("--output must name a new mod directory")?
+        .to_string();
+    if let Some(given_name) = opts.mod_name {
+        ensure!(
+            !given_name.is_empty(),
+            "when specified, --mod-name must not be empty"
+        );
+        name = given_name;
+    }
     ensure!(!name.contains('.'), "mod name must not contain periods");
     ensure!(
         fs::symlink_metadata(&opts.output).is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound),
@@ -143,9 +154,9 @@ pub(crate) fn transpile(opts: TranspileOpts) -> anyhow::Result<ExitCode> {
         .collect();
     let published = match (&opts.game_root, &validator) {
         (Some(root), Some(validator)) => {
-            publish_mod_with_root(parent, name, &scripts, validator, root)
+            publish_mod_with_root(parent, &name, &scripts, validator, root)
         }
-        _ => publish_mod(parent, name, &scripts, validator.as_ref()),
+        _ => publish_mod(parent, &name, &scripts, validator.as_ref()),
     }
     .with_context(|| format!("publishing REDmod package {}", opts.output.display()))?;
     log::info!(
