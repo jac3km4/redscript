@@ -143,6 +143,38 @@ fn compile_and_lint_require_explicit_existing_sources() {
 }
 
 #[test]
+fn compile_and_lint_load_explicit_files_without_expanding_directory_roots() {
+    let dir = TestDir::new();
+    write_bundle(&dir);
+    fs::create_dir(dir.0.join("sources")).unwrap();
+    fs::write(dir.0.join("sources/test.reds"), "func Test() {}\n").unwrap();
+    fs::write(
+        dir.0.join("sources/other.reds"),
+        "func Other() { MissingFunction(); }\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.0.join("sources/.redscript"),
+        "source_roots = [\"other.reds\"]\n",
+    )
+    .unwrap();
+
+    for subcommand in ["compile", "lint"] {
+        let output = source_command(&dir, subcommand)
+            .args(["-s", "sources/test.reds"])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{}", stderr(&output));
+
+        let output = source_command(&dir, subcommand)
+            .args(["-s", "sources"])
+            .output()
+            .unwrap();
+        assert_failure(&output, &["MissingFunction"]);
+    }
+}
+
+#[test]
 fn compile_and_lint_baseline_errors_include_paths() {
     let dir = TestDir::new();
     fs::write(dir.0.join("test.reds"), "func Test() {}\n").unwrap();

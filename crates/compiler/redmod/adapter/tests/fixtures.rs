@@ -21,7 +21,7 @@ fn write_error(output: &mut String, error: &Error) {
 #[test]
 fn semantic_fixtures() {
     insta::glob!("data/*.script", |path| {
-        let source = std::fs::read_to_string(path).unwrap();
+        let source = std::fs::read_to_string(path).unwrap().replace("\r\n", "\n");
         let sources = SourceMap::new();
         sources.populate_boot_lib();
         let file = sources.push_back("fixture.script", source.clone());
