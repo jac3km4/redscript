@@ -4,6 +4,4 @@ expression: module
 input_file: crates/syntax/community/formatter/tests/data/commented.reds
 snapshot_kind: text
 ---
-
-
 // the entire file is commented out
