@@ -74,6 +74,8 @@ pub(crate) fn inline_declarations<'ctx>(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use redscript_community_ast::{SourceMap, Span};
     use redscript_compiler_frontend::{
         FreeFunction, FunctionType, LoweredFunction, Param, ParamFlags, PolyType, TypeApp,
@@ -324,7 +326,7 @@ mod tests {
             &symbols,
             &signature,
             &symbol_names,
-            &Default::default(),
+            &HashSet::default(),
             None,
         )
         .unwrap()
