@@ -471,8 +471,12 @@ fn load_sources(src: &[PathBuf]) -> anyhow::Result<SourceMap> {
     );
     let mut roots = vec![];
     for src in src {
-        fs::metadata(src)
+        let metadata = fs::metadata(src)
             .with_context(|| format!("failed to access source root {}", src.display()))?;
+        if metadata.is_file() {
+            roots.push(src.clone());
+            continue;
+        }
         let dotfile = Dotfile::load_or_default(src).with_context(|| {
             format!("failed to load source configuration for {}", src.display())
         })?;
