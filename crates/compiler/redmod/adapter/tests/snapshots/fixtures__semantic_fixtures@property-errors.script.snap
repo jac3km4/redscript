@@ -3,6 +3,6 @@ source: crates/compiler/redmod/adapter/tests/fixtures.rs
 expression: output
 input_file: crates/compiler/redmod/adapter/tests/data/property-errors.script
 ---
-REDMOD_SEMANTICS [25..53]: use @runtimeProperty("name", "value") on a field
-REDMOD_SEMANTICS [83..114]: use @runtimeProperty("name", "value") on a field
-REDMOD_SEMANTICS [143..183]: use @runtimeProperty("name", "value") on a field
+REDMOD_SEMANTICS [24..52]: use @runtimeProperty("name", "value") on a field
+REDMOD_SEMANTICS [80..111]: use @runtimeProperty("name", "value") on a field
+REDMOD_SEMANTICS [138..178]: use @runtimeProperty("name", "value") on a field
