@@ -63,19 +63,19 @@ fn parse_timeout(value: &str) -> Result<Duration, String> {
 
 pub(crate) fn transpile(opts: TranspileOpts) -> anyhow::Result<ExitCode> {
     ensure!(!opts.src.is_empty(), "at least one --src is required");
-    let mut name = opts
-        .output
-        .file_name()
-        .and_then(|n| n.to_str())
-        .context("--output must name a new mod directory")?
-        .to_string();
-    if let Some(given_name) = opts.mod_name {
+    let name = if let Some(given_name) = opts.mod_name {
         ensure!(
             !given_name.is_empty(),
             "when specified, --mod-name must not be empty"
         );
-        name = given_name;
-    }
+        given_name
+    } else {
+        opts.output
+            .file_name()
+            .and_then(|n| n.to_str())
+            .context("--output must name a new mod directory")?
+            .to_string()
+    };
     ensure!(!name.contains('.'), "mod name must not contain periods");
     ensure!(
         fs::symlink_metadata(&opts.output).is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound),
