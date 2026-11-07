@@ -1,6 +1,6 @@
 ---
 source: crates/compiler/redmod/transpiler/tests/cast_operands.rs
-expression: "support::emit(SOURCE, CASTS)"
+expression: "support::emit_parsed(SOURCE, CASTS)"
 ---
 import function OperatorAdd(left: Int32, right: Int32) -> Int32;
 

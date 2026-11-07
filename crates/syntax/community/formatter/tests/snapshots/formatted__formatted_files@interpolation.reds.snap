@@ -1,6 +1,5 @@
 ---
 source: crates/syntax/community/formatter/tests/formatted.rs
-assertion_line: 197
 expression: formatted
 input_file: crates/syntax/community/formatter/tests/data/interpolation.reds
 ---

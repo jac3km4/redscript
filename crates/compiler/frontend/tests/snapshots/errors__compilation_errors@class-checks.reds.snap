@@ -1,6 +1,5 @@
 ---
 source: crates/compiler/frontend/tests/errors.rs
-assertion_line: 27
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/class-checks.reds
 ---
