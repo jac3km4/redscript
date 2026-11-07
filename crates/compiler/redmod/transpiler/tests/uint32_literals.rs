@@ -105,7 +105,7 @@ fn exact_values_with_official_compiler() {
         );
         let redscript_io::Definition::Field(field) = reader
             .definitions()
-            .get(bundle.definition_index(&format!("field{i}"), 8))
+            .get(bundle.definition_index(&format!("m_field{i}"), 8))
             .unwrap()
         else {
             panic!("expected field")
