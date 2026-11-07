@@ -54,7 +54,7 @@ fn bindings<'ctx>(
             ast::Item::Function(function) => {
                 let candidates: Vec<_> = symbols
                     .free_functions()
-                    .filter(|e| e.name().to_string() == format!("{}", function.name.0))
+                    .filter(|e| e.name().to_string() == function.name.0)
                     .collect();
                 if let Some((annotation, _)) = decl
                     .annotations
@@ -107,7 +107,7 @@ fn bindings<'ctx>(
             ast::Item::Class(class) | ast::Item::Struct(class) => {
                 let (id, def) = symbols
                     .types()
-                    .find(|(id, _)| id.as_str() == format!("{}", class.name.0))
+                    .find(|(id, _)| id.as_str() == class.name.0)
                     .unwrap();
                 result.insert(DeclarationPath(vec![i]), R::Type(id));
                 let agg = def.schema().as_aggregate().unwrap();
@@ -144,7 +144,7 @@ fn bindings<'ctx>(
             ast::Item::Enum(enm) => {
                 let (id, _) = symbols
                     .types()
-                    .find(|(id, _)| id.as_str() == format!("{}", enm.name.0))
+                    .find(|(id, _)| id.as_str() == enm.name.0)
                     .unwrap();
                 result.insert(DeclarationPath(vec![i]), R::Type(id));
             }

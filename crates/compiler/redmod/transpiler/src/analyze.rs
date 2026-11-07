@@ -399,7 +399,7 @@ impl<'ctx> AnalyzedSources<'ctx> {
                                 Some(*span),
                             ));
                         }
-                        let name = format!("{}", c.name.0);
+                        let name = c.name.0.to_string();
                         let id = self
                             .resolved_type(&name)
                             .ok_or_else(|| error("unavailable resolved class", Some(*span)))?;
@@ -407,7 +407,7 @@ impl<'ctx> AnalyzedSources<'ctx> {
                         return self.associate(file, &c.items, prefix, Some(id), &indices, out);
                     }
                     Item::Enum(e) => {
-                        let name = format!("{}", e.name.0);
+                        let name = e.name.0.to_string();
                         unique(
                             self.unit
                                 .enums
