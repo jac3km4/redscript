@@ -1,5 +1,6 @@
 ---
 source: crates/compiler/backend/tests/bytecode.rs
+assertion_line: 22
 expression: "compile(path, |_| {})"
 input_file: crates/compiler/backend/tests/data/call-arguments.reds
 ---
