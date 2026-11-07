@@ -6,12 +6,12 @@ class OfficialFieldBase extends IScriptable {
 }
 
 class OfficialFieldDerived extends OfficialFieldBase {
-    public var count: Int32;
+    public var m_count: Int32;
 }
 
 function OfficialCastField(owner: OfficialFieldBase, enabled: Bool) -> Int32 {
     if (enabled) {
-        return (owner as OfficialFieldDerived).count;
+        return (owner as OfficialFieldDerived).m_count;
     }
-    return (NULL as OfficialFieldDerived).count;
+    return (NULL as OfficialFieldDerived).m_count;
 }

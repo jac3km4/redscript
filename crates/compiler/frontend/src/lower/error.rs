@@ -474,12 +474,12 @@ mod tests {
         let upper = Type::nullary(predef::INT32);
         insta::assert_snapshot!(
             CoalesceError::CannotCoalesce(lower.clone(), Some(upper)),
-            @r"
+            @"
         cannot determine a single type; consider adding type annotations
           inferred bounds: the type must be a supertype of `Nothing` and a subtype of `Int32`
         "
         );
-        insta::assert_snapshot!(CoalesceError::CannotCoalesce(lower, None), @r"
+        insta::assert_snapshot!(CoalesceError::CannotCoalesce(lower, None), @"
         cannot determine a single type; consider adding type annotations
           inferred bounds: the type must be a supertype of `Nothing`; no upper bound is known
         ");

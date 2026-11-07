@@ -3,6 +3,7 @@ source: crates/code-edit/tests/edits.rs
 expression: body
 input_file: crates/code-edit/tests/data/struct-new.reds
 ---
+
 struct Dummy {
   let a: Int32;
   let b: String;

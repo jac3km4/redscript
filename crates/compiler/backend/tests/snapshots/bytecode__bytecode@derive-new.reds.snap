@@ -1,6 +1,6 @@
 ---
 source: crates/compiler/backend/tests/bytecode.rs
-expression: "BytecodePrinter::new(&bundle, bundle_len)"
+expression: "compile(path, |_| {})"
 input_file: crates/compiler/backend/tests/data/derive-new.reds
 ---
 // Pair::New;StringInt32 (f0)

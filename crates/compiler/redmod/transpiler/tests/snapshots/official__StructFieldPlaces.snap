@@ -3,15 +3,15 @@ source: crates/compiler/redmod/transpiler/tests/official.rs
 expression: source.module.text
 ---
 struct OfficialPlaceInner {
-    public var count: Int32;
+    public var m_count: Int32;
 }
 
 struct OfficialPlaceOuter {
-    public var inner: OfficialPlaceInner;
+    public var m_inner: OfficialPlaceInner;
 }
 
 class OfficialPlaceOwner extends IScriptable {
-    public var value: OfficialPlaceOuter;
+    public var m_value: OfficialPlaceOuter;
 }
 
 function OfficialPlaceSet(out value: Int32) -> Void {
@@ -19,8 +19,8 @@ function OfficialPlaceSet(out value: Int32) -> Void {
 }
 
 function OfficialStructPlaces(owner: OfficialPlaceOwner, value: script_ref<OfficialPlaceOuter>) -> Void {
-    owner.value.inner.count = 41;
-    OfficialPlaceSet(owner.value.inner.count);
-    value.inner.count = 43;
-    OfficialPlaceSet(value.inner.count);
+    owner.m_value.m_inner.m_count = 41;
+    OfficialPlaceSet(owner.m_value.m_inner.m_count);
+    value.m_inner.m_count = 43;
+    OfficialPlaceSet(value.m_inner.m_count);
 }

@@ -3,19 +3,19 @@ source: crates/compiler/redmod/transpiler/tests/official.rs
 expression: source.module.text
 ---
 struct OfficialIndexValue {
-    public var count: Int32;
+    public var m_count: Int32;
 }
 
 class OfficialIndexContainer extends IScriptable {
-    public var objects: array<OfficialIndexContainer>;
-    public var values: array<OfficialIndexValue>;
-    public var count: Int32;
+    public var m_objects: array<OfficialIndexContainer>;
+    public var m_values: array<OfficialIndexValue>;
+    public var m_count: Int32;
 }
 
 function OfficialIndexStruct(owner: OfficialIndexContainer, index: Int32) -> Int32 {
-    return owner.values[index].count;
+    return owner.m_values[index].m_count;
 }
 
 function OfficialIndexClass(owner: OfficialIndexContainer, index: Int32) -> Int32 {
-    return owner.objects[index].count;
+    return owner.m_objects[index].m_count;
 }

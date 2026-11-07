@@ -3,11 +3,11 @@ source: crates/compiler/redmod/transpiler/tests/official.rs
 expression: source.module.text
 ---
 class OfficialIndexOwner extends IScriptable {
-    public var values: array<Int32>;
-    public var child: OfficialIndexOwner;
+    public var m_values: array<Int32>;
+    public var m_child: OfficialIndexOwner;
 }
 
 function OfficialFieldIndex(owner: OfficialIndexOwner, index: Int32) -> Int32 {
-    owner.child.values[index] = 42;
-    return owner.values[index];
+    owner.m_child.m_values[index] = 42;
+    return owner.m_values[index];
 }

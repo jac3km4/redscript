@@ -1,8 +1,8 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 
 use redscript_community_ast::{self as ast, Item, ItemQualifiers as Q, SourceItemDecl, Span};
 use redscript_compiler_frontend::{
-    FunctionType, LoweredCompilationUnit, Symbols, Type, TypeSchema, ir, predef,
+    FieldId, FunctionType, LoweredCompilationUnit, Symbols, Type, TypeSchema, ir, predef,
 };
 
 use crate::body::{Body, constant};
@@ -17,6 +17,7 @@ pub fn emit<'ctx>(
     symbols: &Symbols<'ctx>,
     symbol_names: &BTreeSet<String>,
     target_modules: &BTreeSet<String>,
+    renamed_fields: &HashSet<FieldId<'ctx>>,
 ) -> Result<TranspiledModule> {
     let mut emitter = Emitter {
         module,
@@ -24,6 +25,7 @@ pub fn emit<'ctx>(
         symbols,
         symbol_names,
         target_modules,
+        renamed_fields,
         output: TranspiledModule {
             text: String::new(),
             mappings: Vec::new(),
@@ -77,6 +79,7 @@ struct Emitter<'a, 'ctx> {
     symbols: &'a Symbols<'ctx>,
     symbol_names: &'a BTreeSet<String>,
     target_modules: &'a BTreeSet<String>,
+    renamed_fields: &'a HashSet<FieldId<'ctx>>,
     output: TranspiledModule,
     used: BTreeSet<DeclarationPath>,
     depth: usize,
@@ -298,7 +301,12 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                     self.validate_patch(id.parent())?;
                 }
                 self.output.text.push_str(&format!(
-                    "var {}: {}",
+                    "var {}{}: {}",
+                    if self.renamed_fields.contains(&id) {
+                        "m_"
+                    } else {
+                        ""
+                    },
                     target::ident(name)?,
                     target::typ(def.type_(), self.symbols)?
                 ));
@@ -361,7 +369,14 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                 }
                 let body = body
                     .map(|body| {
-                        Body::new(body, self.symbols, signature, self.symbol_names, wrapper)
+                        Body::new(
+                            body,
+                            self.symbols,
+                            signature,
+                            self.symbol_names,
+                            self.renamed_fields,
+                            wrapper,
+                        )
                     })
                     .transpose()?;
                 if override_ && !callback {

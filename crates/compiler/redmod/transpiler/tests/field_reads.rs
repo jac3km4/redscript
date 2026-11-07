@@ -54,21 +54,21 @@ func FieldProbe(enabled: Bool, owner: ref<FieldOwner>, other: ref<FieldOwner>, s
 fn compound_reads_stay_inline_and_round_trip() {
     let text = emit(SOURCE).unwrap();
     insta::assert_snapshot!(text);
-    assert!(text.contains("return data.visualStateData.m_isIconic;"));
-    assert!(text.contains("FieldPair(FieldSelect(steps, owner).child.flag, FieldMutate(owner))"));
-    assert!(text.contains("data.owner.child.flag"));
+    assert!(text.contains("return data.m_visualStateData.m_m_isIconic;"));
     assert!(
-        text.contains(
-            "(enabled ? FieldSelect(steps, owner) : FieldSelect(steps, other)).child.flag"
-        )
+        text.contains("FieldPair(FieldSelect(steps, owner).m_child.m_flag, FieldMutate(owner))")
     );
+    assert!(text.contains("data.m_owner.m_child.m_flag"));
+    assert!(text.contains(
+        "(enabled ? FieldSelect(steps, owner) : FieldSelect(steps, other)).m_child.m_flag"
+    ));
 
     assert_eq!(
-        text.matches("enabled && FieldSelect(steps, owner).child.flag")
+        text.matches("enabled && FieldSelect(steps, owner).m_child.m_flag")
             .count(),
         2
     );
-    assert!(text.contains("return FieldNull().child.flag;"));
+    assert!(text.contains("return FieldNull().m_child.m_flag;"));
 
     let sources = SourceMap::new();
     sources.populate_boot_lib();
@@ -168,10 +168,10 @@ fn field_array_arguments_require_non_mutating_expressions() {
     let references = "class Listener {} class Owner { public let listeners: [wref<Listener>]; public let strong: [ref<Listener>]; } func Test(owner: ref<Owner>, listener: ref<Listener>, weak: wref<Listener>) { ArrayPush(owner.listeners, listener); ArrayContains(owner.listeners, listener); ArrayRemove(owner.listeners, listener); ArrayPush(owner.strong, weak); }";
     let text = emit(references).unwrap();
     assert!(
-        text.contains("owner.listeners.PushBack(listener);"),
+        text.contains("owner.m_listeners.PushBack(listener);"),
         "{text}"
     );
-    assert!(text.contains("owner.strong.PushBack(weak);"), "{text}");
+    assert!(text.contains("owner.m_strong.PushBack(weak);"), "{text}");
     for body in [
         "ArrayPush(owner.values, Mutate(owner));",
         "ArrayInsert(owner.values, Mutate(owner), value);",

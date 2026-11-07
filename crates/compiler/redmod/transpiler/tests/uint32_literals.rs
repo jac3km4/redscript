@@ -61,7 +61,7 @@ fn field_defaults_use_literal_only_unsigned_decimals() {
     let text = emit(&fields()).unwrap();
     for (i, value) in VALUES.iter().enumerate() {
         assert!(
-            text.contains(&format!("var field{i}: Uint32 = {value};")),
+            text.contains(&format!("var m_field{i}: Uint32 = {value};")),
             "{text}"
         );
     }

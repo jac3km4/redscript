@@ -94,21 +94,21 @@ fn array_descriptors_cover_the_supported_members_and_boot_intrinsics() {
             .collect::<Vec<_>>()
             .join("\n"),
         @"
-        Size -> ArraySize
-        PushBack -> ArrayPush
-        PopBack -> ArrayPop
-        Clear -> ArrayClear
-        Resize -> ArrayResize
-        Grow -> ArrayGrow
-        Contains -> ArrayContains
-        Count -> ArrayCount
-        FindFirst -> ArrayFindFirst
-        FindLast -> ArrayFindLast
-        Insert -> ArrayInsert
-        Remove -> ArrayRemove
-        Erase -> ArrayErase
-        Last -> ArrayLast
-        "
+    Size -> ArraySize
+    PushBack -> ArrayPush
+    PopBack -> ArrayPop
+    Clear -> ArrayClear
+    Resize -> ArrayResize
+    Grow -> ArrayGrow
+    Contains -> ArrayContains
+    Count -> ArrayCount
+    FindFirst -> ArrayFindFirst
+    FindLast -> ArrayFindLast
+    Insert -> ArrayInsert
+    Remove -> ArrayRemove
+    Erase -> ArrayErase
+    Last -> ArrayLast
+    "
     );
 
     let sources = SourceMap::new();

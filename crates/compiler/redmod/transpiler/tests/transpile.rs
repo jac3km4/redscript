@@ -164,6 +164,19 @@ fn convert(source: &str) -> String {
     convert_mapped(source).text
 }
 
+#[test]
+fn field_declarations_and_references_get_prefix_without_renaming_methods() {
+    let output = convert(
+        "struct Record { public let value: Int32; } class Widget { public let value: Int32; public func Read() -> Int32 { return this.value; } public func Call() -> Int32 { return this.Read(); } } func Free() -> Int32 { return 1; }",
+    );
+    assert_eq!(output.matches("var m_value: Int32").count(), 2, "{output}");
+    assert!(output.contains("function Read()"), "{output}");
+    assert!(output.contains("function Call()"), "{output}");
+    assert!(output.contains("function Free()"), "{output}");
+    assert!(output.contains("this.m_value"), "{output}");
+    assert!(output.contains("this.Read()"), "{output}");
+}
+
 fn convert_mapped(source: &str) -> redscript_redmod_transpiler::TranspiledModule {
     let sources = SourceMap::new();
     sources.push_back("authored.reds", source);
@@ -325,21 +338,21 @@ fn declarations_are_spaced_and_members_and_mappings_are_indented() {
     assert_eq!(
         output.text,
         "class Widget extends IScriptable {\n\
-         \x20   var first: Int32;\n\
-         \x20   var second: Int32;\n\n\
+         \x20   var m_first: Int32;\n\
+         \x20   var m_second: Int32;\n\n\
          \x20   /// Read the field.\n\
          \x20   public function Read() -> Int32 {\n\
-         \x20       return this.first;\n\
+         \x20       return this.m_first;\n\
          \x20   }\n\n\
          \x20   public function Reset() -> Void {\n\
-         \x20       this.first = 0;\n\
+         \x20       this.m_first = 0;\n\
          \x20   }\n\
          }\n\n\
          function Run() -> Void {\n\
          }\n",
     );
     assert!(output.mappings.iter().any(|mapping| {
-        &output.text[mapping.generated.clone()] == "        return this.first;\n"
+        &output.text[mapping.generated.clone()] == "        return this.m_first;\n"
     }));
 }
 

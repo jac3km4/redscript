@@ -3,11 +3,11 @@ source: crates/compiler/redmod/transpiler/tests/official.rs
 expression: source.module.text
 ---
 class OfficialNestedOwner extends IScriptable {
-    public var child: OfficialNestedOwner;
-    public var count: Int32;
+    public var m_child: OfficialNestedOwner;
+    public var m_count: Int32;
 }
 
 function OfficialNestedAssign(owner: OfficialNestedOwner, handle: wref<OfficialNestedOwner>) -> Void {
-    owner.child.count = 42;
-    handle.child.count = 43;
+    owner.m_child.m_count = 42;
+    handle.m_child.m_count = 43;
 }

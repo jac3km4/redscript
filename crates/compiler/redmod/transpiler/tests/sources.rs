@@ -9,6 +9,26 @@ use redscript_redmod_transpiler::validate::OfficialValidator;
 use redscript_redmod_transpiler::{analyze_sources, transpile_sources};
 
 #[test]
+fn field_prefix_applies_only_to_emitted_classes() {
+    let sources = SourceMap::new();
+    sources.populate_boot_lib();
+    let owner = sources.push_back("owner.reds", "class Owner { public let value: Int32; }");
+    let reader = sources.push_back(
+        "reader.reds",
+        "func Read(owner: ref<Owner>) -> Int32 { return owner.value; }",
+    );
+    let interner = TypeInterner::default();
+    let analyzed = analyze_sources(&sources, Symbols::with_default_types(), &interner).unwrap();
+
+    let reader_only = analyzed.transpile_selected(&[reader]).unwrap();
+    assert!(reader_only[0].module.text.contains("owner.value"));
+
+    let both = analyzed.transpile_selected(&[owner, reader]).unwrap();
+    assert!(both[0].module.text.contains("var m_value: Int32"));
+    assert!(both[1].module.text.contains("owner.m_value"));
+}
+
+#[test]
 fn bool_callbacks_roundtrip_through_adapter_semantics() {
     use redscript_compiler_frontend::{Type, ir, predef};
     let sources = SourceMap::new();

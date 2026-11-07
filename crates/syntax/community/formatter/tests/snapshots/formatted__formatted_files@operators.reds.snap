@@ -1,9 +1,9 @@
 ---
 source: crates/syntax/community/formatter/tests/formatted.rs
-expression: module
+expression: formatted
 input_file: crates/syntax/community/formatter/tests/data/operators.reds
-snapshot_kind: text
 ---
+
 func Test1() {
   let a = 1 * (2 + 3);
   let b = (4 + 5) * 6;

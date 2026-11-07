@@ -8,7 +8,7 @@ enum OfficialStringEnum {
 }
 
 struct OfficialStringStruct {
-    public var value: Int32;
+    public var m_value: Int32;
 }
 
 class OfficialStringObject extends IScriptable {

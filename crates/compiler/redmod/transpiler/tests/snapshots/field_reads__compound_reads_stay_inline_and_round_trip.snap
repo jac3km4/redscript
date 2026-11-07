@@ -3,21 +3,21 @@ source: crates/compiler/redmod/transpiler/tests/field_reads.rs
 expression: text
 ---
 struct FieldVisual {
-    public var m_isIconic: Bool;
+    public var m_m_isIconic: Bool;
 }
 
 struct FieldData {
-    public var visualStateData: FieldVisual;
-    public var owner: FieldOwner;
+    public var m_visualStateData: FieldVisual;
+    public var m_owner: FieldOwner;
 
     public static function Bump(self: script_ref<FieldData>) -> Void {
     }
 }
 
 class FieldOwner extends IScriptable {
-    public var child: FieldOwner;
-    public var data: FieldData;
-    public var flag: Bool;
+    public var m_child: FieldOwner;
+    public var m_data: FieldData;
+    public var m_flag: Bool;
 }
 
 function FieldSelect(out steps: Int32, owner: FieldOwner) -> FieldOwner {
@@ -30,19 +30,19 @@ function FieldNull() -> FieldOwner {
 }
 
 function FieldStructRead(owner: FieldOwner) -> Bool {
-    return owner.child.data.visualStateData.m_isIconic;
+    return owner.m_child.m_data.m_visualStateData.m_m_isIconic;
 }
 
 function FieldLocalRead(data: FieldData) -> Bool {
-    return data.visualStateData.m_isIconic;
+    return data.m_visualStateData.m_m_isIconic;
 }
 
 function FieldHandleRead(data: FieldData) -> Bool {
-    return data.owner.child.flag;
+    return data.m_owner.m_child.m_flag;
 }
 
 function FieldNullRead() -> Bool {
-    return FieldNull().child.flag;
+    return FieldNull().m_child.m_flag;
 }
 
 function FieldMutate(out owner: FieldOwner) -> Bool {
@@ -59,19 +59,19 @@ import function OperatorLogicAnd(a: Bool, b: Bool) -> Bool;
 import function OperatorAdd(a: Int32, b: Int32) -> Int32;
 
 function FieldDeref(data: script_ref<FieldData>) -> Bool {
-    return data.visualStateData.m_isIconic;
+    return data.m_visualStateData.m_m_isIconic;
 }
 
 function FieldProbe(enabled: Bool, owner: FieldOwner, other: FieldOwner, steps: Int32, data: FieldData) -> Bool {
-    FieldPair(FieldSelect(steps, owner).child.flag, FieldMutate(owner));
-    FieldPair(data.owner.child.flag, FieldMutate(owner));
-    (enabled ? FieldSelect(steps, owner) : FieldSelect(steps, other)).child.flag;
+    FieldPair(FieldSelect(steps, owner).m_child.m_flag, FieldMutate(owner));
+    FieldPair(data.m_owner.m_child.m_flag, FieldMutate(owner));
+    (enabled ? FieldSelect(steps, owner) : FieldSelect(steps, other)).m_child.m_flag;
     if (enabled) {
-        FieldSelect(steps, owner).child.flag;
+        FieldSelect(steps, owner).m_child.m_flag;
     }
-    while (enabled && FieldSelect(steps, owner).child.flag) {
+    while (enabled && FieldSelect(steps, owner).m_child.m_flag) {
         continue;
     }
-    var result: Bool = enabled && FieldSelect(steps, owner).child.flag;
-    return FieldNull().child.flag;
+    var result: Bool = enabled && FieldSelect(steps, owner).m_child.m_flag;
+    return FieldNull().m_child.m_flag;
 }

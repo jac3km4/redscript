@@ -3,17 +3,17 @@ source: crates/compiler/redmod/transpiler/tests/official.rs
 expression: source.module.text
 ---
 class OfficialArrayOwner extends IScriptable {
-    public var values: array<Int32>;
-    public var child: OfficialArrayOwner;
+    public var m_values: array<Int32>;
+    public var m_child: OfficialArrayOwner;
 
     public function Next() -> OfficialArrayOwner {
-        return this.child;
+        return this.m_child;
     }
 }
 
 function OfficialFieldArraySize(owner: OfficialArrayOwner, enabled: Bool) -> Int32 {
     if (enabled) {
-        return owner.child.values.Size();
+        return owner.m_child.m_values.Size();
     }
-    return owner.values.Size();
+    return owner.m_values.Size();
 }

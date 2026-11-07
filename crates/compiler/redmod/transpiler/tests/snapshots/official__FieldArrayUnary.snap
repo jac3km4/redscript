@@ -3,17 +3,17 @@ source: crates/compiler/redmod/transpiler/tests/official.rs
 expression: source.module.text
 ---
 class OfficialUnaryArrayOwner extends IScriptable {
-    public var values: array<Int32>;
+    public var m_values: array<Int32>;
 }
 
 function OfficialFieldClear(owner: OfficialUnaryArrayOwner) -> Void {
-    owner.values.Clear();
+    owner.m_values.Clear();
 }
 
 function OfficialFieldPop(owner: OfficialUnaryArrayOwner) -> Int32 {
-    return owner.values.PopBack();
+    return owner.m_values.PopBack();
 }
 
 function OfficialFieldLast(owner: OfficialUnaryArrayOwner) -> Int32 {
-    return owner.values.Last();
+    return owner.m_values.Last();
 }

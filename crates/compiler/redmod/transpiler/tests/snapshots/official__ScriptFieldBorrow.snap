@@ -3,17 +3,17 @@ source: crates/compiler/redmod/transpiler/tests/official.rs
 expression: source.module.text
 ---
 struct OfficialBorrowValue {
-    public var count: Int32;
+    public var m_count: Int32;
 }
 
 class OfficialBorrowOwner extends IScriptable {
-    public var value: OfficialBorrowValue;
+    public var m_value: OfficialBorrowValue;
 }
 
 function OfficialBorrowSet(value: script_ref<OfficialBorrowValue>) -> Void {
-    value.count = 42;
+    value.m_count = 42;
 }
 
 function OfficialScriptBorrow(owner: OfficialBorrowOwner) -> Void {
-    OfficialBorrowSet(owner.value);
+    OfficialBorrowSet(owner.m_value);
 }

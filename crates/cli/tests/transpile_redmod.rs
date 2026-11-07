@@ -126,6 +126,24 @@ fn transpiles_only_authored_roots_and_honors_dotfile() {
 }
 
 #[test]
+fn prefixes_emitted_class_and_struct_fields() {
+    let f = Fixture::new();
+    f.write(
+        "main.reds",
+        "struct Data { public let someField: Int32; } class Widget { public let someField: Int32; public func Read() -> Int32 { return this.someField; } }",
+    );
+    assert_success(&f.run(&["--src", "main.reds", "--output", "MyMod"]));
+    let script = fs::read_to_string(f.0.join("MyMod/r6/scripts/main.script")).unwrap();
+    assert_eq!(
+        script.matches("var m_someField: Int32").count(),
+        2,
+        "{script}"
+    );
+    assert!(script.contains("return this.m_someField;"), "{script}");
+    assert!(script.contains("function Read()"), "{script}");
+}
+
+#[test]
 fn source_failure_has_readable_diagnostics_and_no_output() {
     let f = Fixture::new();
     f.write(

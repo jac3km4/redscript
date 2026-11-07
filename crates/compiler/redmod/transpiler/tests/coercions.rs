@@ -262,7 +262,7 @@ fn is_defined_checks_weak_handles_without_promoting_them() {
     assert_eq!(text.matches("weak != NULL;").count(), 3, "{text}");
     assert!(text.contains("GetWeak("), "{text}");
     assert!(text.contains(") == NULL)"), "{text}");
-    assert!(text.contains("owner.weak != NULL"), "{text}");
+    assert!(text.contains("owner.m_weak != NULL"), "{text}");
     assert!(!text.contains("WeakRefToRef"), "{text}");
 }
 
