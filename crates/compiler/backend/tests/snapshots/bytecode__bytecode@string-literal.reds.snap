@@ -1,6 +1,6 @@
 ---
 source: crates/compiler/backend/tests/bytecode.rs
-expression: "compile(path, |_| {})"
+expression: "BytecodePrinter::new(&bundle, bundle_len)"
 input_file: crates/compiler/backend/tests/data/string-literal.reds
 ---
 // Test; (f0)

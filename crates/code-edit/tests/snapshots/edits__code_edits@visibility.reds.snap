@@ -3,7 +3,6 @@ source: crates/code-edit/tests/edits.rs
 expression: body
 input_file: crates/code-edit/tests/data/visibility.reds
 ---
-
 class Class {
   public let privateField: Int32;
   public let field: Int32;

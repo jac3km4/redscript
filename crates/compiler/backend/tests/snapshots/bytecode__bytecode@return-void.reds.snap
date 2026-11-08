@@ -1,7 +1,8 @@
 ---
 source: crates/compiler/backend/tests/bytecode.rs
-expression: "compile(path, |_| {})"
+expression: "BytecodePrinter::new(&bundle, bundle_len)"
 input_file: crates/compiler/backend/tests/data/return-void.reds
+snapshot_kind: text
 ---
 // ReturnVoid; (f0)
 return

@@ -1,7 +1,8 @@
 ---
 source: crates/syntax/community/formatter/tests/formatted.rs
-expression: formatted
+expression: module
 input_file: crates/syntax/community/formatter/tests/data/operators.reds
+snapshot_kind: text
 ---
 
 func Test1() {
