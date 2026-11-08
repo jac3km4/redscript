@@ -130,7 +130,7 @@ fn prefixes_emitted_class_and_struct_fields() {
     let f = Fixture::new();
     f.write(
         "main.reds",
-        "struct Data { public let someField: Int32; } class Widget { public let someField: Int32; public func Read() -> Int32 { return this.someField; } }",
+        "struct Data { public let someField: Int32; } class Widget { public let someField: Int32; public func Read() -> Int32 { return this.someField; } public func Write(someField: Int32) -> Void { this.someField = someField; } }",
     );
     assert_success(&f.run(&["--src", "main.reds", "--output", "MyMod"]));
     let script = fs::read_to_string(f.0.join("MyMod/r6/scripts/main.script")).unwrap();
@@ -140,7 +140,12 @@ fn prefixes_emitted_class_and_struct_fields() {
         "{script}"
     );
     assert!(script.contains("return this.m_someField;"), "{script}");
+    assert!(script.contains("this.m_someField = someField;"), "{script}");
     assert!(script.contains("function Read()"), "{script}");
+    assert!(
+        script.contains("function Write(someField: Int32)"),
+        "{script}"
+    );
 }
 
 #[test]
