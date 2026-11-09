@@ -45,6 +45,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         symbols: &'a Symbols<'ctx>,
         signature: &'a FunctionType<'ctx>,
         symbol_names: &BTreeSet<String>,
+        parent_members: &BTreeSet<&str>,
         wrapper: Option<MethodId<'ctx>>,
     ) -> Result<Self> {
         if !signature.type_params().is_empty() {
@@ -112,8 +113,11 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 });
             let mut name = base.clone();
             let mut suffix = 2;
+            let is_param = matches!(local.id, ir::Local::Param(_));
+            let shadows_member = |n: &str| is_param && parent_members.contains(n);
             while symbol_names.contains(&name)
                 || occupied.contains(&name)
+                || shadows_member(&name)
                 || (reserved.contains(&name) && source_name != Some(name.as_str()))
             {
                 name = format!("{base}_{suffix}");

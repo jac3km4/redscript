@@ -359,9 +359,26 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                         Some(span),
                     ));
                 }
+                let parent_members: BTreeSet<&str> = match resolved {
+                    R::Method(id) | R::AddedMethod(id) | R::Replacement(id) | R::Wrapper(id, _) => {
+                        self.symbols
+                            .get_type(id.parent())
+                            .and_then(|def| def.schema().as_aggregate())
+                            .map(|agg| agg.fields().iter().map(|f| f.name()).collect())
+                            .unwrap_or_default()
+                    }
+                    _ => BTreeSet::new(),
+                };
                 let body = body
                     .map(|body| {
-                        Body::new(body, self.symbols, signature, self.symbol_names, wrapper)
+                        Body::new(
+                            body,
+                            self.symbols,
+                            signature,
+                            self.symbol_names,
+                            &parent_members,
+                            wrapper,
+                        )
                     })
                     .transpose()?;
                 if override_ && !callback {
