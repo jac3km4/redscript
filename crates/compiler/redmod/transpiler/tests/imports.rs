@@ -4,6 +4,29 @@ use redscript_compiler_frontend::{Symbols, TypeInterner};
 use redscript_redmod_transpiler::{DeclarationPath, analyze_sources, transpile_sources};
 
 #[test]
+fn local_enum_references_use_unqualified_names() {
+    let sources = SourceMap::new();
+    sources.populate_boot_lib();
+    let selected = sources.push_back(
+        "enum.reds",
+        "module M public enum E { Zero = 0, One = 1 } public func Choose() -> E { let value: E; value = E.One; return value; }",
+    );
+    let interner = TypeInterner::default();
+    let output = transpile_sources(
+        &sources,
+        &[selected],
+        Symbols::with_default_types(),
+        &interner,
+    )
+    .unwrap();
+    let text = &output[0].module.text;
+    assert!(text.contains("function Choose() -> E"), "{text}");
+    assert!(text.contains("var value: E"), "{text}");
+    assert!(text.contains("E.One"), "{text}");
+    assert!(!text.contains("M.E"), "{text}");
+}
+
+#[test]
 fn exact_and_select_imports_do_not_widen_to_modules() {
     for import in ["import Models.Value", "import Models.{Value}"] {
         let sources = SourceMap::new();
@@ -26,12 +49,8 @@ fn exact_and_select_imports_do_not_widen_to_modules() {
         assert!(text.contains("@using \"Models.Value\"\n"), "{text}");
         assert!(!text.contains("@using \"Models\""), "{text}");
         assert!(!text.contains("Unselected"), "{text}");
-        assert!(
-            text.contains("value: Models.Value) -> Models.Value"),
-            "{text}"
-        );
+        assert!(text.contains("value: Value) -> Value"), "{text}");
         assert_eq!(output[0].module.mappings[0].source.file, selected);
-        // Qualified type emission is a separate, existing target limitation.
         // Check the import grammar independently rather than claiming a roundtrip.
         let (parsed, errors) =
             redscript_redmod_parser::parse_module("@using \"Models.Value\"\n", selected);
@@ -59,7 +78,7 @@ fn select_imports_keep_each_symbol_and_the_whole_overload_family() {
     assert!(text.contains("@using \"Models.Value\"\n"), "{text}");
     assert!(!text.contains("@using \"Models\""), "{text}");
     assert!(text.contains("Models.Choose(1)"), "{text}");
-    assert!(text.contains("value: Models.Value"), "{text}");
+    assert!(text.contains("value: Value"), "{text}");
 }
 
 #[test]

@@ -98,7 +98,7 @@ pub fn typ<'ctx>(typ: &Type<'ctx>, symbols: &Symbols<'ctx>) -> Result<String> {
     if matches!(def.schema(), TypeSchema::Primitive) && id == predef::NOTHING {
         return Err(error("Nothing has no target type", None));
     }
-    path(id.as_str()).map(str::to_owned)
+    ident(id.simple_name()).map(str::to_owned)
 }
 
 /// A concrete failure to spell a literal faithfully in the verified target subset.

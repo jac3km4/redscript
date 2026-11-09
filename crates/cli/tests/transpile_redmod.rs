@@ -126,6 +126,21 @@ fn transpiles_only_authored_roots_and_honors_dotfile() {
 }
 
 #[test]
+fn emitted_enum_types_have_no_module_prefix() {
+    let f = Fixture::new();
+    f.write(
+        "main.reds",
+        "module M public enum E { Zero = 0, One = 1 } public func Choose() -> E { let value: E; value = E.One; return value; }",
+    );
+    assert_success(&f.run(&["--src", "main.reds", "--output", "MyMod"]));
+    let script = fs::read_to_string(f.0.join("MyMod/r6/scripts/main.script")).unwrap();
+    assert!(script.contains("function Choose() -> E"), "{script}");
+    assert!(script.contains("var value: E"), "{script}");
+    assert!(script.contains("E.One"), "{script}");
+    assert!(!script.contains("M.E"), "{script}");
+}
+
+#[test]
 fn source_failure_has_readable_diagnostics_and_no_output() {
     let f = Fixture::new();
     f.write(
