@@ -28,7 +28,7 @@ pub(crate) struct TranspileOpts {
     /// existing baseline .redscripts for engine symbols (boot intrinsics are always loaded)
     #[argh(option, short = 'b')]
     bundle: Option<PathBuf>,
-    /// new mod directory; parent must exist, name must not contain periods
+    /// new mod directory; parent must exist, last path component becomes the REDmod mod name (no periods)
     #[argh(option, short = 'o')]
     output: PathBuf,
     /// absolute path to a trusted official REDmod executable for optional validation
