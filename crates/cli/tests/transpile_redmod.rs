@@ -141,6 +141,28 @@ fn emitted_enum_types_have_no_module_prefix() {
 }
 
 #[test]
+fn disambiguates_method_parameters_that_shadow_parent_fields() {
+    let f = Fixture::new();
+    f.write(
+        "main.reds",
+        "struct Data { public let someField: Int32; } class Widget { public let someField: Int32; public func Read() -> Int32 { return this.someField; } public func Write(someField: Int32) -> Void { this.someField = someField; } }",
+    );
+    assert_success(&f.run(&["--src", "main.reds", "--output", "MyMod"]));
+    let script = fs::read_to_string(f.0.join("MyMod/r6/scripts/main.script")).unwrap();
+    assert_eq!(
+        script.matches("public var someField: Int32;").count(),
+        2,
+        "{script}"
+    );
+    assert!(script.contains("return this.someField;"), "{script}");
+    assert!(
+        script.contains("function Write(someField_2: Int32)"),
+        "{script}"
+    );
+    assert!(script.contains("this.someField = someField_2;"), "{script}");
+}
+
+#[test]
 fn source_failure_has_readable_diagnostics_and_no_output() {
     let f = Fixture::new();
     f.write(

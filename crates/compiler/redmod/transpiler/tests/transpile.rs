@@ -715,6 +715,22 @@ fn local_identity_survives_shadowing_and_reserved_names() {
 }
 
 #[test]
+fn method_parameters_shadowing_parent_fields_are_disambiguated() {
+    let output = convert(
+        "class Widget { let someField: Int32; public func Write(someField: Int32) { this.someField = someField; } }",
+    );
+    assert!(output.contains("var someField: Int32;"), "{output}");
+    assert!(
+        output.contains("public function Write(someField_2: Int32) -> Void"),
+        "{output}"
+    );
+    assert!(
+        output.contains("this.someField = someField_2;"),
+        "{output}"
+    );
+}
+
+#[test]
 fn readable_names_reserve_authored_names_before_disambiguating() {
     let output = convert(
         r#"
