@@ -724,10 +724,7 @@ fn method_parameters_shadowing_parent_fields_are_disambiguated() {
         output.contains("public function Write(someField_2: Int32) -> Void"),
         "{output}"
     );
-    assert!(
-        output.contains("this.someField = someField_2;"),
-        "{output}"
-    );
+    assert!(output.contains("this.someField = someField_2;"), "{output}");
 }
 
 #[test]
