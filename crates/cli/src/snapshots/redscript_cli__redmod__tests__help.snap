@@ -13,8 +13,8 @@ Options:
                     (repeatable)
   -b, --bundle      existing baseline .redscripts for engine symbols (boot
                     intrinsics are always loaded)
-  -o, --output      new mod directory; parent must exist, name must not contain
-                    periods
+  -o, --output      new mod directory; parent must exist, last path component
+                    becomes the REDmod mod name (no periods)
   --redmod          absolute path to a trusted official REDmod executable for
                     optional validation
   --game-root       absolute game installation root for base blobs (requires
