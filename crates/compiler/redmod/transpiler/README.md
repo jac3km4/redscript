@@ -32,58 +32,68 @@ Unsupported input returns diagnostics, never partial output. The
 
 ## Supported subset
 
-Explicit typed signatures/locals, ordinary calls/operators/casts, structured IR
-control flow, lowered for-in/interpolation, selected dynamic-array intrinsics,
-verified primitive/reference and complete source-struct defaults, overrides and
-uniquely associated patches. `ToString` has no operand-type whitelist: existing
-primitive native mappings and string identity are preserved, and other operands
-use REDmod's `value as String` conversion. Weak operands retain their explicit
-strong-reference conversion before string conversion. `NameOf<T>()` (including
-legacy `NameOf(T)`) emits a `CName` literal using the community backend's compact
-resolved type name, not REDmod's type spelling.
-Local names prefer authored spellings with deterministic, hygienic disambiguation
-by IR identity; compiler temporaries use purpose-based names such as `arrayLiteral`,
-`index` and `iterable`, or contextual names such as `valuesLiteral` and `itemIndex`
-when shared IR associates them with an authored binding. Authored names are allocated
-first and all generated names have the same collision protection. Reserved authored
-names retain a valid recognizable stem when possible. Class members are indented and
-major declarations are separated by blank lines. Expressions use target
-precedence and associativity to avoid redundant parentheses. Final single-branch
-checks with an `else { break; }` directly inside `while (true)` become early-exit
-guards, without moving condition prefixes or changing break/continue targets.
-Generated guards simplify Boolean negation and intrinsic equality checks, but
-preserve native equality operator selection and never invert ordered comparisons. Numeric spelling avoids redundant cast parentheses and uses
-plain `0` for Int32 defaults; other numeric widths retain explicit casts.
-Unconditional first assignments and non-array defaults merge with their local
-declarations at the existing execution site when no earlier or self-reference
-exists. Other declarations remain hoisted: branch/loop initialization, array
-resize/clear operations and repeated default resets are never moved or dropped.
-Shared lowering constructs direct array literals in eligible fresh lexical locals,
-avoiding an intermediate array and copy. Existing assignments, repeated loop-body
-declarations, hoisted/native-policy bindings and non-array coercions retain
-temporaries. A loop-local slot can have escaped through `script_ref` on a previous
-iteration, so lexical freshness alone does not permit in-place construction there.
-Empty literal temporaries are cleared on every execution in emitted source.
-Shared IR also retains declaration provenance: lexical scope identity, full source
-declaration span, initialization kind/site, and lexical versus hoisted storage with
-its entry-default site. This metadata does not widen declaration fusion into
-branches or loops; const initializer tracking remains separate.
-Callbacks require a non-const Bool return contract, matching REDmod's implicit
-Bool events. Their return expressions are preserved, not evaluated into discard
-locals followed by invalid bare returns. Void and other community callback result
-contracts fail with a source diagnostic rather than silently changing their ABI.
-Calls relying on callback results remain rejected.
-Assignments to `script_ref` destinations are emitted unchanged. In REDmod they
-write through the reference rather than rebinding it as community source does;
-this semantic difference is not diagnosed. Preserving community rebinding is
-[future work](../../../../docs/language-future-work.md).
-Every intrinsic is classified explicitly rather than emitted as an ordinary call.
-Reference `IsDefined` tests accept an immediate weak-to-strong promotion without
-emitting a strong temporary: the weak handle is compared directly with `NULL`,
-including generated negated guards. Immediate typed initializers, assignments,
-returns and unambiguous arguments can combine strong/weak conversion with a class
-upcast. The destination must retain the conversion's reference kind; downcasts,
-competing overloads and nested conversion chains remain rejected.
+The transpiler handles explicit typed signatures/locals, ordinary calls/operators/casts,
+structured IR control flow, lowered for-in/interpolation, selected dynamic-array
+intrinsics, verified primitive/reference and struct defaults, overrides, and uniquely
+associated patches.
+
+### Declarations, naming and formatting
+
+- **Naming hygiene:** Local names prefer authored spellings with deterministic disambiguation
+  by IR identity. Compiler temporaries receive purpose-based names (`arrayLiteral`, `index`,
+  `iterable`) or contextual names (`valuesLiteral`, `itemIndex`) when associated with an
+  authored binding. Authored names are allocated first and protected from collisions.
+- **Layout and style:** Class members are indented, major declarations are separated by blank
+  lines, and expression emission uses target precedence/associativity to eliminate redundant
+  parentheses.
+- **Control-flow simplification:** Final single-branch checks with `else { break; }` directly
+  inside `while (true)` become early-exit guards without moving condition prefixes or changing
+  break/continue targets. Generated guards simplify Boolean negation and equality checks while
+  preserving native operator selection without inverting ordered comparisons.
+- **Numeric formatting:** Emits plain `0` for Int32 defaults and avoids redundant cast
+  parentheses; other numeric widths retain explicit casts.
+
+### Intrinsics, types and coercions
+
+- **`ToString`:** Emits without an operand allowlist. Native primitive mappings and string
+  identity are preserved; other operands use REDmod's `value as String` conversion. Weak
+  operands retain their explicit strong-reference conversion before string conversion.
+- **`NameOf`:** `NameOf<T>()` (and legacy `NameOf(T)`) emits a `CName` literal using the
+  community backend's compact resolved type name rather than REDmod's type spelling.
+- **Intrinsic classification:** Every intrinsic is classified explicitly rather than emitted
+  as an ordinary call.
+- **`IsDefined`:** Reference `IsDefined` tests accept an immediate weak-to-strong promotion
+  without emitting a strong temporary: the weak handle is compared directly with `NULL`.
+- **Target coercions:** Immediate typed initializers, assignments, returns and unambiguous
+  arguments can combine strong/weak conversion with a class upcast. The destination must
+  retain the conversion's reference kind; downcasts, competing overloads and nested
+  conversion chains remain rejected.
+
+### Initializers and in-place construction
+
+- **Declaration fusion:** Unconditional first assignments and non-array defaults merge with
+  their local declarations at the existing execution site when no earlier or self-reference
+  exists. Other declarations remain hoisted: branch/loop initialization, array resize/clear
+  operations and repeated default resets are never moved or dropped.
+- **Array construction:** Shared lowering constructs direct array literals in eligible fresh
+  lexical locals, avoiding an intermediate array and copy. Existing assignments, repeated
+  loop-body declarations, hoisted/native-policy bindings and non-array coercions retain
+  temporaries. Empty literal temporaries are cleared on every execution in emitted source.
+- **Provenance tracking:** Shared IR retains declaration provenance (lexical scope identity,
+  full source span, initialization kind/site, and lexical vs. hoisted storage). This
+  metadata does not widen declaration fusion into branches or loops.
+
+### Callbacks and references
+
+- **Callbacks:** Callbacks require a non-const Bool return contract, matching REDmod's
+  implicit Bool events. Their return expressions are preserved, not evaluated into discard
+  locals followed by invalid bare returns. Void and other community callback result contracts
+  fail with a source diagnostic rather than silently changing ABI. Calls relying on callback
+  results remain rejected.
+- **Script references:** Assignments to `script_ref` destinations are emitted unchanged.
+  In REDmod they write through the reference rather than rebinding it as community source
+  does; this semantic difference is not diagnosed. Preserving community rebinding is
+  [future work](../../../../docs/language-future-work.md).
 
 ### Compound method receivers
 
@@ -114,23 +124,16 @@ See [bounded borrows and lifetime evidence](../../../../docs/redmod-semantics.md
 
 ### Struct defaults and resets
 
-Complete non-native source structs (including source dependencies) are reset with
-positional constructors in resolved field order, recursively supplying defaults
-for every field. Nested source structs, supported scalar defaults and null
-strong/weak class handles are supported; a truly empty source struct uses `Type()`.
-TweakDBID defaults use `T""`. Enums default to a resolved member whose value is
-exactly zero, including nested struct fields. The first member or an `Invalid`
-sentinel is not assumed to be zero. Enums without a declared zero member remain
-rejected. Enum-member lookup is memoized per type within each body.
-The constructor stays at each IR initialization site, including branch entries
-and loop back edges. No fresh temporary or field-by-field mutation replaces it.
+All struct defaults uniformly emit `Type()`, delegating construction to the engine
+rather than enumerating individual fields or inferring layouts from imported fields.
+Explicit positional constructor expressions retain their authored field arguments.
 
-Native/imported structs remain rejected, even with a `fully_defined` symbol flag:
-the API has no versioned proof of engine layout completeness. Missing source/field
-provenance, base layouts, recursive value layouts, more than 255 fields, and fields
-without verified expression defaults (arrays, `script_ref`, nonzero-only enums, Variant, etc.)
-also fail closed. Source dependency layouts must come from the same successful
-analysis, as required by the low-level API contract.
+The transpiler can omit a local's first, unconditional default initialization when
+backward liveness proves no read occurs before a whole-local overwrite. Branches and
+loop back edges participate in that proof; reads, borrows, `out` arguments, and partial
+field writes keep the default. Repeated or conditional declarations retain explicit
+resets at their execution sites, and switch occurrences are conservatively treated
+as reads. This does not infer native layouts or change Variant reset behavior.
 
 ### Literal conventions
 
@@ -155,12 +158,12 @@ and bundle signedness limitations.
 | --- | --- |
 | Inferred signatures, conditions, multiple wrappers and cross-module patches | Add finalized source identity facts and a variant-aware transpilation plan |
 | Array prefixes crossing lazy branches, switch matchers or prior operands | Preserve execution-site prerequisites in shared lowering before relaxing source guards |
-| Unsafe receivers, temporary/nonlocal places and strong/weak coercions | Add context-aware place/reference lowering; never mutate a copy as a substitute |
-| Zero-member-less enum, Variant and fixed-array default resets | Verify target initialization/reset behavior; native/import-only structs emit `Type()` |
+| Unsafe receivers, temporary/nonlocal places, and context-free strong/weak coercions | Add context-aware place/reference lowering; never mutate a copy as a substitute |
+| Zero-member-less enum, Variant and fixed-array default resets | Verify target initialization/reset behavior |
 | Const locals | Preserve verified initialization and mutation semantics; currently rejected rather than emitted as mutable |
-| Array count/grow/sort, `LongIntEnum`, variant inspection, more `IsDefined` types | Add resolved typed mappings and official fixtures per operation |
+| Array sort/custom operations, `LongIntEnum`, variant inspection, more `IsDefined` types | Add resolved typed mappings and official fixtures per operation |
 | `editable`, `instanceeditable`, `inlined`, `replicated`, `testonly` transpilation | Preserve verified declaration semantics rather than dropping flags |
-| Exact/select imports, unknown metadata, global replacements and broader conditions | Extend declaration/target planning without widening imports or guessing ownership |
+| Import-aware target names, unknown metadata, global replacements and broader conditions | Extend declaration/target planning without emitting rejected qualified calls or guessing ownership |
 | Wider integer/Double ranges and literal controls | Establish exact official constant-pool values before accepting new spellings |
 
 Const locals return a source diagnostic: native scalar const initialization does
