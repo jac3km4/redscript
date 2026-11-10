@@ -85,9 +85,29 @@ native source declaration proves an engine ABI.
 - Broader mutable scalar forms, nonstring/nonfield metadata, invalid/inherited hint
   targets, fixed-array operations, EraseFast and additional Variant members need
   precise contracts rather than aliases to superficially similar operations.
-- Retain transactional inference as a separate hardening goal; review the
-  [inference notes](language-semantics.md#type-inference-safeguards-and-hardening) against the current solver before
-  implementation rather than replaying an old plan verbatim.
+
+### Transactional inference and failure rollback
+
+A recursive constraint operation can mutate earlier or nested variables before a
+later step fails. Local validate-before-store does not restore all reachable state,
+leaving transactional failure handling as an outstanding correctness goal.
+
+- **Architecture:** Implement an internal undo journal with checkpoints, commit, and
+  rollback shared across entire recursive constraint operations. Account for bounds,
+  representatives/path compression, directed edges, and ownership-component changes in
+  the current solver representation.
+- **Speculative callers:**
+  - *Try-and-commit:* Retain successful constraints and roll back failures (for compatible
+    contextual hints).
+  - *Probe:* Always roll back, including on success (for read-only applicability queries).
+  - Audit ignored return hints, dynamic-cast alternative checks, and fallback paths that
+    discard constraint errors to ensure live variables are never mutated solely to test
+    a candidate.
+- **Regression criteria:** Regressions must prove unchanged reachable inference after
+  failure in nested generic arguments, invariant equality, representative compression,
+  edge propagation, and speculative hints. Follow failed operations with subsequent successful
+  inference to catch contamination. Maintain existing checks for cyclic bounds without
+  panics or leaks.
 
 ## Export, conditions and tooling
 

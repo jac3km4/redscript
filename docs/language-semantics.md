@@ -50,7 +50,6 @@ past measurements rather than current validation.
   - [Type inference safeguards and hardening](#type-inference-safeguards-and-hardening)
     - [Current mechanisms](#current-mechanisms)
     - [Remaining goal: atomic failed operations](#remaining-goal-atomic-failed-operations)
-    - [Ongoing correctness criteria](#ongoing-correctness-criteria)
   - [Invalid signature recovery](#invalid-signature-recovery)
     - [Boundaries](#boundaries)
 
@@ -752,47 +751,17 @@ Their existence is not a claim that validation was rerun for this documentation.
 
 #### Remaining goal: atomic failed operations
 
-A recursive constraint operation can mutate earlier/nested variables before a
-later step fails. Local validate-before-store does not restore all reachable
-state. Transactional failure handling remains a separate correctness goal.
+A recursive constraint operation can mutate earlier or nested variables before a
+later step fails. Current local validate-before-store does not restore all reachable
+inference state when a multi-step constraint fails.
 
-A possible implementation is an internal undo journal with checkpoints, commit
-and rollback shared across the entire recursive operation. Keep public operations
-as wrappers rather than committing each recursive step independently. Account for
-bounds, representatives/path compression, directed edges and ownership-component
-changes in the **current** representation; the old two-bound-only plan is
-insufficient. Do not hold RefMut across recursive calls.
+Achieving true failure atomicity requires an undo mechanism (such as an internal
+journal) capable of rolling back partial mutations across variable bounds, path
+compression, directed subtype edges, and ownership components. Speculative operations
+must clearly distinguish tentative constraint application from read-only probing.
 
-Separate speculative callers into:
-
-- **Try-and-commit:** retain successful constraints and roll back failures, for
-  compatible contextual hints.
-- **Probe:** always roll back, including success, for read-only questions.
-
-Audit ignored return hints, dynamic-cast alternative checks and fallback paths
-that discard constraint errors. Read-only applicability must not resolve live
-variables merely to select a provider or overload.
-
-Required regressions should prove unchanged reachable inference after failure in
-later generic arguments, invariant equality, representative compression, edge
-propagation and speculative hints. Follow a failed operation with successful
-inference to expose contamination rather than asserting only the original error.
-
-#### Ongoing correctness criteria
-
-Retain tests for recursive bounds without stack overflow/RefCell panic, valid
-shared graphs versus cycles, component release and long representative chains.
-For deterministic variance/nested/inherited matrices, check commutativity modulo
-representative identity, idempotence, upper/lower-bound relationships, reversed
-conditional branches, invariant-array rejection in both orders and eventual
-transactional failure atomicity.
-
-Do not replace the storage model or add recursive types merely to implement
-rollback. Stage infrastructure, speculative callers and any newly isolated solver
-fixes separately, with focused regressions. Review snapshots individually rather
-than accepting them wholesale. Start with solver unit tests, then frontend and
-backend tests and affected-package checks; finish with the commands in
-[CONTRIBUTING.md](../CONTRIBUTING.md).
+For implementation plans and verification criteria, see
+[transactional inference hardening](language-future-work.md#transactional-inference-and-failure-rollback).
 
 ### Invalid signature recovery
 
