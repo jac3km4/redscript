@@ -1,20 +1,37 @@
 # Language guide
 
 These documents describe this repository's community REDscript compiler and its
-bounded native REDmod support. They are implementation contracts, not a claim of
-full official-compiler equivalence or game-runtime compatibility. For a general
-language tutorial, see the [REDscript wiki](https://wiki.redmodding.org/redscript).
+bounded native REDmod support. For an introductory language tutorial, see the
+[REDscript wiki](https://wiki.redmodding.org/redscript).
+
+> [!IMPORTANT]
+> **Implementation Contracts and Runtime Compatibility**
+> The specifications in this guide represent compiler implementation contracts. Unit tests,
+> bytecode snapshots, and official compiler acceptance establish tooling and encoding behavior,
+> not in-game execution compatibility.
 
 ## Start here
 
-- [Community REDscript](community-language.md): current language behavior and
-  compilation, decompilation and export boundaries.
-- [Native REDmod](redmod-language.md): dialect differences, supported semantics and
+- [Community REDscript](community-language.md): current language behavior, syntax, and
+  compilation/decompilation boundaries.
+- [Native REDmod](redmod-language.md): native dialect differences, supported semantics, and
   explicit limitations.
-- [Future work](language-future-work.md): unresolved correctness issues, missing
-  capabilities and evidence needed before broadening support. In particular,
+- [Future work](language-future-work.md): unresolved correctness issues, missing capabilities,
+  and evidence needed before broadening support. In particular,
   [repeated Variant initialization](language-future-work.md#variant-default-initialization-on-repeated-declarations)
-  is an unresolved backend risk, not a verified runtime behavior.
+  is an unresolved backend risk.
+
+### Dialect quick comparison
+
+| Feature | Community REDscript (`.reds`) | Native REDmod (`.script`) |
+| :--- | :--- | :--- |
+| **`ref<T>`** | Strong class reference handle | Script reference (equivalent to `script_ref<T>`) |
+| **`script_ref<T>`** | Explicit script reference type | Native script reference (spelled `ref<T>`) |
+| **Reference assignment** | Rebinds the reference variable | Writes through to the pointee |
+| **Const locals** | `const x = 1;` (declaration init allowed) | `const var x: Int32;` (scalar init rejected; handle rebinding allowed) |
+| **Trailing comma `Call(42,)`** | 1 argument (`42`) | 2 arguments (`42` + trailing omitted hole) |
+| **Omitted enum storage** | Inferred signed width (1, 2, 4, or 8 bytes) | Inferred in adapter (official REDmod defaults to 4 bytes) |
+| **Event callbacks** | Authored return type enforced | Implicit `Bool` contract; fallthrough emits `Nop` |
 
 ## Detailed semantics
 

@@ -14,6 +14,21 @@ community compiler; REDmod source export has a narrower explicit-type contract.
 Classes, structs, enums, generic types/functions, lambdas and function values are
 community features; accepting them here does not imply native export support.
 
+```redscript
+// Functions, locals, and const bindings
+func Add(a: Int32, b: Int32) -> Int32 {
+  let result = a + b;
+  const multiplier = 2;
+  return result * multiplier;
+}
+
+// Explicit enum storage width
+enum Choice: Uint8 {
+  First = 0,
+  Second = 1
+}
+```
+
 Community `ref<T>` is a strong object handle and `wref<T>` a weak handle.
 `script_ref<T>` models script-reference adaptation. Native `ref<T>` means the latter,
 not a strong handle. Wrapping/unwrapping script references composes with other
@@ -30,42 +45,65 @@ not introduce literals, defaults or arbitrary conversions.
 
 ## Expressions, calls and mutation
 
-- Assignment is value-producing: its result has the coerced destination type and
+- **Assignment is value-producing:** Its result has the coerced destination type and
   is not a writable place. Evaluate the destination once, before the RHS, with no
   destination readback. Chains use the same rule.
-- Positional holes must correspond to optional parameters and emit Nop, not null.
-  In community syntax a trailing comma adds no slot: `Call(42,)` has one argument;
-  `Call(42,,)` has a value and a hole. Native trailing commas differ.
-- Arrays have built-in Int32 indexing with writable-place semantics. Non-array
-  indexing resolves `OperatorArray(receiver, key)` as a call, not a place. See
+  ```redscript
+  let x: Int32;
+  let y: Int32;
+  x = y = 10; // y = 10 yields 10, then x is assigned 10
+  ```
+- **Positional holes:** Omitted arguments correspond to optional parameters and emit
+  `Nop`, not `null`. A trailing comma adds no slot:
+  ```redscript
+  Target(42,)   // 1 argument: 42
+  Target(42,,)  // 2 arguments: 42 followed by 1 omitted hole
+  Target(,)     // 1 argument: omitted hole
+  ```
+- **Array and overloaded indexing:** Dynamic/static arrays have built-in Int32 indexing
+  with writable-place semantics (`arr[0] = 5`). Non-array indexing resolves
+  `OperatorArray(receiver, key)` as a function call, not an assignable place. See
   [switches and operators](language-semantics.md#switch-order-and-overloaded-indexing).
-- [Call lookup and inheritance](language-semantics.md#call-lookup-overloads-and-inheritance) retain applicable overloads
-  across static ancestry and prioritize real methods over equivalent generated
-  receiver-first aliases. Specificity is bounded, not a numeric scoring system.
-- Source `skip` parameters retain lazy intent through source, symbols and bundles.
-  [Array-prefix safety](language-semantics.md#lazy-evaluation-limitations) diagnoses forms whose current
-  lowering can reorder effects or escape a lazy branch. Strict mode rejects them;
-  runtime-compatible mode continues legacy lowering without a correctness guarantee.
-  Type-qualified static calls can take array literals; runtime member and closure
-  callees remain guarded.
-- Marked `implicit func Cast` / `explicit func Cast` declarations preserve intent,
-  but do not enable arbitrary user-defined conversions. Ordinary unmarked `Cast`
-  functions keep their existing behavior. The bounded marked-provider selection
-  described in [conversion semantics](language-semantics.md#conversion-declarations-and-bounded-native-selection) is native-only.
+- **Call lookup and inheritance:** [Overload selection](language-semantics.md#call-lookup-overloads-and-inheritance)
+  retains applicable overloads across static ancestry and prioritizes real methods over
+  equivalent generated receiver-first aliases. Specificity is bounded, not a numeric scoring system.
+- **Lazy evaluation and array safety:** Source `skip` parameters retain lazy intent.
+  [Array-prefix safety](language-semantics.md#lazy-evaluation-limitations) diagnoses forms
+  whose statement-prefix array construction could reorder effects or escape a lazy branch:
+  ```redscript
+  // UNSAFE: array literal inside a lazy branch can evaluate eagerly
+  CallWithSkipParam(condition ? [1, 2] : []);
+
+  // SAFE: bind array to a local at its execution site
+  let items = [1, 2];
+  CallWithSkipParam(items);
+  ```
+- **Conversions:** Marked `implicit func Cast` / `explicit func Cast` declarations preserve
+  intent, but do not enable arbitrary user-defined conversions. Ordinary unmarked `Cast`
+  functions keep their existing behavior. Marked provider selection is native-only.
 
 ## Constness and initialization
 
-[Const parameters and locals](language-semantics.md#const-parameters-and-locals) use strict community rules.
-A const local's declaration initializer is permitted once; later assignment is
-not, even after an uninitialized declaration. Direct-root referent mutation,
-mutable forwarding and selected non-const methods are checked. Uncertain non-out
-forwarding is runtime-tolerated; direct writes, explicit out forwarding and known
-mutations remain hard errors. This is not transitive alias/effect analysis,
-const-aware overload ranking, or general const field/return enforcement.
+[Const parameters and locals](language-semantics.md#const-parameters-and-locals) use strict community rules:
+- A const local's declaration initializer is permitted once; subsequent assignment is rejected,
+  even after an uninitialized declaration:
+  ```redscript
+  const limit: Int32 = 100; // Allowed: initial declaration assignment
+  // limit = 200;           // ERROR: cannot assign to const local
+  ```
+- Direct-root referent mutation, mutable forwarding, and mutating array intrinsics are hard errors.
+- Forwarding a const reference or container to an uncertain non-`out` parameter is diagnosed at
+  `ErrorAllowedAtRuntime` severity (rejected in default strict mode, tolerated in `--runtime-compatible`).
 
 Aggregate `default field = value;` directives support own and inherited fields in
-classes and structs. They are typed metadata, not constructor assignments. The
-[default contract](language-semantics.md#shared-aggregate-defaults)
+classes and structs. They are typed metadata, not constructor assignments:
+```redscript
+class Config {
+  default timeout = 30;
+  default enabled = true;
+}
+```
+The [default contract](language-semantics.md#shared-aggregate-defaults)
 defines duplicate precedence and supplying-class keys. Constant lowering is
 bounded to supported literal/enum forms, not general compile-time evaluation.
 

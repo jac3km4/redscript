@@ -42,7 +42,15 @@ availability is not semantic accuracy or permission to emit artifacts.
   Initialized groups and general value sequences remain unsupported.
 - Native `ref<T>` means script reference, not community strong `ref<T>`. Verified
   scalar/string/struct/class/array/weak parameter and field forms compose with
-  dereferencing/coercion. Native assignment/out places write through references.
+  dereferencing/coercion. Native assignment/out places write through references:
+  ```redscript
+  public class Handler {
+    // Native ref<T> is a script reference to an Int32, not a strong class handle
+    public func Increment(counter: ref<Int32>) -> Void {
+      counter = counter + 1; // Writes through to the referenced integer
+    }
+  }
+  ```
   Ref locals/returns, nested refs, arrays of refs and mixed-reference forms remain
   rejected. See [shared reference semantics](language-semantics.md#shared-expression-and-aggregate-default-apis).
 - [Enum storage](language-semantics.md#explicit-enum-storage) retains declared width/ranges. Omitted native
@@ -64,8 +72,11 @@ through runtime value receivers.
 Native operators preserve checked signatures. Non-array `operator[]` resolves
 OperatorArray; built-in arrays retain writable indexing. Omitted argument slots
 must match optional parameters and emit Nop. Unlike community syntax, a final
-comma retains a final hole. Authored parameter-default expressions are separate
-and unsupported.
+comma retains a final hole:
+```redscript
+Target(42,); // Native syntax: 2 arguments (42 followed by 1 omitted hole)
+```
+Authored parameter-default expressions are separate and unsupported.
 
 [Conversion declarations](language-semantics.md#conversion-declarations-and-bounded-native-selection) preserve explicit/implicit
 intent without making providers ordinary overload candidates. Implemented native
@@ -95,14 +106,24 @@ fully resolved semantic signatures; this is not general variant-aware analysis.
 - Dynamic-array descriptors include Size, PushBack, PopBack, Clear, Resize,
   Contains, FindFirst, FindLast, Insert, Remove, Erase and Last, plus
   [Grow and Count](redmod-semantics.md#redmod-dynamic-array-grow-and-count). They require array places;
-  temporary receivers are rejected. Fixed-array members and EraseFast are not
-  aliases to these operations, and native source does not expose arbitrary
-  community intrinsic spellings.
+  temporary receivers are rejected:
+  ```redscript
+  values.Grow(10);
+  let total: Int32 = values.Count(element);
+  ```
+  Fixed-array members and EraseFast are not aliases to these operations, and native
+  source does not expose arbitrary community intrinsic spellings.
 - [Const rules](language-semantics.md#const-parameters-and-locals) retain native qualifiers. Parameter element
   writes/non-out forwarding have narrow native relaxations; const local class
   handles permit rebinding/handle forwarding, not referent mutation. Native const
   scalar/struct explicit initialization is rejected, unlike community const
-  initialization. Const fields/returns and arbitrary effects remain incomplete.
+  initialization:
+  ```redscript
+  const var target: ref<MyClass>; // Class handle rebinding permitted
+  target = new MyClass();         // Rebinding the handle is allowed
+  // target.field = 5;            // ERROR: referent mutation remains rejected
+  ```
+  Const fields/returns and arbitrary effects remain incomplete.
 - `mutable` is accepted for verified aggregate array fields. The bounded scalar
   form is a Float field on a non-imported class with `instanceeditable inlined`,
   optionally `const`, and no other modifiers. It adds no extra flag and never

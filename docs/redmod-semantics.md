@@ -257,7 +257,7 @@ serialization and decoding; it does not establish game-runtime behavior.
 Field reads use direct native postfix syntax, without receiver temporaries,
 null guards, synthetic defaults, or lifted evaluation. Supported examples:
 
-```reds
+```redscript
 owner.child.flag;
 Select(steps, owner).child.flag;
 (enabled ? Select(steps, owner) : Select(steps, other)).child.flag;
@@ -387,7 +387,7 @@ The transpiler emits ordinary strong and weak class-reference receivers inline
 for method call results (including chains), already-supported local-rooted fields,
 conditional expressions, and class casts. For example:
 
-```reds
+```redscript
 Select(owner).Next().Read(Rebind(owner));
 owner.child.Read(Rebind(owner));
 (enabled ? Select(owner) : Select(other)).Read(Rebind(owner));
