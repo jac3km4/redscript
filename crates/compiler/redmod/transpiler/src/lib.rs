@@ -58,6 +58,8 @@ pub struct TranspileModule<'a, 'ctx> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TranspileDiagnostic {
     pub message: Cow<'static, str>,
+    pub code: Option<&'static str>,
+    pub is_error: bool,
     /// Concrete literal failure, when emission failed on a literal value.
     pub literal_error: Option<LiteralError>,
     pub span: Option<Span>,
@@ -74,7 +76,11 @@ impl std::error::Error for TranspileDiagnostic {}
 impl TranspileDiagnostic {
     /// Stable diagnostic code for target capability failures.
     pub fn code(&self) -> &'static str {
-        "REDMOD_TRANSPILE"
+        self.code.unwrap_or("REDMOD_TRANSPILE")
+    }
+
+    pub fn is_error(&self) -> bool {
+        self.is_error
     }
 
     /// Render using the same source snippet and location convention as frontend diagnostics.
@@ -89,7 +95,8 @@ impl TranspileDiagnostic {
         );
         impl fmt::Display for Display<'_> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                writeln!(f, "error[{}]: {}", self.0.code(), self.0)?;
+                let level = if self.0.is_error { "error" } else { "warning" };
+                writeln!(f, "{level}[{}]: {}", self.0.code(), self.0)?;
                 if let Some(span) = self.0.span
                     && let Some(file) = self.1.get(span.file)
                     && let Some(snippet) = redscript_community_ast::SourceSnippet::new(file, span)
@@ -196,6 +203,8 @@ type Result<T> = std::result::Result<T, TranspileDiagnostic>;
 fn error(message: impl Into<Cow<'static, str>>, span: Option<Span>) -> TranspileDiagnostic {
     TranspileDiagnostic {
         message: message.into(),
+        code: None,
+        is_error: true,
         literal_error: None,
         span,
         declaration: None,
