@@ -24,7 +24,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.0.0-preview.22"
+version = "1.0.0"
 authors = ["jekky"]
 edition = "2024"
 
