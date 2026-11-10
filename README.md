@@ -1,7 +1,6 @@
-<img align="left" width="0px" height="18px"/>
 <img src="https://user-images.githubusercontent.com/11986158/145484796-9bf1f77f-e706-4e15-b46b-c9b949f0086c.png" align="left" width="100px" height="100px"/>
 
-<h3>REDscript</h3>
+# REDscript
 
 REDscript is a statically-typed, object-oriented programming language designed for developing scripts for the REDengine, CD Projekt's game engine used in Cyberpunk 2077. If you want to learn more about the language, visit the [official wiki](https://wiki.redmodding.org/redscript).
 
@@ -17,15 +16,15 @@ To compile your scripts automatically on game startup, follow the instructions f
 ### MacOS (non-Wine)
 - Download the `redscript-v{version}-macos.zip` archive from the [latest release](https://github.com/jac3km4/redscript/releases/latest).
 - Extract it into the main `Cyberpunk 2077` directory:
-  ```bash
+  ```sh
   unzip ~/Downloads/redscript-v*-macos.zip -d "/Applications/Cyberpunk 2077"
   ```
 - MacOS automatically quarantines binaries downloaded from the internet so you need to remove them from the quarantine manually:
-  ```bash
+  ```sh
   xattr -r -d com.apple.quarantine "/Applications/Cyberpunk 2077/engine/tools"
   ```
 - The game currently does not compile scripts on startup, so in order to actually compile the scripts you can use the bundled script to start the game:
-  ```bash
+  ```sh
   "/Applications/Cyberpunk 2077/launch_modded.sh"
   ```
 
@@ -33,16 +32,40 @@ To compile your scripts automatically on game startup, follow the instructions f
 
 REDscript provides extensive editor tooling, including a language server and a debugger that integrate with many popular editors such as VSCode, neovim, IntelliJ IDEA, Zed, and Helix. For detailed setup instructions, check out the [REDscript IDE repository](https://github.com/jac3km4/redscript-ide).
 
+## Command-Line Usage
+
+The `redscript-cli` binary provides commands for compiling, decompiling, checking, formatting, and transpiling scripts:
+
+```sh
+# Compile scripts into a script bundle
+redscript-cli compile -s <source_dir> -b <bundle_path>
+
+# Validate scripts without generating output
+redscript-cli lint -s <source_dir> -b <bundle_path>
+
+# Decompile an existing .redscripts bundle into source code
+redscript-cli decompile -b <bundle_path> -o <output_dir>
+
+# Format REDscript source files in-place
+redscript-cli format <source_path>
+
+# Transpile community REDscript to native REDmod scripts
+redscript-cli transpile-redmod -s <source_dir> -o <output_dir>
+```
+
+Add `--runtime-compatible` to `compile` or `lint` to match SCC's fatal-error threshold when building legacy mod scripts.
+
 ## Language Documentation
 
-See the [language guide](docs/README.md) for current community REDscript and native
-REDmod support, detailed semantics, known limitations, and future work. Historical
-investigations are separated from current contracts; acceptance or bytecode tests
-do not establish game-runtime compatibility. CLI `compile` and `lint` are strict
-by default; `--runtime-compatible` matches SCC's fatal-error threshold while still
-reporting runtime-tolerated diagnostics. It can retain unsafe legacy evaluation
-behavior, not guarantee correctness; see the
-[diagnostic mode contract](docs/community-language.md#diagnostics-and-tool-boundaries).
+For tutorials and introductory guides, visit the [official REDscript wiki](https://wiki.redmodding.org/redscript).
+
+Detailed technical specifications, semantic contracts, and reference materials are documented in the [Language Guide](docs/README.md):
+- **[Community REDscript Guide](docs/community-language.md)**: Current syntax, types, and compiler behavior.
+- **[Native REDmod Guide](docs/redmod-language.md)**: Native REDmod dialect support and interop boundaries.
+- **[Shared Language Semantics](docs/language-semantics.md)**: In-depth reference on lookup, inheritance, conversions, and evaluation order.
+- **[Future Work & Known Limitations](docs/language-future-work.md)**: Unresolved behavior, open risks, and tracked backlog items.
+
+CLI `compile` and `lint` are strict by default; `--runtime-compatible` matches SCC's fatal threshold while still reporting diagnostics. See the [diagnostic mode contract](docs/community-language.md#diagnostics-and-tool-boundaries).
 
 ## Contributing
 
