@@ -490,12 +490,12 @@ mod tests {
         let z = sources.push_back("z.reds", "test");
         let a = sources.push_back("a.reds", "test");
         let diagnostics = Diagnostics::from(vec![
-            Diagnostic::UnusedLocal(ast::Span::new(0, 1, z)),
-            Diagnostic::UnusedLocal(ast::Span::new(2, 3, a)),
+            Diagnostic::UnusedLocal(None, ast::Span::new(0, 1, z)),
+            Diagnostic::UnusedLocal(None, ast::Span::new(2, 3, a)),
             Diagnostic::UnknownIntrinsic("z", ast::Span::new(0, 2, a)),
             Diagnostic::UnknownIntrinsic("a", ast::Span::new(0, 2, a)),
             Diagnostic::MissingFunctionBody(ast::Span::new(0, 2, a)),
-            Diagnostic::UnusedLocal(ast::Span::new(0, 1, a)),
+            Diagnostic::UnusedLocal(None, ast::Span::new(0, 1, a)),
         ]);
         let ordered = diagnostics.source_ordered(&sources, DiagnosticLevel::Pedantic);
         assert_eq!(
@@ -521,7 +521,7 @@ mod tests {
         let a = sources.push_back("a.reds", "test");
         let diagnostics = Diagnostics::from(vec![
             Diagnostic::MissingFunctionBody(ast::Span::new(0, 1, z)),
-            Diagnostic::UnusedLocal(ast::Span::new(0, 1, a)),
+            Diagnostic::UnusedLocal(None, ast::Span::new(0, 1, a)),
             Diagnostic::Custom(
                 Box::new(NeverFormat),
                 "FILTERED_DIAGNOSTIC",
@@ -550,8 +550,10 @@ mod tests {
     fn rendering_propagates_source_and_writer_errors() {
         let sources = SourceMap::new();
         let file = sources.push_back("test.reds", "test");
-        let diagnostics =
-            Diagnostics::from(vec![Diagnostic::UnusedLocal(ast::Span::new(0, 1, file))]);
+        let diagnostics = Diagnostics::from(vec![Diagnostic::UnusedLocal(
+            None,
+            ast::Span::new(0, 1, file),
+        )]);
         let mut output = Vec::new();
         assert!(matches!(
             diagnostics.write_to(&mut output, &SourceMap::new(), DiagnosticLevel::Warning),
@@ -631,7 +633,7 @@ mod tests {
             checked
                 .diagnostics()
                 .into_iter()
-                .any(|d| matches!(d, Diagnostic::UnusedLocal(_)))
+                .any(|d| matches!(d, Diagnostic::UnusedLocal(..)))
         );
         assert!(
             !checked
@@ -709,7 +711,7 @@ mod tests {
                     from_modules
                         .diagnostics()
                         .into_iter()
-                        .any(|d| matches!(d, Diagnostic::UnusedLocal(_))),
+                        .any(|d| matches!(d, Diagnostic::UnusedLocal(..))),
                     !passes.is_empty()
                 );
                 assert!(

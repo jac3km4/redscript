@@ -126,7 +126,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                     let res = self
                         .module_map
                         .add_type(path, cls_id, is_public)
-                        .map_err(|_| Diagnostic::NameRedefinition(name_span));
+                        .map_err(|_| Diagnostic::NameRedefinition(name, name_span));
                     if self.reporter.unwrap_err(res).is_none() {
                         continue;
                     }
@@ -224,7 +224,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         let res = self
                             .module_map
                             .add_function(path, index, is_public)
-                            .map_err(|_| Diagnostic::NameRedefinition(name_span));
+                            .map_err(|_| Diagnostic::NameRedefinition(name, name_span));
                         self.reporter.unwrap_err(res);
                     }
 
@@ -242,7 +242,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                     let res = self
                         .module_map
                         .add_type(path, id, is_public)
-                        .map_err(|_| Diagnostic::NameRedefinition(name_span));
+                        .map_err(|_| Diagnostic::NameRedefinition(name, name_span));
                     if self.reporter.unwrap_err(res).is_none() {
                         continue;
                     }
@@ -834,7 +834,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
             }))));
             if types.get(name).is_some() {
                 self.reporter
-                    .report(Diagnostic::NameRedefinition(name_span));
+                    .report(Diagnostic::NameRedefinition(name, name_span));
             }
             types.add(name, typ);
         }

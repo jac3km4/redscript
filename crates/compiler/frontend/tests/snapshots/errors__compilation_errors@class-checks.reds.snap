@@ -1,10 +1,9 @@
 ---
 source: crates/compiler/frontend/tests/errors.rs
-assertion_line: 27
 expression: "DisplayDiagnostics(reporter.into_reported(), &sources)"
 input_file: crates/compiler/frontend/tests/data/class-checks.reds
 ---
-error[SYM_REDEFINITION]: this name is already defined in this scope
+error[SYM_REDEFINITION]: `ClassDefinedTwice` is already defined in this scope
  --> tests/data/class-checks.reds:25:7
    |
 25 | class ClassDefinedTwice {}
@@ -64,7 +63,7 @@ error[NON_STATIC_STRUCT_FN]: struct methods must be static
 47 |   func Method() {}
    |        ^^^^^^
 
-error[SYM_REDEFINITION]: this name is already defined in this scope
+error[SYM_REDEFINITION]: `ClashingIntStruct` is already defined in this scope
  --> tests/data/class-checks.reds:87:21
    |
 87 | @nameImplementation(ClashingIntStruct as GenericStruct<Int32>)
@@ -136,11 +135,23 @@ error[DUP_METHOD]: this class contains a duplicated implementation of the `Metho
 29 |   func Method(x: String) {}
    |        ^^^^^^
 
+note: previous implementation is here
+ --> tests/data/class-checks.reds:28:8
+   |
+28 |   func Method(x: String) {}
+   |        ^^^^^^
+
 warning[FINAL_FN_OVERRIDE]: this method overrides the final method `FinalMethod`
  --> tests/data/class-checks.reds:34:14
    |
 34 |   final func FinalMethod(a: Int32) {}
    |              ^^^^^^^^^^^
+
+note: overridden final method is declared here
+ --> tests/data/class-checks.reds:8:14
+  |
+8 |   final func FinalMethod(a: A) {}
+  |              ^^^^^^^^^^^
 
 error[MISSING_IMPL]: this class is missing required method implementations:
   func UnimplementedMethod(a: Int32) -> Void

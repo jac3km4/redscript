@@ -1,4 +1,5 @@
 //! Community analysis and conservative, span-independent declaration association.
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use redscript_community_ast::{self as ast, FileId, Item, SourceMap, SourceModule};
@@ -23,7 +24,7 @@ pub struct AnalyzedSources<'ctx> {
     symbols: Symbols<'ctx>,
     free_functions: HashMap<String, Vec<FreeFunctionIndex>>,
     /// Nonfatal community diagnostics, rendered with their original diagnostic codes.
-    warnings: Vec<String>,
+    warnings: Vec<TranspileDiagnostic>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,7 +109,15 @@ pub fn analyze_sources<'ctx>(
         free_functions,
         warnings: diagnostics
             .iter()
-            .map(|d| format!("[{}]: {d}", d.code()))
+            .filter(|d| !d.is_error())
+            .map(|d| TranspileDiagnostic {
+                message: Cow::Owned(d.to_string()),
+                code: Some(d.code()),
+                is_error: false,
+                literal_error: None,
+                span: Some(d.span()),
+                declaration: None,
+            })
             .collect(),
     })
 }
@@ -139,7 +148,7 @@ impl<'ctx> AnalyzedSources<'ctx> {
         &self.symbols
     }
 
-    pub fn warnings(&self) -> &[String] {
+    pub fn warnings(&self) -> &[TranspileDiagnostic] {
         &self.warnings
     }
 

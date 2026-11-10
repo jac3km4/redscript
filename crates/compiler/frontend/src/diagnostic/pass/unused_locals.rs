@@ -13,20 +13,20 @@ impl DiagnosticPass for UnusedLocals {
         let mut visitor = UnusedLocalVisitor::new(func);
         visitor.visit_block(&func.block);
 
-        for (_, span) in visitor.unused_locals() {
-            reporter.report(Diagnostic::UnusedLocal(span));
+        for (_, (name, span)) in visitor.unused_locals() {
+            reporter.report(Diagnostic::UnusedLocal(name, span));
         }
     }
 }
 
 #[derive(Debug, Default)]
-struct UnusedLocalVisitor {
-    spans: HashMap<ir::Local, Span>,
+struct UnusedLocalVisitor<'ctx> {
+    locals: HashMap<ir::Local, (Option<&'ctx str>, Span)>,
     used: HashSet<ir::Local>,
 }
 
-impl UnusedLocalVisitor {
-    fn new(func: &LoweredFunction<'_>) -> Self {
+impl<'ctx> UnusedLocalVisitor<'ctx> {
+    fn new(func: &LoweredFunction<'ctx>) -> Self {
         let mut this = Self::default();
         for local in &func.locals {
             this.register_local(local);
@@ -34,25 +34,25 @@ impl UnusedLocalVisitor {
         this
     }
 
-    fn register_local(&mut self, local: &ir::LocalInfo<'_>) {
+    fn register_local(&mut self, local: &ir::LocalInfo<'ctx>) {
         if let Some(span) = local.span {
-            self.spans.insert(local.id, span);
+            self.locals.insert(local.id, (local.name, span));
         }
     }
 
-    fn unused_locals(&self) -> impl Iterator<Item = (ir::Local, Span)> {
+    fn unused_locals(&self) -> impl Iterator<Item = (ir::Local, (Option<&'ctx str>, Span))> {
         let mut locals = self
-            .spans
+            .locals
             .iter()
             .filter(|&(local, _)| !self.used.contains(local))
-            .map(|(&local, &span)| (local, span))
+            .map(|(&local, &info)| (local, info))
             .collect::<Vec<_>>();
-        locals.sort_by_key(|&(_, span)| span);
+        locals.sort_by_key(|&(_, (_, span))| span);
         locals.into_iter()
     }
 }
 
-impl<'ctx> Visitor<'ctx> for UnusedLocalVisitor {
+impl<'ctx> Visitor<'ctx> for UnusedLocalVisitor<'ctx> {
     fn visit_init_array(
         &mut self,
         _local: ir::Local,
@@ -97,17 +97,17 @@ mod tests {
         let mut visitor = UnusedLocalVisitor::default();
         for (id, start, end) in [(0, 20, 25), (1, 5, 10), (2, 5, 8), (3, 0, 1)] {
             visitor
-                .spans
-                .insert(ir::Local::Var(id), Span::new(start, end, file));
+                .locals
+                .insert(ir::Local::Var(id), (None, Span::new(start, end, file)));
         }
         visitor.used.insert(ir::Local::Var(3));
 
         assert_eq!(
             visitor.unused_locals().collect::<Vec<_>>(),
             vec![
-                (ir::Local::Var(2), Span::new(5, 8, file)),
-                (ir::Local::Var(1), Span::new(5, 10, file)),
-                (ir::Local::Var(0), Span::new(20, 25, file)),
+                (ir::Local::Var(2), (None, Span::new(5, 8, file))),
+                (ir::Local::Var(1), (None, Span::new(5, 10, file))),
+                (ir::Local::Var(0), (None, Span::new(20, 25, file))),
             ]
         );
     }

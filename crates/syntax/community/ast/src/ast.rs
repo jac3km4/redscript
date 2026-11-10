@@ -524,6 +524,12 @@ impl EnumStorage {
     }
 }
 
+impl fmt::Display for EnumStorage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnumVariant<'src> {
     pub name: &'src str,

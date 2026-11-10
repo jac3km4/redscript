@@ -130,7 +130,7 @@ pub(crate) fn transpile(opts: TranspileOpts) -> anyhow::Result<ExitCode> {
         Err(diagnostics) => return report_errors(&diagnostics, &sources),
     };
     for warning in analyzed.warnings() {
-        eprintln!("warning{warning}");
+        eprintln!("{}", warning.display(&sources));
     }
     let transpiled = match analyzed.transpile_selected(&selected) {
         Ok(transpiled) => transpiled,

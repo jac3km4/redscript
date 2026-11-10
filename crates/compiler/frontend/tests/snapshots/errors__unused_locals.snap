@@ -2,13 +2,13 @@
 source: crates/compiler/frontend/tests/errors.rs
 expression: "DisplayDiagnostics(diagnostics, &sources)"
 ---
-warning[UNUSED_LOCAL]: unused variable
+warning[UNUSED_LOCAL]: unused variable `initializedUnread`
  --> tests/data/passes/unused-locals.reds:5:9
   |
 5 |     let initializedUnread: Int32 = 1;
   |         ^^^^^^^^^^^^^^^^^
 
-warning[UNUSED_LOCAL]: unused variable
+warning[UNUSED_LOCAL]: unused variable `assignedUnread`
  --> tests/data/passes/unused-locals.reds:9:11
   |
 9 |       let assignedUnread: Int32;

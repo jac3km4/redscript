@@ -205,7 +205,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
 
             let mut implemented: IndexMap<MethodId<'ctx>, FunctionIndex> = IndexMap::default();
             let unimplemented = virtuals.entry(cls_id).or_default();
-            let mut duplicates = IndexMap::<&'ctx str, Span>::default();
+            let mut duplicates = IndexMap::<&'ctx str, (Span, Option<Span>)>::default();
 
             for method in aggregate.methods().iter() {
                 let method_t = method.func().type_();
@@ -259,7 +259,10 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                     Some(base) if base.key().parent() == cls_id => {
                         duplicates.insert(
                             method.name(),
-                            method.func().span().unwrap_or(class.name_span()),
+                            (
+                                method.func().span().unwrap_or(class.name_span()),
+                                base.func().span(),
+                            ),
                         );
                     }
                     Some(base) => {
@@ -268,18 +271,24 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                             && !method.func().flags().is_callback()
                         {
                             let contract = self.symbols.override_return_type(cls_id, *base.key());
-                            if !contract.is_some_and(|contract| {
+                            if !contract.as_ref().is_some_and(|contract| {
                                 self.symbols
-                                    .compatible_override_return(method_t.return_type(), &contract)
+                                    .compatible_override_return(method_t.return_type(), contract)
                             }) {
                                 self.reporter
-                                    .report(Diagnostic::OverrideReturnTypeMismatch(span));
+                                    .report(Diagnostic::OverrideReturnTypeMismatch {
+                                        expected: contract.map(Box::new),
+                                        found: Box::new(method_t.return_type().clone()),
+                                        span,
+                                        base_span: base.func().span(),
+                                    });
                             }
                         }
                         if base.func().flags().is_final() {
                             self.reporter.report(Diagnostic::FinalMethodOverride(
                                 method.name(),
                                 method.func().span().unwrap_or(class.name_span()),
+                                base.func().span(),
                             ));
                         };
                         implemented.insert(*base.key(), *method.key());
@@ -328,8 +337,9 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                 }
             }
 
-            for (dup, span) in duplicates {
-                self.reporter.report(Diagnostic::DuplicateMethod(dup, span));
+            for (dup, (span, prev)) in duplicates {
+                self.reporter
+                    .report(Diagnostic::DuplicateMethod(dup, span, prev));
             }
 
             if !missing.is_empty() {
@@ -342,6 +352,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
 
             for (overridden_id, idx) in implemented {
                 let overridden_flags = self.symbols[overridden_id].flags();
+                let overridden_span = self.symbols[overridden_id].span();
                 let (_, method) = self
                     .symbols
                     .get_method_mut(MethodId::new(cls_id, idx))
@@ -358,6 +369,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                     self.reporter.report(Diagnostic::LessVisibleOverride(
                         overridden_flags.visibility(),
                         span,
+                        overridden_span,
                     ));
                 }
                 method.set_overriden(overridden_id);

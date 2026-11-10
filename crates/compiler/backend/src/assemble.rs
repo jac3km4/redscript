@@ -1028,7 +1028,7 @@ pub enum AssembleError<'ctx> {
         "argument {0} requires a temporary-reference flag; bytecode supports these flags only for the first 16 arguments"
     )]
     TemporaryReferenceArgument(usize, Span),
-    #[error("cannot generate code for intrinsic `{0:?}` with these arguments")]
+    #[error("cannot generate code for intrinsic `{0}` with these arguments")]
     InvalidIntrinsic(ir::Intrinsic, Span),
     #[error(
         "function type must be a class with a `Call` method; check the function type definitions"
