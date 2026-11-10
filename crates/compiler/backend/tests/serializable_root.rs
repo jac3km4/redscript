@@ -187,7 +187,7 @@ fn identical_final_native_is_a_methods_on_both_roots_are_unambiguous() {
                 assert!(
                     matches!(
                         reporter.reported(),
-                        [redscript_compiler_frontend::Diagnostic::FinalMethodOverride("IsA", _)]
+                        [redscript_compiler_frontend::Diagnostic::FinalMethodOverride("IsA", ..)]
                     ),
                     "{:?}",
                     reporter.reported()

@@ -50,8 +50,8 @@ pub enum Diagnostic<'ctx> {
     ImportNotFound(&'ctx str, Span),
     #[error("`{0}` is private and cannot be imported")]
     ImportIsPrivate(&'ctx str, Span),
-    #[error("this name is already defined in this scope")]
-    NameRedefinition(Span),
+    #[error("`{0}` is already defined in this scope")]
+    NameRedefinition(&'ctx str, Span),
     #[error("`{0}` is not a valid target for this annotation")]
     InvalidAnnotationType(&'ctx str, Span),
     #[error("could not find a method with a matching signature for the `{0}` annotation")]
@@ -61,9 +61,9 @@ pub enum Diagnostic<'ctx> {
     #[error("this class is missing required method implementations:\n{}", sep_by(&*.0, "\n"))]
     MissingMethodImpls(Box<[FunctionSignature<'ctx, Poly>]>, Span),
     #[error("this class contains a duplicated implementation of the `{0}` method")]
-    DuplicateMethod(&'ctx str, Span),
+    DuplicateMethod(&'ctx str, Span, Option<Span>),
     #[error("this method overrides the final method `{0}`")]
-    FinalMethodOverride(&'ctx str, Span),
+    FinalMethodOverride(&'ctx str, Span, Option<Span>),
     #[error(
         "inheritance cycle detected; a type cannot inherit from itself, directly or indirectly"
     )]
@@ -102,8 +102,8 @@ pub enum Diagnostic<'ctx> {
     InvalidImplType(Span),
     #[error("this implementation is a duplicate of a previous one")]
     DuplicateImpl(Span),
-    #[error("unused variable")]
-    UnusedLocal(Span),
+    #[error("unused variable{}", .0.map(|n| format!(" `{n}`")).unwrap_or_default())]
+    UnusedLocal(Option<&'ctx str>, Span),
     #[error(
         "this `@addField` conflicts with an existing field; this operation will have no effect"
     )]
@@ -123,9 +123,17 @@ pub enum Diagnostic<'ctx> {
     #[error("structs cannot have variance annotations")]
     InvalidStructVariance(Span),
     #[error("method overrides cannot be less visible than the method they override ({0})")]
-    LessVisibleOverride(Visibility, Span),
-    #[error("override return type is incompatible with the inherited signature")]
-    OverrideReturnTypeMismatch(Span),
+    LessVisibleOverride(Visibility, Span, Option<Span>),
+    #[error(
+        "override return type `{found}` is incompatible with the inherited signature{hint}",
+        hint = ExpectedReturnHint(.expected.as_deref())
+    )]
+    OverrideReturnTypeMismatch {
+        expected: Option<Box<Type<'ctx>>>,
+        found: Box<Type<'ctx>>,
+        span: Span,
+        base_span: Option<Span>,
+    },
     /// An extension diagnostic with a caller-defined stable code.
     #[error("{0}")]
     Custom(
@@ -140,16 +148,16 @@ impl<'ctx> Diagnostic<'ctx> {
     pub fn level(&self) -> DiagnosticLevel {
         match self {
             Self::LoweringError(err) => err.level(),
-            Self::DuplicateVariantValue(_, _, _, _) | Self::FinalMethodOverride(_, _) => {
+            Self::DuplicateVariantValue(_, _, _, _) | Self::FinalMethodOverride(..) => {
                 DiagnosticLevel::Pedantic
             }
             Self::UnusedItemQualifiers(_, _)
             | Self::DuplicateVariantName(_, _, _)
-            | Self::UnusedLocal(_)
+            | Self::UnusedLocal(..)
             | Self::AddFieldConflict(_)
             | Self::ReplaceMethodConflict(_, _, _, _) => DiagnosticLevel::Warning,
             Self::ImportIsPrivate(_, _)
-            | Self::LessVisibleOverride(_, _)
+            | Self::LessVisibleOverride(..)
             | Self::DuplicateMethodAnnotation(_) => DiagnosticLevel::ErrorAllowedAtRuntime,
             Self::Custom(_, _, level, _) => *level,
             _ => DiagnosticLevel::Error,
@@ -183,13 +191,13 @@ impl<'ctx> Diagnostic<'ctx> {
             | Self::UnknownAnnotation(_, span)
             | Self::ImportNotFound(_, span)
             | Self::ImportIsPrivate(_, span)
-            | Self::NameRedefinition(span)
+            | Self::NameRedefinition(_, span)
             | Self::InvalidAnnotationType(_, span)
             | Self::AnnotatedMethodNotFound(_, span)
             | Self::IncompatibleAnnotations(span)
             | Self::MissingMethodImpls(_, span)
-            | Self::DuplicateMethod(_, span)
-            | Self::FinalMethodOverride(_, span)
+            | Self::DuplicateMethod(_, span, _)
+            | Self::FinalMethodOverride(_, span, _)
             | Self::CircularInheritance(span)
             | Self::InvalidTypeArgCount(_, _, _, span)
             | Self::UnsatisfiedBound(_, _, _, span)
@@ -207,12 +215,12 @@ impl<'ctx> Diagnostic<'ctx> {
             | Self::InvalidImplName(span)
             | Self::InvalidImplType(span)
             | Self::DuplicateImpl(span)
-            | Self::UnusedLocal(span)
+            | Self::UnusedLocal(_, span)
             | Self::AddFieldConflict(span)
             | Self::ReplaceMethodConflict(_, _, span, _)
             | Self::InvalidStructVariance(span)
-            | Self::LessVisibleOverride(_, span)
-            | Self::OverrideReturnTypeMismatch(span)
+            | Self::LessVisibleOverride(_, span, _)
+            | Self::OverrideReturnTypeMismatch { span, .. }
             | Self::Custom(_, _, _, span) => *span,
         }
     }
@@ -242,10 +250,10 @@ impl<'ctx> Diagnostic<'ctx> {
             | Self::GenericMethodAnnotation(_) => "INVALID_ANN_USE",
             Self::ImportNotFound(_, _) => "UNRESOLVED_IMPORT",
             Self::ImportIsPrivate(_, _) => "PRIVATE_IMPORT",
-            Self::NameRedefinition(_) => "SYM_REDEFINITION",
+            Self::NameRedefinition(..) => "SYM_REDEFINITION",
             Self::MissingMethodImpls(_, _) => "MISSING_IMPL",
-            Self::DuplicateMethod(_, _) => "DUP_METHOD",
-            Self::FinalMethodOverride(_, _) => "FINAL_FN_OVERRIDE",
+            Self::DuplicateMethod(..) => "DUP_METHOD",
+            Self::FinalMethodOverride(..) => "FINAL_FN_OVERRIDE",
             Self::InvalidTypeArgCount(_, _, _, _) => "INVALID_TYPE_ARG_COUNT",
             Self::UnsatisfiedBound(_, _, _, _) => "UNSATISFIED_BOUND",
             Self::InvalidVariance(_, _, _) => "INVALID_VARIANCE",
@@ -260,12 +268,12 @@ impl<'ctx> Diagnostic<'ctx> {
             Self::InvalidImplName(_) => "INVALID_IMPL_NAME",
             Self::InvalidImplType(_) => "INVALID_IMPL_TYPE",
             Self::DuplicateImpl(_) => "DUP_IMPL",
-            Self::UnusedLocal(_) => "UNUSED_LOCAL",
+            Self::UnusedLocal(..) => "UNUSED_LOCAL",
             Self::AddFieldConflict(_) => "ADD_FIELD_CONFLICT",
             Self::ReplaceMethodConflict(_, _, _, _) => "REPLACE_METHOD_CONFLICT",
             Self::InvalidStructVariance(_) => "INVALID_STRUCT_VARIANCE",
-            Self::LessVisibleOverride(_, _) => "LESS_VISIBLE_OVERRIDE",
-            Self::OverrideReturnTypeMismatch(_) => "OVERRIDE_RETURN_TYPE_MISMATCH",
+            Self::LessVisibleOverride(..) => "LESS_VISIBLE_OVERRIDE",
+            Self::OverrideReturnTypeMismatch { .. } => "OVERRIDE_RETURN_TYPE_MISMATCH",
             Self::Custom(_, code, _, _) => code,
         }
     }
@@ -275,6 +283,19 @@ impl<'ctx> Diagnostic<'ctx> {
             Self::ReplaceMethodConflict(_, _, _, previous) => {
                 Some((*previous, "previous replacement is overridden here"))
             }
+            Self::DuplicateMethod(_, _, Some(previous)) => {
+                Some((*previous, "previous implementation is here"))
+            }
+            Self::FinalMethodOverride(_, _, Some(base)) => {
+                Some((*base, "overridden final method is declared here"))
+            }
+            Self::LessVisibleOverride(_, _, Some(base)) => {
+                Some((*base, "overridden method is declared here"))
+            }
+            Self::OverrideReturnTypeMismatch {
+                base_span: Some(base),
+                ..
+            } => Some((*base, "overridden method is declared here")),
             _ => None,
         }
         .into_iter()
@@ -435,6 +456,18 @@ impl fmt::Display for DisplayQualifiers {
     }
 }
 
+struct ExpectedReturnHint<'a, 'ctx>(Option<&'a Type<'ctx>>);
+
+impl fmt::Display for ExpectedReturnHint<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(expected) = self.0 {
+            write!(f, " (expected `{expected}`)")
+        } else {
+            Ok(())
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 #[error("the source of a diagnostic could not be determined (span: {0})")]
 pub struct UnknownSource(Span);
@@ -525,7 +558,7 @@ mod tests {
             (Diagnostic::MissingFunctionBody(span), "MISSING_BODY"),
             (Diagnostic::UnexpectedFunctionBody(span), "UNEXPECTED_BODY"),
             (Diagnostic::CircularInheritance(span), "INVALID_BASE"),
-            (Diagnostic::NameRedefinition(span), "SYM_REDEFINITION"),
+            (Diagnostic::NameRedefinition("Example", span), "SYM_REDEFINITION"),
             (Diagnostic::InvalidImplType(span), "INVALID_IMPL_TYPE"),
             (
                 Diagnostic::ImportNotFound("Example", span),

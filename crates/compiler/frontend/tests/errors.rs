@@ -50,8 +50,8 @@ fn duplicate_types_across_modules() {
     assert!(matches!(
         reporter.reported(),
         [
-            Diagnostic::NameRedefinition(_),
-            Diagnostic::NameRedefinition(_)
+            Diagnostic::NameRedefinition(..),
+            Diagnostic::NameRedefinition(..)
         ]
     ));
     for name in [
@@ -133,7 +133,7 @@ fn unused_locals() {
     assert!(
         diagnostics
             .iter()
-            .all(|d| matches!(d, Diagnostic::UnusedLocal(_)))
+            .all(|d| matches!(d, Diagnostic::UnusedLocal(..)))
     );
     // The pass collects locals in a hash map; this fixture uses a single file.
     diagnostics.sort_by_key(|diagnostic| {

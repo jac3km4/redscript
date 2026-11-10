@@ -333,7 +333,7 @@ fn defaults_stay_with_the_accepted_aggregate_declaration() {
     assert!(errors.is_empty(), "{errors:?}");
     assert!(matches!(
         reporter.reported(),
-        [Diagnostic::NameRedefinition(_)]
+        [Diagnostic::NameRedefinition(..)]
     ));
     let defaults = &unit.classes[&interner.intern("Host")].defaults;
     assert_eq!(defaults.len(), 1);

@@ -1127,13 +1127,15 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         env: &Env<'_, 'ctx>,
         span: Span,
     ) -> LowerResult<'ctx, (ir::Expr<'ctx>, PolyType<'ctx>)> {
-        let Type::Data(typ) = env.types().resolve(typ, self.symbols, *type_span)? else {
-            return Err(Error::InvalidNewType(*type_span));
+        let resolved = env.types().resolve(typ, self.symbols, *type_span)?;
+        let Type::Data(typ) = resolved else {
+            let id = resolved.upper_bound().map_or(predef::NOTHING, TypeApp::id);
+            return Err(Error::InvalidNewType(id, *type_span));
         };
         let def = &self.symbols[typ.id()];
 
         let TypeSchema::Aggregate(agg) = def.schema() else {
-            return Err(Error::InvalidNewType(*type_span));
+            return Err(Error::InvalidNewType(typ.id(), *type_span));
         };
 
         if agg.flags().is_abstract() {
@@ -1221,14 +1223,14 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         }
 
         let TypeSchema::Aggregate(aggregate) = def.schema() else {
-            return Err(Error::InvalidConstructType(span));
+            return Err(Error::InvalidConstructType(id, span));
         };
 
         if !aggregate.flags().is_struct()
             && !aggregate.flags().is_mixed_ref()
             && !aggregate.flags().is_never_ref()
         {
-            return Err(Error::InvalidConstructType(span));
+            return Err(Error::InvalidConstructType(id, span));
         }
 
         let field_count = aggregate.fields().len();

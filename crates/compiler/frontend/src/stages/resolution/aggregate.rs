@@ -77,16 +77,16 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                             .report(Diagnostic::InvalidImplType(*type_span));
                         continue;
                     };
-                    let &(ast::Expr::Ident(name), name_span) = &**expr else {
+                    let &(ast::Expr::Ident(impl_name), name_span) = &**expr else {
                         self.reporter
                             .report(Diagnostic::InvalidImplName(*expr_span));
                         continue;
                     };
                     let base = path.map(AsRef::as_ref).unwrap_or_default();
-                    let name = QualifiedName::from_base_and_name(base, name);
+                    let name = QualifiedName::from_base_and_name(base, impl_name);
                     if self.module_map.exists(&name) {
                         self.reporter
-                            .report(Diagnostic::NameRedefinition(name_span));
+                            .report(Diagnostic::NameRedefinition(impl_name, name_span));
                         continue;
                     }
 
@@ -223,7 +223,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         .with_hint(hint);
                     let res = fields
                         .add(name, field)
-                        .map_err(|_| Diagnostic::NameRedefinition(name_span));
+                        .map_err(|_| Diagnostic::NameRedefinition(name, name_span));
                     let field_idx = self.reporter.unwrap_err(res);
 
                     if let Some(field_idx) = field_idx

@@ -8,3 +8,9 @@ error[DUP_METHOD]: this class contains a duplicated implementation of the `Metho
   |
 4 |   func Method(x: String) {}
   |        ^^^^^^
+
+note: previous implementation is here
+ --> tests/data/duplicate-methods.reds:2:8
+  |
+2 |   func Method(x: String) {}
+  |        ^^^^^^

@@ -52,10 +52,10 @@ pub enum Error<'ctx> {
     UnsupportedOmittedArgument(Span),
     #[error("cannot infer the type of this expression; consider adding type annotations")]
     InsufficientTypeInformation(Span),
-    #[error("this type does not support the `new` operator")]
-    InvalidNewType(Span),
-    #[error("this type cannot be directly constructed")]
-    InvalidConstructType(Span),
+    #[error("`{0}` does not support the `new` operator")]
+    InvalidNewType(TypeId<'ctx>, Span),
+    #[error("`{0}` cannot be directly constructed")]
+    InvalidConstructType(TypeId<'ctx>, Span),
     #[error(
         "`{type_id}` cannot be constructed with the `new` operator; remove `new` and keep the constructor arguments"
     )]
@@ -167,8 +167,8 @@ impl Error<'_> {
             | Self::RequiredArgumentOmitted(span)
             | Self::UnsupportedOmittedArgument(span)
             | Self::InsufficientTypeInformation(span)
-            | Self::InvalidNewType(span)
-            | Self::InvalidConstructType(span)
+            | Self::InvalidNewType(_, span)
+            | Self::InvalidConstructType(_, span)
             | Self::NewWithConstructible { span, .. }
             | Self::InvalidDynCastType(_, _, span)
             | Self::UnknownStaticCastType(span)
@@ -222,11 +222,11 @@ impl Error<'_> {
             Self::RequiredArgumentOmitted(_) => "REQUIRED_ARGUMENT_OMITTED",
             Self::UnsupportedOmittedArgument(_) => "UNSUPPORTED_OMITTED_ARGUMENT",
             Self::InsufficientTypeInformation(_) => "CANNOT_LOOKUP_MEMBER",
-            Self::InvalidNewType(_)
+            Self::InvalidNewType(..)
             | Self::ClassConstructorHasArguments(_)
             | Self::InstantiatingAbstract(_, _)
             | Self::NewWithConstructible { .. } => "INVALID_NEW_USE",
-            Self::InvalidConstructType(_) => "INVALID_CONSTRUCT",
+            Self::InvalidConstructType(..) => "INVALID_CONSTRUCT",
             Self::InvalidDynCastType(_, _, _) => "INVALID_DYN_CAST",
             Self::UnknownStaticCastType(_) => "INVALID_STATIC_CAST",
             Self::UnsupportedNativeConversion(_) | Self::AmbiguousNativeConversion(_) => {
