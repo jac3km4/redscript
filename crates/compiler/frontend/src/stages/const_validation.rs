@@ -2,27 +2,11 @@ use std::collections::HashMap;
 
 use redscript_community_ast::Span;
 
-use crate::diagnostic::DiagnosticLevel;
 use crate::ir::Visitor;
 use crate::{
     CompileErrorReporter, Diagnostic, LoweredCompilationUnit, MethodId, Param, SemanticPolicy,
     Symbols, Type, ir, predef,
 };
-
-#[derive(Debug, thiserror::Error)]
-#[error("cannot write through a const parameter")]
-struct ConstParameterWrite;
-
-#[derive(Debug, thiserror::Error)]
-#[error("cannot write through a const local")]
-struct ConstLocalWrite;
-
-#[derive(Debug, thiserror::Error)]
-#[error("forwarding a const {root} to a {target} may allow mutation")]
-struct ConstForwarding {
-    root: &'static str,
-    target: &'static str,
-}
 
 #[derive(Debug, Clone, Copy)]
 enum ConstViolation {
@@ -196,16 +180,13 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
 
     fn reject(&mut self, expr: &ir::Expr<'ctx>, violation: ConstViolation) {
         if let Some(root) = self.readonly_place(expr) {
-            let (error, code, level): (Box<dyn std::error::Error>, _, _) = match violation {
-                ConstViolation::Write => {
-                    let (error, code): (Box<dyn std::error::Error>, _) = match root {
-                        ConstRoot::Parameter | ConstRoot::ParameterAndLocal => {
-                            (Box::new(ConstParameterWrite), "CONST_PARAMETER_WRITE")
-                        }
-                        ConstRoot::Local { .. } => (Box::new(ConstLocalWrite), "CONST_LOCAL_WRITE"),
-                    };
-                    (error, code, DiagnosticLevel::Error)
-                }
+            let diagnostic = match violation {
+                ConstViolation::Write => match root {
+                    ConstRoot::Parameter | ConstRoot::ParameterAndLocal => {
+                        Diagnostic::ConstParameterWrite(expr.span())
+                    }
+                    ConstRoot::Local { .. } => Diagnostic::ConstLocalWrite(expr.span()),
+                },
                 ConstViolation::Forwarding | ConstViolation::ClosureForwarding => {
                     let root = match root {
                         ConstRoot::Parameter => "parameter",
@@ -216,15 +197,14 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
                         ConstViolation::ClosureForwarding => "function value",
                         _ => "non-const parameter",
                     };
-                    (
-                        Box::new(ConstForwarding { root, target }),
-                        "CONST_FORWARDING",
-                        DiagnosticLevel::Warning,
-                    )
+                    Diagnostic::ConstForwarding {
+                        root,
+                        target,
+                        span: expr.span(),
+                    }
                 }
             };
-            self.reporter
-                .report(Diagnostic::Custom(error, code, level, expr.span()));
+            self.reporter.report(diagnostic);
         }
     }
 

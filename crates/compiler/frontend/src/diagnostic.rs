@@ -134,6 +134,16 @@ pub enum Diagnostic<'ctx> {
         span: Span,
         base_span: Option<Span>,
     },
+    #[error("cannot write through a const parameter")]
+    ConstParameterWrite(Span),
+    #[error("cannot write through a const local")]
+    ConstLocalWrite(Span),
+    #[error("forwarding a const {root} to a {target} may allow mutation")]
+    ConstForwarding {
+        root: &'static str,
+        target: &'static str,
+        span: Span,
+    },
     /// An extension diagnostic with a caller-defined stable code.
     #[error("{0}")]
     Custom(
@@ -155,6 +165,7 @@ impl<'ctx> Diagnostic<'ctx> {
             | Self::DuplicateVariantName(_, _, _)
             | Self::UnusedLocal(..)
             | Self::AddFieldConflict(_)
+            | Self::ConstForwarding { .. }
             | Self::ReplaceMethodConflict(_, _, _, _) => DiagnosticLevel::Warning,
             Self::ImportIsPrivate(_, _)
             | Self::LessVisibleOverride(..)
@@ -221,6 +232,9 @@ impl<'ctx> Diagnostic<'ctx> {
             | Self::InvalidStructVariance(span)
             | Self::LessVisibleOverride(_, span, _)
             | Self::OverrideReturnTypeMismatch { span, .. }
+            | Self::ConstParameterWrite(span)
+            | Self::ConstLocalWrite(span)
+            | Self::ConstForwarding { span, .. }
             | Self::Custom(_, _, _, span) => *span,
         }
     }
@@ -274,6 +288,9 @@ impl<'ctx> Diagnostic<'ctx> {
             Self::InvalidStructVariance(_) => "INVALID_STRUCT_VARIANCE",
             Self::LessVisibleOverride(..) => "LESS_VISIBLE_OVERRIDE",
             Self::OverrideReturnTypeMismatch { .. } => "OVERRIDE_RETURN_TYPE_MISMATCH",
+            Self::ConstParameterWrite(_) => "CONST_PARAMETER_WRITE",
+            Self::ConstLocalWrite(_) => "CONST_LOCAL_WRITE",
+            Self::ConstForwarding { .. } => "CONST_FORWARDING",
             Self::Custom(_, code, _, _) => code,
         }
     }

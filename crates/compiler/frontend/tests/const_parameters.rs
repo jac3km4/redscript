@@ -46,11 +46,8 @@ fn check_level(source: &str, expected: &[&str], level: DiagnosticLevel, message:
         .reported()
         .iter()
         .map(|diagnostic| {
-            assert!(
-                matches!(diagnostic, Diagnostic::Custom(error, _, actual, _)
-                    if *actual == level && error.to_string() == message),
-                "{source}: {diagnostic:?}"
-            );
+            assert_eq!(diagnostic.level(), level, "{source}: {diagnostic:?}");
+            assert_eq!(diagnostic.to_string(), message, "{source}: {diagnostic:?}");
             assert_eq!(
                 diagnostic.code(),
                 if level == DiagnosticLevel::Error {

@@ -1,8 +1,7 @@
 use redscript_community_ast::{SourceMap, Type};
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{
-    CompileErrorReporter, Diagnostic, DiagnosticLevel, LoweredCompilationUnit, Symbols,
-    TypeInterner, ir,
+    CompileErrorReporter, Diagnostic, LoweredCompilationUnit, Symbols, TypeInterner, ir,
 };
 use redscript_redmod_adapter::{Error, SemanticError, parse_file_with_metadata, process_sources};
 
@@ -48,11 +47,10 @@ fn analyze(
 fn assert_const_write(reporter: &CompileErrorReporter<'_>, source: &str) {
     assert!(!reporter.reported().is_empty(), "{source}");
     assert!(
-        reporter.reported().iter().all(|diagnostic| matches!(
-            diagnostic,
-            Diagnostic::Custom(error, "CONST_PARAMETER_WRITE", DiagnosticLevel::Error, _)
-                if error.to_string() == "cannot write through a const parameter"
-        )),
+        reporter.reported().iter().all(|diagnostic| {
+            matches!(diagnostic, Diagnostic::ConstParameterWrite(_))
+                && diagnostic.to_string() == "cannot write through a const parameter"
+        }),
         "{source}: {:?}",
         reporter.reported()
     );

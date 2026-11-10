@@ -272,10 +272,7 @@ impl Error<'_> {
     }
 
     pub fn is_fatal(&self) -> bool {
-        !matches!(
-            self,
-            Self::DeprecatedNameOf(_) | Self::UnsafeArrayEvaluation(_)
-        )
+        self.level() > DiagnosticLevel::Warning
     }
 }
 
