@@ -1,9 +1,9 @@
-$ErrorActionPreference = 'Stop'
-
 param (
     [Parameter(Mandatory=$true)]
     [string]$archiveName
 )
+
+$ErrorActionPreference = 'Stop'
 
 if (-not (Test-Path "./target/release/scc.exe")) {
     Write-Error "scc.exe not found in target/release. Please ensure you have built it."
