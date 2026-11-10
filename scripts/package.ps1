@@ -1,3 +1,5 @@
+$ErrorActionPreference = 'Stop'
+
 param (
     [Parameter(Mandatory=$true)]
     [string]$archiveName
@@ -20,14 +22,16 @@ $toolsDir = @($stagingDir, 'engine', 'tools') -join [IO.Path]::DirectorySeparato
 if (Test-Path $stagingDir) {
     Remove-Item -Recurse -Force $stagingDir
 }
-New-Item -ItemType Directory -Path $toolsDir
+New-Item -ItemType Directory -Path $toolsDir | Out-Null
 
 Copy-Item -Path "./assets/windows/archive/*" -Destination $stagingDir -Recurse -Force
 Copy-Item -Path "./target/release/scc.exe" -Destination $toolsDir
 Copy-Item -Path "./target/release/scc_lib.dll" -Destination $toolsDir
 Copy-Item -Path "./target/release/redscript-cli.exe" -Destination $workingDir
 
-cd $stagingDir
-Compress-Archive -Path "./*" -DestinationPath "$workingDir/$archiveName"
-
-cd $workingDir
+Push-Location $stagingDir
+try {
+    Compress-Archive -Path "./*" -DestinationPath "$workingDir/$archiveName" -Force
+} finally {
+    Pop-Location
+}
