@@ -12,66 +12,10 @@ use parser::Parse;
 pub use redscript_community_parser::Error;
 use redscript_community_parser::diagnostic::FormattedError;
 pub use redscript_redmod_ast as syntax;
+pub use redscript_redmod_ast::is_target_identifier;
 use redscript_redmod_ast::{Declaration, Expr, FileId, Item, Module, Span, Spanned, Statement};
 
 pub type ParseResult<A> = (Option<A>, Vec<Error>);
-
-/// Whether a name is safe to emit as a REDmod target identifier.
-///
-/// This conservative emission policy accepts ASCII identifiers and excludes
-/// reserved spellings, including contextual keywords. It is not the parser's
-/// context-dependent identifier grammar.
-pub fn is_target_identifier(name: &str) -> bool {
-    let mut chars = name.chars();
-    chars
-        .next()
-        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
-        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
-        && !matches!(
-            name,
-            "name"
-                | "true"
-                | "false"
-                | "NULL"
-                | "this"
-                | "super"
-                | "function"
-                | "event"
-                | "class"
-                | "struct"
-                | "enum"
-                | "var"
-                | "let"
-                | "if"
-                | "else"
-                | "while"
-                | "do"
-                | "for"
-                | "switch"
-                | "case"
-                | "default"
-                | "break"
-                | "continue"
-                | "return"
-                | "new"
-                | "as"
-                | "out"
-                | "optional"
-                | "skip"
-                | "public"
-                | "private"
-                | "protected"
-                | "static"
-                | "const"
-                | "final"
-                | "abstract"
-                | "import"
-                | "importonly"
-                | "extends"
-                | "persistent"
-                | "override"
-        )
-}
 
 // this can't be written as a generic function due to a GAT bug
 macro_rules! parse {

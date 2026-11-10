@@ -5,11 +5,12 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-redscript-redmod-parser.workspace = true
+redscript-redmod-ast.workspace = true
 redscript-community-ast.workspace = true
 redscript-compiler-frontend.workspace = true
 
 [dev-dependencies]
+redscript-redmod-parser.workspace = true
 redscript-test-support.workspace = true
 byte.workspace = true
 redscript-io.workspace = true

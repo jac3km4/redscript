@@ -74,10 +74,11 @@ ignore = "0.4"
 vmap = "0.6"
 file-id = "0.2"
 tfd = "0.1"
+unicode-width = "0.1.14"
 pretty_dtoa = "0.3"
 leon = "3"
 minidl = "0.1"
-bindgen = "0.73"
+bindgen = { version = "0.73", default-features = false, features = ["runtime"] }
 mimalloc = { version = "0.1", features = ["v3"] }
 
 similar-asserts = "2"
@@ -126,7 +127,7 @@ match_bool = "deny"
 
 [profile.release]
 strip = true
-lto = true
+lto = "thin"
 codegen-units = 1
 panic = "abort"
 

@@ -99,8 +99,6 @@ dependencies = [
  "bitflags",
  "cexpr",
  "clang-sys",
- "log",
- "prettyplease",
  "proc-macro2",
  "quote",
  "regex",
@@ -965,7 +963,6 @@ version = "1.0.0-preview.22"
 dependencies = [
  "anyhow",
  "insta",
- "mimalloc",
  "redscript-compiler-api",
 ]
 
@@ -1156,6 +1153,7 @@ dependencies = [
  "redscript-compiler-frontend",
  "redscript-io",
  "redscript-redmod-adapter",
+ "redscript-redmod-ast",
  "redscript-redmod-parser",
  "redscript-test-support",
 ]

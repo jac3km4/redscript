@@ -8,7 +8,6 @@ edition.workspace = true
 redscript-compiler-api.workspace = true
 
 anyhow.workspace = true
-mimalloc.workspace = true
 
 [dev-dependencies]
 insta.workspace = true

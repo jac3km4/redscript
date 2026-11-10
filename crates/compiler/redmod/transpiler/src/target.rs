@@ -5,7 +5,7 @@ use redscript_compiler_frontend::{Symbols, Type, TypeSchema, predef};
 use crate::{Result, error};
 
 pub fn ident(name: &str) -> Result<&str> {
-    if !redscript_redmod_parser::is_target_identifier(name) {
+    if !redscript_redmod_ast::is_target_identifier(name) {
         return Err(error(
             format!("invalid or reserved output name `{name}`"),
             None,
