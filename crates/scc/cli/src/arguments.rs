@@ -6,7 +6,7 @@ use chumsky::prelude::*;
 #[derive(Debug)]
 #[allow(unused)]
 pub struct Arguments {
-    pub scripts_dir: PathBuf,
+    pub scripts_dirs: Vec<PathBuf>,
     pub optimize: bool,
     pub threads: u8,
     pub warnings: Vec<String>,
@@ -31,7 +31,7 @@ impl Arguments {
                 Err(OptsError::ParsingErrors(errors))
             }
             Ok(args) => {
-                let mut scripts_dir = None;
+                let mut scripts_dirs = Vec::new();
                 let mut optimize = false;
                 let mut threads = 1;
                 let mut warnings = Vec::new();
@@ -46,7 +46,7 @@ impl Arguments {
                 for arg in args {
                     match arg {
                         Arg::Named { name, value } => match name {
-                            "compile" => scripts_dir = Some(PathBuf::from(value)),
+                            "compile" => scripts_dirs.push(PathBuf::from(value)),
                             "profile" => profile = value == "on",
                             "threads" => {
                                 threads = value
@@ -71,8 +71,12 @@ impl Arguments {
                     }
                 }
 
+                if scripts_dirs.is_empty() {
+                    return Err(OptsError::MissingArgument("compile"));
+                }
+
                 Ok(Self {
-                    scripts_dir: scripts_dir.ok_or(OptsError::MissingArgument("compile"))?,
+                    scripts_dirs,
                     optimize,
                     threads,
                     warnings,
@@ -196,8 +200,8 @@ mod tests {
 
         let opts = Arguments::from_env_args(args).unwrap();
         assert_eq!(
-            opts.scripts_dir,
-            PathBuf::from("D:\\Games\\Cyberpunk 2077\\r6\\scripts")
+            opts.scripts_dirs,
+            vec![PathBuf::from("D:\\Games\\Cyberpunk 2077\\r6\\scripts")]
         );
         assert_eq!(opts.optimize, true);
         assert_eq!(opts.threads, 4);
@@ -216,6 +220,38 @@ mod tests {
     }
 
     #[test]
+    fn from_env_args_supports_multiple_compile_flags() {
+        let args = [
+            "D:\\Games\\Cyberpunk 2077\\engine\\tools\\scc.exe",
+            "-compile",
+            "D:\\Games\\Cyberpunk 2077\\r6\\scripts",
+            "-compile",
+            "D:\\Games\\Cyberpunk 2077\\mods\\mod1\\scripts",
+            "-compile",
+            "D:\\Games\\Cyberpunk 2077\\mods\\mod2\\scripts",
+            "D:\\Games\\Cyberpunk 2077\\r6\\cache\\final.redscripts",
+        ]
+        .into_iter()
+        .map(ToOwned::to_owned);
+
+        let opts = Arguments::from_env_args(args).unwrap();
+        assert_eq!(
+            opts.scripts_dirs,
+            vec![
+                PathBuf::from("D:\\Games\\Cyberpunk 2077\\r6\\scripts"),
+                PathBuf::from("D:\\Games\\Cyberpunk 2077\\mods\\mod1\\scripts"),
+                PathBuf::from("D:\\Games\\Cyberpunk 2077\\mods\\mod2\\scripts"),
+            ]
+        );
+        assert_eq!(
+            opts.cache_file,
+            Some(PathBuf::from(
+                "D:\\Games\\Cyberpunk 2077\\r6\\cache\\final.redscripts"
+            ))
+        );
+    }
+
+    #[test]
     fn from_env_args_works_for_broken_input() {
         let args = [
             "D:\\Games\\Cyberpunk 2077\\engine\\tools\\scc.exe",
@@ -227,8 +263,8 @@ mod tests {
 
         let opts = Arguments::from_env_args(args).unwrap();
         assert_eq!(
-            opts.scripts_dir,
-            PathBuf::from("D:\\Games\\Cyberpunk 2077\\r6\\scripts")
+            opts.scripts_dirs,
+            vec![PathBuf::from("D:\\Games\\Cyberpunk 2077\\r6\\scripts")]
         );
         assert_eq!(opts.optimize, true);
         assert_eq!(opts.threads, 4);

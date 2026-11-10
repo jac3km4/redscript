@@ -15,8 +15,9 @@ fn main() -> anyhow::Result<()> {
     let (r6_dir, args) = match Arguments::from_env_args(std::env::args()) {
         Ok(args) => {
             let r6_dir = args
-                .scripts_dir
-                .parent()
+                .scripts_dirs
+                .first()
+                .and_then(|dir| dir.parent())
                 .context("provided scripts directory has no parent directory")?
                 .to_owned();
             (r6_dir, Some(args))
@@ -59,6 +60,11 @@ fn run(r6_dir: &Path, args: Option<Arguments>) -> anyhow::Result<()> {
             if let Some(cache_file) = args.cache_file {
                 let cache_file = c_path(&cache_file)?;
                 set_custom_cache_file(settings, cache_file.as_ptr());
+            }
+
+            for script_dir in args.scripts_dirs.into_iter().skip(1) {
+                let script_dir = c_path(&script_dir)?;
+                add_script_path(settings, script_dir.as_ptr());
             }
 
             if let Some(script_paths_file) = args.script_paths_file {
