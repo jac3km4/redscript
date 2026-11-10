@@ -30,13 +30,13 @@ pub enum Diagnostic<'ctx> {
     ValueOverflow(Span),
     #[error("enum storage must be Int8, Uint8, Int16, Uint16, Int32, Uint32, or Int64")]
     InvalidEnumStorage(Span),
-    #[error("enum value {1} is outside the range of {0:?}")]
+    #[error("enum value {1} is outside the range of `{0}`")]
     EnumStorageOverflow(ast::EnumStorage, i64, Span),
     #[error("this function must have a body; define its implementation inside `{{ ... }}`")]
     MissingFunctionBody(Span),
     #[error("a body is not allowed for this function declaration")]
     UnexpectedFunctionBody(Span),
-    #[error("{} {noun} {verb} no effect on this item", sep_by(.0.iter_names().map(|(name,_)| surrounded_by(lowercase(name), "`", "`")), ", "), noun = if .0.iter_names().count() == 1 { "qualifier" } else { "qualifiers" }, verb = if .0.iter_names().count() == 1 { "has" } else { "have" })]
+    #[error("{}", DisplayQualifiers(*.0))]
     UnusedItemQualifiers(ast::ItemQualifiers, Span),
     #[error("`{0}` is not a known intrinsic")]
     UnknownIntrinsic(&'ctx str, Span),
@@ -58,7 +58,7 @@ pub enum Diagnostic<'ctx> {
     AnnotatedMethodNotFound(FunctionAnnotation<'ctx>, Span),
     #[error("the annotations on this function are incompatible with each other")]
     IncompatibleAnnotations(Span),
-    #[error("this class is missing required method implementations:\n{}", sep_by(.0, "\n"))]
+    #[error("this class is missing required method implementations:\n{}", sep_by(&*.0, "\n"))]
     MissingMethodImpls(Box<[FunctionSignature<'ctx, Poly>]>, Span),
     #[error("this class contains a duplicated implementation of the `{0}` method")]
     DuplicateMethod(&'ctx str, Span),
@@ -417,6 +417,21 @@ impl<K: TypeKind> fmt::Display for FunctionSignature<'_, K> {
             sep_by(&self.params, ", "),
             self.return_type
         )
+    }
+}
+
+struct DisplayQualifiers(ast::ItemQualifiers);
+
+impl fmt::Display for DisplayQualifiers {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let names = self
+            .0
+            .iter_names()
+            .map(|(name, _)| surrounded_by(lowercase(name), "`", "`"))
+            .collect::<Vec<_>>();
+        let noun = if names.len() == 1 { "qualifier" } else { "qualifiers" };
+        let verb = if names.len() == 1 { "has" } else { "have" };
+        write!(f, "{} {noun} {verb} no effect on this item", sep_by(&names, ", "))
     }
 }
 

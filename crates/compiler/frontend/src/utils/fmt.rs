@@ -1,5 +1,4 @@
 use core::fmt;
-use std::cell::RefCell;
 
 #[derive(Debug, Clone)]
 pub struct DisplayFn<F>(F);
@@ -39,18 +38,17 @@ where
     DisplayFn::new(move |f: &mut fmt::Formatter<'_>| write!(f, "{left}{thing}{right}"))
 }
 
-pub fn sep_by<T, I>(iter: I, sep: &str) -> impl fmt::Display + use<'_, T, I>
+pub fn sep_by<T, I>(iter: I, sep: &str) -> impl fmt::Display + Clone + use<'_, T, I>
 where
-    I: IntoIterator<Item = T>,
+    I: IntoIterator<Item = T> + Clone,
     I::Item: fmt::Display,
 {
-    let iter = RefCell::new(iter.into_iter());
     DisplayFn::new(move |f: &mut fmt::Formatter<'_>| {
-        if let Some(first) = iter.borrow_mut().next() {
+        let mut iter = iter.clone().into_iter();
+        if let Some(first) = iter.next() {
             write!(f, "{first}")?;
         }
-        iter.borrow_mut()
-            .try_for_each(|item| write!(f, "{sep}{item}"))?;
+        iter.try_for_each(|item| write!(f, "{sep}{item}"))?;
         Ok(())
     })
 }

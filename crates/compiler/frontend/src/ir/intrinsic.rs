@@ -83,6 +83,12 @@ impl From<Intrinsic> for &'static str {
     }
 }
 
+impl std::fmt::Display for Intrinsic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
 impl<'a> TryFrom<&'a str> for Intrinsic {
     type Error = UnknownIntrinsic<'a>;
 
