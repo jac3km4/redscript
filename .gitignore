@@ -2,3 +2,5 @@
 final.redscripts.modded
 /REDmodLog.txt
 /modioErrorLog.json
+.DS_Store
+*.zip
