@@ -3,8 +3,8 @@ use std::rc::Rc;
 use redscript_community_ast::{self as ast, SourceMap};
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{
-    CompileErrorReporter, Diagnostic, DiagnosticLevel, Evaluator, SemanticPolicy, Symbols,
-    TypeInterner, parse_files, process_sources_with_policy,
+    CompileErrorReporter, DiagnosticLevel, Evaluator, SemanticPolicy, Symbols, TypeInterner,
+    parse_files, process_sources_with_policy,
 };
 
 fn check(source: &str, expected: &[&str]) {
