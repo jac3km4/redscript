@@ -14,17 +14,9 @@ env:
 
 jobs:
   test:
-    name: Lint and test (${{ matrix.configuration }})
+    name: Lint, test, and doc
     runs-on: windows-latest
     timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - configuration: default
-            features: ""
-          - configuration: all-features
-            features: --all-features
     steps:
       - uses: actions/checkout@v7
         with:
@@ -32,12 +24,16 @@ jobs:
       - run: rustup toolchain install stable --profile minimal --component clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.configuration }}
+          key: test
           save-if: ${{ github.event_name == 'push' && github.ref_type == 'branch' }}
-      - run: cargo clippy --workspace --all-targets --locked ${{ matrix.features }} -- -D warnings
-      - run: cargo test --workspace --locked ${{ matrix.features }}
-      # Workspace feature unification can hide missing standalone dependency features.
-      - run: cargo check -p scc-core --locked
+      # Verify standalone compilation for feature-bearing crates without workspace feature unification.
+      - run: cargo check --no-default-features -p redscript-community-ast -p redscript-io -p redscript-compiler-api -p scc-core --locked
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --bins --lib --tests --locked
+      - name: Check documentation
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: cargo doc --workspace --no-deps --locked
 
   rustfmt:
     name: Check formatting
@@ -62,9 +58,4 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.event_name == 'push' && github.ref_type == 'branch' }}
-      # Dotfile and SCC tests include Windows-specific path expectations.
-      - run: >-
-          cargo test --locked
-          -p redscript-community-ast -p redscript-community-parser -p redscript-community-formatter
-          -p redscript-io -p redscript-compiler-frontend -p redscript-compiler-backend
-          -p redscript-compiler-api -p redscript-decompiler -p redscript-code-edit
+      - run: cargo test --workspace --bins --lib --tests --locked

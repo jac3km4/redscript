@@ -29,10 +29,10 @@ jobs:
       - run: rustup toolchain install stable --profile minimal
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: release-${{ inputs.os }}
+          key: release
           save-if: ${{ github.event_name == 'push' && github.ref_type == 'branch' }}
 
-      - run: cargo build --workspace --release --locked
+      - run: cargo build --release --locked -p redscript-cli -p scc -p scc-lib
 
       - if: runner.os == 'Windows'
         shell: pwsh

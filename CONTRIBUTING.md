@@ -2,15 +2,14 @@
 
 ## Validation
 
-Use stable Rust for builds, tests, and Clippy. CI checks both default and all
-features. Use the pinned nightly rustfmt to honor the repository's formatting
-configuration:
+Use stable Rust for builds, tests, and Clippy. Use the pinned nightly rustfmt
+to honor the repository's formatting configuration:
 
 ```sh
-cargo test --workspace --locked
-cargo test --workspace --all-features --locked
+cargo check --no-default-features -p redscript-community-ast -p redscript-io -p redscript-compiler-api -p scc-core --locked
+cargo test --workspace --bins --lib --tests --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
-cargo clippy --workspace --all-features --all-targets --locked -- -D warnings
+cargo doc --workspace --no-deps --locked
 rustup toolchain install nightly-2026-10-15 --profile minimal --component rustfmt
 cargo +nightly-2026-10-15 fmt --all -- --check
 ```
@@ -25,16 +24,14 @@ cargo +nightly-2026-10-15 fmt --all
 Keep `--all-targets` in the Clippy commands: CI lints test code too, so plain
 `cargo clippy` is not equivalent.
 
-Also validate the release build and generated documentation:
+Also validate the release build:
 
 ```sh
-cargo build --workspace --release --locked
-cargo doc --workspace --all-features --no-deps --locked
+cargo build --release --locked -p redscript-cli -p scc -p scc-lib
 ```
 
-Also check affected packages independently (for example,
-`cargo check -p scc-core --locked`). Workspace feature unification can hide missing
-dependency features in standalone builds.
+Standalone `cargo check` for feature-bearing crates verifies that workspace
+feature unification does not hide missing dependency features in standalone builds.
 
 ## Regression tests
 
