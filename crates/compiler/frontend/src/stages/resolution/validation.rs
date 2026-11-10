@@ -275,12 +275,13 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                                 self.symbols
                                     .compatible_override_return(method_t.return_type(), contract)
                             }) {
-                                self.reporter.report(Diagnostic::OverrideReturnTypeMismatch {
-                                    expected: contract.map(Box::new),
-                                    found: Box::new(method_t.return_type().clone()),
-                                    span,
-                                    base_span: base.func().span(),
-                                });
+                                self.reporter
+                                    .report(Diagnostic::OverrideReturnTypeMismatch {
+                                        expected: contract.map(Box::new),
+                                        found: Box::new(method_t.return_type().clone()),
+                                        span,
+                                        base_span: base.func().span(),
+                                    });
                             }
                         }
                         if base.func().flags().is_final() {
@@ -337,7 +338,8 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
             }
 
             for (dup, (span, prev)) in duplicates {
-                self.reporter.report(Diagnostic::DuplicateMethod(dup, span, prev));
+                self.reporter
+                    .report(Diagnostic::DuplicateMethod(dup, span, prev));
             }
 
             if !missing.is_empty() {

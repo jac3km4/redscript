@@ -467,9 +467,17 @@ impl fmt::Display for DisplayQualifiers {
             .iter_names()
             .map(|(name, _)| surrounded_by(lowercase(name), "`", "`"))
             .collect::<Vec<_>>();
-        let noun = if names.len() == 1 { "qualifier" } else { "qualifiers" };
+        let noun = if names.len() == 1 {
+            "qualifier"
+        } else {
+            "qualifiers"
+        };
         let verb = if names.len() == 1 { "has" } else { "have" };
-        write!(f, "{} {noun} {verb} no effect on this item", sep_by(&names, ", "))
+        write!(
+            f,
+            "{} {noun} {verb} no effect on this item",
+            sep_by(&names, ", ")
+        )
     }
 }
 
@@ -575,7 +583,10 @@ mod tests {
             (Diagnostic::MissingFunctionBody(span), "MISSING_BODY"),
             (Diagnostic::UnexpectedFunctionBody(span), "UNEXPECTED_BODY"),
             (Diagnostic::CircularInheritance(span), "INVALID_BASE"),
-            (Diagnostic::NameRedefinition("Example", span), "SYM_REDEFINITION"),
+            (
+                Diagnostic::NameRedefinition("Example", span),
+                "SYM_REDEFINITION",
+            ),
             (Diagnostic::InvalidImplType(span), "INVALID_IMPL_TYPE"),
             (
                 Diagnostic::ImportNotFound("Example", span),

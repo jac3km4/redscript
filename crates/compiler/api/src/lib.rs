@@ -550,8 +550,10 @@ mod tests {
     fn rendering_propagates_source_and_writer_errors() {
         let sources = SourceMap::new();
         let file = sources.push_back("test.reds", "test");
-        let diagnostics =
-            Diagnostics::from(vec![Diagnostic::UnusedLocal(None, ast::Span::new(0, 1, file))]);
+        let diagnostics = Diagnostics::from(vec![Diagnostic::UnusedLocal(
+            None,
+            ast::Span::new(0, 1, file),
+        )]);
         let mut output = Vec::new();
         assert!(matches!(
             diagnostics.write_to(&mut output, &SourceMap::new(), DiagnosticLevel::Warning),
