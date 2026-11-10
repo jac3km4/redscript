@@ -131,6 +131,12 @@ lto = "thin"
 codegen-units = 1
 panic = "abort"
 
+[profile.dev]
+debug = 1
+
+[profile.test]
+debug = 1
+
 [workspace.metadata.release]
 pre-release-commit-message = "chore: release {{version}}"
 tag-prefix = ""
