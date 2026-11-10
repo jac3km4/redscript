@@ -1,10 +1,10 @@
-mod support;
-
 use redscript_compiler_api::TypeFlagRegistry;
 use redscript_compiler_backend::CompilationInputs;
 use redscript_compiler_frontend::TypeInterner;
 use redscript_io::{Instr, ScriptBundle, TypeKind};
 use support::{code_with_prefix as code, function_with_prefix as function};
+
+use crate::support;
 
 fn compile(source: &str) -> Vec<u8> {
     support::compile(source, "references.script", &[], support::empty_bundle())

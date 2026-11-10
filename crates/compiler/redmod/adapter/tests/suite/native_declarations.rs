@@ -1,6 +1,6 @@
-mod support;
-
 use redscript_compiler_frontend::{LoweredCompilationUnit, Symbols, TypeInterner, Visibility};
+
+use crate::support;
 
 fn analyze(
     source: &str,

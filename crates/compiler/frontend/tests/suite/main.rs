@@ -1,0 +1,28 @@
+#[path = "../common/mod.rs"]
+mod common;
+
+mod array_destinations;
+mod array_guard_compatibility;
+mod const_locals;
+mod const_parameters;
+mod declaration_provenance;
+mod diagnostic_spans;
+mod engine_primitives;
+mod enum_storage;
+mod generic_static_hiding;
+mod implicit_static_calls;
+mod indexed_applicability;
+mod inheritance_cycles;
+mod invalid_signatures;
+mod omitted_arguments;
+mod overload_argument_counts;
+mod overload_selection;
+mod override_slots;
+mod pattern_case_fallthrough;
+mod qualifiers;
+mod query;
+mod semantic_policy;
+mod shared_defaults;
+mod switch_literals;
+mod temporary_metadata;
+mod unary_negation;

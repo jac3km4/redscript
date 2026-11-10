@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 fn check(source: &str, dependency: &str) -> Vec<String> {
     support::analyze(

@@ -1,8 +1,8 @@
-mod common;
-
 use redscript_compiler_frontend::{
     LoweredCompilationUnit, LoweredFunction, Symbols, expr_type, ir,
 };
+
+use crate::common;
 
 fn analyze(
     source: &str,

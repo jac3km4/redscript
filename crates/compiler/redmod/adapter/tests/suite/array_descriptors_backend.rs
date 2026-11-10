@@ -1,6 +1,6 @@
-mod support;
-
 use redscript_io::{Instr, ScriptBundle, TypeKind};
+
+use crate::support;
 
 fn compile(source: &str) -> Vec<u8> {
     support::compile(source, "arrays.script", &[], support::empty_bundle())

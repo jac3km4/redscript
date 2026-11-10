@@ -1,6 +1,6 @@
-mod common;
-
 use redscript_compiler_frontend::ir;
+
+use crate::common;
 
 fn analyze(source: &str, expected_codes: &[&str], expected_targets: &[&str]) {
     common::analyze("indexed.reds", source, |_, unit, symbols, reporter| {

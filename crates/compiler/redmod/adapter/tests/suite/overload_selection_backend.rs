@@ -1,7 +1,7 @@
-mod support;
-
 use redscript_io::{Instr, ScriptBundle};
 use support::function;
+
+use crate::support;
 
 fn compile(source: &str) -> ScriptBundle<'static> {
     support::compile(source, "selection.script", &[], support::empty_bundle())

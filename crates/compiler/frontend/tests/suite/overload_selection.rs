@@ -1,6 +1,6 @@
-mod common;
-
 use redscript_compiler_frontend::ir;
+
+use crate::common;
 
 fn analyze(source: &str, check: impl FnOnce(&[String], &[String])) {
     common::analyze("selection.reds", source, |file, unit, symbols, reporter| {

@@ -1,8 +1,8 @@
-mod support;
-
 use redscript_community_ast::SourceMap;
 use redscript_compiler_frontend::{LoweredCompilationUnit, Symbols, ir};
 use redscript_redmod_adapter::parse_file_with_metadata;
+
+use crate::support;
 
 fn analyze(
     source: &str,

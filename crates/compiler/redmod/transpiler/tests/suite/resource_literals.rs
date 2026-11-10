@@ -1,8 +1,8 @@
 //! Raw native resource/TweakDBID spelling and opt-in official identity evidence.
-mod support;
-
 use redscript_community_ast::SourceMap;
 use redscript_redmod_transpiler::LiteralError;
+
+use crate::support;
 
 const VALUES: &[&str] = &[
     r"base\gameplay\gui\common\buttonhints.inkwidget",

@@ -1,11 +1,11 @@
 //! Contextual coercions must survive a target-source round trip, not just parse.
-mod support;
-
 use redscript_community_ast::{SourceMap, Span};
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{Symbols, TypeInterner, ir};
 use redscript_redmod_transpiler::analyze_sources;
 use support::try_emit_source as emit;
+
+use crate::support;
 
 struct Calls<'a, 'ctx> {
     symbols: &'a Symbols<'ctx>,

@@ -1,7 +1,7 @@
-mod common;
-
 use common::assert_preserved;
 use redscript_community_formatter::FormatSettings;
+
+use crate::common;
 
 #[test]
 fn aggregate_field_defaults_roundtrip() {

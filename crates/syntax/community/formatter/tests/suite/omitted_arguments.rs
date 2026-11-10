@@ -1,7 +1,7 @@
-mod common;
-
 use common::assert_preserved;
 use redscript_community_formatter::FormatSettings;
+
+use crate::common;
 
 #[test]
 fn positional_holes_roundtrip_without_changing_arity() {

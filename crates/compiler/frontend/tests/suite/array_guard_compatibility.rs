@@ -1,6 +1,6 @@
-mod common;
-
 use redscript_compiler_frontend::{DiagnosticLevel, Symbols, ir};
+
+use crate::common;
 
 fn check(source: &str, inspect: impl FnOnce(&ir::Block<'_>, &Symbols<'_>)) {
     common::analyze(

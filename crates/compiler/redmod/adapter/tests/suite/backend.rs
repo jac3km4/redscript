@@ -1,12 +1,12 @@
 use std::collections::HashSet;
 
-mod support;
-
 use redscript_community_ast::SourceMap;
 use redscript_compiler_api::{SourceMapExt, TypeFlagRegistry};
 use redscript_compiler_backend::CompilationInputs;
 use redscript_compiler_frontend::{CompileErrorReporter, TypeInterner};
 use redscript_io::{FieldFlags, Function, IndexedDefinition, Instr, LocalFlags, ScriptBundle};
+
+use crate::support;
 
 fn compile(source: &str) -> ScriptBundle<'static> {
     support::compile(

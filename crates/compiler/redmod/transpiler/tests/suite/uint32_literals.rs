@@ -1,6 +1,6 @@
 //! Exact Uint32 expression constants, with opt-in official bundle evidence.
 //! REDmod field defaults use unsigned decimal spelling instead of signed-bit casts.
-mod support;
+use crate::support;
 
 const VALUES: [u32; 6] = [
     0,

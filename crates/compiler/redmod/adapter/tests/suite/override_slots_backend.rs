@@ -1,9 +1,9 @@
-mod support;
-
 use redscript_io::{
     Class, ClassFlags, Function, IndexedDefinition, Instr, ScriptBundle, Visibility,
 };
 use support::function;
+
+use crate::support;
 
 fn compile(source: &str) -> ScriptBundle<'static> {
     compile_with_native_root(source, false)

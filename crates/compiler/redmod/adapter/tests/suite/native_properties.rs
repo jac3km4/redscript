@@ -5,7 +5,7 @@ use redscript_compiler_frontend::{CompileErrorReporter, TypeInterner};
 use redscript_io::{IndexedDefinition, ScriptBundle};
 use redscript_redmod_adapter::{CapabilityError, Error, parse_file_with_metadata, process_sources};
 
-mod support;
+use crate::support;
 
 fn compile(source: &str) -> ScriptBundle<'static> {
     support::compile(source, "properties.script", &[], support::empty_bundle())
