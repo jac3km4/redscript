@@ -163,12 +163,22 @@ impl<'ctx> Monomorphizer<'ctx> {
                 let methods = aggregate
                     .methods()
                     .iter()
-                    .filter(|entry| {
-                        !entry.func().flags().is_unimplemented()
-                            && !entry.func().flags().is_native()
-                            && should_method_monomorphize(entry.func(), typ)
+                    .filter(|entry| should_method_monomorphize(entry.func(), typ))
+                    .map(|entry| {
+                        let method = class.methods()[entry.key()];
+                        let func = entry.func();
+                        let base = func
+                            .overriden()
+                            .filter(|_| func.flags().is_callback())
+                            .and_then(|base| {
+                                let base_type =
+                                    typ.instantiate_as(base.parent(), symbols)?.into_owned();
+                                Some((base_type, base.index()))
+                            });
+                        let body = (!func.flags().is_unimplemented() && !func.flags().is_native())
+                            .then(|| &repr.methods[entry.key()]);
+                        (method, base, body)
                     })
-                    .map(|entry| (class.methods()[entry.key()], &repr.methods[entry.key()]))
                     .collect::<Vec<_>>();
 
                 let owner = bundle[bundle[class.index()].name()].to_string();
@@ -179,9 +189,16 @@ impl<'ctx> Monomorphizer<'ctx> {
                 }
 
                 let env = typ.type_env(symbols);
-                methods.into_iter().try_for_each(|(index, func)| {
-                    self.function_body(index, func, &env, symbols, bundle)
-                })?;
+                for (index, base, body) in methods {
+                    // Callback dispatch retains the inherited slot in serialized metadata.
+                    if let Some((base_type, base_idx)) = base {
+                        let base_index = self.mono_method(&base_type, base_idx, symbols, bundle);
+                        bundle[index] = bundle[index].clone().with_base_method(Some(base_index));
+                    }
+                    if let Some(func) = body {
+                        self.function_body(index, func, &env, symbols, bundle)?;
+                    }
+                }
             }
 
             while let Some((sig, &index)) = self.methods.next_unmarked() {
@@ -730,14 +747,6 @@ impl<'ctx> Monomorphizer<'ctx> {
                 .map(|id| &symbols[symbols.override_slot(id)]);
             let mangled = MangledMethod::new(entry.name(), &sig, func, base, &cls_env).to_string();
             let method = self.add_method_to_pool(mangled, func, cls_idx, &cls_env, symbols, bundle);
-            // Callback dispatch retains the inherited slot in serialized metadata.
-            if func.flags().is_callback()
-                && let Some(base) = func.overriden()
-                && let Some(base_type) = typ.instantiate_as(base.parent(), symbols)
-            {
-                let base_index = self.mono_method(&base_type, base.index(), symbols, bundle);
-                bundle[method] = bundle[method].clone().with_base_method(Some(base_index));
-            }
 
             bundle[cls_idx].add_method(method);
             methods.insert(*entry.key(), method);

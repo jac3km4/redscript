@@ -68,6 +68,88 @@ fn lazy_intrinsics_fail_closed() {
     );
 }
 
+#[test]
+fn callback_overrides_added_method_and_reentrant_base() {
+    let sources = SourceMap::new();
+    sources.populate_boot_lib();
+    sources.push_back(
+        "callbacks.reds",
+        "
+        @addMethod(IScriptable)
+        protected cb func OnAdded() -> Bool {
+            return true;
+        }
+
+        class Base extends IScriptable {
+            let child: ref<Derived>;
+
+            protected cb func OnBase() -> Bool {
+                return false;
+            }
+        }
+
+        class Derived extends Base {
+            protected cb func OnAdded() -> Bool {
+                return false;
+            }
+
+            protected cb func OnBase() -> Bool {
+                return true;
+            }
+        }
+        ",
+    );
+
+    let interner = TypeInterner::default();
+    let mut bundle = ScriptBundle::default();
+    let name = bundle.cnames_mut().add("IScriptable");
+    bundle.define(Class::new(name, Visibility::Public, ClassFlags::default()));
+
+    let (symbols, mappings) =
+        CompilationInputs::load(&bundle, &interner, &TypeFlagRegistry::default())
+            .unwrap()
+            .into_inner();
+    let mut reporter = CompileErrorReporter::default();
+    let (unit, symbols) = infer_from_sources(&sources, symbols, &mut reporter, &interner);
+    let diagnostics = reporter.into_reported();
+    assert_eq!(
+        diagnostics.iter().filter(|d| d.is_error()).count(),
+        0,
+        "{}",
+        Diagnostics::from(diagnostics),
+    );
+
+    mappings
+        .into_monomorphizer(&sources)
+        .monomorphize(&unit, &symbols, &mut bundle)
+        .unwrap();
+
+    let find_method = |cls_name: &str, method_name: &str| {
+        bundle
+            .indexed_definitions()
+            .find_map(|def| match def {
+                IndexedDefinition::Function(idx, func)
+                    if func
+                        .class()
+                        .is_some_and(|cls| &*bundle[bundle[cls].name()] == cls_name)
+                        && &*bundle[func.name()] == method_name =>
+                {
+                    Some((idx, func))
+                }
+                _ => None,
+            })
+            .unwrap()
+    };
+
+    let (added_base_idx, _) = find_method("IScriptable", "OnAdded");
+    let (_, added_derived) = find_method("Derived", "OnAdded");
+    assert_eq!(added_derived.base_method(), Some(added_base_idx));
+
+    let (on_base_idx, _) = find_method("Base", "OnBase");
+    let (_, on_base_derived) = find_method("Derived", "OnBase");
+    assert_eq!(on_base_derived.base_method(), Some(on_base_idx));
+}
+
 fn compile(path: &Path, seed: impl FnOnce(&mut ScriptBundle<'_>)) -> String {
     let sources = SourceMap::from_files([path]).unwrap();
     sources.populate_boot_lib();
