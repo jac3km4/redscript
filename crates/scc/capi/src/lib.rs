@@ -11,7 +11,7 @@
 //! settings mutations require exclusive access. No handles or borrows may be used after being
 //! consumed or freed. See [`scc_copy_error`] for its zero-sized buffer exception.
 
-use std::ffi::{CStr, CString};
+use std::ffi::{CStr, CString, c_char};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::ptr;
@@ -28,7 +28,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 /// # Safety
 /// The caller must ensure that `r6_dir` is a valid null-terminated UTF-8 string.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn scc_settings_new(r6_dir: *const i8) -> Box<SccSettings> {
+pub unsafe extern "C" fn scc_settings_new(r6_dir: *const c_char) -> Box<SccSettings> {
     let r6_dir = unsafe { c_path(r6_dir) };
     let root_dir = r6_dir.parent().map(Path::to_owned).unwrap_or(r6_dir);
     Box::new(SccSettings::new(root_dir))
@@ -40,7 +40,7 @@ pub unsafe extern "C" fn scc_settings_new(r6_dir: *const i8) -> Box<SccSettings>
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn scc_settings_set_custom_cache_file(
     settings: &mut SccSettings,
-    path: *const i8,
+    path: *const c_char,
 ) {
     settings.set_custom_cache_file(unsafe { c_path(path) });
 }
@@ -51,7 +51,7 @@ pub unsafe extern "C" fn scc_settings_set_custom_cache_file(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn scc_settings_set_output_cache_file(
     settings: &mut SccSettings,
-    path: *const i8,
+    path: *const c_char,
 ) {
     settings.set_output_cache_file(unsafe { c_path(path) });
 }
@@ -60,7 +60,10 @@ pub unsafe extern "C" fn scc_settings_set_output_cache_file(
 /// The caller must ensure that `settings` is a valid pointer to a `SccSettings` struct and
 /// `path` is a valid null-terminated UTF-8 string.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn scc_settings_add_script_path(settings: &mut SccSettings, path: *const i8) {
+pub unsafe extern "C" fn scc_settings_add_script_path(
+    settings: &mut SccSettings,
+    path: *const c_char,
+) {
     settings.add_script_path(unsafe { c_path(path) });
 }
 
@@ -76,7 +79,7 @@ pub extern "C" fn scc_settings_disable_error_popup(settings: &mut SccSettings) {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn scc_settings_register_never_ref_type(
     settings: &mut SccSettings,
-    name: *const i8,
+    name: *const c_char,
 ) {
     settings.register_never_ref_type(
         unsafe { c_str(name) }
@@ -91,7 +94,7 @@ pub unsafe extern "C" fn scc_settings_register_never_ref_type(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn scc_settings_register_mixed_ref_type(
     settings: &mut SccSettings,
-    name: *const i8,
+    name: *const c_char,
 ) {
     settings.register_mixed_ref_type(
         unsafe { c_str(name) }
@@ -142,7 +145,7 @@ pub extern "C" fn scc_get_success(output: &SccResult) -> Option<&SccOutput> {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn scc_copy_error(
     output: &SccResult,
-    buffer: *mut u8,
+    buffer: *mut c_char,
     buffer_size: usize,
 ) -> usize {
     if buffer_size == 0 {
@@ -154,7 +157,7 @@ pub unsafe extern "C" fn scc_copy_error(
             let error = format!("{error:#}");
             let max_len = error.len().min(buffer_size - 1);
             unsafe {
-                ptr::copy_nonoverlapping(error.as_ptr(), buffer, max_len);
+                ptr::copy_nonoverlapping(error.as_ptr(), buffer.cast(), max_len);
                 buffer.add(max_len).write(0);
             }
             max_len
@@ -230,11 +233,11 @@ pub extern "C" fn scc_source_ref_line(output: &SccOutput, link: &SourceRef) -> u
     output.line(link).unwrap_or(0)
 }
 
-unsafe fn c_str(str: *const i8) -> CString {
+unsafe fn c_str(str: *const c_char) -> CString {
     unsafe { CStr::from_ptr(str).to_owned() }
 }
 
-unsafe fn c_path(r6_dir: *const i8) -> PathBuf {
+unsafe fn c_path(r6_dir: *const c_char) -> PathBuf {
     let cstr = unsafe { CStr::from_ptr(r6_dir) };
     PathBuf::from(cstr.to_string_lossy().as_ref())
 }
@@ -252,7 +255,7 @@ pub enum SccResult {
 #[derive(Debug)]
 #[repr(C)]
 pub struct StrWithLen<'a> {
-    ptr: *const u8,
+    ptr: *const c_char,
     len: usize,
     _marker: PhantomData<&'a str>,
 }
@@ -260,7 +263,7 @@ pub struct StrWithLen<'a> {
 impl<'a> From<&'a str> for StrWithLen<'a> {
     fn from(value: &str) -> Self {
         Self {
-            ptr: value.as_ptr(),
+            ptr: value.as_ptr().cast(),
             len: value.len(),
             _marker: PhantomData,
         }
@@ -292,7 +295,7 @@ mod tests {
         let result = SccResult::Error(anyhow::anyhow!("test error"));
         let mut buffer = [0xff];
         assert_eq!(
-            unsafe { scc_copy_error(&result, buffer.as_mut_ptr(), 0) },
+            unsafe { scc_copy_error(&result, buffer.as_mut_ptr().cast(), 0) },
             0
         );
         assert_eq!(buffer, [0xff]);
@@ -303,7 +306,7 @@ mod tests {
         let result = SccResult::Error(anyhow::anyhow!("test error"));
         let mut buffer = [0xff; 2];
         assert_eq!(
-            unsafe { scc_copy_error(&result, buffer.as_mut_ptr(), 1) },
+            unsafe { scc_copy_error(&result, buffer.as_mut_ptr().cast(), 1) },
             0
         );
         assert_eq!(buffer, [0, 0xff]);
@@ -313,7 +316,7 @@ mod tests {
     fn copy_error_copies_message_and_terminator() {
         let result = SccResult::Error(anyhow::anyhow!("test error"));
         let mut buffer = [0xff; 12];
-        let copied = unsafe { scc_copy_error(&result, buffer.as_mut_ptr(), buffer.len()) };
+        let copied = unsafe { scc_copy_error(&result, buffer.as_mut_ptr().cast(), buffer.len()) };
         assert_eq!(copied, 10);
         assert_eq!(&buffer[..11], b"test error\0");
         assert_eq!(buffer[11], 0xff);
@@ -323,7 +326,7 @@ mod tests {
     fn copy_error_truncates_and_terminates_message() {
         let result = SccResult::Error(anyhow::anyhow!("test error"));
         let mut buffer = [0xff; 6];
-        let copied = unsafe { scc_copy_error(&result, buffer.as_mut_ptr(), 5) };
+        let copied = unsafe { scc_copy_error(&result, buffer.as_mut_ptr().cast(), 5) };
         assert_eq!(copied, 4);
         assert_eq!(&buffer[..5], b"test\0");
         assert_eq!(buffer[5], 0xff);
@@ -335,7 +338,7 @@ mod tests {
             anyhow::anyhow!("underlying I/O failure").context("cache context"),
         ));
         let mut buffer = [0xff; 128];
-        let copied = unsafe { scc_copy_error(&result, buffer.as_mut_ptr(), buffer.len()) };
+        let copied = unsafe { scc_copy_error(&result, buffer.as_mut_ptr().cast(), buffer.len()) };
         scc_free_result(result);
         assert_eq!(&buffer[..copied], b"cache context: underlying I/O failure");
         assert_eq!(buffer[copied], 0);
@@ -346,11 +349,14 @@ mod tests {
         let mut data = [0u8; 16];
         unsafe {
             data.as_mut_ptr()
-                .cast::<*const u8>()
-                .write(b"test".as_ptr());
+                .cast::<*const c_char>()
+                .write(b"test".as_ptr().cast());
             data.as_mut_ptr().add(8).cast::<usize>().write(4);
             let str = data.as_ptr().cast::<StrWithLen<'_>>().read();
-            assert_eq!(std::slice::from_raw_parts(str.ptr, str.len), b"test");
+            assert_eq!(
+                std::slice::from_raw_parts(str.ptr.cast::<u8>(), str.len),
+                b"test"
+            );
         }
     }
 

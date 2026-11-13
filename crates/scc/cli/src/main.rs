@@ -1,5 +1,5 @@
 use std::env;
-use std::ffi::CString;
+use std::ffi::{CString, c_char};
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};
@@ -93,7 +93,7 @@ fn run(r6_dir: &Path, args: Option<Arguments>) -> anyhow::Result<()> {
 unsafe fn finish_result(
     result: *mut raw::SccResult,
     get_success: unsafe extern "C" fn(*mut raw::SccResult) -> *mut raw::SccOutput,
-    copy_error: unsafe extern "C" fn(*mut raw::SccResult, *mut i8, usize) -> usize,
+    copy_error: unsafe extern "C" fn(*mut raw::SccResult, *mut c_char, usize) -> usize,
     free_result: unsafe extern "C" fn(*mut raw::SccResult),
 ) -> anyhow::Result<()> {
     let outcome = if unsafe { get_success(result) }.is_null() {
@@ -145,7 +145,7 @@ mod tests {
 
     unsafe extern "C" fn copy_error(
         result: *mut raw::SccResult,
-        buffer: *mut i8,
+        buffer: *mut c_char,
         size: usize,
     ) -> usize {
         let result = unsafe { &*result.cast::<MockResult>() };

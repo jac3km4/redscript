@@ -41,6 +41,7 @@ pub(super) fn load() -> anyhow::Result<raw::SccApi> {
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::c_char;
     use std::mem;
 
     use raw::*;
@@ -73,30 +74,31 @@ mod tests {
             source_ref_line: None,
         };
 
-        let _settings_new: Option<unsafe extern "C" fn(*const i8) -> *mut SccSettings> =
+        let _settings_new: Option<unsafe extern "C" fn(*const c_char) -> *mut SccSettings> =
             api.settings_new;
         let _settings_set_custom_cache_file: Option<
-            unsafe extern "C" fn(*mut SccSettings, *const i8),
+            unsafe extern "C" fn(*mut SccSettings, *const c_char),
         > = api.settings_set_custom_cache_file;
         let _settings_set_output_cache_file: Option<
-            unsafe extern "C" fn(*mut SccSettings, *const i8),
+            unsafe extern "C" fn(*mut SccSettings, *const c_char),
         > = api.settings_set_output_cache_file;
-        let _settings_add_script_path: Option<unsafe extern "C" fn(*mut SccSettings, *const i8)> =
-            api.settings_add_script_path;
+        let _settings_add_script_path: Option<
+            unsafe extern "C" fn(*mut SccSettings, *const c_char),
+        > = api.settings_add_script_path;
         let _settings_disable_error_popup: Option<unsafe extern "C" fn(*mut SccSettings)> =
             api.settings_disable_error_popup;
         let _settings_register_never_ref_type: Option<
-            unsafe extern "C" fn(*mut SccSettings, *const i8),
+            unsafe extern "C" fn(*mut SccSettings, *const c_char),
         > = api.settings_register_never_ref_type;
         let _settings_register_mixed_ref_type: Option<
-            unsafe extern "C" fn(*mut SccSettings, *const i8),
+            unsafe extern "C" fn(*mut SccSettings, *const c_char),
         > = api.settings_register_mixed_ref_type;
         let _compile: Option<unsafe extern "C" fn(*mut SccSettings) -> *mut SccResult> =
             api.compile;
         let _free_result: Option<unsafe extern "C" fn(*mut SccResult)> = api.free_result;
         let _get_success: Option<unsafe extern "C" fn(*mut SccResult) -> *mut SccOutput> =
             api.get_success;
-        let _copy_error: Option<unsafe extern "C" fn(*mut SccResult, *mut i8, usize) -> usize> =
+        let _copy_error: Option<unsafe extern "C" fn(*mut SccResult, *mut c_char, usize) -> usize> =
             api.copy_error;
         let _output_get_source_ref: Option<
             unsafe extern "C" fn(*mut SccOutput, usize) -> *mut SccSourceRef,
