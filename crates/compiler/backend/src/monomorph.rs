@@ -774,8 +774,6 @@ impl<'ctx> Monomorphizer<'ctx> {
         let variants = enum_.variants();
 
         let size = enum_.storage_size().unwrap_or(match (min, max) {
-            (-128..=127, -128..=127) => 1,
-            (-32_768..=32_767, -32_768..=32_767) => 2,
             (-2_147_483_648..=2_147_483_647, -2_147_483_648..=2_147_483_647) => 4,
             _ => 8,
         });

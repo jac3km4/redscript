@@ -52,22 +52,31 @@ fn enum_widths() {
     // Unsuffixed enum initializers are Int32 tokens, so the negative limit's
     // magnitude (2147483648) and the 8-byte width require a wider literal.
     let cases = [
-        (0, 1),
-        (127, 1),
-        (-128, 1),
-        (128, 2),
-        (-129, 2),
-        (32_767, 2),
-        (-32_768, 2),
+        (0_i64, 4),
+        (127, 4),
+        (-128, 4),
+        (128, 4),
+        (-129, 4),
+        (32_767, 4),
+        (-32_768, 4),
         (32_768, 4),
         (-32_769, 4),
-        (i32::MAX, 4),
-        (-i32::MAX, 4),
+        (i64::from(i32::MAX), 4),
+        (i64::from(i32::MIN), 4),
+        (i64::from(i32::MAX) + 1, 8),
+        (i64::from(i32::MIN) - 1, 8),
     ];
     let source = cases
         .iter()
         .enumerate()
-        .map(|(index, (value, _))| format!("enum Width{index} {{ Value = {value}, }}\n"))
+        .map(|(index, (value, _))| {
+            let suffix = if i32::try_from(*value).is_err() {
+                "l"
+            } else {
+                ""
+            };
+            format!("enum Width{index} {{ Value = {value}{suffix}, }}\n")
+        })
         .collect::<String>();
     let bundle = compile(&source);
 
@@ -82,11 +91,7 @@ fn enum_widths() {
             .unwrap_or_else(|| panic!("missing enum {name}"));
         assert_eq!(enum_.size(), expected_size, "{name}: value {value}");
         assert_eq!(enum_.values().len(), 1, "{name}");
-        assert_eq!(
-            bundle[enum_.values()[0]].value(),
-            i64::from(value),
-            "{name}"
-        );
+        assert_eq!(bundle[enum_.values()[0]].value(), value, "{name}");
     }
 }
 

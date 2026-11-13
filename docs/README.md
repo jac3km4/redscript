@@ -30,7 +30,7 @@ bounded native REDmod support. For an introductory language tutorial, see the
 | **Reference assignment** | Rebinds the reference variable | Writes through to the pointee |
 | **Const locals** | `const x = 1;` (declaration init allowed) | `const var x: Int32;` (scalar init rejected; handle rebinding allowed) |
 | **Trailing comma `Call(42,)`** | 1 argument (`42`) | 2 arguments (`42` + trailing omitted hole) |
-| **Omitted enum storage** | Inferred signed width (1, 2, 4, or 8 bytes) | Inferred in adapter (official REDmod defaults to 4 bytes) |
+| **Omitted enum storage** | 4 bytes for Int32-range values, 8 bytes otherwise | 4 bytes for Int32-range values, 8 bytes otherwise (official REDmod defaults to 4 bytes) |
 | **Event callbacks** | Authored return type enforced | Implicit `Bool` contract; fallthrough emits `Nop` |
 
 ## Detailed semantics

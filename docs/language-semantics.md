@@ -78,10 +78,9 @@ this does not widen ordinary native expression literals. The official compiler
 rejects the spelling `-9223372036854775808`, so native parsing/printing and export
 do not claim support for that literal. Community source can use it with `l`.
 
-Omitting storage preserves existing community behavior: signed widths are inferred
-from the values, including zero (1, 2, 4, or 8 bytes). Native omitted storage keeps
-the adapter's existing behavior too; official REDmod instead defaults to 4 bytes.
-Use explicit storage when matching native representation matters.
+Omitting storage defaults to 4 bytes for values within Int32 range (matching 0.5.x and
+official REDmod), and 8 bytes when any value exceeds Int32. Use explicit storage when
+another width (such as 1 or 2 bytes) is required.
 
 The shared AST's existing `Enum::new` constructor still omits storage; use
 `with_storage` to supply it. Resolved enum schemas expose `storage()` and

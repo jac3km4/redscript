@@ -37,7 +37,7 @@ rather than native write-through policy. See
 [shared expression semantics](language-semantics.md#shared-expression-and-aggregate-default-apis).
 
 [Explicit enum storage](language-semantics.md#explicit-enum-storage) enforces integer ranges and preserves
-width. Omitted storage infers a signed width including zero. Bundles erase
+width. Omitted storage defaults to 4 bytes for Int32-range values and 8 bytes otherwise. Bundles erase
 signedness, so decompiled storage is canonical rather than the authored signedness.
 The opaque engine primitives NodeRef, CRUID, LocalizationString and
 redResourceReferenceScriptToken are not Uint64 aliases; their registration does

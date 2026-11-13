@@ -54,8 +54,8 @@ availability is not semantic accuracy or permission to emit artifacts.
   Ref locals/returns, nested refs, arrays of refs and mixed-reference forms remain
   rejected. See [shared reference semantics](language-semantics.md#shared-expression-and-aggregate-default-apis).
 - [Enum storage](language-semantics.md#explicit-enum-storage) retains declared width/ranges. Omitted native
-  storage currently follows inferred community widths, unlike official REDmod's
-  four-byte default. Use explicit storage when representation matters.
+  storage defaults to 4 bytes for Int32-range values and 8 bytes otherwise (official
+  REDmod always defaults to 4 bytes). Use explicit storage when another width matters.
 - NodeRef, CRUID, LocalizationString and redResourceReferenceScriptToken are shared
   opaque primitives, not fabricated classes or integer aliases. No extra literal,
   default-value, layout or conversion behavior follows from registration.
