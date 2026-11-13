@@ -13,6 +13,7 @@ hashbrown.workspace = true
 log.workspace = true
 
 [dev-dependencies]
+redscript-community-formatter.workspace = true
 redscript-compiler-api.workspace = true
 redscript-compiler-backend.workspace = true
 redscript-compiler-frontend.workspace = true
