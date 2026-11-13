@@ -224,6 +224,70 @@ fn recursive_generic_fields_share_one_type_definition() {
     }
 }
 
+#[test]
+fn module_enum_field_defaults_omit_module_prefix() {
+    let bundle = compile(
+        r#"
+        module Example.Sub
+        public enum ExampleColors {
+          Standard = 0,
+          Danger = 1,
+        }
+        public class ExampleSettings {
+          public let inlineColor: ExampleColors = ExampleColors.Danger;
+          public let directiveColor: ExampleColors;
+          default directiveColor = ExampleColors.Standard;
+        }
+        @addField(IScriptable)
+        public let addedColor: ExampleColors = ExampleColors.Danger;
+        "#,
+    );
+    let bytes = bundle.into_writeable().to_bytes().unwrap();
+    let bundle = ScriptBundle::from_bytes(&bytes).unwrap();
+
+    let enum_ = bundle
+        .definitions()
+        .find_map(|def| match def {
+            Definition::Enum(enum_) if bundle[enum_.name()] == "Example.Sub.ExampleColors" => {
+                Some(enum_)
+            }
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(enum_.size(), 4);
+
+    for (field_name, owner, expected) in [
+        (
+            "inlineColor",
+            "Example.Sub.ExampleSettings",
+            "ExampleColors.Danger",
+        ),
+        (
+            "directiveColor",
+            "Example.Sub.ExampleSettings",
+            "ExampleColors.Standard",
+        ),
+        ("addedColor", "IScriptable", "ExampleColors.Danger"),
+    ] {
+        let field = bundle
+            .definitions()
+            .find_map(|def| match def {
+                Definition::Field(field) if &*bundle[field.name()] == field_name => Some(field),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("missing field {field_name}"));
+        assert_eq!(
+            field
+                .defaults()
+                .iter()
+                .map(|prop| (prop.name(), prop.value()))
+                .collect::<Vec<_>>(),
+            vec![(owner, expected)],
+            "{field_name}"
+        );
+    }
+}
+
 fn local_type(bundle: &ScriptBundle<'_>, name: &str) -> TypeIndex {
     bundle
         .definitions()

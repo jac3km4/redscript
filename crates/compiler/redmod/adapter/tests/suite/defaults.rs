@@ -403,7 +403,7 @@ fn enum_defaults_resolve_in_the_supplying_module_import_scope() {
         &bundle,
         "Consumers.Derived",
         "choice",
-        &[("Consumers.Derived", "Models.Choice.B")],
+        &[("Consumers.Derived", "Choice.B")],
     );
 }
 

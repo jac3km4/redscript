@@ -1232,7 +1232,7 @@ impl fmt::Display for MangledConstant<'_, '_> {
                     .symbols
                     .get_enum_variant(*field_id)
                     .expect("field should exist");
-                write!(f, "{}.{}", field_id.parent(), name)
+                write!(f, "{}.{}", field_id.parent().simple_name(), name)
             }
             ir::Const::F32(val) => write!(f, "{val}"),
             ir::Const::F64(val) => write!(f, "{val}"),
