@@ -6,99 +6,102 @@ use identity_hash::IdentityHashable;
 
 use crate::FrozenIndexSet;
 
+#[derive(Clone, Copy)]
+pub struct TypeId<'id>(TypeIdRepr<'id>);
+
+impl fmt::Debug for TypeId<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        struct StaticArrayDebug(u32);
+        impl fmt::Debug for StaticArrayDebug {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "StaticArray({})", self.0)
+            }
+        }
+
+        match self.0 {
+            TypeIdRepr::Named(name) => f.debug_tuple("TypeId").field(&name).finish(),
+            TypeIdRepr::StaticArray(size) => f
+                .debug_tuple("TypeId")
+                .field(&StaticArrayDebug(size))
+                .finish(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
-pub struct TypeId<'id>(&'id str);
+enum TypeIdRepr<'id> {
+    Named(&'id str),
+    StaticArray(u32),
+}
 
 impl TypeId<'_> {
+    #[inline]
+    pub const fn static_array(size: u32) -> Self {
+        Self(TypeIdRepr::StaticArray(size))
+    }
+
     pub fn is_fn(&self) -> bool {
         predef::FN_BY_ARITY.contains(self)
     }
 
-    pub fn is_static_array(&self) -> bool {
-        predef::STATIC_ARRAY_TYPES.contains(self)
+    #[inline]
+    pub const fn is_static_array(&self) -> bool {
+        matches!(self.0, TypeIdRepr::StaticArray(_))
     }
 
     pub fn fn_with_arity(arity: usize) -> Option<Self> {
         predef::FN_BY_ARITY.get(arity).copied()
     }
 
+    #[inline]
     pub fn array_with_size(size: usize) -> Option<Self> {
-        match size {
-            0 => Some(predef::ARRAY0),
-            1 => Some(predef::ARRAY1),
-            2 => Some(predef::ARRAY2),
-            3 => Some(predef::ARRAY3),
-            4 => Some(predef::ARRAY4),
-            5 => Some(predef::ARRAY5),
-            6 => Some(predef::ARRAY6),
-            7 => Some(predef::ARRAY7),
-            8 => Some(predef::ARRAY8),
-            9 => Some(predef::ARRAY9),
-            10 => Some(predef::ARRAY10),
-            11 => Some(predef::ARRAY11),
-            12 => Some(predef::ARRAY12),
-            13 => Some(predef::ARRAY13),
-            14 => Some(predef::ARRAY14),
-            15 => Some(predef::ARRAY15),
-            16 => Some(predef::ARRAY16),
-            // special cases needed to load the full game cache
-            30 => Some(predef::ARRAY30),
-            32 => Some(predef::ARRAY32),
-            45 => Some(predef::ARRAY45),
-            64 => Some(predef::ARRAY64),
-            100 => Some(predef::ARRAY100),
-            128 => Some(predef::ARRAY128),
-            4096 => Some(predef::ARRAY4096),
-            _ => None,
-        }
+        u32::try_from(size).ok().map(Self::static_array)
     }
 
-    pub fn static_array_size(&self) -> Option<u16> {
-        match *self {
-            id if id == predef::ARRAY0 => Some(0),
-            id if id == predef::ARRAY1 => Some(1),
-            id if id == predef::ARRAY2 => Some(2),
-            id if id == predef::ARRAY3 => Some(3),
-            id if id == predef::ARRAY4 => Some(4),
-            id if id == predef::ARRAY5 => Some(5),
-            id if id == predef::ARRAY6 => Some(6),
-            id if id == predef::ARRAY7 => Some(7),
-            id if id == predef::ARRAY8 => Some(8),
-            id if id == predef::ARRAY9 => Some(9),
-            id if id == predef::ARRAY10 => Some(10),
-            id if id == predef::ARRAY11 => Some(11),
-            id if id == predef::ARRAY12 => Some(12),
-            id if id == predef::ARRAY13 => Some(13),
-            id if id == predef::ARRAY14 => Some(14),
-            id if id == predef::ARRAY15 => Some(15),
-            id if id == predef::ARRAY16 => Some(16),
-            id if id == predef::ARRAY30 => Some(30),
-            id if id == predef::ARRAY32 => Some(32),
-            id if id == predef::ARRAY45 => Some(45),
-            id if id == predef::ARRAY64 => Some(64),
-            id if id == predef::ARRAY100 => Some(100),
-            id if id == predef::ARRAY128 => Some(128),
-            id if id == predef::ARRAY4096 => Some(4096),
-            _ => None,
+    #[inline]
+    pub const fn static_array_size(&self) -> Option<u32> {
+        match self.0 {
+            TypeIdRepr::StaticArray(size) => Some(size),
+            TypeIdRepr::Named(_) => None,
         }
     }
 }
 
 impl<'id> TypeId<'id> {
     #[inline]
-    pub fn as_str(&self) -> &'id str {
-        self.0
+    pub const fn as_name(&self) -> Option<&'id str> {
+        match self.0 {
+            TypeIdRepr::Named(name) => Some(name),
+            TypeIdRepr::StaticArray(_) => None,
+        }
     }
 
-    pub fn simple_name(&self) -> &'id str {
-        self.0.rsplit_once('.').map_or(self.0, |(_, name)| name)
+    #[inline]
+    pub fn as_str(&self) -> Cow<'id, str> {
+        match self.0 {
+            TypeIdRepr::Named(name) => Cow::Borrowed(name),
+            TypeIdRepr::StaticArray(size) => Cow::Owned(format!("array{size}")),
+        }
+    }
+
+    pub fn simple_name(&self) -> Cow<'id, str> {
+        match self.0 {
+            TypeIdRepr::Named(name) => {
+                Cow::Borrowed(name.rsplit_once('.').map_or(name, |(_, name)| name))
+            }
+            TypeIdRepr::StaticArray(size) => Cow::Owned(format!("array{size}")),
+        }
     }
 }
 
 impl PartialEq for TypeId<'_> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        ptr::eq(self.0.as_ptr(), other.0.as_ptr())
+        match (self.0, other.0) {
+            (TypeIdRepr::Named(a), TypeIdRepr::Named(b)) => ptr::eq(a.as_ptr(), b.as_ptr()),
+            (TypeIdRepr::StaticArray(a), TypeIdRepr::StaticArray(b)) => a == b,
+            _ => false,
+        }
     }
 }
 
@@ -107,23 +110,28 @@ impl Eq for TypeId<'_> {}
 impl Hash for TypeId<'_> {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        ptr::hash(self.0.as_ptr(), state);
+        match self.0 {
+            TypeIdRepr::Named(name) => ptr::hash(name.as_ptr(), state),
+            TypeIdRepr::StaticArray(size) => {
+                // Single write_usize satisfies IdentityHashable's IdentityHasher<usize> contract,
+                // with bit 0 set so synthetic array hashes do not trivially collide with pointers.
+                state.write_usize(
+                    (u64::from(size).wrapping_mul(0x9e37_79b9_7f4a_7c15) as usize) | 1,
+                );
+            }
+        }
     }
 }
 
 impl IdentityHashable for TypeId<'_> {}
 
-impl AsRef<str> for TypeId<'_> {
-    #[inline]
-    fn as_ref(&self) -> &str {
-        self.0
-    }
-}
-
 impl fmt::Display for TypeId<'_> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.0)
+        match self.0 {
+            TypeIdRepr::Named(name) => f.write_str(name),
+            TypeIdRepr::StaticArray(size) => write!(f, "array{size}"),
+        }
     }
 }
 
@@ -134,14 +142,16 @@ pub struct TypeInterner {
 impl TypeInterner {
     pub fn intern(&self, name: impl AsRef<str> + Into<String>) -> TypeId<'_> {
         match self.names.get(name.as_ref()) {
-            Some(str) => TypeId(str),
-            None => TypeId(self.names.insert(Cow::Owned(name.into()))),
+            Some(str) => TypeId(TypeIdRepr::Named(str)),
+            None => TypeId(TypeIdRepr::Named(
+                self.names.insert(Cow::Owned(name.into())),
+            )),
         }
     }
 
     /// Looks up a canonical type ID without interning a new name.
     pub fn get(&self, name: &str) -> Option<TypeId<'_>> {
-        self.names.get(name).map(TypeId)
+        self.names.get(name).map(|s| TypeId(TypeIdRepr::Named(s)))
     }
 
     pub fn get_index_of(&self, name: impl AsRef<str>) -> Option<TypeIndex> {
@@ -149,7 +159,9 @@ impl TypeInterner {
     }
 
     pub fn get_index(&self, index: TypeIndex) -> Option<TypeId<'_>> {
-        self.names.get_index(index.0).map(TypeId)
+        self.names
+            .get_index(index.0)
+            .map(|s| TypeId(TypeIdRepr::Named(s)))
     }
 }
 
@@ -158,7 +170,7 @@ impl Default for TypeInterner {
         Self {
             names: predef::ALL_TYPES
                 .iter()
-                .map(|id| Cow::Borrowed(id.0))
+                .filter_map(|id| id.as_name().map(Cow::Borrowed))
                 .collect(),
         }
     }
@@ -172,7 +184,7 @@ pub mod predef {
 
     macro_rules! types {
         ($($id:ident => $name:literal),*) => {
-            $(pub static $id: TypeId<'static> = TypeId($name);)*
+            $(pub static $id: TypeId<'static> = TypeId(TypeIdRepr::Named($name));)*
 
             pub(super) static ALL_TYPES: &[TypeId<'static>] = &[$($id),*];
         };
@@ -210,34 +222,6 @@ pub mod predef {
         SCRIPT_REF => "script_ref",
         ARRAY => "array",
 
-        // aliases for static arrays with specific sizes
-        ARRAY0 => "array0",
-        ARRAY1 => "array1",
-        ARRAY2 => "array2",
-        ARRAY3 => "array3",
-        ARRAY4 => "array4",
-        ARRAY5 => "array5",
-        ARRAY6 => "array6",
-        ARRAY7 => "array7",
-        ARRAY8 => "array8",
-        ARRAY9 => "array9",
-        ARRAY10 => "array10",
-        ARRAY11 => "array11",
-        ARRAY12 => "array12",
-        ARRAY13 => "array13",
-        ARRAY14 => "array14",
-        ARRAY15 => "array15",
-        ARRAY16 => "array16",
-        // special cases needed to load the full game cache,
-        // these won't be needed if something like const generics is added
-        ARRAY30 => "array30",
-        ARRAY32 => "array32",
-        ARRAY45 => "array45",
-        ARRAY64 => "array64",
-        ARRAY100 => "array100",
-        ARRAY128 => "array128",
-        ARRAY4096 => "array4096",
-
         FUNCTION0 => "Function0",
         FUNCTION1 => "Function1",
         FUNCTION2 => "Function2",
@@ -260,31 +244,54 @@ pub mod predef {
         predef::FUNCTION7,
         predef::FUNCTION8,
     ];
+}
 
-    pub(crate) static STATIC_ARRAY_TYPES: &[TypeId<'static>] = &[
-        predef::ARRAY0,
-        predef::ARRAY1,
-        predef::ARRAY2,
-        predef::ARRAY3,
-        predef::ARRAY4,
-        predef::ARRAY5,
-        predef::ARRAY6,
-        predef::ARRAY7,
-        predef::ARRAY8,
-        predef::ARRAY9,
-        predef::ARRAY10,
-        predef::ARRAY11,
-        predef::ARRAY12,
-        predef::ARRAY13,
-        predef::ARRAY14,
-        predef::ARRAY15,
-        predef::ARRAY16,
-        predef::ARRAY30,
-        predef::ARRAY32,
-        predef::ARRAY45,
-        predef::ARRAY64,
-        predef::ARRAY100,
-        predef::ARRAY128,
-        predef::ARRAY4096,
-    ];
+#[cfg(test)]
+mod tests {
+    use hashbrown::HashMap;
+    use identity_hash::BuildIdentityHasher;
+
+    use super::*;
+
+    #[test]
+    fn static_array_type_ids_preserve_size_identity_and_hashing() {
+        let interner = TypeInterner::default();
+        let named_array1 = interner.intern("array1");
+        let a0 = TypeId::static_array(0);
+        let a1 = TypeId::static_array(1);
+        let a17 = TypeId::static_array(17);
+        let a_max = TypeId::static_array(u32::MAX);
+
+        assert_ne!(a1, named_array1);
+        assert_ne!(a0, a1);
+        assert_ne!(a17, a_max);
+        assert_eq!(TypeId::array_with_size(17), Some(a17));
+        assert_eq!(TypeId::array_with_size(u32::MAX as usize), Some(a_max));
+        #[cfg(target_pointer_width = "64")]
+        assert_eq!(TypeId::array_with_size(u32::MAX as usize + 1), None);
+
+        assert!(a17.is_static_array());
+        assert_eq!(a17.static_array_size(), Some(17));
+        assert_eq!(a_max.static_array_size(), Some(u32::MAX));
+        assert_eq!(a17.as_name(), None);
+        assert_eq!(a17.as_str(), "array17");
+        assert_eq!(a17.simple_name(), "array17");
+        assert_eq!(a17.to_string(), "array17");
+
+        assert!(!named_array1.is_static_array());
+        assert_eq!(named_array1.static_array_size(), None);
+        assert_eq!(named_array1.as_name(), Some("array1"));
+
+        let mut map: HashMap<TypeId<'_>, u32, BuildIdentityHasher<usize>> = HashMap::default();
+        map.insert(a0, 0);
+        map.insert(a1, 1);
+        map.insert(a17, 17);
+        map.insert(a_max, u32::MAX);
+        map.insert(named_array1, 99);
+        assert_eq!(map.get(&TypeId::static_array(0)), Some(&0));
+        assert_eq!(map.get(&TypeId::static_array(1)), Some(&1));
+        assert_eq!(map.get(&TypeId::static_array(17)), Some(&17));
+        assert_eq!(map.get(&TypeId::static_array(u32::MAX)), Some(&u32::MAX));
+        assert_eq!(map.get(&named_array1), Some(&99));
+    }
 }

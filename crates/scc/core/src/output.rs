@@ -25,7 +25,7 @@ impl SccOutput {
 
     pub fn name<'a>(&'a self, ref_: &'a SourceRef) -> Option<&'a str> {
         match ref_ {
-            SourceRef::Type(id, _) => Some(self.interner.get_index(*id)?.as_str()),
+            SourceRef::Type(id, _) => self.interner.get_index(*id)?.as_name(),
             SourceRef::Function(name, _)
             | SourceRef::Method(_, name, _)
             | SourceRef::Field(_, name, _) => Some(name),
@@ -35,7 +35,7 @@ impl SccOutput {
     pub fn parent_name<'a>(&'a self, ref_: &SourceRef) -> Option<&'a str> {
         match ref_ {
             SourceRef::Method(id, _, _) | SourceRef::Field(id, _, _) => {
-                Some(self.interner.get_index(*id)?.as_str())
+                self.interner.get_index(*id)?.as_name()
             }
             _ => None,
         }
@@ -94,7 +94,7 @@ pub(super) fn extract_refs(syms: &Symbols<'_>, interner: &TypeInterner) -> Vec<S
     let mut refs = Vec::new();
 
     for (id, def) in syms.types() {
-        let Some(id) = interner.get_index_of(id) else {
+        let Some(id) = id.as_name().and_then(|name| interner.get_index_of(name)) else {
             continue;
         };
         let Some(agg) = def.schema().as_aggregate() else {

@@ -56,7 +56,7 @@ fn primitives_emit_and_reload_without_changing_identity_or_duplicating_types() {
     let defaults = Symbols::with_default_types();
     for loaded in [&symbols, &unmapped] {
         for id in ids {
-            assert_eq!(interner.get(id.as_str()), Some(id));
+            assert_eq!(interner.get(&id.as_str()), Some(id));
             assert_eq!(
                 loaded
                     .types()

@@ -185,7 +185,10 @@ mod tests {
                 Some((operation.intrinsic, true)),
             );
             assert_eq!(member_intrinsic(predef::INT32, operation.name), None);
-            assert_eq!(member_intrinsic(predef::ARRAY1, operation.name), None);
+            assert_eq!(
+                member_intrinsic(TypeId::static_array(1), operation.name),
+                None
+            );
         }
         for unsupported in [
             "size",

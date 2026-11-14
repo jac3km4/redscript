@@ -43,9 +43,9 @@ fn invalid_override_signatures_and_base_candidates_do_not_generate_adapter_casca
 
 #[test]
 fn invalid_generic_arity_does_not_validate_override_or_body_contracts() {
-    // The native grammar requires arguments on array<T>, but accepts the
-    // predefined static-array type name without its required type argument.
-    for (base_return, child_return) in [("array1", "Int32"), ("Int32", "array1")] {
+    use redscript_compiler_frontend::{CtxVar, TypeDef, TypeSchema, Variance};
+
+    for (base_return, child_return) in [("GenericType", "Int32"), ("Int32", "GenericType")] {
         let source = format!(
             "class Base {{ public function Test() -> {base_return} {{ return 1; }} }} class Child extends Base {{ public override function Test() -> {child_return} {{ return 1; }} }}"
         );
@@ -54,20 +54,23 @@ fn invalid_generic_arity_does_not_validate_override_or_body_contracts() {
         let (module, errors) = parse_file_with_metadata(&source, file);
         assert!(errors.is_empty(), "{errors:?}");
         let interner = TypeInterner::default();
-        let mut reporter = CompileErrorReporter::default();
-        let (_, _, errors) = process_sources(
-            module,
-            [],
-            Symbols::with_default_types(),
-            &mut reporter,
-            &interner,
+        let mut symbols = Symbols::with_default_types();
+        symbols.add_type(
+            interner.intern("GenericType"),
+            TypeDef::new(
+                [CtxVar::new("T", Variance::Invariant, None, None).into()],
+                TypeSchema::Primitive,
+                [],
+            ),
         );
+        let mut reporter = CompileErrorReporter::default();
+        let (_, _, errors) = process_sources(module, [], symbols, &mut reporter, &interner);
         assert!(errors.is_empty(), "{errors:?}");
         assert_eq!(reporter.reported().len(), 1, "{:?}", reporter.reported());
         assert!(
             reporter.reported()[0]
                 .to_string()
-                .contains("type `array1` expects 1 type argument, but found 0")
+                .contains("type `GenericType` expects 1 type argument, but found 0")
         );
     }
 }

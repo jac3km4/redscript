@@ -152,8 +152,12 @@ fn static_array_lengths_and_element_types() {
           let numbers: [Int32; 10];
           let flags: [Bool; 10];
           let regular: [Int32; 16];
+          let seventeen: [Int32; 17];
+          let custom: [Int32; 255];
           let large: [Int32; 4096];
-          let nested: [[Bool; 2]; 3];
+          let wide: [Int32; 100000];
+          let nested: [[Bool; 17]; 23];
+          seventeen[0] = 42;
         }
         "#,
     );
@@ -164,15 +168,30 @@ fn static_array_lengths_and_element_types() {
         ("numbers", 10, "Int32"),
         ("flags", 10, "Bool"),
         ("regular", 16, "Int32"),
+        ("seventeen", 17, "Int32"),
+        ("custom", 255, "Int32"),
         ("large", 4096, "Int32"),
+        ("wide", 100_000, "Int32"),
     ] {
         let element = assert_static_array(&bundle, local_type(&bundle, name), expected_size);
         assert_eq!(&bundle[bundle[element].name()], expected_element, "{name}");
     }
 
-    let inner = assert_static_array(&bundle, local_type(&bundle, "nested"), 3);
-    let element = assert_static_array(&bundle, inner, 2);
+    let inner = assert_static_array(&bundle, local_type(&bundle, "nested"), 23);
+    let element = assert_static_array(&bundle, inner, 17);
     assert_eq!(&bundle[bundle[element].name()], "Bool");
+
+    let bytes = bundle.into_writeable().to_bytes().unwrap();
+    let reloaded = ScriptBundle::from_bytes(&bytes).unwrap();
+    let interner = TypeInterner::default();
+    let symbols =
+        CompilationInputs::load_without_mapping(&reloaded, &interner, &TypeFlagRegistry::default())
+            .unwrap();
+    let arrays_fn = symbols
+        .free_functions()
+        .find(|entry| entry.name().to_string() == "Arrays")
+        .unwrap();
+    assert!(arrays_fn.func().type_().is_valid());
 }
 
 #[test]

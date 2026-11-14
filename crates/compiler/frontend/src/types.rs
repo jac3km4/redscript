@@ -16,7 +16,7 @@ mod identity;
 pub use identity::{TypeId, TypeIndex, TypeInterner, predef};
 
 pub(super) const MAX_FN_ARITY: usize = 8;
-pub(super) const MAX_STATIC_ARRAY_SIZE: usize = 16;
+pub(super) const MAX_STATIC_ARRAY_SIZE: usize = u32::MAX as usize;
 
 pub type MonoType<'ctx> = TypeApp<'ctx, Mono>;
 

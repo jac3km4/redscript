@@ -430,10 +430,7 @@ impl<'ctx> Monomorphizer<'ctx> {
                         && let Some(size) = id.static_array_size()
                     {
                         let element_type = self.type_(arg, symbols, bundle);
-                        let array_t = PoolTypeKind::StaticArray {
-                            element_type,
-                            size: size.into(),
-                        };
+                        let array_t = PoolTypeKind::StaticArray { element_type, size };
                         define_type(typ, array_t, symbols, bundle)
                     } else {
                         define_class(typ, bundle)
@@ -533,7 +530,7 @@ impl<'ctx> Monomorphizer<'ctx> {
 
             if let Some(default) = expr {
                 let default = MangledConstant::new(default, symbols).to_string();
-                merge_default(&mut bundle[field_idx], id.parent().as_str(), default);
+                merge_default(&mut bundle[field_idx], &id.parent().as_str(), default);
             }
         }
 
@@ -1280,7 +1277,7 @@ mod tests {
         );
         assert_eq!(
             MangledType::new(
-                &MonoType::new(predef::ARRAY1, [MonoType::nullary(predef::UINT8)]),
+                &MonoType::new(TypeId::static_array(1), [MonoType::nullary(predef::UINT8)]),
                 &symbols
             )
             .to_string(),

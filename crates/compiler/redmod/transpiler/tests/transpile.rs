@@ -1067,3 +1067,14 @@ fn embedded_string_quote_is_a_typed_transpile_error() {
     );
     insta::assert_snapshot!(diagnostics[0].to_string());
 }
+
+#[test]
+fn arbitrary_static_array_sizes_transpile_to_native_brackets() {
+    let output = convert(
+        "func Read(out values: [Int32; 17], big: [Bool; 100000]) -> Int32 { return values[0]; }",
+    );
+    assert!(
+        output.contains("out values: Int32[17], big: Bool[100000]"),
+        "{output}"
+    );
+}

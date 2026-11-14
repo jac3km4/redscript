@@ -426,9 +426,7 @@ fn load_type<'ctx, K: TypeKind>(
         PoolTypeKind::Array(inner) => (predef::ARRAY, inner),
         PoolTypeKind::ScriptRef(inner) => (predef::SCRIPT_REF, inner),
         PoolTypeKind::StaticArray { element_type, size } => {
-            let id = TypeId::array_with_size(size as usize)
-                .ok_or(Error::UnsupportedStaticArray(size))?;
-            (id, element_type)
+            (TypeId::static_array(size), element_type)
         }
     };
     let arg = bundle
@@ -528,8 +526,6 @@ pub enum Error {
     UnsupportedEnumSize(u8),
     #[error("missing {0} in the pool at index {1}")]
     MissingPoolItem(&'static str, u32),
-    #[error("unsupported static array with size {0}")]
-    UnsupportedStaticArray(u32),
     #[error("duplicate field name at index {0}")]
     DuplicateField(u32),
 }

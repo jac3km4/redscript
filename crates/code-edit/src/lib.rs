@@ -88,7 +88,7 @@ impl<'ctx> TextEdit<'ctx> {
             CodeEdit::MakeTypePublic(id) => {
                 let def = symbols.get_type(*id).context("type not found")?;
                 let span = def.span().context("type has no source location")?;
-                make_item_public(id.simple_name(), span, sources)
+                make_item_public(&id.simple_name(), span, sources)
             }
         }
     }
@@ -111,7 +111,7 @@ fn fix_struct_new_constructor<'ctx>(
         .strip_prefix("new")
         .context("missing 'new'")?
         .trim_start()
-        .strip_prefix(name)
+        .strip_prefix(&*name)
         .context("missing struct name")?;
 
     let start = span.start as usize;
@@ -121,12 +121,12 @@ fn fix_struct_new_constructor<'ctx>(
         start,
         end,
         expected: source[start..end].into(),
-        content: name.into(),
+        content: name,
     })
 }
 
 fn make_item_public<'ctx>(
-    name: &'ctx str,
+    name: &str,
     name_span: Span,
     sources: &'ctx SourceMap,
 ) -> anyhow::Result<TextEdit<'ctx>> {

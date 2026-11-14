@@ -70,7 +70,7 @@ fn generate_edits<'ctx>(
                     Some(CodeEdit::FixStructNewConstructor(type_id, span))
                 }
                 LowerError::UnresolvedVar(name, _) | LowerError::UnresolvedType(name, _) => {
-                    if let Some(&id) = enum_map.get(name) {
+                    if let Some(&id) = enum_map.get(*name) {
                         Some(CodeEdit::MakeTypePublic(id))
                     } else {
                         None

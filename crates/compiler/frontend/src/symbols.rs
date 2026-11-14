@@ -72,17 +72,6 @@ impl<'ctx> Symbols<'ctx> {
             type<T: Invariant> Array;
         };
 
-        for ty in predef::STATIC_ARRAY_TYPES {
-            types.insert(
-                *ty,
-                TypeDef::new(
-                    [CtxVar::new("T", Variance::Invariant, None, None).into()],
-                    TypeSchema::Primitive,
-                    [],
-                ),
-            );
-        }
-
         types.insert(
             predef::ISCRIPTABLE,
             TypeDef::new(
@@ -100,14 +89,20 @@ impl<'ctx> Symbols<'ctx> {
 
     #[inline]
     pub fn get_type(&self, id: TypeId<'ctx>) -> Option<&TypeDef<'ctx>> {
-        self.types.get(&id)
+        self.types.get(if id.is_static_array() {
+            &predef::ARRAY
+        } else {
+            &id
+        })
     }
 
     pub fn add_type(&mut self, id: TypeId<'ctx>, def: TypeDef<'ctx>) {
+        debug_assert!(!id.is_static_array(), "static array types are built-in");
         self.types.insert(id, def);
     }
 
     pub fn add_type_if_none(&mut self, id: TypeId<'ctx>, def: TypeDef<'ctx>) {
+        debug_assert!(!id.is_static_array(), "static array types are built-in");
         self.types.entry(id).or_insert(def);
     }
 
@@ -444,7 +439,7 @@ impl<'ctx> ops::Index<TypeId<'ctx>> for Symbols<'ctx> {
 
     #[inline]
     fn index(&self, index: TypeId<'ctx>) -> &Self::Output {
-        self.types.get(&index).expect("type id not found")
+        self.get_type(index).expect("type id not found")
     }
 }
 

@@ -357,7 +357,7 @@ pub enum TypeError<'ctx> {
 }
 
 #[derive(Debug, Clone, Error)]
-#[error("{visibility} member `{name}` of `{}` is not accessible here", .id.as_ref().as_str())]
+#[error("{visibility} member `{name}` of `{}` is not accessible here", .id.as_ref())]
 pub struct InaccessibleMember<'ctx, K: AsRef<TypeId<'ctx>>> {
     id: K,
     visibility: Visibility,

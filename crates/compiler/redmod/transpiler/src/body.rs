@@ -520,7 +520,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             })?;
             return Ok(format!(
                 "{}.{}",
-                target::ident(id.simple_name())?,
+                target::ident(&id.simple_name())?,
                 target::ident(name)?
             ));
         }
@@ -1378,7 +1378,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 }
                 Ok(format!(
                     "{}.{}({})",
-                    target::ident(parent_id.simple_name())?,
+                    target::ident(&parent_id.simple_name())?,
                     target::ident(name)?,
                     self.call_args(def.type_(), args, call, def.flags().is_native())?
                 ))
@@ -1782,7 +1782,7 @@ pub(crate) fn constant<'ctx>(c: &ir::Const<'ctx>, symbols: &Symbols<'ctx>) -> Re
                 .ok_or_else(|| error("missing resolved enum variant", None))?;
             Ok(format!(
                 "{}.{}",
-                target::ident(id.parent().simple_name())?,
+                target::ident(&id.parent().simple_name())?,
                 target::ident(name)?
             ))
         }

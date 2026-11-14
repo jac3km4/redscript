@@ -1117,7 +1117,9 @@ impl<'scope, 'ctx> Scope<'scope, 'ctx> {
     pub fn new(symbols: &Symbols<'ctx>) -> Self {
         let mut types = TypeEnv::with_default_types();
         for (id, _) in symbols.types() {
-            types.add(id.as_str(), TypeRef::Id(id));
+            if let Some(name) = id.as_name() {
+                types.add(name, TypeRef::Id(id));
+            }
         }
 
         let mut funcs = IndexMap::<&str, FreeFunctionIndexes>::default();

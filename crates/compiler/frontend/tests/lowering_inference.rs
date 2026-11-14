@@ -127,10 +127,6 @@ fn local_type_diagnostics_include_actual_counts() {
             "invalid number of type arguments: expected 1, found 2",
         ),
         (
-            "func Test() { let value: [Int32; 17]; }",
-            "static array length 17 exceeds the maximum supported length of 16",
-        ),
-        (
             "func Test() { let value: (Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32) -> Void; }",
             "too many function parameters or arguments: found 9, maximum is 8",
         ),
@@ -592,4 +588,97 @@ fn block_lambdas_infer_return_types_after_lowering_the_body() {
         assert!(typ.id().is_fn());
         assert_eq!(typ.args().last(), Some(&Type::nullary(expected)), "{name}");
     }
+}
+
+#[test]
+fn arbitrary_static_array_sizes_preserve_size_invariance_and_bounds() {
+    let sources = SourceMap::new();
+    sources.push_back(
+        "arbitrary-static-arrays.reds",
+        r#"
+        class Animal {}
+        class Dog extends Animal {}
+        func Identity<T>(value: T) -> T { return value; }
+        func Accept17(arr: [Int32; 17]) -> Int32 { return arr[0]; }
+        func AcceptLarge(arr: [Bool; 100000]) -> Bool { return arr[99999]; }
+        func Valid(a: [Int32; 17], b: [Bool; 100000]) {
+          let copy: [Int32; 17] = Identity(a);
+          let elem: Int32 = Accept17(copy);
+          let flag: Bool = AcceptLarge(b);
+          let huge: [Int32; 2147483647];
+        }
+        func MismatchSize(arr: [Int32; 18]) -> Int32 { return Accept17(arr); }
+        func InvariantElem(arr: [Dog; 17]) -> [Animal; 17] { return arr; }
+        func LegacyAliasNotExposed(arr: array17<Int32>) {}
+        "#,
+    );
+    let interner = TypeInterner::default();
+    let (_, _, diagnostics) = infer(&sources, &interner);
+    let codes = diagnostics
+        .iter()
+        .map(redscript_compiler_frontend::Diagnostic::code)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        codes,
+        ["UNRESOLVED_TYPE", "TYPE_ERR", "TYPE_ERR"],
+        "{diagnostics:?}"
+    );
+}
+
+#[cfg(target_pointer_width = "64")]
+#[test]
+fn static_array_sizes_above_u32_max_are_rejected() {
+    use redscript_community_ast::{Item, ItemQualifiers, SourceModule, Span};
+    use redscript_compiler_frontend::{Evaluator, ast, process_sources};
+
+    let sources = SourceMap::new();
+    let file = sources.push_back("overflow.reds", "");
+    let span = Span::new(0, 0, file);
+    let func = ast::Function::new(
+        ("Test", span),
+        [],
+        [(
+            ast::Param {
+                name: "arr",
+                typ: Some((
+                    ast::Type::StaticArray(
+                        Box::new((ast::Type::plain("Int32"), span)),
+                        u32::MAX as usize + 1,
+                    ),
+                    span,
+                )),
+                qualifiers: ast::ParamQualifiers::empty(),
+            },
+            span,
+        )],
+        None,
+        None,
+    );
+    let module = SourceModule::new(
+        None,
+        [(
+            ast::ItemDecl::new([], None, ItemQualifiers::NATIVE, [], Item::Function(func)),
+            span,
+        )],
+    );
+    let interner = TypeInterner::default();
+    let evaluator = Evaluator::from_modules([&module]);
+    let mut reporter = CompileErrorReporter::default();
+    process_sources(
+        [module],
+        Symbols::with_default_types(),
+        evaluator,
+        &mut reporter,
+        &interner,
+    );
+    let diagnostics = reporter.into_reported();
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics[0].code(), "UNSUPPORTED_ARRAY_SIZE");
+    assert!(
+        diagnostics[0]
+            .to_string()
+            .contains(&format!("maximum supported length of {}", u32::MAX)),
+        "{}",
+        diagnostics[0]
+    );
 }
