@@ -390,8 +390,9 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
     ) -> LowerResult<'ctx, ()> {
         if param.flags().is_out() {
             if env.types().policy(span).script_ref_write_through
-                && rhs.ref_type(self.symbols) != Some(RefType::Script)
-                && let Some((RefType::Script, pointee)) = lhs.strip_ref(self.symbols)
+                && !rhs.ref_type(self.symbols).is_some_and(RefType::is_script)
+                && let Some((rt, pointee)) = lhs.strip_ref(self.symbols)
+                && rt.is_script()
             {
                 self.emit_reference_conversion(expr, lhs, ir::Intrinsic::Deref, env, span)?;
                 lhs = pointee;
@@ -501,7 +502,9 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             array_guard::check_runtime_callee(args, *expr_span),
         );
         let (mut ir, mut typ) = self.lower_expr(receiver, env)?;
-        if let Some((RefType::Script, pointee)) = typ.strip_ref(self.symbols) {
+        if let Some((rt, pointee)) = typ.strip_ref(self.symbols)
+            && rt.is_script()
+        {
             self.emit_reference_conversion(&mut ir, typ, ir::Intrinsic::Deref, env, *expr_span)?;
             typ = pointee;
         }
@@ -723,27 +726,61 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             let return_t =
                 PolyType::from_type_with_env(primary.func().type_().return_type(), &type_env)
                     .map_err(|var| Error::UnresolvedVar(var, span))?;
-            if let Some(hint) = type_hint {
+            let skip_hint = primary.func().intrinsic() == Some(ir::Intrinsic::Deref)
+                || (primary.func().intrinsic() == Some(ir::Intrinsic::AsRef)
+                    && args.clone().all(|(expr, _)| {
+                        !matches!(
+                            expr,
+                            ast::Expr::Constant(_)
+                                | ast::Expr::Null
+                                | ast::Expr::ArrayLit(_)
+                                | ast::Expr::Lambda { .. }
+                                | ast::Expr::Conditional { .. }
+                                | ast::Expr::UnOp {
+                                    op: ast::UnOp::Neg,
+                                    ..
+                                }
+                        )
+                    }));
+            if !skip_hint && let Some(hint) = type_hint {
                 return_t.constrain_base(hint, self.symbols).ok();
             }
 
             let mut checked_args = Vec::with_capacity(args.len());
+            let mut mono_arg = skip_hint;
             for arg in args.zip(primary.func().type_().params()) {
                 let (arg @ (_, span), param) = arg;
                 if crate::arguments::is_absent(&arg.0) {
                     checked_args.push(ir::Expr::Nop(*span));
+                    mono_arg = false;
                     continue;
                 }
                 let expected = PolyType::from_type_with_env(param.type_(), &type_env)
                     .map_err(|var| Error::UnresolvedVar(var, *span))?;
                 let res = self.lower_expr_with(arg, Some(&expected), env);
                 let Some((mut expr, typ)) = self.reporter.unwrap_err(res) else {
+                    mono_arg = false;
                     continue;
                 };
+                mono_arg &= matches!(
+                    if primary.func().intrinsic() == Some(ir::Intrinsic::Deref) {
+                        typ.unwrap_ref(self.symbols)
+                    } else {
+                        Some(typ.clone())
+                    },
+                    Some(PolyType::Mono(_))
+                );
                 let res = self.lower_arg(&mut expr, typ.clone(), expected, param, env, *span);
                 self.reporter.unwrap_err(res);
                 checked_args.push(expr);
             }
+            let return_t = if mono_arg
+                && let Ok(coalesced) = return_t.coalesce(self.symbols)
+            {
+                PolyType::from_type(&coalesced)
+            } else {
+                return_t
+            };
 
             let type_args = type_env
                 .pop_scope()
@@ -976,16 +1013,43 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             validate(&lhs, &rhs, self.symbols, span)?;
         }
         match (lhs.strip_ref(self.symbols), rhs.strip_ref(self.symbols)) {
-            (Some((RefType::Script, pointee)), target)
-                if !matches!(target, Some((RefType::Script, _))) =>
+            (Some((from, pointee)), target)
+                if from.is_script() && !target.as_ref().is_some_and(|(to, _)| to.is_script()) =>
             {
                 self.emit_reference_conversion(expr, lhs, ir::Intrinsic::Deref, env, span)?;
                 return self.coerce_with_provider(expr, pointee, rhs, env, span, allow_provider);
             }
-            (source, Some((RefType::Script, pointee)))
-                if !matches!(source, Some((RefType::Script, _))) =>
+            (source, Some((to, pointee)))
+                if to.is_script() && !source.as_ref().is_some_and(|(from, _)| from.is_script()) =>
             {
-                self.coerce_with_provider(expr, lhs, pointee.clone(), env, span, allow_provider)?;
+                if to == RefType::ConstScript
+                    && matches!(&lhs, PolyType::Mono(typ) if !matches!(typ, Type::Nothing))
+                    && lhs.satisfies_bound(&pointee, self.symbols)
+                {
+                    Type::app(predef::CONST_SCRIPT_REF, [lhs.clone()])
+                        .into_poly()
+                        .constrain_base(&rhs, self.symbols)
+                        .with_span(span)?;
+                    return self.emit_reference_conversion(
+                        expr,
+                        lhs,
+                        ir::Intrinsic::AsRef,
+                        env,
+                        span,
+                    );
+                }
+                self.coerce_with_provider(
+                    expr,
+                    lhs.clone(),
+                    pointee.clone(),
+                    env,
+                    span,
+                    allow_provider,
+                )?;
+                if to == RefType::Script && !expr.is_prvalue(self.symbols) {
+                    lhs.constrain_invariant(&pointee, self.symbols)
+                        .with_span(span)?;
+                }
                 return self.emit_reference_conversion(
                     expr,
                     pointee,
@@ -1018,8 +1082,12 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         let name = match coercion {
             Some(Coercion::FromRef(RefType::Weak)) => ir::Intrinsic::WeakRefToRef,
             Some(Coercion::IntoRef(RefType::Weak)) => ir::Intrinsic::RefToWeakRef,
-            Some(Coercion::FromRef(RefType::Script)) => ir::Intrinsic::Deref,
-            Some(Coercion::IntoRef(RefType::Script)) => ir::Intrinsic::AsRef,
+            Some(Coercion::FromRef(RefType::Script | RefType::ConstScript)) => {
+                ir::Intrinsic::Deref
+            }
+            Some(Coercion::IntoRef(RefType::Script | RefType::ConstScript)) => {
+                ir::Intrinsic::AsRef
+            }
             Some(Coercion::IntoVariant) => ir::Intrinsic::ToVariant,
             Some(Coercion::FromRef(RefType::Strong)) => {
                 if rhs
@@ -1374,16 +1442,55 @@ pub(super) fn accepts_typed_args<'a, 'ctx: 'a>(
                 {
                     true
                 } else {
-                    let variance = if param.flags().is_out() {
-                        Variance::Invariant
-                    } else {
-                        Variance::Covariant
-                    };
-                    arg.unwrap_ref_or_self(symbols).is_subtype_compatible(
-                        param.type_().unwrap_ref_or_self(),
-                        variance,
-                        symbols,
-                    )
+                    let arg_ref = arg.ref_type(symbols);
+                    let param_ref = param.type_().ref_type();
+                    match (arg_ref, param_ref) {
+                        (Some(from), Some(to)) if from.is_script() && to.is_script() => {
+                            let variance = if param.flags().is_out() {
+                                Variance::Invariant
+                            } else {
+                                Variance::Covariant
+                            };
+                            (!param.flags().is_out() || from == to)
+                                && arg.is_subtype_compatible(param.type_(), variance, symbols)
+                        }
+                        (_, Some(to)) if to.is_script() => {
+                            let param_inner = param.type_().unwrap_ref_or_self();
+                            let same_inner_ref = arg_ref == param_inner.ref_type();
+                            let variance = if param.flags().is_out()
+                                || (to == RefType::Script
+                                    && same_inner_ref
+                                    && !expr.is_prvalue(symbols))
+                            {
+                                Variance::Invariant
+                            } else {
+                                Variance::Covariant
+                            };
+                            arg.unwrap_ref_or_self(symbols).is_subtype_compatible(
+                                param_inner.unwrap_ref_or_self(),
+                                variance,
+                                symbols,
+                            ) && (to != RefType::ConstScript
+                                || !same_inner_ref
+                                || types::compatible_script_ref_pointee_repr(
+                                    arg,
+                                    &PolyType::from_type(param_inner),
+                                    symbols,
+                                ))
+                        }
+                        _ => {
+                            let variance = if param.flags().is_out() {
+                                Variance::Invariant
+                            } else {
+                                Variance::Covariant
+                            };
+                            arg.unwrap_ref_or_self(symbols).is_subtype_compatible(
+                                param.type_().unwrap_ref_or_self(),
+                                variance,
+                                symbols,
+                            )
+                        }
+                    }
                 }
             })
 }

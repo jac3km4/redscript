@@ -227,7 +227,7 @@ public func VariantTypeName(variant: Variant) -> String
 public func AsRef<A>(a: A) -> script_ref<A>
 
 @intrinsic(Deref)
-public func Deref<A>(a: script_ref<A>) -> A
+public func Deref<A>(a: const_script_ref<A>) -> A
 
 @intrinsic(RefToWeakRef)
 public func RefToWeakRef<A extends IScriptable>(weak: A) -> wref<A>

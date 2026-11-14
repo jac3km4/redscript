@@ -78,14 +78,14 @@ impl<'ctx> InferredTypeApp<'ctx> {
         self,
         symbols: &Symbols<'ctx>,
     ) -> Option<InferredTypeApp<'ctx>> {
-        let class = &symbols[self.id()];
+        let class = symbols.get_type(self.id())?;
         let args = self
             .args()
             .iter()
             .cloned()
             .chain(iter::repeat_with(PolyType::fresh));
         let env = class.vars().zip(args).collect();
-        TypeApp::from_type_with_env(Mode::base(class.schema().as_aggregate()?)?, &env).ok()
+        TypeApp::from_type_with_env(Mode::base(class)?, &env).ok()
     }
 
     pub fn base_type_env<'scope, 'sym, Mode: BaseMode>(
@@ -258,6 +258,12 @@ impl<'ctx> InferredType<'ctx> {
                     .zip(l0.args().iter().zip(r0.args()))
                 {
                     let res = match v.variance() {
+                        Variance::Covariant if r0.id() == predef::CONST_SCRIPT_REF => {
+                            if !compatible_script_ref_pointee_repr(l, r, symbols) {
+                                return Err(TypeError::Mismatch(self.clone(), other.clone()));
+                            }
+                            l.constrain::<AnyBaseType>(r, symbols)
+                        }
                         Variance::Covariant => l.constrain::<AnySupertype>(r, symbols),
                         Variance::Contravariant => r.constrain::<AnySupertype>(l, symbols),
                         Variance::Invariant => l.constrain_invariant(r, symbols),
@@ -316,7 +322,30 @@ impl<'ctx> InferredType<'ctx> {
                 .iter()
                 .zip(rhs.args())
                 .zip(symbols[rhs.id()].params())
-                .all(|((l, r), t)| l.is_subtype_compatible(r, variance * t.variance(), symbols)),
+                .all(|((l, r), t)| {
+                    (rhs.id() != predef::CONST_SCRIPT_REF
+                        || compatible_script_ref_pointee_repr(l, &PolyType::from_type(r), symbols))
+                        && l.is_subtype_compatible(r, variance * t.variance(), symbols)
+                }),
+            (Self::Data(lhs), Type::Data(rhs))
+                if variance == Variance::Covariant && !rhs.args().is_empty() =>
+            {
+                lhs.clone()
+                    .instantiate_as::<AnyBaseType>(rhs.id(), symbols)
+                    .is_some_and(|lhs| {
+                        Self::Data(lhs).is_subtype_compatible(other, variance, symbols)
+                    })
+            }
+            (Self::Data(lhs), Type::Data(rhs))
+                if variance == Variance::Contravariant && !lhs.args().is_empty() =>
+            {
+                InferredTypeApp::from_type(rhs)
+                    .instantiate_as::<AnyBaseType>(lhs.id(), symbols)
+                    .and_then(|rhs| rhs.coalesce(symbols).ok())
+                    .is_some_and(|rhs| {
+                        self.is_subtype_compatible(&Type::Data(rhs), variance, symbols)
+                    })
+            }
             (Self::Data(lhs), Type::Data(rhs)) => check(lhs.id(), rhs.id(), variance, symbols),
             (Self::Ctx(lhs), Type::Data(rhs)) => lhs
                 .upper()
@@ -470,7 +499,11 @@ impl<'ctx> PolyType<'ctx> {
         }
     }
 
-    fn constrain_invariant(&self, other: &Self, symbols: &Symbols<'ctx>) -> InferResult<'ctx, ()> {
+    pub(super) fn constrain_invariant(
+        &self,
+        other: &Self,
+        symbols: &Symbols<'ctx>,
+    ) -> InferResult<'ctx, ()> {
         match (self, other) {
             (Self::Mono(l), Self::Mono(r)) => l.constrain_invariant(r, symbols),
             (Self::Mono(l), Self::Var(r)) => r.select(l, symbols),
@@ -527,6 +560,10 @@ impl<'ctx> PolyType<'ctx> {
                         .zip(rhs.args())
                         .zip(params)
                         .all(|((l, r), param)| match param.variance() {
+                            Variance::Covariant if rhs.id() == predef::CONST_SCRIPT_REF => {
+                                compatible_script_ref_pointee_repr(l, r, symbols)
+                                    && l.proves_subtype::<AnyBaseType>(r, symbols)
+                            }
                             Variance::Covariant => l.proves_subtype::<AnySupertype>(r, symbols),
                             Variance::Contravariant => r.proves_subtype::<AnySupertype>(l, symbols),
                             Variance::Invariant => {
@@ -550,7 +587,13 @@ impl<'ctx> PolyType<'ctx> {
                 Ok(Some(Coercion::FromRef(from)))
             }
             (None, Some((to, pointee))) => {
-                self.constrain::<AnyBaseType>(&pointee, symbols)?;
+                if to == RefType::ConstScript {
+                    Type::app(predef::CONST_SCRIPT_REF, [self.clone()])
+                        .into_poly()
+                        .constrain::<AnyBaseType>(other, symbols)?;
+                } else {
+                    self.constrain::<AnyBaseType>(&pointee, symbols)?;
+                }
                 Ok(Some(Coercion::IntoRef(to)))
             }
             _ if matches!(other.upper_bound(symbols), Some(app) if app.id() == predef::VARIANT)
@@ -1052,6 +1095,20 @@ pub enum Coercion {
     FromRef(RefType),
     IntoRef(RefType),
     IntoVariant,
+}
+
+pub(super) fn compatible_script_ref_pointee_repr<'ctx>(
+    lhs: &PolyType<'ctx>,
+    rhs: &PolyType<'ctx>,
+    symbols: &Symbols<'ctx>,
+) -> bool {
+    match (lhs.upper_bound(symbols), rhs.upper_bound(symbols)) {
+        (Some(l), Some(r)) => {
+            symbols.is_bare_mixed_or_never_ref(&Type::Data(l.into_owned()))
+                == symbols.is_bare_mixed_or_never_ref(&Type::Data(r.into_owned()))
+        }
+        _ => true,
+    }
 }
 
 #[cfg(test)]

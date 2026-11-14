@@ -138,6 +138,8 @@ pub enum Diagnostic<'ctx> {
     ConstParameterWrite(Span),
     #[error("cannot write through a const local")]
     ConstLocalWrite(Span),
+    #[error("cannot write through a const_script_ref")]
+    ConstRefWrite(Span),
     #[error("forwarding a const {root} to a {target} may allow mutation")]
     ConstForwarding {
         root: &'static str,
@@ -234,6 +236,7 @@ impl<'ctx> Diagnostic<'ctx> {
             | Self::OverrideReturnTypeMismatch { span, .. }
             | Self::ConstParameterWrite(span)
             | Self::ConstLocalWrite(span)
+            | Self::ConstRefWrite(span)
             | Self::ConstForwarding { span, .. }
             | Self::Custom(_, _, _, span) => *span,
         }
@@ -290,6 +293,7 @@ impl<'ctx> Diagnostic<'ctx> {
             Self::OverrideReturnTypeMismatch { .. } => "OVERRIDE_RETURN_TYPE_MISMATCH",
             Self::ConstParameterWrite(_) => "CONST_PARAMETER_WRITE",
             Self::ConstLocalWrite(_) => "CONST_LOCAL_WRITE",
+            Self::ConstRefWrite(_) => "CONST_REF_WRITE",
             Self::ConstForwarding { .. } => "CONST_FORWARDING",
             Self::Custom(_, code, _, _) => code,
         }

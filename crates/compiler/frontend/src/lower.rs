@@ -425,10 +425,9 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         if scrutinee_t
             .upper_bound(self.symbols)
             .is_some_and(|app| app.id() == predef::VARIANT)
-            || matches!(
-                scrutinee_t.strip_ref(self.symbols),
-                Some((RefType::Script, _))
-            )
+            || scrutinee_t
+                .ref_type(self.symbols)
+                .is_some_and(RefType::is_script)
         {
             expr_t
                 .constrain_base(scrutinee_t, self.symbols)
@@ -1278,7 +1277,9 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         let elem_t = PolyType::fresh();
 
         let (mut expr, mut expr_t) = self.lower_expr(expr, env)?;
-        if let Some((RefType::Script, pointee)) = expr_t.strip_ref(self.symbols) {
+        if let Some((rt, pointee)) = expr_t.strip_ref(self.symbols)
+            && rt.is_script()
+        {
             self.coerce(&mut expr, expr_t, pointee.clone(), env, *expr_span)?;
             expr_t = pointee;
         }
@@ -1492,7 +1493,9 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         };
 
         let (mut ir, mut typ) = self.lower_expr(receiver, env)?;
-        if let Some((RefType::Script, pointee)) = typ.strip_ref(self.symbols) {
+        if let Some((rt, pointee)) = typ.strip_ref(self.symbols)
+            && rt.is_script()
+        {
             self.coerce(&mut ir, typ, pointee.clone(), env, receiver_span)?;
             typ = pointee;
         }

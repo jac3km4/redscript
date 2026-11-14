@@ -416,7 +416,7 @@ impl<'ctx> Monomorphizer<'ctx> {
                     let class = define_class(arg, bundle);
                     define_type(typ, PoolTypeKind::WeakRef(class), symbols, bundle)
                 }
-                (id, [arg]) if id == predef::SCRIPT_REF => {
+                (id, [arg]) if id == predef::SCRIPT_REF || id == predef::CONST_SCRIPT_REF => {
                     let arg = self.type_(arg, symbols, bundle);
                     define_type(typ, PoolTypeKind::ScriptRef(arg), symbols, bundle)
                 }
@@ -1077,6 +1077,14 @@ impl fmt::Display for MangledType<'_, '_> {
                 }
                 (id, _, [arg]) if id == predef::REF || id == predef::WREF => {
                     write!(f, "{id}:{arg}")
+                }
+                (id, _, [arg]) if id == predef::CONST_SCRIPT_REF => {
+                    write!(
+                        f,
+                        "{}:{}",
+                        predef::SCRIPT_REF,
+                        MangledType::new(arg, self.symbols)
+                    )
                 }
                 (id, _, [arg]) => write!(f, "{id}:{}", MangledType::new(arg, self.symbols)),
                 (id, _, _) => write!(f, "{id}"),

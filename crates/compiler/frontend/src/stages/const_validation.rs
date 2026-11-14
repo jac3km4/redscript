@@ -4,8 +4,8 @@ use redscript_community_ast::Span;
 
 use crate::ir::Visitor;
 use crate::{
-    CompileErrorReporter, Diagnostic, LoweredCompilationUnit, MethodId, Param, SemanticPolicy,
-    Symbols, Type, ir, predef,
+    CompileErrorReporter, Diagnostic, FunctionType, LoweredCompilationUnit, LoweredFunction,
+    MethodId, RefType, SemanticPolicy, Symbols, Type, ir, predef,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -20,11 +20,13 @@ enum ConstRoot {
     Parameter,
     Local { rebindable: bool },
     ParameterAndLocal,
+    ConstRef,
 }
 
 impl ConstRoot {
     fn merge(self, other: Self) -> Self {
         match (self, other) {
+            (Self::ConstRef, _) | (_, Self::ConstRef) => Self::ConstRef,
             (Self::Parameter, Self::Parameter) => Self::Parameter,
             (Self::Local { rebindable: a }, Self::Local { rebindable: b }) => {
                 Self::Local { rebindable: a && b }
@@ -40,8 +42,9 @@ pub(super) fn validate<'policy, 'ctx>(
     policy: impl Fn(Span) -> &'policy SemanticPolicy,
     reporter: &mut CompileErrorReporter<'ctx>,
 ) {
-    let mut check = |function: &crate::LoweredFunction<'ctx>, params: &[Param<'ctx>]| {
-        let mut readonly: HashMap<_, _> = params
+    let mut check = |function: &LoweredFunction<'ctx>, func_t: &FunctionType<'ctx>| {
+        let mut readonly: HashMap<_, _> = func_t
+            .params()
             .iter()
             .enumerate()
             .filter_map(|(i, p)| {
@@ -58,6 +61,8 @@ pub(super) fn validate<'policy, 'ctx>(
         );
         ConstWrites {
             symbols,
+            function,
+            return_type: func_t.return_type().clone(),
             readonly,
             captures: HashMap::new(),
             initializers: declaration_initializers(&function.locals),
@@ -67,14 +72,11 @@ pub(super) fn validate<'policy, 'ctx>(
         .visit_block(&function.block);
     };
     for (id, function) in &unit.functions {
-        check(function, symbols[*id].type_().params());
+        check(function, symbols[*id].type_());
     }
     for (id, class) in &unit.classes {
         for (method, function) in &class.methods {
-            check(
-                function,
-                symbols[MethodId::new(*id, *method)].type_().params(),
-            );
+            check(function, symbols[MethodId::new(*id, *method)].type_());
         }
     }
     for (id, function) in unit
@@ -88,7 +90,7 @@ pub(super) fn validate<'policy, 'ctx>(
                 .flat_map(|(id, fs)| fs.iter().map(move |f| (id, f))),
         )
     {
-        check(function, symbols[*id].type_().params());
+        check(function, symbols[*id].type_());
     }
 }
 
@@ -129,6 +131,8 @@ fn declaration_initializers(locals: &[ir::LocalInfo<'_>]) -> HashMap<ir::Local, 
 
 struct ConstWrites<'a, 'ctx> {
     symbols: &'a Symbols<'ctx>,
+    function: &'a LoweredFunction<'ctx>,
+    return_type: Type<'ctx>,
     readonly: HashMap<ir::Local, ConstRoot>,
     captures: HashMap<ir::Local, ConstRoot>,
     initializers: HashMap<ir::Local, Span>,
@@ -137,6 +141,46 @@ struct ConstWrites<'a, 'ctx> {
 }
 
 impl<'ctx> ConstWrites<'_, 'ctx> {
+    fn expr_ref_type(&self, expr: &ir::Expr<'ctx>) -> Option<RefType> {
+        match expr {
+            ir::Expr::Local(local, _) | ir::Expr::Capture(local, _) => {
+                crate::query::find_local(self.function, *local)?.ref_type(self.symbols)
+            }
+            ir::Expr::NewClosure { .. } => None,
+            ir::Expr::Call { call, .. } => {
+                let ret = match &**call {
+                    ir::Call::FreeFunction { function, .. } => self
+                        .symbols
+                        .get_free_function(*function)?
+                        .1
+                        .type_()
+                        .return_type(),
+                    ir::Call::Instance { method, .. } | ir::Call::Static { method, .. } => {
+                        self.symbols.get_method(*method)?.1.type_().return_type()
+                    }
+                    ir::Call::Closure { closure_type, .. } => {
+                        return closure_type
+                            .last_arg(self.symbols)
+                            .and_then(|typ| typ.ref_type());
+                    }
+                };
+                if matches!(ret, Type::Ctx(_)) {
+                    crate::query::expr_type(expr, self.function, self.symbols)
+                        .ok()
+                        .and_then(|typ| typ.ref_type())
+                } else {
+                    ret.ref_type()
+                }
+            }
+            ir::Expr::Conditional { then, else_, .. } => {
+                self.expr_ref_type(then).or_else(|| self.expr_ref_type(else_))
+            }
+            _ => crate::query::expr_type(expr, self.function, self.symbols)
+                .ok()
+                .and_then(|typ| typ.ref_type()),
+        }
+    }
+
     fn readonly_place(&self, expr: &ir::Expr<'ctx>) -> Option<ConstRoot> {
         match expr {
             ir::Expr::Local(local, _) => self.readonly.get(local).copied(),
@@ -170,6 +214,13 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
                         )
                     ) =>
                 {
+                    if self.symbols[*function].intrinsic() == Some(ir::Intrinsic::Deref)
+                        && args
+                            .first()
+                            .is_some_and(|arg| self.expr_ref_type(arg) == Some(RefType::ConstScript))
+                    {
+                        return Some(ConstRoot::ConstRef);
+                    }
                     args.first().and_then(|arg| self.readonly_place(arg))
                 }
                 _ => None,
@@ -186,12 +237,14 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
                         Diagnostic::ConstParameterWrite(expr.span())
                     }
                     ConstRoot::Local { .. } => Diagnostic::ConstLocalWrite(expr.span()),
+                    ConstRoot::ConstRef => Diagnostic::ConstRefWrite(expr.span()),
                 },
                 ConstViolation::Forwarding | ConstViolation::ClosureForwarding => {
                     let root = match root {
                         ConstRoot::Parameter => "parameter",
                         ConstRoot::Local { .. } => "local",
                         ConstRoot::ParameterAndLocal => "parameter or local",
+                        ConstRoot::ConstRef => "reference",
                     };
                     let target = match violation {
                         ConstViolation::ClosureForwarding => "function value",
@@ -234,7 +287,8 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
     }
 
     fn mutable_type(&self, typ: &Type<'ctx>) -> bool {
-        typ.ref_type().is_some()
+        typ.ref_type()
+            .is_some_and(|rt| rt != RefType::ConstScript)
             || typ.upper_bound().is_some_and(|typ| {
                 typ.id() == predef::ARRAY
                     || self
@@ -267,8 +321,20 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
         {
             self.reject(place, ConstViolation::Write);
         }
+        if self.expr_ref_type(place) == Some(RefType::Script) {
+            self.reject(value, ConstViolation::Write);
+        }
         self.visit_expr(place);
         self.visit_expr(value);
+    }
+
+    fn visit_return(&mut self, expr: Option<&ir::Expr<'ctx>>, _span: Span) {
+        if let Some(value) = expr {
+            if self.return_type.ref_type() == Some(RefType::Script) {
+                self.reject(value, ConstViolation::Write);
+            }
+            self.visit_expr(value);
+        }
     }
 
     fn visit_call(&mut self, call: &ir::Call<'ctx>, _span: Span) {
@@ -305,6 +371,10 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
             for (arg, param) in call.args().iter().zip(params) {
                 if param.flags().is_out() {
                     self.reject_forwarding(arg, ConstViolation::Write);
+                } else if param.type_().ref_type() == Some(RefType::Script)
+                    && matches!(self.readonly_place(arg), Some(ConstRoot::ConstRef))
+                {
+                    self.reject(arg, ConstViolation::Write);
                 } else if (!self.policy.const_param_non_out_forwarding
                     || matches!(
                         self.readonly_place(arg),
@@ -322,10 +392,14 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
         if let ir::Call::Closure {
             closure_type, args, ..
         } = call
-            && let Ok(typ) = closure_type.coalesced(self.symbols)
+            && let Some(arg_types) = closure_type.arg_types(self.symbols)
         {
-            for (arg, typ) in args.iter().zip(typ.args()) {
-                if self.mutable_type(typ)
+            for (arg, typ) in args.iter().zip(&arg_types) {
+                if typ.ref_type() == Some(RefType::Script)
+                    && matches!(self.readonly_place(arg), Some(ConstRoot::ConstRef))
+                {
+                    self.reject(arg, ConstViolation::Write);
+                } else if self.mutable_type(typ)
                     && (!self.policy.const_param_non_out_forwarding
                         || matches!(
                             self.readonly_place(arg),
@@ -376,12 +450,17 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
             self.policy,
         );
         let old_captures = std::mem::replace(&mut self.captures, captures);
+        let old_return_type = std::mem::replace(
+            &mut self.return_type,
+            closure.typ.last_arg(self.symbols).unwrap_or(Type::Nothing),
+        );
         let initializers = std::mem::replace(
             &mut self.initializers,
             declaration_initializers(&closure.locals),
         );
         self.visit_block(&closure.block);
         self.initializers = initializers;
+        self.return_type = old_return_type;
         self.readonly = readonly;
         self.captures = old_captures;
     }

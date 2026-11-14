@@ -187,6 +187,7 @@ impl<'scope, 'ctx> TypeEnv<'scope, 'ctx> {
         map.insert("ref", TypeRef::Id(predef::REF));
         map.insert("wref", TypeRef::Id(predef::WREF));
         map.insert("script_ref", TypeRef::Id(predef::SCRIPT_REF));
+        map.insert("const_script_ref", TypeRef::Id(predef::CONST_SCRIPT_REF));
 
         Self {
             types: ScopedMap::from(map),

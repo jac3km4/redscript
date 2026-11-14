@@ -716,6 +716,24 @@ impl<'ctx> TypeApp<'ctx> {
         *state.borrow_mut() = TypeAppState::Init(typ.clone());
         Ok(typ)
     }
+
+    pub(crate) fn arg_types(&self, symbols: &Symbols<'ctx>) -> Option<Vec<types::Type<'ctx>>> {
+        match &*self.0.borrow() {
+            TypeAppState::Uninit(inferred) => inferred
+                .args()
+                .iter()
+                .map(|arg| arg.coalesce(symbols).ok())
+                .collect(),
+            TypeAppState::Init(t) => Some(t.args().to_vec()),
+        }
+    }
+
+    pub(crate) fn last_arg(&self, symbols: &Symbols<'ctx>) -> Option<types::Type<'ctx>> {
+        match &*self.0.borrow() {
+            TypeAppState::Uninit(inferred) => inferred.args().last()?.coalesce(symbols).ok(),
+            TypeAppState::Init(t) => t.args().last().cloned(),
+        }
+    }
 }
 
 impl<'ctx> From<InferredTypeApp<'ctx>> for TypeApp<'ctx> {

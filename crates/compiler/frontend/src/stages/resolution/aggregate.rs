@@ -15,7 +15,7 @@ use crate::symbols::Visibility;
 use crate::utils::ScopedMap;
 use crate::{
     Aggregate, AggregateFlags, Diagnostic, Field, FieldFlags, FieldMap, FunctionType, Method,
-    MethodFlags, MethodId, MethodMap, QualifiedName, RefType, Type, TypeApp, TypeDef, TypeId,
+    MethodFlags, MethodId, MethodMap, QualifiedName, Type, TypeApp, TypeDef, TypeId,
     TypeSchema, Variance, predef,
 };
 
@@ -422,7 +422,10 @@ pub(super) fn extract_static_forwarder<'ctx>(
         && func_t.type_params().is_empty()
         && let [fst, rem @ ..] = func_t.params()
         && (fst.type_() == &Type::nullary(parent_id)
-            || fst.type_().strip_ref() == Some((RefType::Script, &Type::nullary(parent_id))))
+            || fst
+                .type_()
+                .strip_ref()
+                .is_some_and(|(rt, inner)| rt.is_script() && inner == &Type::nullary(parent_id)))
     {
         let func_t = func_t.clone().with_params(rem);
         let flags = flags.with_is_static(false).with_is_static_forwarder(true);

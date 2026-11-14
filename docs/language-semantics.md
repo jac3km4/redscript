@@ -678,8 +678,10 @@ Symbols retain immediate override predecessors and expose the canonical original
 - REDmod overrides validate against the original slot, allowing bounded sibling
   returns and widening back to the root contract. Official probes distinguish
   this from arbitrary widening against an intermediate declaration.
-- Covariance is restricted to the same strong/weak class-reference representation.
-  Arrays, structs, script references and representation changes remain exact-only.
+- Covariance is restricted to the same strong/weak class-reference representation,
+  or `const_script_ref<T>` overrides when pointees share the same inner
+  representation (including struct inheritance). Arrays, bare structs, mutable
+  script references and representation changes remain exact-only.
 
 Source-visible return types and emitted return metadata remain declaration-specific.
 Native-slot mangling follows the root through scripted overrides. Native policy

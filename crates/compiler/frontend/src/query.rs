@@ -133,7 +133,10 @@ pub fn expr_type<'ctx>(
     Ok(typ.coalesced(symbols)?.into_type())
 }
 
-fn find_local<'ctx>(function: &LoweredFunction<'ctx>, local: ir::Local) -> Option<PolyType<'ctx>> {
+pub(crate) fn find_local<'ctx>(
+    function: &LoweredFunction<'ctx>,
+    local: ir::Local,
+) -> Option<PolyType<'ctx>> {
     if let Some(typ) = function.find_local(local) {
         return Some(typ.clone());
     }

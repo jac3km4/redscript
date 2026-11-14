@@ -105,6 +105,133 @@ fn community_rejects_widening_and_unsupported_return_representations() {
 }
 
 #[test]
+fn const_script_ref_override_covariance_and_rejections() {
+    let sources = SourceMap::new();
+    sources.populate_boot_lib();
+    sources.push_back(
+        "script_ref_slots.reds",
+        "
+        public native struct worldCookedMeshInnerNode {
+            public native let mesh: Int32;
+        }
+        public native struct worldCookedGenericProxyMeshInnerNode extends worldCookedMeshInnerNode {
+            public native let nbNodesUnderProxy: Uint32;
+        }
+        public native class worldCookedMeshNode {
+            public native func GetInnerNode(index: Int32) -> const_script_ref<worldCookedMeshInnerNode>
+        }
+        public native class worldCookedGenericProxyMeshNode extends worldCookedMeshNode {
+            public native func GetInnerNode(index: Int32) -> const_script_ref<worldCookedGenericProxyMeshInnerNode>
+        }
+
+        class Value {}
+        class Sub extends Value {}
+        @neverRef() class NeverBase {}
+        @neverRef() class NeverSub extends NeverBase {}
+
+        class BaseHolder {
+            public func ReadClass() -> const_script_ref<Value> { return null; }
+            public func ReadWeak() -> const_script_ref<wref<Value>> { let w: wref<Value>; return w; }
+            public func ReadNever() -> const_script_ref<NeverBase> { let n: NeverBase; return n; }
+        }
+        class SubHolder extends BaseHolder {
+            public func ReadClass() -> const_script_ref<Sub> { return null; }
+            public func ReadWeak() -> const_script_ref<wref<Sub>> { let w: wref<Sub>; return w; }
+            public func ReadNever() -> const_script_ref<NeverSub> { let n: NeverSub; return n; }
+        }
+        class MutSubHolder extends BaseHolder {
+            public func ReadClass() -> script_ref<Sub> { let s: Sub = new Sub(); return s; }
+        }
+
+        func ReadBaseField(node: ref<worldCookedMeshNode>) -> Int32 {
+            return node.GetInnerNode(0).mesh;
+        }
+        func ReadProxyFields(proxy: ref<worldCookedGenericProxyMeshNode>) -> Uint32 {
+            let base: worldCookedMeshInnerNode = proxy.GetInnerNode(0);
+            let _mesh: Int32 = base.mesh;
+            return proxy.GetInnerNode(0).nbNodesUnderProxy;
+        }
+        ",
+    );
+    let interner = TypeInterner::default();
+    let mut reporter = CompileErrorReporter::default();
+    let modules = parse_files(&sources, &mut reporter);
+    let evaluator = Evaluator::from_modules(&modules);
+    let (_, symbols) = process_sources_with_policy(
+        modules,
+        Symbols::with_default_types(),
+        evaluator,
+        &mut reporter,
+        &interner,
+        &[],
+    );
+    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+    let root = *symbols
+        .query_methods_by_name(interner.intern("worldCookedMeshNode"), "GetInnerNode")
+        .next()
+        .unwrap()
+        .key();
+    let child = symbols
+        .query_methods_by_name(
+            interner.intern("worldCookedGenericProxyMeshNode"),
+            "GetInnerNode",
+        )
+        .next()
+        .unwrap();
+    assert_eq!(symbols.override_slot(*child.key()), root);
+}
+
+#[test]
+fn const_script_ref_rejects_unsound_overrides() {
+    for (base, child) in [
+        ("script_ref<BaseStruct>", "script_ref<SubStruct>"),
+        ("script_ref<BaseStruct>", "const_script_ref<BaseStruct>"),
+        ("const_script_ref<SubStruct>", "const_script_ref<BaseStruct>"),
+        ("BaseStruct", "SubStruct"),
+        ("const_script_ref<[Value]>", "const_script_ref<[Sub]>"),
+        ("const_script_ref<Value>", "const_script_ref<wref<Sub>>"),
+        ("const_script_ref<NeverBase>", "const_script_ref<OrdSub>"),
+    ] {
+        let sources = SourceMap::new();
+        sources.populate_boot_lib();
+        sources.push_back(
+            "invalid_script_ref.reds",
+            format!(
+                "
+            struct BaseStruct {{ let x: Int32; }}
+            struct SubStruct extends BaseStruct {{ let y: Int32; }}
+            class Value {{}} class Sub extends Value {{}}
+            @neverRef() class NeverBase {{}}
+            class OrdSub extends NeverBase {{}}
+            abstract class Base {{ public func Get() -> {base} }}
+            abstract class Child extends Base {{ public func Get() -> {child} }}
+        "
+            ),
+        );
+        let interner = TypeInterner::default();
+        let mut reporter = CompileErrorReporter::default();
+        let modules = parse_files(&sources, &mut reporter);
+        let evaluator = Evaluator::from_modules(&modules);
+        process_sources_with_policy(
+            modules,
+            Symbols::with_default_types(),
+            evaluator,
+            &mut reporter,
+            &interner,
+            &[],
+        );
+        assert!(
+            reporter
+                .reported()
+                .iter()
+                .any(|d| d.code() == "OVERRIDE_RETURN_TYPE_MISMATCH"),
+            "{base} -> {child}: {:?}",
+            reporter.reported()
+        );
+    }
+}
+
+#[test]
 fn override_visibility_and_static_advice_follow_child_and_call_site_policy() {
     for native_child in [false, true] {
         let sources = SourceMap::new();

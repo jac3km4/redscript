@@ -69,8 +69,17 @@ impl<'ctx> Symbols<'ctx> {
             type<T: Covariant> Ref;
             type<T: Covariant> Wref;
             type<T: Invariant> ScriptRef;
+            type<T: Covariant> ConstScriptRef;
             type<T: Invariant> Array;
         };
+
+        if let Some(script_ref) = types.get_mut(&predef::SCRIPT_REF) {
+            let param = script_ref.params()[0].clone();
+            script_ref.primitive_base = Some(TypeApp::new(
+                predef::CONST_SCRIPT_REF,
+                [Type::Ctx(param)],
+            ));
+        }
 
         for ty in predef::STATIC_ARRAY_TYPES {
             types.insert(
@@ -293,23 +302,44 @@ impl<'ctx> Symbols<'ctx> {
         .ok()
     }
 
+    #[inline]
+    pub(crate) fn is_bare_mixed_or_never_ref<K: crate::TypeKind>(
+        &self,
+        typ: &Type<'ctx, K>,
+    ) -> bool {
+        typ.strip_ref().is_none()
+            && typ.upper_bound().is_some_and(|typ| {
+                self.get_type(typ.id())
+                    .and_then(|def| def.schema().as_aggregate())
+                    .is_some_and(|agg| agg.flags().is_mixed_ref() || agg.flags().is_never_ref())
+            })
+    }
+
     /// Covariance is ABI-safe only within the same strong/weak class-reference
-    /// representation. Arrays, structs, script references and representation
-    /// changes require exact equality, not ordinary coercibility.
+    /// representation, or for `const_script_ref<T>` overrides when pointees
+    /// share the same inner representation. Arrays, bare structs, mutable
+    /// script references, and representation changes require exact equality.
     pub fn compatible_override_return(&self, actual: &Type<'ctx>, contract: &Type<'ctx>) -> bool {
         if actual == contract {
             return true;
         }
+        if matches!(
+            actual.strip_ref(),
+            Some((rt, inner)) if rt.is_script() && !matches!(inner, Type::Nothing)
+        ) && matches!(
+            contract.strip_ref(),
+            Some((RefType::ConstScript, inner)) if !matches!(inner, Type::Nothing)
+        ) {
+            return crate::PolyType::from_type(actual)
+                .satisfies_bound(&crate::PolyType::from_type(contract), self);
+        }
+        if actual.ref_type().is_some_and(RefType::is_script)
+            || contract.ref_type().is_some_and(RefType::is_script)
+        {
+            return false;
+        }
         // A bare mixed/never-ref class is not evidence of a strong-reference ABI.
-        if [actual, contract].iter().any(|typ| {
-            typ.strip_ref().is_none()
-                && typ.upper_bound().is_some_and(|typ| {
-                    self[typ.id()]
-                        .schema()
-                        .as_aggregate()
-                        .is_some_and(|agg| agg.flags().is_mixed_ref() || agg.flags().is_never_ref())
-                })
-        }) {
+        if self.is_bare_mixed_or_never_ref(actual) || self.is_bare_mixed_or_never_ref(contract) {
             return false;
         }
         // Ordinary classes erase explicit `ref<T>` in source resolution; mixed
@@ -355,17 +385,17 @@ impl<'ctx> Symbols<'ctx> {
         if lhs == rhs {
             Some(lhs)
         } else {
-            let count_left = self.supertype_iter_with_self(lhs).count();
-            let count_right = self.supertype_iter_with_self(rhs).count();
+            let count_left = self.base_id_iter_with_self::<AnySupertype>(lhs).count();
+            let count_right = self.base_id_iter_with_self::<AnySupertype>(rhs).count();
 
-            self.supertype_iter_with_self(lhs)
+            self.base_id_iter_with_self::<AnySupertype>(lhs)
                 .skip(count_left.saturating_sub(count_right))
                 .zip(
-                    self.supertype_iter_with_self(rhs)
+                    self.base_id_iter_with_self::<AnySupertype>(rhs)
                         .skip(count_right.saturating_sub(count_left)),
                 )
-                .find(|((l, _), (r, _))| l == r)
-                .map(|((l, _), _)| l)
+                .find(|(l, r)| l == r)
+                .map(|(l, _)| l)
         }
     }
 
@@ -380,11 +410,22 @@ impl<'ctx> Symbols<'ctx> {
     }
 
     pub(super) fn has_base_type(&self, lhs: TypeId<'ctx>, rhs: TypeId<'ctx>) -> bool {
-        self.base_iter_with_self(lhs).any(|(t, _)| t == rhs)
+        self.base_id_iter_with_self::<AnyBaseType>(lhs)
+            .any(|t| t == rhs)
     }
 
     pub(super) fn is_subtype(&self, lhs: TypeId<'ctx>, rhs: TypeId<'ctx>) -> bool {
-        self.supertype_iter_with_self(lhs).any(|(t, _)| t == rhs)
+        self.base_id_iter_with_self::<AnySupertype>(lhs)
+            .any(|t| t == rhs)
+    }
+
+    fn base_id_iter_with_self<Mode: BaseMode>(
+        &self,
+        typ: TypeId<'ctx>,
+    ) -> impl Iterator<Item = TypeId<'ctx>> + Clone + use<'_, 'ctx, Mode> {
+        iter::successors(Some(typ), move |&id| {
+            Mode::base(self.get_type(id)?).map(TypeApp::id)
+        })
     }
 
     fn base_iter_with_self_with_mode<Mode: BaseMode>(
@@ -392,7 +433,9 @@ impl<'ctx> Symbols<'ctx> {
         typ: TypeId<'ctx>,
     ) -> impl Iterator<Item = (TypeId<'ctx>, &Aggregate<'ctx>)> + Clone + use<'_, 'ctx, Mode> {
         let pair = |id| Some((id, self.get_type(id)?.schema.as_aggregate()?));
-        iter::successors(pair(typ), move |(_, agg)| pair(Mode::base(agg)?.id()))
+        iter::successors(pair(typ), move |(id, _)| {
+            pair(Mode::base(self.get_type(*id)?)?.id())
+        })
     }
 
     #[inline]
@@ -489,6 +532,7 @@ impl<'ctx> ops::Index<FieldId<'ctx>> for Symbols<'ctx> {
 pub struct TypeDef<'ctx> {
     params: Box<[Rc<CtxVar<'ctx>>]>,
     schema: TypeSchema<'ctx>,
+    primitive_base: Option<TypeApp<'ctx>>,
     doc: Box<[&'ctx str]>,
 }
 
@@ -497,6 +541,7 @@ impl<'ctx> TypeDef<'ctx> {
         Self {
             params: Box::default(),
             schema: TypeSchema::Primitive,
+            primitive_base: None,
             doc: doc.into(),
         }
     }
@@ -509,7 +554,21 @@ impl<'ctx> TypeDef<'ctx> {
         Self {
             params: params.into(),
             schema,
+            primitive_base: None,
             doc: doc.into(),
+        }
+    }
+
+    #[inline]
+    pub fn base_type(&self) -> Option<&TypeApp<'ctx>> {
+        self.schema.base_type().or(self.primitive_base.as_ref())
+    }
+
+    #[inline]
+    pub fn supertype(&self) -> Option<&TypeApp<'ctx>> {
+        match &self.schema {
+            TypeSchema::Aggregate(agg) => agg.supertype(),
+            _ => self.primitive_base.as_ref(),
         }
     }
 
@@ -1304,7 +1363,7 @@ impl fmt::Display for Visibility {
 }
 
 pub trait BaseMode {
-    fn base<'a, 'ctx>(agg: &'a Aggregate<'ctx>) -> Option<&'a TypeApp<'ctx>>;
+    fn base<'a, 'ctx>(def: &'a TypeDef<'ctx>) -> Option<&'a TypeApp<'ctx>>;
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -1312,8 +1371,8 @@ pub struct AnyBaseType;
 
 impl BaseMode for AnyBaseType {
     #[inline]
-    fn base<'a, 'ctx>(agg: &'a Aggregate<'ctx>) -> Option<&'a TypeApp<'ctx>> {
-        agg.base.as_ref()
+    fn base<'a, 'ctx>(def: &'a TypeDef<'ctx>) -> Option<&'a TypeApp<'ctx>> {
+        def.base_type()
     }
 }
 
@@ -1321,7 +1380,7 @@ pub struct AnySupertype;
 
 impl BaseMode for AnySupertype {
     #[inline]
-    fn base<'a, 'ctx>(agg: &'a Aggregate<'ctx>) -> Option<&'a TypeApp<'ctx>> {
-        agg.supertype()
+    fn base<'a, 'ctx>(def: &'a TypeDef<'ctx>) -> Option<&'a TypeApp<'ctx>> {
+        def.supertype()
     }
 }

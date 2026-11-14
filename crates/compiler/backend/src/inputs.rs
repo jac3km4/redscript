@@ -9,7 +9,7 @@ use redscript_compiler_frontend::utils::fmt::{DisplayFn, sep_by};
 use redscript_compiler_frontend::{
     Aggregate, AggregateFlags, Enum, Field, FieldFlags, FieldMap, FreeFunction, FreeFunctionFlags,
     FreeFunctionIndex, FunctionIndex, FunctionMap, FunctionType, Immutable, Method, MethodFlags,
-    MethodId, Mono, MonoType, Param, ParamFlags, RefType, Symbols, Type, TypeApp, TypeDef, TypeId,
+    MethodId, Mono, MonoType, Param, ParamFlags, Symbols, Type, TypeApp, TypeDef, TypeId,
     TypeInterner, TypeKind, TypeSchema, Visibility, predef,
 };
 use redscript_io::{
@@ -166,8 +166,9 @@ impl<'ctx> CompilationInputs<'ctx> {
                             if flags.is_static()
                                 && let [fst, rem @ ..] = func_t.params()
                                 && (fst.type_() == &Type::nullary(cls_id)
-                                    || fst.type_().strip_ref()
-                                        == Some((RefType::Script, &Type::nullary(cls_id))))
+                                    || fst.type_().strip_ref().is_some_and(|(rt, inner)| {
+                                        rt.is_script() && inner == &Type::nullary(cls_id)
+                                    }))
                             {
                                 let func_t = func_t.clone().with_params(rem);
                                 let flags =

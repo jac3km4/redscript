@@ -110,7 +110,7 @@ fn crossing_preferences_null_holes_and_optional_overlap_stay_ambiguous() {
             "Pick(weakValue)",
         ),
         (
-            "func Pick(a: script_ref<Base>) {} func Pick(a: script_ref<Child>) {}",
+            "func Pick(a: const_script_ref<Base>) {} func Pick(a: const_script_ref<Child>) {}",
             "Pick(value)",
         ),
     ] {
@@ -123,6 +123,30 @@ fn crossing_preferences_null_holes_and_optional_overlap_stay_ambiguous() {
             },
         );
     }
+}
+
+#[test]
+fn script_ref_and_const_script_ref_overload_selection() {
+    analyze(
+        "class Base {} class Child extends Base {}
+         func Pick(a: script_ref<Base>) -> Int32 = 1;
+         func Pick(a: script_ref<Child>) -> Int32 = 2;
+         func Run(value: Child) -> Int32 { return Pick(value); }",
+        |codes, targets| {
+            assert!(codes.is_empty(), "{codes:?}");
+            assert_eq!(targets, ["free(script_ref<Child>)"]);
+        },
+    );
+    analyze(
+        "class Base {} class Child extends Base {}
+         func Pick(a: const_script_ref<Base>) -> Int32 = 1;
+         func Pick(a: script_ref<Child>) -> Int32 = 2;
+         func Run(value: const_script_ref<Child>) -> Int32 { return Pick(value); }",
+        |codes, targets| {
+            assert!(codes.is_empty(), "{codes:?}");
+            assert_eq!(targets, ["free(const_script_ref<Base>)"]);
+        },
+    );
 }
 
 #[test]

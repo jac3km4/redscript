@@ -5,6 +5,7 @@ mod array_destinations;
 mod array_guard_compatibility;
 mod const_locals;
 mod const_parameters;
+mod const_script_ref;
 mod declaration_provenance;
 mod diagnostic_spans;
 mod engine_primitives;

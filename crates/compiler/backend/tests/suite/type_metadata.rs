@@ -312,6 +312,53 @@ fn assert_static_array(
     element_type
 }
 
+#[test]
+fn const_script_ref_emits_script_ref_pool_types_and_covariant_overrides() {
+    let bundle = compile(
+        "
+        struct BaseStruct { public let x: Int32; }
+        struct SubStruct extends BaseStruct { public let y: Int32; }
+        class BaseNode {
+            public let baseVal: BaseStruct;
+            public func Get() -> const_script_ref<BaseStruct> { return AsRef(this.baseVal); }
+        }
+        class SubNode extends BaseNode {
+            public let subVal: SubStruct;
+            public func Get() -> const_script_ref<SubStruct> { return AsRef(this.subVal); }
+        }
+        func Read(s: const_script_ref<BaseStruct>) -> Int32 { return s.x; }
+        func Use(sub: SubStruct, node: ref<BaseNode>) -> Int32 {
+            Read(sub);
+            return node.Get().x;
+        }
+        ",
+    );
+    let bytes = bundle.into_writeable().to_bytes().unwrap();
+    let bundle = ScriptBundle::from_bytes(&bytes).unwrap();
+    let mut found_get = 0;
+    for def in bundle.definitions() {
+        let Definition::Function(func) = def else {
+            continue;
+        };
+        let name = &*bundle[func.name()];
+        if name == "Get;" {
+            let ret = func.return_type().unwrap();
+            assert!(matches!(bundle[ret].kind(), TypeKind::ScriptRef(_)));
+            let ret_name = &*bundle[bundle[ret].name()];
+            assert!(
+                ret_name == "script_ref:BaseStruct" || ret_name == "script_ref:SubStruct",
+                "{ret_name}"
+            );
+            found_get += 1;
+        } else if name.starts_with("Read;") {
+            let param_type = bundle[func.parameters()[0]].type_();
+            assert!(matches!(bundle[param_type].kind(), TypeKind::ScriptRef(_)));
+            assert_eq!(&*bundle[bundle[param_type].name()], "script_ref:BaseStruct");
+        }
+    }
+    assert_eq!(found_get, 2);
+}
+
 fn compile(source: &str) -> ScriptBundle<'static> {
     let sources = SourceMap::new();
     sources.push_back("type_metadata.reds", source);

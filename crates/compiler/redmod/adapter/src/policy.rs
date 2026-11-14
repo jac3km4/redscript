@@ -113,7 +113,9 @@ fn validate_type<'ctx>(
 }
 
 fn condition<'ctx>(typ: &PolyType<'ctx>, symbols: &Symbols<'ctx>) -> Option<ir::Intrinsic> {
-    if let Some((RefType::Script, pointee)) = typ.strip_ref(symbols) {
+    if let Some((rt, pointee)) = typ.strip_ref(symbols)
+        && rt.is_script()
+    {
         return pointee
             .upper_bound(symbols)
             .is_some_and(|typ| typ.id() == predef::BOOL)

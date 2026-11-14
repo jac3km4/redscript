@@ -119,6 +119,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                             RefType::Strong => predef::REF,
                             RefType::Weak => predef::WREF,
                             RefType::Script => predef::SCRIPT_REF,
+                            RefType::ConstScript => predef::CONST_SCRIPT_REF,
                         };
                         Type::app(wrapper, [as_type.clone()]).into_poly()
                     }

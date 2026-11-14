@@ -217,6 +217,7 @@ impl<'ctx, K: TypeKind> TypeApp<'ctx, K> {
             id if id == predef::REF => Some(RefType::Strong),
             id if id == predef::WREF => Some(RefType::Weak),
             id if id == predef::SCRIPT_REF => Some(RefType::Script),
+            id if id == predef::CONST_SCRIPT_REF => Some(RefType::ConstScript),
             _ => None,
         }
     }
@@ -282,7 +283,7 @@ impl<'ctx> MonoType<'ctx> {
             self.args().len(),
             "type args should match the underlying type"
         );
-        let base = class.schema().base_type()?;
+        let base = class.base_type()?;
         let env = class.vars().zip(self.args().iter().cloned()).collect();
         Some(base.mono(&env).expect("env should be complete"))
     }
@@ -437,6 +438,14 @@ pub enum RefType {
     Strong,
     Weak,
     Script,
+    ConstScript,
+}
+
+impl RefType {
+    #[inline]
+    pub fn is_script(self) -> bool {
+        matches!(self, Self::Script | Self::ConstScript)
+    }
 }
 
 #[derive(Debug)]

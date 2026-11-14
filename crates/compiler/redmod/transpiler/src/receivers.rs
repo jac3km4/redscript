@@ -22,7 +22,7 @@ pub(crate) fn inline_class_receiver<'ctx>(
 }
 
 pub(crate) fn class_handle<'ctx>(typ: &Type<'ctx>, symbols: &Symbols<'ctx>) -> bool {
-    if typ.ref_type() == Some(RefType::Script) {
+    if typ.ref_type().is_some_and(RefType::is_script) {
         return false;
     }
     // Ordinary class types are already implicit strong handles in shared IR;

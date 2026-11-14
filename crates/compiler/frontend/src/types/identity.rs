@@ -208,6 +208,7 @@ pub mod predef {
         REF => "ref",
         WREF => "wref",
         SCRIPT_REF => "script_ref",
+        CONST_SCRIPT_REF => "const_script_ref",
         ARRAY => "array",
 
         // aliases for static arrays with specific sizes

@@ -12,6 +12,8 @@ func AcceptSuper(s: Super) {}
 func AcceptSub(s: Sub) {}
 func AcceptSuperRef(s: script_ref<Super>) {}
 func AcceptSubRef(s: script_ref<Sub>) {}
+func AcceptConstSuperRef(s: const_script_ref<Super>) {}
+func AcceptConstSubRef(s: const_script_ref<Sub>) {}
 
 func Test() {
   let subToSuper: (Sub) -> Super;
@@ -33,7 +35,12 @@ func Test() {
   AcceptSub(sup); // Error
 
   AcceptSuperRef(sup); // OK
-  AcceptSuperRef(sub); // OK
+  AcceptSuperRef(sub); // Error
   AcceptSubRef(sub); // OK
   AcceptSubRef(sup); // Error
+
+  AcceptConstSuperRef(sup); // OK
+  AcceptConstSuperRef(sub); // OK
+  AcceptConstSubRef(sub); // OK
+  AcceptConstSubRef(sup); // Error
 }

@@ -8,7 +8,7 @@ pub(crate) fn inline_receiver<'ctx>(
     typ: &Type<'ctx>,
     symbols: &Symbols<'ctx>,
 ) -> bool {
-    if typ.ref_type() == Some(RefType::Script) {
+    if typ.ref_type().is_some_and(RefType::is_script) {
         return false;
     }
     let Type::Data(app) = typ.unwrap_ref_or_self() else {
@@ -41,7 +41,7 @@ pub(crate) fn struct_place<'ctx>(
     typ: &Type<'ctx>,
     symbols: &Symbols<'ctx>,
 ) -> bool {
-    typ.ref_type() != Some(RefType::Script)
+    !typ.ref_type().is_some_and(RefType::is_script)
         && matches!(typ.unwrap_ref_or_self(), Type::Data(app)
             if app.args().is_empty() && symbols.get_type(app.id())
                 .and_then(|def| def.schema().as_aggregate())

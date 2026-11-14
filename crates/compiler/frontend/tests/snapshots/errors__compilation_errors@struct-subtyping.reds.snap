@@ -5,33 +5,45 @@ input_file: crates/compiler/frontend/tests/data/struct-subtyping.reds
 ---
 error[TYPE_ERR]: type mismatch: found `Function1<Sub, Super>` when expected `Function1<Super, Sub>`
   caused by: type mismatch: found `Super` when expected `Sub`
- --> tests/data/struct-subtyping.reds:25:12
+ --> tests/data/struct-subtyping.reds:27:12
    |
-25 |   AcceptFn(subToSuper); // Error
+27 |   AcceptFn(subToSuper); // Error
    |            ^^^^^^^^^^
 
 error[TYPE_ERR]: type mismatch: found `Function1<Sub, Sub>` when expected `Function1<Super, Sub>`
   caused by: type mismatch: found `Super` when expected `Sub`
- --> tests/data/struct-subtyping.reds:27:12
+ --> tests/data/struct-subtyping.reds:29:12
    |
-27 |   AcceptFn(subToSub); // Error
+29 |   AcceptFn(subToSub); // Error
    |            ^^^^^^^^
 
 error[TYPE_ERR]: type mismatch: found `Function1<Super, Super>` when expected `Function1<Super, Sub>`
   caused by: type mismatch: found `Super` when expected `Sub`
- --> tests/data/struct-subtyping.reds:28:12
+ --> tests/data/struct-subtyping.reds:30:12
    |
-28 |   AcceptFn(superToSuper); // Error
+30 |   AcceptFn(superToSuper); // Error
    |            ^^^^^^^^^^^^
 
 error[TYPE_ERR]: type mismatch: found `Super` when expected `Sub`
- --> tests/data/struct-subtyping.reds:33:13
+ --> tests/data/struct-subtyping.reds:35:13
    |
-33 |   AcceptSub(sup); // Error
+35 |   AcceptSub(sup); // Error
    |             ^^^
 
 error[TYPE_ERR]: type mismatch: found `Super` when expected `Sub`
- --> tests/data/struct-subtyping.reds:38:16
+ --> tests/data/struct-subtyping.reds:38:18
    |
-38 |   AcceptSubRef(sup); // Error
+38 |   AcceptSuperRef(sub); // Error
+   |                  ^^^
+
+error[TYPE_ERR]: type mismatch: found `Super` when expected `Sub`
+ --> tests/data/struct-subtyping.reds:40:16
+   |
+40 |   AcceptSubRef(sup); // Error
    |                ^^^
+
+error[TYPE_ERR]: type mismatch: found `Super` when expected `Sub`
+ --> tests/data/struct-subtyping.reds:45:21
+   |
+45 |   AcceptConstSubRef(sup); // Error
+   |                     ^^^
