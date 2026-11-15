@@ -293,10 +293,7 @@ fn const_relaxations_are_independent_and_file_local_in_both_orders() {
             );
             for (file, warning_count) in [
                 (strict, 4),
-                (
-                    relaxed,
-                    4 - usize::from(elements) - usize::from(forwarding),
-                ),
+                (relaxed, 4 - usize::from(elements) - usize::from(forwarding)),
             ] {
                 for (level, expected) in [
                     (DiagnosticLevel::Warning, warning_count),

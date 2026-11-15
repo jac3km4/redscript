@@ -135,10 +135,7 @@ pub enum Diagnostic<'ctx> {
         base_span: Option<Span>,
     },
     #[error("method override has incompatible const qualifiers")]
-    OverrideConstMismatch {
-        span: Span,
-        base_span: Option<Span>,
-    },
+    OverrideConstMismatch { span: Span, base_span: Option<Span> },
     #[error("cannot write through a const parameter")]
     ConstParameterWrite(Span),
     #[error("cannot write through a const local")]

@@ -48,47 +48,46 @@ pub(super) fn validate<'policy, 'ctx>(
     policy: impl Fn(Span) -> &'policy SemanticPolicy,
     reporter: &mut CompileErrorReporter<'ctx>,
 ) {
-    let mut check = |function: &crate::LoweredFunction<'ctx>,
-                     params: &[Param<'ctx>],
-                     is_const_method: bool| {
-        let func_policy = policy(function.span);
-        let mut readonly: HashMap<_, _> = params
-            .iter()
-            .enumerate()
-            .filter_map(|(i, p)| {
-                p.flags()
-                    .is_const()
-                    .then_some((ir::Local::Param(i as u16), ConstRoot::Parameter))
-            })
-            .collect();
-        if is_const_method && !func_policy.relaxed_const_checks {
-            readonly.insert(ir::Local::This, ConstRoot::This);
-        }
-        add_const_locals(&mut readonly, &function.locals, symbols, func_policy);
-        let mut script_ref_locals: HashSet<_> = params
-            .iter()
-            .enumerate()
-            .filter_map(|(i, p)| {
-                (p.type_().ref_type() == Some(RefType::Script))
-                    .then_some(ir::Local::Param(i as u16))
-            })
-            .collect();
-        add_script_ref_locals(&mut script_ref_locals, &function.locals, symbols);
-        let readonly_array_temps =
-            readonly_array_temps(&function.locals, &readonly, &HashMap::new());
-        ConstWrites {
-            symbols,
-            readonly,
-            captures: HashMap::new(),
-            readonly_array_temps,
-            script_ref_locals,
-            script_ref_captures: HashSet::new(),
-            initializers: declaration_initializers(&function.locals),
-            policy: func_policy,
-            reporter,
-        }
-        .visit_block(&function.block);
-    };
+    let mut check =
+        |function: &crate::LoweredFunction<'ctx>, params: &[Param<'ctx>], is_const_method: bool| {
+            let func_policy = policy(function.span);
+            let mut readonly: HashMap<_, _> = params
+                .iter()
+                .enumerate()
+                .filter_map(|(i, p)| {
+                    p.flags()
+                        .is_const()
+                        .then_some((ir::Local::Param(i as u16), ConstRoot::Parameter))
+                })
+                .collect();
+            if is_const_method && !func_policy.relaxed_const_checks {
+                readonly.insert(ir::Local::This, ConstRoot::This);
+            }
+            add_const_locals(&mut readonly, &function.locals, symbols, func_policy);
+            let mut script_ref_locals: HashSet<_> = params
+                .iter()
+                .enumerate()
+                .filter_map(|(i, p)| {
+                    (p.type_().ref_type() == Some(RefType::Script))
+                        .then_some(ir::Local::Param(i as u16))
+                })
+                .collect();
+            add_script_ref_locals(&mut script_ref_locals, &function.locals, symbols);
+            let readonly_array_temps =
+                readonly_array_temps(&function.locals, &readonly, &HashMap::new());
+            ConstWrites {
+                symbols,
+                readonly,
+                captures: HashMap::new(),
+                readonly_array_temps,
+                script_ref_locals,
+                script_ref_captures: HashSet::new(),
+                initializers: declaration_initializers(&function.locals),
+                policy: func_policy,
+                reporter,
+            }
+            .visit_block(&function.block);
+        };
     for (id, function) in &unit.functions {
         check(function, symbols[*id].type_().params(), false);
     }
@@ -207,9 +206,8 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
             ir::Expr::Field {
                 receiver, field, ..
             } => self.readonly_place(receiver).or_else(|| {
-                (!self.policy.relaxed_const_checks
-                    && self.symbols[*field].flags().is_const())
-                .then_some(ConstRoot::Field)
+                (!self.policy.relaxed_const_checks && self.symbols[*field].flags().is_const())
+                    .then_some(ConstRoot::Field)
             }),
             ir::Expr::Index { array, .. } => self.readonly_place(array).and_then(|root| {
                 match (root, self.policy.const_param_element_writes) {
@@ -436,8 +434,7 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
                 ..
             } => {
                 if let Ok(app) = receiver_type.coalesced(self.symbols)
-                    && let Some(app) =
-                        instantiate_type_app_as(app, method.parent(), self.symbols)
+                    && let Some(app) = instantiate_type_app_as(app, method.parent(), self.symbols)
                 {
                     for (var, arg) in self.symbols[method.parent()]
                         .params()
