@@ -70,10 +70,11 @@ fn check_diagnostics(
             let message = d.to_string();
             assert!(
                 if level == DiagnosticLevel::Warning {
-                    message.starts_with("forwarding a const ")
+                    (message.starts_with("forwarding a const ")
                         && (message.ends_with(" to a non-const parameter may allow mutation")
                             || message.ends_with(" to a function value may allow mutation")
-                            || message.ends_with(" to a non-const script_ref may allow mutation"))
+                            || message.ends_with(" to a non-const script_ref may allow mutation")))
+                        || message == "cannot write through a const parameter"
                 } else {
                     message == "cannot write through a const local"
                         || message == "cannot write through a const parameter"
@@ -82,12 +83,12 @@ fn check_diagnostics(
             );
             assert_eq!(
                 d.code(),
-                if level == DiagnosticLevel::Warning {
-                    "CONST_FORWARDING"
-                } else if message == "cannot write through a const local" {
+                if message == "cannot write through a const local" {
                     "CONST_LOCAL_WRITE"
-                } else {
+                } else if message == "cannot write through a const parameter" {
                     "CONST_PARAMETER_WRITE"
+                } else {
+                    "CONST_FORWARDING"
                 }
             );
             let span = d.span();
@@ -298,10 +299,17 @@ fn native_policy_separates_binding_and_referent_constness() {
 
 #[test]
 fn mixed_conditional_roots_keep_both_parameter_and_local_restrictions() {
-    check_policy(
+    check_diagnostics(
         "class V { public func Change() {} } func F(const p: V, b: Bool) { const x: V; (b ? p : x).Change(); (b ? x : p).Change(); }",
         &["b ? p : x", "b ? x : p"],
-        true,
+        SemanticPolicy {
+            hoist_locals: true,
+            const_param_element_writes: true,
+            const_param_non_out_forwarding: true,
+            const_local_handle_rebinding: true,
+            ..SemanticPolicy::default()
+        },
+        &[DiagnosticLevel::Warning, DiagnosticLevel::Warning],
     );
 }
 

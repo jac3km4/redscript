@@ -11,7 +11,7 @@ fn check(source: &str, expected: &[&str]) {
     check_level(
         source,
         expected,
-        DiagnosticLevel::Error,
+        DiagnosticLevel::Warning,
         "cannot write through a const parameter",
     );
 }
@@ -50,14 +50,12 @@ fn check_level(source: &str, expected: &[&str], level: DiagnosticLevel, message:
             assert_eq!(diagnostic.to_string(), message, "{source}: {diagnostic:?}");
             assert_eq!(
                 diagnostic.code(),
-                if level == DiagnosticLevel::Error {
-                    if message == "cannot write through `this` in a const method" {
-                        "CONST_RECEIVER_WRITE"
-                    } else if message == "cannot write through a const field" {
-                        "CONST_FIELD_WRITE"
-                    } else {
-                        "CONST_PARAMETER_WRITE"
-                    }
+                if message == "cannot write through `this` in a const method" {
+                    "CONST_RECEIVER_WRITE"
+                } else if message == "cannot write through a const field" {
+                    "CONST_FIELD_WRITE"
+                } else if message == "cannot write through a const parameter" {
+                    "CONST_PARAMETER_WRITE"
                 } else {
                     "CONST_FORWARDING"
                 }
@@ -293,13 +291,16 @@ fn const_relaxations_are_independent_and_file_local_in_both_orders() {
                 "{:?}",
                 reporter.reported()
             );
-            for (file, forwarding_count, hard_count) in [
-                (strict, 1, 3),
-                (relaxed, usize::from(!forwarding), 3 - usize::from(elements)),
+            for (file, warning_count) in [
+                (strict, 4),
+                (
+                    relaxed,
+                    4 - usize::from(elements) - usize::from(forwarding),
+                ),
             ] {
                 for (level, expected) in [
-                    (DiagnosticLevel::Warning, forwarding_count),
-                    (DiagnosticLevel::Error, hard_count),
+                    (DiagnosticLevel::Warning, warning_count),
+                    (DiagnosticLevel::Error, 0),
                 ] {
                     assert_eq!(
                         reporter
@@ -370,7 +371,7 @@ fn const_methods_enforce_readonly_this_in_community_policy() {
     check_level(
         "class Item { private let value: Int32; private let items: [Int32]; public func Mutate() {} public const func Get() -> Int32 { return this.value; } public const func BadWrite() { this.value = 1; } public const func BadArray() { ArrayPush(this.items, 1); } public const func BadCall() { this.Mutate(); } }",
         &["this.value", "this.items", "this"],
-        DiagnosticLevel::Error,
+        DiagnosticLevel::Warning,
         "cannot write through `this` in a const method",
     );
 
@@ -458,6 +459,7 @@ fn override_const_compatibility_is_enforced_in_community_policy() {
             .reported()
             .iter()
             .filter(|d| d.code() == "OVERRIDE_CONST_MISMATCH")
+            .inspect(|d| assert_eq!(d.level(), DiagnosticLevel::ErrorAllowedAtRuntime, "{d:?}"))
             .collect();
         assert_eq!(errors.len(), expected_errors, "{source}: {errors:?}");
     };
