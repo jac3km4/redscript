@@ -63,6 +63,20 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 receiver: self.lower_projection(receiver, env, span)?.into(),
                 span,
             }),
+            Projection::Deref {
+                inner,
+                script_ref_type,
+            } => {
+                let mut expr = self.lower_projection(inner, env, span)?;
+                self.emit_reference_conversion(
+                    &mut expr,
+                    script_ref_type.clone(),
+                    ir::Intrinsic::Deref,
+                    env,
+                    span,
+                )?;
+                Ok(expr)
+            }
             Projection::Scrutinee(local) => Ok(ir::Expr::Local(*local, span)),
         }
     }
@@ -109,6 +123,13 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 let unref_t = unref_t.unwrap_or(projection_t.clone());
 
                 let as_type = self.resolve_type(as_type, env, *type_span)?;
+                if ref_type == Some(RefType::Script) {
+                    return Err(Error::ImpossibleDynCast(
+                        projection_t.clone(),
+                        as_type,
+                        *type_span,
+                    ));
+                }
                 as_type
                     .constrain_base(&unref_t, self.symbols)
                     .with_span(*pattern_span)?;
@@ -152,6 +173,19 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
 
                 let aggregate_t_app = TypeApp::from_id(*type_id, self.symbols);
                 let aggregate_t = aggregate_t_app.clone().into_type().into_poly();
+                let (deref_projection, unref_projection_t);
+                let (projection, projection_t) = if let Some((RefType::Script, pointee)) =
+                    projection_t.strip_ref(self.symbols)
+                {
+                    deref_projection = Projection::Deref {
+                        inner: projection,
+                        script_ref_type: projection_t.clone(),
+                    };
+                    unref_projection_t = pointee;
+                    (&deref_projection, &unref_projection_t)
+                } else {
+                    (projection, projection_t)
+                };
                 let (receiver_ref, unref_t) = projection_t.strip_ref(self.symbols).unzip();
                 let unref_t = unref_t.unwrap_or(projection_t.clone());
 
@@ -216,6 +250,20 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             }
             ast::Pattern::Array(array_spread, patterns) => {
                 let (patterns, patterns_span) = patterns;
+
+                let (deref_projection, unref_projection_t);
+                let (projection, projection_t) = if let Some((RefType::Script, pointee)) =
+                    projection_t.strip_ref(self.symbols)
+                {
+                    deref_projection = Projection::Deref {
+                        inner: projection,
+                        script_ref_type: projection_t.clone(),
+                    };
+                    unref_projection_t = pointee;
+                    (&deref_projection, &unref_projection_t)
+                } else {
+                    (projection, projection_t)
+                };
 
                 let pattern_count = i32::try_from(patterns.len()).expect("too many patterns");
                 let range = match array_spread {
@@ -387,6 +435,10 @@ impl<'ctx> Extend<Pattern<'ctx>> for Pattern<'ctx> {
 
 #[derive(Debug, Clone)]
 enum Projection<'scope, 'ctx> {
+    Deref {
+        inner: &'scope Self,
+        script_ref_type: PolyType<'ctx>,
+    },
     Field {
         receiver: &'scope Self,
         receiver_type: InferredTypeApp<'ctx>,

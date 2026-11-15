@@ -1335,7 +1335,18 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         env: &Env<'_, 'ctx>,
         span: Span,
     ) -> LowerResult<'ctx, (ir::Expr<'ctx>, PolyType<'ctx>)> {
-        let (expr, expr_t) = self.lower_expr(expr, env)?;
+        let (mut expr, mut expr_t) = self.lower_expr(expr, env)?;
+        if let Some((RefType::Script, pointee)) = expr_t.strip_ref(self.symbols) {
+            let expr_span = expr.span();
+            self.emit_reference_conversion(
+                &mut expr,
+                expr_t,
+                ir::Intrinsic::Deref,
+                env,
+                expr_span,
+            )?;
+            expr_t = pointee;
+        }
         let resolved = env.types().resolve(typ, self.symbols, *type_span)?;
         let Some(agg) = resolved
             .upper_bound()

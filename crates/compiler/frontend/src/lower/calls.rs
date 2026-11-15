@@ -241,7 +241,18 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 None
             };
         if native_arg.is_some() && object_target {
-            let (mut expr, expr_t) = native_arg.take().unwrap();
+            let (mut expr, mut expr_t) = native_arg.take().unwrap();
+            if let Some((RefType::Script, pointee)) = expr_t.strip_ref(self.symbols) {
+                let expr_span = expr.span();
+                self.emit_reference_conversion(
+                    &mut expr,
+                    expr_t,
+                    ir::Intrinsic::Deref,
+                    env,
+                    expr_span,
+                )?;
+                expr_t = pointee;
+            }
             let constraint = expr_t.unwrap_ref_or_self(self.symbols);
             let result_t = if expr_t.ref_type(self.symbols) == Some(RefType::Weak) {
                 Type::app(predef::WREF, [target_t.clone()]).into_poly()
@@ -1041,7 +1052,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         self.emit_reference_conversion(expr, lhs, name, env, span)
     }
 
-    fn emit_reference_conversion(
+    pub(super) fn emit_reference_conversion(
         &mut self,
         expr: &mut ir::Expr<'ctx>,
         typ: PolyType<'ctx>,

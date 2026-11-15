@@ -15,13 +15,6 @@ func WeakBinding(input: wref<Base>) -> Derived {
   return null;
 }
 
-func ScriptBinding(input: script_ref<Base>) -> Derived {
-  if let narrowed as Derived = input {
-    return narrowed;
-  }
-  return null;
-}
-
 func StrongBinding(input: ref<Base>) -> Derived {
   if let narrowed as Derived = input {
     return narrowed;
