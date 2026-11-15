@@ -502,4 +502,17 @@ fn override_const_compatibility_is_enforced_in_community_policy() {
             ..SemanticPolicy::default()
         },
     );
+
+    // script_ref return const mismatches are already reported by OVERRIDE_RETURN_TYPE_MISMATCH.
+    check_override(
+        "class Item {}
+        class Base {
+            public func Ref(item: Item) -> script_ref<Item> { return item; }
+        }
+        class Child extends Base {
+            public func Ref(item: Item) -> const script_ref<Item> { return item; }
+        }",
+        0,
+        SemanticPolicy::default(),
+    );
 }

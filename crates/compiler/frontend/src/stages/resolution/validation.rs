@@ -12,7 +12,7 @@ use crate::symbols::AnyBaseType;
 use crate::utils::ScopedMap;
 use crate::{
     CtxVar, Diagnostic, FreeFunction, FunctionIndex, FunctionType, IndexMap, Method, MethodId,
-    Param, PolyType, Type, TypeApp, TypeId, TypeSchema, Variance,
+    Param, PolyType, RefType, Type, TypeApp, TypeId, TypeSchema, Variance,
 };
 
 impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
@@ -299,8 +299,10 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                                 .iter()
                                 .zip(method_t.params())
                                 .any(|(b, m)| b.flags().is_const() && !m.flags().is_const());
-                            let return_adds_const =
-                                !base_t.is_const_return() && method_t.is_const_return();
+                            let return_adds_const = !base_t.is_const_return()
+                                && method_t.is_const_return()
+                                && (types.policy(span).original_slot_override_returns
+                                    || method_t.return_type().ref_type() != Some(RefType::Script));
                             if method_drops_const || param_drops_const || return_adds_const {
                                 self.reporter.report(Diagnostic::OverrideConstMismatch {
                                     span,
