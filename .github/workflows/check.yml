@@ -44,8 +44,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - run: rustup toolchain install nightly-2026-10-15 --profile minimal --component rustfmt
-      - run: cargo +nightly-2026-10-15 fmt --all -- --check
+      - run: rustup toolchain install nightly-2026-11-13 --profile minimal --component rustfmt
+      - run: cargo +nightly-2026-11-13 fmt --all -- --check
 
   test-macos:
     name: Test portable crates (macOS)

@@ -10,15 +10,15 @@ cargo check --no-default-features -p redscript-community-ast -p redscript-io -p 
 cargo test --workspace --bins --lib --tests --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo doc --workspace --no-deps --locked
-rustup toolchain install nightly-2026-10-15 --profile minimal --component rustfmt
-cargo +nightly-2026-10-15 fmt --all -- --check
+rustup toolchain install nightly-2026-11-13 --profile minimal --component rustfmt
+cargo +nightly-2026-11-13 fmt --all -- --check
 ```
 
 Stable rustfmt does not honor all repository formatting options. To apply
 formatting rather than check it, run:
 
 ```sh
-cargo +nightly-2026-10-15 fmt --all
+cargo +nightly-2026-11-13 fmt --all
 ```
 
 Keep `--all-targets` in the Clippy commands: CI lints test code too, so plain
