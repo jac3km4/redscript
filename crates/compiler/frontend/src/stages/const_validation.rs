@@ -623,7 +623,14 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
             && !self.symbols[*method].flags().is_const()
             && matches!(
                 self.readonly_place(receiver),
-                Some(ConstRoot::Local { .. } | ConstRoot::ParameterAndLocal | ConstRoot::Return)
+                Some(root)
+                    if !self.policy.const_param_non_out_forwarding
+                        || matches!(
+                            root,
+                            ConstRoot::Local { .. }
+                                | ConstRoot::ParameterAndLocal
+                                | ConstRoot::Return
+                        )
             )
         {
             self.reject(receiver, ConstViolation::Write);

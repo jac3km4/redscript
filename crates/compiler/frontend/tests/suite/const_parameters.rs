@@ -334,3 +334,11 @@ fn generic_forwarding_checks_instantiated_parameter_types() {
         &[],
     );
 }
+
+#[test]
+fn non_const_methods_on_const_parameters_are_rejected() {
+    check(
+        "class Item { public func Mutate() {} public const func Read() -> Int32 { return 1; } }\nfunc Use(const item: Item) { item.Read(); item.Mutate(); }",
+        &["item"],
+    );
+}
