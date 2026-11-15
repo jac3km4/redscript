@@ -74,18 +74,17 @@ fn check_diagnostics(
                         && (message.ends_with(" to a non-const parameter may allow mutation")
                             || message.ends_with(" to a function value may allow mutation")
                             || message.ends_with(" to a non-const script_ref may allow mutation")))
-                        || message == "cannot write through a const parameter"
+                        || message.contains("a `const` parameter")
                 } else {
-                    message == "cannot write through a const local"
-                        || message == "cannot write through a const parameter"
+                    message.contains("a `const` local") || message.contains("a `const` parameter")
                 },
                 "{d:?}"
             );
             assert_eq!(
                 d.code(),
-                if message == "cannot write through a const local" {
+                if message.contains("a `const` local") {
                     "CONST_LOCAL_WRITE"
-                } else if message == "cannot write through a const parameter" {
+                } else if message.contains("a `const` parameter") {
                     "CONST_PARAMETER_WRITE"
                 } else {
                     "CONST_FORWARDING"
@@ -363,11 +362,7 @@ fn local_rebinding_policy_is_file_local_in_both_orders() {
             .filter(|d| d.span().file == native)
             .collect::<Vec<_>>();
         assert_eq!(native_errors.len(), 1);
-        assert!(
-            native_errors[0]
-                .to_string()
-                .contains("cannot write through a const local")
-        );
+        assert!(native_errors[0].to_string().contains("a `const` local"));
     }
 }
 

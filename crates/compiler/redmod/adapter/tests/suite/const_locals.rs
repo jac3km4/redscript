@@ -41,10 +41,7 @@ fn check(body: &str, expected: &[&str]) {
         .reported()
         .iter()
         .map(|d| {
-            assert!(
-                d.to_string().contains("cannot write through a const local"),
-                "{d:?}"
-            );
+            assert!(d.to_string().contains("a `const` local"), "{d:?}");
             let span = d.span();
             assert_eq!(span.file, file);
             &source[span.start as usize..span.end as usize]

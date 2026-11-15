@@ -128,7 +128,8 @@ Const parameter flags are enforced by shared frontend analysis after function
 bodies have been lowered and calls resolved. Community source uses the strict
 semantic policy by default. Diagnostics are shared frontend errors (`OTHER`),
 not REDmod capability errors. Proven writes use hard `Error` severity with
-`cannot write through a const parameter` (or `const local`). Uncertain non-out
+`CONST_PARAMETER_WRITE` / `CONST_LOCAL_WRITE` (for example,
+`cannot assign to a `const` parameter` or `cannot modify a `const` local`). Uncertain non-out
 mutable forwarding and function-value forwarding use `ErrorAllowedAtRuntime`
 with `forwarding a const ... may allow mutation`: strict mode rejects them,
 while CLI `--runtime-compatible` and SCC tolerate them. This does not establish

@@ -12,7 +12,7 @@ fn check(source: &str, expected: &[&str]) {
         source,
         expected,
         DiagnosticLevel::Warning,
-        "cannot write through a const parameter",
+        "a `const` parameter",
     );
 }
 
@@ -47,14 +47,18 @@ fn check_level(source: &str, expected: &[&str], level: DiagnosticLevel, message:
         .iter()
         .map(|diagnostic| {
             assert_eq!(diagnostic.level(), level, "{source}: {diagnostic:?}");
-            assert_eq!(diagnostic.to_string(), message, "{source}: {diagnostic:?}");
+            let rendered = diagnostic.to_string();
+            assert!(
+                rendered.contains(message),
+                "{source}: expected `{rendered}` to contain `{message}`"
+            );
             assert_eq!(
                 diagnostic.code(),
-                if message == "cannot write through `this` in a const method" {
+                if message == "`this` in a `const` method" {
                     "CONST_RECEIVER_WRITE"
-                } else if message == "cannot write through a const field" {
+                } else if message == "a `const` field" {
                     "CONST_FIELD_WRITE"
-                } else if message == "cannot write through a const parameter" {
+                } else if message == "a `const` parameter" {
                     "CONST_PARAMETER_WRITE"
                 } else {
                     "CONST_FORWARDING"
@@ -369,7 +373,7 @@ fn const_methods_enforce_readonly_this_in_community_policy() {
         "class Item { private let value: Int32; private let items: [Int32]; public func Mutate() {} public const func Get() -> Int32 { return this.value; } public const func BadWrite() { this.value = 1; } public const func BadArray() { ArrayPush(this.items, 1); } public const func BadCall() { this.Mutate(); } }",
         &["this.value", "this.items", "this"],
         DiagnosticLevel::Warning,
-        "cannot write through `this` in a const method",
+        "`this` in a `const` method",
     );
 
     let sources = SourceMap::new();
@@ -404,7 +408,7 @@ fn const_fields_are_enforced_in_community_policy() {
         "class Item { public const let value: Int32; public const let items: [Int32]; public func Mutate() {} }\nclass Holder { public const let item: Item; }\nfunc Use(holder: Holder) { let x = holder.item.value; holder.item.value = 1; ArrayPush(holder.item.items, 1); holder.item.Mutate(); }",
         &["holder.item.value", "holder.item.items", "holder.item"],
         DiagnosticLevel::Warning,
-        "cannot write through a const field",
+        "a `const` field",
     );
 
     let sources = SourceMap::new();
@@ -511,5 +515,71 @@ fn override_const_compatibility_is_enforced_in_community_policy() {
         }",
         0,
         SemanticPolicy::default(),
+    );
+}
+
+#[test]
+fn const_write_diagnostic_messages() {
+    let source = "
+        class Item {
+            public const let value: Int32;
+            public let count: Int32;
+            public let items: [Int32];
+            public func Mutate() {}
+            public const func BadReceiver() {
+                this.count = 1;
+                ArrayPush(this.items, 1);
+                this.Mutate();
+            }
+        }
+        func OutInt(out x: Int32) {}
+        func Test(const param: Item, const arr: [Int32]) {
+            param = new Item();
+            param.count = 1;
+            ArrayPush(arr, 1);
+            OutInt(param.count);
+            param.Mutate();
+            const local: Item;
+            local = new Item();
+            local.count = 1;
+            local.value = 2;
+        }
+    ";
+    let sources = SourceMap::new();
+    sources.populate_boot_lib();
+    sources.push_back("const.reds", source);
+    let interner = TypeInterner::default();
+    let mut reporter = CompileErrorReporter::default();
+    let modules = parse_files(&sources, &mut reporter);
+    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+    let evaluator = Evaluator::from_modules(&modules);
+    process_sources_with_policy(
+        modules,
+        Symbols::with_default_types(),
+        evaluator,
+        &mut reporter,
+        &interner,
+        &[],
+    );
+    let messages: Vec<String> = reporter
+        .reported()
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    assert_eq!(
+        messages,
+        [
+            "cannot assign to a `const` parameter",
+            "cannot modify a `const` parameter",
+            "cannot modify a `const` parameter with `ArrayPush`",
+            "cannot pass a `const` parameter to an `out` parameter",
+            "cannot call non-`const` method `Mutate` on a `const` parameter",
+            "cannot assign to a `const` local",
+            "cannot modify a `const` local",
+            "cannot modify a `const` local",
+            "cannot modify `this` in a `const` method",
+            "cannot modify `this` in a `const` method with `ArrayPush`",
+            "cannot call non-`const` method `Mutate` on `this` in a `const` method",
+        ]
     );
 }

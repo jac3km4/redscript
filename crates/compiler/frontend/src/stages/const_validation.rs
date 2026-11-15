@@ -3,6 +3,7 @@ use std::rc::Rc;
 
 use redscript_community_ast::Span;
 
+use crate::diagnostic::ConstWriteAction;
 use crate::ir::Visitor;
 use crate::{
     CompileErrorReporter, Diagnostic, LoweredCompilationUnit, MethodId, Param, RefType,
@@ -10,8 +11,8 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy)]
-enum ConstViolation {
-    Write,
+enum ConstViolation<'ctx> {
+    Write(ConstWriteAction<'ctx>),
     Forwarding,
     ClosureForwarding,
     ScriptRefBinding,
@@ -255,17 +256,17 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
         }
     }
 
-    fn reject(&mut self, expr: &ir::Expr<'ctx>, violation: ConstViolation) {
+    fn reject(&mut self, expr: &ir::Expr<'ctx>, violation: ConstViolation<'ctx>) {
         if let Some(root) = self.readonly_place(expr) {
             let diagnostic = match violation {
-                ConstViolation::Write => match root {
+                ConstViolation::Write(action) => match root {
                     ConstRoot::Parameter | ConstRoot::ParameterAndLocal => {
-                        Diagnostic::ConstParameterWrite(expr.span())
+                        Diagnostic::ConstParameterWrite(action, expr.span())
                     }
-                    ConstRoot::This => Diagnostic::ConstReceiverWrite(expr.span()),
-                    ConstRoot::Field => Diagnostic::ConstFieldWrite(expr.span()),
-                    ConstRoot::Local { .. } => Diagnostic::ConstLocalWrite(expr.span()),
-                    ConstRoot::Return => Diagnostic::ConstReturnWrite(expr.span()),
+                    ConstRoot::This => Diagnostic::ConstReceiverWrite(action, expr.span()),
+                    ConstRoot::Field => Diagnostic::ConstFieldWrite(action, expr.span()),
+                    ConstRoot::Local { .. } => Diagnostic::ConstLocalWrite(action, expr.span()),
+                    ConstRoot::Return => Diagnostic::ConstReturnWrite(action, expr.span()),
                 },
                 ConstViolation::Forwarding
                 | ConstViolation::ClosureForwarding
@@ -313,7 +314,7 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
         }
     }
 
-    fn reject_forwarding(&mut self, expr: &ir::Expr<'ctx>, violation: ConstViolation) {
+    fn reject_forwarding(&mut self, expr: &ir::Expr<'ctx>, violation: ConstViolation<'ctx>) {
         if !self.rebindable_handle(expr) {
             self.reject(expr, violation);
         }
@@ -543,7 +544,12 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
                     Some(ConstRoot::Local { rebindable: true })
                 ))
         {
-            self.reject(place, ConstViolation::Write);
+            let action = if matches!(place, ir::Expr::Local(..) | ir::Expr::Capture(..)) {
+                ConstWriteAction::Assign
+            } else {
+                ConstWriteAction::Modify
+            };
+            self.reject(place, ConstViolation::Write(action));
         }
         if self.readonly_place(place).is_none() {
             self.check_script_ref_store(value);
@@ -564,9 +570,9 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
             }
             ir::Call::Closure { .. } => &[],
         };
-        if matches!(
-            intrinsic,
-            Some(
+        if let Some(intrinsic) = intrinsic
+            && matches!(
+                intrinsic,
                 ir::Intrinsic::ArrayClear
                     | ir::Intrinsic::ArrayResize
                     | ir::Intrinsic::ArrayPush
@@ -578,13 +584,16 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
                     | ir::Intrinsic::ArraySort
                     | ir::Intrinsic::ArraySortByPredicate
             )
-        ) {
+        {
             if let Some(receiver) = call.args().first() {
-                self.reject(receiver, ConstViolation::Write);
+                self.reject(
+                    receiver,
+                    ConstViolation::Write(ConstWriteAction::ArrayIntrinsic(intrinsic.name())),
+                );
                 if self.readonly_place(receiver).is_none() {
                     match (intrinsic, call.args()) {
-                        (Some(ir::Intrinsic::ArrayPush), [_, elem])
-                        | (Some(ir::Intrinsic::ArrayInsert), [_, _, elem]) => {
+                        (ir::Intrinsic::ArrayPush, [_, elem])
+                        | (ir::Intrinsic::ArrayInsert, [_, _, elem]) => {
                             self.check_script_ref_store(elem);
                         }
                         _ => {}
@@ -615,7 +624,7 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
             for (arg, param) in call.args().iter().zip(params) {
                 let param_type = substitute_type(param.type_(), &type_env);
                 if param.flags().is_out() {
-                    self.reject_forwarding(arg, ConstViolation::Write);
+                    self.reject_forwarding(arg, ConstViolation::Write(ConstWriteAction::OutParam));
                 } else if (!self.policy.relaxed_const_checks
                     || matches!(
                         self.readonly_place(arg),
@@ -671,7 +680,14 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
                         )
             )
         {
-            self.reject(receiver, ConstViolation::Write);
+            let (name, _) = self
+                .symbols
+                .get_method(*method)
+                .expect("method id not found");
+            self.reject(
+                receiver,
+                ConstViolation::Write(ConstWriteAction::NonConstMethod(name)),
+            );
         }
         if let Some(receiver) = call.receiver() {
             self.visit_expr(receiver);

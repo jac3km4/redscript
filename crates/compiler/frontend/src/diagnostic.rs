@@ -136,16 +136,16 @@ pub enum Diagnostic<'ctx> {
     },
     #[error("method override has incompatible const qualifiers")]
     OverrideConstMismatch { span: Span, base_span: Option<Span> },
-    #[error("cannot write through a const parameter")]
-    ConstParameterWrite(Span),
-    #[error("cannot write through a const local")]
-    ConstLocalWrite(Span),
-    #[error("cannot write through a const return")]
-    ConstReturnWrite(Span),
-    #[error("cannot write through `this` in a const method")]
-    ConstReceiverWrite(Span),
-    #[error("cannot write through a const field")]
-    ConstFieldWrite(Span),
+    #[error("{}", ConstWriteDisplay(*.0, "a `const` parameter"))]
+    ConstParameterWrite(ConstWriteAction<'ctx>, Span),
+    #[error("{}", ConstWriteDisplay(*.0, "a `const` local"))]
+    ConstLocalWrite(ConstWriteAction<'ctx>, Span),
+    #[error("{}", ConstWriteDisplay(*.0, "a `const` return value"))]
+    ConstReturnWrite(ConstWriteAction<'ctx>, Span),
+    #[error("{}", ConstWriteDisplay(*.0, "`this` in a `const` method"))]
+    ConstReceiverWrite(ConstWriteAction<'ctx>, Span),
+    #[error("{}", ConstWriteDisplay(*.0, "a `const` field"))]
+    ConstFieldWrite(ConstWriteAction<'ctx>, Span),
     #[error("forwarding a const {root} to a {target} may allow mutation")]
     ConstForwarding {
         root: &'static str,
@@ -177,9 +177,9 @@ impl<'ctx> Diagnostic<'ctx> {
             | Self::DuplicateVariantName(_, _, _)
             | Self::UnusedLocal(..)
             | Self::AddFieldConflict(_)
-            | Self::ConstParameterWrite(_)
-            | Self::ConstReceiverWrite(_)
-            | Self::ConstFieldWrite(_)
+            | Self::ConstParameterWrite(..)
+            | Self::ConstReceiverWrite(..)
+            | Self::ConstFieldWrite(..)
             | Self::ConstForwarding { .. }
             | Self::ReplaceMethodConflict(_, _, _, _) => DiagnosticLevel::Warning,
             Self::ImportIsPrivate(_, _)
@@ -249,11 +249,11 @@ impl<'ctx> Diagnostic<'ctx> {
             | Self::LessVisibleOverride(_, span, _)
             | Self::OverrideReturnTypeMismatch { span, .. }
             | Self::OverrideConstMismatch { span, .. }
-            | Self::ConstParameterWrite(span)
-            | Self::ConstLocalWrite(span)
-            | Self::ConstReturnWrite(span)
-            | Self::ConstReceiverWrite(span)
-            | Self::ConstFieldWrite(span)
+            | Self::ConstParameterWrite(_, span)
+            | Self::ConstLocalWrite(_, span)
+            | Self::ConstReturnWrite(_, span)
+            | Self::ConstReceiverWrite(_, span)
+            | Self::ConstFieldWrite(_, span)
             | Self::ConstForwarding { span, .. }
             | Self::TemporaryScriptRefEscape(span)
             | Self::ScriptRefReturn(span)
@@ -311,11 +311,11 @@ impl<'ctx> Diagnostic<'ctx> {
             Self::LessVisibleOverride(..) => "LESS_VISIBLE_OVERRIDE",
             Self::OverrideReturnTypeMismatch { .. } => "OVERRIDE_RETURN_TYPE_MISMATCH",
             Self::OverrideConstMismatch { .. } => "OVERRIDE_CONST_MISMATCH",
-            Self::ConstParameterWrite(_) => "CONST_PARAMETER_WRITE",
-            Self::ConstLocalWrite(_) => "CONST_LOCAL_WRITE",
-            Self::ConstReturnWrite(_) => "CONST_RETURN_WRITE",
-            Self::ConstReceiverWrite(_) => "CONST_RECEIVER_WRITE",
-            Self::ConstFieldWrite(_) => "CONST_FIELD_WRITE",
+            Self::ConstParameterWrite(..) => "CONST_PARAMETER_WRITE",
+            Self::ConstLocalWrite(..) => "CONST_LOCAL_WRITE",
+            Self::ConstReturnWrite(..) => "CONST_RETURN_WRITE",
+            Self::ConstReceiverWrite(..) => "CONST_RECEIVER_WRITE",
+            Self::ConstFieldWrite(..) => "CONST_FIELD_WRITE",
             Self::ConstForwarding { .. } => "CONST_FORWARDING",
             Self::TemporaryScriptRefEscape(_) => "TEMP_SCRIPT_REF_ESCAPE",
             Self::ScriptRefReturn(_) => "SCRIPT_REF_RETURN",
@@ -449,6 +449,37 @@ impl<E> Default for Reporter<E> {
     fn default() -> Self {
         Self {
             reported: Vec::new(),
+        }
+    }
+}
+
+struct ConstWriteDisplay<'a, 'ctx>(ConstWriteAction<'ctx>, &'a str);
+
+impl fmt::Display for ConstWriteDisplay<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.format_with(f, self.1)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConstWriteAction<'ctx> {
+    Assign,
+    Modify,
+    OutParam,
+    ArrayIntrinsic(&'ctx str),
+    NonConstMethod(&'ctx str),
+}
+
+impl<'ctx> ConstWriteAction<'ctx> {
+    fn format_with(&self, f: &mut fmt::Formatter<'_>, target: &str) -> fmt::Result {
+        match self {
+            Self::Assign => write!(f, "cannot assign to {target}"),
+            Self::Modify => write!(f, "cannot modify {target}"),
+            Self::OutParam => write!(f, "cannot pass {target} to an `out` parameter"),
+            Self::ArrayIntrinsic(name) => write!(f, "cannot modify {target} with `{name}`"),
+            Self::NonConstMethod(name) => {
+                write!(f, "cannot call non-`const` method `{name}` on {target}")
+            }
         }
     }
 }

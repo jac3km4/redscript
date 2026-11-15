@@ -111,11 +111,11 @@ fn count_reads_const_arrays_but_grow_cannot_mutate_them() {
     for (source, expected) in [
         (
             "function Run(const values: array<Int32>) { values.Grow(2); }",
-            "const parameter",
+            "a `const` parameter",
         ),
         (
             "function Run() { const var values: array<Int32>; values.Grow(2); }",
-            "const local",
+            "a `const` local",
         ),
     ] {
         let errors = check(source);

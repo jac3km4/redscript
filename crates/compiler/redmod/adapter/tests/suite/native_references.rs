@@ -48,8 +48,8 @@ fn assert_const_write(reporter: &CompileErrorReporter<'_>, source: &str) {
     assert!(!reporter.reported().is_empty(), "{source}");
     assert!(
         reporter.reported().iter().all(|diagnostic| {
-            matches!(diagnostic, Diagnostic::ConstParameterWrite(_))
-                && diagnostic.to_string() == "cannot write through a const parameter"
+            matches!(diagnostic, Diagnostic::ConstParameterWrite(..))
+                && diagnostic.to_string().contains("a `const` parameter")
         }),
         "{source}: {:?}",
         reporter.reported()
