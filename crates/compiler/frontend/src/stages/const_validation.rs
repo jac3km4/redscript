@@ -61,7 +61,7 @@ pub(super) fn validate<'policy, 'ctx>(
                     .then_some((ir::Local::Param(i as u16), ConstRoot::Parameter))
             })
             .collect();
-        if is_const_method && !func_policy.const_param_non_out_forwarding {
+        if is_const_method && !func_policy.relaxed_const_checks {
             readonly.insert(ir::Local::This, ConstRoot::This);
         }
         add_const_locals(&mut readonly, &function.locals, symbols, func_policy);
@@ -207,7 +207,7 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
             ir::Expr::Field {
                 receiver, field, ..
             } => self.readonly_place(receiver).or_else(|| {
-                (!self.policy.const_param_non_out_forwarding
+                (!self.policy.relaxed_const_checks
                     && self.symbols[*field].flags().is_const())
                 .then_some(ConstRoot::Field)
             }),
@@ -352,7 +352,7 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
     fn check_script_ref_store(&mut self, value: &ir::Expr<'ctx>) {
         if self.has_script_ref_value(value)
             && let Some(root) = self.readonly_place(value)
-            && (!self.policy.const_param_non_out_forwarding
+            && (!self.policy.relaxed_const_checks
                 || matches!(
                     root,
                     ConstRoot::Local { .. } | ConstRoot::ParameterAndLocal | ConstRoot::Return
@@ -601,7 +601,7 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
                 && let (Some(arg), Some(type_arg)) = (args.first(), type_args.first())
                 && let Ok(typ) = type_arg.coalesced(self.symbols)
                 && self.mutable_type(&typ)
-                && (!self.policy.const_param_non_out_forwarding
+                && (!self.policy.relaxed_const_checks
                     || matches!(
                         self.readonly_place(arg),
                         Some(
@@ -619,7 +619,7 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
                 let param_type = substitute_type(param.type_(), &type_env);
                 if param.flags().is_out() {
                     self.reject_forwarding(arg, ConstViolation::Write);
-                } else if (!self.policy.const_param_non_out_forwarding
+                } else if (!self.policy.relaxed_const_checks
                     || matches!(
                         self.readonly_place(arg),
                         Some(
@@ -644,7 +644,7 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
         {
             for (arg, typ) in args.iter().zip(typ.args()) {
                 if self.mutable_type(typ)
-                    && (!self.policy.const_param_non_out_forwarding
+                    && (!self.policy.relaxed_const_checks
                         || matches!(
                             self.readonly_place(arg),
                             Some(
@@ -665,7 +665,7 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
             && matches!(
                 self.readonly_place(receiver),
                 Some(root)
-                    if !self.policy.const_param_non_out_forwarding
+                    if !self.policy.relaxed_const_checks
                         || matches!(
                             root,
                             ConstRoot::Local { .. }

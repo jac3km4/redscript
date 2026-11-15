@@ -292,7 +292,7 @@ fn every_hook_is_file_local_in_both_module_orders() {
         let policy = SemanticPolicy {
             hoist_locals: true,
             const_param_element_writes: false,
-            const_param_non_out_forwarding: false,
+            relaxed_const_checks: false,
             const_local_handle_rebinding: false,
             native_object_cast: false,
             script_ref_write_through: false,

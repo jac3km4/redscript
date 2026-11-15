@@ -149,9 +149,12 @@ REDmod parameter relaxations; both are false by default and true in the adapter'
 - `const_param_element_writes`: indexed element places stop const provenance.
   Assigning elements (including fields within them) or passing them as `out` is
   permitted. Replacing the entire array or mutating its size is still rejected.
-- `const_param_non_out_forwarding`: non-`out` forwarding is permitted, including
-  to non-const reference parameters. It does not relax explicit `out` arguments
-  or known mutating array intrinsics.
+- `relaxed_const_checks`: non-`out` forwarding is permitted (including to
+  non-const reference parameters and `ToVariant`), along with non-`const` method
+  calls on `const` parameters, writes through `this` in `const` methods,
+  writes through `const` fields, and `const`-mismatched method overrides. It
+  does not relax explicit `out` arguments, known mutating array intrinsics,
+  `const` locals, or `const` returns.
 
 In native `scripts/`, `const name : ref<T>` behaves as deep `const` on value
 types, structs, and arrays (never reassigned, field-mutated, element-mutated, or

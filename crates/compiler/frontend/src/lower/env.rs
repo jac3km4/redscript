@@ -104,9 +104,12 @@ pub struct SemanticPolicy {
     /// Permit writes to indexed elements rooted in const parameters (REDmod).
     /// Whole-array writes and mutating array intrinsics remain forbidden.
     pub const_param_element_writes: bool,
-    /// Permit forwarding const roots to non-const, non-out reference/value-container
-    /// parameters (REDmod). Explicit out arguments remain checked.
-    pub const_param_non_out_forwarding: bool,
+    /// Permit REDmod-compatible const relaxations: forwarding const parameters
+    /// to non-const, non-out parameters, non-const method calls on const parameters,
+    /// mutating through `this` in const methods, writing through const fields, and
+    /// const-mismatched method overrides. Explicit `out` arguments, mutating array
+    /// intrinsics, const locals, and const returns remain checked.
+    pub relaxed_const_checks: bool,
     /// Permit repeated rebinding and ordinary/out forwarding of const object handles.
     /// Referent writes and non-const receiver calls remain forbidden.
     pub const_local_handle_rebinding: bool,

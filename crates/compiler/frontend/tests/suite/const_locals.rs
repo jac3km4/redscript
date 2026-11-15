@@ -18,7 +18,7 @@ fn check_policy(source: &str, expected: &[&str], native: bool) {
         SemanticPolicy {
             hoist_locals: native,
             const_param_element_writes: native,
-            const_param_non_out_forwarding: native,
+            relaxed_const_checks: native,
             const_local_handle_rebinding: native,
             ..SemanticPolicy::default()
         },
@@ -232,7 +232,7 @@ fn closure_forwarding_without_const_flags_warns() {
         "class V {} func F(const p: V, f: (V) -> Void) { const x: V; f(p); f(x); }",
         &[],
         SemanticPolicy {
-            const_param_non_out_forwarding: true,
+            relaxed_const_checks: true,
             const_local_handle_rebinding: true,
             ..SemanticPolicy::default()
         },
@@ -243,7 +243,7 @@ fn closure_forwarding_without_const_flags_warns() {
         "func F(const p: [Int32], f: ([Int32]) -> Void) { const x: [Int32]; f(p); f(x); }",
         &["x"],
         SemanticPolicy {
-            const_param_non_out_forwarding: true,
+            relaxed_const_checks: true,
             const_local_handle_rebinding: true,
             ..SemanticPolicy::default()
         },
@@ -305,7 +305,7 @@ fn mixed_conditional_roots_keep_both_parameter_and_local_restrictions() {
         SemanticPolicy {
             hoist_locals: true,
             const_param_element_writes: true,
-            const_param_non_out_forwarding: true,
+            relaxed_const_checks: true,
             const_local_handle_rebinding: true,
             ..SemanticPolicy::default()
         },
@@ -429,7 +429,7 @@ fn readonly_script_ref_and_as_ref_assignments_warn() {
         "func F(const a: script_ref<Int32>) { const c = 0; let b: script_ref<Int32> = a; }",
         &[],
         SemanticPolicy {
-            const_param_non_out_forwarding: true,
+            relaxed_const_checks: true,
             ..SemanticPolicy::default()
         },
         &[],

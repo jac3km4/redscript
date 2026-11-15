@@ -272,7 +272,7 @@ fn const_relaxations_are_independent_and_file_local_in_both_orders() {
                     relaxed,
                     Rc::new(SemanticPolicy {
                         const_param_element_writes: elements,
-                        const_param_non_out_forwarding: forwarding,
+                        relaxed_const_checks: forwarding,
                         ..SemanticPolicy::default()
                     }),
                 )],
@@ -387,7 +387,7 @@ fn const_methods_enforce_readonly_this_in_community_policy() {
     assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
     let evaluator = Evaluator::from_modules(&modules);
     let policy = SemanticPolicy {
-        const_param_non_out_forwarding: true,
+        relaxed_const_checks: true,
         ..SemanticPolicy::default()
     };
     process_sources_with_policy(
@@ -422,7 +422,7 @@ fn const_fields_are_enforced_in_community_policy() {
     assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
     let evaluator = Evaluator::from_modules(&modules);
     let policy = SemanticPolicy {
-        const_param_non_out_forwarding: true,
+        relaxed_const_checks: true,
         ..SemanticPolicy::default()
     };
     process_sources_with_policy(
@@ -498,7 +498,7 @@ fn override_const_compatibility_is_enforced_in_community_policy() {
         invalid,
         0,
         SemanticPolicy {
-            const_param_non_out_forwarding: true,
+            relaxed_const_checks: true,
             ..SemanticPolicy::default()
         },
     );

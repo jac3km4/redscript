@@ -288,7 +288,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                                     });
                             }
                         }
-                        if !types.policy(span).const_param_non_out_forwarding
+                        if !types.policy(span).relaxed_const_checks
                             && !method.func().flags().is_callback()
                         {
                             let base_t = base.func().type_();
