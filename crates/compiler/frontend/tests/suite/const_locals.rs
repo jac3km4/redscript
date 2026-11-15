@@ -72,7 +72,8 @@ fn check_diagnostics(
                 if level == DiagnosticLevel::Warning {
                     message.starts_with("forwarding a const ")
                         && (message.ends_with(" to a non-const parameter may allow mutation")
-                            || message.ends_with(" to a function value may allow mutation"))
+                            || message.ends_with(" to a function value may allow mutation")
+                            || message.ends_with(" to a non-const script_ref may allow mutation"))
                 } else {
                     message == "cannot write through a const local"
                         || message == "cannot write through a const parameter"
@@ -360,4 +361,69 @@ fn local_rebinding_policy_is_file_local_in_both_orders() {
                 .contains("cannot write through a const local")
         );
     }
+}
+
+#[test]
+fn readonly_script_ref_and_as_ref_assignments_warn() {
+    use DiagnosticLevel::Warning;
+
+    check_diagnostics(
+        "func F() { const x = 1; let r: script_ref<Int32> = AsRef(x); }",
+        &["AsRef(x)"],
+        SemanticPolicy::default(),
+        &[Warning],
+    );
+    check_diagnostics(
+        "func F() { const x = 1; let arr: [script_ref<Int32>]; ArrayPush(arr, AsRef(x)); }",
+        &["AsRef(x)"],
+        SemanticPolicy::default(),
+        &[Warning],
+    );
+    check_diagnostics(
+        "struct Holder { public let r: script_ref<Int32>; }
+         func F() { const h: Holder; const arr: [script_ref<Int32>]; let a: script_ref<Int32> = h.r; let b: script_ref<Int32> = arr[0]; }",
+        &["h.r", "arr[0]"],
+        SemanticPolicy::default(),
+        &[Warning, Warning],
+    );
+    check_diagnostics(
+        "func F(const a: script_ref<Int32>) { const c = 0; let b: script_ref<Int32> = a; }",
+        &["a"],
+        SemanticPolicy::default(),
+        &[Warning],
+    );
+    check_diagnostics(
+        "func F() { const x = 1; let arr: [script_ref<Int32>] = [AsRef(x)]; }",
+        &["AsRef(x)"],
+        SemanticPolicy::default(),
+        &[Warning],
+    );
+    check_diagnostics(
+        "struct Holder { public let r: script_ref<Int32>; }
+         func F() { const x = 1; let h = Holder(AsRef(x)); }",
+        &["AsRef(x)"],
+        SemanticPolicy::default(),
+        &[Warning],
+    );
+    check_diagnostics(
+        "func F() { const x = 1; const arr: [script_ref<Int32>]; ArrayPush(arr, AsRef(x)); ArrayInsert(arr, 0, AsRef(x)); }",
+        &["arr", "arr"],
+        SemanticPolicy::default(),
+        &[DiagnosticLevel::Error, DiagnosticLevel::Error],
+    );
+    check_diagnostics(
+        "func F() { const x = 1; const r: script_ref<Int32> = AsRef(x); const arr: [script_ref<Int32>] = [AsRef(x)]; }",
+        &[],
+        SemanticPolicy::default(),
+        &[],
+    );
+    check_diagnostics(
+        "func F(const a: script_ref<Int32>) { const c = 0; let b: script_ref<Int32> = a; }",
+        &[],
+        SemanticPolicy {
+            const_param_non_out_forwarding: true,
+            ..SemanticPolicy::default()
+        },
+        &[],
+    );
 }

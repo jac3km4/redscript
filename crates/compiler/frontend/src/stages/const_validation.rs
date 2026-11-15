@@ -1,11 +1,11 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use redscript_community_ast::Span;
 
 use crate::ir::Visitor;
 use crate::{
-    CompileErrorReporter, Diagnostic, LoweredCompilationUnit, MethodId, Param, SemanticPolicy,
-    Symbols, Type, ir, predef,
+    CompileErrorReporter, Diagnostic, LoweredCompilationUnit, MethodId, Param, RefType,
+    SemanticPolicy, Symbols, Type, ir, predef,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -13,6 +13,7 @@ enum ConstViolation {
     Write,
     Forwarding,
     ClosureForwarding,
+    ScriptRefBinding,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -56,10 +57,23 @@ pub(super) fn validate<'policy, 'ctx>(
             symbols,
             policy(function.span),
         );
+        let mut script_ref_locals: HashSet<_> = params
+            .iter()
+            .enumerate()
+            .filter_map(|(i, p)| {
+                (p.type_().ref_type() == Some(RefType::Script)).then_some(ir::Local::Param(i as u16))
+            })
+            .collect();
+        add_script_ref_locals(&mut script_ref_locals, &function.locals, symbols);
+        let readonly_array_temps =
+            readonly_array_temps(&function.locals, &readonly, &HashMap::new());
         ConstWrites {
             symbols,
             readonly,
             captures: HashMap::new(),
+            readonly_array_temps,
+            script_ref_locals,
+            script_ref_captures: HashSet::new(),
             initializers: declaration_initializers(&function.locals),
             policy: policy(function.span),
             reporter,
@@ -120,6 +134,36 @@ fn add_const_locals<'ctx>(
     }
 }
 
+fn add_script_ref_locals<'ctx>(
+    locals_set: &mut HashSet<ir::Local>,
+    locals: &[ir::LocalInfo<'ctx>],
+    symbols: &Symbols<'ctx>,
+) {
+    for local in locals {
+        if local.typ.ref_type(symbols) == Some(RefType::Script) {
+            locals_set.insert(local.id);
+        }
+    }
+}
+
+fn readonly_array_temps(
+    locals: &[ir::LocalInfo<'_>],
+    readonly: &HashMap<ir::Local, ConstRoot>,
+    captures: &HashMap<ir::Local, ConstRoot>,
+) -> HashSet<ir::Local> {
+    locals
+        .iter()
+        .filter_map(|local| match local.temporary_owner {
+            Some(ir::TemporaryOwner::Destination(dest))
+                if readonly.contains_key(&dest) || captures.contains_key(&dest) =>
+            {
+                Some(local.id)
+            }
+            _ => None,
+        })
+        .collect()
+}
+
 fn declaration_initializers(locals: &[ir::LocalInfo<'_>]) -> HashMap<ir::Local, Span> {
     locals
         .iter()
@@ -131,6 +175,9 @@ struct ConstWrites<'a, 'ctx> {
     symbols: &'a Symbols<'ctx>,
     readonly: HashMap<ir::Local, ConstRoot>,
     captures: HashMap<ir::Local, ConstRoot>,
+    readonly_array_temps: HashSet<ir::Local>,
+    script_ref_locals: HashSet<ir::Local>,
+    script_ref_captures: HashSet<ir::Local>,
     initializers: HashMap<ir::Local, Span>,
     policy: &'a SemanticPolicy,
     reporter: &'a mut CompileErrorReporter<'ctx>,
@@ -187,7 +234,9 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
                     }
                     ConstRoot::Local { .. } => Diagnostic::ConstLocalWrite(expr.span()),
                 },
-                ConstViolation::Forwarding | ConstViolation::ClosureForwarding => {
+                ConstViolation::Forwarding
+                | ConstViolation::ClosureForwarding
+                | ConstViolation::ScriptRefBinding => {
                     let root = match root {
                         ConstRoot::Parameter => "parameter",
                         ConstRoot::Local { .. } => "local",
@@ -195,6 +244,7 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
                     };
                     let target = match violation {
                         ConstViolation::ClosureForwarding => "function value",
+                        ConstViolation::ScriptRefBinding => "non-const script_ref",
                         _ => "non-const parameter",
                     };
                     Diagnostic::ConstForwarding {
@@ -233,6 +283,41 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
         }
     }
 
+    fn has_script_ref_value(&self, expr: &ir::Expr<'ctx>) -> bool {
+        match expr {
+            ir::Expr::Local(local, _) => self.script_ref_locals.contains(local),
+            ir::Expr::Capture(local, _) => self.script_ref_captures.contains(local),
+            ir::Expr::Field { field, .. } => {
+                self.symbols[*field].type_().ref_type() == Some(RefType::Script)
+            }
+            ir::Expr::Index { array_type, .. } => {
+                array_type.arg_ref_type(self.symbols, 0) == Some(RefType::Script)
+            }
+            ir::Expr::Call { call, .. } => matches!(
+                &**call,
+                ir::Call::FreeFunction { function, .. }
+                    if self.symbols[*function].intrinsic() == Some(ir::Intrinsic::AsRef)
+            ),
+            ir::Expr::Conditional { then, else_, .. } => {
+                self.has_script_ref_value(then) || self.has_script_ref_value(else_)
+            }
+            _ => false,
+        }
+    }
+
+    fn check_script_ref_store(&mut self, value: &ir::Expr<'ctx>) {
+        if self.has_script_ref_value(value)
+            && let Some(root) = self.readonly_place(value)
+            && (!self.policy.const_param_non_out_forwarding
+                || matches!(
+                    root,
+                    ConstRoot::Local { .. } | ConstRoot::ParameterAndLocal
+                ))
+        {
+            self.reject_forwarding(value, ConstViolation::ScriptRefBinding);
+        }
+    }
+
     fn mutable_type(&self, typ: &Type<'ctx>) -> bool {
         typ.ref_type().is_some()
             || typ.upper_bound().is_some_and(|typ| {
@@ -247,6 +332,36 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
 }
 
 impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
+    fn visit_init_array(
+        &mut self,
+        local: ir::Local,
+        elements: &[ir::Expr<'ctx>],
+        _element_type: &ir::Type<'ctx>,
+        span: Span,
+    ) {
+        if !self.readonly.contains_key(&local) && !self.readonly_array_temps.contains(&local) {
+            for elem in elements {
+                self.check_script_ref_store(elem);
+            }
+        }
+        self.visit_local(local, span);
+        for elem in elements {
+            self.visit_expr(elem);
+        }
+    }
+
+    fn visit_new_struct(
+        &mut self,
+        _struct_: &ir::TypeApp<'ctx>,
+        args: &[ir::Expr<'ctx>],
+        _span: Span,
+    ) {
+        for arg in args {
+            self.check_script_ref_store(arg);
+            self.visit_expr(arg);
+        }
+    }
+
     fn visit_assign(&mut self, place: &ir::Expr<'ctx>, value: &ir::Expr<'ctx>, span: Span) {
         // Only the declaration's store is initialization. In particular, writes
         // nested in its value and writes to captured bindings are still checked.
@@ -266,6 +381,9 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
                 ))
         {
             self.reject(place, ConstViolation::Write);
+        }
+        if self.readonly_place(place).is_none() {
+            self.check_script_ref_store(value);
         }
         self.visit_expr(place);
         self.visit_expr(value);
@@ -300,6 +418,15 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
         ) {
             if let Some(receiver) = call.args().first() {
                 self.reject(receiver, ConstViolation::Write);
+                if self.readonly_place(receiver).is_none() {
+                    match (intrinsic, call.args()) {
+                        (Some(ir::Intrinsic::ArrayPush), [_, elem])
+                        | (Some(ir::Intrinsic::ArrayInsert), [_, _, elem]) => {
+                            self.check_script_ref_store(elem);
+                        }
+                        _ => {}
+                    }
+                }
             }
         } else if intrinsic.is_none() {
             for (arg, param) in call.args().iter().zip(params) {
@@ -368,6 +495,14 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
                     .map(|root| (*local, *root))
             })
             .collect();
+        let script_ref_captures = closure
+            .captures
+            .iter()
+            .filter(|local| {
+                self.script_ref_locals.contains(local) || self.script_ref_captures.contains(local)
+            })
+            .copied()
+            .collect();
         let readonly = std::mem::take(&mut self.readonly);
         add_const_locals(
             &mut self.readonly,
@@ -375,7 +510,15 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
             self.symbols,
             self.policy,
         );
+        let script_ref_locals = std::mem::take(&mut self.script_ref_locals);
+        add_script_ref_locals(&mut self.script_ref_locals, &closure.locals, self.symbols);
+        let old_readonly_array_temps = std::mem::replace(
+            &mut self.readonly_array_temps,
+            readonly_array_temps(&closure.locals, &self.readonly, &captures),
+        );
         let old_captures = std::mem::replace(&mut self.captures, captures);
+        let old_script_ref_captures =
+            std::mem::replace(&mut self.script_ref_captures, script_ref_captures);
         let initializers = std::mem::replace(
             &mut self.initializers,
             declaration_initializers(&closure.locals),
@@ -383,6 +526,9 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
         self.visit_block(&closure.block);
         self.initializers = initializers;
         self.readonly = readonly;
+        self.readonly_array_temps = old_readonly_array_temps;
+        self.script_ref_locals = script_ref_locals;
         self.captures = old_captures;
+        self.script_ref_captures = old_script_ref_captures;
     }
 }

@@ -697,6 +697,19 @@ impl<'ctx> Type<'ctx> {
         *state.borrow_mut() = TypeState::Init(typ.clone());
         Ok(typ)
     }
+
+    pub fn arg_ref_type(&self, symbols: &Symbols<'ctx>, index: usize) -> Option<crate::RefType> {
+        let Self(state) = self;
+        match &*state.borrow() {
+            TypeState::Uninit(poly) => poly
+                .upper_bound(symbols)
+                .and_then(|app| app.args().get(index)?.ref_type(symbols)),
+            TypeState::Init(types::Type::Data(app)) => {
+                app.args().get(index).and_then(types::Type::ref_type)
+            }
+            TypeState::Init(_) => None,
+        }
+    }
 }
 
 impl<'ctx> From<PolyType<'ctx>> for Type<'ctx> {
