@@ -21,6 +21,7 @@ enum ConstViolation {
 enum ConstRoot {
     Parameter,
     This,
+    Field,
     Local { rebindable: bool },
     ParameterAndLocal,
     Return,
@@ -31,6 +32,7 @@ impl ConstRoot {
         match (self, other) {
             (Self::Parameter, Self::Parameter) => Self::Parameter,
             (Self::This, Self::This) => Self::This,
+            (Self::Field, Self::Field) => Self::Field,
             (Self::Local { rebindable: a }, Self::Local { rebindable: b }) => {
                 Self::Local { rebindable: a && b }
             }
@@ -202,7 +204,13 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
         match expr {
             ir::Expr::Local(local, _) => self.readonly.get(local).copied(),
             ir::Expr::Capture(local, _) => self.captures.get(local).copied(),
-            ir::Expr::Field { receiver, .. } => self.readonly_place(receiver),
+            ir::Expr::Field {
+                receiver, field, ..
+            } => self.readonly_place(receiver).or_else(|| {
+                (!self.policy.const_param_non_out_forwarding
+                    && self.symbols[*field].flags().is_const())
+                .then_some(ConstRoot::Field)
+            }),
             ir::Expr::Index { array, .. } => self.readonly_place(array).and_then(|root| {
                 match (root, self.policy.const_param_element_writes) {
                     (ConstRoot::Parameter, true) => None,
@@ -257,6 +265,7 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
                         Diagnostic::ConstParameterWrite(expr.span())
                     }
                     ConstRoot::This => Diagnostic::ConstReceiverWrite(expr.span()),
+                    ConstRoot::Field => Diagnostic::ConstFieldWrite(expr.span()),
                     ConstRoot::Local { .. } => Diagnostic::ConstLocalWrite(expr.span()),
                     ConstRoot::Return => Diagnostic::ConstReturnWrite(expr.span()),
                 },
@@ -266,6 +275,7 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
                     let root = match root {
                         ConstRoot::Parameter => "parameter",
                         ConstRoot::This => "receiver",
+                        ConstRoot::Field => "field",
                         ConstRoot::Local { .. } => "local",
                         ConstRoot::ParameterAndLocal => "parameter or local",
                         ConstRoot::Return => "return",

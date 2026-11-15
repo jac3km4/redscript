@@ -53,6 +53,8 @@ fn check_level(source: &str, expected: &[&str], level: DiagnosticLevel, message:
                 if level == DiagnosticLevel::Error {
                     if message == "cannot write through `this` in a const method" {
                         "CONST_RECEIVER_WRITE"
+                    } else if message == "cannot write through a const field" {
+                        "CONST_FIELD_WRITE"
                     } else {
                         "CONST_PARAMETER_WRITE"
                     }
@@ -377,6 +379,41 @@ fn const_methods_enforce_readonly_this_in_community_policy() {
     let file = sources.push_back(
         "const.reds",
         "class Item { private let value: Int32; public const func Write() { this.value = 1; } }",
+    );
+    let interner = TypeInterner::default();
+    let mut reporter = CompileErrorReporter::default();
+    let modules = parse_files(&sources, &mut reporter);
+    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+    let evaluator = Evaluator::from_modules(&modules);
+    let policy = SemanticPolicy {
+        const_param_non_out_forwarding: true,
+        ..SemanticPolicy::default()
+    };
+    process_sources_with_policy(
+        modules,
+        Symbols::with_default_types(),
+        evaluator,
+        &mut reporter,
+        &interner,
+        &[(file, Rc::new(policy))],
+    );
+    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+}
+
+#[test]
+fn const_fields_are_enforced_in_community_policy() {
+    check_level(
+        "class Item { public const let value: Int32; public const let items: [Int32]; public func Mutate() {} }\nclass Holder { public const let item: Item; }\nfunc Use(holder: Holder) { let x = holder.item.value; holder.item.value = 1; ArrayPush(holder.item.items, 1); holder.item.Mutate(); }",
+        &["holder.item.value", "holder.item.items", "holder.item"],
+        DiagnosticLevel::Error,
+        "cannot write through a const field",
+    );
+
+    let sources = SourceMap::new();
+    sources.populate_boot_lib();
+    let file = sources.push_back(
+        "const.reds",
+        "class Item { public const let value: Int32; public func Write() { this.value = 1; } }",
     );
     let interner = TypeInterner::default();
     let mut reporter = CompileErrorReporter::default();

@@ -142,6 +142,8 @@ pub enum Diagnostic<'ctx> {
     ConstReturnWrite(Span),
     #[error("cannot write through `this` in a const method")]
     ConstReceiverWrite(Span),
+    #[error("cannot write through a const field")]
+    ConstFieldWrite(Span),
     #[error("forwarding a const {root} to a {target} may allow mutation")]
     ConstForwarding {
         root: &'static str,
@@ -244,6 +246,7 @@ impl<'ctx> Diagnostic<'ctx> {
             | Self::ConstLocalWrite(span)
             | Self::ConstReturnWrite(span)
             | Self::ConstReceiverWrite(span)
+            | Self::ConstFieldWrite(span)
             | Self::ConstForwarding { span, .. }
             | Self::TemporaryScriptRefEscape(span)
             | Self::ScriptRefReturn(span)
@@ -304,6 +307,7 @@ impl<'ctx> Diagnostic<'ctx> {
             Self::ConstLocalWrite(_) => "CONST_LOCAL_WRITE",
             Self::ConstReturnWrite(_) => "CONST_RETURN_WRITE",
             Self::ConstReceiverWrite(_) => "CONST_RECEIVER_WRITE",
+            Self::ConstFieldWrite(_) => "CONST_FIELD_WRITE",
             Self::ConstForwarding { .. } => "CONST_FORWARDING",
             Self::TemporaryScriptRefEscape(_) => "TEMP_SCRIPT_REF_ESCAPE",
             Self::ScriptRefReturn(_) => "SCRIPT_REF_RETURN",
