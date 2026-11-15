@@ -342,3 +342,19 @@ fn non_const_methods_on_const_parameters_are_rejected() {
         &["item"],
     );
 }
+
+#[test]
+fn to_variant_checks_const_mutable_forwarding() {
+    check_forwarding(
+        "func Box(const value: Int32) -> Variant { return ToVariant(value); }",
+        &[],
+    );
+    check_forwarding(
+        "func Box(const value: [Int32]) -> Variant { return ToVariant(value); }",
+        &["value"],
+    );
+    check_forwarding(
+        "class Item {} func Box(const value: Item) -> Variant { return ToVariant(value); }",
+        &["value"],
+    );
+}

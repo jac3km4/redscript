@@ -572,6 +572,25 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
                     }
                 }
             }
+        } else if intrinsic == Some(ir::Intrinsic::ToVariant) {
+            if let ir::Call::FreeFunction {
+                type_args, args, ..
+            } = call
+                && let (Some(arg), Some(type_arg)) = (args.first(), type_args.first())
+                && let Ok(typ) = type_arg.coalesced(self.symbols)
+                && self.mutable_type(&typ)
+                && (!self.policy.const_param_non_out_forwarding
+                    || matches!(
+                        self.readonly_place(arg),
+                        Some(
+                            ConstRoot::Local { .. }
+                                | ConstRoot::ParameterAndLocal
+                                | ConstRoot::Return
+                        )
+                    ))
+            {
+                self.reject_forwarding(arg, ConstViolation::Forwarding);
+            }
         } else if intrinsic.is_none() {
             let type_env = self.call_type_env(call);
             for (arg, param) in call.args().iter().zip(params) {
