@@ -406,7 +406,7 @@ fn const_fields_are_enforced_in_community_policy() {
     check_level(
         "class Item { public const let value: Int32; public const let items: [Int32]; public func Mutate() {} }\nclass Holder { public const let item: Item; }\nfunc Use(holder: Holder) { let x = holder.item.value; holder.item.value = 1; ArrayPush(holder.item.items, 1); holder.item.Mutate(); }",
         &["holder.item.value", "holder.item.items", "holder.item"],
-        DiagnosticLevel::Error,
+        DiagnosticLevel::Warning,
         "cannot write through a const field",
     );
 

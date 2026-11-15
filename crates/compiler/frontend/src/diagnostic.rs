@@ -182,6 +182,7 @@ impl<'ctx> Diagnostic<'ctx> {
             | Self::AddFieldConflict(_)
             | Self::ConstParameterWrite(_)
             | Self::ConstReceiverWrite(_)
+            | Self::ConstFieldWrite(_)
             | Self::ConstForwarding { .. }
             | Self::ReplaceMethodConflict(_, _, _, _) => DiagnosticLevel::Warning,
             Self::ImportIsPrivate(_, _)
