@@ -434,3 +434,70 @@ fn const_fields_are_enforced_in_community_policy() {
     );
     assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
 }
+
+#[test]
+fn override_const_compatibility_is_enforced_in_community_policy() {
+    let check_override = |source: &str, expected_errors: usize, policy: SemanticPolicy| {
+        let sources = SourceMap::new();
+        sources.populate_boot_lib();
+        let file = sources.push_back("const.reds", source);
+        let interner = TypeInterner::default();
+        let mut reporter = CompileErrorReporter::default();
+        let modules = parse_files(&sources, &mut reporter);
+        assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+        let evaluator = Evaluator::from_modules(&modules);
+        process_sources_with_policy(
+            modules,
+            Symbols::with_default_types(),
+            evaluator,
+            &mut reporter,
+            &interner,
+            &[(file, Rc::new(policy))],
+        );
+        let errors: Vec<_> = reporter
+            .reported()
+            .iter()
+            .filter(|d| d.code() == "OVERRIDE_CONST_MISMATCH")
+            .collect();
+        assert_eq!(errors.len(), expected_errors, "{source}: {errors:?}");
+    };
+
+    // Valid Liskov-safe overrides: adding const on method/param, or dropping const on return (non-script_ref).
+    check_override(
+        "class Item {}
+        class Base {
+            public func Mut() {}
+            public func Take(x: Item) {}
+            public func Get() -> const Item { return new Item(); }
+        }
+        class Child extends Base {
+            public const func Mut() {}
+            public func Take(const x: Item) {}
+            public func Get() -> Item { return new Item(); }
+        }",
+        0,
+        SemanticPolicy::default(),
+    );
+
+    // Invalid overrides in community policy: dropping const on method/param, or adding const on return.
+    let invalid = "class Item {}
+        class Base {
+            public const func Read() {}
+            public func Take(const x: Item) {}
+            public func Get() -> Item { return new Item(); }
+        }
+        class Child extends Base {
+            public func Read() {}
+            public func Take(x: Item) {}
+            public func Get() -> const Item { return new Item(); }
+        }";
+    check_override(invalid, 3, SemanticPolicy::default());
+    check_override(
+        invalid,
+        0,
+        SemanticPolicy {
+            const_param_non_out_forwarding: true,
+            ..SemanticPolicy::default()
+        },
+    );
+}

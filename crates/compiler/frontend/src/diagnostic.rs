@@ -134,6 +134,11 @@ pub enum Diagnostic<'ctx> {
         span: Span,
         base_span: Option<Span>,
     },
+    #[error("method override has incompatible const qualifiers")]
+    OverrideConstMismatch {
+        span: Span,
+        base_span: Option<Span>,
+    },
     #[error("cannot write through a const parameter")]
     ConstParameterWrite(Span),
     #[error("cannot write through a const local")]
@@ -242,6 +247,7 @@ impl<'ctx> Diagnostic<'ctx> {
             | Self::InvalidStructVariance(span)
             | Self::LessVisibleOverride(_, span, _)
             | Self::OverrideReturnTypeMismatch { span, .. }
+            | Self::OverrideConstMismatch { span, .. }
             | Self::ConstParameterWrite(span)
             | Self::ConstLocalWrite(span)
             | Self::ConstReturnWrite(span)
@@ -303,6 +309,7 @@ impl<'ctx> Diagnostic<'ctx> {
             Self::InvalidStructVariance(_) => "INVALID_STRUCT_VARIANCE",
             Self::LessVisibleOverride(..) => "LESS_VISIBLE_OVERRIDE",
             Self::OverrideReturnTypeMismatch { .. } => "OVERRIDE_RETURN_TYPE_MISMATCH",
+            Self::OverrideConstMismatch { .. } => "OVERRIDE_CONST_MISMATCH",
             Self::ConstParameterWrite(_) => "CONST_PARAMETER_WRITE",
             Self::ConstLocalWrite(_) => "CONST_LOCAL_WRITE",
             Self::ConstReturnWrite(_) => "CONST_RETURN_WRITE",

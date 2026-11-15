@@ -288,6 +288,26 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                                     });
                             }
                         }
+                        if !types.policy(span).const_param_non_out_forwarding
+                            && !method.func().flags().is_callback()
+                        {
+                            let base_t = base.func().type_();
+                            let method_drops_const =
+                                base.func().flags().is_const() && !method.func().flags().is_const();
+                            let param_drops_const = base_t
+                                .params()
+                                .iter()
+                                .zip(method_t.params())
+                                .any(|(b, m)| b.flags().is_const() && !m.flags().is_const());
+                            let return_adds_const =
+                                !base_t.is_const_return() && method_t.is_const_return();
+                            if method_drops_const || param_drops_const || return_adds_const {
+                                self.reporter.report(Diagnostic::OverrideConstMismatch {
+                                    span,
+                                    base_span: base.func().span(),
+                                });
+                            }
+                        }
                         if base.func().flags().is_final() {
                             self.reporter.report(Diagnostic::FinalMethodOverride(
                                 method.name(),
