@@ -44,22 +44,26 @@ jobs:
 
       - name: Verify packaged outputs
         id: outputs
-        shell: pwsh
+        shell: bash
         env:
           ARTIFACT_SUFFIX: ${{ inputs.suffix }}
         run: |
-          $cli = switch ($env:ARTIFACT_SUFFIX) {
-            'windows' { 'redscript-cli.exe' }
-            'macos' { 'redscript-cli-aarch64-darwin' }
-            'linux' { 'redscript-cli-x86_64-linux-gnu' }
-            default { throw "Unsupported artifact suffix: $env:ARTIFACT_SUFFIX" }
-          }
-          foreach ($path in @($cli, $env:ARCHIVE_NAME)) {
-            if (!(Test-Path -LiteralPath $path -PathType Leaf) -or (Get-Item -LiteralPath $path).Length -eq 0) {
-              throw "Missing or empty packaged output: $path"
-            }
-          }
-          "cli=$cli" >> $env:GITHUB_OUTPUT
+          case "$ARTIFACT_SUFFIX" in
+            windows) cli="redscript-cli.exe" ;;
+            macos) cli="redscript-cli-aarch64-darwin" ;;
+            linux) cli="redscript-cli-x86_64-linux-gnu" ;;
+            *)
+              echo "Unsupported artifact suffix: $ARTIFACT_SUFFIX" >&2
+              exit 1
+              ;;
+          esac
+          for path in "$cli" "$ARCHIVE_NAME"; do
+            if [[ ! -f "$path" || ! -s "$path" ]]; then
+              echo "Missing or empty packaged output: $path" >&2
+              exit 1
+            fi
+          done
+          echo "cli=$cli" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
         name: Upload artifacts
         with:
@@ -69,3 +73,4 @@ jobs:
           name: artifact-${{ inputs.os }}
           if-no-files-found: error
           compression-level: 1
+          retention-days: 7

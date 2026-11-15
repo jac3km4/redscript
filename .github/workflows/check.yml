@@ -15,7 +15,7 @@ env:
 
 jobs:
   test:
-    name: Lint, test, and doc
+    name: Lint and test
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -27,10 +27,24 @@ jobs:
         with:
           key: test
           save-if: ${{ github.event_name == 'push' && github.ref_type == 'branch' }}
-      # Verify standalone compilation for feature-bearing crates without workspace feature unification.
-      - run: cargo check --no-default-features -p redscript-community-ast -p redscript-io -p redscript-compiler-api -p scc-core --locked
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --bins --lib --tests --locked
+
+  check:
+    name: Check features and docs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install stable --profile minimal
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: check
+          save-if: ${{ github.event_name == 'push' && github.ref_type == 'branch' }}
+      # Verify standalone compilation for feature-bearing crates without workspace feature unification.
+      - run: cargo check --no-default-features -p redscript-community-ast -p redscript-io -p redscript-compiler-api -p scc-core --locked
       - name: Check documentation
         env:
           RUSTDOCFLAGS: "-D warnings"
@@ -58,5 +72,6 @@ jobs:
       - run: rustup toolchain install stable --profile minimal
       - uses: Swatinem/rust-cache@v2
         with:
+          key: test
           save-if: ${{ github.event_name == 'push' && github.ref_type == 'branch' }}
       - run: cargo test --workspace --bins --lib --tests --locked
