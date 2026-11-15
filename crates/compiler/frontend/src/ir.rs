@@ -894,7 +894,7 @@ mod prvalue_tests {
         let codes = reporter
             .reported()
             .iter()
-            .map(|d| d.code())
+            .map(crate::Diagnostic::code)
             .collect::<Vec<_>>();
         assert!(codes.contains(&"INVALID_PLACE"), "{codes:?}");
         assert!(codes.contains(&"INVALID_TEMP"), "{codes:?}");
