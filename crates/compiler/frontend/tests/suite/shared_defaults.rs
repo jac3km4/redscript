@@ -126,8 +126,10 @@ fn script_reference_coercions_compose_and_receivers_unwrap_by_default() {
          func ReadWeak(value: script_ref<ref<Object>>) -> wref<Object> { return value; }
          func ReadStrong(value: script_ref<wref<Object>>) -> ref<Object> { return value; }
          func ReadVariant(value: script_ref<Int32>) -> Variant { return value; }
-         func WrapWeak(value: ref<Object>) -> script_ref<wref<Object>> { return value; }
-         func WrapVariant(value: Int32) -> script_ref<Variant> { return value; }
+         func TakeWeak(const r: script_ref<wref<Object>>) -> Int32 { return 0; }
+         func TakeVariant(const r: script_ref<Variant>) -> Int32 { return 0; }
+         func WrapWeak(value: ref<Object>) -> Int32 { return TakeWeak(value); }
+         func WrapVariant(value: Int32) -> Int32 { return TakeVariant(value); }
          func Field(value: script_ref<wref<Object>>) -> Int32 { return value.number; }
          func Method(value: script_ref<ref<Object>>) -> Int32 { return value.Get(); }
          func Index(value: script_ref<[Int32]>) -> Int32 { return value[0]; }",
@@ -137,10 +139,20 @@ fn script_reference_coercions_compose_and_receivers_unwrap_by_default() {
                 ("ReadWeak", ir::Intrinsic::RefToWeakRef, ir::Intrinsic::Deref),
                 ("ReadStrong", ir::Intrinsic::WeakRefToRef, ir::Intrinsic::Deref),
                 ("ReadVariant", ir::Intrinsic::ToVariant, ir::Intrinsic::Deref),
+            ] {
+                let ir::Expr::Call { call, .. } = returned(function(unit, symbols, name)) else { panic!("outer") };
+                let ir::Call::FreeFunction { function: id, .. } = &**call else { panic!("intrinsic") };
+                assert_eq!(symbols[*id].intrinsic(), Some(outer), "{name}: {call:#?}");
+                let ir::Expr::Call { call, .. } = &call.args()[0] else { panic!("inner") };
+                let ir::Call::FreeFunction { function: id, .. } = &**call else { panic!("intrinsic") };
+                assert_eq!(symbols[*id].intrinsic(), Some(inner), "{name}: {call:#?}");
+            }
+            for (name, outer, inner) in [
                 ("WrapWeak", ir::Intrinsic::AsRef, ir::Intrinsic::RefToWeakRef),
                 ("WrapVariant", ir::Intrinsic::AsRef, ir::Intrinsic::ToVariant),
             ] {
-                let ir::Expr::Call { call, .. } = returned(function(unit, symbols, name)) else { panic!("outer") };
+                let ir::Expr::Call { call, .. } = returned(function(unit, symbols, name)) else { panic!("call") };
+                let ir::Expr::Call { call, .. } = &call.args()[0] else { panic!("outer") };
                 let ir::Call::FreeFunction { function: id, .. } = &**call else { panic!("intrinsic") };
                 assert_eq!(symbols[*id].intrinsic(), Some(outer), "{name}: {call:#?}");
                 let ir::Expr::Call { call, .. } = &call.args()[0] else { panic!("inner") };
@@ -204,6 +216,64 @@ fn unsafe_array_prefixes_are_diagnosed_while_local_construction_remains_supporte
         &format!(
             "{declarations} func Test() {{ let x = 0; let values = [x = 1, x = 2]; Take(x, values); let nested = [[1], [2]]; }}"
         ),
+        |_, _, codes| assert!(codes.is_empty(), "{codes:?}"),
+    );
+}
+
+#[test]
+fn non_const_script_ref_lvalues_reject_temporary_conversions() {
+    analyze(
+        "class Object {}
+         func MutVariant(v: script_ref<Variant>) {}
+         func Test(x: Int32) { MutVariant(x); }",
+        |_, _, codes| assert_eq!(codes, ["TYPE_ERR"]),
+    );
+    analyze(
+        "class Object {}
+         func MutStrong(v: script_ref<ref<Object>>) {}
+         func Test(w: wref<Object>) { MutStrong(w); }",
+        |_, _, codes| assert_eq!(codes, ["TYPE_ERR"]),
+    );
+    analyze(
+        "class Base {}
+         class Derived extends Base {}
+         func MutBaseRef(v: script_ref<ref<Base>>) {}
+         func Test(d: ref<Derived>) { MutBaseRef(d); }",
+        |_, _, codes| assert_eq!(codes, ["TYPE_ERR"]),
+    );
+    analyze(
+        "class Object {}
+         func MutWeak(v: script_ref<wref<Object>>) {}
+         func Test(o: ref<Object>) { MutWeak(o); }",
+        |_, _, codes| assert_eq!(codes, ["TYPE_ERR"]),
+    );
+    analyze(
+        "class Base {}
+         class Derived extends Base {}
+         func Test(x: Int32, d: ref<Derived>) {
+           let a: script_ref<Variant> = x;
+           let b: script_ref<ref<Base>> = d;
+         }",
+        |_, _, codes| assert_eq!(codes, ["TYPE_ERR", "TYPE_ERR"]),
+    );
+    analyze(
+        "class Base {}
+         class Derived extends Base {}
+         struct BaseS { let a: Int32; }
+         struct SubS extends BaseS { let b: Int32; }
+         func ConstVariant(const v: script_ref<Variant>) {}
+         func ConstStrong(const v: script_ref<ref<Base>>) {}
+         func MutVariant(v: script_ref<Variant>) {}
+         func MutBaseRef(v: script_ref<ref<Base>>) {}
+         func MutBase(s: script_ref<BaseS>) {}
+         func Test(x: Int32, w: wref<Base>, d: ref<Derived>, s: SubS) {
+           ConstVariant(x);
+           ConstStrong(w);
+           ConstStrong(d);
+           MutVariant(42);
+           MutBaseRef(new Derived());
+           MutBase(s);
+         }",
         |_, _, codes| assert!(codes.is_empty(), "{codes:?}"),
     );
 }

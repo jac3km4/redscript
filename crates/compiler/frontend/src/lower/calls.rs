@@ -412,13 +412,14 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 self.reporter.report(Error::InvalidTemporary(span));
             }
         }
-        self.coerce_with_provider(
+        self.coerce_with_options(
             expr,
             lhs,
             rhs,
             env,
             span,
             allow_provider && !param.flags().is_out(),
+            param.flags().is_const(),
         )
     }
 
@@ -971,10 +972,11 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         env: &Env<'_, 'ctx>,
         span: Span,
     ) -> LowerResult<'ctx, ()> {
-        self.coerce_with_provider(expr, lhs, rhs, env, span, true)
+        self.coerce_with_options(expr, lhs, rhs, env, span, true, false)
     }
 
-    fn coerce_with_provider(
+    #[allow(clippy::too_many_arguments)]
+    fn coerce_with_options(
         &mut self,
         expr: &mut ir::Expr<'ctx>,
         lhs: PolyType<'ctx>,
@@ -982,6 +984,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         env: &Env<'_, 'ctx>,
         span: Span,
         allow_provider: bool,
+        allow_script_ref_variance: bool,
     ) -> LowerResult<'ctx, ()> {
         if let Some(validate) = env.types().policy(span).validate_coercion {
             validate(&lhs, &rhs, self.symbols, span)?;
@@ -991,12 +994,42 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 if !matches!(target, Some((RefType::Script, _))) =>
             {
                 self.emit_reference_conversion(expr, lhs, ir::Intrinsic::Deref, env, span)?;
-                return self.coerce_with_provider(expr, pointee, rhs, env, span, allow_provider);
+                return self.coerce_with_options(
+                    expr,
+                    pointee,
+                    rhs,
+                    env,
+                    span,
+                    allow_provider,
+                    allow_script_ref_variance,
+                );
             }
             (source, Some((RefType::Script, pointee)))
                 if !matches!(source, Some((RefType::Script, _))) =>
             {
-                self.coerce_with_provider(expr, lhs, pointee.clone(), env, span, allow_provider)?;
+                if !allow_script_ref_variance && !expr.is_prvalue(self.symbols) {
+                    let is_struct_pointee = pointee
+                        .upper_bound(self.symbols)
+                        .and_then(|app| self.symbols[app.id()].schema().as_aggregate())
+                        .is_some_and(|agg| agg.flags().is_struct());
+                    if is_struct_pointee {
+                        lhs.constrain_base(&pointee, self.symbols)
+                            .with_span(span)?;
+                    } else {
+                        lhs.constrain_invariant(&pointee, self.symbols)
+                            .with_span(span)?;
+                    }
+                } else {
+                    self.coerce_with_options(
+                        expr,
+                        lhs,
+                        pointee.clone(),
+                        env,
+                        span,
+                        allow_provider,
+                        allow_script_ref_variance,
+                    )?;
+                }
                 return self.emit_reference_conversion(
                     expr,
                     pointee,
