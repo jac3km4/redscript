@@ -70,13 +70,19 @@ ref.to_wref
 deref 2 "ref:Holder"
 param 12 "value": "script_ref:ref:Holder"
 
-// WrapWeak;Holder (f7)
+// TakeWeak;wref<Holder> (f7)
 return
+i32.zero
+
+// WrapWeak;Holder (f8)
+return
+invoke.static j35 l23 f7 TakeWeak;wref<Holder> 0000000000000001
 as_ref 3 "wref:Holder"
 ref.to_wref
 param 13 "value": "ref:Holder"
+param.end
 
-// RefIndex;array<Int32> (f8)
+// RefIndex;array<Int32> (f9)
 return
 array.element 1 "array:Int32"
 deref 1 "array:Int32"

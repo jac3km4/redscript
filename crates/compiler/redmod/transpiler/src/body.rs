@@ -935,14 +935,14 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             let [arg] = &args[..] else {
                 return Err(invalid());
             };
-            if Self::simple_place(arg) {
-                return self.expr_at(e, minimum);
-            }
             if self.type_of(e)? != *expected
                 || expected.ref_type() != Some(RefType::Script)
                 || &self.type_of(arg)? != expected.unwrap_ref_or_self()
             {
                 return Err(invalid());
+            }
+            if Self::simple_place(arg) {
+                return self.expr_at(arg, minimum);
             }
             if arg.is_prvalue(self.symbols) && slot >= u16::BITS as usize {
                 return Err(error(
@@ -989,21 +989,47 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         {
             return self.borrowed_arg(arg, param.type_(), slot, minimum);
         }
-        if self.erased_operand(arg).is_some()
-            && let ir::Expr::Call { call, .. } = arg
-            && let ir::Call::FreeFunction { function, .. } = &**call
+        if let ir::Expr::Call { call, .. } = arg
+            && let ir::Call::FreeFunction { function, args, .. } = &**call
             && self.symbols[*function].intrinsic() == Some(ir::Intrinsic::AsRef)
         {
-            let message = if signature
-                .params()
-                .get(slot)
-                .is_some_and(|p| p.flags().is_out())
+            if self.erased_operand(arg).is_some() {
+                let message = if signature
+                    .params()
+                    .get(slot)
+                    .is_some_and(|p| p.flags().is_out())
+                {
+                    "nonlocal AsRef cannot supply an out parameter"
+                } else {
+                    "cannot recreate this borrow: generic or competing overloads may change call selection"
+                };
+                return Err(error(message, Some(arg.span())));
+            }
+            if let [inner] = &args[..]
+                && Self::simple_place(inner)
             {
-                "nonlocal AsRef cannot supply an out parameter"
-            } else {
-                "cannot recreate this borrow: generic or competing overloads may change call selection"
-            };
-            return Err(error(message, Some(arg.span())));
+                let Some(param) = signature.params().get(slot) else {
+                    return Err(error(
+                        "borrow requires an exact script_ref<T> parameter and an operand of type T",
+                        Some(arg.span()),
+                    ));
+                };
+                if param.flags().is_out() {
+                    return Err(error(
+                        "AsRef cannot supply an out parameter",
+                        Some(arg.span()),
+                    ));
+                }
+                if self.type_of(arg)? != *param.type_()
+                    || param.type_().ref_type() != Some(RefType::Script)
+                    || &self.type_of(inner)? != param.type_().unwrap_ref_or_self()
+                {
+                    return Err(error(
+                        "borrow requires an exact script_ref<T> parameter and an operand of type T",
+                        Some(arg.span()),
+                    ));
+                }
+            }
         }
         self.expr_at(arg, minimum)
     }

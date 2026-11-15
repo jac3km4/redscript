@@ -19,5 +19,6 @@ func Conditional(out a: Int32, flag: Bool) -> Int32 {
   return flag ? (a = 1) : (a = 2);
 }
 func ReadWeak(value: script_ref<ref<Holder>>) -> wref<Holder> { return value; }
-func WrapWeak(value: ref<Holder>) -> script_ref<wref<Holder>> { return value; }
+func TakeWeak(const value: script_ref<wref<Holder>>) -> Int32 { return 0; }
+func WrapWeak(value: ref<Holder>) -> Int32 { return TakeWeak(value); }
 func RefIndex(values: script_ref<[Int32]>) -> Int32 { return values[0]; }

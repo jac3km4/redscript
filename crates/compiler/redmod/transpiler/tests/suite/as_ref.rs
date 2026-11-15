@@ -623,3 +623,38 @@ fn temporary_argument_mask_is_bounded_but_local_identity_is_unchanged() {
         }
     }
 }
+
+#[test]
+fn simple_place_borrow_requires_exact_script_ref_type() {
+    for source in [
+        r#"
+            struct Base { public let a: Int32; }
+            struct Sub extends Base { public let b: Int32; }
+            native func Take(label: script_ref<String>, value: script_ref<Base>)
+            func Test(sub: Sub) { Take(AsRef("temporary"), AsRef(sub)); }
+        "#,
+        r#"
+            struct Base { public let a: Int32; }
+            struct Sub extends Base { public let b: Int32; }
+            native func TakeOne(value: script_ref<Base>)
+            func Test(sub: Sub) { TakeOne(AsRef(sub)); }
+        "#,
+    ] {
+        let errors = emit(source).unwrap_err();
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.message.contains("borrow requires an exact script_ref<T> parameter")),
+            "{source}: {errors:?}"
+        );
+    }
+    let ok_source = r#"
+        struct Base { public let a: Int32; }
+        struct Sub extends Base { public let b: Int32; }
+        native func TakeOne(value: script_ref<Base>)
+        native func TakeOne(value: Sub)
+        func Test(base: Base) { TakeOne(AsRef(base)); }
+    "#;
+    let emitted = emit(ok_source).unwrap();
+    assert!(emitted.contains("TakeOne(base);"), "{emitted}");
+}
