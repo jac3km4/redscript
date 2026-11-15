@@ -143,8 +143,8 @@ inserted by coercion), casts, and both arms of conditional expressions. Array re
 by-value arguments are allowed. This is parameter enforcement, not new enforcement
 of const fields, const returns, or const methods.
 
-Two independent, per-source-file `SemanticPolicy` flags provide the characterized
-REDmod exceptions; both are false by default and true in the adapter's `POLICY`:
+Two independent, per-source-file `SemanticPolicy` flags provide the adapter's
+REDmod parameter relaxations; both are false by default and true in the adapter's `POLICY`:
 
 - `const_param_element_writes`: indexed element places stop const provenance.
   Assigning elements (including fields within them) or passing them as `out` is
@@ -152,6 +152,13 @@ REDmod exceptions; both are false by default and true in the adapter's `POLICY`:
 - `const_param_non_out_forwarding`: non-`out` forwarding is permitted, including
   to non-const reference parameters. It does not relax explicit `out` arguments
   or known mutating array intrinsics.
+
+In native `scripts/`, `const name : ref<T>` behaves as deep `const` on value
+types, structs, and arrays (never reassigned, field-mutated, element-mutated, or
+mutated via array methods), while `const arr : ref<array<ClassHandle>>` still
+allows extracting a handle and calling non-`const` methods on the object, and
+`const` on a `weak<T>` parameter or a `const` return type does not prevent
+casting or assigning to a non-const local `var`.
 
 Strict forwarding checks use resolved non-const parameter types: script/strong/
 weak references, arrays and class objects may expose mutable state. Known const
@@ -190,7 +197,9 @@ Parameter receiver behavior is unchanged.
 The independent, per-file `const_local_handle_rebinding` policy defaults to false
 and is enabled by REDmod. For non-struct class objects and strong/weak class
 handles, it permits repeated root assignment, inline initialization, and ordinary
-or `out` forwarding of the handle. It does not permit field/index mutation,
+or `out` forwarding of the handle (in native `scripts/`, `const var` locals are
+class handles declared without an inline initializer and assigned on a subsequent
+statement). It does not permit field/index mutation,
 forwarding a field as `out`, mutating array intrinsics, or non-const receiver
 methods. Scalars, structs, arrays and script references do not get this exception.
 Under this native policy, default storage initialization is not an explicit source

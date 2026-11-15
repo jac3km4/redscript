@@ -40,9 +40,12 @@ availability is not semantic accuracy or permission to emit artifacts.
   explicit initializers remain at their source execution sites. Uninitialized
   groups expand in order, and standalone blocks flatten under the same policy.
   Initialized groups and general value sequences remain unsupported.
-- Native `ref<T>` means script reference, not community strong `ref<T>`. Verified
-  scalar/string/struct/class/array/weak parameter and field forms compose with
-  dereferencing/coercion. Native assignment/out places write through references:
+- Native `ref<T>` means script reference, not community strong `ref<T>`. In
+  native `scripts/`, `ref<T>` appears only in function parameters (never in `var`
+  declarations or return types). Verified scalar/string/struct/class/array/weak
+  parameter and field forms compose with dereferencing/coercion, and non-const
+  `ref<T>` parameters support both direct assignment and indirect field/array
+  mutations. Native assignment/out places write through references:
   ```redscript
   public class Handler {
     // Native ref<T> is a script reference to an Int32, not a strong class handle
@@ -114,8 +117,13 @@ fully resolved semantic signatures; this is not general variant-aware analysis.
   Fixed-array members and EraseFast are not aliases to these operations, and native
   source does not expose arbitrary community intrinsic spellings.
 - [Const rules](language-semantics.md#const-parameters-and-locals) retain native qualifiers. Parameter element
-  writes/non-out forwarding have narrow native relaxations; const local class
-  handles permit rebinding/handle forwarding, not referent mutation. Native const
+  writes/non-out forwarding have narrow native policy relaxations (though in native
+  `scripts/`, `const name : ref<T>` behaves as deep `const` on value types, structs,
+  and arrays without element/field writes, while `const ref<array<ClassHandle>>`
+  still allows extracting handles and calling non-`const` methods on those objects).
+  Const local class handles permit rebinding/handle forwarding, not referent mutation
+  (in `scripts/`, `const var` locals are class handles declared without inline
+  initializers and assigned on a subsequent statement). Native const
   scalar/struct explicit initialization is rejected, unlike community const
   initialization:
   ```redscript
@@ -123,7 +131,8 @@ fully resolved semantic signatures; this is not general variant-aware analysis.
   target = new MyClass();         // Rebinding the handle is allowed
   // target.field = 5;            // ERROR: referent mutation remains rejected
   ```
-  Const fields/returns and arbitrary effects remain incomplete.
+  Const fields/returns and arbitrary effects remain incomplete (`const` on a return
+  type or `weak<T>` parameter does not block casting or assigning to non-const handles).
 - `mutable` is accepted for verified aggregate array fields. The bounded scalar
   form is a Float field on a non-imported class with `instanceeditable inlined`,
   optionally `const`, and no other modifiers. It adds no extra flag and never
