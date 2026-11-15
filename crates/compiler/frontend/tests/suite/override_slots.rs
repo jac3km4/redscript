@@ -173,3 +173,107 @@ fn override_visibility_and_static_advice_follow_child_and_call_site_policy() {
         );
     }
 }
+
+#[test]
+fn const_script_ref_struct_covariant_returns_are_allowed_and_enforced_readonly() {
+    let run = |source: &str| {
+        let sources = SourceMap::new();
+        sources.populate_boot_lib();
+        sources.push_back("covariant_script_ref.reds", source);
+        let interner = TypeInterner::default();
+        let mut reporter = CompileErrorReporter::default();
+        let modules = parse_files(&sources, &mut reporter);
+        let evaluator = Evaluator::from_modules(&modules);
+        process_sources_with_policy(
+            modules,
+            Symbols::with_default_types(),
+            evaluator,
+            &mut reporter,
+            &interner,
+            &[],
+        );
+        reporter
+            .reported()
+            .iter()
+            .map(|d| d.code().to_owned())
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(
+        run(
+            "
+            native struct BaseInner { public native let a: Int32; }
+            native struct SubInner extends BaseInner { public native let b: Int32; }
+            native class BaseNode {
+                public native func GetInnerNode(index: Int32) -> const script_ref<BaseInner>
+            }
+            native class SubNode extends BaseNode {
+                public native func GetInnerNode(index: Int32) -> const script_ref<SubInner>
+            }
+            native func OperatorAdd(a: Int32, b: Int32) -> Int32
+            func Read(const r: script_ref<BaseInner>) -> Int32 { return Deref(r).a; }
+            func Test(base: ref<BaseNode>, sub: ref<SubNode>) -> Int32 {
+                const pinned: script_ref<BaseInner> = base.GetInnerNode(0);
+                return Read(base.GetInnerNode(0)) + Deref(pinned).a + sub.GetInnerNode(0).b;
+            }
+            "
+        ),
+        Vec::<String>::new()
+    );
+
+    for (base_ret, child_ret) in [
+        ("script_ref<BaseInner>", "script_ref<SubInner>"),
+        ("const script_ref<BaseInner>", "script_ref<BaseInner>"),
+        ("script_ref<BaseInner>", "const script_ref<BaseInner>"),
+        ("const script_ref<BaseInner>", "script_ref<SubInner>"),
+        ("script_ref<BaseInner>", "const script_ref<SubInner>"),
+        ("const script_ref<ref<BaseClass>>", "const script_ref<ref<SubClass>>"),
+    ] {
+        let codes = run(&format!(
+            "
+            class BaseClass {{}}
+            class SubClass extends BaseClass {{}}
+            native struct BaseInner {{ public native let a: Int32; }}
+            native struct SubInner extends BaseInner {{ public native let b: Int32; }}
+            native class BaseNode {{
+                public native func GetInnerNode(index: Int32) -> {base_ret}
+            }}
+            native class SubNode extends BaseNode {{
+                public native func GetInnerNode(index: Int32) -> {child_ret}
+            }}
+            "
+        ));
+        assert!(
+            codes.iter().any(|c| c == "OVERRIDE_RETURN_TYPE_MISMATCH"),
+            "{base_ret} -> {child_ret}: {codes:?}"
+        );
+    }
+
+    let write_codes = run(
+        "
+        struct BaseInner { public let a: Int32; }
+        native class BaseNode {
+            public native func GetInnerNode(index: Int32) -> const script_ref<BaseInner>
+        }
+        func Out(out x: BaseInner) {}
+        func Mutate(r: script_ref<BaseInner>) {}
+        func Test(base: ref<BaseNode>) {
+            Deref(base.GetInnerNode(0)) = BaseInner(1);
+            Deref(base.GetInnerNode(0)).a = 2;
+            Out(Deref(base.GetInnerNode(0)));
+            let leaked: script_ref<BaseInner> = base.GetInnerNode(0);
+            Mutate(base.GetInnerNode(0));
+        }
+        ",
+    );
+    assert_eq!(
+        write_codes,
+        [
+            "CONST_RETURN_WRITE",
+            "CONST_RETURN_WRITE",
+            "CONST_RETURN_WRITE",
+            "CONST_FORWARDING",
+            "CONST_FORWARDING",
+        ]
+    );
+}

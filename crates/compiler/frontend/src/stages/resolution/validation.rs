@@ -272,8 +272,12 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         {
                             let contract = self.symbols.override_return_type(cls_id, *base.key());
                             if !contract.as_ref().is_some_and(|contract| {
-                                self.symbols
-                                    .compatible_override_return(method_t.return_type(), contract)
+                                self.symbols.compatible_override_return_with_const(
+                                    method_t.return_type(),
+                                    method_t.is_const_return(),
+                                    contract,
+                                    base.func().type_().is_const_return(),
+                                )
                             }) {
                                 self.reporter
                                     .report(Diagnostic::OverrideReturnTypeMismatch {

@@ -364,7 +364,12 @@ pub fn overrides<'ctx>(
                     let slot = symbols.override_slot(MethodId::new(id, *entry.key()));
                     let contract = symbols.override_return_type(id, slot);
                     if !contract.is_some_and(|contract| {
-                        symbols.compatible_override_return(method.type_().return_type(), &contract)
+                        symbols.compatible_override_return_with_const(
+                            method.type_().return_type(),
+                            method.type_().is_const_return(),
+                            &contract,
+                            symbols[slot].type_().is_const_return(),
+                        )
                     }) {
                         errors.push(Error::semantic(
                             SemanticError::OverrideReturnTypeMismatch,

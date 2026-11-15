@@ -176,9 +176,11 @@ impl<'ctx> Symbols<'ctx> {
                     let base_signature = base_method.type_();
                     eligible(base_method)
                         && base_signature.param_types().eq(signature.param_types())
-                        && self.compatible_override_return(
+                        && self.compatible_override_return_with_const(
                             signature.return_type(),
+                            signature.is_const_return(),
                             base_signature.return_type(),
+                            base_signature.is_const_return(),
                         )
                 });
             if let (Some(base), None) = (candidates.next(), candidates.next()) {
@@ -288,12 +290,23 @@ impl<'ctx> Symbols<'ctx> {
         .ok()
     }
 
-    /// Covariance is ABI-safe only within the same strong/weak class-reference
-    /// representation. Arrays, structs, script references and representation
-    /// changes require exact equality, not ordinary coercibility.
+    /// Covariance is ABI-safe within the same strong/weak class-reference
+    /// representation, or for `const` script-reference struct returns. Arrays,
+    /// non-`const` script references, and representation changes require exact
+    /// equality.
     pub fn compatible_override_return(&self, actual: &Type<'ctx>, contract: &Type<'ctx>) -> bool {
+        self.compatible_override_return_with_const(actual, false, contract, false)
+    }
+
+    pub fn compatible_override_return_with_const(
+        &self,
+        actual: &Type<'ctx>,
+        actual_const: bool,
+        contract: &Type<'ctx>,
+        contract_const: bool,
+    ) -> bool {
         if actual == contract {
-            return true;
+            return actual.ref_type() != Some(RefType::Script) || actual_const == contract_const;
         }
         // A bare mixed/never-ref class is not evidence of a strong-reference ABI.
         if [actual, contract].iter().any(|typ| {
@@ -311,18 +324,31 @@ impl<'ctx> Symbols<'ctx> {
         // reference classes retain it. Both denote the strong representation.
         let (actual_ref, actual) = actual.strip_ref().unwrap_or((RefType::Strong, actual));
         let (contract_ref, contract) = contract.strip_ref().unwrap_or((RefType::Strong, contract));
-        if actual_ref != contract_ref || !matches!(actual_ref, RefType::Strong | RefType::Weak) {
+        if actual_ref != contract_ref {
             return false;
         }
         let (Type::Data(actual), Type::Data(contract)) = (actual, contract) else {
             return false;
         };
-        if ![actual, contract].iter().all(|typ| {
-            self[typ.id()]
-                .schema()
-                .as_aggregate()
-                .is_some_and(|agg| !agg.flags().is_struct())
-        }) {
+        let compatible_kinds = match actual_ref {
+            RefType::Strong | RefType::Weak => [actual, contract].iter().all(|typ| {
+                self[typ.id()]
+                    .schema()
+                    .as_aggregate()
+                    .is_some_and(|agg| !agg.flags().is_struct())
+            }),
+            RefType::Script => {
+                actual_const
+                    && contract_const
+                    && [actual, contract].iter().all(|typ| {
+                        self[typ.id()]
+                            .schema()
+                            .as_aggregate()
+                            .is_some_and(|agg| agg.flags().is_struct())
+                    })
+            }
+        };
+        if !compatible_kinds {
             return false;
         }
         crate::PolyType::from_type(&Type::Data(actual.clone())).satisfies_bound(

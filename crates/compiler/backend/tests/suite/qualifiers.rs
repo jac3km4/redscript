@@ -236,3 +236,71 @@ fn qualifiers_and_hints_survive_emission_and_loading() {
         assert_field_flags(field.field());
     }
 }
+
+#[test]
+fn covariant_const_script_ref_struct_overrides_roundtrip() {
+    let sources = SourceMap::new();
+    sources.push_back(
+        "covariant_script_ref.reds",
+        r#"
+        native struct BaseInner { public native let a: Int32; }
+        native struct SubInner extends BaseInner { public native let b: Int32; }
+        native class BaseNode {
+            public native func GetInnerNode(index: Int32) -> const script_ref<BaseInner>
+        }
+        native class SubNode extends BaseNode {
+            public native func GetInnerNode(index: Int32) -> const script_ref<SubInner>
+        }
+        func CallBase(node: ref<BaseNode>) -> Int32 {
+            return Deref(node.GetInnerNode(0)).a;
+        }
+        func CallSub(node: ref<SubNode>) -> Int32 {
+            return Deref(node.GetInnerNode(0)).b;
+        }
+        "#,
+    );
+    sources.populate_boot_lib();
+    let interner = TypeInterner::default();
+    let mut bundle = ScriptBundle::default();
+    let name = bundle.cnames_mut().add("IScriptable");
+    bundle.define(Class::new(name, Visibility::Public, ClassFlags::default()));
+    let (symbols, mappings) =
+        CompilationInputs::load(&bundle, &interner, &TypeFlagRegistry::default())
+            .unwrap()
+            .into_inner();
+    let mut reporter = CompileErrorReporter::default();
+    let (unit, symbols) = infer_from_sources(&sources, symbols, &mut reporter, &interner);
+    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+
+    mappings
+        .into_monomorphizer(&sources)
+        .monomorphize(&unit, &symbols, &mut bundle)
+        .unwrap();
+
+    let bytes = bundle.into_writeable().to_bytes().unwrap();
+    let bundle = ScriptBundle::from_bytes(&bytes).unwrap();
+    let reloaded =
+        CompilationInputs::load_without_mapping(&bundle, &interner, &TypeFlagRegistry::default())
+            .unwrap();
+    for (owner, inner) in [("BaseNode", "BaseInner"), ("SubNode", "SubInner")] {
+        let agg = reloaded[interner.intern(owner)]
+            .schema()
+            .as_aggregate()
+            .unwrap();
+        let entry = agg.methods().by_name("GetInnerNode").next().unwrap();
+        assert!(entry.func().type_().is_const_return(), "{owner}");
+        assert_eq!(
+            entry.func().type_().return_type().to_string(),
+            format!("script_ref<{inner}>")
+        );
+    }
+    let sub = reloaded[interner.intern("SubNode")]
+        .schema()
+        .as_aggregate()
+        .unwrap();
+    let sub_method = sub.methods().by_name("GetInnerNode").next().unwrap();
+    assert_eq!(
+        sub_method.func().overriden().unwrap().parent(),
+        interner.intern("BaseNode")
+    );
+}

@@ -21,6 +21,7 @@ enum ConstRoot {
     Parameter,
     Local { rebindable: bool },
     ParameterAndLocal,
+    Return,
 }
 
 impl ConstRoot {
@@ -30,6 +31,7 @@ impl ConstRoot {
             (Self::Local { rebindable: a }, Self::Local { rebindable: b }) => {
                 Self::Local { rebindable: a && b }
             }
+            (Self::Return, _) | (_, Self::Return) => Self::Return,
             _ => Self::ParameterAndLocal,
         }
     }
@@ -219,6 +221,16 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
                 {
                     args.first().and_then(|arg| self.readonly_place(arg))
                 }
+                ir::Call::FreeFunction { function, .. } => {
+                    let typ = self.symbols[*function].type_();
+                    (typ.is_const_return() && typ.return_type().ref_type() == Some(RefType::Script))
+                        .then_some(ConstRoot::Return)
+                }
+                ir::Call::Instance { method, .. } | ir::Call::Static { method, .. } => {
+                    let typ = self.symbols[*method].type_();
+                    (typ.is_const_return() && typ.return_type().ref_type() == Some(RefType::Script))
+                        .then_some(ConstRoot::Return)
+                }
                 _ => None,
             },
             _ => None,
@@ -233,6 +245,7 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
                         Diagnostic::ConstParameterWrite(expr.span())
                     }
                     ConstRoot::Local { .. } => Diagnostic::ConstLocalWrite(expr.span()),
+                    ConstRoot::Return => Diagnostic::ConstReturnWrite(expr.span()),
                 },
                 ConstViolation::Forwarding
                 | ConstViolation::ClosureForwarding
@@ -241,6 +254,7 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
                         ConstRoot::Parameter => "parameter",
                         ConstRoot::Local { .. } => "local",
                         ConstRoot::ParameterAndLocal => "parameter or local",
+                        ConstRoot::Return => "return",
                     };
                     let target = match violation {
                         ConstViolation::ClosureForwarding => "function value",
@@ -293,11 +307,17 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
             ir::Expr::Index { array_type, .. } => {
                 array_type.arg_ref_type(self.symbols, 0) == Some(RefType::Script)
             }
-            ir::Expr::Call { call, .. } => matches!(
-                &**call,
-                ir::Call::FreeFunction { function, .. }
-                    if self.symbols[*function].intrinsic() == Some(ir::Intrinsic::AsRef)
-            ),
+            ir::Expr::Call { call, .. } => match &**call {
+                ir::Call::FreeFunction { function, .. } => {
+                    self.symbols[*function].intrinsic() == Some(ir::Intrinsic::AsRef)
+                        || self.symbols[*function].type_().return_type().ref_type()
+                            == Some(RefType::Script)
+                }
+                ir::Call::Instance { method, .. } | ir::Call::Static { method, .. } => {
+                    self.symbols[*method].type_().return_type().ref_type() == Some(RefType::Script)
+                }
+                ir::Call::Closure { .. } => false,
+            },
             ir::Expr::Conditional { then, else_, .. } => {
                 self.has_script_ref_value(then) || self.has_script_ref_value(else_)
             }
@@ -311,7 +331,7 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
             && (!self.policy.const_param_non_out_forwarding
                 || matches!(
                     root,
-                    ConstRoot::Local { .. } | ConstRoot::ParameterAndLocal
+                    ConstRoot::Local { .. } | ConstRoot::ParameterAndLocal | ConstRoot::Return
                 ))
         {
             self.reject_forwarding(value, ConstViolation::ScriptRefBinding);
@@ -435,7 +455,11 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
                 } else if (!self.policy.const_param_non_out_forwarding
                     || matches!(
                         self.readonly_place(arg),
-                        Some(ConstRoot::Local { .. } | ConstRoot::ParameterAndLocal)
+                        Some(
+                            ConstRoot::Local { .. }
+                                | ConstRoot::ParameterAndLocal
+                                | ConstRoot::Return
+                        )
                     ))
                     && !param.flags().is_const()
                     && self.mutable_type(param.type_())
@@ -456,7 +480,11 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
                     && (!self.policy.const_param_non_out_forwarding
                         || matches!(
                             self.readonly_place(arg),
-                            Some(ConstRoot::Local { .. } | ConstRoot::ParameterAndLocal)
+                            Some(
+                                ConstRoot::Local { .. }
+                                    | ConstRoot::ParameterAndLocal
+                                    | ConstRoot::Return
+                            )
                         ))
                 {
                     self.reject_forwarding(arg, ConstViolation::ClosureForwarding);
@@ -469,7 +497,7 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
             && !self.symbols[*method].flags().is_const()
             && matches!(
                 self.readonly_place(receiver),
-                Some(ConstRoot::Local { .. } | ConstRoot::ParameterAndLocal)
+                Some(ConstRoot::Local { .. } | ConstRoot::ParameterAndLocal | ConstRoot::Return)
             )
         {
             self.reject(receiver, ConstViolation::Write);
