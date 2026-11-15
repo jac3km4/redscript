@@ -202,7 +202,10 @@ addition through serialization.
 
 Some official validation bundles contain external type placeholders and profiling
 records that prevent full ScriptBundle decoding. Bounded function-record inspection
-establishes only the inspected metadata/instructions. Neither official acceptance
+establishes only the inspected metadata/instructions. Across 7,372 native `event`
+bodies in `scripts/`, 6,940 use fallthrough (no `return`), 393 return `true`/`false`,
+and 46 use `return <expr>;` (strictly `0`, `NULL`, or expressions evaluating to `Bool`;
+never strings, floats, or arbitrary instances). Neither official acceptance
 nor local serialization establishes the runtime value returned by fallthrough.
 No new official or game-runtime validation is claimed here. See the
 [investigation archive](language-investigations.md) for evidence context.

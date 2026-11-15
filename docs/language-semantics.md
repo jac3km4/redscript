@@ -158,7 +158,11 @@ types, structs, and arrays (never reassigned, field-mutated, element-mutated, or
 mutated via array methods), while `const arr : ref<array<ClassHandle>>` still
 allows extracting a handle and calling non-`const` methods on the object, and
 `const` on a `weak<T>` parameter or a `const` return type does not prevent
-casting or assigning to a non-const local `var`.
+casting or assigning to a non-const local `var`. Forwarding non-`ref` `const` to
+non-`const` non-`ref` parameters is common across `scripts/` (with 2 static
+counterexamples forwarding `const ref<T>` to non-`const ref<T>`), and across 580
+method calls on `const` parameters, 566 call `const` methods and 0 call non-`const`
+methods.
 
 Strict forwarding checks use resolved non-const parameter types: script/strong/
 weak references, arrays and class objects may expose mutable state. Known const
@@ -198,8 +202,9 @@ The independent, per-file `const_local_handle_rebinding` policy defaults to fals
 and is enabled by REDmod. For non-struct class objects and strong/weak class
 handles, it permits repeated root assignment, inline initialization, and ordinary
 or `out` forwarding of the handle (in native `scripts/`, `const var` locals are
-class handles declared without an inline initializer and assigned on a subsequent
-statement). It does not permit field/index mutation,
+class handles declared without an inline initializer, sequential rebinding occurs,
+and native scripts call non-`const` methods on them without direct field writes).
+It does not permit field/index mutation,
 forwarding a field as `out`, mutating array intrinsics, or non-const receiver
 methods. Scalars, structs, arrays and script references do not get this exception.
 Under this native policy, default storage initialization is not an explicit source
@@ -224,7 +229,10 @@ referent distinction; nested closure locals use their own metadata.
 
 This is validation of the selected resolved method, not const-aware overload
 ranking. Const returns, const fields and arbitrary method effects remain outside
-this pass. No runtime serialization or full installed-corpus coverage measurement
+this pass. In native `scripts/`, non-static `const function` bodies virtually never
+write to `this` (1 counterexample in 4,620 bodies), never mutate `this` arrays or
+call non-`const` methods on `this`, but do call non-`const` methods on member handles.
+No runtime serialization or full installed-corpus coverage measurement
 is implied by the focused tests.
 
 #### Export and decompilation

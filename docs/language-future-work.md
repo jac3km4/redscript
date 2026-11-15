@@ -80,11 +80,16 @@ native source declaration proves an engine ABI.
   inherited parameter types for hiding; applicability still needs receiver
   substitution as tracked below.
 - Const field/return enforcement, transitive alias/effect analysis and const-aware
-  overload ranking remain incomplete. Nested closure capture IDs lack defining-scope
-  identity. Characterize override out-flag ABI differences before relaxing checks.
+  overload ranking remain incomplete. In native `scripts/`, unannotated `array`
+  fields are freely mutated (not implicitly `const`), and `const` fields permit
+  writes from within member methods. Non-`const` methods are called on `const var`
+  locals in `scripts/`, diverging from frontend strictness. Nested closure capture
+  IDs lack defining-scope identity. Characterize override out-flag ABI differences
+  before relaxing checks.
 - Broader mutable scalar forms, nonstring/nonfield metadata, invalid/inherited hint
-  targets, fixed-array operations, EraseFast and additional Variant members need
-  precise contracts rather than aliases to superficially similar operations.
+  targets, fixed-array operations, EraseFast, scripted `implicit cast` providers,
+  and additional Variant members need precise contracts rather than aliases to
+  superficially similar operations.
 
 ### Transactional inference and failure rollback
 

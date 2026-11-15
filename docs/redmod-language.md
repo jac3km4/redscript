@@ -42,7 +42,8 @@ availability is not semantic accuracy or permission to emit artifacts.
   Initialized groups and general value sequences remain unsupported.
 - Native `ref<T>` means script reference, not community strong `ref<T>`. In
   native `scripts/`, `ref<T>` appears only in function parameters (never in `var`
-  declarations or return types). Verified scalar/string/struct/class/array/weak
+  declarations or return types), and `out` and `ref<T>` are mutually exclusive
+  (never combined on the same parameter). Verified scalar/string/struct/class/array/weak
   parameter and field forms compose with dereferencing/coercion, and non-const
   `ref<T>` parameters support both direct assignment and indirect field/array
   mutations. Native assignment/out places write through references:
@@ -82,7 +83,10 @@ Target(42,); // Native syntax: 2 arguments (42 followed by 1 omitted hole)
 Authored parameter-default expressions are separate and unsupported.
 
 [Conversion declarations](language-semantics.md#conversion-declarations-and-bounded-native-selection) preserve explicit/implicit
-intent without making providers ordinary overload candidates. Implemented native
+intent without making providers ordinary overload candidates. In native `scripts/`,
+declarations use `implicit cast ( param : Src ) : Dst { ... }` without `function`/`func`
+keywords or visibility modifiers (or `import [implicit] cast ...;` without `explicit`),
+and `explicit` never appears. Implemented native
 selection is bounded to unique exact native providers, guarded implicit coercions
 at known targets and selected explicit enum/Int32 conversions. There is no general
 conversion-aware matching, chaining or numeric-distance ranking. Variant extraction
@@ -115,7 +119,9 @@ fully resolved semantic signatures; this is not general variant-aware analysis.
   let total: Int32 = values.Count(element);
   ```
   Fixed-array members and EraseFast are not aliases to these operations, and native
-  source does not expose arbitrary community intrinsic spellings.
+  source does not expose arbitrary community intrinsic spellings. Native fixed-size
+  arrays use `Type[ N ]` across class fields, locals, parameters and return types
+  (not struct fields).
 - [Const rules](language-semantics.md#const-parameters-and-locals) retain native qualifiers. Parameter element
   writes/non-out forwarding have narrow native policy relaxations (though in native
   `scripts/`, `const name : ref<T>` behaves as deep `const` on value types, structs,
@@ -132,8 +138,13 @@ fully resolved semantic signatures; this is not general variant-aware analysis.
   // target.field = 5;            // ERROR: referent mutation remains rejected
   ```
   Const fields/returns and arbitrary effects remain incomplete (`const` on a return
-  type or `weak<T>` parameter does not block casting or assigning to non-const handles).
-- `mutable` is accepted for verified aggregate array fields. The bounded scalar
+  type or `weak<T>` parameter does not block casting or assigning to non-const handles,
+  and `const` fields function primarily as editor/metadata hints without write enforcement
+  in declaring-class methods).
+- `mutable` is accepted for verified aggregate array fields (appearing on 28 dynamic
+  array fields and 1 Float field, never combined with `const`). Unannotated native
+  `array` fields are not implicitly `const` and are freely mutated in `scripts/`.
+  The bounded scalar
   form is a Float field on a non-imported class with `instanceeditable inlined`,
   optionally `const`, and no other modifiers. It adds no extra flag and never
   clears explicit const. It is not a general mutable-scalar rule; array-field
