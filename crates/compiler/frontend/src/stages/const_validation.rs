@@ -20,6 +20,7 @@ enum ConstViolation {
 #[derive(Debug, Clone, Copy)]
 enum ConstRoot {
     Parameter,
+    This,
     Local { rebindable: bool },
     ParameterAndLocal,
     Return,
@@ -29,6 +30,7 @@ impl ConstRoot {
     fn merge(self, other: Self) -> Self {
         match (self, other) {
             (Self::Parameter, Self::Parameter) => Self::Parameter,
+            (Self::This, Self::This) => Self::This,
             (Self::Local { rebindable: a }, Self::Local { rebindable: b }) => {
                 Self::Local { rebindable: a && b }
             }
@@ -44,7 +46,10 @@ pub(super) fn validate<'policy, 'ctx>(
     policy: impl Fn(Span) -> &'policy SemanticPolicy,
     reporter: &mut CompileErrorReporter<'ctx>,
 ) {
-    let mut check = |function: &crate::LoweredFunction<'ctx>, params: &[Param<'ctx>]| {
+    let mut check = |function: &crate::LoweredFunction<'ctx>,
+                     params: &[Param<'ctx>],
+                     is_const_method: bool| {
+        let func_policy = policy(function.span);
         let mut readonly: HashMap<_, _> = params
             .iter()
             .enumerate()
@@ -54,12 +59,10 @@ pub(super) fn validate<'policy, 'ctx>(
                     .then_some((ir::Local::Param(i as u16), ConstRoot::Parameter))
             })
             .collect();
-        add_const_locals(
-            &mut readonly,
-            &function.locals,
-            symbols,
-            policy(function.span),
-        );
+        if is_const_method && !func_policy.const_param_non_out_forwarding {
+            readonly.insert(ir::Local::This, ConstRoot::This);
+        }
+        add_const_locals(&mut readonly, &function.locals, symbols, func_policy);
         let mut script_ref_locals: HashSet<_> = params
             .iter()
             .enumerate()
@@ -79,19 +82,21 @@ pub(super) fn validate<'policy, 'ctx>(
             script_ref_locals,
             script_ref_captures: HashSet::new(),
             initializers: declaration_initializers(&function.locals),
-            policy: policy(function.span),
+            policy: func_policy,
             reporter,
         }
         .visit_block(&function.block);
     };
     for (id, function) in &unit.functions {
-        check(function, symbols[*id].type_().params());
+        check(function, symbols[*id].type_().params(), false);
     }
     for (id, class) in &unit.classes {
         for (method, function) in &class.methods {
+            let sym = &symbols[MethodId::new(*id, *method)];
             check(
                 function,
-                symbols[MethodId::new(*id, *method)].type_().params(),
+                sym.type_().params(),
+                sym.flags().is_const() && !sym.flags().is_static(),
             );
         }
     }
@@ -106,7 +111,12 @@ pub(super) fn validate<'policy, 'ctx>(
                 .flat_map(|(id, fs)| fs.iter().map(move |f| (id, f))),
         )
     {
-        check(function, symbols[*id].type_().params());
+        let sym = &symbols[*id];
+        check(
+            function,
+            sym.type_().params(),
+            sym.flags().is_const() && !sym.flags().is_static(),
+        );
     }
 }
 
@@ -246,6 +256,7 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
                     ConstRoot::Parameter | ConstRoot::ParameterAndLocal => {
                         Diagnostic::ConstParameterWrite(expr.span())
                     }
+                    ConstRoot::This => Diagnostic::ConstReceiverWrite(expr.span()),
                     ConstRoot::Local { .. } => Diagnostic::ConstLocalWrite(expr.span()),
                     ConstRoot::Return => Diagnostic::ConstReturnWrite(expr.span()),
                 },
@@ -254,6 +265,7 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
                 | ConstViolation::ScriptRefBinding => {
                     let root = match root {
                         ConstRoot::Parameter => "parameter",
+                        ConstRoot::This => "receiver",
                         ConstRoot::Local { .. } => "local",
                         ConstRoot::ParameterAndLocal => "parameter or local",
                         ConstRoot::Return => "return",

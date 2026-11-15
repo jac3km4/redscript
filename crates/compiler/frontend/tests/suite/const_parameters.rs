@@ -51,7 +51,11 @@ fn check_level(source: &str, expected: &[&str], level: DiagnosticLevel, message:
             assert_eq!(
                 diagnostic.code(),
                 if level == DiagnosticLevel::Error {
-                    "CONST_PARAMETER_WRITE"
+                    if message == "cannot write through `this` in a const method" {
+                        "CONST_RECEIVER_WRITE"
+                    } else {
+                        "CONST_PARAMETER_WRITE"
+                    }
                 } else {
                     "CONST_FORWARDING"
                 }
@@ -357,4 +361,39 @@ fn to_variant_checks_const_mutable_forwarding() {
         "class Item {} func Box(const value: Item) -> Variant { return ToVariant(value); }",
         &["value"],
     );
+}
+
+#[test]
+fn const_methods_enforce_readonly_this_in_community_policy() {
+    check_level(
+        "class Item { private let value: Int32; private let items: [Int32]; public func Mutate() {} public const func Get() -> Int32 { return this.value; } public const func BadWrite() { this.value = 1; } public const func BadArray() { ArrayPush(this.items, 1); } public const func BadCall() { this.Mutate(); } }",
+        &["this.value", "this.items", "this"],
+        DiagnosticLevel::Error,
+        "cannot write through `this` in a const method",
+    );
+
+    let sources = SourceMap::new();
+    sources.populate_boot_lib();
+    let file = sources.push_back(
+        "const.reds",
+        "class Item { private let value: Int32; public const func Write() { this.value = 1; } }",
+    );
+    let interner = TypeInterner::default();
+    let mut reporter = CompileErrorReporter::default();
+    let modules = parse_files(&sources, &mut reporter);
+    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+    let evaluator = Evaluator::from_modules(&modules);
+    let policy = SemanticPolicy {
+        const_param_non_out_forwarding: true,
+        ..SemanticPolicy::default()
+    };
+    process_sources_with_policy(
+        modules,
+        Symbols::with_default_types(),
+        evaluator,
+        &mut reporter,
+        &interner,
+        &[(file, Rc::new(policy))],
+    );
+    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
 }
