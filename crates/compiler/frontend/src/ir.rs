@@ -728,6 +728,16 @@ impl<'ctx> TypeApp<'ctx> {
         *state.borrow_mut() = TypeAppState::Init(typ.clone());
         Ok(typ)
     }
+
+    pub fn last_arg_ref_type(&self, symbols: &Symbols<'ctx>) -> Option<crate::RefType> {
+        let Self(state) = self;
+        match &*state.borrow() {
+            TypeAppState::Uninit(inferred) => {
+                inferred.args().last().and_then(|t| t.ref_type(symbols))
+            }
+            TypeAppState::Init(t) => t.args().last().and_then(types::Type::ref_type),
+        }
+    }
 }
 
 impl<'ctx> From<InferredTypeApp<'ctx>> for TypeApp<'ctx> {

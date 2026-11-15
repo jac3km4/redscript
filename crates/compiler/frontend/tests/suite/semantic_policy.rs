@@ -189,11 +189,11 @@ fn native_script_reference_places_are_file_local_in_both_orders() {
         sources.push_back("intrinsics.reds", "@intrinsic(AsRef) func AsRef<T>(value: T) -> script_ref<T>\n@intrinsic(Deref) func Deref<T>(value: script_ref<T>) -> T");
         let hooked = sources.push_back(
             "native.reds",
-            "func Native(value: script_ref<Int32>) { value = 7; }",
+            "func Native(value: script_ref<Int32>) { let other = 7; value = other; }",
         );
         sources.push_back(
             "community.reds",
-            "func Community(value: script_ref<Int32>) { value = 7; }",
+            "func Community(value: script_ref<Int32>) { let other = 7; value = other; }",
         );
         let interner = TypeInterner::default();
         let (unit, symbols, diagnostics) = analyze(
@@ -210,7 +210,7 @@ fn native_script_reference_places_are_file_local_in_both_orders() {
         );
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         for (name, dereferenced) in [("Native", true), ("Community", false)] {
-            let ir::Stmt::Expr(expr) = &function(&unit, &symbols, name).block.stmts[0] else {
+            let ir::Stmt::Expr(expr) = &function(&unit, &symbols, name).block.stmts[1] else {
                 panic!("expected assignment")
             };
             let ir::Expr::Assign { place, .. } = &**expr else {

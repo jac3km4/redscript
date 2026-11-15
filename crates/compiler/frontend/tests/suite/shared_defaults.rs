@@ -277,3 +277,29 @@ fn non_const_script_ref_lvalues_reject_temporary_conversions() {
         |_, _, codes| assert!(codes.is_empty(), "{codes:?}"),
     );
 }
+
+#[test]
+fn escaping_temporary_script_ref_and_non_native_returns_are_rejected() {
+    analyze(
+        "func Test() { let r: script_ref<Int32> = 42; }",
+        |_, _, codes| assert_eq!(codes, ["TEMP_SCRIPT_REF_ESCAPE"]),
+    );
+    analyze(
+        "func Test() { let x = Deref(AsRef(42)); }",
+        |_, _, codes| assert_eq!(codes, ["TEMP_SCRIPT_REF_ESCAPE"]),
+    );
+    analyze(
+        "func Test(r: script_ref<Int32>) -> script_ref<Int32> { return r; }",
+        |_, _, codes| assert_eq!(codes, ["SCRIPT_REF_RETURN"]),
+    );
+    analyze(
+        "func Test() { let f = (x: Int32) -> { return AsRef(x); }; }",
+        |_, _, codes| assert_eq!(codes, ["SCRIPT_REF_RETURN"]),
+    );
+    analyze(
+        "native func NativeRef() -> script_ref<Int32>
+         func Take(r: script_ref<Int32>) {}
+         func Test() { let x = Deref(NativeRef()); Take(42); }",
+        |_, _, codes| assert!(codes.is_empty(), "{codes:?}"),
+    );
+}

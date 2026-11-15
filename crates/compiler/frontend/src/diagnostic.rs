@@ -144,6 +144,10 @@ pub enum Diagnostic<'ctx> {
         target: &'static str,
         span: Span,
     },
+    #[error("temporary script reference cannot escape a direct call argument")]
+    TemporaryScriptRefEscape(Span),
+    #[error("non-native functions cannot return script_ref")]
+    ScriptRefReturn(Span),
     /// An extension diagnostic with a caller-defined stable code.
     #[error("{0}")]
     Custom(
@@ -235,6 +239,8 @@ impl<'ctx> Diagnostic<'ctx> {
             | Self::ConstParameterWrite(span)
             | Self::ConstLocalWrite(span)
             | Self::ConstForwarding { span, .. }
+            | Self::TemporaryScriptRefEscape(span)
+            | Self::ScriptRefReturn(span)
             | Self::Custom(_, _, _, span) => *span,
         }
     }
@@ -291,6 +297,8 @@ impl<'ctx> Diagnostic<'ctx> {
             Self::ConstParameterWrite(_) => "CONST_PARAMETER_WRITE",
             Self::ConstLocalWrite(_) => "CONST_LOCAL_WRITE",
             Self::ConstForwarding { .. } => "CONST_FORWARDING",
+            Self::TemporaryScriptRefEscape(_) => "TEMP_SCRIPT_REF_ESCAPE",
+            Self::ScriptRefReturn(_) => "SCRIPT_REF_RETURN",
             Self::Custom(_, code, _, _) => code,
         }
     }

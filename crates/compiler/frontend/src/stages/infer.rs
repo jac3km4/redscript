@@ -21,6 +21,8 @@ use crate::{
 
 #[path = "const_validation.rs"]
 mod const_validation;
+#[path = "script_ref_validation.rs"]
+mod script_ref_validation;
 
 #[derive(Debug)]
 pub struct TypeInference<'scope, 'ctx> {
@@ -324,6 +326,7 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
             |span| scope.types.policy(span),
             reporter,
         );
+        script_ref_validation::validate(&compiled, &self.symbols, reporter);
         (compiled, self.symbols)
     }
 }

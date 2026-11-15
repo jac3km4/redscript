@@ -57,6 +57,10 @@ fn borrow_diagnostics_explain_context_and_overload_failures() {
     for (source, expected) in [
         (
             "func Test() { AsRef(42); }",
+            "direct call argument",
+        ),
+        (
+            "class Owner { public let text: String; } func Test(owner: ref<Owner>) { AsRef(owner.text); }",
             "immediate exact non-out script_ref<T> call parameter",
         ),
         (
