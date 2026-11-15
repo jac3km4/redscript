@@ -470,7 +470,11 @@ impl<'ctx> PolyType<'ctx> {
         }
     }
 
-    pub fn constrain_invariant(&self, other: &Self, symbols: &Symbols<'ctx>) -> InferResult<'ctx, ()> {
+    pub fn constrain_invariant(
+        &self,
+        other: &Self,
+        symbols: &Symbols<'ctx>,
+    ) -> InferResult<'ctx, ()> {
         match (self, other) {
             (Self::Mono(l), Self::Mono(r)) => l.constrain_invariant(r, symbols),
             (Self::Mono(l), Self::Var(r)) => r.select(l, symbols),

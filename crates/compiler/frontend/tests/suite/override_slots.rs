@@ -200,8 +200,7 @@ fn const_script_ref_struct_covariant_returns_are_allowed_and_enforced_readonly()
     };
 
     assert_eq!(
-        run(
-            "
+        run("
             native struct BaseInner { public native let a: Int32; }
             native struct SubInner extends BaseInner { public native let b: Int32; }
             native class BaseNode {
@@ -216,8 +215,7 @@ fn const_script_ref_struct_covariant_returns_are_allowed_and_enforced_readonly()
                 const pinned: script_ref<BaseInner> = base.GetInnerNode(0);
                 return Read(base.GetInnerNode(0)) + Deref(pinned).a + sub.GetInnerNode(0).b;
             }
-            "
-        ),
+            "),
         Vec::<String>::new()
     );
 
@@ -227,7 +225,10 @@ fn const_script_ref_struct_covariant_returns_are_allowed_and_enforced_readonly()
         ("script_ref<BaseInner>", "const script_ref<BaseInner>"),
         ("const script_ref<BaseInner>", "script_ref<SubInner>"),
         ("script_ref<BaseInner>", "const script_ref<SubInner>"),
-        ("const script_ref<ref<BaseClass>>", "const script_ref<ref<SubClass>>"),
+        (
+            "const script_ref<ref<BaseClass>>",
+            "const script_ref<ref<SubClass>>",
+        ),
     ] {
         let codes = run(&format!(
             "
@@ -249,8 +250,7 @@ fn const_script_ref_struct_covariant_returns_are_allowed_and_enforced_readonly()
         );
     }
 
-    let write_codes = run(
-        "
+    let write_codes = run("
         struct BaseInner { public let a: Int32; }
         native class BaseNode {
             public native func GetInnerNode(index: Int32) -> const script_ref<BaseInner>
@@ -264,8 +264,7 @@ fn const_script_ref_struct_covariant_returns_are_allowed_and_enforced_readonly()
             let leaked: script_ref<BaseInner> = base.GetInnerNode(0);
             Mutate(base.GetInnerNode(0));
         }
-        ",
-    );
+        ");
     assert_eq!(
         write_codes,
         [

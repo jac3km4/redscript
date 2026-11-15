@@ -55,10 +55,7 @@ fn scripted_temporary_borrows_preserve_call_sites_and_guards() {
 #[test]
 fn borrow_diagnostics_explain_context_and_overload_failures() {
     for (source, expected) in [
-        (
-            "func Test() { AsRef(42); }",
-            "direct call argument",
-        ),
+        ("func Test() { AsRef(42); }", "direct call argument"),
         (
             "class Owner { public let text: String; } func Test(owner: ref<Owner>) { AsRef(owner.text); }",
             "immediate exact non-out script_ref<T> call parameter",
@@ -646,9 +643,9 @@ fn simple_place_borrow_requires_exact_script_ref_type() {
     ] {
         let errors = emit(source).unwrap_err();
         assert!(
-            errors
-                .iter()
-                .any(|e| e.message.contains("borrow requires an exact script_ref<T> parameter")),
+            errors.iter().any(|e| e
+                .message
+                .contains("borrow requires an exact script_ref<T> parameter")),
             "{source}: {errors:?}"
         );
     }

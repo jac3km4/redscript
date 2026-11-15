@@ -1013,8 +1013,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                         .and_then(|app| self.symbols[app.id()].schema().as_aggregate())
                         .is_some_and(|agg| agg.flags().is_struct());
                     if is_struct_pointee {
-                        lhs.constrain_base(&pointee, self.symbols)
-                            .with_span(span)?;
+                        lhs.constrain_base(&pointee, self.symbols).with_span(span)?;
                     } else {
                         lhs.constrain_invariant(&pointee, self.symbols)
                             .with_span(span)?;
