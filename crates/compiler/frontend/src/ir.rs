@@ -311,14 +311,26 @@ impl<'ctx> Expr<'ctx> {
 
     pub fn is_prvalue(&self, symbols: &Symbols<'ctx>) -> bool {
         match self {
-            Self::Local(_, _) | Self::Capture(_, _) | Self::Field { .. } | Self::Index { .. } => {
-                false
+            Self::Local(_, _) | Self::Capture(_, _) | Self::Index { .. } => false,
+            Self::Field {
+                receiver, field, ..
+            } => {
+                symbols[field.parent()]
+                    .schema()
+                    .as_aggregate()
+                    .is_some_and(|agg| agg.flags().is_struct())
+                    && receiver.is_prvalue(symbols)
             }
-            Self::Call { call, .. } => !matches!(
-                &**call,
-                Call::FreeFunction { function, .. }
-                    if symbols[*function].intrinsic().is_some_and(|i| i == Intrinsic::Deref)
-            ),
+            Self::Call { call, .. } => match &**call {
+                Call::FreeFunction { function, args, .. }
+                    if symbols[*function]
+                        .intrinsic()
+                        .is_some_and(|i| i == Intrinsic::Deref) =>
+                {
+                    matches!(&args[..], [arg] if arg.is_prvalue_ref(symbols))
+                }
+                _ => true,
+            },
             _ => true,
         }
     }
@@ -803,5 +815,154 @@ mod query_tests {
             assert_value(&block, pos);
         }
         assert!(block.find_at(30).is_none());
+    }
+}
+
+#[cfg(test)]
+mod prvalue_tests {
+    use super::*;
+    use crate::{CompileErrorReporter, Evaluator, TypeInterner, parse_file, process_sources};
+
+    #[test]
+    fn deref_and_struct_fields_propagate_prvalue_status() {
+        let sources = ast::SourceMap::new();
+        let intrinsics = sources.push_back(
+            "intrinsics.reds",
+            "@intrinsic(AsRef) func AsRef<T>(a: T) -> script_ref<T>\n@intrinsic(Deref) func Deref<T>(a: script_ref<T>) -> T",
+        );
+        let file = sources.push_back(
+            "prvalue.reds",
+            "
+            struct S { public let x: Int32; }
+            struct Outer { public let inner: S; }
+            class C { public let x: Int32; public let inner: S; }
+            native func MakeStruct() -> S
+            native func MakeOuter() -> Outer
+            native func MakeClass() -> ref<C>
+            native func NativeRef() -> script_ref<Int32>
+            func TakeRef(v: script_ref<Int32>) {}
+            func Out(out v: Int32) {}
+            func Test(p: script_ref<Int32>) {
+                let l: Int32 = 1;
+                Deref(AsRef(42)) = 1;
+                Deref(AsRef(l)) = 1;
+                Deref(p) = 1;
+                Deref(NativeRef()) = 1;
+                TakeRef(MakeClass().x);
+                TakeRef(MakeClass().inner.x);
+                Out(Deref(AsRef(42)));
+            }
+            ",
+        );
+        let interner = TypeInterner::default();
+        let mut reporter = CompileErrorReporter::default();
+        let modules = [intrinsics, file]
+            .into_iter()
+            .map(|id| parse_file(id, sources.get(id).unwrap(), &mut reporter).unwrap())
+            .collect::<Vec<_>>();
+        let evaluator = Evaluator::from_modules(&modules);
+        let (unit, symbols) = process_sources(
+            modules,
+            Symbols::with_default_types(),
+            evaluator,
+            &mut reporter,
+            &interner,
+        );
+        let codes = reporter
+            .reported()
+            .iter()
+            .map(|d| d.code())
+            .collect::<Vec<_>>();
+        assert!(codes.contains(&"INVALID_PLACE"), "{codes:?}");
+        assert!(codes.contains(&"INVALID_TEMP"), "{codes:?}");
+        assert!(
+            !codes.contains(&"INACCESSIBLE_FIELD"),
+            "unexpected field error: {codes:?}"
+        );
+
+        let test_fn = symbols
+            .free_functions()
+            .find(|e| e.name().to_string() == "Test")
+            .unwrap();
+        let stmts = &unit.functions[test_fn.key()].block.stmts;
+        let assign_place = |i: usize| match &stmts[i] {
+            Stmt::Expr(expr) => match &**expr {
+                Expr::Assign { place, .. } => &**place,
+                _ => panic!("expected assign at {i}"),
+            },
+            _ => panic!("expected expr at {i}"),
+        };
+        assert!(assign_place(1).is_prvalue(&symbols));
+        assert!(!assign_place(2).is_prvalue(&symbols));
+        assert!(!assign_place(3).is_prvalue(&symbols));
+        assert!(!assign_place(4).is_prvalue(&symbols));
+
+        // Class field (and struct field rooted in a class handle) is a heap place, not a prvalue.
+        for idx in [5, 6] {
+            let Stmt::Expr(call_expr) = &stmts[idx] else {
+                panic!("expected call at {idx}");
+            };
+            let Expr::Call { call, .. } = &**call_expr else {
+                panic!("expected call at {idx}");
+            };
+            assert!(!call.args()[0].is_prvalue_ref(&symbols));
+        }
+
+        // Struct field (and nested struct field) on a temporary struct is a prvalue.
+        let make_outer = symbols
+            .free_functions()
+            .find(|e| e.name().to_string() == "MakeOuter")
+            .unwrap();
+        let crate::Type::Data(outer_app) = make_outer.func().type_().return_type() else {
+            panic!("expected struct return type");
+        };
+        let outer_id = outer_app.id();
+        let (inner_idx, _) = symbols[outer_id]
+            .schema()
+            .as_aggregate()
+            .unwrap()
+            .fields()
+            .by_name("inner")
+            .unwrap();
+        let make_struct = symbols
+            .free_functions()
+            .find(|e| e.name().to_string() == "MakeStruct")
+            .unwrap();
+        let crate::Type::Data(struct_app) = make_struct.func().type_().return_type() else {
+            panic!("expected struct return type");
+        };
+        let struct_id = struct_app.id();
+        let (field_idx, _) = symbols[struct_id]
+            .schema()
+            .as_aggregate()
+            .unwrap()
+            .fields()
+            .by_name("x")
+            .unwrap();
+        let span = Span::new(0, 0, file);
+        let temp_outer = Expr::Call {
+            call: Call::FreeFunction {
+                function: *make_outer.key(),
+                type_args: Box::default(),
+                args: Box::default(),
+            }
+            .into(),
+            span,
+        };
+        let temp_inner = Expr::Field {
+            receiver: temp_outer.into(),
+            receiver_type: InferredTypeApp::nullary(outer_id).into(),
+            receiver_ref: None,
+            field: FieldId::new(outer_id, inner_idx),
+            span,
+        };
+        let temp_field = Expr::Field {
+            receiver: temp_inner.into(),
+            receiver_type: InferredTypeApp::nullary(struct_id).into(),
+            receiver_ref: None,
+            field: FieldId::new(struct_id, field_idx),
+            span,
+        };
+        assert!(temp_field.is_prvalue(&symbols));
     }
 }
