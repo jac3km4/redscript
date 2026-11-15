@@ -1,11 +1,12 @@
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 use redscript_community_ast::Span;
 
 use crate::ir::Visitor;
 use crate::{
     CompileErrorReporter, Diagnostic, LoweredCompilationUnit, MethodId, Param, RefType,
-    SemanticPolicy, Symbols, Type, ir, predef,
+    SemanticPolicy, Symbols, Type, TypeApp, TypeId, ir, predef,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -350,6 +351,128 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
                         .is_some_and(|agg| !agg.flags().is_struct() && !agg.flags().is_never_ref())
             })
     }
+
+    fn call_type_env(&self, call: &ir::Call<'ctx>) -> HashMap<&'ctx str, Type<'ctx>> {
+        let mut env = HashMap::new();
+        let bind_args = |env: &mut HashMap<&'ctx str, Type<'ctx>>,
+                         params: &[Rc<crate::CtxVar<'ctx, crate::Immutable>>],
+                         args: &[ir::Type<'ctx>]| {
+            for (var, arg) in params.iter().zip(args) {
+                if let Ok(typ) = arg.coalesced(self.symbols) {
+                    env.insert(var.name(), typ);
+                }
+            }
+        };
+        match call {
+            ir::Call::FreeFunction {
+                function,
+                type_args,
+                ..
+            } => {
+                bind_args(
+                    &mut env,
+                    self.symbols[*function].type_().type_params(),
+                    type_args,
+                );
+            }
+            ir::Call::Static {
+                parent_id,
+                parent_type_args,
+                method,
+                type_args,
+                ..
+            } => {
+                if let Some(app) = instantiate_type_app_as(
+                    TypeApp::new(
+                        *parent_id,
+                        parent_type_args
+                            .iter()
+                            .filter_map(|t| t.coalesced(self.symbols).ok())
+                            .collect::<Rc<_>>(),
+                    ),
+                    method.parent(),
+                    self.symbols,
+                ) {
+                    for (var, arg) in self.symbols[method.parent()]
+                        .params()
+                        .iter()
+                        .zip(app.args())
+                    {
+                        env.insert(var.name(), arg.clone());
+                    }
+                }
+                bind_args(
+                    &mut env,
+                    self.symbols[*method].type_().type_params(),
+                    type_args,
+                );
+            }
+            ir::Call::Instance {
+                receiver_type,
+                method,
+                type_args,
+                ..
+            } => {
+                if let Ok(app) = receiver_type.coalesced(self.symbols)
+                    && let Some(app) =
+                        instantiate_type_app_as(app, method.parent(), self.symbols)
+                {
+                    for (var, arg) in self.symbols[method.parent()]
+                        .params()
+                        .iter()
+                        .zip(app.args())
+                    {
+                        env.insert(var.name(), arg.clone());
+                    }
+                }
+                bind_args(
+                    &mut env,
+                    self.symbols[*method].type_().type_params(),
+                    type_args,
+                );
+            }
+            ir::Call::Closure { .. } => {}
+        }
+        env
+    }
+}
+
+fn substitute_type<'ctx>(typ: &Type<'ctx>, env: &HashMap<&'ctx str, Type<'ctx>>) -> Type<'ctx> {
+    if env.is_empty() {
+        return typ.clone();
+    }
+    match typ {
+        Type::Ctx(var) => env.get(var.name()).cloned().unwrap_or_else(|| typ.clone()),
+        Type::Data(app) if !app.args().is_empty() => {
+            let args: Rc<[Type<'ctx>]> = app
+                .args()
+                .iter()
+                .map(|arg| substitute_type(arg, env))
+                .collect();
+            Type::app(app.id(), args)
+        }
+        _ => typ.clone(),
+    }
+}
+
+fn instantiate_type_app_as<'ctx>(
+    mut cur: TypeApp<'ctx>,
+    target: TypeId<'ctx>,
+    symbols: &Symbols<'ctx>,
+) -> Option<TypeApp<'ctx>> {
+    while cur.id() != target {
+        let class = &symbols[cur.id()];
+        let base = class.schema().base_type()?;
+        let env: HashMap<&'ctx str, Type<'ctx>> =
+            class.vars().zip(cur.args().iter().cloned()).collect();
+        let args: Rc<[Type<'ctx>]> = base
+            .args()
+            .iter()
+            .map(|arg| substitute_type(arg, &env))
+            .collect();
+        cur = TypeApp::new(base.id(), args);
+    }
+    Some(cur)
 }
 
 impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
@@ -450,7 +573,9 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
                 }
             }
         } else if intrinsic.is_none() {
+            let type_env = self.call_type_env(call);
             for (arg, param) in call.args().iter().zip(params) {
+                let param_type = substitute_type(param.type_(), &type_env);
                 if param.flags().is_out() {
                     self.reject_forwarding(arg, ConstViolation::Write);
                 } else if (!self.policy.const_param_non_out_forwarding
@@ -463,7 +588,7 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
                         )
                     ))
                     && !param.flags().is_const()
-                    && self.mutable_type(param.type_())
+                    && self.mutable_type(&param_type)
                 {
                     self.reject_forwarding(arg, ConstViolation::Forwarding);
                 }

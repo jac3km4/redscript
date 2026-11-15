@@ -310,3 +310,27 @@ fn const_relaxations_are_independent_and_file_local_in_both_orders() {
         }
     }
 }
+
+#[test]
+fn generic_forwarding_checks_instantiated_parameter_types() {
+    check_forwarding(
+        "func Take<T>(value: T) {} func Forward(const value: Int32) { Take(value); }",
+        &[],
+    );
+    check_forwarding(
+        "func Take<T>(value: T) {} func Forward(const value: [Int32]) { Take(value); }",
+        &["value"],
+    );
+    check_forwarding(
+        "class Item {} func Take<T>(value: T) {} func Forward(const value: Item) { Take(value); }",
+        &["value"],
+    );
+    check_forwarding(
+        "class Box<T> { public func Set(value: T) {} } func Forward(box: Box<[Int32]>, const value: [Int32]) { box.Set(value); }",
+        &["value"],
+    );
+    check_forwarding(
+        "func Take<T>(const value: T) {} func Forward(const value: [Int32]) { Take(value); }",
+        &[],
+    );
+}
