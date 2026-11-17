@@ -1078,3 +1078,11 @@ fn arbitrary_static_array_sizes_transpile_to_native_brackets() {
         "{output}"
     );
 }
+
+#[test]
+fn nested_literal_arrays_transpile_without_sibling_order_errors() {
+    let output =
+        convert("func Points() -> array<array<Int32>> { let pixels = [[2, 0], [3, 0]]; return pixels; }");
+    assert!(output.contains("pixels[0] = arrayLiteral;"), "{output}");
+    assert!(output.contains("pixels[1] = arrayLiteral_2;"), "{output}");
+}

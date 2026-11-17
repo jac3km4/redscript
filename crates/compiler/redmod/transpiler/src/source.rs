@@ -38,6 +38,14 @@ fn check_pair(before: &Spanned<SourceExpr<'_>>, after: &Spanned<SourceExpr<'_>>)
     Ok(())
 }
 
+fn prefix_inert(expr: &SourceExpr<'_>) -> bool {
+    match expr {
+        ast::Expr::Constant(_) | ast::Expr::Omitted => true,
+        ast::Expr::ArrayLit(elems) => elems.iter().all(|(expr, _)| prefix_inert(expr)),
+        _ => false,
+    }
+}
+
 fn check_siblings(exprs: &[Spanned<SourceExpr<'_>>]) -> Result<()> {
     let mut earlier_expression = false;
     for expr in exprs {
@@ -47,7 +55,7 @@ fn check_siblings(exprs: &[Spanned<SourceExpr<'_>>]) -> Result<()> {
                 Some(expr.1),
             ));
         }
-        earlier_expression |= !matches!(expr.0, ast::Expr::Constant(_));
+        earlier_expression |= !prefix_inert(&expr.0);
     }
     Ok(())
 }
