@@ -34,7 +34,7 @@ Required follow-up:
 ## Conversions and native bindings
 
 The bounded provider and enum paths are implemented; see
-[conversion semantics](language-semantics.md#conversion-declarations-and-bounded-native-selection). Remaining work includes
+[conversion semantics](redmod-language.md#conversion-declarations-and-bounded-native-selection). Remaining work includes
 conversion-aware overload applicability, scripted-provider eligibility and
 source/cache reconciliation, wider enum/integer cells, general identity/String
 conversions, native literal retyping, and qualified weak conversions. Do not add
@@ -46,7 +46,7 @@ native source declaration proves an engine ABI.
 
 - Expression-local array construction is not implemented. Preserve lazy branches,
   callee/receiver/argument order, switch matcher execution and loop reevaluation
-  before removing [prefix safety diagnostics](language-semantics.md#lazy-evaluation-limitations).
+  before removing [prefix safety diagnostics](community-language.md#lazy-evaluation-limitations).
   Runtime-compatible mode currently tolerates them and retains potentially
   reordered/eager legacy lowering; this is not a completed correctness fix.
 - Native initialized declaration groups and general value sequences need explicit

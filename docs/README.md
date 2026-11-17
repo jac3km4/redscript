@@ -1,8 +1,8 @@
-# Language guide
+# Language Guide
 
-These documents describe this repository's community REDscript compiler and its
-bounded native REDmod support. For an introductory language tutorial, see the
-[REDscript wiki](https://wiki.redmodding.org/redscript).
+This guide describes the REDscript compiler and its bounded native REDmod
+support. For an introductory language tutorial, see the
+[official REDscript wiki](https://wiki.redmodding.org/redscript).
 
 > [!IMPORTANT]
 > **Implementation Contracts and Runtime Compatibility**
@@ -10,18 +10,16 @@ bounded native REDmod support. For an introductory language tutorial, see the
 > bytecode snapshots, and official compiler acceptance establish tooling and encoding behavior,
 > not in-game execution compatibility.
 
-## Start here
+## Dialect guides
 
-- [Community REDscript](community-language.md): current language behavior, syntax, and
-  compilation/decompilation boundaries.
-- [Native REDmod](redmod-language.md): native dialect differences, supported semantics, and
-  explicit limitations.
-- [Future work](language-future-work.md): unresolved correctness issues, missing capabilities,
-  and evidence needed before broadening support. In particular,
-  [repeated Variant initialization](language-future-work.md#variant-default-initialization-on-repeated-declarations)
-  is an unresolved backend risk.
+The compiler supports two distinct language dialects:
 
-### Dialect quick comparison
+- **[Community REDscript](community-language.md)**: The full community language (`.reds`) compiled
+  by the frontend and backend, including classes, generics, closures, inference, and bytecode generation.
+- **[Native REDmod](redmod-language.md)**: The native REDmod dialect (`.script`), interop boundaries,
+  and community-to-REDmod source export (transpilation).
+
+### Quick comparison
 
 | Feature | Community REDscript (`.reds`) | Native REDmod (`.script`) |
 | :--- | :--- | :--- |
@@ -33,70 +31,56 @@ bounded native REDmod support. For an introductory language tutorial, see the
 | **Omitted enum storage** | 4 bytes for Int32-range values, 8 bytes otherwise | 4 bytes for Int32-range values, 8 bytes otherwise (official REDmod defaults to 4 bytes) |
 | **Event callbacks** | Authored return type enforced | Implicit `Bool` contract; fallthrough emits `Nop` |
 
-## Detailed semantics
+## Topic reference
 
-Two references collect the detailed contracts, with topic and subsection navigation:
-
-- [Shared language semantics](language-semantics.md): declarations, initialization,
-  evaluation, lookup, inference and diagnostic recovery, including per-file dialect
-  differences.
-- [REDmod semantics and export contracts](redmod-semantics.md): imports, events,
-  array descriptors, field/method receivers, contextual coercions and borrowing.
-
-Use the topic links below to jump directly to a contract. Current safeguards and
-remaining design goals are distinguished within each reference.
-
-| Topic | Contract |
-| --- | --- |
-| Const parameters and locals | [Per-mode forwarding diagnostics, native handle rebinding and analysis bounds](language-semantics.md#const-parameters-and-locals) |
-| Assignments, script references, omitted arguments and field defaults | [Shared expression/default semantics and APIs](language-semantics.md#shared-expression-and-aggregate-default-apis) |
-| Enum ranges, widths and erased signedness | [Explicit enum storage](language-semantics.md#explicit-enum-storage) |
-| Conversion declarations and selection | [Exact native providers, bounded enum casts and recovery guards](language-semantics.md#conversion-declarations-and-bounded-native-selection) |
-| Calls and inheritance | [Lookup, overloads, generated forwarders and override slots](language-semantics.md#call-lookup-overloads-and-inheritance) |
-| Switches and indexing | [Label order, fallthrough and OperatorArray](language-semantics.md#switch-order-and-overloaded-indexing) |
-| Lazy evaluation and array construction | [Skip parameters, strict rejection and legacy compatibility risks](language-semantics.md#lazy-evaluation-limitations) |
-| Invalid signatures | [Preserved slots, unavailable bodies and fail-closed emission](language-semantics.md#invalid-signature-recovery) |
-| Native events | [Implicit Bool contracts, fallthrough and patch/export limits](redmod-semantics.md#redmod-event-return-contract) |
-| Native array members | [Dynamic-array Grow and Count descriptors](redmod-semantics.md#redmod-dynamic-array-grow-and-count) |
-| Native imports | [Exact/select directives, collision guards and qualified-name limitations](redmod-semantics.md#redmod-transpiler-imports) |
-| Native storage access | [Field reads and writable-place boundaries](redmod-semantics.md#bounded-compound-field-reads) |
-| Native method receivers | [Inline Context evaluation and deliberate limits](redmod-semantics.md#bounded-compound-method-receivers) |
-| Native reference adaptation | [Strong/weak coercions](redmod-semantics.md#bounded-redmod-strongweak-coercions) and [script-reference borrow lifetimes](redmod-semantics.md#bounded-native-and-scripted-script-reference-borrows) |
-| Inference | [Current safeguards and transactional hardening work](language-semantics.md#type-inference-safeguards-and-hardening) |
+| Topic | Dialect | Reference Section |
+| :--- | :--- | :--- |
+| **Const parameters and locals** | Community | [Community Guide: Constness](community-language.md#const-parameters-and-locals) |
+| **Const handle rebinding** | REDmod | [REDmod Guide: Native const semantics](redmod-language.md#native-const-semantics) |
+| **Expressions & default values** | Shared | [Community Guide: Expressions](community-language.md#shared-expression-and-aggregate-default-apis) |
+| **Enum storage & widths** | Shared | [Community Guide: Enum storage](community-language.md#explicit-enum-storage) |
+| **Conversion declarations** | Shared / REDmod | [Community Guide: Conversions](community-language.md#conversion-declarations) & [REDmod Guide: Conversions](redmod-language.md#conversion-declarations-and-bounded-native-selection) |
+| **Call lookup & overloads** | Shared | [Community Guide: Call lookup](community-language.md#call-lookup-overloads-and-inheritance) |
+| **Switches & indexing** | Shared | [Community Guide: Control flow](community-language.md#switch-order-and-overloaded-indexing) |
+| **Lazy evaluation & array safety** | Shared | [Community Guide: Lazy evaluation](community-language.md#lazy-evaluation-limitations) |
+| **Type inference & rollback** | Shared | [Community Guide: Type inference](community-language.md#type-inference-safeguards-and-hardening) |
+| **Invalid signatures** | Shared | [Community Guide: Invalid signatures](community-language.md#invalid-signature-recovery) |
+| **Native events & callbacks** | REDmod | [REDmod Guide: Events](redmod-language.md#redmod-event-return-contract) |
+| **Array Grow & Count** | REDmod | [REDmod Guide: Dynamic-array Grow and Count](redmod-language.md#redmod-dynamic-array-grow-and-count) |
+| **Native module imports** | REDmod | [REDmod Guide: Imports](redmod-language.md#redmod-transpiler-imports) |
+| **Compound field reads** | REDmod | [REDmod Guide: Field reads](redmod-language.md#bounded-compound-field-reads) |
+| **Compound method receivers** | REDmod | [REDmod Guide: Method receivers](redmod-language.md#bounded-compound-method-receivers) |
+| **Strong/weak coercions** | REDmod | [REDmod Guide: Coercions](redmod-language.md#bounded-redmod-strongweak-coercions) |
+| **Script-reference borrows** | REDmod | [REDmod Guide: Borrows](redmod-language.md#bounded-native-and-scripted-script-reference-borrows) |
 
 ## Type reference
 
-- Scalars: [Bool](types/Bool.md), [Int8](types/Int8.md), [Int16](types/Int16.md),
+Detailed per-type documentation used by the compiler and IDE hover features:
+
+- **Scalars:** [Bool](types/Bool.md), [Int8](types/Int8.md), [Int16](types/Int16.md),
   [Int32](types/Int32.md), [Int64](types/Int64.md), [Uint8](types/Uint8.md),
   [Uint16](types/Uint16.md), [Uint32](types/Uint32.md), [Uint64](types/Uint64.md),
   [Float](types/Float.md), [Double](types/Double.md).
-- Text and identifiers: [String](types/String.md), [CName](types/Cname.md),
+- **Text and identifiers:** [String](types/String.md), [CName](types/Cname.md),
   [TweakDBID](types/TweakDbId.md), [ResRef](types/ResRef.md).
-- Containers and references: [Array](types/Array.md), [ref](types/Ref.md),
+- **Containers and references:** [Array](types/Array.md), [ref](types/Ref.md),
   [wref](types/Wref.md), [script_ref](types/ScriptRef.md), [Variant](types/Variant.md).
-- Opaque engine types: [NodeRef](types/NodeRef.md), [CRUID](types/Cruid.md),
+- **Opaque engine primitives:** [NodeRef](types/NodeRef.md), [CRUID](types/Cruid.md),
   [LocalizationString](types/LocalizationString.md),
   [redResourceReferenceScriptToken](types/RedResourceReferenceScriptToken.md).
-- Special types: [Void](types/Void.md), [Nothing](types/Nothing.md).
+- **Special types:** [Void](types/Void.md), [Nothing](types/Nothing.md).
 
-## Integration and evidence
+## Diagnostics and integration
 
-CLI `compile`/`lint` default to strict diagnostics; `--runtime-compatible` matches
+CLI `compile` and `lint` default to strict diagnostics. Passing `--runtime-compatible` matches
 SCC's fatal threshold without guaranteeing correct legacy evaluation. See the
 [diagnostic mode contract](community-language.md#diagnostics-and-tool-boundaries).
 
-- [Adapter API](../crates/compiler/redmod/adapter/README.md) and
-  [transpiler API](../crates/compiler/redmod/transpiler/README.md).
-- Optional [native parser corpus](../crates/syntax/redmod/parser/CORPUS.md) and
-  [semantic corpus survey](../crates/compiler/redmod/adapter/CORPUS.md).
-- [Historical investigations](language-investigations.md): corpus findings,
-  official evidence limits and [conversion experiments](language-investigations.md#conversion-experiments-and-bounded-follow-up),
-  including rejected approaches and the narrower delivered follow-up. These are
-  historical evidence, not current validation results.
-- [Contribution rules and validation commands](../CONTRIBUTING.md).
-
-Compiler tests, official acceptance, decoded representation and runtime behavior
-are distinct evidence levels. Installed-source surveys are optional local checks;
-no installed game scripts, generated bundles or disposable local reports are
-required to use these guides. Historical counts must not be presented as current
-results or semantic-accuracy percentages.
+- **Crate APIs:**
+  - [REDmod Adapter API](../crates/compiler/redmod/adapter/README.md)
+  - [REDmod Transpiler API](../crates/compiler/redmod/transpiler/README.md)
+- **Investigation and Research:**
+  - [Future Work & Limitations](language-future-work.md): Outstanding correctness issues, missing capabilities, and validation roadmaps (including [repeated Variant initialization](language-future-work.md#variant-default-initialization-on-repeated-declarations)).
+  - [Historical Investigations](language-investigations.md): Archive of corpus findings, official evidence limits, and conversion experiments.
+- **Development & Contribution:**
+  - [Contribution rules and validation commands](../CONTRIBUTING.md).

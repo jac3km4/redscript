@@ -60,9 +60,8 @@ Add `--runtime-compatible` to `compile` or `lint` to match SCC's fatal-error thr
 For tutorials and introductory guides, visit the [official REDscript wiki](https://wiki.redmodding.org/redscript).
 
 Detailed technical specifications, semantic contracts, and reference materials are documented in the [Language Guide](docs/README.md):
-- **[Community REDscript Guide](docs/community-language.md)**: Current syntax, types, and compiler behavior.
-- **[Native REDmod Guide](docs/redmod-language.md)**: Native REDmod dialect support and interop boundaries.
-- **[Shared Language Semantics](docs/language-semantics.md)**: In-depth reference on lookup, inheritance, conversions, and evaluation order.
+- **[Community REDscript Guide](docs/community-language.md)**: Current syntax, types, evaluation semantics, and compiler behavior.
+- **[Native REDmod Guide](docs/redmod-language.md)**: Native REDmod dialect support, transpilation, and interop boundaries.
 - **[Future Work & Known Limitations](docs/language-future-work.md)**: Unresolved behavior, open risks, and tracked backlog items.
 
 CLI `compile` and `lint` are strict by default; `--runtime-compatible` matches SCC's fatal threshold while still reporting diagnostics. See the [diagnostic mode contract](docs/community-language.md#diagnostics-and-tool-boundaries).

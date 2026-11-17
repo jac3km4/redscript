@@ -6,8 +6,8 @@ the narrower delivered follow-up. The first part explains what historical corpus
 and official observations can establish; the second records conversion-specific
 causes, discarded approaches and bounded results.
 
-Use the [guide index](README.md), [shared semantics](language-semantics.md) and
-[REDmod semantics](redmod-semantics.md) for current contracts, and
+Use the [guide index](README.md), [community guide](community-language.md) and
+[native REDmod guide](redmod-language.md) for current contracts, and
 [future work](language-future-work.md) for outstanding work. Original detailed
 reports remain in Git history. Historical counts do not certify current HEAD,
 semantic accuracy or runtime parity; no new compiler/corpus/runtime measurements
@@ -92,25 +92,25 @@ for the rejected prototype and delivered bounded slice.
 
 These were bounded official compiler v1.2.2 observations, not runtime tests:
 
-- [Enums](language-semantics.md#explicit-enum-storage): legal signed/unsigned storage ranges, four-byte omitted
+- [Enums](community-language.md#explicit-enum-storage): legal signed/unsigned storage ranges, four-byte omitted
   native storage, erased signedness and rejection of the Int64 minimum spelling.
-- [Defaults](language-semantics.md#shared-aggregate-defaults): own-field
+- [Defaults](community-language.md#shared-aggregate-defaults): own-field
   duplicate first-wins and inherited duplicate last-wins per supplying class;
   defaults live on declaring fields as class-qualified properties, not constructor
   assignments. Official inherited defaults accepted some invalid text; shared
   checking intentionally stays stricter.
-- [Const locals](language-semantics.md#const-parameters-and-locals): repeated class-handle rebinding and handle
+- [Const locals](redmod-language.md#native-const-semantics): repeated class-handle rebinding and handle
   forwarding were accepted; scalar/struct assignment and non-const referent methods
   were not. Native scalar const inline initialization was rejected, unlike the
   community initializer rule.
-- [Events](redmod-semantics.md#redmod-event-return-contract): implicit Bool metadata, legal fallthrough without a
+- [Events](redmod-language.md#redmod-event-return-contract): implicit Bool metadata, legal fallthrough without a
   synthetic false return, and Int32-to-Bool via `Cast;Int32;Bool`, not generic
   truthiness. Some invented native bindings and isolated patch probes failed;
   they did not establish official patch parity.
-- [Overloads/inheritance](language-semantics.md#call-lookup-overloads-and-inheritance): child specificity, real-method
+- [Overloads/inheritance](community-language.md#call-lookup-overloads-and-inheritance): child specificity, real-method
   preference over generated aliases, optional-tail ambiguity, original-slot return
   contracts and declaring-class persistent access.
-- [Indexing](language-semantics.md#switch-order-and-overloaded-indexing): OperatorArray is an ordinary call-shaped
+- [Indexing](community-language.md#switch-order-and-overloaded-indexing): OperatorArray is an ordinary call-shaped
   result, not a writable array slot. Non-final switch defaults permit fallthrough.
 - Mutable Float: the observed `instanceeditable inlined` non-imported class field
   required no extra flag; explicit const stayed set. No universal mutable-scalar
@@ -145,7 +145,7 @@ compiler or runtime measurements were made for this documentation consolidation.
 ### Conversion investigation archive
 
 **Historical evidence, not the current contract or a validation log.** See
-[conversion declarations and bounded selection](language-semantics.md#conversion-declarations-and-bounded-native-selection) for
+[conversion declarations and bounded selection](redmod-language.md#conversion-declarations-and-bounded-native-selection) for
 implemented semantics, [future work](language-future-work.md#conversions-and-native-bindings)
 for missing capabilities and the [investigation summary](language-investigations.md)
 for corpus/evidence limits.

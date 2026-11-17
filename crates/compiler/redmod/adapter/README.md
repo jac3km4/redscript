@@ -42,15 +42,15 @@ adapter-specific support list:
 | Area | Contract |
 | --- | --- |
 | Native declarations, modifiers, metadata, references and builtins | [Native language guide](../../../../docs/redmod-language.md) |
-| Implicit members, overloads, static hiding, forwarders and override slots | [Lookup and inheritance](../../../../docs/language-semantics.md#call-lookup-overloads-and-inheritance) |
-| Conversion registration and dispatch | [Conversion declarations](../../../../docs/language-semantics.md#conversion-declarations-and-bounded-native-selection) |
-| Source `skip`, array-prefix safety and typed-call restrictions | [Lazy evaluation](../../../../docs/language-semantics.md#lazy-evaluation-limitations) |
-| Assignments, omitted slots, script references and aggregate defaults | [Shared expressions/defaults](../../../../docs/language-semantics.md#shared-expression-and-aggregate-default-apis) |
-| Readonly locals, parameter policies and bounded native relaxations | [Const semantics](../../../../docs/language-semantics.md#const-parameters-and-locals) |
-| Enum widths, ranges and erased signedness | [Enum storage](../../../../docs/language-semantics.md#explicit-enum-storage) |
-| Bool callback contracts and event/patch boundaries | [Native events](../../../../docs/redmod-semantics.md#redmod-event-return-contract) |
-| Switch ordering and overloaded indexing | [Control flow/operators](../../../../docs/language-semantics.md#switch-order-and-overloaded-indexing) |
-| Invalid signature slots, unavailable bodies and recovery | [Signature recovery](../../../../docs/language-semantics.md#invalid-signature-recovery) |
+| Implicit members, overloads, static hiding, forwarders and override slots | [Lookup and inheritance](../../../../docs/community-language.md#call-lookup-overloads-and-inheritance) |
+| Conversion registration and dispatch | [Conversion declarations](../../../../docs/redmod-language.md#conversion-declarations-and-bounded-native-selection) |
+| Source `skip`, array-prefix safety and typed-call restrictions | [Lazy evaluation](../../../../docs/community-language.md#lazy-evaluation-limitations) |
+| Assignments, omitted slots, script references and aggregate defaults | [Shared expressions/defaults](../../../../docs/community-language.md#shared-expression-and-aggregate-default-apis) |
+| Readonly locals, parameter policies and bounded native relaxations | [Const semantics](../../../../docs/community-language.md#const-parameters-and-locals) |
+| Enum widths, ranges and erased signedness | [Enum storage](../../../../docs/community-language.md#explicit-enum-storage) |
+| Bool callback contracts and event/patch boundaries | [Native events](../../../../docs/redmod-language.md#redmod-event-return-contract) |
+| Switch ordering and overloaded indexing | [Control flow/operators](../../../../docs/community-language.md#switch-order-and-overloaded-indexing) |
+| Invalid signature slots, unavailable bodies and recovery | [Signature recovery](../../../../docs/community-language.md#invalid-signature-recovery) |
 
 In particular, conversion dispatch is **not universally unsupported**. Unique
 exact native providers and bounded explicit enum/Int32 conversions are supported;

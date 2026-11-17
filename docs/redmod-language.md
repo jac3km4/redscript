@@ -1,229 +1,379 @@
-# Native REDmod language support
+# Native REDmod Language Support
 
-Native parsing/formatting, bounded shared semantic analysis, mixed-language IDE
-analysis and strict community-to-REDmod source export exist. Full language parity,
-installed-engine binding equivalence and game-runtime compatibility are not
-established. Parser acceptance is broader than semantic or backend support.
+This repository provides native REDmod script (`.script`) parsing, formatting,
+bounded shared semantic analysis, mixed-language IDE support, and strict
+community-to-REDmod source export (transpilation).
 
-See the [language guide](README.md), [community dialect](community-language.md),
-[adapter API](../crates/compiler/redmod/adapter/README.md) and
-[transpiler API](../crates/compiler/redmod/transpiler/README.md). Historical corpus
-counts in component reports describe their recorded revisions, not current HEAD.
+Native REDmod is a separate dialect with its own syntax, type rules, reference
+model, and compiler constraints. Full language parity, installed-engine binding
+equivalence, and game-runtime compatibility are not established; parser
+acceptance is broader than semantic or backend support.
+
+> [!IMPORTANT]
+> **Implementation Contracts and Runtime Compatibility**
+> Bytecode snapshots and official compiler acceptance establish tooling and encoding
+> behavior, not in-game execution compatibility. Historical corpus counts describe
+> recorded investigation baselines, not current validation percentages.
+
+## Table of contents
+
+- [Processing and source policy](#processing-and-source-policy)
+- [Declarations, modifiers, and references](#declarations-modifiers-and-references)
+  - [Modifiers](#modifiers)
+  - [Fields and metadata](#fields-and-metadata)
+  - [Hoisted locals](#hoisted-locals)
+  - [Native ref is a script reference](#native-ref-is-a-script-reference)
+  - [Enum storage and engine primitives](#enum-storage-and-engine-primitives)
+- [Modules and imports](#modules-and-imports)
+  - [REDmod transpiler imports](#redmod-transpiler-imports)
+  - [Native evidence (2026-11-02)](#native-evidence-2026-11-02)
+- [Events and callbacks](#events-and-callbacks)
+  - [REDmod event return contract](#redmod-event-return-contract)
+  - [Normalization and metadata](#normalization-and-metadata)
+  - [Export and decompilation boundaries](#export-and-decompilation-boundaries)
+  - [Historical official evidence](#historical-official-evidence)
+- [Storage access, receivers, and arrays](#storage-access-receivers-and-arrays)
+  - [REDmod dynamic-array Grow and Count](#redmod-dynamic-array-grow-and-count)
+  - [Bounded compound field reads](#bounded-compound-field-reads)
+  - [Limits and place semantics](#limits-and-place-semantics)
+  - [Bounded compound method receivers](#bounded-compound-method-receivers)
+- [Calls, inheritance, and conversions](#calls-inheritance-and-conversions)
+  - [Native implicit lookup](#native-implicit-lookup)
+  - [Trailing comma argument holes](#trailing-comma-argument-holes)
+  - [Conversion declarations and bounded native selection](#conversion-declarations-and-bounded-native-selection)
+  - [Override slots and return widening](#override-slots-and-return-widening)
+- [Control flow, constness, and defaults](#control-flow-constness-and-defaults)
+  - [Control flow fixups and switches](#control-flow-fixups-and-switches)
+  - [Dynamic array descriptors](#dynamic-array-descriptors)
+  - [Native const semantics](#native-const-semantics)
+  - [Mutable fields](#mutable-fields)
+  - [Aggregate and struct defaults](#aggregate-and-struct-defaults)
+- [Typed coercion and borrowing](#typed-coercion-and-borrowing)
+  - [Bounded REDmod strong/weak coercions](#bounded-redmod-strongweak-coercions)
+  - [Bounded native and scripted script-reference borrows](#bounded-native-and-scripted-script-reference-borrows)
+  - [Lifetime contract](#lifetime-contract)
+  - [Validation and evidence](#validation-and-evidence)
+  - [MarkToSell](#marktosell)
+- [Community source export compatibility](#community-source-export-compatibility)
+
+---
 
 ## Processing and source policy
 
-Keep native AST/grammar/formatting in the native syntax crates and native mapping
-and capability checks in the adapter. Shared semantic extensions should be
-language-neutral, with narrow per-file policies for actual dialect differences.
-Native policies must not weaken community dependencies in a mixed compilation.
+The compiler architecture maintains a strict separation of concerns:
+- **Syntax layer:** Grammar, AST definitions, parsing, and formatting reside in `crates/syntax/redmod/{ast,parser,formatter}`.
+- **Adapter layer:** Mapping native syntax to shared semantic representations and validating target capabilities resides in `crates/compiler/redmod/adapter`.
+- **Shared semantics:** Frontend extensions are language-neutral, applying narrow per-file policies for dialect-specific differences. Native policies never weaken community source checks in mixed compilations.
 
-Use `parse_file_with_metadata`, retain/clone the entire `ParsedModule`, and pass
-it to `process_sources`. Native for/do-while fixups depend on this metadata.
-Bare-AST convenience APIs fail closed for these loop forms. Aggregate defaults
-are shared AST members and need no private adapter default plans.
+**Module processing:** Use `parse_file_with_metadata`, retain the complete `ParsedModule`, and pass it to `process_sources`. Native `for` and `do-while` loop fixups depend on this metadata; bare-AST convenience APIs fail closed for these constructs.
 
-Check syntax/capability errors, adapter processing errors **and** shared frontend
-diagnostics. Returned IR can contain recovery. Parse/bridge failures still exclude
-whole modules; partial declaration harvesting is not implemented. IDE query
-availability is not semantic accuracy or permission to emit artifacts.
+Compilation checks syntax errors, adapter processing errors, and shared frontend diagnostics. If parsing or bridging fails, entire modules are excluded; partial declaration harvesting is not implemented.
 
-## Declarations and references
+---
 
-- `export` and `constexpr` are analysis-only no-ops on verified function targets,
-  not equivalent engine exposure or compile-time evaluation. Unsupported modifier
-  targets still fail. `virtual` uses checked non-final dispatch; ordinary private
-  methods are implicitly final.
-- Omitted field visibility defaults to public; explicit flags remain effective.
-  String field properties preserve keys, duplicates and order. Hints target one
-  field in the same aggregate. Broader metadata is not silently discarded.
-- Function-wide typed locals are hoisted with duplicate checks and entry defaults;
-  explicit initializers remain at their source execution sites. Uninitialized
-  groups expand in order, and standalone blocks flatten under the same policy.
-  Initialized groups and general value sequences remain unsupported.
-- Native `ref<T>` means script reference, not community strong `ref<T>`. In
-  native `scripts/`, `ref<T>` appears only in function parameters (never in `var`
-  declarations or return types), and `out` and `ref<T>` are mutually exclusive
-  (never combined on the same parameter). Verified scalar/string/struct/class/array/weak
-  parameter and field forms compose with dereferencing/coercion, and non-const
-  `ref<T>` parameters support both direct assignment and indirect field/array
-  mutations. Native assignment/out places write through references:
-  ```redscript
-  public class Handler {
-    // Native ref<T> is a script reference to an Int32, not a strong class handle
-    public func Increment(counter: ref<Int32>) -> Void {
-      counter = counter + 1; // Writes through to the referenced integer
-    }
+## Declarations, modifiers, and references
+
+### Modifiers
+
+- **`export` and `constexpr`:** Treated as analysis-only no-ops on verified function targets. They do not imply engine export or compile-time evaluation. Unsupported modifier targets fail.
+- **`virtual`:** Dispatches via checked non-final dispatch. Ordinary private methods are implicitly final.
+
+### Fields and metadata
+
+- Omitted field visibility defaults to `public`; explicit visibility modifiers remain effective.
+- String field properties preserve keys, duplicates, and declaration order. Property hints target one field within the same aggregate.
+- `mutable` is accepted on aggregate dynamic array fields and bounded Float fields (see [Mutable fields](#mutable-fields)).
+
+### Hoisted locals
+
+In native functions, `var` local declarations are function-wide and hoisted with duplicate checks and entry defaults. Explicit initializers remain at their execution sites. Uninitialized groups expand sequentially in source order. Initialized groups (`var a, b = 1;`) and general value sequences are unsupported.
+
+### Native ref is a script reference
+
+In native REDmod, **`ref<T>` means a script reference**, equivalent to community `script_ref<T>`. It does **not** denote a strong class handle:
+
+```redscript
+public class Handler {
+  // Native ref<T> is a script reference to Int32, not a strong class handle
+  public func Increment(counter: ref<Int32>) -> Void {
+    counter = counter + 1; // Writes through to the referenced integer
   }
-  ```
-  Ref locals/returns, nested refs, arrays of refs and mixed-reference forms remain
-  rejected. See [shared reference semantics](language-semantics.md#shared-expression-and-aggregate-default-apis).
-- [Enum storage](language-semantics.md#explicit-enum-storage) retains declared width/ranges. Omitted native
-  storage defaults to 4 bytes for Int32-range values and 8 bytes otherwise (official
-  REDmod always defaults to 4 bytes). Use explicit storage when another width matters.
-- NodeRef, CRUID, LocalizationString and redResourceReferenceScriptToken are shared
-  opaque primitives, not fabricated classes or integer aliases. No extra literal,
-  default-value, layout or conversion behavior follows from registration.
+}
+```
 
-## Calls, inheritance and conversions
+Key characteristics:
+- In official native `scripts/`, `ref<T>` appears only on function parameters (never on `var` local declarations or function return types).
+- `out` and `ref<T>` are mutually exclusive on the same parameter.
+- Non-const `ref<T>` parameters write through on assignment and indirect mutations.
+- `ref<T>` locals, `ref<T>` returns, nested references (`ref<ref<T>>`), and arrays of references are rejected.
 
-[Lookup and inheritance](language-semantics.md#call-lookup-overloads-and-inheritance) defines implicit member precedence,
-static ancestry/hiding, generated forwarders, bounded specificity, native original
-slot return covariance and persistent access. Implicit static calls retain their
-qualified type identity across modules, and generic static hiding compares
-substituted parameter signatures. These fixes do not enable arbitrary calls
-through runtime value receivers.
+### Enum storage and engine primitives
 
-Native operators preserve checked signatures. Non-array `operator[]` resolves
-OperatorArray; built-in arrays retain writable indexing. Omitted argument slots
-must match optional parameters and emit Nop. Unlike community syntax, a final
-comma retains a final hole:
+- **Enum storage:** Accepts `enum Choice: Uint8 { ... }` with explicit width. Omitted storage defaults to 4 bytes for Int32-range values and 8 bytes otherwise (official REDmod defaults to 4 bytes in all cases).
+- **Engine primitives:** `NodeRef`, `CRUID`, `LocalizationString`, and `redResourceReferenceScriptToken` are shared opaque primitives, not integer aliases or fabricated classes.
+
+---
+
+## Modules and imports
+
+### REDmod transpiler imports
+
+The community-to-REDmod transpiler converts module imports as follows:
+- `import M.Name` emits `@using "M.Name"`.
+- `import M.{First, Second}` emits separate symbol-level directives `@using "M.First"` and `@using "M.Second"`. It does **not** widen to `@using "M"`.
+- Wildcard imports `import M.*` emit module-level `@using "M"`.
+- Directives terminate with newlines, **never semicolons** (the official REDmod compiler rejects directive semicolons).
+
+#### Bounded checks and collision guards
+
+- Module paths and selected names must be valid target identifiers. Root-level exact imports and empty selections are rejected.
+- **Prefix overlap guard:** If a selected symbol path coincides with a module (or ancestor module) in the output, the transpiler rejects it instead of risking ambiguous scope widening.
+- Analysis-only dependencies do not emit output modules or cause global name collision errors.
+
+### Native evidence (2026-11-02)
+
+Official compiler v1.2.2 testing established:
+- `@using "First.Pick"` allows calling all overloads of `Pick`, while calling `First.Other` is rejected as unused module.
+- If module `First.Pick` also contains function `Extra`, `@using "First.Pick"` permits `Extra(1)`. The prefix-overlap guard is therefore required.
+- `First.Pick(1)` is rejected as an invalid global identifier `First`.
+- Emitted directives without semicolons compiled with 0 errors across module-only, exact, select, and wildcard test suites.
+
+---
+
+## Events and callbacks
+
+### REDmod event return contract
+
+Native REDmod events follow an **implicit `Bool` contract**, not `Void` or an inferred return type. Explicit event return type annotations are invalid.
+
+```redscript
+// Native event: implicit Bool return contract
+public class MyCustomComponent extends ScriptableComponent {
+  private cb func OnAction(evt: ref<ActionEvent>) -> Bool {
+    // Fallthrough is legal and emits bytecode Nop
+  }
+}
+```
+
+### Normalization and metadata
+
+- **Semicolon events:** Semicolon events on script classes normalize to empty `Bool` implementations with fallthrough.
+- **Callback prototypes:** Imported callback prototypes remain bodyless, preserving callback identity without native method flags.
+- **Fallthrough:** Adapter finishing appends bytecode `Nop` to callback implementations and patches on fallthrough, not a return expression or default false value.
+- **Return expressions:** Return expressions use ordinary shared coercion; there is no return-specific Int32-to-Bool hook. Bare `return;` is rejected as a Void-to-Bool mismatch.
+- **Transpiler requirements:** Community callbacks exported to REDmod require a non-const `Bool` return type. Incompatible contracts produce diagnostics.
+
+### Export and decompilation boundaries
+
+- Export requires a non-const `Bool` contract and preserves `Bool` return expressions. Void or non-Bool callbacks fail closed.
+- Decompiler reconstructs non-final defaults and switch dispatch independently of event return contracts.
+
+### Historical official evidence
+
+Probes using official compiler v1.2.2 established:
+
+| Fixture | Official result |
+| :--- | :--- |
+| Empty event body | `Bool` metadata; Profile then `Nop`, no default false return |
+| `Bool` return | Accepted; `Return` instruction with `Bool` expression |
+| Conditional `Bool` return with fallthrough | Accepted, trailing `Nop` emitted |
+| Bare `return;` | Rejected (Void-to-Bool error) |
+| `Int32` return | Accepted via native `Cast;Int32;Bool` |
+| `Float` / `String` return | Rejected (no conversion to Bool) |
+| Derived/imported callback implementation | `Bool` metadata and inherited base link |
+| Semicolon event on script class | Accepted |
+| Semicolon event on importonly class | Rejected |
+
+Across 7,372 native event bodies in official `scripts/`: 6,940 use fallthrough (no `return`), 393 return `true`/`false`, and 46 use `return <expr>;` (strictly `0`, `NULL`, or Bool expressions).
+
+---
+
+## Storage access, receivers, and arrays
+
+### REDmod dynamic-array Grow and Count
+
+The native adapter exposes two member descriptors on dynamic array instances:
+
+| Native syntax | Shared intrinsic | Parameters | Result |
+| :--- | :--- | :--- | :--- |
+| `values.Grow(amount)` | `ArrayGrow` | `amount: Int32` | `Void` |
+| `values.Count(value)` | `ArrayCount` | `value: T` | `Int32` |
+
+- Both operations require an **array place** (lvalue). Temporary receivers like `MakeArray().Count(val)` are rejected.
+- `Grow` mutates array storage and rejects `const` parameters/locals; `Count` is read-only and accepts `const`.
+- Transpiler emits `ArrayGrow` and `ArrayCount` as these member calls on local arrays.
+- Fixed-array members and `EraseFast` are not aliased.
+
+### Bounded compound field reads
+
+Field reads use direct native postfix syntax without temporary copies or synthetic null guards:
+
+```redscript
+owner.child.flag;
+Select(steps, owner).child.flag;
+(enabled ? Select(steps, owner) : Select(steps, other)).child.flag;
+owner.child.data.visualStateData.m_isIconic;
+Deref(data).visualStateData.m_isIconic;
+```
+
+#### Limits and place semantics
+
+- **Variable root requirement:** Official compiler v1.2.2 requires a variable parent scope for struct property access. Therefore, struct receivers must be a variable-rooted field chain or `Deref(localScriptRef)`. Temporary struct results (`Make().field`) are rejected for structs.
+- **Class handle fields:** Nested class-handle fields are assignable places and can be passed as `out` arguments, even through weak handles.
+- **Variable-rooted struct fields:** Variable-rooted struct fields support assignment and `out` arguments, including nested struct fields and `Deref(localScriptRef)` roots. No temporary struct copies or write-back schemes are introduced.
+- **Array operations on fields:** `ArraySize`, `ArrayClear`, `ArrayPop`, `ArrayLast`, and indexing accept variable-rooted array fields directly. Other operations (`ArrayPush`, `ArrayContains`, `ArrayGrow`, etc.) accept variable-rooted array fields when all other arguments are non-mutating.
+- **Class casts:** Direct field reads through class casts are supported with parentheses at postfix precedence (`((MyClass)obj).field`).
+
+### Bounded compound method receivers
+
+The transpiler emits strong and weak class-reference receivers inline for method call chains, local-rooted fields, conditional expressions, and class casts:
+
+```redscript
+Select(owner).Next().Read(Rebind(owner));
+owner.child.Read(Rebind(owner));
+(enabled ? Select(owner) : Select(other)).Read(Rebind(owner));
+owner.handle.Read(owner.handle.Entry(Rebind(owner))); // handle is wref
+```
+
+#### Why not mechanically spill temporaries?
+
+Instance calls emit `Context(exit)`, receiver, invocation, arguments, and `ParamEnd`, with `Context` exit after the full invocation:
+- Evaluating arguments before entering `Context` could execute side effects that a null receiver should skip.
+- Re-reading a receiver after an argument rebinds its root could target a different object.
+- Hoisting calls from conditional or lazy branches could alter execution frequency.
+- Emitting receivers inline preserves official REDengine `Context` semantics.
+
+#### Deliberate limits
+
+- Weak class-reference receivers undergo implicit promotion inside `Context`.
+- Indexed class handles from arrays can call methods directly (`arr[i].Method()`).
+- Direct assignments to fields of local strong or weak class handles stay inline (`handle.field = value`).
+- Temporary struct receivers, assignment/construction receivers, and compound script-reference receivers remain unsupported.
+
+---
+
+## Calls, inheritance, and conversions
+
+### Native implicit lookup
+
+Native lookup order:
+1. Local and parameter callable values.
+2. Eligible implicit member methods on `this`.
+3. Type constructors.
+4. Free functions.
+
+Native locals are function-wide and shadow implicit members. Implicit static calls preserve the enclosing type's semantic identity across module boundaries.
+
+### Trailing comma argument holes
+
+In native `.script` syntax, a trailing comma retains a final omitted argument hole:
 ```redscript
 Target(42,); // Native syntax: 2 arguments (42 followed by 1 omitted hole)
 ```
-Authored parameter-default expressions are separate and unsupported.
+This differs from community syntax where `Target(42,)` has arity 1.
 
-[Conversion declarations](language-semantics.md#conversion-declarations-and-bounded-native-selection) preserve explicit/implicit
-intent without making providers ordinary overload candidates. In native `scripts/`,
-declarations use `implicit cast ( param : Src ) : Dst { ... }` without `function`/`func`
-keywords or visibility modifiers (or `import [implicit] cast ...;` without `explicit`),
-and `explicit` never appears. Implemented native
-selection is bounded to unique exact native providers, guarded implicit coercions
-at known targets and selected explicit enum/Int32 conversions. There is no general
-conversion-aware matching, chaining or numeric-distance ranking. Variant extraction
-precedes object casts; native object casts support identity/upcast/downcast and
-resolved object/weak-reference truthiness. Ordinary Cast precedence and contextual
-literal typing remain intact. No special Int32-to-Bool return hook exists.
+### Conversion declarations and bounded native selection
 
-Conditions support bounded ModuleExists/single-negation selection, with deterministic
-first-active versions and capability checking of inactive declarations. Conversion
-version keys include the Cast return destination, so equal operands with different
-destinations are not collapsed. Other grouping still uses source spelling, not
-fully resolved semantic signatures; this is not general variant-aware analysis.
+Native conversion declarations use `cast` or `implicit cast`:
 
-## Control flow, arrays and constness
+```redscript
+implicit cast ( param : Int32 ) : MyType { ... }
+cast ( param : MyType ) : Int32 { ... }
+```
 
-- Native for/do-while fixups retain execution order and continue targets. Ordered
-  switch defaults preserve label/body order, fallthrough, one scrutinee evaluation
-  and enclosing loop continues. See [control flow and indexing](language-semantics.md#switch-order-and-overloaded-indexing).
-- Source `skip` flags retain lazy call intent and serialized parameter flags.
-  Shared unsafe-array diagnostics reject output at the strict threshold but can
-  retain unsafe legacy lowering in runtime-compatible mode. Source-free typed
-  skip calls use a distinct hard error; native capability checks remain hard.
-  [Lazy limitations](language-semantics.md#lazy-evaluation-limitations) defines the boundary.
-- Dynamic-array descriptors include Size, PushBack, PopBack, Clear, Resize,
-  Contains, FindFirst, FindLast, Insert, Remove, Erase and Last, plus
-  [Grow and Count](redmod-semantics.md#redmod-dynamic-array-grow-and-count). They require array places;
-  temporary receivers are rejected:
-  ```redscript
-  values.Grow(10);
-  let total: Int32 = values.Count(element);
-  ```
-  Fixed-array members and EraseFast are not aliases to these operations, and native
-  source does not expose arbitrary community intrinsic spellings. Native fixed-size
-  arrays use `Type[ N ]` across class fields, locals, parameters and return types
-  (not struct fields).
-- [Const rules](language-semantics.md#const-parameters-and-locals) retain native qualifiers. Parameter element
-  writes/non-out forwarding have narrow native policy relaxations (though in native
-  `scripts/`, `const name : ref<T>` behaves as deep `const` on value types, structs,
-  and arrays without element/field writes, while `const ref<array<ClassHandle>>`
-  still allows extracting handles and calling non-`const` methods on those objects).
-  Const local class handles permit rebinding/handle forwarding, not referent mutation
-  (in `scripts/`, `const var` locals are class handles declared without inline
-  initializers and assigned on a subsequent statement). Native const
-  scalar/struct explicit initialization is rejected, unlike community const
-  initialization:
-  ```redscript
-  const var target: ref<MyClass>; // Class handle rebinding permitted
-  target = new MyClass();         // Rebinding the handle is allowed
-  // target.field = 5;            // ERROR: referent mutation remains rejected
-  ```
-  Const fields/returns and arbitrary effects remain incomplete (`const` on a return
-  type or `weak<T>` parameter does not block casting or assigning to non-const handles,
-  and `const` fields function primarily as editor/metadata hints without write enforcement
-  in declaring-class methods).
-- `mutable` is accepted for verified aggregate array fields (appearing on 28 dynamic
-  array fields and 1 Float field, never combined with `const`). Unannotated native
-  `array` fields are not implicitly `const` and are freely mutated in `scripts/`.
-  The bounded scalar
-  form is a Float field on a non-imported class with `instanceeditable inlined`,
-  optionally `const`, and no other modifiers. It adds no extra flag and never
-  clears explicit const. It is not a general mutable-scalar rule; array-field
-  implicit const and scalar const-field write enforcement remain incomplete.
+Conversion dispatch in native source is bounded to specific safe patterns:
+- **Explicit native providers:** Exact native `Cast` provider calls for monomorphic, non-generic data types with one non-out, non-skip parameter and exact return type. Duplicate candidates fail conservatively with `UNSUPPORTED_NATIVE_CONVERSION`.
+- **Bounded explicit enum casts:** Admitted for `enum -> Int32` when enum storage is at most 4 bytes and values fit `Int32`. The reverse direction (`Int32 -> enum`) requires exact `Int32` and default (absent) enum storage.
+- **Guarded implicit native providers:** Incompatible fixed pairs at known coercion targets (returns, initializers, assignments, non-out call arguments) can use a unique exact implicit native provider.
+- Arbitrary conversion chaining, numeric ranking, and general ToString conversions are not supported.
 
-## Defaults, events and output boundaries
+### Override slots and return widening
 
-[Aggregate defaults](language-semantics.md#shared-aggregate-defaults)
-resolve typed own/inherited targets and merge metadata on declaring fields keyed
-by supplying class, with no initialization bytecode. Checking is intentionally
-stricter than official inherited defaults that accept some invalid text. These
-properties do not prove local or runtime construction/reset behavior.
+REDmod method overrides validate against the canonical original `override_slot`:
+- Allows bounded sibling returns and widening back to the root contract.
+- Restricts covariance to identical strong/weak class reference representations; arrays, structs, and script references require exact types.
+- Omitted visibility inherits from base; narrowed visibility is permitted, but call-site access rules apply.
 
-[Events](redmod-semantics.md#redmod-event-return-contract) have implicit Bool contracts, legal fallthrough and no
-synthetic default false return. Script semicolon events become empty implementations;
-imported prototypes retain callback identity without invented bodies. Importonly
-scripted members remain invalid. Bool patch metadata support is not a general
-claim of official wrapper/patch parity.
+---
 
-All struct defaults emit `Type()`, delegating construction to the engine rather
-than enumerating fields or inferring layouts from imported fields. Explicit reset assignments
-remain at repeated declaration sites. Official v1.2.2 probes cover `Vector2`,
-`ResRef`, `ItemID`, `inkAnimOptions` and `stimInvestigateData`, including zero-argument
-Construct bytecode inside a loop; a scripted nested-struct fixture verifies the
-same emitted instruction. This is not in-game verification. Explicit positional
-constructor expressions retain their original field arguments.
-The transpiler can omit a local's first,
-unconditional default initialization when backward liveness proves no read before
-a whole-local overwrite. Branches and loop back edges participate in that proof;
-reads, borrows, `out` arguments and partial field writes keep the default. Repeated
-or conditional declarations retain resets, and switch occurrences are conservatively
-treated as reads. This does not infer native layouts or change Variant reset behavior.
-Unused declarations without overwrite evidence are not removed by this pass. Default/reset support, additional
-builtins, broader patches, contextual function values, float matching and
-prefix/postfix behavior remain bounded. Custom native generics, lambdas/function
-types, mixedRef/neverRef, unknown annotations and unverified metadata fail closed.
-See [future work](language-future-work.md), including the unresolved backend
-Variant reset risk and the separate transpiler restrictions.
+## Control flow, constness, and defaults
+
+### Control flow fixups and switches
+
+- Native `for` and `do-while` loops require metadata fixups from `ParsedModule` to retain execution order and continue targets.
+- Ordered switches evaluate case matchers in source order before jumping to non-final defaults. Scrutinees are evaluated once.
+
+### Dynamic array descriptors
+
+In addition to `Grow` and `Count`, the adapter supports standard native dynamic-array descriptors: `Size`, `PushBack`, `PopBack`, `Clear`, `Resize`, `Contains`, `FindFirst`, `FindLast`, `Insert`, `Remove`, `Erase`, and `Last`.
+
+Native fixed-size arrays use `Type[N]` on fields, locals, parameters, and returns (struct fields excluded).
+
+### Native const semantics
+
+- **Handle rebinding:** Native `const var target: ref<MyClass>;` locals permit sequential rebinding to new handles (`target = new MyClass();`) and passing the handle to non-`out` parameters. Referent mutation (`target.field = 5;`) remains rejected.
+- **Scalar and struct const initialization:** Native `const var` locals for scalars and structs reject inline initialization and subsequent assignment.
+- **Deep const parameters:** In native `scripts/`, `const name: ref<T>` acts as deep const on value types, structs, and arrays (no element or field writes). However, `const ref<array<ClassHandle>>` permits extracting handles and calling non-const methods on the referenced objects.
+
+### Mutable fields
+
+The `mutable` modifier is accepted on verified aggregate dynamic array fields (matching 28 array fields in native scripts) and on a single bounded Float field configuration (`instanceeditable inlined`). It is never combined with `const` and does not represent a general mutable-scalar keyword.
+
+### Aggregate and struct defaults
+
+- Aggregate defaults (`default field = value;`) resolve on declared fields keyed by supplying class, emitting no initialization bytecode.
+- Struct defaults emit zero-argument `Type()`, delegating initialization to the engine rather than enumerating field assignments.
+
+---
+
+## Typed coercion and borrowing
+
+### Bounded REDmod strong/weak coercions
+
+The transpiler can emit a single typed `RefToWeakRef` or `WeakRefToRef` conversion using REDmod implicit coercion at an immediate typed sink:
+- Supported assignment places or typed local initializers.
+- Returns with explicit resolved return types.
+- Non-`out` parameters of resolved calls with no competing viable overloads.
+
+```redscript
+// Coercion emitted implicitly at typed sink
+let weakHandle: wref<TargetClass> = strongHandle;
+```
+
+**Safety boundary:** The operand remains at its original execution point. Nested strong/weak conversions (`RefToWeakRef(WeakRefToRef(v))`) are not cancelled. Competing overloads with opposite strong/weak parameters block implicit coercion.
+
+### Bounded native and scripted script-reference borrows
+
+The transpiler accepts nonlocal `AsRef` operands at immediate, exact, non-`out` `script_ref<T>` parameters with matching pointee type `T`.
+
+```redscript
+// Nonlocal string borrow at exact parameter
+StrContains(GetLocalizedText(key), "pattern");
+```
+
+### Lifetime contract
+
+- Direct `AsRef(prvalue)` temporary arguments set the corresponding bit in the invocation's 16-bit rvalue-reference mask, requesting call-owned temporary storage.
+- New temporary borrows beyond slot 15 fail closed.
+- Variable-rooted fields and array elements retain place identity and do not require invocation temporary bits.
+- Nonlocal `AsRef` in returns, variable initializers, assignments, or ambiguous overloads remains rejected.
+
+### Validation and evidence
+
+Official compiler v1.2.2 testing verified:
+- Temporary localization arguments set mask 1 immediately followed by `AsRef`.
+- Local arguments use mask 0.
+- Nested string interpolations and scalar/struct function results set expected temporary bits.
+- Bytecode inspection confirmed absence of synthesized local variables or spilled assignments.
+
+---
 
 ## Community source export compatibility
 
-The transpiler emits supported receiver expressions inline, without hoisting or
-copying them: nested class-field assignments, class fields passed as `out`, class
-casts used as method receivers, and compound weak-handle field reads. Persistent
-fields use frontend ownership/access checking, not a blanket `this`-only rule.
-Official v1.2.2 authored compilation probes cover these forms; the `out` probe also
-checks direct field bytecode with no synthesized local/copy assignment. This is
-not an in-game execution guarantee.
+The REDmod transpiler (`redscript-cli transpile-redmod`) translates community REDscript into native REDmod `.script` files:
 
-`ArraySize`, `ArrayClear`, `ArrayPop`, `ArrayLast` and indexing accept
-variable-rooted arrays. Indexed struct and class elements support field reads;
-indexed class handles also support method calls. Class casts support field reads too.
-Call-rooted arrays remain unsupported because the official compiler requires an
-in-memory variable root. Other emitted array operations also accept variable-rooted
-arrays when all additional arguments are non-mutating, including field chains and
-indexing with non-mutating indices. Effectful arguments retain the local-array guard. `ArrayGrow` and `ArrayCount` emit native Grow/Count
-members. See [array field limits](redmod-semantics.md#limits-and-place-semantics).
-
-Variable-rooted ordinary struct fields support writes and `out`, including
-`Deref(localScriptRef)` roots. Fields and indexed elements can supply scripted
-`script_ref<T>` parameters without copies. Temporary arguments use invocation-owned
-borrows at exact non-out parameters, with the same lifetime-slot checks as native
-calls. Overload ambiguity, escaping references and unsupported borrow contexts
-remain guarded. See [field access](redmod-semantics.md#bounded-compound-field-reads) and
-[script-reference borrowing](redmod-semantics.md#bounded-native-and-scripted-script-reference-borrows) for the evidence and limits.
-
-Resource and TweakDBID literals emit decoded backslashes literally, not with
-community escape spelling. Ordinary resource paths retain their pool identity.
-Leading/repeated backslashes in resource paths are rejected because the official
-compiler normalizes them; TweakDBID backslashes remain raw. Embedded quotes, NUL
-and unsupported controls still fail. The optional `resource_literals` probe
-compares the compiled literal pools with the input values.
-
-## Evidence and validation
-
-Optional [parser](../crates/syntax/redmod/parser/CORPUS.md) and
-[semantic](../crates/compiler/redmod/adapter/CORPUS.md) surveys use explicitly
-supplied local inputs. Do not commit installed scripts or require disposable
-reports. Bytecode snapshots establish instruction structure; official authored
-probes establish bounded acceptance/representation; neither is game execution.
-The [investigation archive](language-investigations.md) preserves key findings,
-not a current validation certification or a parity percentage.
+- **Inline receivers:** Method call chains, fields passed as `out`, class casts as receivers, and compound weak-handle reads are emitted inline without temporary spills.
+- **Array operations:** `ArraySize`, `ArrayClear`, `ArrayPop`, `ArrayLast`, and indexing accept variable-rooted array fields.
+- **Struct fields:** Ordinary struct fields support writes and `out` passing when rooted in a variable or `Deref(localScriptRef)`.
+- **String and resource literals:** Resource paths and TweakDBIDs emit backslashes literally rather than using community escape sequences.
+- **Unsupported constructs:** Custom generics, lambdas, function types, const locals, unsafe array prefixes, and non-Bool event callbacks fail closed with source diagnostics.
