@@ -245,9 +245,7 @@ fn visit<'ctx>(
             reads_state: true,
             ..ExprInfo::default()
         },
-        ir::Expr::Construct { args, .. } => {
-            siblings(args.iter(), pending, symbols, reporter, lazy)
-        }
+        ir::Expr::Construct { args, .. } => siblings(args.iter(), pending, symbols, reporter, lazy),
         ir::Expr::Call { call, .. } => {
             let (callee_info, args_info, callee_span, is_pure) = match &**call {
                 ir::Call::FreeFunction { function, args, .. } => {
@@ -284,8 +282,8 @@ fn visit<'ctx>(
             {
                 report(reporter, span);
             }
-            let combined = callee_info
-                .map_or(args_info, |callee| callee.combine_prefixes(args_info));
+            let combined =
+                callee_info.map_or(args_info, |callee| callee.combine_prefixes(args_info));
             ExprInfo {
                 has_array: combined.has_array,
                 array_effects: combined.array_effects,

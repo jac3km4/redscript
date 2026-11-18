@@ -224,7 +224,10 @@ fn guarded_lazy_arguments_keep_legacy_eager_prefix_and_original_call() {
 
 #[test]
 fn logical_and_conditional_expressions_keep_their_return_values() {
-    for body in ["false && Read([Effect()])", "true ? Read([Effect()]) : false"] {
+    for body in [
+        "false && Read([Effect()])",
+        "true ? Read([Effect()]) : false",
+    ] {
         check(
             &format!(
                 "native func Effect() -> Int32; native func Read(values: [Int32]) -> Bool; native func OperatorLogicAnd(lhs: Bool, skip rhs: Bool) -> Bool; func Run() -> Bool {{ return {body}; }}"

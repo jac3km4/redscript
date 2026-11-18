@@ -36,11 +36,9 @@ fn is_reordering_unsafe(before: ExprInfo, after: ExprInfo) -> bool {
 fn inspect_siblings<'a, 'src: 'a>(
     exprs: impl IntoIterator<Item = &'a Spanned<SourceExpr<'src>>>,
 ) -> ExprInfo {
-    exprs
-        .into_iter()
-        .fold(ExprInfo::default(), |acc, expr| {
-            acc.combine_prefixes(inspect(expr))
-        })
+    exprs.into_iter().fold(ExprInfo::default(), |acc, expr| {
+        acc.combine_prefixes(inspect(expr))
+    })
 }
 
 fn inspect((expr, _): &Spanned<SourceExpr<'_>>) -> ExprInfo {
@@ -67,12 +65,12 @@ fn inspect((expr, _): &Spanned<SourceExpr<'_>>) -> ExprInfo {
             }
         }
         ast::Expr::New { args, .. } => inspect_siblings(args),
-        ast::Expr::InterpolatedString(parts) => inspect_siblings(parts.iter().filter_map(|part| {
-            match part {
+        ast::Expr::InterpolatedString(parts) => {
+            inspect_siblings(parts.iter().filter_map(|part| match part {
                 StrPart::Expr(expr) => Some(expr),
                 StrPart::Str(_) => None,
-            }
-        })),
+            }))
+        }
         ast::Expr::BinOp { lhs, rhs, .. } => inspect(lhs).combine_prefixes(inspect(rhs)),
         ast::Expr::Index { expr, index } => {
             let mut info = inspect(expr).combine_prefixes(inspect(index));
@@ -234,7 +232,8 @@ impl<'src> AstVisitor<'src, WithSpan> for Guard {
         lhs: &Spanned<SourceExpr<'src>>,
         rhs: &Spanned<SourceExpr<'src>>,
     ) -> Result<()> {
-        if !matches!(lhs.0, ast::Expr::Ident(_)) && is_reordering_unsafe(inspect(lhs), inspect(rhs)) {
+        if !matches!(lhs.0, ast::Expr::Ident(_)) && is_reordering_unsafe(inspect(lhs), inspect(rhs))
+        {
             return Err(error(
                 "this array may run before the assignment target; evaluate the target before creating the array",
                 Some(lhs.1),
