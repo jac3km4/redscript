@@ -22,16 +22,16 @@ struct ArrayEntry {
 }
 
 #[derive(Clone, Copy, Default)]
-struct ExprInfo {
-    has_array: bool,
-    array_effects: bool,
-    array_reads_state: bool,
-    has_side_effects: bool,
-    reads_state: bool,
+pub struct ArrayPrefixInfo {
+    pub has_array: bool,
+    pub array_effects: bool,
+    pub array_reads_state: bool,
+    pub has_side_effects: bool,
+    pub reads_state: bool,
 }
 
-impl ExprInfo {
-    fn combine_prefixes(self, other: Self) -> Self {
+impl ArrayPrefixInfo {
+    pub fn combine_prefixes(self, other: Self) -> Self {
         Self {
             has_array: self.has_array || other.has_array,
             array_effects: self.array_effects || other.array_effects,
@@ -40,14 +40,20 @@ impl ExprInfo {
             reads_state: self.reads_state || other.reads_state,
         }
     }
+
+    pub fn is_reordering_unsafe(before: Self, after: Self) -> bool {
+        if !after.has_array {
+            return false;
+        }
+        (before.has_side_effects && (after.array_reads_state || after.array_effects))
+            || (after.array_effects && (before.reads_state || before.has_side_effects))
+    }
 }
 
+type ExprInfo = ArrayPrefixInfo;
+
 fn is_reordering_unsafe(before: ExprInfo, after: ExprInfo) -> bool {
-    if !after.has_array {
-        return false;
-    }
-    (before.has_side_effects && (after.array_reads_state || after.array_effects))
-        || (after.array_effects && (before.reads_state || before.has_side_effects))
+    ArrayPrefixInfo::is_reordering_unsafe(before, after)
 }
 
 fn check_block_with<'ctx>(

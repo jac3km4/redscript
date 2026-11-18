@@ -6,6 +6,7 @@ use std::{iter, mem, slice};
 use ast::AstVisitor;
 use bon::bon;
 use env::{Capture, Locals};
+pub use array_guard::ArrayPrefixInfo;
 pub use env::{Env, SemanticPolicy, TypeEnv, TypeRef};
 pub use error::{CoalesceError, Error, LowerResult, TypeError};
 use redscript_community_ast as ast;

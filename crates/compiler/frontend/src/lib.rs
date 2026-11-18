@@ -16,7 +16,10 @@ mod visitor;
 pub use arguments::absent_argument;
 pub use cte::Evaluator;
 pub use diagnostic::{Diagnostic, DiagnosticLevel, Reporter, UnknownSource, pass};
-pub use lower::{CoalesceError, Error as LowerError, PolyType, SemanticPolicy, TypeError, TypeRef};
+pub use lower::{
+    ArrayPrefixInfo, CoalesceError, Error as LowerError, PolyType, SemanticPolicy, TypeError,
+    TypeRef,
+};
 pub use query::{QueryError, expr_type};
 pub use redscript_community_ast as ast;
 use redscript_community_parser as parser;

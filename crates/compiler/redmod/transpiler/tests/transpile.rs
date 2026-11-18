@@ -1086,3 +1086,23 @@ fn nested_literal_arrays_transpile_without_sibling_order_errors() {
     assert!(output.contains("pixels[0] = arrayLiteral;"), "{output}");
     assert!(output.contains("pixels[1] = arrayLiteral_2;"), "{output}");
 }
+
+#[test]
+fn non_side_effectful_arrays_transpile_without_order_errors() {
+    let output = convert(
+        "native func OperatorAdd(a: Int32, b: Int32) -> Int32;
+         native func OperatorAdd(a: String, b: String) -> String;
+         class Boxed { public func Take(values: [Int32]) {} }
+         func Use(a: Int32, b: [Int32]) {}
+         func Run(x: Int32, y: Int32) -> [[Int32]] {
+             let b = new Boxed();
+             b.Take([1]);
+             Use(x, [y]);
+             let sum = x + ArraySize([1]);
+             let text = s\"\\(x) \\([1][0])\";
+             return [[x], [y]];
+         }",
+    );
+    assert!(output.contains("b.Take(arrayLiteral);"), "{output}");
+    assert!(output.contains("Use(x, arrayLiteral_2);"), "{output}");
+}
