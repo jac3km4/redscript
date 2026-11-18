@@ -209,12 +209,13 @@ fn ordinary_conversion_literals_keep_the_selected_parameter_context() {
 #[test]
 fn typed_conversion_fallback_checks_the_lazy_source_operand() {
     for (operand, expected) in [
-        ("Read([1])", vec!["UNSAFE_ARRAY_EVALUATION"]),
+        ("Read([Effect()])", vec!["UNSAFE_ARRAY_EVALUATION"]),
+        ("Read([1])", vec![]),
         ("1", vec![]),
     ] {
         analyze(
             &format!("function Run() -> Value {{ return Cast<Value>({operand}); }}"),
-            "struct Value {} native func Read(values: [Int32]) -> Int32; native func Cast(skip value: Int32) -> Value;",
+            "struct Value {} native func Effect() -> Int32; native func Read(values: [Int32]) -> Int32; native func Cast(skip value: Int32) -> Value;",
             false,
             |_, _, codes| assert_eq!(codes, expected, "{operand}: {codes:?}"),
         );
@@ -915,7 +916,7 @@ fn implicit_provider_lazy_operand_remains_nested_and_prefix_guard_remains() {
         },
     );
     analyze(
-        "import implicit cast(value: Int32): Bool; import function Read(value: array<Int32>): Int32; import function Lazy(skip value: Bool): Bool; function Run(): Bool { return Lazy(Read([1])); }",
+        "import implicit cast(value: Int32): Bool; import function Effect(): Int32; import function Read(value: array<Int32>): Int32; import function Lazy(skip value: Bool): Bool; function Run(): Bool { return Lazy(Read([Effect()])); }",
         "",
         false,
         |_, _, codes| assert_eq!(codes, ["UNSAFE_ARRAY_EVALUATION"]),

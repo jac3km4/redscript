@@ -154,10 +154,6 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 (MemberCall::FieldAccess(field), typ) => (field, typ),
             }
         } else {
-            self.report_array_guard(
-                call_span,
-                array_guard::check_runtime_callee(args, *expr_span),
-            );
             self.lower_expr(expr, env)?
         };
 
@@ -508,10 +504,6 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             return Ok((MemberCall::MethodCall(call), call_t));
         }
 
-        self.report_array_guard(
-            call_span,
-            array_guard::check_runtime_callee(args, *expr_span),
-        );
         let (mut ir, mut typ) = self.lower_expr(receiver, env)?;
         if let Some((RefType::Script, pointee)) = typ.strip_ref(self.symbols) {
             self.emit_reference_conversion(&mut ir, typ, ir::Intrinsic::Deref, env, *expr_span)?;
@@ -611,9 +603,6 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 .first()
                 .expect("static alias must at least accept a receiver");
             let span = ir.span();
-            if param.flags().is_short_circuit() {
-                self.check_array_guard(receiver, true);
-            }
             self.lower_arg(
                 &mut ir,
                 typ,
@@ -713,11 +702,6 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
 
         if filtered.peek().is_none() {
             // Diagnose escaping prefixes without discarding the legacy call.
-            for (arg, param) in args.clone().zip(primary.func().type_().params()) {
-                if param.flags().is_short_circuit() {
-                    self.check_array_guard(arg, true);
-                }
-            }
             let type_env = receiver
                 .and_then(|typ| {
                     typ.base_type_env::<AnyBaseType>(primary.key().parent()?, self.symbols)
@@ -915,14 +899,12 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             .zip(selected.func().type_().params())
             .enumerate()
         {
-            if param.flags().is_short_circuit() && !matches!(arg, ir::Expr::Nop(_)) {
-                if let Some(source) = source_args.get(index) {
-                    self.check_array_guard(source, true);
-                } else if index != 1
-                    || ![ast::BinOp::And.name(), ast::BinOp::Or.name()].contains(&name)
-                {
-                    return Err(Error::UnsupportedSkipArgument(arg.span()));
-                }
+            if param.flags().is_short_circuit()
+                && !matches!(arg, ir::Expr::Nop(_))
+                && source_args.get(index).is_none()
+                && (index != 1 || ![ast::BinOp::And.name(), ast::BinOp::Or.name()].contains(&name))
+            {
+                return Err(Error::UnsupportedSkipArgument(arg.span()));
             }
         }
         for ((arg, typ), param) in args

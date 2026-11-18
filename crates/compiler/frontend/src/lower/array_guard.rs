@@ -1,147 +1,332 @@
 //! Diagnose changed array evaluation while retaining legacy lowering for runtime compatibility.
-use redscript_community_ast::{BinOp, Expr, SourceExpr, Span, Spanned, StrPart};
+use std::collections::HashMap;
 
-use super::{Error, Lower, LowerResult};
+use redscript_community_ast::Span;
 
-impl<'scope, 'ctx> Lower<'scope, 'ctx> {
-    pub(super) fn check_array_guard(&mut self, expr: &Spanned<SourceExpr<'ctx>>, lazy: bool) {
-        let result = if lazy { check_lazy(expr) } else { check(expr) };
-        self.report_array_guard(expr.1, result);
-    }
+use super::{Error, LowerReporter};
+use crate::{Param, Symbols, ir};
 
-    pub(super) fn report_array_guard(&mut self, scope: Span, result: LowerResult<'ctx, ()>) {
-        if let Err(error) = result {
-            // Recursive expression lowering and resolved-callee/skip checks can
-            // rediscover the same unsafe prefix. Report once for that subtree.
-            if self.array_guard_reports.iter().any(|reported| {
-                reported.file == scope.file
-                    && ((reported.start <= scope.start && scope.end <= reported.end)
-                        || (scope.start <= reported.start && reported.end <= scope.end))
-            }) {
-                return;
-            }
-            self.array_guard_reports.push(scope);
-            self.reporter.report(error);
-        }
-    }
+pub(super) fn check_block<'ctx>(
+    block: &ir::Block<'ctx>,
+    symbols: &Symbols<'ctx>,
+    reporter: &mut LowerReporter<'ctx>,
+) {
+    let mut pending = HashMap::new();
+    check_block_with(block, &mut pending, symbols, reporter);
 }
 
-pub(super) fn check<'ctx>(expr: &Spanned<SourceExpr<'ctx>>) -> LowerResult<'ctx, ()> {
-    visit(expr, false).map(|_| ())
-}
-
-pub(super) fn check_lazy<'ctx>(expr: &Spanned<SourceExpr<'ctx>>) -> LowerResult<'ctx, ()> {
-    visit(expr, true).map(|_| ())
-}
-
-// Call lowering invokes this after distinguishing runtime values from static names.
-pub(super) fn check_runtime_callee<'ctx>(
-    args: &[Spanned<SourceExpr<'ctx>>],
+struct ArrayEntry {
+    info: ExprInfo,
     span: Span,
-) -> LowerResult<'ctx, ()> {
-    for arg in args {
-        if visit(arg, false)? {
-            return Err(Error::UnsafeArrayEvaluation(span));
+    reported: bool,
+}
+
+#[derive(Clone, Copy, Default)]
+struct ExprInfo {
+    has_array: bool,
+    array_effects: bool,
+    array_reads_state: bool,
+    has_side_effects: bool,
+    reads_state: bool,
+}
+
+impl ExprInfo {
+    fn combine_prefixes(self, other: Self) -> Self {
+        Self {
+            has_array: self.has_array || other.has_array,
+            array_effects: self.array_effects || other.array_effects,
+            array_reads_state: self.array_reads_state || other.array_reads_state,
+            has_side_effects: self.has_side_effects || other.has_side_effects,
+            reads_state: self.reads_state || other.reads_state,
         }
     }
-    Ok(())
+}
+
+fn is_reordering_unsafe(before: ExprInfo, after: ExprInfo) -> bool {
+    if !after.has_array {
+        return false;
+    }
+    (before.has_side_effects && (after.array_reads_state || after.array_effects))
+        || (after.array_effects && (before.reads_state || before.has_side_effects))
+}
+
+fn check_block_with<'ctx>(
+    block: &ir::Block<'ctx>,
+    pending: &mut HashMap<ir::Local, ArrayEntry>,
+    symbols: &Symbols<'ctx>,
+    reporter: &mut LowerReporter<'ctx>,
+) {
+    for stmt in &block.stmts {
+        match stmt {
+            ir::Stmt::InitArray {
+                local,
+                source_binding: None,
+                elements,
+                span,
+                ..
+            } => {
+                let info = siblings(elements.iter(), pending, symbols, reporter, false);
+                pending.insert(
+                    *local,
+                    ArrayEntry {
+                        info,
+                        span: *span,
+                        reported: false,
+                    },
+                );
+            }
+            ir::Stmt::InitArray {
+                source_binding: Some(_),
+                elements,
+                ..
+            } => {
+                siblings(elements.iter(), pending, symbols, reporter, false);
+            }
+            ir::Stmt::Block(inner, _) => {
+                check_block_with(inner, pending, symbols, reporter);
+            }
+            ir::Stmt::Expr(expr) | ir::Stmt::Return(Some(expr), _) => {
+                visit(expr, pending, symbols, reporter, false);
+            }
+            ir::Stmt::While(cb, _) => {
+                visit(&cb.condition, pending, symbols, reporter, false);
+                check_block(&cb.block, symbols, reporter);
+            }
+            ir::Stmt::Branches {
+                branches, default, ..
+            } => {
+                for (index, branch) in branches.iter().enumerate() {
+                    visit(&branch.condition, pending, symbols, reporter, index > 0);
+                }
+                for branch in branches {
+                    check_block(&branch.block, symbols, reporter);
+                }
+                if let Some(default) = default {
+                    check_block(default, symbols, reporter);
+                }
+            }
+            ir::Stmt::Switch {
+                scrutinee,
+                branches,
+                default,
+                ..
+            } => {
+                visit(scrutinee, pending, symbols, reporter, false);
+                for branch in branches {
+                    visit(&branch.matcher, pending, symbols, reporter, true);
+                }
+                for branch in branches {
+                    check_block(&branch.block, symbols, reporter);
+                }
+                if let Some(default) = default {
+                    check_block(default, symbols, reporter);
+                }
+            }
+            ir::Stmt::InitDefault { .. }
+            | ir::Stmt::Break(_)
+            | ir::Stmt::Continue(_)
+            | ir::Stmt::Return(None, _) => {}
+        }
+    }
+}
+
+fn is_pure_intrinsic(intrinsic: ir::Intrinsic) -> bool {
+    !matches!(
+        intrinsic,
+        ir::Intrinsic::ArrayClear
+            | ir::Intrinsic::ArrayResize
+            | ir::Intrinsic::ArrayPush
+            | ir::Intrinsic::ArrayPop
+            | ir::Intrinsic::ArrayInsert
+            | ir::Intrinsic::ArrayRemove
+            | ir::Intrinsic::ArrayGrow
+            | ir::Intrinsic::ArrayErase
+            | ir::Intrinsic::ArraySort
+            | ir::Intrinsic::ArraySortByPredicate
+    )
+}
+
+fn report(reporter: &mut LowerReporter<'_>, span: Span) {
+    reporter.report(Error::UnsafeArrayEvaluation(span));
 }
 
 fn siblings<'a, 'ctx: 'a>(
-    exprs: impl IntoIterator<Item = &'a Spanned<SourceExpr<'ctx>>>,
+    exprs: impl IntoIterator<Item = &'a ir::Expr<'ctx>>,
+    pending: &mut HashMap<ir::Local, ArrayEntry>,
+    symbols: &Symbols<'ctx>,
+    reporter: &mut LowerReporter<'ctx>,
     lazy: bool,
-) -> LowerResult<'ctx, bool> {
-    let mut earlier_expression = false;
-    let mut has_array = false;
+) -> ExprInfo {
+    let mut earlier = ExprInfo::default();
     for expr in exprs {
-        let array = visit(expr, lazy)?;
-        if earlier_expression && array {
-            return Err(Error::UnsafeArrayEvaluation(expr.1));
+        let info = visit(expr, pending, symbols, reporter, lazy);
+        if is_reordering_unsafe(earlier, info) {
+            report(reporter, expr.span());
         }
-        // Even a local read can observe mutations made by a later initializer.
-        earlier_expression |= !prefix_inert(&expr.0);
-        has_array |= array;
+        earlier = earlier.combine_prefixes(info);
     }
-    Ok(has_array)
+    earlier
 }
 
-// A literal-only nested array reads only its private generated temporary after
-// construction. Unlike a source local, a later initializer cannot mutate it.
-fn prefix_inert(expr: &SourceExpr<'_>) -> bool {
-    match expr {
-        Expr::Constant(_) | Expr::Omitted => true,
-        Expr::ArrayLit(elems) => elems.iter().all(|(expr, _)| prefix_inert(expr)),
-        _ => false,
+fn call_args<'ctx>(
+    args: &[ir::Expr<'ctx>],
+    params: &[Param<'ctx>],
+    pending: &mut HashMap<ir::Local, ArrayEntry>,
+    symbols: &Symbols<'ctx>,
+    reporter: &mut LowerReporter<'ctx>,
+    lazy: bool,
+) -> ExprInfo {
+    let mut earlier = ExprInfo::default();
+    for (index, arg) in args.iter().enumerate() {
+        let is_skip = params
+            .get(index)
+            .is_some_and(|p| p.flags().is_short_circuit());
+        let info = visit(arg, pending, symbols, reporter, lazy || is_skip);
+        if is_reordering_unsafe(earlier, info) {
+            report(reporter, arg.span());
+        }
+        earlier = earlier.combine_prefixes(info);
     }
+    earlier
 }
 
 fn pair<'ctx>(
-    before: &Spanned<SourceExpr<'ctx>>,
-    after: &Spanned<SourceExpr<'ctx>>,
+    before: &ir::Expr<'ctx>,
+    after: &ir::Expr<'ctx>,
+    pending: &mut HashMap<ir::Local, ArrayEntry>,
+    symbols: &Symbols<'ctx>,
+    reporter: &mut LowerReporter<'ctx>,
     lazy: bool,
-    lazy_rhs: bool,
-) -> LowerResult<'ctx, bool> {
-    let first = visit(before, lazy)?;
-    let second = visit(after, lazy || lazy_rhs)?;
-    if second && !matches!(before.0, Expr::Constant(_)) {
-        return Err(Error::UnsafeArrayEvaluation(after.1));
+) -> ExprInfo {
+    let first = visit(before, pending, symbols, reporter, lazy);
+    let second = visit(after, pending, symbols, reporter, lazy);
+    if is_reordering_unsafe(first, second) {
+        report(reporter, after.span());
     }
-    Ok(first || second)
+    first.combine_prefixes(second)
 }
 
-fn visit<'ctx>((expr, span): &Spanned<SourceExpr<'ctx>>, lazy: bool) -> LowerResult<'ctx, bool> {
+fn visit<'ctx>(
+    expr: &ir::Expr<'ctx>,
+    pending: &mut HashMap<ir::Local, ArrayEntry>,
+    symbols: &Symbols<'ctx>,
+    reporter: &mut LowerReporter<'ctx>,
+    lazy: bool,
+) -> ExprInfo {
     match expr {
-        Expr::ArrayLit(elems) => {
-            if lazy {
-                return Err(Error::UnsafeArrayEvaluation(*span));
+        ir::Expr::Local(local, _) => {
+            if let Some(entry) = pending.get_mut(local) {
+                if lazy && entry.info.has_side_effects && !entry.reported {
+                    entry.reported = true;
+                    let span = entry.span;
+                    report(reporter, span);
+                }
+                ExprInfo {
+                    has_array: true,
+                    array_effects: entry.info.has_side_effects,
+                    array_reads_state: entry.info.reads_state,
+                    has_side_effects: entry.info.has_side_effects,
+                    reads_state: entry.info.reads_state,
+                }
+            } else {
+                ExprInfo {
+                    reads_state: true,
+                    ..ExprInfo::default()
+                }
             }
-            siblings(elems.iter(), lazy)?;
-            Ok(true)
         }
-        Expr::Call { expr, args, .. } => {
-            let callee = visit(expr, lazy)?;
-            let args_array = siblings(args.iter(), lazy)?;
-            // Identifier receivers may name a type. Call lowering checks runtime
-            // callees once name resolution can distinguish them from static calls.
-            let static_syntax = matches!(expr.0, Expr::Ident(_))
-                || matches!(&expr.0, Expr::Member { expr, .. } if matches!(expr.0, Expr::Ident(_)));
-            if args_array && !static_syntax {
-                return Err(Error::UnsafeArrayEvaluation(expr.1));
+        ir::Expr::Capture(_, _) => ExprInfo {
+            reads_state: true,
+            ..ExprInfo::default()
+        },
+        ir::Expr::Construct { args, .. } => {
+            siblings(args.iter(), pending, symbols, reporter, lazy)
+        }
+        ir::Expr::Call { call, .. } => {
+            let (callee_info, args_info, callee_span, is_pure) = match &**call {
+                ir::Call::FreeFunction { function, args, .. } => {
+                    let func = &symbols[*function];
+                    let params = func.type_().params();
+                    let args_info = call_args(args, params, pending, symbols, reporter, lazy);
+                    let is_pure = func.intrinsic().is_some_and(is_pure_intrinsic);
+                    (None, args_info, None, is_pure)
+                }
+                ir::Call::Static { method, args, .. } => {
+                    let params = symbols[*method].type_().params();
+                    let args_info = call_args(args, params, pending, symbols, reporter, lazy);
+                    (None, args_info, None, false)
+                }
+                ir::Call::Instance {
+                    receiver,
+                    method,
+                    args,
+                    ..
+                } => {
+                    let recv = visit(receiver, pending, symbols, reporter, lazy);
+                    let params = symbols[*method].type_().params();
+                    let args_info = call_args(args, params, pending, symbols, reporter, lazy);
+                    (Some(recv), args_info, Some(receiver.span()), false)
+                }
+                ir::Call::Closure { closure, args, .. } => {
+                    let recv = visit(closure, pending, symbols, reporter, lazy);
+                    let args_info = siblings(args.iter(), pending, symbols, reporter, lazy);
+                    (Some(recv), args_info, Some(closure.span()), false)
+                }
+            };
+            if let (Some(callee), Some(span)) = (callee_info, callee_span)
+                && is_reordering_unsafe(callee, args_info)
+            {
+                report(reporter, span);
             }
-            Ok(callee || args_array)
+            let combined = callee_info
+                .map_or(args_info, |callee| callee.combine_prefixes(args_info));
+            ExprInfo {
+                has_array: combined.has_array,
+                array_effects: combined.array_effects,
+                array_reads_state: combined.array_reads_state,
+                has_side_effects: !is_pure || combined.has_side_effects,
+                reads_state: !is_pure || combined.reads_state,
+            }
         }
-        Expr::New { args, .. } => siblings(args.iter(), lazy),
-        Expr::InterpolatedString(parts) => siblings(
-            parts.iter().filter_map(|part| match part {
-                StrPart::Expr(expr) => Some(expr),
-                StrPart::Str(_) => None,
-            }),
-            lazy,
-        ),
-        Expr::BinOp { lhs, op, rhs } => pair(lhs, rhs, lazy, matches!(op, BinOp::And | BinOp::Or)),
-        Expr::Index { expr, index } => pair(expr, index, lazy, false),
-        Expr::Assign { lhs, rhs } => {
-            let first = visit(lhs, lazy)?;
-            let second = visit(rhs, lazy)?;
-            Ok(first || second)
+        ir::Expr::Assign { place, expr, .. } => {
+            let first = visit(place, pending, symbols, reporter, lazy);
+            let second = visit(expr, pending, symbols, reporter, lazy);
+            let mut info = first.combine_prefixes(second);
+            info.has_side_effects = true;
+            info.reads_state = true;
+            info
         }
-        Expr::Conditional { cond, then, else_ } => {
-            let cond_array = visit(cond, lazy)?;
-            visit(then, true)?;
-            visit(else_, true)?;
-            Ok(cond_array)
+        ir::Expr::Field { receiver, .. } => {
+            let mut info = visit(receiver, pending, symbols, reporter, lazy);
+            info.reads_state = true;
+            info
         }
-        Expr::DynCast { expr, .. } | Expr::UnOp { expr, .. } | Expr::Member { expr, .. } => {
-            visit(expr, lazy)
+        ir::Expr::Index { array, index, .. } => {
+            let mut info = pair(array, index, pending, symbols, reporter, lazy);
+            info.reads_state = true;
+            info
         }
-        // Closure bodies have their own execution point and lowering scope.
-        Expr::Lambda { .. }
-        | Expr::Ident(_)
-        | Expr::Constant(_)
-        | Expr::Null
-        | Expr::This
-        | Expr::Super
-        | Expr::Omitted
-        | Expr::Error => Ok(false),
+        ir::Expr::Conditional {
+            condition,
+            then,
+            else_,
+            ..
+        } => {
+            let cond_info = visit(condition, pending, symbols, reporter, lazy);
+            let then_info = visit(then, pending, symbols, reporter, true);
+            let else_info = visit(else_, pending, symbols, reporter, true);
+            cond_info
+                .combine_prefixes(then_info)
+                .combine_prefixes(else_info)
+        }
+        ir::Expr::DynCast { expr, .. } => visit(expr, pending, symbols, reporter, lazy),
+        ir::Expr::NewClosure { closure, .. } => {
+            check_block(&closure.block, symbols, reporter);
+            ExprInfo::default()
+        }
+        ir::Expr::NewInstance { .. }
+        | ir::Expr::Nop(_)
+        | ir::Expr::Const(_, _)
+        | ir::Expr::Null { .. } => ExprInfo::default(),
     }
 }

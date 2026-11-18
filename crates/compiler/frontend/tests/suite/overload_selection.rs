@@ -292,7 +292,7 @@ fn lazy_source_checks_ignore_safe_eager_arguments() {
         );
         analyze(
             &format!(
-                "native func Read(values: [Int32]) -> Bool; native func Choose(values: [Int32], skip value: Bool); {overload} func Run() {{ Choose([1], Read([2])); }}"
+                "native func Effect() -> Int32; native func Read(values: [Int32]) -> Bool; native func Choose(values: [Int32], skip value: Bool); {overload} func Run() {{ Choose([1], Read([Effect()])); }}"
             ),
             |codes, _| assert_eq!(codes, ["UNSAFE_ARRAY_EVALUATION"]),
         );
@@ -301,12 +301,16 @@ fn lazy_source_checks_ignore_safe_eager_arguments() {
 
 #[test]
 fn lazy_forwarder_receiver_rejects_nested_array_initialization() {
+    analyze(
+        "native func Effect() -> Int32; class Host { public static func Get(values: [Int32]) -> Host = null; public static func Pick(skip self: Host) {} } func Run() { Host.Get([Effect()]).Pick(); }",
+        |codes, _| assert_eq!(codes, ["UNSAFE_ARRAY_EVALUATION"]),
+    );
     for values in ["[]", "[1]"] {
         analyze(
             &format!(
                 "class Host {{ public static func Get(values: [Int32]) -> Host = null; public static func Pick(skip self: Host) {{}} }} func Run() {{ Host.Get({values}).Pick(); }}"
             ),
-            |codes, _| assert_eq!(codes, ["UNSAFE_ARRAY_EVALUATION"], "{values}: {codes:?}"),
+            |codes, _| assert!(codes.is_empty(), "{values}: {codes:?}"),
         );
     }
     analyze(
@@ -329,7 +333,20 @@ fn lazy_source_checks_use_only_the_selected_overload() {
 }
 
 #[test]
-fn lazy_source_checks_reject_empty_and_nested_arrays() {
+fn lazy_source_checks_reject_side_effectful_arrays() {
+    for value in ["[Effect()]", "Read([Effect()])"] {
+        let parameter = if value.starts_with("Read") {
+            "Bool"
+        } else {
+            "[Int32]"
+        };
+        analyze(
+            &format!(
+                "native func Effect() -> Int32; native func Read(values: [Int32]) -> Bool; native func Choose(skip value: {parameter}); native func Choose(skip value: String); func Run() {{ Choose({value}); }}"
+            ),
+            |codes, _| assert_eq!(codes, ["UNSAFE_ARRAY_EVALUATION"], "{value}: {codes:?}"),
+        );
+    }
     for value in ["[]", "[1]", "Read([1])"] {
         let parameter = if value.starts_with("Read") {
             "Bool"
@@ -340,7 +357,7 @@ fn lazy_source_checks_reject_empty_and_nested_arrays() {
             &format!(
                 "native func Read(values: [Int32]) -> Bool; native func Choose(skip value: {parameter}); native func Choose(skip value: String); func Run() {{ Choose({value}); }}"
             ),
-            |codes, _| assert_eq!(codes, ["UNSAFE_ARRAY_EVALUATION"], "{value}: {codes:?}"),
+            |codes, _| assert!(codes.is_empty(), "{value}: {codes:?}"),
         );
     }
 }

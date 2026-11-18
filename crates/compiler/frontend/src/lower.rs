@@ -44,7 +44,6 @@ pub struct Lower<'scope, 'ctx> {
     does_return_value: bool,
     in_loop: bool,
     hoisted_declarations: crate::IndexMap<Span, Option<ir::LocalInfo<'ctx>>>,
-    array_guard_reports: Vec<Span>,
 }
 
 /// Collect explicitly typed locals in the current function, not nested closures.
@@ -102,7 +101,6 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             does_return_value: false,
             in_loop: false,
             hoisted_declarations: crate::IndexMap::default(),
-            array_guard_reports: Vec::new(),
         }
     }
 
@@ -228,7 +226,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         for (name, typ) in params {
             env.define_local(name, locals.add_param(typ, None).clone());
         }
-        inner(
+        let (block, output) = inner(
             symbols,
             reporter,
             locals,
@@ -236,7 +234,9 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             context,
             body,
             &mut env,
-        )
+        );
+        array_guard::check_block(&block, symbols, reporter);
+        (block, output)
     }
 
     pub fn constant(
@@ -451,11 +451,10 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
 
     fn lower_expr_with(
         &mut self,
-        source @ (expr, span): &Spanned<ast::SourceExpr<'ctx>>,
+        (expr, span): &Spanned<ast::SourceExpr<'ctx>>,
         hint: Option<&PolyType<'ctx>>,
         env: &Env<'_, 'ctx>,
     ) -> LowerResult<'ctx, (ir::Expr<'ctx>, PolyType<'ctx>)> {
-        self.check_array_guard(source, false);
         let result = match expr {
             &ast::Expr::Ident(name) => self.resolve_local(name, env, *span)?,
             ast::Expr::Constant(cn) => {
@@ -716,7 +715,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     .as_deref()
                     .map(|(typ, span)| self.resolve_type(typ, env, *span))
                     .transpose()?;
-                if let Some(value @ (ast::Expr::ArrayLit(elems), value_span)) = value.as_deref()
+                if let Some((ast::Expr::ArrayLit(elems), value_span)) = value.as_deref()
                     // A lexical slot reused by a loop may have escaped through
                     // script_ref on an earlier iteration. Keep temporary/copy
                     // construction there until non-escape is proven.
@@ -729,7 +728,6 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                             .is_some_and(|typ| typ.id() == predef::ARRAY)
                     })
                 {
-                    self.check_array_guard(value, false);
                     // Lower before introducing the binding: a shadowed name in the
                     // initializer must still resolve to the outer local.
                     let (elements, element_type) =

@@ -48,12 +48,12 @@ fn analyze(
 fn lazy_calls_share_prefix_array_rejection_with_community_sources() {
     for (source, community) in [
         (
-            "import function Lazy(skip value: array<Int32>); function Run() { Lazy([1]); }",
+            "import function Effect(): Int32; import function Lazy(skip value: array<Int32>); function Run() { Lazy([Effect()]); }",
             "",
         ),
         (
-            "function Run() { Lazy([1]); }",
-            "native func Lazy(skip value: [Int32]);",
+            "function Run() { Lazy([Effect()]); }",
+            "native func Effect() -> Int32; native func Lazy(skip value: [Int32]);",
         ),
     ] {
         analyze(source, community, |_, _, codes| {

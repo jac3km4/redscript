@@ -106,9 +106,10 @@ fn place_assignments_do_not_warn_about_array_rhs() {
 #[test]
 fn place_assignments_still_check_unsafe_rhs_subexpressions() {
     check(
-        "native func Read(values: [Int32]) -> Int32;
+        "native func Effect() -> Int32;
+         native func Read(values: [Int32]) -> Int32;
          class Host { public let values: [Int32]; }
-         func Run(host: Host) { host.values = [true ? Read([1]) : 0]; }",
+         func Run(host: Host) { host.values = [true ? Read([Effect()]) : 0]; }",
         |_, _| {},
     );
 }
@@ -148,9 +149,9 @@ fn closure_callee_keeps_call_even_when_initializer_can_change_it() {
 #[test]
 fn runtime_member_and_expression_callees_report_once_and_keep_calls() {
     for source in [
-        "class Host { public func Take(values: [Int32]) {} } func Run(host: Host) { host.Take([1]); }",
-        "class Host { public let Take: ([Int32]) -> Int32; } func Run(host: Host) { host.Take([1]); }",
-        "native func Get() -> ([Int32]) -> Int32; func Run() { Get()([1]); }",
+        "native func Effect() -> Int32; class Host { public func Take(values: [Int32]) {} } func Run(host: Host) { host.Take([Effect()]); }",
+        "native func Effect() -> Int32; class Host { public let Take: ([Int32]) -> Int32; } func Run(host: Host) { host.Take([Effect()]); }",
+        "native func Effect() -> Int32; native func Get() -> ([Int32]) -> Int32; func Run() { Get()([Effect()]); }",
     ] {
         check(source, |block, _| {
             assert_eq!(block.stmts.len(), 2, "{block:?}");
@@ -190,9 +191,10 @@ fn guarded_lazy_arguments_keep_legacy_eager_prefix_and_original_call() {
     for overload in ["", "native func Lazy(skip values: String);"] {
         check(
             &format!(
-                "native func Read(values: [Int32]) -> Bool;
+                "native func Effect() -> Int32;
+                native func Read(values: [Int32]) -> Bool;
                 native func Lazy(skip values: Bool); {overload}
-                func Run() {{ Lazy(Read([1])); }}"
+                func Run() {{ Lazy(Read([Effect()])); }}"
             ),
             |block, symbols| {
                 assert_eq!(block.stmts.len(), 2, "{block:?}");
@@ -222,10 +224,10 @@ fn guarded_lazy_arguments_keep_legacy_eager_prefix_and_original_call() {
 
 #[test]
 fn logical_and_conditional_expressions_keep_their_return_values() {
-    for body in ["false && Read([1])", "true ? Read([1]) : false"] {
+    for body in ["false && Read([Effect()])", "true ? Read([Effect()]) : false"] {
         check(
             &format!(
-                "native func Read(values: [Int32]) -> Bool; native func OperatorLogicAnd(lhs: Bool, skip rhs: Bool) -> Bool; func Run() -> Bool {{ return {body}; }}"
+                "native func Effect() -> Int32; native func Read(values: [Int32]) -> Bool; native func OperatorLogicAnd(lhs: Bool, skip rhs: Bool) -> Bool; func Run() -> Bool {{ return {body}; }}"
             ),
             |block, _| {
                 assert_eq!(block.stmts.len(), 2, "{block:?}");
@@ -246,7 +248,7 @@ fn logical_and_conditional_expressions_keep_their_return_values() {
 fn distinct_unsafe_statements_each_report_once() {
     common::analyze(
         "arrays.reds",
-        "native func Lazy(skip values: [Int32]); func Run() { Lazy([1]); Lazy([2]); }",
+        "native func Effect() -> Int32; native func Lazy(skip values: [Int32]); func Run() { Lazy([Effect()]); Lazy([Effect()]); }",
         |_, unit, symbols, reporter| {
             assert_eq!(reporter.reported().len(), 2, "{reporter:?}");
             assert!(
@@ -264,4 +266,44 @@ fn distinct_unsafe_statements_each_report_once() {
             assert!(!format!("{block:?}").contains("Nop"));
         },
     );
+}
+
+#[test]
+fn non_side_effectful_expressions_and_arrays_do_not_warn() {
+    let prelude = "
+        enum Kind { A = 1 }
+        struct Pair { let a: Int32; let b: Int32; }
+        class Boxed { public func Take(values: [Int32]) {} }
+        native func OperatorLogicAnd(lhs: Bool, skip rhs: Bool) -> Bool;
+        native func OperatorEqual(lhs: Int32, rhs: Int32) -> Bool;
+        native func OperatorEqual(lhs: [Int32], rhs: [Int32]) -> Bool;
+        native func OperatorAdd(lhs: Int32, rhs: Int32) -> Int32;
+        native func OperatorSubtract(lhs: Int32, rhs: Int32) -> Int32;
+        native func OperatorSubtract(value: Int32) -> Int32;
+        native func Take(a: Variant, b: [Int32]);
+        native func Lazy(skip values: [Int32]);
+        native func Lazy(skip value: Bool);
+        native func Read(values: [Int32]) -> Bool;
+        native func Get() -> ([Int32]) -> Int32;
+        native func Mutate(out x: Int32) -> Int32;
+    ";
+    for body in [
+        "let x = 0; let y = 1; Take(x, [1]); Take(x, [y]);",
+        "let x = 0; Take(Mutate(x), [1]);",
+        "Take(null, [1]); Take(-1, [1]); Take(1 + 2, [1]); Take(Kind.A, [1]);",
+        "Take(Pair(1, 2), [1]); Take(new Boxed(), [1]);",
+        "let x = 0; let y = 1; let a = [[x], [1]]; let b = [[x], [y]]; let c = [[new Boxed()], [new Boxed()]];",
+        "let x = 0; let arr = [1, 2]; let n = arr[ArraySize([1]) - 1]; let m = x + ArraySize([1]);",
+        "let x = [1] == [2]; let y = ArraySize([1]) == 1; let z = -1 + ArraySize([1]);",
+        "let b = new Boxed(); b.Take([1]); Get()([1]);",
+        "Lazy([1]); Lazy([]); Lazy(Read([1])); let a = false && Read([1]); let b = true ? [1] : [2];",
+    ] {
+        common::analyze(
+            "non_side_effectful.reds",
+            &format!("{prelude} func Run() {{ {body} }}"),
+            |_, _, _, reporter| {
+                assert!(reporter.reported().is_empty(), "{body}: {reporter:?}");
+            },
+        );
+    }
 }

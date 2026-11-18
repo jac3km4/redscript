@@ -38,10 +38,10 @@ fn diagnostic_messages(source: &str) -> Vec<(String, String)> {
 #[test]
 fn lazy_arguments_diagnose_unsafe_array_prefixes() {
     for source in [
-        "native func Lazy(skip value: [Int32]); func Test() { Lazy([1]); }",
-        "native func Lazy(skip value: [Int32]); native func Lazy(skip value: Bool); func Test() { Lazy([1]); }",
-        "native func Read(value: [Int32]) -> Bool; native func Lazy(skip value: Bool); func Test() { Lazy(Read([1])); }",
-        "native func Read(value: [Int32]) -> Bool; native func OperatorLogicAnd(lhs: Bool, skip rhs: Bool) -> Bool; func Test() -> Bool { return false && Read([1]); }",
+        "native func Effect() -> Int32; native func Lazy(skip value: [Int32]); func Test() { Lazy([Effect()]); }",
+        "native func Effect() -> Int32; native func Lazy(skip value: [Int32]); native func Lazy(skip value: Bool); func Test() { Lazy([Effect()]); }",
+        "native func Effect() -> Int32; native func Read(value: [Int32]) -> Bool; native func Lazy(skip value: Bool); func Test() { Lazy(Read([Effect()])); }",
+        "native func Effect() -> Int32; native func Read(value: [Int32]) -> Bool; native func OperatorLogicAnd(lhs: Bool, skip rhs: Bool) -> Bool; func Test() -> Bool { return false && Read([Effect()]); }",
     ] {
         let diagnostics = diagnostic_messages(source);
         assert!(
@@ -52,12 +52,14 @@ fn lazy_arguments_diagnose_unsafe_array_prefixes() {
             "{source}: {diagnostics:?}"
         );
     }
-    assert!(
-        diagnostic_messages(
-            "native func Lazy(skip value: [Int32]); func Test() { let array = [1]; Lazy(array); }"
-        )
-        .is_empty()
-    );
+    for source in [
+        "native func Lazy(skip value: [Int32]); func Test() { let array = [1]; Lazy(array); }",
+        "native func Lazy(skip value: [Int32]); func Test() { Lazy([1]); Lazy([]); }",
+        "native func Read(value: [Int32]) -> Bool; native func Lazy(skip value: Bool); func Test() { Lazy(Read([1])); }",
+        "native func Read(value: [Int32]) -> Bool; native func OperatorLogicAnd(lhs: Bool, skip rhs: Bool) -> Bool; func Test() -> Bool { return false && Read([1]); }",
+    ] {
+        assert!(diagnostic_messages(source).is_empty(), "{source}");
+    }
 }
 
 #[test]
