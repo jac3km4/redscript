@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use redscript_community_ast::Span;
 
 use super::{Error, LowerReporter};
-use crate::{Param, Symbols, ir};
+use crate::{Param, QualifiedName, Symbols, ir};
 
 pub(super) fn check_block<'ctx>(
     block: &ir::Block<'ctx>,
@@ -152,6 +152,24 @@ fn is_pure_intrinsic(intrinsic: ir::Intrinsic) -> bool {
     )
 }
 
+/// Operators are lowered to ordinary native calls, but their operands are
+/// already evaluated before the call runs, so arithmetic, comparison, logical,
+/// and unary operators cannot change observable evaluation order. Compound
+/// assignments mutate their first operand, and `OperatorArray` reads a place,
+/// so those keep the conservative treatment.
+fn is_pure_free_function(func: &crate::FreeFunction<'_>, name: &QualifiedName<'_>) -> bool {
+    if func.intrinsic().is_some_and(is_pure_intrinsic) {
+        return true;
+    }
+    if !func.flags().is_operator() {
+        return false;
+    }
+    let Some(name) = name.as_ref().last().copied() else {
+        return false;
+    };
+    !name.starts_with("OperatorAssign") && name != "OperatorArray"
+}
+
 fn report(reporter: &mut LowerReporter<'_>, span: Span) {
     reporter.report(Error::UnsafeArrayEvaluation(span));
 }
@@ -252,7 +270,9 @@ fn visit<'ctx>(
                     let func = &symbols[*function];
                     let params = func.type_().params();
                     let args_info = call_args(args, params, pending, symbols, reporter, lazy);
-                    let is_pure = func.intrinsic().is_some_and(is_pure_intrinsic);
+                    let is_pure = symbols
+                        .get_free_function(*function)
+                        .is_some_and(|(name, _)| is_pure_free_function(func, name));
                     (None, args_info, None, is_pure)
                 }
                 ir::Call::Static { method, args, .. } => {

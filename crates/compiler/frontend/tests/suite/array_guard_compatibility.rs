@@ -300,6 +300,7 @@ fn non_side_effectful_expressions_and_arrays_do_not_warn() {
         "let x = [1] == [2]; let y = ArraySize([1]) == 1; let z = -1 + ArraySize([1]);",
         "let b = new Boxed(); b.Take([1]); Get()([1]);",
         "Lazy([1]); Lazy([]); Lazy(Read([1])); let a = false && Read([1]); let b = true ? [1] : [2];",
+        "let x = 0; let y = 1; let z = 2; Take(x + y, [z]); Take(x - y, [x]);",
     ] {
         common::analyze(
             "non_side_effectful.reds",
@@ -307,6 +308,27 @@ fn non_side_effectful_expressions_and_arrays_do_not_warn() {
             |_, _, _, reporter| {
                 assert!(reporter.reported().is_empty(), "{body}: {reporter:?}");
             },
+        );
+    }
+}
+
+#[test]
+fn operators_with_effectful_operands_still_warn_before_array_reads() {
+    for body in [
+        // A call in the operator operand is still potentially effectful.
+        "let x = 0; let y = 1; let z = 2; Take(Mutate(x) + y, [z]);",
+        // Compound assignment mutates its first operand despite the operator name.
+        "let x = 0; let y = 1; Take(x += 1, [y]);",
+    ] {
+        check(
+            &format!(
+                "native func Mutate(out x: Int32) -> Int32;
+                 native func OperatorAdd(lhs: Int32, rhs: Int32) -> Int32;
+                 native func OperatorAssignAdd(lhs: Int32, rhs: Int32) -> Int32;
+                 native func Take(value: Int32, values: [Int32]);
+                 func Run() {{ {body} }}"
+            ),
+            |_, _| {},
         );
     }
 }

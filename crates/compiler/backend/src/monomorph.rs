@@ -272,6 +272,12 @@ impl<'ctx> Monomorphizer<'ctx> {
         let mut def = PoolFunction::new(cname, Visibility::Public, flags)
             .with_return_type(return_t)
             .with_source(source);
+        if func.flags().is_operator() {
+            let operator = bundle
+                .cnames_mut()
+                .add(name.as_ref().last().copied().unwrap_or_default());
+            def = def.with_operator(Some(operator));
+        }
         if func.type_().is_const_return()
             && let Some(return_t) = return_t
         {

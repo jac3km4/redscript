@@ -260,7 +260,8 @@ impl<'ctx> CompilationInputs<'ctx> {
                     let name = demangled_name(assert_borrowed(name));
                     let flags = FreeFunctionFlags::new()
                         .with_is_exec(func.flags().is_exec())
-                        .with_is_native(func.flags().is_native());
+                        .with_is_native(func.flags().is_native())
+                        .with_is_operator(func.operator().is_some());
                     let typ = load_function_type(func, bundle, interner, type_flags)?;
                     let func = FreeFunction::new(flags, typ, [], None);
                     let func_idx = inputs.symbols.add_free_function(name, func);
