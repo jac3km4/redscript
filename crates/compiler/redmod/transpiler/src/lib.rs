@@ -28,25 +28,9 @@ use std::fmt;
 use std::ops::Range;
 
 use redscript_community_ast::{SourceModule, Span};
-use redscript_compiler_frontend::{
-    FieldId, FreeFunctionIndex, LoweredCompilationUnit, MethodId, Symbols, TypeId,
-};
+use redscript_compiler_frontend::{LoweredCompilationUnit, Symbols};
 
-/// Index path through the retained module's item arrays (including class members).
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct DeclarationPath(pub Vec<usize>);
-
-/// Resolved identity supplied by the analysis owner, not reconstructed from spans.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ResolvedDeclaration<'ctx> {
-    Type(TypeId<'ctx>),
-    Field(FieldId<'ctx>),
-    Function(FreeFunctionIndex),
-    Method(MethodId<'ctx>),
-    AddedMethod(MethodId<'ctx>),
-    Replacement(MethodId<'ctx>),
-    Wrapper(MethodId<'ctx>, usize),
-}
+pub use redscript_compiler_frontend::{DeclarationPath, ResolvedDeclaration};
 
 /// A retained module and its declaration associations. Imports require no binding.
 /// Every other declaration must have exactly one binding, including inactive
@@ -183,7 +167,7 @@ pub fn transpile<'ctx>(
     }
 }
 
-fn declaration_span(module: &SourceModule<'_>, path: &DeclarationPath) -> Option<Span> {
+pub(crate) fn declaration_span(module: &SourceModule<'_>, path: &DeclarationPath) -> Option<Span> {
     let mut items = module.items.as_ref();
     for (depth, &index) in path.0.iter().enumerate() {
         let (decl, span) = items.get(index)?;

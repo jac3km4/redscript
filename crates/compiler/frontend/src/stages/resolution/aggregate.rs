@@ -2,7 +2,7 @@ use std::mem;
 use std::ops::Not;
 
 use hashbrown::HashMap;
-use redscript_community_ast::{self as ast, Span};
+use redscript_community_ast::{self as ast, FileId, Span};
 
 use super::constants::{annotation, ident};
 use super::{
@@ -11,12 +11,13 @@ use super::{
 };
 use crate::lower::TypeEnv;
 use crate::stages::infer::{ClassItem, FieldItem, FuncItem};
+use crate::stages::provenance::{DeclarationPath, ResolvedDeclaration};
 use crate::symbols::Visibility;
 use crate::utils::ScopedMap;
 use crate::{
-    Aggregate, AggregateFlags, Diagnostic, Field, FieldFlags, FieldMap, FunctionType, Method,
-    MethodFlags, MethodId, MethodMap, QualifiedName, RefType, Type, TypeApp, TypeDef, TypeId,
-    TypeSchema, Variance, predef,
+    Aggregate, AggregateFlags, Diagnostic, Field, FieldFlags, FieldId, FieldMap, FunctionType,
+    Method, MethodFlags, MethodId, MethodMap, QualifiedName, RefType, Type, TypeApp, TypeDef,
+    TypeId, TypeSchema, Variance, predef,
 };
 
 impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
@@ -24,13 +25,18 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
         &mut self,
         ParsedAggregate {
             id,
+            file,
+            path: decl_path,
             meta,
             aggregate,
+            items,
         }: ParsedAggregate<'ctx>,
         path: Option<&ast::Path<'ctx>>,
         types: &TypeEnv<'a, 'ctx>,
         is_struct: bool,
+        declarations: &mut Vec<(FileId, DeclarationPath, ResolvedDeclaration<'ctx>)>,
     ) -> ClassItem<'a, 'ctx> {
+        declarations.push((file, decl_path.clone(), ResolvedDeclaration::Type(id)));
         let (aggregate_name, name_span) = aggregate.name;
         let cls_span = meta.span;
         let mut qs = meta.qualifiers;
@@ -134,7 +140,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
             Visibility::Private
         };
 
-        for (mut item, item_span) in aggregate.items {
+        for (member_index, (mut item, item_span)) in items {
             let visibility = item
                 .visibility
                 .map_or(default_visibility, convert_visibility);
@@ -181,6 +187,14 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         extract_static_forwarder(&func_t, id, flags, &meta.doc, name_span);
                     let method = Method::new(flags, func_t, None, item.doc, Some(name_span));
                     let func_idx = methods.add(name, method);
+                    // Record every resolved method, including bodyless native,
+                    // abstract and callback prototypes, so the transpiler never
+                    // has to reconstruct the binding from source signatures.
+                    declarations.push((
+                        file,
+                        DeclarationPath(vec![decl_path.0[0], member_index]),
+                        ResolvedDeclaration::Method(MethodId::new(id, func_idx)),
+                    ));
                     if let Some(forwarder) = forwarder {
                         methods.add(name, forwarder.with_aliased(MethodId::new(id, func_idx)));
                     }
@@ -226,10 +240,16 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         .map_err(|_| Diagnostic::NameRedefinition(name, name_span));
                     let field_idx = self.reporter.unwrap_err(res);
 
-                    if let Some(field_idx) = field_idx
-                        && let Some(default) = let_.default
-                    {
-                        field_items.push(FieldItem::new(field_idx, Some(default)));
+                    if let Some(field_idx) = field_idx {
+                        // Valueless fields still need a binding for the transpiler.
+                        declarations.push((
+                            file,
+                            DeclarationPath(vec![decl_path.0[0], member_index]),
+                            ResolvedDeclaration::Field(FieldId::new(id, field_idx)),
+                        ));
+                        if let Some(default) = let_.default {
+                            field_items.push(FieldItem::new(field_idx, Some(default)));
+                        }
                     }
                 }
                 ast::Item::Default(default) => {

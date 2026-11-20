@@ -4,9 +4,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use redscript_community_ast::{self as ast, FileId, Item, SourceMap, SourceModule};
 use redscript_compiler_frontend::{
-    CompileErrorReporter, Evaluator, FieldId, FreeFunctionIndex, FunctionType,
-    LoweredCompilationUnit, MethodId, QualifiedName, Symbols, Type, TypeId, TypeInterner,
-    parse_file, predef, process_sources,
+    CompileErrorReporter, Evaluator, LoweredCompilationUnit, Symbols, TypeInterner, parse_file,
+    process_sources,
 };
 
 use crate::{
@@ -18,11 +17,9 @@ use crate::{
 pub struct AnalyzedSources<'ctx> {
     modules: Vec<(FileId, SourceModule<'ctx>)>,
     module_indices: HashMap<FileId, usize>,
-    interner: &'ctx TypeInterner,
 
     unit: LoweredCompilationUnit<'ctx>,
     symbols: Symbols<'ctx>,
-    free_functions: HashMap<String, Vec<FreeFunctionIndex>>,
     /// Nonfatal community diagnostics, rendered with their original diagnostic codes.
     warnings: Vec<TranspileDiagnostic>,
 }
@@ -93,20 +90,11 @@ pub fn analyze_sources<'ctx>(
         .map(|(index, (file, _))| (*file, index))
         .collect();
 
-    let mut free_functions: HashMap<_, Vec<_>> = HashMap::new();
-    for entry in symbols.free_functions() {
-        free_functions
-            .entry(entry.name().to_string())
-            .or_default()
-            .push(*entry.key());
-    }
     Ok(AnalyzedSources {
         modules,
         module_indices,
-        interner,
         unit,
         symbols,
-        free_functions,
         warnings: diagnostics
             .iter()
             .filter(|d| !d.is_error())
@@ -188,14 +176,7 @@ impl<'ctx> AnalyzedSources<'ctx> {
             };
             let source = &self.modules[index].1;
             let mut bindings = BTreeMap::new();
-            match self.associate(
-                file,
-                &source.items,
-                source.path.as_ref(),
-                None,
-                &[],
-                &mut bindings,
-            ) {
+            match self.associate(file, &source.items, &mut bindings) {
                 Ok(()) => requests.push(TranspileModule { source, bindings }),
                 Err(e) => errors.push(e),
             }
@@ -212,178 +193,54 @@ impl<'ctx> AnalyzedSources<'ctx> {
             .collect())
     }
 
-    // Lowering overwrites replacements by MethodId. Inventory every retained
-    // declaration, including dependencies and conditional variants, before using
-    // that table: neither its body nor its span can establish source ownership.
+    // The lowering tables overwrite replacements and wrappers by `MethodId`, so
+    // inspect the retained declaration provenance instead: it keeps every
+    // resolved binding, including duplicates that lowering collapsed.
     fn check_replacements(&self) -> Result<()> {
         let mut targets = HashSet::new();
         for (file, module) in &self.modules {
-            self.collect_replacements(*file, &module.items, &[], &mut targets)?;
-        }
-        Ok(())
-    }
-
-    fn collect_replacements(
-        &self,
-        file: FileId,
-        items: &[(ast::SourceItemDecl<'ctx>, ast::Span)],
-        path: &[usize],
-        targets: &mut HashSet<MethodId<'ctx>>,
-    ) -> Result<()> {
-        for (index, (decl, span)) in items.iter().enumerate() {
-            let mut indices = path.to_vec();
-            indices.push(index);
-            if let Item::Class(c) | Item::Struct(c) = &decl.item {
-                self.collect_replacements(file, &c.items, &indices, targets)?;
-            }
-            let Some((annotation, _)) = decl
-                .annotations
-                .iter()
-                .find(|(a, _)| a.name == "replaceMethod")
-            else {
-                continue;
-            };
-            let result = (|| {
-                let (Item::Function(f), [(ast::Expr::Ident(name), _)]) =
-                    (&decl.item, &annotation.args[..])
-                else {
-                    return Err(error(
-                        "replacement requires a function and one resolved class name",
-                        Some(*span),
-                    ));
-                };
-                let id = unique(
-                    self.type_id(file, name)
-                        .and_then(|id| self.symbols.get_type(id).map(|def| (id, def)))
-                        .and_then(|(id, def)| def.schema().as_aggregate().map(|agg| (id, agg)))
-                        .into_iter()
-                        .flat_map(|(id, agg)| {
-                            agg.methods()
-                                .iter()
-                                .filter(|e| {
-                                    **e.name() == f.name.0
-                                        && self.signature(file, f, e.func().type_())
-                                })
-                                .map(move |e| MethodId::new(id, *e.key()))
-                        }),
-                );
-                let Some(id) = id else {
-                    return Err(error(
-                        "replacement has no unique resolved target/signature across analyzed sources",
-                        Some(*span),
-                    ));
-                };
-                if !targets.insert(id) {
-                    return Err(error(
+            for (path, resolved) in self.unit.declarations.get(file).into_iter().flatten() {
+                if let R::Replacement(id) = resolved
+                    && !targets.insert(*id)
+                {
+                    let mut err = error(
                         "multiple @replaceMethod declarations target the same method; keep only one replacement",
-                        Some(*span),
-                    ));
+                        crate::declaration_span(module, path),
+                    );
+                    err.declaration = Some(path.clone());
+                    return Err(err);
                 }
-                Ok(())
-            })();
-            result.map_err(|mut e| {
-                e.declaration = Some(DeclarationPath(indices));
-                e
-            })?;
+            }
         }
         Ok(())
-    }
-
-    fn resolved_type(&self, name: &str) -> Option<TypeId<'ctx>> {
-        let id = self.interner.get(name)?;
-        self.symbols.get_type(id).map(|_| id)
-    }
-
-    fn type_id(&self, file: FileId, name: &str) -> Option<TypeId<'ctx>> {
-        if let Some(id) = self
-            .unit
-            .scopes
-            .get(&file)
-            .and_then(|s| s.get(name))
-            .and_then(redscript_compiler_frontend::TypeRef::id)
-        {
-            return Some(id);
-        }
-        let builtin = match name {
-            "array" => Some(predef::ARRAY),
-            "ref" => Some(predef::REF),
-            "wref" => Some(predef::WREF),
-            "script_ref" => Some(predef::SCRIPT_REF),
-            _ => None,
-        };
-        builtin.or_else(|| self.resolved_type(name))
-    }
-
-    fn source_type(&self, file: FileId, typ: &ast::SourceType<'ctx>) -> Option<Type<'ctx>> {
-        match typ {
-            ast::Type::Named { name, args } => {
-                let id = self.type_id(file, name)?;
-                let args: Vec<_> = args
-                    .iter()
-                    .map(|(t, _)| self.source_type(file, t))
-                    .collect::<Option<_>>()?;
-                if id == predef::REF && args.len() == 1 {
-                    let arg = args.first()?;
-                    let flags = arg
-                        .upper_bound()
-                        .and_then(|t| self.symbols.get_type(t.id()))
-                        .and_then(|d| d.schema().as_aggregate())
-                        .map(redscript_compiler_frontend::Aggregate::flags)
-                        .unwrap_or_default();
-                    if flags.is_bare_reference_class() {
-                        return None;
-                    }
-                    return Some(arg.clone());
-                }
-                Some(Type::app(id, args))
-            }
-            ast::Type::Array(t) => Some(Type::app(predef::ARRAY, [self.source_type(file, &t.0)?])),
-            ast::Type::StaticArray(t, n) => Some(Type::app(
-                TypeId::array_with_size(*n)?,
-                [self.source_type(file, &t.0)?],
-            )),
-            ast::Type::Fn { .. } => None,
-        }
-    }
-
-    fn signature(
-        &self,
-        file: FileId,
-        f: &ast::SourceFunction<'ctx>,
-        typ: &FunctionType<'ctx>,
-    ) -> bool {
-        f.type_params.is_empty()
-            && typ.type_params().is_empty()
-            && f.params.len() == typ.params().len()
-            && f.params.iter().zip(typ.params()).all(|((p, _), resolved)| {
-                let q = p.qualifiers;
-                p.typ
-                    .as_ref()
-                    .and_then(|(t, _)| self.source_type(file, t))
-                    .as_ref()
-                    == Some(resolved.type_())
-                    && q.contains(ast::ParamQualifiers::OUT) == resolved.flags().is_out()
-                    && q.contains(ast::ParamQualifiers::OPTIONAL) == resolved.flags().is_optional()
-                    && q.contains(ast::ParamQualifiers::CONST) == resolved.flags().is_const()
-                    && q.contains(ast::ParamQualifiers::SKIP) == resolved.flags().is_short_circuit()
-            })
-            && match &f.return_type {
-                Some(t) => self.source_type(file, &t.0).as_ref() == Some(typ.return_type()),
-                None => typ.return_type() == &Type::nullary(predef::VOID),
-            }
     }
 
     fn associate(
         &self,
         file: FileId,
         items: &[(ast::SourceItemDecl<'ctx>, ast::Span)],
-        module: Option<&ast::Path<'ctx>>,
-        parent: Option<TypeId<'ctx>>,
-        path: &[usize],
+        out: &mut BTreeMap<DeclarationPath, R<'ctx>>,
+    ) -> Result<()> {
+        let bindings: HashMap<&DeclarationPath, R<'ctx>> = self
+            .unit
+            .declarations
+            .get(&file)
+            .into_iter()
+            .flatten()
+            .map(|(path, resolved)| (path, *resolved))
+            .collect();
+        let mut indices = Vec::new();
+        self.associate_items(items, &mut indices, &bindings, out)
+    }
+
+    fn associate_items(
+        &self,
+        items: &[(ast::SourceItemDecl<'ctx>, ast::Span)],
+        indices: &mut Vec<usize>,
+        bindings: &HashMap<&DeclarationPath, R<'ctx>>,
         out: &mut BTreeMap<DeclarationPath, R<'ctx>>,
     ) -> Result<()> {
         for (i, (decl, span)) in items.iter().enumerate() {
-            let mut indices = path.to_vec();
             indices.push(i);
             let key = DeclarationPath(indices.clone());
             let result = (|| {
@@ -393,135 +250,48 @@ impl<'ctx> AnalyzedSources<'ctx> {
                         Some(*span),
                     ));
                 }
-                let patch = decl.annotations.iter().find(|(a, _)| {
-                    matches!(
-                        a.name,
-                        "addField" | "addMethod" | "wrapMethod" | "replaceMethod"
-                    )
-                });
-                let owner = if let Some((a, _)) = patch {
-                    let [(ast::Expr::Ident(name), _)] = &a.args[..] else {
-                        return Err(error(
-                            "patch annotations require one class name, for example @addMethod(PlayerPuppet)",
-                            Some(*span),
-                        ));
-                    };
-                    Some(self.type_id(file, name).ok_or_else(|| {
-                        error("cannot resolve the class in this patch annotation; check its name and imports", Some(*span))
-                    })?)
-                } else {
-                    parent
+                if matches!(decl.item, Item::Import(_)) {
+                    return Ok(());
+                }
+                if matches!(decl.item, Item::Default(_)) {
+                    return Err(error(
+                        "field default directives are not supported by the transpiler",
+                        Some(*span),
+                    ));
+                }
+                let generic = match &decl.item {
+                    Item::Class(c) | Item::Struct(c) => !c.type_params.is_empty(),
+                    Item::Function(f) => !f.type_params.is_empty(),
+                    _ => false,
                 };
-                let binding = match &decl.item {
-                    Item::Import(_) => return Ok(()),
-                    Item::Default(_) => {
-                        return Err(error(
-                            "field default directives are not supported by the transpiler",
-                            Some(*span),
-                        ));
-                    }
-                    Item::Class(c) | Item::Struct(c) => {
-                        if !c.type_params.is_empty() {
-                            return Err(error(
-                                "custom generic declarations are not supported; use concrete parameter and field types",
-                                Some(*span),
-                            ));
-                        }
-                        let id = self
-                            .type_id(file, c.name.0)
-                            .ok_or_else(|| error("unavailable resolved class", Some(*span)))?;
-                        out.insert(key.clone(), R::Type(id));
-                        return self.associate(file, &c.items, module, Some(id), &indices, out);
-                    }
-                    Item::Enum(e) => self
-                        .type_id(file, e.name.0)
-                        .filter(|id| self.unit.enums.contains(id))
-                        .map(R::Type),
-                    Item::Let(f) => owner.and_then(|owner| {
-                        let agg = self.symbols.get_type(owner)?.schema().as_aggregate()?;
-                        unique(
-                            agg.fields()
-                                .iter()
-                                .filter(|e| e.name() == f.name.0)
-                                .map(|e| R::Field(FieldId::new(owner, e.index()))),
-                        )
-                    }),
-                    Item::Function(f) => {
-                        if !f.type_params.is_empty() {
-                            return Err(error(
-                                "custom generic declarations are not supported; use concrete parameter and field types",
-                                Some(*span),
-                            ));
-                        }
-                        if let Some(owner) = owner {
-                            self.symbols
-                                .get_type(owner)
-                                .and_then(|d| d.schema().as_aggregate())
-                                .and_then(|agg| {
-                                    unique(
-                                        agg.methods()
-                                            .iter()
-                                            .filter(|e| {
-                                                **e.name() == f.name.0
-                                                    && self.signature(file, f, e.func().type_())
-                                            })
-                                            .filter_map(|e| {
-                                                let id = MethodId::new(owner, *e.key());
-                                                Some(match patch.map(|(a, _)| a.name) {
-                                                    Some("addMethod")
-                                                        if self
-                                                            .unit
-                                                            .added_methods
-                                                            .contains_key(&id) =>
-                                                    {
-                                                        R::AddedMethod(id)
-                                                    }
-                                                    Some("replaceMethod")
-                                                        if self
-                                                            .unit
-                                                            .method_replacements
-                                                            .contains_key(&id) =>
-                                                    {
-                                                        R::Replacement(id)
-                                                    }
-                                                    Some("wrapMethod")
-                                                        if self
-                                                            .unit
-                                                            .method_wrappers
-                                                            .get(&id)
-                                                            .is_some_and(|v| v.len() == 1) =>
-                                                    {
-                                                        R::Wrapper(id, 0)
-                                                    }
-                                                    None => R::Method(id),
-                                                    _ => return None,
-                                                })
-                                            }),
-                                    )
-                                })
-                        } else {
-                            let path = module.map_or(&[][..], |path| path.segments.as_ref());
-                            let name =
-                                QualifiedName::from_base_and_name(path, f.name.0).to_string();
-                            unique(
-                                self.free_functions
-                                    .get(&name)
-                                    .into_iter()
-                                    .flatten()
-                                    .copied()
-                                    .filter(|&id| self.signature(file, f, self.symbols[id].type_()))
-                                    .map(R::Function),
-                            )
-                        }
-                    }
-                };
-                let Some(binding) = binding else {
+                if generic {
+                    return Err(error(
+                        "custom generic declarations are not supported; use concrete parameter and field types",
+                        Some(*span),
+                    ));
+                }
+                let Some(&resolved) = bindings.get(&key) else {
                     return Err(error(
                         "cannot identify this declaration; add explicit parameter and return types and check for duplicate wrappers",
                         Some(*span),
                     ));
                 };
-                out.insert(key.clone(), binding);
+                if let R::Wrapper(id, _) = resolved
+                    && self
+                        .unit
+                        .method_wrappers
+                        .get(&id)
+                        .is_some_and(|wrappers| wrappers.len() != 1)
+                {
+                    return Err(error(
+                        "cannot identify this declaration; add explicit parameter and return types and check for duplicate wrappers",
+                        Some(*span),
+                    ));
+                }
+                out.insert(key.clone(), resolved);
+                if let Item::Class(c) | Item::Struct(c) = &decl.item {
+                    self.associate_items(&c.items, indices, bindings, out)?;
+                }
                 Ok(())
             })();
             result.map_err(|mut e| {
@@ -530,50 +300,85 @@ impl<'ctx> AnalyzedSources<'ctx> {
                 }
                 e
             })?;
+            indices.pop();
         }
         Ok(())
     }
 }
 
-fn unique<T>(mut candidates: impl Iterator<Item = T>) -> Option<T> {
-    let candidate = candidates.next()?;
-    candidates.next().is_none().then_some(candidate)
-}
-
 #[cfg(test)]
 mod tests {
-    use redscript_compiler_frontend::{Aggregate, TypeDef, TypeSchema};
+    use redscript_compiler_frontend::Symbols;
 
     use super::*;
 
-    #[test]
-    fn resolved_types_require_symbols_and_preserve_interner_identity() {
+    fn with_declarations(source: &str, check: impl FnOnce(FileId, &LoweredCompilationUnit<'_>)) {
         let sources = SourceMap::new();
-        let file = sources.push_back("empty.reds", "");
+        let file = sources.push_back("provenance.reds", source);
         let interner = TypeInterner::default();
-        let present = interner.intern("Present");
-        interner.intern("Absent");
-        let mut symbols = Symbols::with_default_types();
-        symbols.add_type(
-            present,
-            TypeDef::new([], TypeSchema::Aggregate(Aggregate::default().into()), []),
+        let mut reporter = CompileErrorReporter::default();
+        let (unit, _) = redscript_compiler_frontend::infer_from_sources(
+            &sources,
+            Symbols::with_default_types(),
+            &mut reporter,
+            &interner,
         );
-        let analysis = analyze_sources(&sources, symbols, &interner).unwrap();
-        assert_eq!(analysis.resolved_type("Present"), Some(present));
-        assert_eq!(analysis.resolved_type("Absent"), None);
-        assert_eq!(analysis.resolved_type("Unknown"), None);
-        assert_eq!(analysis.type_id(file, "Present"), Some(present));
-        assert_eq!(analysis.type_id(file, "Absent"), None);
-        assert_eq!(analysis.type_id(file, "Unknown"), None);
-        assert!(interner.get_index_of("Unknown").is_none());
-        assert_eq!(analysis.type_id(file, "array"), Some(predef::ARRAY));
+        assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+        check(file, &unit);
     }
 
     #[test]
-    fn unique_candidate_rejects_missing_and_multiple_matches() {
-        assert_eq!(unique([].into_iter()), None::<i32>);
-        assert_eq!(unique([1].into_iter()), Some(1));
-        assert_eq!(unique([1, 1].into_iter()), None);
-        assert_eq!(unique([1, 2, 3].into_iter()), None);
+    fn overloaded_free_functions_keep_distinct_bindings() {
+        with_declarations(
+            "func Echo(value: Int32) -> Int32 = value; func Echo(value: Bool) -> Bool = value;",
+            |file, unit| {
+                let declarations = unit.declarations.get(&file).expect("bindings");
+                let ids: Vec<_> = declarations
+                    .iter()
+                    .filter_map(|(path, resolved)| match resolved {
+                        R::Function(id) => Some((path.clone(), *id)),
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(
+                    ids.iter().map(|(path, _)| path.clone()).collect::<Vec<_>>(),
+                    vec![DeclarationPath(vec![0]), DeclarationPath(vec![1])]
+                );
+                assert_ne!(ids[0].1, ids[1].1);
+            },
+        );
+    }
+
+    #[test]
+    fn aggregate_members_and_bodyless_methods_are_bound() {
+        with_declarations(
+            "native class Widget { let value: Int32; native func Probe(); native func Read() -> Int32; }",
+            |file, unit| {
+                let declarations = unit.declarations.get(&file).expect("bindings");
+                let has = |path: &[usize], matches: fn(&R<'_>) -> bool| {
+                    declarations.iter().any(|(p, r)| p.0 == path && matches(r))
+                };
+                assert!(has(&[0], |r| matches!(r, R::Type(_))));
+                assert!(has(&[0, 0], |r| matches!(r, R::Field(_))));
+                assert!(has(&[0, 1], |r| matches!(r, R::Method(_))));
+                assert!(has(&[0, 2], |r| matches!(r, R::Method(_))));
+            },
+        );
+    }
+
+    #[test]
+    fn conditional_members_preserve_original_indices() {
+        with_declarations(
+            "class Widget { @if(false) let dropped: Int32; let kept: Int32; }",
+            |file, unit| {
+                let declarations = unit.declarations.get(&file).expect("bindings");
+                assert!(
+                    declarations
+                        .iter()
+                        .any(|(p, r)| p.0 == [0, 1] && matches!(r, R::Field(_)))
+                );
+                assert!(!declarations.iter().any(|(p, _)| p.0 == [0, 0]));
+            },
+        );
     }
 }

@@ -24,7 +24,8 @@ pub use query::{QueryError, expr_type};
 pub use redscript_community_ast as ast;
 use redscript_community_parser as parser;
 pub use stages::{
-    FunctionId, LoweredClass, LoweredCompilationUnit, LoweredFieldDefault, LoweredFunction,
+    DeclarationPath, FunctionId, LoweredClass, LoweredCompilationUnit, LoweredFieldDefault,
+    LoweredFunction, ResolvedDeclaration,
 };
 use stages::{NameResolution, Scope};
 pub use symbols::{

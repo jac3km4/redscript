@@ -11,6 +11,7 @@ use redscript_community_ast::{self as ast, BinOp, Span, Spanned, UnOp};
 
 use super::TypeInference;
 use super::infer::{FieldItem, FuncItem, FuncItemKind, InferStageModule};
+use super::provenance::{DeclarationPath, ResolvedDeclaration};
 use crate::cte::{self, Evaluator};
 use crate::lower::TypeEnv;
 use crate::modules::{Export, ImportError, ModuleMap};
@@ -77,17 +78,15 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
         let mut enums = vec![];
         let mut lets = vec![];
 
-        for (
-            ast::ItemDecl {
+        for (item_index, (decl, item_span)) in module.items.into_vec().into_iter().enumerate() {
+            let ast::ItemDecl {
                 mut annotations,
                 visibility,
                 qualifiers,
-                mut item,
+                item,
                 doc,
-            },
-            item_span,
-        ) in module.items.into_vec()
-        {
+            } = decl;
+            let file = item_span.file;
             if !process_conditionals(&mut annotations, &self.evaluator, self.reporter) {
                 continue;
             }
@@ -117,12 +116,26 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         span: item_span,
                     });
                 }
-                ast::Item::Class(ref mut aggregate) | ast::Item::Struct(ref mut aggregate) => {
-                    aggregate.items.retain_mut(|(item, _)| {
-                        process_conditionals(&mut item.annotations, &self.evaluator, self.reporter)
-                    });
-
+                ast::Item::Class(_) | ast::Item::Struct(_) => {
+                    let is_struct = matches!(item, ast::Item::Struct(_));
+                    let mut aggregate = match item {
+                        ast::Item::Class(aggregate) | ast::Item::Struct(aggregate) => aggregate,
+                        _ => unreachable!(),
+                    };
                     let (name, name_span) = aggregate.name;
+                    let members = mem::take(&mut aggregate.items)
+                        .into_iter()
+                        .enumerate()
+                        .filter_map(|(member_index, (mut member, span))| {
+                            process_conditionals(
+                                &mut member.annotations,
+                                &self.evaluator,
+                                self.reporter,
+                            )
+                            .then_some((member_index, (member, span)))
+                        })
+                        .collect();
+
                     let path = QualifiedName::from_base_and_name(path_root, name);
                     let cls_id = interner.intern(Cow::from(&path));
                     let res = self
@@ -154,22 +167,18 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                     let schema = TypeSchema::Aggregate(stub.into());
                     self.symbols.add_type(cls_id, TypeDef::new([], schema, []));
 
-                    match item {
-                        ast::Item::Class(aggregate) => {
-                            classes.push(ParsedAggregate {
-                                id: cls_id,
-                                meta: item_meta,
-                                aggregate,
-                            });
-                        }
-                        ast::Item::Struct(aggregate) => {
-                            structs.push(ParsedAggregate {
-                                id: cls_id,
-                                meta: item_meta,
-                                aggregate,
-                            });
-                        }
-                        _ => unreachable!(),
+                    let parsed = ParsedAggregate {
+                        id: cls_id,
+                        file,
+                        path: DeclarationPath(vec![item_index]),
+                        meta: item_meta,
+                        aggregate,
+                        items: members,
+                    };
+                    if is_struct {
+                        structs.push(parsed);
+                    } else {
+                        classes.push(parsed);
                     }
                 }
                 ast::Item::Function(mut function) => {
@@ -232,6 +241,8 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
 
                     functions.push(ParsedFunction {
                         index,
+                        file,
+                        path: DeclarationPath(vec![item_index]),
                         meta: item_meta,
                         function,
                         annotation,
@@ -251,6 +262,8 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
 
                     enums.push(ParsedEnum {
                         id,
+                        file,
+                        path: DeclarationPath(vec![item_index]),
                         meta: item_meta,
                         enum_,
                     });
@@ -261,6 +274,8 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                 )),
                 ast::Item::Let(let_) => {
                     lets.push(ParsedLet {
+                        file,
+                        path: DeclarationPath(vec![item_index]),
                         meta: item_meta,
                         let_,
                     });
@@ -355,30 +370,52 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                     );
                 }
 
+                let mut declarations = vec![];
                 let mut classes = vec![];
                 for entry in module.classes {
-                    classes.push(self.process_aggregate(entry, path.as_ref(), &type_scope, false));
+                    classes.push(self.process_aggregate(
+                        entry,
+                        path.as_ref(),
+                        &type_scope,
+                        false,
+                        &mut declarations,
+                    ));
                 }
                 for entry in module.structs {
-                    classes.push(self.process_aggregate(entry, path.as_ref(), &type_scope, true));
+                    classes.push(self.process_aggregate(
+                        entry,
+                        path.as_ref(),
+                        &type_scope,
+                        true,
+                        &mut declarations,
+                    ));
                 }
 
                 let mut enums = vec![];
                 for entry in module.enums {
                     enums.push(entry.id);
+                    declarations.push((
+                        entry.file,
+                        entry.path.clone(),
+                        ResolvedDeclaration::Type(entry.id),
+                    ));
                     self.process_enum(entry);
                 }
 
                 let mut functions = vec![];
                 for entry in module.functions {
-                    if let Some(item) = self.process_free_function(entry, &type_scope) {
+                    if let Some(item) =
+                        self.process_free_function(entry, &type_scope, &mut declarations)
+                    {
                         functions.push(item);
                     }
                 }
 
                 let mut fields = vec![];
                 for let_ in module.lets {
-                    if let Some(item) = self.process_free_field(let_, &type_scope) {
+                    if let Some(item) =
+                        self.process_free_field(let_, &type_scope, &mut declarations)
+                    {
                         fields.push(item);
                     }
                 }
@@ -390,6 +427,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                     enums,
                     functions,
                     fields,
+                    declarations,
                     module.span,
                 ));
             }
@@ -515,13 +553,20 @@ struct ParsedImport<'ctx> {
 #[derive(Debug)]
 struct ParsedAggregate<'ctx> {
     id: TypeId<'ctx>,
+    file: ast::FileId,
+    path: DeclarationPath,
     meta: ParsedMeta<'ctx>,
     aggregate: ast::SourceAggregate<'ctx>,
+    /// Members paired with their original index in `aggregate.items`, so
+    /// `@if(false)` filtering never shifts `DeclarationPath` indices.
+    items: Vec<(usize, Spanned<ast::SourceItemDecl<'ctx>>)>,
 }
 
 #[derive(Debug)]
 struct ParsedFunction<'ctx> {
     index: FreeFunctionIndex,
+    file: ast::FileId,
+    path: DeclarationPath,
     meta: ParsedMeta<'ctx>,
     function: ast::SourceFunction<'ctx>,
     annotation: Option<FunctionAnnotation<'ctx>>,
@@ -529,6 +574,8 @@ struct ParsedFunction<'ctx> {
 
 #[derive(Debug)]
 struct ParsedLet<'ctx> {
+    file: ast::FileId,
+    path: DeclarationPath,
     meta: ParsedMeta<'ctx>,
     let_: ast::SourceField<'ctx>,
 }
@@ -536,6 +583,8 @@ struct ParsedLet<'ctx> {
 #[derive(Debug)]
 struct ParsedEnum<'ctx> {
     id: TypeId<'ctx>,
+    file: ast::FileId,
+    path: DeclarationPath,
     meta: ParsedMeta<'ctx>,
     enum_: ast::SourceEnum<'ctx>,
 }

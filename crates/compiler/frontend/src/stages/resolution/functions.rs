@@ -5,11 +5,14 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
         &mut self,
         ParsedFunction {
             index,
+            file,
+            path,
             meta,
             function,
             annotation,
         }: ParsedFunction<'ctx>,
         types: &TypeEnv<'a, 'ctx>,
+        declarations: &mut Vec<(ast::FileId, DeclarationPath, ResolvedDeclaration<'ctx>)>,
     ) -> Option<FuncItemKind<'a, 'ctx>> {
         let (name, name_span) = function.name;
         let (func_t, type_scope) = self.create_function_env(&function, types);
@@ -106,7 +109,8 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                     param_names,
                     function.body,
                     type_scope,
-                );
+                )
+                .with_declaration(file, path);
                 return Some(FuncItemKind::AddMethod(item));
             }
             Some(ann @ FunctionAnnotation::Wrap(class)) => {
@@ -147,12 +151,14 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
             }
             (Some(body), None, Some(replaced), None) => {
                 let func = FuncItem::new(replaced, span, name_span, param_names, body, type_scope)
-                    .with_properties(func_t.properties().clone());
+                    .with_properties(func_t.properties().clone())
+                    .with_declaration(file, path);
                 return Some(FuncItemKind::ReplaceMethod(func));
             }
             (Some(body), None, None, Some(wrapped)) => {
                 let func = FuncItem::new(wrapped, span, name_span, param_names, body, type_scope)
-                    .with_properties(func_t.properties().clone());
+                    .with_properties(func_t.properties().clone())
+                    .with_declaration(file, path);
                 return Some(FuncItemKind::WrapMethod(func));
             }
             (Some(_), _, _, _) => {
@@ -173,22 +179,29 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
         }
 
         self.symbols.set_free_function(index, free_func);
-        body.map(|body| {
-            FuncItemKind::FreeFunction(FuncItem::new(
-                index,
-                span,
-                name_span,
-                param_names,
-                body,
-                type_scope,
+        if let Some(body) = body {
+            Some(FuncItemKind::FreeFunction(
+                FuncItem::new(index, span, name_span, param_names, body, type_scope)
+                    .with_declaration(file, path),
             ))
-        })
+        } else {
+            // Bodyless free functions (`native func`, `@intrinsic`) produce no
+            // lowered item, so record their binding here directly.
+            declarations.push((file, path, ResolvedDeclaration::Function(index)));
+            None
+        }
     }
 
     pub(super) fn process_free_field<'a>(
         &mut self,
-        ParsedLet { meta, let_: field }: ParsedLet<'ctx>,
+        ParsedLet {
+            file,
+            path,
+            meta,
+            let_: field,
+        }: ParsedLet<'ctx>,
         types: &TypeEnv<'a, 'ctx>,
+        declarations: &mut Vec<(ast::FileId, DeclarationPath, ResolvedDeclaration<'ctx>)>,
     ) -> Option<FieldItem<'ctx, FieldId<'ctx>>> {
         let mut doc = meta.doc;
         let (name, name_span) = field.name;
@@ -259,14 +272,17 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
             }
         }
 
-        if id.is_none() {
+        let Some(id) = id else {
             self.reporter.report(Diagnostic::UnexpectedItem(
                 "fields cannot be declared at module scope",
                 name_span,
             ));
-        }
+            return None;
+        };
+        // Record even valueless added fields; the transpiler still emits them.
+        declarations.push((file, path, ResolvedDeclaration::Field(id)));
 
-        Some(FieldItem::new(id?, field.default))
+        Some(FieldItem::new(id, field.default))
     }
 
     pub(super) fn create_function_env<'a>(

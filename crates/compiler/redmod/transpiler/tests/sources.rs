@@ -462,6 +462,67 @@ fn competing_dependency_replacements_cannot_supply_selected_body() {
 }
 
 #[test]
+fn conflicting_replacements_across_dependencies_fail_closed() {
+    use redscript_compiler_frontend::{
+        Aggregate, FunctionType, Method, MethodFlags, Param, ParamFlags, Type, TypeDef, TypeSchema,
+        predef,
+    };
+    let sources = SourceMap::new();
+    let selected = sources.push_back(
+        "a.reds",
+        "@replaceMethod(EngineWidget) public func Value(input: Int32) -> Int32 = 11;",
+    );
+    sources.push_back(
+        "b.reds",
+        "@replaceMethod(EngineWidget) public func Value(input: Bool) -> Bool = true;",
+    );
+    let conflicting = sources.push_back(
+        "c.reds",
+        "@replaceMethod(EngineWidget) public func Value(input: Int32) -> Int32 = 22;",
+    );
+    sources.populate_boot_lib();
+    let interner = TypeInterner::default();
+    let mut aggregate = Aggregate::default();
+    for (input, output) in [(predef::INT32, predef::INT32), (predef::BOOL, predef::BOOL)] {
+        aggregate.methods_mut().add(
+            "Value",
+            Method::new(
+                MethodFlags::default(),
+                FunctionType::new(
+                    [],
+                    [Param::new(
+                        "input",
+                        ParamFlags::default(),
+                        Type::nullary(input),
+                        None,
+                    )],
+                    Type::nullary(output),
+                ),
+                None,
+                [],
+                None,
+            ),
+        );
+    }
+    let mut symbols = Symbols::with_default_types();
+    symbols.add_type(
+        interner.intern("EngineWidget"),
+        TypeDef::new([], TypeSchema::Aggregate(aggregate.into()), []),
+    );
+    let analysis = analyze_sources(&sources, symbols, &interner).unwrap();
+    let errors = analysis.transpile_selected(&[selected]).unwrap_err();
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(
+        errors[0]
+            .message
+            .contains("multiple @replaceMethod declarations target the same method"),
+        "{errors:?}"
+    );
+    // Only the Int32 overload conflicts; the error points at the later declaration.
+    assert_eq!(errors[0].span.unwrap().file, conflicting);
+}
+
+#[test]
 fn eager_interpolation_and_switch_prefixes_are_rejected() {
     for (name, body, expected) in [
         (

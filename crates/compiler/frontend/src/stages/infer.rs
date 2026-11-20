@@ -7,6 +7,7 @@ use identity_hash::BuildIdentityHasher;
 use redscript_community_ast::{self as ast, FileId, Span, Spanned};
 use smallvec::smallvec;
 
+use super::provenance::{DeclarationPath, ResolvedDeclaration};
 use super::resolution::Scope;
 use super::resolution::constants::ident;
 use crate::diagnostic::FunctionSignature;
@@ -44,6 +45,14 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
 
         for mod_ in mem::take(&mut self.modules) {
             let scope = scope.push(mod_.type_scope, mod_.func_scope);
+
+            for (file, path, resolved) in mod_.declarations {
+                compiled
+                    .declarations
+                    .entry(file)
+                    .or_default()
+                    .push((path, resolved));
+            }
 
             for class in mod_.classes {
                 let types = scope.types.push_scope(class.scope);
@@ -198,6 +207,13 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
                             .span(func.span)
                             .build();
                         compiled.functions.insert(func.id, value);
+                        if let Some((file, path)) = func.declaration {
+                            compiled
+                                .declarations
+                                .entry(file)
+                                .or_default()
+                                .push((path, ResolvedDeclaration::Function(func.id)));
+                        }
                     }
                     FuncItemKind::ReplaceMethod(func) => {
                         let sym = &self.symbols[func.id];
@@ -218,9 +234,15 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
                             .reporter(reporter)
                             .span(func.span)
                             .build();
-                        if let Some(previous) =
-                            compiled.method_replacements.insert(func.id, lowered)
-                        {
+                        let previous = compiled.method_replacements.insert(func.id, lowered);
+                        if let Some((file, path)) = func.declaration {
+                            compiled
+                                .declarations
+                                .entry(file)
+                                .or_default()
+                                .push((path, ResolvedDeclaration::Replacement(func.id)));
+                        }
+                        if let Some(previous) = previous {
                             let (name, method) = self.symbols.get_method(func.id).unwrap();
                             let typ = method.type_();
                             reporter.report(crate::Diagnostic::ReplaceMethodConflict(
@@ -259,6 +281,13 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
                                 .build()
                         });
                         compiled.added_methods.insert(func.id, lowered);
+                        if let Some((file, path)) = func.declaration {
+                            compiled
+                                .declarations
+                                .entry(file)
+                                .or_default()
+                                .push((path, ResolvedDeclaration::AddedMethod(func.id)));
+                        }
                     }
                     FuncItemKind::WrapMethod(func) => {
                         let typ = self.symbols[func.id].type_();
@@ -288,11 +317,16 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
                             .reporter(reporter)
                             .span(func.span)
                             .build();
-                        compiled
-                            .method_wrappers
-                            .entry(func.id)
-                            .or_default()
-                            .push(lowered);
+                        let wrappers = compiled.method_wrappers.entry(func.id).or_default();
+                        let wrapper_idx = wrappers.len();
+                        wrappers.push(lowered);
+                        if let Some((file, path)) = func.declaration {
+                            compiled
+                                .declarations
+                                .entry(file)
+                                .or_default()
+                                .push((path, ResolvedDeclaration::Wrapper(func.id, wrapper_idx)));
+                        }
                     }
                 }
             }
@@ -427,10 +461,14 @@ pub struct InferStageModule<'scope, 'ctx> {
     enums: Vec<TypeId<'ctx>>,
     functions: Vec<FuncItemKind<'scope, 'ctx>>,
     fields: Vec<FieldItem<'ctx, FieldId<'ctx>>>,
+    /// Resolved `(file, path)` bindings that are already final before lowering:
+    /// aggregate/enum types, their members, bodyless free functions and added fields.
+    declarations: Vec<(FileId, DeclarationPath, ResolvedDeclaration<'ctx>)>,
     span: Option<Span>,
 }
 
 impl<'scope, 'ctx> InferStageModule<'scope, 'ctx> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         type_scope: IndexMap<&'ctx str, TypeRef<'scope, 'ctx>>,
         func_scope: IndexMap<&'ctx str, FreeFunctionIndexes>,
@@ -438,6 +476,7 @@ impl<'scope, 'ctx> InferStageModule<'scope, 'ctx> {
         enums: Vec<TypeId<'ctx>>,
         functions: Vec<FuncItemKind<'scope, 'ctx>>,
         fields: Vec<FieldItem<'ctx, FieldId<'ctx>>>,
+        declarations: Vec<(FileId, DeclarationPath, ResolvedDeclaration<'ctx>)>,
         span: Option<Span>,
     ) -> Self {
         Self {
@@ -447,6 +486,7 @@ impl<'scope, 'ctx> InferStageModule<'scope, 'ctx> {
             classes,
             enums,
             fields,
+            declarations,
             span,
         }
     }
@@ -485,6 +525,9 @@ pub struct FuncItem<'scope, 'ctx, K, B = ast::SourceFunctionBody<'ctx>> {
     body: B,
     scope: TypeScope<'scope, 'ctx>,
     properties: Option<ast::FunctionProperties<'ctx>>,
+    /// Source provenance for functions whose binding is emitted during lowering
+    /// (free functions, added methods, replacements and wrappers).
+    declaration: Option<(FileId, DeclarationPath)>,
 }
 
 impl<'scope, 'ctx, K, B> FuncItem<'scope, 'ctx, K, B> {
@@ -504,11 +547,17 @@ impl<'scope, 'ctx, K, B> FuncItem<'scope, 'ctx, K, B> {
             body,
             scope,
             properties: None,
+            declaration: None,
         }
     }
 
     pub fn with_properties(mut self, properties: ast::FunctionProperties<'ctx>) -> Self {
         self.properties = Some(properties);
+        self
+    }
+
+    pub fn with_declaration(mut self, file: FileId, path: DeclarationPath) -> Self {
+        self.declaration = Some((file, path));
         self
     }
 }
@@ -601,6 +650,11 @@ pub struct LoweredCompilationUnit<'ctx> {
     pub method_wrappers: IndexMap<MethodId<'ctx>, Vec<LoweredFunction<'ctx>>>,
 
     pub scopes: IndexMap<FileId, IndexMap<&'ctx str, TypeRef<'static, 'ctx>>>,
+
+    /// Per-file declaration provenance captured during name resolution and
+    /// lowering. Keeps every binding, including duplicate replacements and
+    /// multiple wrappers that the lowering tables collapse by [`MethodId`].
+    pub declarations: IndexMap<FileId, Vec<(DeclarationPath, ResolvedDeclaration<'ctx>)>>,
 }
 
 impl<'ctx> LoweredCompilationUnit<'ctx> {
