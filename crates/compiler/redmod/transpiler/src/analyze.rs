@@ -47,17 +47,7 @@ pub fn analyze_sources<'ctx>(
         .iter()
         .any(redscript_compiler_frontend::Diagnostic::is_error)
     {
-        return Err(reporter
-            .into_reported()
-            .into_iter()
-            .filter(redscript_compiler_frontend::Diagnostic::is_error)
-            .map(|d| {
-                error(
-                    format!("community analysis [{}]: {d}", d.code()),
-                    Some(d.span()),
-                )
-            })
-            .collect());
+        return Err(analysis_errors(reporter.reported()));
     }
     let evaluator = Evaluator::from_modules(modules.iter().map(|(_, module)| module));
     let (unit, symbols) = process_sources(
@@ -68,16 +58,7 @@ pub fn analyze_sources<'ctx>(
         interner,
     );
     let diagnostics = reporter.into_reported();
-    let errors: Vec<_> = diagnostics
-        .iter()
-        .filter(|d| d.is_error())
-        .map(|d| {
-            error(
-                format!("community analysis [{}]: {d}", d.code()),
-                Some(d.span()),
-            )
-        })
-        .collect();
+    let errors = analysis_errors(&diagnostics);
     if !errors.is_empty() {
         return Err(errors);
     }
@@ -105,6 +86,24 @@ pub fn analyze_sources<'ctx>(
             })
             .collect(),
     })
+}
+
+/// Renders every error diagnostic from a community analysis run as a fail-closed
+/// transpile diagnostic. Non-error diagnostics are dropped; warning rendering
+/// with preserved codes happens separately.
+fn analysis_errors(
+    diagnostics: &[redscript_compiler_frontend::Diagnostic<'_>],
+) -> Vec<TranspileDiagnostic> {
+    diagnostics
+        .iter()
+        .filter(|d| d.is_error())
+        .map(|d| {
+            error(
+                format!("community analysis [{}]: {d}", d.code()),
+                Some(d.span()),
+            )
+        })
+        .collect()
 }
 
 /// Analyze dependencies and transpile only selected authored files, in selection order.
