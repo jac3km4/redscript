@@ -209,9 +209,31 @@ impl TypeInterner {
             .map(TypeIndex)
     }
 
+    /// Maps a non-predefined [`TypeIndex`] to its interned name.
+    #[inline]
+    fn named(&self, index: TypeIndex) -> TypeId<'_> {
+        TypeId(TypeIdRepr::Named(
+            self.names
+                .get(index.0 - Self::predef_len())
+                .expect("interned name"),
+        ))
+    }
+
     pub fn intern(&self, name: impl AsRef<str> + Into<String>) -> TypeId<'_> {
-        if let Some(idx) = Self::predef_index(name.as_ref()) {
+        let key = name.as_ref();
+        if let Some(idx) = Self::predef_index(key) {
             return predef::ALL_TYPES[idx.0];
+        }
+        // Fast path: the common case is looking up an already-interned name, so
+        // try a shared read lock before taking the exclusive write lock.
+        {
+            let index = self
+                .index
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(&idx) = index.get(key) {
+                return self.named(idx);
+            }
         }
         // Hold the write lock across the whole check-then-insert: interning the
         // same name twice would produce two addresses and break pointer identity.
@@ -219,19 +241,14 @@ impl TypeInterner {
             .index
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(&idx) = index.get(name.as_ref()) {
-            return TypeId(TypeIdRepr::Named(
-                self.names
-                    .get(idx.0 - Self::predef_len())
-                    .expect("interned name"),
-            ));
+        if let Some(&idx) = index.get(key) {
+            return self.named(idx);
         }
         let name: Box<str> = name.into().into_boxed_str();
         let local = self.names.push_get_index(name.clone());
-        index.insert(name, TypeIndex(Self::predef_len() + local));
-        TypeId(TypeIdRepr::Named(
-            self.names.get(local).expect("interned name"),
-        ))
+        let idx = TypeIndex(Self::predef_len() + local);
+        index.insert(name, idx);
+        self.named(idx)
     }
 
     /// Looks up a canonical type ID without interning a new name.
@@ -244,9 +261,7 @@ impl TypeInterner {
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let idx = index.get(name)?;
-        self.names
-            .get(idx.0 - Self::predef_len())
-            .map(|s| TypeId(TypeIdRepr::Named(s)))
+        Some(self.named(*idx))
     }
 
     pub fn get_index_of(&self, name: impl AsRef<str>) -> Option<TypeIndex> {
