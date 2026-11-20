@@ -8,12 +8,17 @@ edition.workspace = true
 redscript-community-ast = { workspace = true, features = ["chumsky"] }
 
 chumsky.workspace = true
+rayon = { workspace = true, optional = true }
 
 [dev-dependencies]
 redscript-community-ast = { workspace = true, features = ["testing"] }
 
 similar-asserts.workspace = true
 insta.workspace = true
+
+[features]
+# Parse independent source files in parallel with `rayon`.
+parallel = ["dep:rayon"]
 
 [lints]
 workspace = true

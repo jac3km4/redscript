@@ -79,6 +79,7 @@ leon = "3"
 minidl = "0.1"
 bindgen = { version = "0.73", default-features = false, features = ["runtime"] }
 mimalloc = { version = "0.1", features = ["v3"] }
+rayon = "1"
 
 similar-asserts = "2"
 insta = { version = "1", features = ["glob"] }

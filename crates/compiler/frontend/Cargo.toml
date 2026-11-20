@@ -20,6 +20,7 @@ hashbrown.workspace = true
 indexmap.workspace = true
 elsa.workspace = true
 sequence_trie.workspace = true
+rayon = { workspace = true, optional = true }
 
 [dev-dependencies]
 redscript-compiler-api.workspace = true
@@ -29,6 +30,8 @@ insta.workspace = true
 [features]
 # Thread-safe analysis types (`Send + Sync`) instead of `Rc`/`RefCell`.
 sync = ["redscript-community-ast/sync"]
+# Thread-safe analysis types plus parallel parsing, lowering and validation.
+parallel = ["sync", "dep:rayon", "redscript-community-parser/parallel"]
 
 [lints]
 workspace = true
