@@ -13,8 +13,6 @@ pub mod types;
 pub mod utils;
 mod visitor;
 
-pub use sync::{BoxedError, Shared};
-
 pub use arguments::absent_argument;
 pub use cte::Evaluator;
 pub use diagnostic::{Diagnostic, DiagnosticLevel, Reporter, UnknownSource, pass};
@@ -36,6 +34,7 @@ pub use symbols::{
     FunctionType, Method, MethodFlags, MethodId, MethodMap, Param, ParamFlags, QualifiedName,
     ReferenceSemantics, Symbols, TypeDef, TypeSchema, Visibility,
 };
+pub use sync::{BoxedError, Shared};
 pub use types::{
     CtxVar, Immutable, Mono, MonoType, RefType, Type, TypeApp, TypeId, TypeIndex, TypeInterner,
     TypeKind, Variance, predef,

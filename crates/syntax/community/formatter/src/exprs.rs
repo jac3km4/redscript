@@ -3,7 +3,7 @@ use std::fmt;
 use pretty_dtoa::{FmtFloatConfig, dtoa, ftoa};
 use redscript_community_ast::{
     ArraySpread, AstKind, BinOp, Block, Condition, Constant, Expr, LetCondition, NodeId, Pattern,
-    StrPart, Stmt, UnOp, Wrapper,
+    Stmt, StrPart, UnOp, Wrapper,
 };
 
 use crate::layout::{ParentOp, SepBy, SepByMultiline, format_call_args, format_chain};

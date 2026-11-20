@@ -94,8 +94,7 @@ fn check_function<'ctx>(
         .iter()
         .enumerate()
         .filter_map(|(i, p)| {
-            (p.type_().ref_type() == Some(RefType::Script))
-                .then_some(ir::Local::Param(i as u16))
+            (p.type_().ref_type() == Some(RefType::Script)).then_some(ir::Local::Param(i as u16))
         })
         .collect();
     add_script_ref_locals(&mut script_ref_locals, &function.locals, symbols);

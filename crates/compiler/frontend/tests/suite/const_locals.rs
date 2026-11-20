@@ -1,10 +1,8 @@
-use redscript_compiler_frontend::Shared;
-
 use redscript_community_ast::SourceMap;
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{
-    CompileErrorReporter, DiagnosticLevel, Evaluator, SemanticPolicy, Symbols, TypeInterner,
-    parse_files, process_sources_with_policy,
+    CompileErrorReporter, DiagnosticLevel, Evaluator, SemanticPolicy, Shared, Symbols,
+    TypeInterner, parse_files, process_sources_with_policy,
 };
 
 fn check(source: &str, expected: &[&str]) {

@@ -196,13 +196,15 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         let candidates = candidates.into_iter();
         // Scope precedence applies only to viable overloads. Within that scope,
         // a dominating signature must have a strictly higher specificity score.
-        let applicable = |entry: &FunctionEntry<Key, Name, Func>| {
-            match receiver_instantiated_params(entry, receiver.as_ref(), self.symbols) {
-                Some(params) => {
-                    accepts_params(entry.func(), &params, arg_types, args.iter(), self.symbols)
-                }
-                None => accepts_typed_args(entry.func(), arg_types, args.iter(), self.symbols),
+        let applicable = |entry: &FunctionEntry<Key, Name, Func>| match receiver_instantiated_params(
+            entry,
+            receiver.as_ref(),
+            self.symbols,
+        ) {
+            Some(params) => {
+                accepts_params(entry.func(), &params, arg_types, args.iter(), self.symbols)
             }
+            None => accepts_typed_args(entry.func(), arg_types, args.iter(), self.symbols),
         };
         let primary = candidates
             .clone()

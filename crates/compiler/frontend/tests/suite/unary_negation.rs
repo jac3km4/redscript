@@ -1,9 +1,7 @@
-use redscript_compiler_frontend::Shared;
-
 use redscript_community_ast::SourceMap;
 use redscript_compiler_frontend::{
-    CompileErrorReporter, Evaluator, LoweredCompilationUnit, SemanticPolicy, Symbols, TypeInterner,
-    ir, parse_files, process_sources, process_sources_with_policy,
+    CompileErrorReporter, Evaluator, LoweredCompilationUnit, SemanticPolicy, Shared, Symbols,
+    TypeInterner, ir, parse_files, process_sources, process_sources_with_policy,
 };
 
 fn returned_expr<'a, 'ctx>(

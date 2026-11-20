@@ -5,11 +5,10 @@ use redscript_io::{
     TypeIndex as PoolTypeIndex,
 };
 
-use crate::inputs::Signature;
-use crate::monomorph::MethodWithReceiver;
-
 use super::closure::{CALL_METHOD, emit_closure};
 use super::{AssembleError, Assembler, Label};
+use crate::inputs::Signature;
+use crate::monomorph::MethodWithReceiver;
 
 impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
     pub(super) fn assemble_expr(

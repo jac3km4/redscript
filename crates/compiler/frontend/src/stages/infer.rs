@@ -125,8 +125,7 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
                 for (index, func) in module.functions.iter_mut().enumerate() {
                     if let FuncItemKind::WrapMethod(item) = func {
                         let typ = self.symbols[item.id].type_().clone();
-                        let free_func =
-                            FreeFunction::new_alias(typ, item.id, Some(item.name_span));
+                        let free_func = FreeFunction::new_alias(typ, item.id, Some(item.name_span));
                         let alias = self
                             .symbols
                             .add_free_function(ident::WRAPPED_METHOD, free_func);
@@ -222,11 +221,12 @@ fn lower_module<'m, 'ctx>(
         // Name resolution has completed for every module before inference:
         // even bases declared in later files now have their full fields.
         for (input, input_span) in &class.defaults {
-            let Some((parent, (index, field))) = symbols
-                .base_iter_with_self(class.id)
-                .find_map(|(id, aggregate)| {
-                    Some((id, aggregate.fields().by_name(input.target.0)?))
-                })
+            let Some((parent, (index, field))) =
+                symbols
+                    .base_iter_with_self(class.id)
+                    .find_map(|(id, aggregate)| {
+                        Some((id, aggregate.fields().by_name(input.target.0)?))
+                    })
             else {
                 reporter.report(crate::LowerError::UnresolvedMember(
                     class.id,
@@ -391,8 +391,11 @@ fn lower_module<'m, 'ctx>(
                 );
                 out.method_wrappers.push((func.id, lowered));
                 if let Some((file, path)) = func.declaration {
-                    out.declarations
-                        .push((file, path, ResolvedDeclaration::Wrapper(func.id, info.index)));
+                    out.declarations.push((
+                        file,
+                        path,
+                        ResolvedDeclaration::Wrapper(func.id, info.index),
+                    ));
                 }
             }
         }
@@ -792,9 +795,10 @@ impl<'ctx> LoweredCompilationUnit<'ctx> {
             .iter()
             .map(|(&id, f)| (FunctionId::Free(id), f))
             .chain(self.classes.iter().flat_map(|(&id, class)| {
-                class.methods.iter().map(move |(&idx, f)| {
-                    (FunctionId::Method(MethodId::new(id, idx)), f)
-                })
+                class
+                    .methods
+                    .iter()
+                    .map(move |(&idx, f)| (FunctionId::Method(MethodId::new(id, idx)), f))
             }))
             .chain(
                 self.added_methods
@@ -806,9 +810,11 @@ impl<'ctx> LoweredCompilationUnit<'ctx> {
                     .iter()
                     .map(|(&id, f)| (FunctionId::Replacement(id), f)),
             )
-            .chain(self.method_wrappers.iter().flat_map(|(&id, fs)| {
-                fs.iter().map(move |f| (FunctionId::Wrapper(id), f))
-            }))
+            .chain(
+                self.method_wrappers
+                    .iter()
+                    .flat_map(|(&id, fs)| fs.iter().map(move |f| (FunctionId::Wrapper(id), f))),
+            )
     }
 
     /// Mutable counterpart of [`Self::functions_with_ids`] with the same order.
@@ -827,9 +833,10 @@ impl<'ctx> LoweredCompilationUnit<'ctx> {
             .iter_mut()
             .map(|(&id, f)| (FunctionId::Free(id), f))
             .chain(classes.iter_mut().flat_map(|(&id, class)| {
-                class.methods.iter_mut().map(move |(&idx, f)| {
-                    (FunctionId::Method(MethodId::new(id, idx)), f)
-                })
+                class
+                    .methods
+                    .iter_mut()
+                    .map(move |(&idx, f)| (FunctionId::Method(MethodId::new(id, idx)), f))
             }))
             .chain(
                 added_methods
@@ -841,9 +848,11 @@ impl<'ctx> LoweredCompilationUnit<'ctx> {
                     .iter_mut()
                     .map(|(&id, f)| (FunctionId::Replacement(id), f)),
             )
-            .chain(method_wrappers.iter_mut().flat_map(|(&id, fs)| {
-                fs.iter_mut().map(move |f| (FunctionId::Wrapper(id), f))
-            }))
+            .chain(
+                method_wrappers
+                    .iter_mut()
+                    .flat_map(|(&id, fs)| fs.iter_mut().map(move |f| (FunctionId::Wrapper(id), f))),
+            )
     }
 
     /// All lowered functions mutably, in the same order as [`Self::all_functions`].

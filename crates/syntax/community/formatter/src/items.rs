@@ -1,5 +1,4 @@
-use std::fmt;
-use std::mem;
+use std::{fmt, mem};
 
 use redscript_community_ast::{
     Aggregate, Annotation, AstKind, Enum, EnumVariant, Field, Function, FunctionBody, Import, Item,

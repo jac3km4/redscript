@@ -3,10 +3,9 @@ mod body;
 
 use std::fmt;
 
+use body::{binds, mutable_array, operator_name, typ};
 use redscript_community_ast::{self as ast, Span, Spanned};
 use redscript_redmod_ast as native;
-
-use body::{binds, mutable_array, operator_name, typ};
 
 /// Shared syntax plus REDmod intent which has no shared syntax representation.
 /// Pass this value intact to REDmod `process_sources`: extracting `module` alone

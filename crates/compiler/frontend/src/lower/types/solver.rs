@@ -5,12 +5,11 @@ use identity_hash::IdentityHashable;
 use smallvec::SmallVec;
 
 use super::{InferredType, PolyType};
-use crate::Shared;
-use crate::Symbols;
 use crate::lower::error::{InferResult, TypeError};
 use crate::symbols::AnySupertype;
 use crate::sync::{SharedCell, SharedWeak};
 use crate::types::{CtxVar, Type};
+use crate::{Shared, Symbols};
 
 // External handles own the component; handles stored in nodes have no owner.
 // Components retain all nodes until the last external handle is dropped, then

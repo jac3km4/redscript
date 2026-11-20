@@ -3,10 +3,9 @@ use redscript_compiler_frontend::{
     FunctionType, PolyType, QueryError, RefType, Type, Variance, expr_type, ir, predef,
 };
 
-use crate::{Result, error};
-
 use super::Body;
 use super::expr::{binary_precedence, binary_token};
+use crate::{Result, error};
 
 impl<'a, 'ctx> Body<'a, 'ctx> {
     // Only the immediate typed sink may supply a conversion. In particular, do

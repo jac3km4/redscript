@@ -18,7 +18,6 @@ mod naming;
 
 pub(crate) use constants::{constant, float_literal};
 pub(crate) use naming::reserved_names;
-
 use naming::{authored_name, contextual_temporary_name, temporary_name};
 
 pub(crate) struct Body<'a, 'ctx> {

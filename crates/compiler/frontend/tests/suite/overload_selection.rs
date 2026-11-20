@@ -408,9 +408,7 @@ fn return_only_duplicates_are_not_ranked_by_expected_result() {
 fn inherited_generic_parameter_uses_receiver_substitution_for_applicability() {
     let prelude = "class Base<T> { public func Pick(value: T) -> Int32 { return 1; } }
                    class Child extends Base<Int32> { public func Pick(value: Bool) -> Int32 { return 2; } }";
-    for (arg, expected_parent, expected_param) in
-        [("true", "Child", "Bool"), ("1", "Base", "T")]
-    {
+    for (arg, expected_parent, expected_param) in [("true", "Child", "Bool"), ("1", "Base", "T")] {
         common::analyze(
             "instantiated_generic.reds",
             &format!("{prelude} func Run(child: Child) -> Int32 {{ return child.Pick({arg}); }}"),

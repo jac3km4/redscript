@@ -1,9 +1,8 @@
 use redscript_community_ast as ast;
 use redscript_compiler_frontend::{FunctionType, RefType, Type, ir, predef};
 
-use crate::{Result, error, target};
-
 use super::{Body, constant};
+use crate::{Result, error, target};
 
 impl<'a, 'ctx> Body<'a, 'ctx> {
     // Target binding powers: assignment 1, conditional 2, binary operators 3..11,

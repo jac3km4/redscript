@@ -304,10 +304,11 @@ fn script_ref_pattern_as_cast_is_rejected() {
     let mut native_reporter = CompileErrorReporter::default();
     let modules = redscript_compiler_frontend::parse_files(&native_sources, &mut native_reporter);
     let evaluator = redscript_compiler_frontend::Evaluator::from_modules(&modules);
-    let policy = redscript_compiler_frontend::Shared::new(redscript_compiler_frontend::SemanticPolicy {
-        native_object_cast: true,
-        ..redscript_compiler_frontend::SemanticPolicy::default()
-    });
+    let policy =
+        redscript_compiler_frontend::Shared::new(redscript_compiler_frontend::SemanticPolicy {
+            native_object_cast: true,
+            ..redscript_compiler_frontend::SemanticPolicy::default()
+        });
     let (native_unit, native_symbols) = redscript_compiler_frontend::process_sources_with_policy(
         modules,
         Symbols::with_default_types(),

@@ -2,10 +2,9 @@ use redscript_community_ast as ast;
 use redscript_compiler_frontend::utils::ScopedMap;
 use redscript_compiler_frontend::{RefType, Type, ir, predef};
 
-use crate::{Result, error, target};
-
 use super::Body;
 use super::expr::binary_precedence;
+use crate::{Result, error, target};
 
 impl<'a, 'ctx> Body<'a, 'ctx> {
     pub(super) fn is_defined(&self, arg: &ir::Expr<'ctx>, negated: bool) -> Result<String> {

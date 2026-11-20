@@ -26,9 +26,9 @@ use crate::{
 mod aggregate;
 pub(super) mod constants;
 mod derive_new;
-mod validation;
 mod enums;
 mod functions;
+mod validation;
 
 #[derive(Debug)]
 pub struct NameResolution<'scope, 'ctx> {

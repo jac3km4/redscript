@@ -28,9 +28,8 @@ use std::fmt;
 use std::ops::Range;
 
 use redscript_community_ast::{SourceModule, Span};
-use redscript_compiler_frontend::{LoweredCompilationUnit, Symbols};
-
 pub use redscript_compiler_frontend::{DeclarationPath, ResolvedDeclaration};
+use redscript_compiler_frontend::{LoweredCompilationUnit, Symbols};
 
 /// A retained module and its declaration associations. Imports require no binding.
 /// Every other declaration must have exactly one binding, including inactive

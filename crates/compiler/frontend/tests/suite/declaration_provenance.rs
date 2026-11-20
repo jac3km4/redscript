@@ -1,12 +1,10 @@
-use redscript_compiler_frontend::Shared;
-
 use redscript_community_ast::{SourceMap, Span};
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::ir::{
     Block, Expr, InitializationKind as Kind, LocalInfo, LocalStorage, Stmt,
 };
 use redscript_compiler_frontend::{
-    CompileErrorReporter, Evaluator, SemanticPolicy, Symbols, TypeInterner, parse_files,
+    CompileErrorReporter, Evaluator, SemanticPolicy, Shared, Symbols, TypeInterner, parse_files,
     process_sources_with_policy,
 };
 

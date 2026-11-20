@@ -1,10 +1,8 @@
-use redscript_compiler_frontend::Shared;
-
 use redscript_community_ast::{ConversionKind, SourceMap};
 use redscript_compiler_api::{Diagnostic, SourceMapExt};
 use redscript_compiler_frontend::{
-    CompileErrorReporter, Evaluator, SemanticPolicy, Symbols, TypeInterner, infer_from_sources,
-    parse_files, process_sources_with_policy,
+    CompileErrorReporter, Evaluator, SemanticPolicy, Shared, Symbols, TypeInterner,
+    infer_from_sources, parse_files, process_sources_with_policy,
 };
 
 #[test]

@@ -1,10 +1,8 @@
-use redscript_compiler_frontend::Shared;
-
 use redscript_community_ast::SourceMap;
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{
-    CompileErrorReporter, Evaluator, SemanticPolicy, Symbols, TypeInterner, ir, parse_files,
-    process_sources_with_policy,
+    CompileErrorReporter, Evaluator, SemanticPolicy, Shared, Symbols, TypeInterner, ir,
+    parse_files, process_sources_with_policy,
 };
 
 #[test]

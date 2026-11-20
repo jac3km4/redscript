@@ -1,10 +1,8 @@
-use redscript_compiler_frontend::Shared;
-
 use redscript_community_ast::{self as ast, SourceMap, Span};
 use redscript_compiler_frontend::{
     CompileErrorReporter, Diagnostic, Evaluator, LowerError, LoweredCompilationUnit,
-    LoweredFunction, PolyType, SemanticPolicy, Symbols, TypeId, TypeInterner, ir, parse_files,
-    predef, process_sources, process_sources_with_policy,
+    LoweredFunction, PolyType, SemanticPolicy, Shared, Symbols, TypeId, TypeInterner, ir,
+    parse_files, predef, process_sources, process_sources_with_policy,
 };
 
 fn analyze<'ctx>(
