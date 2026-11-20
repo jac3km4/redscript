@@ -174,6 +174,8 @@ impl OfficialOutput {
 /// Function bodies support only the official v1.2.2 14-byte Profile preamble.
 /// All lookup failures, malformed records and unsupported layouts panic explicitly.
 pub struct OfficialBundle<'a> {
+    /// Raw bytes retained for the byte-level fixtures in the in-crate tests.
+    #[cfg(test)]
     bytes: &'a [u8],
     reader: BundleReader<'a>,
 }
@@ -181,24 +183,35 @@ pub struct OfficialBundle<'a> {
 impl<'a> OfficialBundle<'a> {
     pub fn new(bytes: &'a [u8]) -> Self {
         let reader = BundleReader::new(bytes).expect("expected bounded REDS v14 tables");
-        let bundle = Self { bytes, reader };
+        let bundle = Self {
+            #[cfg(test)]
+            bytes,
+            reader,
+        };
         // Validate all string references and physical definition records without
         // decoding unrelated definition payloads (official layouts can differ).
         for table in [44, 56, 68, 92] {
             bundle.literal_pool(table);
         }
-        for index in 1..bundle.word(84) {
-            let header = bundle.header(index);
+        for index in 1..bundle.reader.definition_count() {
+            let header = bundle
+                .reader
+                .definition_header(index)
+                .expect("invalid definition header");
             bundle
                 .reader
                 .cnames()
-                .get(bundle.word(header))
+                .get(header.name())
                 .expect("invalid definition name");
             bundle.record(index);
         }
         bundle
     }
 
+    /// Reads a little-endian word directly from the bundle bytes.
+    ///
+    /// Retained for the byte-level fixtures in `tests`.
+    #[cfg(test)]
     fn word(&self, at: usize) -> u32 {
         u32::from_le_bytes(
             self.bytes
@@ -209,6 +222,10 @@ impl<'a> OfficialBundle<'a> {
         )
     }
 
+    /// Byte position of the definition header at `index`.
+    ///
+    /// Retained for the byte-level fixtures in `tests`.
+    #[cfg(test)]
     fn header(&self, index: u32) -> usize {
         assert!(
             index > 0 && index < self.word(84),
@@ -220,23 +237,19 @@ impl<'a> OfficialBundle<'a> {
     }
 
     fn record(&self, index: u32) -> &'a [u8] {
-        let header = self.header(index);
-        let start = self.word(header + 8) as usize;
-        let end = start
-            .checked_add(self.word(header + 12) as usize)
-            .expect("definition range overflow");
-        self.bytes
-            .get(start..end)
+        self.reader
+            .definition_bytes(index)
             .expect("definition exceeds bundle")
     }
 
     fn lookup(&self, name: &str, tag: u16, prefix: bool) -> u32 {
         let mut found = None;
-        for index in 1..self.word(84) {
-            let header = self.header(index);
-            let actual_tag =
-                u16::from_le_bytes(self.bytes[header + 16..header + 18].try_into().unwrap());
-            if actual_tag != tag {
+        for index in 1..self.reader.definition_count() {
+            let header = self
+                .reader
+                .definition_header(index)
+                .expect("invalid definition header");
+            if header.type_tag() != tag {
                 continue;
             }
             let actual = self.definition_name(index);
@@ -268,9 +281,17 @@ impl<'a> OfficialBundle<'a> {
     }
 
     pub fn definition_name(&self, index: u32) -> &'a str {
+        assert!(
+            index > 0 && index < self.reader.definition_count(),
+            "definition index out of bounds: {index}"
+        );
+        let header = self
+            .reader
+            .definition_header(index)
+            .expect("invalid definition header");
         self.reader
             .cnames()
-            .get(self.word(self.header(index)))
+            .get(header.name())
             .expect("invalid definition name")
     }
 

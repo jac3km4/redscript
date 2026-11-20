@@ -15,9 +15,9 @@ pub use bundle::SaveError;
 pub use bundle::{BundleReader, PoolItemIndex, PoolItemIndexMut, ScriptBundle, WriteableBundle};
 pub use byte;
 pub use definition::{
-    Class, ClassFlags, CodeIter, Definition, Enum, EnumMember, Field, FieldFlags, Function,
-    FunctionBody, FunctionFlags, IndexedDefinition, Local, LocalFlags, Parameter, ParameterFlags,
-    Property, SourceFile, SourceReference, Type, TypeKind, Visibility,
+    Class, ClassFlags, CodeIter, Definition, DefinitionHeader, Enum, EnumMember, Field, FieldFlags,
+    Function, FunctionBody, FunctionFlags, IndexedDefinition, Local, LocalFlags, Parameter,
+    ParameterFlags, Property, SourceFile, SourceReference, Type, TypeKind, Visibility,
 };
 pub use index::{
     CNameIndex, ClassIndex, EnumIndex, EnumValueIndex, FieldIndex, FunctionIndex, LocalIndex,

@@ -72,6 +72,53 @@ impl<'i> BundleReader<'i> {
     pub fn definitions(&self) -> ItemReader<'_, 'i, Definition<'i>> {
         ItemReader::new(self, &self.header.definitions)
     }
+
+    /// Gets the number of definitions in the bundle, including the undefined
+    /// placeholder definition at index 0.
+    #[inline]
+    pub fn definition_count(&self) -> u32 {
+        self.header.definitions.count
+    }
+
+    /// Reads the raw definition header at `index`.
+    ///
+    /// The address is computed from the definitions table offset with checked
+    /// arithmetic and a fixed [`Definition::HEADER_SIZE`] stride. An out-of-bounds
+    /// index or an overflowing address is reported as an error.
+    pub fn definition_header(&self, index: u32) -> byte::Result<DefinitionHeader> {
+        if index >= self.header.definitions.count {
+            return Err(byte::Error::BadInput {
+                err: "definition index out of bounds",
+            });
+        }
+        let pos = index
+            .checked_mul(Definition::HEADER_SIZE)
+            .and_then(|size| self.header.definitions.offset.checked_add(size))
+            .ok_or(byte::Error::BadInput {
+                err: "definition header address overflow",
+            })?;
+        self.contents.read_at(pos as usize, ENDIANESS)
+    }
+
+    /// Returns the physical byte range of the definition at `index`.
+    ///
+    /// The range is `offset..offset + size` from the definition header, checked
+    /// against the bundle contents. It never uses virtual code length as a
+    /// physical byte count.
+    pub fn definition_bytes(&self, index: u32) -> byte::Result<&'i [u8]> {
+        let header = self.definition_header(index)?;
+        let end = header
+            .offset()
+            .checked_add(header.size())
+            .ok_or(byte::Error::BadInput {
+                err: "definition range overflow",
+            })?;
+        self.contents
+            .get(header.offset() as usize..end as usize)
+            .ok_or(byte::Error::BadInput {
+                err: "definition range exceeds bundle",
+            })
+    }
 }
 
 #[derive(Debug, TryRead, TryWrite, Measure)]

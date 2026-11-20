@@ -41,6 +41,23 @@ impl DefinitionHeader {
     pub(crate) fn offset(&self) -> u32 {
         self.offset
     }
+
+    #[inline]
+    pub(crate) fn size(&self) -> u32 {
+        self.size
+    }
+
+    /// Gets the name index of this definition.
+    #[inline]
+    pub fn name(&self) -> CNameIndex {
+        self.name
+    }
+
+    /// Gets the definition type tag.
+    #[inline]
+    pub fn type_tag(&self) -> u16 {
+        self.type_tag
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

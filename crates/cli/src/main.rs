@@ -1,6 +1,6 @@
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::str::FromStr;
 
@@ -14,7 +14,7 @@ use redscript_compiler_api::{
     Compilation, DiagnosticLevel, FlushError, ScriptBundle, SourceMapExt, TypeInterner, pass,
 };
 use redscript_decompiler::{Settings, decompile_all};
-use redscript_dotfile::Dotfile;
+use redscript_dotfile::{Dotfile, FormatConfig};
 use vmap::Map;
 
 mod redmod;
@@ -156,6 +156,88 @@ struct FormatOpts {
     max_sig_digits: Option<u8>,
 }
 
+/// The formatting flags shared by `decompile` and `format`.
+///
+/// argh 0.1 does not provide `#[argh(flatten)]`, so the flags are declared on
+/// each subcommand; this type gathers them so `FormatSettings` handling (and the
+/// dotfile fallback for `format`) is shared.
+#[derive(Debug, Default)]
+struct FormatArgs {
+    indent: Option<u16>,
+    max_width: Option<u16>,
+    max_chain_fields: Option<u8>,
+    max_chain_calls: Option<u8>,
+    max_chain_operators: Option<u8>,
+    max_chain_total: Option<u8>,
+    max_sig_digits: Option<u8>,
+}
+
+impl FormatArgs {
+    /// Applies every provided option to `settings`, leaving the rest unchanged.
+    fn apply_to(&self, settings: &mut FormatSettings) {
+        if let Some(indent) = self.indent {
+            settings.indent = indent;
+        }
+        if let Some(max_width) = self.max_width {
+            settings.max_width = max_width;
+        }
+        if let Some(max_chain_calls) = self.max_chain_calls {
+            settings.max_chain_calls = max_chain_calls;
+        }
+        if let Some(max_chain_fields) = self.max_chain_fields {
+            settings.max_chain_fields = max_chain_fields;
+        }
+        if let Some(max_chain_operators) = self.max_chain_operators {
+            settings.max_chain_operators = max_chain_operators;
+        }
+        if let Some(max_chain_total) = self.max_chain_total {
+            settings.max_chain_total = max_chain_total;
+        }
+        settings.trunc_sig_digits = self.max_sig_digits;
+    }
+
+    /// Fills unset options from a dotfile, preferring explicitly provided ones.
+    fn or_dotfile(self, config: &FormatConfig) -> Self {
+        Self {
+            indent: self.indent.or(config.indent),
+            max_width: self.max_width.or(config.max_width),
+            max_chain_fields: self.max_chain_fields.or(config.max_chain_fields),
+            max_chain_calls: self.max_chain_calls.or(config.max_chain_calls),
+            max_chain_operators: self.max_chain_operators.or(config.max_chain_operators),
+            max_chain_total: self.max_chain_total.or(config.max_chain_total),
+            max_sig_digits: self.max_sig_digits,
+        }
+    }
+}
+
+impl From<&DecompileOpts> for FormatArgs {
+    fn from(opts: &DecompileOpts) -> Self {
+        Self {
+            indent: opts.indent,
+            max_width: opts.max_width,
+            max_chain_fields: opts.max_chain_fields,
+            max_chain_calls: opts.max_chain_calls,
+            max_chain_operators: opts.max_chain_operators,
+            max_chain_total: opts.max_chain_total,
+            max_sig_digits: opts.max_sig_digits,
+        }
+    }
+}
+
+impl From<&FormatOpts> for FormatArgs {
+    fn from(opts: &FormatOpts) -> Self {
+        Self {
+            indent: opts.indent,
+            max_width: opts.max_width,
+            max_chain_fields: opts.max_chain_fields,
+            max_chain_calls: opts.max_chain_calls,
+            max_chain_operators: opts.max_chain_operators,
+            max_chain_total: opts.max_chain_total,
+            max_sig_digits: opts.max_sig_digits,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum WarnOn {
     UnusedLocals,
@@ -244,40 +326,72 @@ fn fatal_diagnostic_level(runtime_compatible: bool) -> DiagnosticLevel {
     }
 }
 
-fn compile(opts: CompileOpts) -> anyhow::Result<ExitCode> {
-    let sources = load_sources(&opts.src)?;
-    let (map, _f) = Map::with_options()
-        .open(&opts.bundle)
-        .with_context(|| format!("failed to read baseline bundle {}", opts.bundle.display()))?;
-    let interner = TypeInterner::default();
-    let passes = opts
-        .warn_on
-        .into_iter()
-        .map(WarnOn::to_pass)
-        .collect::<Vec<_>>();
+/// Sources, memory-mapped baseline bundle and interner shared by `compile` and
+/// `lint`, together with the compilation they feed.
+struct CompilationInputs {
+    bundle: PathBuf,
+    sources: SourceMap,
+    map: Map,
+    interner: TypeInterner,
+}
 
-    match Compilation::builder()
-        .bundle(&map)
-        .sources(&sources)
-        .type_interner(&interner)
-        .diagnostics(&passes)
-        .fatal_diagnostic_level(fatal_diagnostic_level(opts.runtime_compatible))
-        .compile()
-        .with_context(|| {
-            format!(
-                "failed to compile with baseline bundle {}",
-                opts.bundle.display()
-            )
-        })?
+impl CompilationInputs {
+    fn load(src: &[PathBuf], bundle: &Path) -> anyhow::Result<Self> {
+        let sources = load_sources(src)?;
+        let (map, _file) = Map::with_options()
+            .open(bundle)
+            .with_context(|| format!("failed to read baseline bundle {}", bundle.display()))?;
+        Ok(Self {
+            bundle: bundle.to_path_buf(),
+            sources,
+            map,
+            interner: TypeInterner::default(),
+        })
+    }
+
+    /// Builds the compilation, reporting failures as `failed to {action}`.
+    fn compile<'a>(
+        &'a self,
+        warn_on: &[WarnOn],
+        runtime_compatible: bool,
+        action: &str,
+    ) -> anyhow::Result<Compilation<'a>> {
+        let passes = warn_on
+            .iter()
+            .copied()
+            .map(WarnOn::to_pass)
+            .collect::<Vec<_>>();
+
+        Compilation::builder()
+            .bundle(&self.map)
+            .sources(&self.sources)
+            .type_interner(&self.interner)
+            .diagnostics(&passes)
+            .fatal_diagnostic_level(fatal_diagnostic_level(runtime_compatible))
+            .compile()
+            .with_context(|| {
+                format!(
+                    "failed to {action} with baseline bundle {}",
+                    self.bundle.display()
+                )
+            })
+    }
+}
+
+fn compile(opts: CompileOpts) -> anyhow::Result<ExitCode> {
+    let inputs = CompilationInputs::load(&opts.src, &opts.bundle)?;
+
+    match inputs
+        .compile(&opts.warn_on, opts.runtime_compatible, "compile")?
         .flush(&opts.output)
     {
         Ok((_, diagnostics)) => {
-            diagnostics.dump(&sources, DiagnosticLevel::from(opts.warn_level))?;
+            diagnostics.dump(&inputs.sources, DiagnosticLevel::from(opts.warn_level))?;
             log::info!("Compilation successful");
             Ok(ExitCode::SUCCESS)
         }
         Err(FlushError::FatalErrors(diagnostics, _)) => {
-            diagnostics.dump(&sources, DiagnosticLevel::from(opts.warn_level))?;
+            diagnostics.dump(&inputs.sources, DiagnosticLevel::from(opts.warn_level))?;
             log::info!("Compilation failed");
             Ok(ExitCode::FAILURE)
         }
@@ -290,33 +404,11 @@ fn compile(opts: CompileOpts) -> anyhow::Result<ExitCode> {
 }
 
 fn lint(opts: LintOpts) -> anyhow::Result<ExitCode> {
-    let sources = load_sources(&opts.src)?;
-    let (map, _f) = Map::with_options()
-        .open(&opts.bundle)
-        .with_context(|| format!("failed to read baseline bundle {}", opts.bundle.display()))?;
-    let interner = TypeInterner::default();
-    let passes = opts
-        .warn_on
-        .into_iter()
-        .map(WarnOn::to_pass)
-        .collect::<Vec<_>>();
-
-    let comp = Compilation::builder()
-        .bundle(&map)
-        .sources(&sources)
-        .type_interner(&interner)
-        .diagnostics(&passes)
-        .fatal_diagnostic_level(fatal_diagnostic_level(opts.runtime_compatible))
-        .compile()
-        .with_context(|| {
-            format!(
-                "failed to lint with baseline bundle {}",
-                opts.bundle.display()
-            )
-        })?;
+    let inputs = CompilationInputs::load(&opts.src, &opts.bundle)?;
+    let comp = inputs.compile(&opts.warn_on, opts.runtime_compatible, "lint")?;
 
     comp.diagnostics()
-        .dump(&sources, DiagnosticLevel::from(opts.warn_level))?;
+        .dump(&inputs.sources, DiagnosticLevel::from(opts.warn_level))?;
 
     if comp.has_fatal_errors() {
         log::info!("Compilation failed");
@@ -329,25 +421,7 @@ fn lint(opts: LintOpts) -> anyhow::Result<ExitCode> {
 
 fn decompile(opts: DecompileOpts) -> anyhow::Result<ExitCode> {
     let mut settings = FormatSettings::default();
-    if let Some(indent) = opts.indent {
-        settings.indent = indent;
-    }
-    if let Some(max_width) = opts.max_width {
-        settings.max_width = max_width;
-    }
-    if let Some(max_chain_calls) = opts.max_chain_calls {
-        settings.max_chain_calls = max_chain_calls;
-    }
-    if let Some(max_chain_fields) = opts.max_chain_fields {
-        settings.max_chain_fields = max_chain_fields;
-    }
-    if let Some(max_chain_operators) = opts.max_chain_operators {
-        settings.max_chain_operators = max_chain_operators;
-    }
-    if let Some(max_chain_total) = opts.max_chain_total {
-        settings.max_chain_total = max_chain_total;
-    }
-    settings.trunc_sig_digits = opts.max_sig_digits;
+    FormatArgs::from(&opts).apply_to(&mut settings);
 
     let prefix_map = HashMap::default();
     let ctx = FormatCtx::new(&settings, &prefix_map);
@@ -392,28 +466,9 @@ fn format(opts: FormatOpts) -> anyhow::Result<ExitCode> {
     let dotfile = Dotfile::load_or_default(&opts.src)?;
 
     let mut settings = FormatSettings::default();
-    if let Some(indent) = opts.indent.or(dotfile.format.indent) {
-        settings.indent = indent;
-    }
-    if let Some(max_width) = opts.max_width.or(dotfile.format.max_width) {
-        settings.max_width = max_width;
-    }
-    if let Some(max_chain_calls) = opts.max_chain_calls.or(dotfile.format.max_chain_calls) {
-        settings.max_chain_calls = max_chain_calls;
-    }
-    if let Some(max_chain_fields) = opts.max_chain_fields.or(dotfile.format.max_chain_fields) {
-        settings.max_chain_fields = max_chain_fields;
-    }
-    if let Some(max_chain_operators) = opts
-        .max_chain_operators
-        .or(dotfile.format.max_chain_operators)
-    {
-        settings.max_chain_operators = max_chain_operators;
-    }
-    if let Some(max_chain_total) = opts.max_chain_total.or(dotfile.format.max_chain_total) {
-        settings.max_chain_total = max_chain_total;
-    }
-    settings.trunc_sig_digits = opts.max_sig_digits;
+    FormatArgs::from(&opts)
+        .or_dotfile(&dotfile.format)
+        .apply_to(&mut settings);
 
     let mut errors = vec![];
     let mut failed = false;
