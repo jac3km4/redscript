@@ -1,7 +1,6 @@
 use std::borrow::{Borrow, Cow};
 use std::hash::Hash;
 use std::ops::Not;
-use std::rc::Rc;
 use std::{fmt, iter, ops};
 
 use bitfield_struct::bitfield;
@@ -13,7 +12,7 @@ use smallvec::SmallVec;
 
 use crate::types::{CtxVar, Type, TypeApp, TypeId};
 use crate::utils::fmt::sep_by;
-use crate::{IndexMap, MonoType, RefType, Variance, predef};
+use crate::{IndexMap, MonoType, RefType, Shared, Variance, predef};
 
 mod functions;
 
@@ -297,7 +296,7 @@ impl<'ctx> Symbols<'ctx> {
             .params()
             .iter()
             .map(|var| crate::PolyType::from_type(&Type::Ctx(var.clone())))
-            .collect::<Rc<_>>();
+            .collect::<Shared<_>>();
         let parent = crate::lower::InferredTypeApp::new(receiver, args)
             .instantiate_as::<AnyBaseType>(method.parent(), self)?;
         crate::PolyType::from_type_with_env(
@@ -527,7 +526,7 @@ impl<'ctx> ops::Index<FieldId<'ctx>> for Symbols<'ctx> {
 
 #[derive(Debug, Clone)]
 pub struct TypeDef<'ctx> {
-    params: Box<[Rc<CtxVar<'ctx>>]>,
+    params: Box<[Shared<CtxVar<'ctx>>]>,
     schema: TypeSchema<'ctx>,
     doc: Box<[&'ctx str]>,
 }
@@ -542,7 +541,7 @@ impl<'ctx> TypeDef<'ctx> {
     }
 
     pub fn new(
-        params: impl Into<Box<[Rc<CtxVar<'ctx>>]>>,
+        params: impl Into<Box<[Shared<CtxVar<'ctx>>]>>,
         schema: TypeSchema<'ctx>,
         doc: impl Into<Box<[&'ctx str]>>,
     ) -> Self {
@@ -554,7 +553,7 @@ impl<'ctx> TypeDef<'ctx> {
     }
 
     #[inline]
-    pub fn params(&self) -> &[Rc<CtxVar<'ctx>>] {
+    pub fn params(&self) -> &[Shared<CtxVar<'ctx>>] {
         &self.params
     }
 

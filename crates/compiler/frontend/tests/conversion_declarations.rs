@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use redscript_compiler_frontend::Shared;
 
 use redscript_community_ast::{ConversionKind, SourceMap};
 use redscript_compiler_api::{Diagnostic, SourceMapExt};
@@ -158,7 +158,7 @@ fn ambiguous_native_conversions_explain_selection_failure() {
     let modules = parse_files(&sources, &mut reporter);
     assert!(reporter.reported().is_empty(), "{reporter:?}");
     let evaluator = Evaluator::from_modules(&modules);
-    let policy = Rc::new(SemanticPolicy {
+    let policy = Shared::new(SemanticPolicy {
         native_object_cast: true,
         ..SemanticPolicy::default()
     });

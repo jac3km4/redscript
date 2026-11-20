@@ -1,7 +1,10 @@
 use std::path::{Path, PathBuf};
 use std::{fmt, fs, io};
 
+#[cfg(not(feature = "sync"))]
 use elsa::FrozenVec;
+#[cfg(feature = "sync")]
+use elsa::sync::FrozenVec;
 
 use crate::Span;
 use crate::span::FileId;

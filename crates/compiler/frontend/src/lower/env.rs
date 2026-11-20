@@ -1,5 +1,3 @@
-use std::cell::Cell;
-use std::rc::Rc;
 use std::sync::LazyLock;
 
 use hashbrown::HashMap;
@@ -9,9 +7,10 @@ use redscript_community_ast::Span;
 use crate::lower::error::{Error, LowerResult};
 use crate::lower::types::PolyType;
 use crate::symbols::{FreeFunctionIndex, FreeFunctionIndexes, FunctionEntry, Symbols};
+use crate::sync::{SharedU16, SharedU32};
 use crate::types::{CtxVar, Type, TypeId, predef};
 use crate::utils::{Lazy, ScopedMap};
-use crate::{Aggregate, FreeFunction, IndexMap, ir};
+use crate::{Aggregate, FreeFunction, IndexMap, Shared, ir};
 
 #[derive(Debug)]
 pub struct Env<'scope, 'ctx> {
@@ -19,7 +18,7 @@ pub struct Env<'scope, 'ctx> {
     funcs: &'scope ScopedMap<'scope, &'ctx str, FreeFunctionIndexes>,
     locals: ScopedMap<'scope, &'ctx str, ir::LocalInfo<'ctx>>,
     scope: ir::ScopeId,
-    scope_counter: Rc<Cell<u32>>,
+    scope_counter: Shared<SharedU32>,
 }
 
 impl<'scope, 'ctx> Env<'scope, 'ctx> {
@@ -32,7 +31,7 @@ impl<'scope, 'ctx> Env<'scope, 'ctx> {
             funcs: globals,
             locals: ScopedMap::default(),
             scope: ir::ScopeId(0),
-            scope_counter: Rc::new(Cell::new(1)),
+            scope_counter: Shared::new(SharedU32::new(1)),
         }
     }
 
@@ -157,23 +156,23 @@ pub struct SemanticPolicy {
 
 #[derive(Debug, Clone, Default)]
 struct PolicyTable {
-    index: Rc<HashMap<ast::FileId, Rc<SemanticPolicy>>>,
+    index: Shared<HashMap<ast::FileId, Shared<SemanticPolicy>>>,
 }
 
 impl PolicyTable {
-    fn new(policies: &[(ast::FileId, Rc<SemanticPolicy>)]) -> Self {
+    fn new(policies: &[(ast::FileId, Shared<SemanticPolicy>)]) -> Self {
         let mut index = HashMap::with_capacity(policies.len());
         for (file, policy) in policies {
             index.entry(*file).or_insert_with(|| policy.clone());
         }
         Self {
-            index: Rc::new(index),
+            index: Shared::new(index),
         }
     }
 
     fn get(&self, file: ast::FileId) -> &SemanticPolicy {
         static DEFAULT: LazyLock<SemanticPolicy> = LazyLock::new(SemanticPolicy::default);
-        self.index.get(&file).map_or(&DEFAULT, Rc::as_ref)
+        self.index.get(&file).map_or(&DEFAULT, |policy| &**policy)
     }
 }
 
@@ -233,7 +232,7 @@ impl<'scope, 'ctx> TypeEnv<'scope, 'ctx> {
         self.types.insert(name, typ);
     }
 
-    pub(crate) fn set_policies(&mut self, policies: &[(ast::FileId, Rc<SemanticPolicy>)]) {
+    pub(crate) fn set_policies(&mut self, policies: &[(ast::FileId, Shared<SemanticPolicy>)]) {
         self.policies = PolicyTable::new(policies);
     }
 
@@ -275,7 +274,7 @@ impl<'scope, 'ctx> TypeEnv<'scope, 'ctx> {
                     let args = args
                         .iter()
                         .map(|(typ, span)| self.resolve(typ, symbols, *span))
-                        .collect::<Result<Rc<_>, _>>()?;
+                        .collect::<Result<Shared<_>, _>>()?;
                     Ok(Type::app(id, args))
                 }
                 (Some(TypeRef::Var(var)), []) => Ok(Type::Ctx(var.clone())),
@@ -308,7 +307,7 @@ impl<'scope, 'ctx> TypeEnv<'scope, 'ctx> {
                     .iter()
                     .chain([&**return_type])
                     .map(|(typ, span)| self.resolve(typ, symbols, *span))
-                    .collect::<Result<Rc<_>, _>>()?;
+                    .collect::<Result<Shared<_>, _>>()?;
                 let id = TypeId::fn_with_arity(params.len())
                     .ok_or(Error::UnsupportedArity(params.len(), span))?;
                 Ok(Type::app(id, args))
@@ -341,12 +340,12 @@ impl Default for TypeEnv<'_, '_> {
 #[derive(Debug)]
 pub struct Locals<'scope, 'ctx> {
     locals: Vec<ir::LocalInfo<'ctx>>,
-    counter: &'scope Cell<u16>,
+    counter: &'scope SharedU16,
     depth: usize,
 }
 
 impl<'scope, 'ctx> Locals<'scope, 'ctx> {
-    pub fn new(counter: &'scope Cell<u16>, depth: usize) -> Self {
+    pub fn new(counter: &'scope SharedU16, depth: usize) -> Self {
         Self {
             locals: vec![],
             counter,
@@ -431,7 +430,7 @@ impl<'scope, 'ctx> Locals<'scope, 'ctx> {
     }
 
     #[inline]
-    pub fn counter(&self) -> &'scope Cell<u16> {
+    pub fn counter(&self) -> &'scope SharedU16 {
         self.counter
     }
 
@@ -469,24 +468,36 @@ impl Capture {
     }
 }
 
+#[cfg(not(feature = "sync"))]
+type LazyVarType<'scope, 'ctx> = Shared<
+    Lazy<
+        LowerResult<'ctx, Shared<CtxVar<'ctx>>>,
+        Box<
+            dyn Fn((&TypeEnv<'_, 'ctx>, &Symbols<'ctx>)) -> LowerResult<'ctx, Shared<CtxVar<'ctx>>>
+                + 'scope,
+        >,
+    >,
+>;
+
+#[cfg(feature = "sync")]
+type LazyVarType<'scope, 'ctx> = Shared<
+    Lazy<
+        LowerResult<'ctx, Shared<CtxVar<'ctx>>>,
+        Box<
+            dyn Fn((&TypeEnv<'_, 'ctx>, &Symbols<'ctx>)) -> LowerResult<'ctx, Shared<CtxVar<'ctx>>>
+                + Send
+                + Sync
+                + 'scope,
+        >,
+    >,
+>;
+
 #[derive(Debug, Clone)]
 pub enum TypeRef<'scope, 'ctx> {
     Id(TypeId<'ctx>),
-    Var(Rc<CtxVar<'ctx>>),
+    Var(Shared<CtxVar<'ctx>>),
     #[allow(clippy::type_complexity)]
-    LazyVar(
-        Rc<
-            Lazy<
-                LowerResult<'ctx, Rc<CtxVar<'ctx>>>,
-                Box<
-                    dyn Fn(
-                            (&TypeEnv<'_, 'ctx>, &Symbols<'ctx>),
-                        ) -> LowerResult<'ctx, Rc<CtxVar<'ctx>>>
-                        + 'scope,
-                >,
-            >,
-        >,
-    ),
+    LazyVar(LazyVarType<'scope, 'ctx>),
 }
 
 impl<'ctx> TypeRef<'_, 'ctx> {
@@ -517,31 +528,31 @@ mod tests {
         let first = sources.push_front("first.reds", "");
         let second = sources.push_back("second.reds", "");
         let absent = sources.push_back("absent.reds", "");
-        let shared = Rc::new(SemanticPolicy {
+        let shared = Shared::new(SemanticPolicy {
             hoist_locals: true,
             ..SemanticPolicy::default()
         });
-        let duplicate = Rc::new(SemanticPolicy::default());
+        let duplicate = Shared::new(SemanticPolicy::default());
         let mut env = TypeEnv::default();
         env.set_policies(&[
             (first, shared.clone()),
             (second, shared.clone()),
             (first, duplicate.clone()),
         ]);
-        assert_eq!(Rc::strong_count(&shared), 3);
-        assert_eq!(Rc::strong_count(&duplicate), 1);
+        assert_eq!(Shared::strong_count(&shared), 3);
+        assert_eq!(Shared::strong_count(&duplicate), 1);
 
         let nested = env.introduce_scope();
         let pushed = nested.push_scope(IndexMap::default());
         let cloned = env.clone();
         for scope in [&env, &nested, &pushed, &cloned] {
-            assert!(Rc::ptr_eq(&env.policies.index, &scope.policies.index));
+            assert!(Shared::ptr_eq(&env.policies.index, &scope.policies.index));
             for file in [first, second] {
                 let policy = scope.policy(Span::new(0, 0, file));
                 assert!(policy.hoist_locals);
                 assert!(std::ptr::eq(policy, shared.as_ref()));
             }
-            assert_eq!(Rc::strong_count(&shared), 3);
+            assert_eq!(Shared::strong_count(&shared), 3);
         }
         let default_env = TypeEnv::default();
         let default = default_env.policy(Span::new(0, 0, first));
@@ -557,18 +568,20 @@ mod tests {
         let file = sources.push_back("test.reds", "T");
         let span = Span::new(0, 1, file);
         let symbols = Symbols::with_default_types();
-        let var = Rc::new(CtxVar::new("T", Variance::Invariant, None, None));
+        let var = Shared::new(CtxVar::new("T", Variance::Invariant, None, None));
         let lazy_var = var.clone();
         let refs = [
             TypeRef::Var(var.clone()),
-            TypeRef::LazyVar(Rc::new(Lazy::new(Box::new(move |_| Ok(lazy_var.clone()))))),
+            TypeRef::LazyVar(Shared::new(Lazy::new(Box::new(move |_| {
+                Ok(lazy_var.clone())
+            })))),
         ];
 
         for type_ref in refs {
             let mut env = TypeEnv::default();
             env.add("T", type_ref);
             let resolved = env.resolve(&ast::Type::plain("T"), &symbols, span).unwrap();
-            assert!(matches!(resolved, Type::Ctx(resolved) if Rc::ptr_eq(&resolved, &var)));
+            assert!(matches!(resolved, Type::Ctx(resolved) if Shared::ptr_eq(&resolved, &var)));
         }
     }
 
@@ -579,10 +592,10 @@ mod tests {
         let span = Span::new(0, 4, file);
         let arg_span = Span::new(2, 3, file);
         let symbols = Symbols::with_default_types();
-        let var = Rc::new(CtxVar::new("T", Variance::Invariant, None, None));
+        let var = Shared::new(CtxVar::new("T", Variance::Invariant, None, None));
         let refs = [
             TypeRef::Var(var),
-            TypeRef::LazyVar(Rc::new(Lazy::new(Box::new(|_| {
+            TypeRef::LazyVar(Shared::new(Lazy::new(Box::new(|_| {
                 panic!("applied type variables must be rejected without forcing the stub")
             })))),
         ];

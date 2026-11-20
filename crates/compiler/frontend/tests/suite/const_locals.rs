@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use redscript_compiler_frontend::Shared;
 
 use redscript_community_ast::SourceMap;
 use redscript_compiler_api::SourceMapExt;
@@ -49,7 +49,7 @@ fn check_diagnostics(
         evaluator,
         &mut reporter,
         &interner,
-        &[(file, Rc::new(policy))],
+        &[(file, Shared::new(policy))],
     );
     assert!(
         unit.functions
@@ -341,7 +341,7 @@ fn local_rebinding_policy_is_file_local_in_both_orders() {
             &interner,
             &[(
                 native,
-                Rc::new(SemanticPolicy {
+                Shared::new(SemanticPolicy {
                     const_local_handle_rebinding: true,
                     ..SemanticPolicy::default()
                 }),

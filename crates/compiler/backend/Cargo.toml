@@ -23,5 +23,9 @@ redscript-compiler-api.workspace = true
 similar-asserts.workspace = true
 insta.workspace = true
 
+[features]
+# Thread-safe analysis types (`Send + Sync`) instead of `Rc`/`RefCell`.
+sync = ["redscript-compiler-frontend/sync"]
+
 [lints]
 workspace = true

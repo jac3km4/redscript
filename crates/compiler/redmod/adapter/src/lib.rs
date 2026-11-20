@@ -13,14 +13,13 @@ mod validate;
 
 use std::collections::HashSet;
 use std::fmt;
-use std::rc::Rc;
 
 pub use bridge::{CapabilityError, ParsedModule};
 pub use policy::{ArrayOperation, array_operations};
 use redscript_community_ast::{FileId, SourceModule, Span};
 use redscript_compiler_frontend::{
     CompileErrorReporter, Diagnostic, Evaluator, FunctionId, LowerError, LoweredCompilationUnit,
-    Symbols, TypeInterner,
+    Shared, Symbols, TypeInterner,
 };
 pub use semantic::SemanticError;
 pub use validate::validate as validate_module;
@@ -251,7 +250,7 @@ pub fn process_sources<'ctx>(
         .chain(modules.into_iter().map(|parsed| parsed.module))
         .collect();
     let evaluator = Evaluator::from_modules(&sources);
-    let policy = Rc::new(policy::POLICY);
+    let policy = Shared::new(policy::POLICY);
     let policies: Vec<_> = files.iter().map(|&file| (file, policy.clone())).collect();
     let (mut unit, symbols) = redscript_compiler_frontend::process_sources_with_policy(
         sources, symbols, evaluator, reporter, interner, &policies,

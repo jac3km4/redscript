@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use hashbrown::{HashMap, HashSet};
 use identity_hash::BuildIdentityHasher;
 use redscript_community_ast::Span;
@@ -12,7 +10,7 @@ use crate::symbols::AnyBaseType;
 use crate::utils::ScopedMap;
 use crate::{
     CtxVar, Diagnostic, FreeFunction, FunctionIndex, FunctionType, IndexMap, Method, MethodId,
-    Param, PolyType, RefType, Type, TypeApp, TypeId, TypeSchema, Variance,
+    Param, PolyType, RefType, Shared, Type, TypeApp, TypeId, TypeSchema, Variance,
 };
 
 impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
@@ -200,7 +198,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                 .params()
                 .iter()
                 .map(|var| PolyType::from_type(&Type::Ctx(var.clone())))
-                .collect::<Rc<_>>();
+                .collect::<Shared<_>>();
             let this_t = InferredTypeApp::new(cls_id, this_args);
 
             let mut implemented: IndexMap<MethodId<'ctx>, FunctionIndex> = IndexMap::default();

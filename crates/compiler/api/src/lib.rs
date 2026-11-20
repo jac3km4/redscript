@@ -463,6 +463,74 @@ impl SourceMapExt for SourceMap {
     }
 }
 
+#[cfg(all(test, feature = "sync"))]
+mod sync_tests {
+    use super::*;
+
+    #[test]
+    fn public_analysis_types_are_send_and_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<Symbols<'static>>();
+        assert_send_sync::<LoweredCompilationUnit<'static>>();
+        assert_send_sync::<Diagnostic<'static>>();
+        assert_send_sync::<TypeInterner>();
+        assert_send_sync::<ScriptBundle<'static>>();
+        assert_send_sync::<CheckedSources<'static>>();
+        assert_send_sync::<Diagnostics<'static>>();
+        assert_send_sync::<ast::SourceMap>();
+    }
+
+    #[test]
+    fn cyclic_type_reports_without_deadlocking() {
+        let sources = SourceMap::new();
+        sources.push_back("cycle.reds", "class Cycle<T extends T> {}\n");
+        let interner = TypeInterner::default();
+        let checked = CheckedSources::builder()
+            .sources(&sources)
+            .symbols(Symbols::with_default_types())
+            .type_interner(&interner)
+            .diagnostics(&[])
+            .check();
+        assert!(
+            checked
+                .diagnostics()
+                .into_iter()
+                .any(|diagnostic| diagnostic.code() == "CYCLIC_TYPE"),
+            "{:?}",
+            checked.diagnostics()
+        );
+    }
+
+    #[test]
+    fn checked_sources_move_across_threads() {
+        let sources = SourceMap::new();
+        sources.populate_boot_lib();
+        sources.push_back("check.reds", "func Test() -> Int32 { return 1; }\n");
+        let interner = TypeInterner::default();
+        let checked = CheckedSources::builder()
+            .sources(&sources)
+            .symbols(Symbols::with_default_types())
+            .type_interner(&interner)
+            .diagnostics(&[])
+            .check();
+
+        let names = std::thread::scope(|scope| {
+            scope
+                .spawn(move || {
+                    let (unit, symbols, _diagnostics) = checked.into_parts();
+                    assert!(unit.all_functions().next().is_some());
+                    symbols
+                        .free_functions()
+                        .map(|f| f.name().to_string())
+                        .collect::<Vec<_>>()
+                })
+                .join()
+                .unwrap()
+        });
+        assert!(names.iter().any(|name| name == "Test"), "{names:?}");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

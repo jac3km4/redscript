@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use redscript_compiler_frontend::Shared;
 
 use redscript_community_ast::{self as ast, SourceMap, Span};
 use redscript_compiler_frontend::{
@@ -26,7 +26,7 @@ fn analyze<'ctx>(
     let evaluator = Evaluator::from_modules(&modules);
     let policies: Vec<_> = policies
         .iter()
-        .map(|(file, policy)| (*file, Rc::new(*policy)))
+        .map(|(file, policy)| (*file, Shared::new(*policy)))
         .collect();
     let (unit, symbols) = process_sources_with_policy(
         modules,
@@ -71,8 +71,8 @@ fn shared_runtime_policies_keep_duplicate_precedence_and_scope_defaults() {
             hoist_locals: sources.files().count() > 1,
             ..SemanticPolicy::default()
         };
-        let shared = Rc::new(configuration);
-        let duplicate = Rc::new(SemanticPolicy::default());
+        let shared = Shared::new(configuration);
+        let duplicate = Shared::new(SemanticPolicy::default());
         let policies = [
             (first, shared.clone()),
             (second, shared.clone()),
@@ -97,8 +97,8 @@ fn shared_runtime_policies_keep_duplicate_precedence_and_scope_defaults() {
         assert_eq!(reporter.reported().len(), 1, "{:?}", reporter.reported());
         assert_eq!(reporter.reported()[0].code(), "UNRESOLVED_REF");
         assert_eq!(reporter.reported()[0].span().file, ordinary);
-        assert_eq!(Rc::strong_count(&shared), 3);
-        assert_eq!(Rc::strong_count(&duplicate), 2);
+        assert_eq!(Shared::strong_count(&shared), 3);
+        assert_eq!(Shared::strong_count(&duplicate), 2);
     }
 }
 

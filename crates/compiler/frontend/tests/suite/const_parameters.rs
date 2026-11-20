@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use redscript_compiler_frontend::Shared;
 
 use redscript_community_ast::{self as ast, SourceMap};
 use redscript_compiler_api::SourceMapExt;
@@ -274,7 +274,7 @@ fn const_relaxations_are_independent_and_file_local_in_both_orders() {
                 &interner,
                 &[(
                     relaxed,
-                    Rc::new(SemanticPolicy {
+                    Shared::new(SemanticPolicy {
                         const_param_element_writes: elements,
                         relaxed_const_checks: forwarding,
                         ..SemanticPolicy::default()
@@ -397,7 +397,7 @@ fn const_methods_enforce_readonly_this_in_community_policy() {
         evaluator,
         &mut reporter,
         &interner,
-        &[(file, Rc::new(policy))],
+        &[(file, Shared::new(policy))],
     );
     assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
 }
@@ -432,7 +432,7 @@ fn const_fields_are_enforced_in_community_policy() {
         evaluator,
         &mut reporter,
         &interner,
-        &[(file, Rc::new(policy))],
+        &[(file, Shared::new(policy))],
     );
     assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
 }
@@ -454,7 +454,7 @@ fn override_const_compatibility_is_enforced_in_community_policy() {
             evaluator,
             &mut reporter,
             &interner,
-            &[(file, Rc::new(policy))],
+            &[(file, Shared::new(policy))],
         );
         let errors: Vec<_> = reporter
             .reported()

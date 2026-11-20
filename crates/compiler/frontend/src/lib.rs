@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 mod arguments;
 mod cte;
 mod diagnostic;
@@ -9,9 +7,12 @@ mod modules;
 mod query;
 mod stages;
 mod symbols;
+mod sync;
 pub mod types;
 pub mod utils;
 mod visitor;
+
+pub use sync::{BoxedError, Shared};
 
 pub use arguments::absent_argument;
 pub use cte::Evaluator;
@@ -41,6 +42,7 @@ pub use types::{
 
 type IndexMap<K, V, S = hashbrown::DefaultHashBuilder> = indexmap::IndexMap<K, V, S>;
 type IndexSet<K, S = hashbrown::DefaultHashBuilder> = indexmap::IndexSet<K, S>;
+#[cfg(not(feature = "sync"))]
 type FrozenIndexSet<K, S = hashbrown::DefaultHashBuilder> = elsa::FrozenIndexSet<K, S>;
 
 pub type TypeScope<'scope, 'ctx> = IndexMap<&'ctx str, TypeRef<'scope, 'ctx>>;
@@ -105,7 +107,7 @@ pub fn process_sources_with_policy<'ctx>(
     evaluator: Evaluator<'ctx>,
     reporter: &mut CompileErrorReporter<'ctx>,
     interner: &'ctx TypeInterner,
-    policies: &[(ast::FileId, Rc<SemanticPolicy>)],
+    policies: &[(ast::FileId, Shared<SemanticPolicy>)],
 ) -> (LoweredCompilationUnit<'ctx>, Symbols<'ctx>) {
     let mut scope = Scope::new(&symbols);
     scope.set_policies(policies);

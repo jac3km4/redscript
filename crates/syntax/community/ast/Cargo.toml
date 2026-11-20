@@ -19,3 +19,5 @@ workspace = true
 chumsky = ["dep:chumsky"]
 ignore = ["dep:ignore"]
 testing = []
+# Thread-safe analysis types (`Send + Sync`) instead of `Rc`/`RefCell`.
+sync = []

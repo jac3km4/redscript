@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
 
 use redscript_community_ast::Span;
 
@@ -7,7 +6,7 @@ use crate::diagnostic::ConstWriteAction;
 use crate::ir::Visitor;
 use crate::{
     CompileErrorReporter, Diagnostic, FunctionId, LoweredCompilationUnit, Param, RefType,
-    SemanticPolicy, Symbols, Type, TypeApp, TypeId, ir, predef,
+    SemanticPolicy, Shared, Symbols, Type, TypeApp, TypeId, ir, predef,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -358,7 +357,7 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
     fn call_type_env(&self, call: &ir::Call<'ctx>) -> HashMap<&'ctx str, Type<'ctx>> {
         let mut env = HashMap::new();
         let bind_args = |env: &mut HashMap<&'ctx str, Type<'ctx>>,
-                         params: &[Rc<crate::CtxVar<'ctx, crate::Immutable>>],
+                         params: &[Shared<crate::CtxVar<'ctx, crate::Immutable>>],
                          args: &[ir::Type<'ctx>]| {
             for (var, arg) in params.iter().zip(args) {
                 if let Ok(typ) = arg.coalesced(self.symbols) {
@@ -391,7 +390,7 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
                         parent_type_args
                             .iter()
                             .filter_map(|t| t.coalesced(self.symbols).ok())
-                            .collect::<Rc<_>>(),
+                            .collect::<Shared<_>>(),
                     ),
                     method.parent(),
                     self.symbols,
@@ -446,7 +445,7 @@ fn substitute_type<'ctx>(typ: &Type<'ctx>, env: &HashMap<&'ctx str, Type<'ctx>>)
     match typ {
         Type::Ctx(var) => env.get(var.name()).cloned().unwrap_or_else(|| typ.clone()),
         Type::Data(app) if !app.args().is_empty() => {
-            let args: Rc<[Type<'ctx>]> = app
+            let args: Shared<[Type<'ctx>]> = app
                 .args()
                 .iter()
                 .map(|arg| substitute_type(arg, env))
@@ -467,7 +466,7 @@ fn instantiate_type_app_as<'ctx>(
         let base = class.schema().base_type()?;
         let env: HashMap<&'ctx str, Type<'ctx>> =
             class.vars().zip(cur.args().iter().cloned()).collect();
-        let args: Rc<[Type<'ctx>]> = base
+        let args: Shared<[Type<'ctx>]> = base
             .args()
             .iter()
             .map(|arg| substitute_type(arg, &env))

@@ -30,7 +30,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     .map_or(Ok(hint), |(typ, span)| self.resolve_type(typ, env, *span))
             })
             .chain([Ok(return_t.clone())])
-            .collect::<Result<Rc<_>, _>>()?;
+            .collect::<Result<Shared<_>, _>>()?;
 
         let types = params
             .iter()

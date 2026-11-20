@@ -355,13 +355,13 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
         &mut self,
         types: &'a TypeEnv<'a, 'ctx>,
         params: &'a [ast::SourceTypeParam<'ctx>],
-    ) -> (TypeEnv<'a, 'ctx>, Box<[Rc<CtxVar<'ctx>>]>) {
+    ) -> (TypeEnv<'a, 'ctx>, Box<[Shared<CtxVar<'ctx>>]>) {
         let mut types = types.introduce_scope();
 
         for param in params {
             let (name, name_span) = param.name;
-            let typ = TypeRef::LazyVar(Rc::new(Lazy::new(Box::new(|(env, symbols)| {
-                env.resolve_param(param, symbols).map(Rc::new)
+            let typ = TypeRef::LazyVar(Shared::new(Lazy::new(Box::new(|(env, symbols)| {
+                env.resolve_param(param, symbols).map(Shared::new)
             }))));
             if types.get(name).is_some() {
                 self.reporter

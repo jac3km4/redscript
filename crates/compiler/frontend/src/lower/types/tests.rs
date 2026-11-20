@@ -90,7 +90,7 @@ fn applicability_composes_nested_variance_and_preserves_unknowns() {
         symbols.add_type(
             id,
             TypeDef::new(
-                [Rc::new(CtxVar::new("T", variance, None, None))],
+                [Shared::new(CtxVar::new("T", variance, None, None))],
                 TypeSchema::Aggregate(Aggregate::default().into()),
                 [],
             ),
@@ -197,7 +197,7 @@ fn rigid_bounds_follow_lower_bounds_without_equating_upper_bounds() {
     let symbols = hierarchy(&interner);
     let base = Type::nullary(interner.intern("Base"));
     let leaf = PolyType::nullary(interner.intern("Leaf"));
-    let with_lower = Type::Ctx(Rc::new(CtxVar::new(
+    let with_lower = Type::Ctx(Shared::new(CtxVar::new(
         "T",
         Variance::Invariant,
         Some(base.clone()),
@@ -206,14 +206,14 @@ fn rigid_bounds_follow_lower_bounds_without_equating_upper_bounds() {
     .into_poly();
     assert!(leaf.satisfies_bound(&with_lower, &symbols));
 
-    let first = Type::Ctx(Rc::new(CtxVar::new(
+    let first = Type::Ctx(Shared::new(CtxVar::new(
         "T",
         Variance::Invariant,
         None,
         Some(base.clone()),
     )))
     .into_poly();
-    let second = Type::Ctx(Rc::new(CtxVar::new(
+    let second = Type::Ctx(Shared::new(CtxVar::new(
         "U",
         Variance::Invariant,
         None,
@@ -245,7 +245,7 @@ fn rejected_constraints_clear_guards_and_remove_new_edges() {
 
     let lhs = Var::new(base.clone(), None);
     let rhs = Var::new(Type::Nothing, Some(leaf.clone()));
-    let weak = [Rc::downgrade(&lhs.0), Rc::downgrade(&rhs.0)];
+    let weak = [Shared::downgrade(&lhs.0), Shared::downgrade(&rhs.0)];
     assert!(lhs.subtype(&rhs, &symbols).is_err());
     assert!(lhs.0.borrow().supers.is_empty());
     assert!(rhs.0.borrow().subs.is_empty());
@@ -415,7 +415,12 @@ fn nested_predecessors_remain_open_to_late_lower_bounds() {
     symbols.add_type(
         p,
         TypeDef::new(
-            [Rc::new(CtxVar::new("T", Variance::Covariant, None, None))],
+            [Shared::new(CtxVar::new(
+                "T",
+                Variance::Covariant,
+                None,
+                None,
+            ))],
             TypeSchema::Aggregate(aggregate.into()),
             [],
         ),
@@ -432,7 +437,7 @@ fn nested_predecessors_remain_open_to_late_lower_bounds() {
         for solve in permutations::<2>() {
             let x = Var::fresh();
             let y = Var::fresh();
-            let weak = [Rc::downgrade(&x.0), Rc::downgrade(&y.0)];
+            let weak = [Shared::downgrade(&x.0), Shared::downgrade(&y.0)];
             for step in insertion {
                 match step {
                     0 => x.subtype(&y, &symbols),
@@ -472,7 +477,7 @@ fn coalescing_rechecks_bounds_tightened_by_nested_dependencies() {
         for solve in permutations::<2>() {
             let x = Var::fresh();
             let y = Var::fresh();
-            let weak = [Rc::downgrade(&x.0), Rc::downgrade(&y.0)];
+            let weak = [Shared::downgrade(&x.0), Shared::downgrade(&y.0)];
             for step in insertion {
                 match step {
                     0 => x.subtype(&y, &symbols),
@@ -510,7 +515,7 @@ fn mixed_component_coalescing_is_independent_of_root_and_insertion_order() {
     for insertion in permutations::<3>() {
         for solve in permutations::<3>() {
             let vars = [Var::fresh(), Var::fresh(), Var::fresh()];
-            let weak = vars.each_ref().map(|var| Rc::downgrade(&var.0));
+            let weak = vars.each_ref().map(|var| Shared::downgrade(&var.0));
             link_mixed_component(&vars, insertion, &symbols);
             let expected = [
                 Type::Nothing,
@@ -536,7 +541,7 @@ fn exported_nested_bounds_retain_their_inference_component() {
     let symbols = hierarchy(&interner);
     let x = Var::fresh();
     let y = Var::fresh();
-    let weak = [Rc::downgrade(&x.0), Rc::downgrade(&y.0)];
+    let weak = [Shared::downgrade(&x.0), Shared::downgrade(&y.0)];
     x.subtype(&y, &symbols).unwrap();
     y.add_lower(
         &Type::app(predef::ARRAY, [PolyType::Var(x.clone())]),
@@ -559,7 +564,7 @@ fn mixed_component_survives_any_remaining_external_handle() {
     let symbols = hierarchy(&interner);
     for survivor in 0..3 {
         let vars = [Var::fresh(), Var::fresh(), Var::fresh()];
-        let weak = vars.each_ref().map(|var| Rc::downgrade(&var.0));
+        let weak = vars.each_ref().map(|var| Shared::downgrade(&var.0));
         link_mixed_component(&vars, [0, 1, 2], &symbols);
         let remaining = vars[survivor].clone();
         drop(vars);
@@ -578,7 +583,7 @@ fn mixed_directional_nested_cycles_have_finite_solutions_and_drop() {
         for edge_first in [false, true] {
             for finish in [false, true] {
                 let vars: Vec<_> = (0..nodes).map(|_| Var::fresh()).collect();
-                let weak: Vec<_> = vars.iter().map(|var| Rc::downgrade(&var.0)).collect();
+                let weak: Vec<_> = vars.iter().map(|var| Shared::downgrade(&var.0)).collect();
                 let x = &vars[0];
                 let y = &vars[nodes - 1];
                 let link = || {
@@ -664,7 +669,7 @@ fn branching_cycles_propagate_and_release_the_component() {
         let weak: Vec<_> = [&a, &d]
             .into_iter()
             .chain(&middle)
-            .map(|var| Rc::downgrade(&var.0))
+            .map(|var| Shared::downgrade(&var.0))
             .collect();
         for var in &middle {
             a.subtype(var, &symbols).unwrap();
@@ -690,7 +695,7 @@ fn rigid_lattice_bounds_preserve_identity_and_reject_unknown_meets() {
     let symbols = hierarchy(&interner);
     let base = Type::nullary(interner.intern("Base"));
     let leaf = Type::nullary(interner.intern("Leaf"));
-    let rigid = Type::Ctx(Rc::new(CtxVar::new(
+    let rigid = Type::Ctx(Shared::new(CtxVar::new(
         "T",
         Variance::Invariant,
         None,
@@ -706,7 +711,7 @@ fn rigid_lattice_bounds_preserve_identity_and_reject_unknown_meets() {
     }
     assert_eq!(rigid.lub(&rigid, &symbols).unwrap(), rigid);
     assert_eq!(rigid.glb(&rigid, &symbols).unwrap(), rigid);
-    let lower_bounded = Type::Ctx(Rc::new(CtxVar::new(
+    let lower_bounded = Type::Ctx(Shared::new(CtxVar::new(
         "U",
         Variance::Invariant,
         Some(base.clone()),
@@ -716,7 +721,12 @@ fn rigid_lattice_bounds_preserve_identity_and_reject_unknown_meets() {
         assert_eq!(l.lub(r, &symbols).unwrap(), lower_bounded);
         assert_eq!(l.glb(r, &symbols).unwrap(), leaf);
     }
-    let unbounded = Type::Ctx(Rc::new(CtxVar::new("V", Variance::Invariant, None, None)));
+    let unbounded = Type::Ctx(Shared::new(CtxVar::new(
+        "V",
+        Variance::Invariant,
+        None,
+        None,
+    )));
     assert!(unbounded.lub(&leaf, &symbols).is_err());
     assert!(leaf.lub(&unbounded, &symbols).is_err());
 }
@@ -740,7 +750,7 @@ fn application_lattice_operations_respect_all_variances() {
         symbols.add_type(
             id,
             TypeDef::new(
-                [Rc::new(CtxVar::new("T", variance, None, None))],
+                [Shared::new(CtxVar::new("T", variance, None, None))],
                 TypeSchema::Aggregate(Aggregate::default().into()),
                 [],
             ),
@@ -794,7 +804,7 @@ fn inherited_application_meet_refines_arguments() {
     let mut symbols = hierarchy(&interner);
     let parent = interner.intern("Parent");
     let child = interner.intern("Child");
-    let param = Rc::new(CtxVar::new("T", Variance::Covariant, None, None));
+    let param = Shared::new(CtxVar::new("T", Variance::Covariant, None, None));
     symbols.add_type(
         parent,
         TypeDef::new(

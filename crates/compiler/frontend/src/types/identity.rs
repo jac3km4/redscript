@@ -4,6 +4,7 @@ use std::{fmt, ptr};
 
 use identity_hash::IdentityHashable;
 
+#[cfg(not(feature = "sync"))]
 use crate::FrozenIndexSet;
 
 #[derive(Clone, Copy)]
@@ -135,10 +136,12 @@ impl fmt::Display for TypeId<'_> {
     }
 }
 
+#[cfg(not(feature = "sync"))]
 pub struct TypeInterner {
     names: FrozenIndexSet<Cow<'static, str>>,
 }
 
+#[cfg(not(feature = "sync"))]
 impl TypeInterner {
     pub fn intern(&self, name: impl AsRef<str> + Into<String>) -> TypeId<'_> {
         match self.names.get(name.as_ref()) {
@@ -165,6 +168,7 @@ impl TypeInterner {
     }
 }
 
+#[cfg(not(feature = "sync"))]
 impl Default for TypeInterner {
     fn default() -> Self {
         Self {
@@ -172,6 +176,106 @@ impl Default for TypeInterner {
                 .iter()
                 .filter_map(|id| id.as_name().map(Cow::Borrowed))
                 .collect(),
+        }
+    }
+}
+
+/// Thread-safe interner preserving pointer identity: names live in stable,
+/// append-only storage and a read/write index provides de-duplication and
+/// ordered lookups. `elsa::sync` has no `FrozenIndexSet`, so the index is a
+/// plain `RwLock<HashMap>` and interned names are stored in both places.
+///
+/// Predefined names are never copied: they keep the exact `&'static str`
+/// addresses used by [`predef`], so pointer identity is preserved against
+/// `Symbols::with_default_types`. Their indices occupy the same `0..len`
+/// prefix as the default `FrozenIndexSet`.
+#[cfg(feature = "sync")]
+pub struct TypeInterner {
+    names: elsa::sync::FrozenVec<Box<str>>,
+    index: std::sync::RwLock<hashbrown::HashMap<Box<str>, TypeIndex>>,
+}
+
+#[cfg(feature = "sync")]
+impl TypeInterner {
+    #[inline]
+    fn predef_len() -> usize {
+        predef::ALL_TYPES.len()
+    }
+
+    fn predef_index(name: &str) -> Option<TypeIndex> {
+        predef::ALL_TYPES
+            .iter()
+            .position(|id| id.as_name() == Some(name))
+            .map(TypeIndex)
+    }
+
+    pub fn intern(&self, name: impl AsRef<str> + Into<String>) -> TypeId<'_> {
+        if let Some(idx) = Self::predef_index(name.as_ref()) {
+            return predef::ALL_TYPES[idx.0];
+        }
+        // Hold the write lock across the whole check-then-insert: interning the
+        // same name twice would produce two addresses and break pointer identity.
+        let mut index = self
+            .index
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(&idx) = index.get(name.as_ref()) {
+            return TypeId(TypeIdRepr::Named(
+                self.names
+                    .get(idx.0 - Self::predef_len())
+                    .expect("interned name"),
+            ));
+        }
+        let name: Box<str> = name.into().into_boxed_str();
+        let local = self.names.push_get_index(name.clone());
+        index.insert(name, TypeIndex(Self::predef_len() + local));
+        TypeId(TypeIdRepr::Named(
+            self.names.get(local).expect("interned name"),
+        ))
+    }
+
+    /// Looks up a canonical type ID without interning a new name.
+    pub fn get(&self, name: &str) -> Option<TypeId<'_>> {
+        if let Some(idx) = Self::predef_index(name) {
+            return Some(predef::ALL_TYPES[idx.0]);
+        }
+        let index = self
+            .index
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let idx = index.get(name)?;
+        self.names
+            .get(idx.0 - Self::predef_len())
+            .map(|s| TypeId(TypeIdRepr::Named(s)))
+    }
+
+    pub fn get_index_of(&self, name: impl AsRef<str>) -> Option<TypeIndex> {
+        if let Some(idx) = Self::predef_index(name.as_ref()) {
+            return Some(idx);
+        }
+        self.index
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(name.as_ref())
+            .copied()
+    }
+
+    pub fn get_index(&self, index: TypeIndex) -> Option<TypeId<'_>> {
+        if index.0 < Self::predef_len() {
+            return Some(predef::ALL_TYPES[index.0]);
+        }
+        self.names
+            .get(index.0 - Self::predef_len())
+            .map(|s| TypeId(TypeIdRepr::Named(s)))
+    }
+}
+
+#[cfg(feature = "sync")]
+impl Default for TypeInterner {
+    fn default() -> Self {
+        Self {
+            names: elsa::sync::FrozenVec::new(),
+            index: std::sync::RwLock::new(hashbrown::HashMap::new()),
         }
     }
 }

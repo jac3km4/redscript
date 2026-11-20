@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 use std::fmt::Display;
 use std::hash::Hash;
-use std::rc::Rc;
 use std::{fmt, ops};
 
 use derive_where::derive_where;
@@ -9,7 +8,7 @@ use redscript_community_ast as ast;
 
 use crate::utils::ScopedMap;
 use crate::utils::fmt::{DisplayFn, sep_by};
-use crate::{Symbols, TypeSchema};
+use crate::{Shared, Symbols, TypeSchema};
 
 mod identity;
 
@@ -24,7 +23,7 @@ pub type MonoType<'ctx> = TypeApp<'ctx, Mono>;
 pub enum Type<'ctx, K: TypeKind = Immutable> {
     Nothing,
     Data(TypeApp<'ctx, K>),
-    Ctx(Rc<CtxVar<'ctx, K>>),
+    Ctx(Shared<CtxVar<'ctx, K>>),
 }
 
 impl<'ctx, K: TypeKind> Type<'ctx, K> {
@@ -34,7 +33,7 @@ impl<'ctx, K: TypeKind> Type<'ctx, K> {
     }
 
     #[inline]
-    pub fn app(id: TypeId<'ctx>, args: impl Into<Rc<[K::Type<'ctx>]>>) -> Self {
+    pub fn app(id: TypeId<'ctx>, args: impl Into<Shared<[K::Type<'ctx>]>>) -> Self {
         Self::Data(TypeApp::new(id, args))
     }
 
@@ -112,9 +111,9 @@ impl<'ctx> Type<'ctx> {
     }
 }
 
-impl<'ctx> From<(TypeId<'ctx>, Rc<[Type<'ctx>]>)> for Type<'ctx> {
+impl<'ctx> From<(TypeId<'ctx>, Shared<[Type<'ctx>]>)> for Type<'ctx> {
     #[inline]
-    fn from((id, args): (TypeId<'ctx>, Rc<[Type<'ctx>]>)) -> Self {
+    fn from((id, args): (TypeId<'ctx>, Shared<[Type<'ctx>]>)) -> Self {
         Self::app(id, args)
     }
 }
@@ -132,9 +131,9 @@ impl<K: TypeKind> PartialEq for Type<'_, K> {
 
 impl<K: TypeKind> Eq for Type<'_, K> {}
 
-impl<'ctx> From<(TypeId<'ctx>, Rc<[MonoType<'ctx>]>)> for MonoType<'ctx> {
+impl<'ctx> From<(TypeId<'ctx>, Shared<[MonoType<'ctx>]>)> for MonoType<'ctx> {
     #[inline]
-    fn from((id, args): (TypeId<'ctx>, Rc<[MonoType<'ctx>]>)) -> Self {
+    fn from((id, args): (TypeId<'ctx>, Shared<[MonoType<'ctx>]>)) -> Self {
         Self::new(id, args)
     }
 }
@@ -152,7 +151,7 @@ pub trait TypeKind {
         + Clone
         + PartialEq
         + Eq
-        + From<(TypeId<'ctx>, Rc<[Self::Type<'ctx>]>)>;
+        + From<(TypeId<'ctx>, Shared<[Self::Type<'ctx>]>)>;
 }
 
 #[derive(Debug)]
@@ -172,12 +171,12 @@ impl TypeKind for Mono {
 #[derive_where(Debug, Clone, PartialEq, Eq)]
 pub struct TypeApp<'ctx, K: TypeKind = Immutable> {
     id: TypeId<'ctx>,
-    args: Rc<[K::Type<'ctx>]>,
+    args: Shared<[K::Type<'ctx>]>,
 }
 
 impl<'ctx, K: TypeKind> TypeApp<'ctx, K> {
     #[inline]
-    pub fn new(id: TypeId<'ctx>, args: impl Into<Rc<[K::Type<'ctx>]>>) -> Self {
+    pub fn new(id: TypeId<'ctx>, args: impl Into<Shared<[K::Type<'ctx>]>>) -> Self {
         Self {
             id,
             args: args.into(),
@@ -252,7 +251,7 @@ impl<'ctx> TypeApp<'ctx> {
             .args()
             .iter()
             .map(|t| t.mono(env))
-            .collect::<Result<Rc<_>, _>>()?;
+            .collect::<Result<Shared<_>, _>>()?;
         Ok(MonoType::new(self.id(), args))
     }
 

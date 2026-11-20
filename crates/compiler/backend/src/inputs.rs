@@ -1,6 +1,5 @@
 use core::fmt;
 use std::borrow::Cow;
-use std::rc::Rc;
 
 use hashbrown::HashMap;
 use identity_hash::BuildIdentityHasher;
@@ -9,8 +8,8 @@ use redscript_compiler_frontend::utils::fmt::{DisplayFn, sep_by};
 use redscript_compiler_frontend::{
     Aggregate, AggregateFlags, Enum, Field, FieldFlags, FieldMap, FreeFunction, FreeFunctionFlags,
     FreeFunctionIndex, FunctionIndex, FunctionMap, FunctionType, Immutable, Method, MethodFlags,
-    MethodId, Mono, MonoType, Param, ParamFlags, RefType, Symbols, Type, TypeApp, TypeDef, TypeId,
-    TypeInterner, TypeKind, TypeSchema, Visibility, predef,
+    MethodId, Mono, MonoType, Param, ParamFlags, RefType, Shared, Symbols, Type, TypeApp, TypeDef,
+    TypeId, TypeInterner, TypeKind, TypeSchema, Visibility, predef,
 };
 use redscript_io::{
     CNameIndex, ClassIndex as PoolClassIndex, EnumIndex as PoolEnumIndex, Function as PoolFunction,
@@ -403,7 +402,7 @@ fn load_type<'ctx, K: TypeKind>(
                 .ok_or_else(|| Error::MissingPoolItem("type name", typ.name().into()))?;
             let unsupported = typ.kind() == PoolTypeKind::Class
                 && flags.get(name.as_ref()).is_mixed_or_never_ref();
-            let typ = K::Type::from((interner.intern(name.as_ref()), Rc::new([])));
+            let typ = K::Type::from((interner.intern(name.as_ref()), Shared::new([])));
             return Ok(LoadedType { typ, unsupported });
         }
         PoolTypeKind::Ref(inner) => {
@@ -419,7 +418,7 @@ fn load_type<'ctx, K: TypeKind>(
                 return Ok(LoadedType { typ, unsupported });
             }
             return Ok(LoadedType {
-                typ: K::Type::from((predef::REF, Rc::new([typ]))),
+                typ: K::Type::from((predef::REF, Shared::new([typ]))),
                 unsupported,
             });
         }
@@ -435,7 +434,7 @@ fn load_type<'ctx, K: TypeKind>(
         .ok_or_else(|| Error::MissingPoolItem("type argument", arg.into()))?;
     let LoadedType { typ, unsupported } = load_type::<K>(arg, bundle, interner, flags)?;
     Ok(LoadedType {
-        typ: K::Type::from((id, Rc::new([typ]))),
+        typ: K::Type::from((id, Shared::new([typ]))),
         unsupported,
     })
 }

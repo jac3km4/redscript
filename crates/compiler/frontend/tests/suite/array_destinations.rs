@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use redscript_compiler_frontend::Shared;
 
 use redscript_community_ast::SourceMap;
 use redscript_compiler_api::SourceMapExt;
@@ -33,7 +33,7 @@ fn check(body: &str, policy: SemanticPolicy, inspect: impl FnOnce(&[LocalInfo<'_
         evaluator,
         &mut reporter,
         &interner,
-        &[(file, Rc::new(policy))],
+        &[(file, Shared::new(policy))],
     );
     assert!(reporter.reported().is_empty(), "{reporter:?}");
     let entry = symbols

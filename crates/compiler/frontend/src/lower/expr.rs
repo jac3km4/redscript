@@ -366,7 +366,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             def.params()
                 .iter()
                 .map(|_| PolyType::fresh())
-                .collect::<Rc<_>>()
+                .collect::<Shared<_>>()
         } else if typ.args().len() != def.params().len() {
             let expected = def.params().len();
             return Err(Error::InvalidTypeArgCount(
@@ -411,7 +411,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             def.params()
                 .iter()
                 .map(|_| PolyType::fresh())
-                .collect::<Rc<_>>()
+                .collect::<Shared<_>>()
         } else if type_args.len() != def.params().len() {
             let expected = def.params().len();
             return Err(Error::InvalidTypeArgCount(expected, type_args.len(), span));
@@ -419,7 +419,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             type_args
                 .iter()
                 .map(|(typ, span)| self.resolve_type(typ, env, *span))
-                .collect::<Result<Rc<_>, _>>()?
+                .collect::<Result<Shared<_>, _>>()?
         };
         let typ = TypeApp::new(id, type_args);
         if !type_args_are_inferred {

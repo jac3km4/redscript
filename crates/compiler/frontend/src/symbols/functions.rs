@@ -1,16 +1,15 @@
 use std::fmt;
-use std::rc::Rc;
 
 use derive_where::derive_where;
 use redscript_community_ast::{FunctionProperties, Span};
 
 use super::{FreeFunctionFlags, MethodFlags, MethodId, ParamFlags};
 use crate::types::{CtxVar, Type};
-use crate::{Immutable, TypeKind, ir, predef};
+use crate::{Immutable, Shared, TypeKind, ir, predef};
 
 #[derive(Debug, Clone)]
 pub struct FunctionType<'ctx> {
-    type_params: Box<[Rc<CtxVar<'ctx>>]>,
+    type_params: Box<[Shared<CtxVar<'ctx>>]>,
     params: Box<[Param<'ctx>]>,
     return_type: Type<'ctx>,
     properties: FunctionProperties<'ctx>,
@@ -20,7 +19,7 @@ pub struct FunctionType<'ctx> {
 impl<'ctx> FunctionType<'ctx> {
     #[inline]
     pub fn new(
-        type_params: impl Into<Box<[Rc<CtxVar<'ctx>>]>>,
+        type_params: impl Into<Box<[Shared<CtxVar<'ctx>>]>>,
         params: impl Into<Box<[Param<'ctx>]>>,
         ret_t: Type<'ctx>,
     ) -> Self {
@@ -77,7 +76,7 @@ impl<'ctx> FunctionType<'ctx> {
     }
 
     #[inline]
-    pub fn type_params(&self) -> &[Rc<CtxVar<'ctx>>] {
+    pub fn type_params(&self) -> &[Shared<CtxVar<'ctx>>] {
         &self.type_params
     }
 

@@ -1,8 +1,7 @@
-use std::rc::Rc;
-
 use hashbrown::{HashMap, HashSet};
 use identity_hash::BuildIdentityHasher;
 
+use crate::Shared;
 use crate::lower::error::CoalesceError;
 use crate::lower::types::{InferredCtxVar, InferredType, InferredTypeApp, PolyType, VarKey};
 use crate::symbols::Symbols;
@@ -111,7 +110,7 @@ impl<'sym, 'ctx> Simplifier<'sym, 'ctx> {
             .iter()
             .zip(vars)
             .map(|(arg, v)| self.simplify_poly(arg, var.combined(v.variance())))
-            .collect::<Result<Rc<_>, _>>()?;
+            .collect::<Result<Shared<_>, _>>()?;
         Ok(TypeApp::new(typ.id(), args))
     }
 

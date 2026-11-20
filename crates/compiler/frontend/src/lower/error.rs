@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 use std::fmt;
 use std::ops::RangeInclusive;
-use std::rc::Rc;
 
 use redscript_community_ast::Span;
 use thiserror::Error;
@@ -10,7 +9,7 @@ use crate::diagnostic::{DiagnosticLevel, FunctionSignature};
 use crate::lower::types::{InferredType, InferredTypeApp, PolyType};
 use crate::types::{MAX_FN_ARITY, MAX_STATIC_ARRAY_SIZE, TypeId, predef};
 use crate::utils::fmt::sep_by;
-use crate::{FieldId, Immutable, MethodId, Visibility};
+use crate::{FieldId, Immutable, MethodId, Shared, Visibility};
 
 pub type InferResult<'ctx, A> = Result<A, TypeError<'ctx>>;
 pub type LowerResult<'id, A, E = Error<'id>> = Result<A, E>;
@@ -30,7 +29,7 @@ pub enum Error<'ctx> {
     #[error("`{0}` has no member named `{1}`")]
     UnresolvedMember(TypeId<'ctx>, &'ctx str, Span),
     #[error("multiple functions or methods match the provided argument types:\n{}", sep_by(.0.iter(), "\n"))]
-    MultipleMatchingOverloads(Rc<[FunctionSignature<'ctx, Immutable>]>, Span),
+    MultipleMatchingOverloads(Shared<[FunctionSignature<'ctx, Immutable>]>, Span),
     #[error("no matching function or method named `{0}`")]
     UnresolvedFunction(&'ctx str, Span),
     #[error(

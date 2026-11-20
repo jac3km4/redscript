@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use redscript_compiler_frontend::Shared;
 
 use redscript_community_ast::SourceMap;
 use redscript_compiler_frontend::{
@@ -49,7 +49,7 @@ fn integer_negation_folds_when_representable_and_otherwise_calls_operator() {
                 &interner,
                 &[(
                     file,
-                    Rc::new(SemanticPolicy {
+                    Shared::new(SemanticPolicy {
                         hoist_locals: true,
                         ..Default::default()
                     }),

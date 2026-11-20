@@ -1,9 +1,10 @@
-use std::cell::RefCell;
 use std::fmt;
+
+use crate::sync::SharedCell;
 
 pub struct Lazy<A, F> {
     get: F,
-    value: RefCell<Option<A>>,
+    value: SharedCell<Option<A>>,
 }
 
 impl<A, F> Lazy<A, F> {
@@ -11,7 +12,7 @@ impl<A, F> Lazy<A, F> {
     pub fn new(get: F) -> Self {
         Self {
             get,
-            value: RefCell::new(None),
+            value: SharedCell::new(None),
         }
     }
 
@@ -46,7 +47,7 @@ impl<A, E> Lazy<A, Box<dyn Fn(&E) -> A>> {
     pub fn resolved(value: A) -> Self {
         Self {
             get: Box::new(move |_| unreachable!()),
-            value: RefCell::new(Some(value)),
+            value: SharedCell::new(Some(value)),
         }
     }
 }

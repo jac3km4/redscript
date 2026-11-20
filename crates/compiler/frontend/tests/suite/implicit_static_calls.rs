@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use redscript_compiler_frontend::Shared;
 
 use redscript_community_ast::SourceMap;
 use redscript_compiler_api::SourceMapExt;
@@ -32,7 +32,7 @@ fn named_module_implicit_static_calls_keep_resolved_parent_identity() {
         &interner,
         &[(
             file,
-            Rc::new(SemanticPolicy {
+            Shared::new(SemanticPolicy {
                 implicit_members: true,
                 ..SemanticPolicy::default()
             }),
@@ -96,7 +96,7 @@ fn local_receivers_shadow_types_only_with_implicit_members() {
             &interner,
             &[(
                 file,
-                Rc::new(SemanticPolicy {
+                Shared::new(SemanticPolicy {
                     implicit_members,
                     ..SemanticPolicy::default()
                 }),

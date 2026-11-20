@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use redscript_compiler_frontend::Shared;
 
 use redscript_community_ast::SourceMap;
 use redscript_compiler_api::SourceMapExt;
@@ -126,7 +126,7 @@ fn override_visibility_and_static_advice_follow_child_and_call_site_policy() {
         let mut reporter = CompileErrorReporter::default();
         let modules = parse_files(&sources, &mut reporter);
         let evaluator = Evaluator::from_modules(&modules);
-        let policy = Rc::new(SemanticPolicy {
+        let policy = Shared::new(SemanticPolicy {
             allow_narrower_overrides: true,
             allow_inherited_static_calls: true,
             ..SemanticPolicy::default()

@@ -1,6 +1,4 @@
-use std::cell::Cell;
 use std::fmt::Debug;
-use std::rc::Rc;
 use std::{iter, mem, slice};
 
 pub use array_guard::ArrayPrefixInfo;
@@ -20,9 +18,10 @@ use crate::symbols::{
     AnyBaseType, FieldId, FreeFunctionIndex, FunctionEntry, FunctionKey, FunctionKind,
     FunctionType, Symbols, TypeSchema, Visibility,
 };
+use crate::sync::SharedU16;
 use crate::types::{RefType, Type, TypeApp, TypeId, predef};
 use crate::utils::ScopedMap;
-use crate::{IndexSet, LowerReporter, MethodId, Param, Variance, ir};
+use crate::{IndexSet, LowerReporter, MethodId, Param, Shared, Variance, ir};
 
 mod array_guard;
 mod calls;
@@ -127,7 +126,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         let mut reporter = LowerReporter::default();
         let (block, output) = Lower::function_builder()
             .body(body)
-            .local_counter(&Cell::new(0))
+            .local_counter(&SharedU16::new(0))
             .params(params)
             .env(env)
             .return_type(return_t)
@@ -141,7 +140,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
     #[builder(finish_fn = build)]
     fn function_builder(
         body: &ast::SourceFunctionBody<'ctx>,
-        local_counter: &Cell<u16>,
+        local_counter: &SharedU16,
         params: impl IntoIterator<Item = (&'ctx str, PolyType<'ctx>)>,
         mut env: Env<'_, 'ctx>,
         return_type: PolyType<'ctx>,
@@ -250,7 +249,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         symbols: &Symbols<'ctx>,
     ) -> (Option<ir::Const<'ctx>>, Vec<Error<'ctx>>) {
         let mut reporter = LowerReporter::default();
-        let counter = Cell::new(0);
+        let counter = SharedU16::new(0);
         let locals = Locals::new(&counter, 0);
         let mut lower = Lower::new(locals, expected.clone(), None, symbols, &mut reporter);
         let res = (|| {

@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::ops::{BitAndAssign, Not};
-use std::rc::Rc;
 use std::{fmt, mem};
 
 use aggregate::extract_static_forwarder;
@@ -20,8 +19,8 @@ use crate::utils::{Lazy, ScopedMap};
 use crate::{
     Aggregate, AggregateFlags, CompileErrorReporter, CtxVar, Diagnostic, Enum, Field, FieldId,
     FreeFunction, FreeFunctionFlags, FreeFunctionIndex, FunctionType, IndexMap, LowerError, Method,
-    MethodId, Param, ParamFlags, QualifiedName, Symbols, Type, TypeDef, TypeId, TypeInterner,
-    TypeRef, TypeSchema, TypeScope, ir, predef,
+    MethodId, Param, ParamFlags, QualifiedName, Shared, Symbols, Type, TypeDef, TypeId,
+    TypeInterner, TypeRef, TypeSchema, TypeScope, ir, predef,
 };
 
 mod aggregate;
@@ -643,7 +642,10 @@ impl<'scope, 'ctx> Scope<'scope, 'ctx> {
         }
     }
 
-    pub(crate) fn set_policies(&mut self, policies: &[(ast::FileId, Rc<crate::SemanticPolicy>)]) {
+    pub(crate) fn set_policies(
+        &mut self,
+        policies: &[(ast::FileId, Shared<crate::SemanticPolicy>)],
+    ) {
         self.types.set_policies(policies);
     }
 

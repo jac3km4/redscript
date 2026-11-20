@@ -197,6 +197,27 @@ fn error(message: impl Into<Cow<'static, str>>, span: Option<Span>) -> Transpile
     }
 }
 
+#[cfg(all(test, feature = "sync"))]
+mod sync_tests {
+    use redscript_compiler_api::{CheckedSources, Diagnostics};
+    use redscript_compiler_frontend::{Diagnostic, LoweredCompilationUnit, Symbols, TypeInterner};
+    use redscript_io::ScriptBundle;
+
+    #[test]
+    fn public_analysis_types_are_send_and_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<Symbols<'static>>();
+        assert_send_sync::<LoweredCompilationUnit<'static>>();
+        assert_send_sync::<Diagnostic<'static>>();
+        assert_send_sync::<TypeInterner>();
+        assert_send_sync::<ScriptBundle<'static>>();
+        assert_send_sync::<CheckedSources<'static>>();
+        assert_send_sync::<Diagnostics<'static>>();
+        assert_send_sync::<redscript_community_ast::SourceMap>();
+        assert_send_sync::<crate::AnalyzedSources<'static>>();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

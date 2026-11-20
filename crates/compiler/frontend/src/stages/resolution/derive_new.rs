@@ -1,17 +1,16 @@
-use std::rc::Rc;
-
 use indexmap::IndexMap;
 use redscript_community_ast::{self as ast, Span};
 
 use crate::stages::infer::FuncItem;
 use crate::symbols::{FieldEntry, Visibility};
 use crate::{
-    CtxVar, FunctionIndex, FunctionType, Method, MethodFlags, Param, ParamFlags, Type, TypeId,
+    CtxVar, FunctionIndex, FunctionType, Method, MethodFlags, Param, ParamFlags, Shared, Type,
+    TypeId,
 };
 
 pub(super) fn derive_new_method<'e, 'ctx: 'e>(
     cls_id: TypeId<'ctx>,
-    vars: &[Rc<CtxVar<'ctx>>],
+    vars: &[Shared<CtxVar<'ctx>>],
     fields: impl IntoIterator<Item = FieldEntry<'e, 'ctx>>,
     span: Span,
 ) -> Method<'ctx> {
@@ -22,7 +21,7 @@ pub(super) fn derive_new_method<'e, 'ctx: 'e>(
     let args = vars
         .iter()
         .map(|var| Type::Ctx(var.clone()))
-        .collect::<Rc<[_]>>();
+        .collect::<Shared<[_]>>();
     let return_t = Type::app(cls_id, args);
     let params = fields
         .into_iter()

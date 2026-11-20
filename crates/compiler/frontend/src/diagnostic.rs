@@ -10,7 +10,7 @@ use crate::stages::FunctionAnnotation;
 use crate::symbols::Visibility;
 use crate::types::Immutable;
 use crate::utils::fmt::{DisplayFn, lowercase, sep_by, surrounded_by};
-use crate::{CoalesceError, LowerError, Param, Type, TypeId, TypeKind, Variance, cte};
+use crate::{BoxedError, CoalesceError, LowerError, Param, Type, TypeId, TypeKind, Variance, cte};
 
 pub mod pass;
 
@@ -158,12 +158,7 @@ pub enum Diagnostic<'ctx> {
     ScriptRefReturn(Span),
     /// An extension diagnostic with a caller-defined stable code.
     #[error("{0}")]
-    Custom(
-        Box<dyn std::error::Error + 'ctx>,
-        &'static str,
-        DiagnosticLevel,
-        Span,
-    ),
+    Custom(BoxedError<'ctx>, &'static str, DiagnosticLevel, Span),
 }
 
 impl<'ctx> Diagnostic<'ctx> {

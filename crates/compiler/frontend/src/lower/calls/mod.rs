@@ -162,7 +162,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         let func_t_args = arg_types
             .into_iter()
             .chain([return_t.clone()])
-            .collect::<Rc<_>>();
+            .collect::<Shared<_>>();
         let func_t = TypeApp::new(type_id, func_t_args);
 
         typ.constrain_base(&func_t.clone().into_type().into_poly(), self.symbols)

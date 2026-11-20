@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::rc::Rc;
 use std::{fmt, iter};
 
 use smallvec::SmallVec;
@@ -9,7 +8,7 @@ use crate::lower::simplify::Simplifier;
 use crate::symbols::{AnyBaseType, AnySupertype, BaseMode};
 use crate::types::{CtxVar, RefType, Type, TypeApp, TypeId, Variance, predef};
 use crate::utils::ScopedMap;
-use crate::{Symbols, TypeKind};
+use crate::{Shared, Symbols, TypeKind};
 
 mod solver;
 
@@ -38,7 +37,7 @@ impl<'ctx> InferredTypeApp<'ctx> {
             .args()
             .iter()
             .map(|typ| PolyType::from_type_with_env(typ, env))
-            .collect::<Result<Rc<_>, _>>()?;
+            .collect::<Result<Shared<_>, _>>()?;
         Ok(TypeApp::new(typ.id(), args))
     }
 
@@ -48,7 +47,7 @@ impl<'ctx> InferredTypeApp<'ctx> {
             typ.args()
                 .iter()
                 .map(PolyType::from_type)
-                .collect::<Rc<_>>(),
+                .collect::<Shared<_>>(),
         )
     }
 
@@ -63,7 +62,7 @@ impl<'ctx> InferredTypeApp<'ctx> {
             .params()
             .iter()
             .map(|_| PolyType::fresh())
-            .collect::<Rc<_>>();
+            .collect::<Shared<_>>();
         TypeApp::new(id, args)
     }
 
@@ -155,7 +154,7 @@ impl<'ctx> InferredTypeApp<'ctx> {
                     Ok(l.clone())
                 }
             })
-            .collect::<Result<Rc<_>, _>>()?;
+            .collect::<Result<Shared<_>, _>>()?;
         Ok(TypeApp::new(self.id(), args))
     }
 }
@@ -628,9 +627,9 @@ impl<'ctx> PolyType<'ctx> {
     }
 }
 
-impl<'ctx> From<(TypeId<'ctx>, Rc<[PolyType<'ctx>]>)> for PolyType<'ctx> {
+impl<'ctx> From<(TypeId<'ctx>, Shared<[PolyType<'ctx>]>)> for PolyType<'ctx> {
     #[inline]
-    fn from((id, args): (TypeId<'ctx>, Rc<[PolyType<'ctx>]>)) -> Self {
+    fn from((id, args): (TypeId<'ctx>, Shared<[PolyType<'ctx>]>)) -> Self {
         Type::app(id, args).into_poly()
     }
 }

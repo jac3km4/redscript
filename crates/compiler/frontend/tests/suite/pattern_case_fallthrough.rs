@@ -304,7 +304,7 @@ fn script_ref_pattern_as_cast_is_rejected() {
     let mut native_reporter = CompileErrorReporter::default();
     let modules = redscript_compiler_frontend::parse_files(&native_sources, &mut native_reporter);
     let evaluator = redscript_compiler_frontend::Evaluator::from_modules(&modules);
-    let policy = std::rc::Rc::new(redscript_compiler_frontend::SemanticPolicy {
+    let policy = redscript_compiler_frontend::Shared::new(redscript_compiler_frontend::SemanticPolicy {
         native_object_cast: true,
         ..redscript_compiler_frontend::SemanticPolicy::default()
     });

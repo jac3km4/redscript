@@ -1,6 +1,5 @@
 use std::mem;
 use std::ops::Not;
-use std::rc::Rc;
 
 use bon::builder;
 use identity_hash::BuildIdentityHasher;
@@ -16,7 +15,7 @@ use crate::lower::{Env, Lower};
 use crate::symbols::FreeFunctionIndexes;
 use crate::{
     CompileErrorReporter, FieldId, FieldIndex, FreeFunction, FreeFunctionIndex, FunctionIndex,
-    FunctionType, IndexMap, IndexSet, MethodId, PolyType, Symbols, Type, TypeId, TypeRef,
+    FunctionType, IndexMap, IndexSet, MethodId, PolyType, Shared, Symbols, Type, TypeId, TypeRef,
     TypeScope, ir,
 };
 
@@ -62,7 +61,7 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
                     .params()
                     .iter()
                     .map(|param| Type::Ctx(param.clone()))
-                    .collect::<Rc<_>>();
+                    .collect::<Shared<_>>();
                 let this_t = PolyType::from_type(&Type::app(class.id, class_type_args));
 
                 let mut methods = IndexMap::default();
@@ -123,7 +122,7 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
                             .iter()
                             .cloned()
                             .map(Type::Ctx)
-                            .collect::<Rc<_>>(),
+                            .collect::<Shared<_>>(),
                     ));
                     let Some(type_env) = receiver
                         .base_type_env::<crate::symbols::AnyBaseType>(parent, &self.symbols)

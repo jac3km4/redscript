@@ -1,11 +1,11 @@
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::collections::VecDeque;
 
 use redscript_community_ast::{self as ast, Span};
 
 use crate::lower::{InferredTypeApp, PolyType};
 use crate::symbols::{FieldId, FreeFunctionIndex, MethodId};
+use crate::sync::SharedCell;
 use crate::types::{self, TypeId, predef};
 use crate::{CoalesceError, RefType, Symbols};
 
@@ -682,7 +682,7 @@ impl<'ctx> Closure<'ctx> {
 }
 
 #[derive(Debug)]
-pub struct Type<'ctx>(Box<RefCell<TypeState<'ctx>>>);
+pub struct Type<'ctx>(Box<SharedCell<TypeState<'ctx>>>);
 
 impl<'ctx> Type<'ctx> {
     pub fn coalesced(
@@ -690,10 +690,13 @@ impl<'ctx> Type<'ctx> {
         symbols: &Symbols<'ctx>,
     ) -> Result<types::Type<'ctx>, CoalesceError<'ctx>> {
         let Self(state) = self;
-        let typ = match &*state.borrow() {
-            TypeState::Uninit(poly) => poly.coalesce(symbols)?,
+        // Read the uninitialized payload in a scoped borrow and drop the guard
+        // before coalescing, so a re-entrant access cannot deadlock under `sync`.
+        let poly = match &*state.borrow() {
+            TypeState::Uninit(poly) => poly.clone(),
             TypeState::Init(t) => return Ok(t.clone()),
         };
+        let typ = poly.coalesce(symbols)?;
         *state.borrow_mut() = TypeState::Init(typ.clone());
         Ok(typ)
     }
@@ -715,7 +718,7 @@ impl<'ctx> Type<'ctx> {
 impl<'ctx> From<PolyType<'ctx>> for Type<'ctx> {
     #[inline]
     fn from(poly: PolyType<'ctx>) -> Self {
-        Self(Box::new(RefCell::new(TypeState::Uninit(poly))))
+        Self(Box::new(SharedCell::new(TypeState::Uninit(poly))))
     }
 }
 
@@ -726,7 +729,7 @@ enum TypeState<'ctx> {
 }
 
 #[derive(Debug)]
-pub struct TypeApp<'ctx>(Box<RefCell<TypeAppState<'ctx>>>);
+pub struct TypeApp<'ctx>(Box<SharedCell<TypeAppState<'ctx>>>);
 
 impl<'ctx> TypeApp<'ctx> {
     pub fn coalesced(
@@ -734,10 +737,13 @@ impl<'ctx> TypeApp<'ctx> {
         symbols: &Symbols<'ctx>,
     ) -> Result<types::TypeApp<'ctx>, CoalesceError<'ctx>> {
         let Self(state) = self;
-        let typ = match &*state.borrow() {
-            TypeAppState::Uninit(inferred) => inferred.coalesce(symbols)?,
+        // Read the uninitialized payload in a scoped borrow and drop the guard
+        // before coalescing, so a re-entrant access cannot deadlock under `sync`.
+        let inferred = match &*state.borrow() {
+            TypeAppState::Uninit(inferred) => inferred.clone(),
             TypeAppState::Init(t) => return Ok(t.clone()),
         };
+        let typ = inferred.coalesce(symbols)?;
         *state.borrow_mut() = TypeAppState::Init(typ.clone());
         Ok(typ)
     }
@@ -756,7 +762,7 @@ impl<'ctx> TypeApp<'ctx> {
 impl<'ctx> From<InferredTypeApp<'ctx>> for TypeApp<'ctx> {
     #[inline]
     fn from(inferred: InferredTypeApp<'ctx>) -> Self {
-        Self(Box::new(RefCell::new(TypeAppState::Uninit(inferred))))
+        Self(Box::new(SharedCell::new(TypeAppState::Uninit(inferred))))
     }
 }
 

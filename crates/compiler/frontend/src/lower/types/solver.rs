@@ -1,14 +1,15 @@
-use std::cell::RefCell;
-use std::rc::{Rc, Weak};
-use std::{fmt, ptr};
+use std::fmt;
+use std::marker::PhantomData;
 
 use identity_hash::IdentityHashable;
 use smallvec::SmallVec;
 
 use super::{InferredType, PolyType};
+use crate::Shared;
 use crate::Symbols;
 use crate::lower::error::{InferResult, TypeError};
 use crate::symbols::AnySupertype;
+use crate::sync::{SharedCell, SharedWeak};
 use crate::types::{CtxVar, Type};
 
 // External handles own the component; handles stored in nodes have no owner.
@@ -17,16 +18,16 @@ use crate::types::{CtxVar, Type};
 // making ownership decisions constrain the eventual inferred types.
 #[derive(Clone)]
 pub struct Var<'ctx>(
-    pub(super) Rc<RefCell<VarState<'ctx>>>,
-    Option<Rc<RefCell<VarComponent<'ctx>>>>,
+    pub(super) Shared<SharedCell<VarState<'ctx>>>,
+    Option<Shared<SharedCell<VarComponent<'ctx>>>>,
 );
 
 pub(super) type VarEdges<'ctx> = SmallVec<[Var<'ctx>; 2]>;
 
 #[derive(Default)]
 pub(super) struct VarComponent<'ctx> {
-    nodes: Vec<Rc<RefCell<VarState<'ctx>>>>,
-    parent: Option<Rc<RefCell<Self>>>,
+    nodes: Vec<Shared<SharedCell<VarState<'ctx>>>>,
+    parent: Option<Shared<SharedCell<Self>>>,
 }
 
 impl Drop for VarComponent<'_> {
@@ -53,15 +54,15 @@ impl fmt::Debug for Var<'_> {
 impl<'ctx> Var<'ctx> {
     #[inline]
     pub(super) fn new(lower: InferredType<'ctx>, upper: Option<InferredType<'ctx>>) -> Self {
-        let component = Rc::new(RefCell::new(VarComponent::default()));
-        let node = Rc::new(RefCell::new(VarState {
+        let component = Shared::new(SharedCell::new(VarComponent::default()));
+        let node = Shared::new(SharedCell::new(VarState {
             lower: Type::Nothing,
             upper: None,
             repr: None,
             supers: SmallVec::new(),
             subs: SmallVec::new(),
             updating: false,
-            component: Rc::downgrade(&component),
+            component: Shared::downgrade(&component),
         }));
         component.borrow_mut().nodes.push(node.clone());
         let var = Self(node, Some(component));
@@ -69,7 +70,7 @@ impl<'ctx> Var<'ctx> {
         var
     }
 
-    fn external(node: Rc<RefCell<VarState<'ctx>>>) -> Self {
+    fn external(node: Shared<SharedCell<VarState<'ctx>>>) -> Self {
         let component = node
             .borrow()
             .component
@@ -78,7 +79,7 @@ impl<'ctx> Var<'ctx> {
         Self(node, Some(component))
     }
 
-    fn component(&self) -> Rc<RefCell<VarComponent<'ctx>>> {
+    fn component(&self) -> Shared<SharedCell<VarComponent<'ctx>>> {
         let mut component = self.1.clone().unwrap_or_else(|| {
             self.0
                 .borrow()
@@ -100,10 +101,10 @@ impl<'ctx> Var<'ctx> {
     fn retain(&self, other: &Self) -> Self {
         let lhs = self.component();
         let rhs = other.component();
-        if !Rc::ptr_eq(&lhs, &rhs) {
+        if !Shared::ptr_eq(&lhs, &rhs) {
             let nodes = std::mem::take(&mut rhs.borrow_mut().nodes);
             for node in &nodes {
-                node.borrow_mut().component = Rc::downgrade(&lhs);
+                node.borrow_mut().component = Shared::downgrade(&lhs);
             }
             lhs.borrow_mut().nodes.extend(nodes);
             rhs.borrow_mut().parent = Some(lhs);
@@ -125,9 +126,9 @@ impl<'ctx> Var<'ctx> {
                         PolyType::Var(var) => PolyType::Var(map(var)),
                         PolyType::Mono(typ) => Self::map_type(typ, map).into_poly(),
                     })
-                    .collect::<Rc<_>>(),
+                    .collect::<Shared<_>>(),
             ),
-            Type::Ctx(ctx) => Type::Ctx(Rc::new(CtxVar::new(
+            Type::Ctx(ctx) => Type::Ctx(Shared::new(CtxVar::new(
                 ctx.name(),
                 ctx.variance(),
                 ctx.lower().map(|t| Self::map_type(t, map)),
@@ -160,7 +161,7 @@ impl<'ctx> Var<'ctx> {
 
     #[inline]
     pub fn key(&self) -> VarKey<'ctx> {
-        VarKey(self.repr().0.as_ptr())
+        VarKey(Shared::as_ptr(&self.repr().0) as usize, PhantomData)
     }
 
     pub(super) fn repr(&self) -> Var<'ctx> {
@@ -413,14 +414,14 @@ impl<'ctx> Var<'ctx> {
 impl PartialEq for Var<'_> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        ptr::eq(self.0.as_ptr(), other.0.as_ptr())
+        Shared::ptr_eq(&self.0, &other.0)
     }
 }
 
 impl Eq for Var<'_> {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct VarKey<'ctx>(*mut VarState<'ctx>);
+pub struct VarKey<'ctx>(usize, PhantomData<&'ctx ()>);
 
 impl IdentityHashable for VarKey<'_> {}
 
@@ -432,5 +433,5 @@ pub(super) struct VarState<'ctx> {
     pub(super) supers: VarEdges<'ctx>,
     pub(super) subs: VarEdges<'ctx>,
     pub(super) updating: bool,
-    component: Weak<RefCell<VarComponent<'ctx>>>,
+    component: SharedWeak<SharedCell<VarComponent<'ctx>>>,
 }

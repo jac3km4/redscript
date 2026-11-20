@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use redscript_compiler_frontend::Shared;
 
 use redscript_community_ast::SourceMap;
 use redscript_compiler_api::SourceMapExt;
@@ -63,7 +63,7 @@ fn with_local_policy(body: &str, hoist_locals: bool, check: impl FnOnce(&[LocalI
         evaluator,
         &mut reporter,
         &interner,
-        &[(file, Rc::new(policy))],
+        &[(file, Shared::new(policy))],
     );
     assert!(reporter.reported().is_empty(), "{reporter:?}");
     let entry = symbols

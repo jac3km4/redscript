@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use redscript_compiler_frontend::Shared;
 
 use redscript_community_ast::{SourceMap, Span};
 use redscript_compiler_api::SourceMapExt;
@@ -34,7 +34,7 @@ fn check(body: &str, hoist: bool, inspect: impl FnOnce(&[LocalInfo<'_>], &Block<
         &interner,
         &[(
             file,
-            Rc::new(SemanticPolicy {
+            Shared::new(SemanticPolicy {
                 hoist_locals: hoist,
                 ..SemanticPolicy::default()
             }),
