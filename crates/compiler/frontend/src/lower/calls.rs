@@ -209,7 +209,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             self.symbols[target.id()]
                 .schema()
                 .as_aggregate()
-                .is_some_and(|agg| !agg.flags().is_struct() && !agg.flags().is_never_ref())
+                .is_some_and(|agg| agg.flags().is_heap_reference())
         });
         // Literals cannot produce Variant. Leave ordinary conversion operands in
         // source form so the selected parameter can supply their numeric context.
@@ -806,12 +806,18 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         let candidates = candidates.into_iter();
         // Scope precedence applies only to viable overloads. Within that scope,
         // a dominating signature must have a strictly higher specificity score.
+        let applicable = |entry: &FunctionEntry<Key, Name, Func>| {
+            match receiver_instantiated_params(entry, receiver.as_ref(), self.symbols) {
+                Some(params) => {
+                    accepts_params(entry.func(), &params, arg_types, args.iter(), self.symbols)
+                }
+                None => accepts_typed_args(entry.func(), arg_types, args.iter(), self.symbols),
+            }
+        };
         let primary = candidates
             .clone()
             .enumerate()
-            .filter(|(_, entry)| {
-                accepts_typed_args(entry.func(), arg_types, args.iter(), self.symbols)
-            })
+            .filter(|(_, entry)| applicable(entry))
             .max_by_key(|(_, entry)| {
                 (
                     cmp::Reverse(entry.func().scope_priority()),
@@ -825,7 +831,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                 .filter(|(other_index, other)| {
                     *other_index != index
                         && other.func().scope_priority() == primary.func().scope_priority()
-                        && accepts_typed_args(other.func(), arg_types, args.iter(), self.symbols)
+                        && applicable(other)
                         && !reference_signature_dominates(
                             primary.func().type_(),
                             other.func().type_(),
@@ -1382,19 +1388,42 @@ pub(super) fn accepts_typed_args<'a, 'ctx: 'a>(
     args: impl ExactSizeIterator<Item = &'a ir::Expr<'ctx>>,
     symbols: &Symbols<'ctx>,
 ) -> bool {
+    let params = function
+        .type_()
+        .params()
+        .iter()
+        .map(|param| PolyType::from_type(param.type_()))
+        .collect::<Vec<_>>();
+    accepts_params(function, &params, arg_types, args, symbols)
+}
+
+// Applicability against explicit parameter types. Callers may supply parameters
+// already instantiated in a receiver's type environment so inherited generic
+// candidates are judged against the substituted signature, not a bare `Type::Ctx`.
+// Uninstantiated `PolyType::Var` parameters stay permissive (they are only chosen
+// once resolved), while concrete parameters are checked exactly.
+pub(super) fn accepts_params<'a, 'ctx: 'a>(
+    function: impl FunctionKind<'ctx>,
+    params: &[PolyType<'ctx>],
+    arg_types: &[PolyType<'ctx>],
+    args: impl ExactSizeIterator<Item = &'a ir::Expr<'ctx>>,
+    symbols: &Symbols<'ctx>,
+) -> bool {
     let typ = function.type_();
     typ.conversion().is_none()
         && typ.is_valid()
         && (typ.min_args()..=typ.max_args()).contains(&arg_types.len())
         && arg_types.len() == args.len()
+        && params.len() == typ.params().len()
         && arg_types
             .iter()
             .zip(args)
             .zip(typ.params())
-            .all(|((arg, expr), param)| {
+            .zip(params)
+            .all(|(((arg, expr), param), instantiated)| {
                 if matches!(expr, ir::Expr::Nop(_)) {
                     param.flags().is_optional()
-                } else if matches!(param.type_(), Type::Data(id) if id.id() == predef::VARIANT)
+                } else if matches!(instantiated, PolyType::Mono(Type::Data(id)) if id.id() == predef::VARIANT)
                     && function.intrinsic().is_none()
                 {
                     true
@@ -1404,13 +1433,51 @@ pub(super) fn accepts_typed_args<'a, 'ctx: 'a>(
                     } else {
                         Variance::Covariant
                     };
-                    arg.unwrap_ref_or_self(symbols).is_subtype_compatible(
-                        param.type_().unwrap_ref_or_self(),
-                        variance,
-                        symbols,
-                    )
+                    match instantiated {
+                        // A concrete receiver substitution: check exactly. The
+                        // permissive fallback keeps unresolved substitutions lenient.
+                        PolyType::Mono(_) => match instantiated.coalesce(symbols) {
+                            Ok(target) => arg
+                                .unwrap_ref_or_self(symbols)
+                                .is_subtype_compatible(
+                                    target.unwrap_ref_or_self(),
+                                    variance,
+                                    symbols,
+                                ),
+                            Err(_) => true,
+                        },
+                        PolyType::Var(_) => true,
+                    }
                 }
             })
+}
+
+// Instantiate a candidate's declared parameter types in its receiver's type
+// environment (e.g. `Child extends Base<Int32>` makes `Base<T>.Pick(T)` take an
+// `Int32`). Returns `None` when the candidate has its own type parameters or no
+// receiver is available, so callers fall back to the declared types.
+fn receiver_instantiated_params<'ctx, K, N, F>(
+    entry: &FunctionEntry<K, N, F>,
+    receiver: Option<&InferredTypeApp<'ctx>>,
+    symbols: &Symbols<'ctx>,
+) -> Option<Vec<PolyType<'ctx>>>
+where
+    K: FunctionKey<'ctx>,
+    F: FunctionKind<'ctx>,
+{
+    let typ = entry.func().type_();
+    if !typ.type_params().is_empty() {
+        return None;
+    }
+    let receiver = receiver?;
+    let parent = entry.key().parent()?;
+    let env = receiver
+        .clone()
+        .base_type_env::<AnyBaseType>(parent, symbols)?;
+    typ.params()
+        .iter()
+        .map(|param| PolyType::from_type_with_env(param.type_(), &env).ok())
+        .collect()
 }
 
 #[derive(Debug)]

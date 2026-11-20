@@ -400,3 +400,44 @@ fn return_only_duplicates_are_not_ranked_by_expected_result() {
         },
     );
 }
+
+// A generic receiver parameter must be instantiated before candidate
+// applicability: `Child extends Base<Int32>` makes the inherited `Base<T>.Pick(T)`
+// take an `Int32`, so it is not a viable competitor for `Pick(true)`.
+#[test]
+fn inherited_generic_parameter_uses_receiver_substitution_for_applicability() {
+    let prelude = "class Base<T> { public func Pick(value: T) -> Int32 { return 1; } }
+                   class Child extends Base<Int32> { public func Pick(value: Bool) -> Int32 { return 2; } }";
+    for (arg, expected_parent, expected_param) in
+        [("true", "Child", "Bool"), ("1", "Base", "T")]
+    {
+        common::analyze(
+            "instantiated_generic.reds",
+            &format!("{prelude} func Run(child: Child) -> Int32 {{ return child.Pick({arg}); }}"),
+            |_, unit, symbols, reporter| {
+                assert!(reporter.reported().is_empty(), "{arg}: {reporter:?}");
+                let entry = symbols
+                    .free_functions()
+                    .find(|entry| entry.name().as_single_component() == Some("Run"))
+                    .unwrap();
+                let ir::Stmt::Return(Some(expr), _) =
+                    unit.functions[entry.key()].block.stmts.back().unwrap()
+                else {
+                    panic!("missing return")
+                };
+                let ir::Expr::Call { call, .. } = &**expr else {
+                    panic!("{expr:?}")
+                };
+                let ir::Call::Instance { method, .. } = &**call else {
+                    panic!("{call:?}")
+                };
+                assert_eq!(method.parent().simple_name(), expected_parent, "{arg}");
+                assert_eq!(
+                    symbols[*method].type_().params()[0].type_().to_string(),
+                    expected_param,
+                    "{arg}"
+                );
+            },
+        );
+    }
+}
