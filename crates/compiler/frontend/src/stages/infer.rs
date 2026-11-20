@@ -40,316 +40,63 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
         scope: &'scope Scope<'_, 'ctx>,
         reporter: &mut CompileErrorReporter<'ctx>,
     ) -> (LoweredCompilationUnit<'ctx>, Symbols<'ctx>) {
+        let mut modules = mem::take(&mut self.modules);
+        let wraps = self.register_wrap_aliases(&mut modules);
+        let tasks = modules.into_iter().zip(wraps).collect::<Vec<_>>();
+
+        let symbols = &self.symbols;
+        let lowered = crate::parallel::map_ordered(tasks, |(module, wraps)| {
+            lower_module(module, &wraps, scope, symbols)
+        });
+
         let mut compiled = LoweredCompilationUnit::default();
-
-        for mod_ in mem::take(&mut self.modules) {
-            let scope = scope.push(mod_.type_scope, mod_.func_scope);
-
-            for (file, path, resolved) in mod_.declarations {
+        for module in lowered {
+            for (file, path, resolved) in module.declarations {
                 compiled
                     .declarations
                     .entry(file)
                     .or_default()
                     .push((path, resolved));
             }
-
-            for class in mod_.classes {
-                let types = scope.types.push_scope(class.scope);
-                let cls_t = &self.symbols[class.id];
-
-                let class_type_args = cls_t
-                    .params()
-                    .iter()
-                    .map(|param| Type::Ctx(param.clone()))
-                    .collect::<Shared<_>>();
-                let this_t = PolyType::from_type(&Type::app(class.id, class_type_args));
-
-                let mut methods = IndexMap::default();
-                for item in class.methods {
-                    let method = &self.symbols[MethodId::new(class.id, item.id)];
-                    if !method.type_().is_valid() {
-                        continue;
-                    }
-                    let func = function_builder()
-                        .type_(method.type_())
-                        .param_names(&item.param_names)
-                        .body(&item.body)
-                        .env(Env::new(&types.push_scope(item.scope), &scope.funcs))
-                        .maybe_this_type(method.flags().is_static().not().then(|| this_t.clone()))
-                        .context(class.id)
-                        .symbols(&self.symbols)
-                        .reporter(reporter)
-                        .span(item.span)
-                        .build();
-                    methods.insert(item.id, func);
-                }
-
-                let mut defaults = Vec::new();
-                let mut own_order: IndexMap<FieldIndex, u32> = IndexMap::default();
-                for item in &class.fields {
-                    if let Some(value) = &item.default {
-                        own_order.insert(item.id, value.1.start);
-                    }
-                }
-                // Name resolution has completed for every module before inference:
-                // even bases declared in later files now have their full fields.
-                for (input, input_span) in &class.defaults {
-                    let Some((parent, (index, field))) = self
-                        .symbols
-                        .base_iter_with_self(class.id)
-                        .find_map(|(id, aggregate)| {
-                            Some((id, aggregate.fields().by_name(input.target.0)?))
-                        })
-                    else {
-                        reporter.report(crate::LowerError::UnresolvedMember(
-                            class.id,
-                            input.target.0,
-                            input.target.1,
-                        ));
-                        continue;
-                    };
-                    if parent == class.id
-                        && own_order
-                            .get(&index)
-                            .is_some_and(|&start| start < input_span.start)
-                    {
-                        continue;
-                    }
-                    let receiver = crate::lower::InferredTypeApp::from_type(&crate::TypeApp::new(
-                        class.id,
-                        cls_t
-                            .params()
-                            .iter()
-                            .cloned()
-                            .map(Type::Ctx)
-                            .collect::<Shared<_>>(),
-                    ));
-                    let Some(type_env) = receiver
-                        .base_type_env::<crate::symbols::AnyBaseType>(parent, &self.symbols)
-                    else {
-                        continue;
-                    };
-                    let expected = match PolyType::from_type_with_env(field.type_(), &type_env) {
-                        Ok(expected) => expected,
-                        Err(name) => {
-                            reporter.report(crate::LowerError::UnresolvedVar(name, input.target.1));
-                            continue;
-                        }
-                    };
-                    let env = Env::new(&types, &scope.funcs);
-                    let (value, errors) =
-                        supplemental_constant(&input.value, &env, expected, &self.symbols);
-                    reporter.report_many(errors);
-                    if let Some(value) = value {
-                        // Official own-field defaults are first-wins, whereas inherited
-                        // overrides are last-wins. Keep the resolved entries in order;
-                        // the backend merges inherited entries by supplying-class key.
-                        if parent == class.id {
-                            own_order.insert(index, input_span.start);
-                        }
-                        defaults.push(LoweredFieldDefault {
-                            field: FieldId::new(parent, index),
-                            value,
-                            literal_text: input.literal_text,
-                            span: *input_span,
-                        });
-                    }
-                }
-                let mut fields = IndexMap::default();
-                for item in class.fields {
-                    let Some(default) = item.default else {
-                        continue;
-                    };
-                    if own_order
-                        .get(&item.id)
-                        .is_some_and(|&start| start < default.1.start)
-                    {
-                        continue;
-                    }
-                    let field_id = FieldId::new(class.id, item.id);
-                    let env = Env::new(&types, &scope.funcs);
-                    if let Some(expr) =
-                        lower_constant(field_id, &default, &env, &self.symbols, reporter)
-                    {
-                        fields.insert(item.id, expr);
-                    }
-                }
-
-                compiled.classes.insert(
-                    class.id,
-                    LoweredClass {
-                        methods,
-                        fields,
-                        defaults,
-                        span: class.span,
-                    },
-                );
+            for (id, class) in module.classes {
+                compiled.classes.insert(id, class);
             }
-
-            for enum_id in mod_.enums {
+            for enum_id in module.enums {
                 compiled.enums.insert(enum_id);
             }
-
-            for func in mod_.functions {
-                match func {
-                    FuncItemKind::FreeFunction(func) => {
-                        if !self.symbols[func.id].type_().is_valid() {
-                            continue;
-                        }
-                        let value = function_builder()
-                            .type_(self.symbols[func.id].type_())
-                            .param_names(&func.param_names)
-                            .body(&func.body)
-                            .env(Env::new(&scope.types.push_scope(func.scope), &scope.funcs))
-                            .symbols(&self.symbols)
-                            .reporter(reporter)
-                            .span(func.span)
-                            .build();
-                        compiled.functions.insert(func.id, value);
-                        if let Some((file, path)) = func.declaration {
-                            compiled
-                                .declarations
-                                .entry(file)
-                                .or_default()
-                                .push((path, ResolvedDeclaration::Function(func.id)));
-                        }
-                    }
-                    FuncItemKind::ReplaceMethod(func) => {
-                        let sym = &self.symbols[func.id];
-                        let this_t = sym
-                            .flags()
-                            .is_static()
-                            .not()
-                            .then(|| PolyType::nullary(func.id.parent()));
-                        let lowered = function_builder()
-                            .type_(sym.type_())
-                            .maybe_properties(func.properties.as_ref())
-                            .param_names(&func.param_names)
-                            .body(&func.body)
-                            .env(Env::new(&scope.types.push_scope(func.scope), &scope.funcs))
-                            .maybe_this_type(this_t)
-                            .context(func.id.parent())
-                            .symbols(&self.symbols)
-                            .reporter(reporter)
-                            .span(func.span)
-                            .build();
-                        let previous = compiled.method_replacements.insert(func.id, lowered);
-                        if let Some((file, path)) = func.declaration {
-                            compiled
-                                .declarations
-                                .entry(file)
-                                .or_default()
-                                .push((path, ResolvedDeclaration::Replacement(func.id)));
-                        }
-                        if let Some(previous) = previous {
-                            let (name, method) = self.symbols.get_method(func.id).unwrap();
-                            let typ = method.type_();
-                            reporter.report(crate::Diagnostic::ReplaceMethodConflict(
-                                func.id.parent(),
-                                Box::new(FunctionSignature::new(
-                                    name,
-                                    typ.params(),
-                                    typ.return_type().clone(),
-                                )),
-                                func.span,
-                                previous.span,
-                            ));
-                        }
-                    }
-                    FuncItemKind::AddMethod(func) => {
-                        if !self.symbols[func.id].type_().is_valid() {
-                            continue;
-                        }
-                        let lowered = func.body.as_ref().map(|body| {
-                            let sym = &self.symbols[func.id];
-                            let this_t = sym
-                                .flags()
-                                .is_static()
-                                .not()
-                                .then(|| PolyType::nullary(func.id.parent()));
-                            function_builder()
-                                .type_(sym.type_())
-                                .param_names(&func.param_names)
-                                .body(body)
-                                .env(Env::new(&scope.types.push_scope(func.scope), &scope.funcs))
-                                .maybe_this_type(this_t)
-                                .context(func.id.parent())
-                                .symbols(&self.symbols)
-                                .reporter(reporter)
-                                .span(func.span)
-                                .build()
-                        });
-                        compiled.added_methods.insert(func.id, lowered);
-                        if let Some((file, path)) = func.declaration {
-                            compiled
-                                .declarations
-                                .entry(file)
-                                .or_default()
-                                .push((path, ResolvedDeclaration::AddedMethod(func.id)));
-                        }
-                    }
-                    FuncItemKind::WrapMethod(func) => {
-                        let typ = self.symbols[func.id].type_();
-                        let free_func =
-                            FreeFunction::new_alias(typ.clone(), func.id, Some(func.name_span));
-                        let free_func = self
-                            .symbols
-                            .add_free_function(ident::WRAPPED_METHOD, free_func);
-                        let mut funcs = scope.funcs.introduce_scope();
-                        funcs.insert(ident::WRAPPED_METHOD, smallvec![free_func]);
-
-                        let sym = &self.symbols[func.id];
-                        let this_t = sym
-                            .flags()
-                            .is_static()
-                            .not()
-                            .then(|| PolyType::nullary(func.id.parent()));
-                        let lowered = function_builder()
-                            .type_(sym.type_())
-                            .maybe_properties(func.properties.as_ref())
-                            .param_names(&func.param_names)
-                            .body(&func.body)
-                            .env(Env::new(&scope.types.push_scope(func.scope), &funcs))
-                            .maybe_this_type(this_t)
-                            .context(func.id.parent())
-                            .symbols(&self.symbols)
-                            .reporter(reporter)
-                            .span(func.span)
-                            .build();
-                        let wrappers = compiled.method_wrappers.entry(func.id).or_default();
-                        let wrapper_idx = wrappers.len();
-                        wrappers.push(lowered);
-                        if let Some((file, path)) = func.declaration {
-                            compiled
-                                .declarations
-                                .entry(file)
-                                .or_default()
-                                .push((path, ResolvedDeclaration::Wrapper(func.id, wrapper_idx)));
-                        }
-                    }
+            for (id, func) in module.functions {
+                compiled.functions.insert(id, func);
+            }
+            for (id, expr) in module.added_fields {
+                compiled.added_fields.insert(id, expr);
+            }
+            for (id, func) in module.added_methods {
+                compiled.added_methods.insert(id, func);
+            }
+            reporter.report_many(module.diagnostics);
+            for (id, func) in module.method_replacements {
+                let span = func.span;
+                let previous = compiled.method_replacements.insert(id, func);
+                if let Some(previous) = previous {
+                    let (name, method) = self.symbols.get_method(id).unwrap();
+                    let typ = method.type_();
+                    reporter.report(crate::Diagnostic::ReplaceMethodConflict(
+                        id.parent(),
+                        Box::new(FunctionSignature::new(
+                            name,
+                            typ.params(),
+                            typ.return_type().clone(),
+                        )),
+                        span,
+                        previous.span,
+                    ));
                 }
             }
-
-            for item in mod_.fields {
-                let expr = item
-                    .default
-                    .and_then(|default| {
-                        let env = Env::new(&scope.types, &scope.funcs);
-                        lower_constant(item.id, &default, &env, &self.symbols, reporter)
-                    })
-                    .map(Box::new);
-
-                compiled.added_fields.insert(item.id, expr);
+            for (id, func) in module.method_wrappers {
+                compiled.method_wrappers.entry(id).or_default().push(func);
             }
-
-            if let Some(span) = mod_.span {
-                let scope = scope
-                    .types
-                    .pop_scope()
-                    .into_iter()
-                    .filter_map(|(k, v)| Some((k, v.force()?)))
-                    .collect();
-                compiled.scopes.insert(span.file, scope);
+            if let Some((file, scope)) = module.scope {
+                compiled.scopes.insert(file, scope);
             }
         }
 
@@ -362,6 +109,342 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
         script_ref_validation::validate(&compiled, &self.symbols, reporter);
         (compiled, self.symbols)
     }
+
+    /// Registers `@wrapMethod` aliases before lowering so `symbols` stays
+    /// immutable during the parallel phase. Returns, per module, the alias and
+    /// global wrapper index of every `@wrapMethod`, in source order.
+    fn register_wrap_aliases(
+        &mut self,
+        modules: &mut [InferStageModule<'scope, 'ctx>],
+    ) -> Vec<Vec<Option<WrapInfo>>> {
+        let mut counts: IndexMap<MethodId<'ctx>, usize> = IndexMap::default();
+        modules
+            .iter_mut()
+            .map(|module| {
+                let mut wraps = vec![None; module.functions.len()];
+                for (index, func) in module.functions.iter_mut().enumerate() {
+                    if let FuncItemKind::WrapMethod(item) = func {
+                        let typ = self.symbols[item.id].type_().clone();
+                        let free_func =
+                            FreeFunction::new_alias(typ, item.id, Some(item.name_span));
+                        let alias = self
+                            .symbols
+                            .add_free_function(ident::WRAPPED_METHOD, free_func);
+                        let next = counts.entry(item.id).or_insert(0);
+                        wraps[index] = Some(WrapInfo {
+                            alias,
+                            index: *next,
+                        });
+                        *next += 1;
+                    }
+                }
+                wraps
+            })
+            .collect()
+    }
+}
+
+/// The alias and global index of a single `@wrapMethod` declaration.
+#[derive(Debug, Clone, Copy)]
+struct WrapInfo {
+    alias: FreeFunctionIndex,
+    index: usize,
+}
+
+/// Lowered output of one source module, merged into the compilation unit in
+/// module order after the parallel phase completes.
+#[derive(Default)]
+struct LoweredModule<'ctx> {
+    declarations: Vec<(FileId, DeclarationPath, ResolvedDeclaration<'ctx>)>,
+    classes: Vec<(TypeId<'ctx>, LoweredClass<'ctx>)>,
+    enums: Vec<TypeId<'ctx>>,
+    functions: Vec<(FreeFunctionIndex, LoweredFunction<'ctx>)>,
+    added_fields: Vec<(FieldId<'ctx>, Option<Box<ir::Const<'ctx>>>)>,
+    added_methods: Vec<(MethodId<'ctx>, Option<LoweredFunction<'ctx>>)>,
+    method_replacements: Vec<(MethodId<'ctx>, LoweredFunction<'ctx>)>,
+    method_wrappers: Vec<(MethodId<'ctx>, LoweredFunction<'ctx>)>,
+    scope: Option<(FileId, IndexMap<&'ctx str, TypeRef<'static, 'ctx>>)>,
+    diagnostics: Vec<crate::Diagnostic<'ctx>>,
+}
+
+fn lower_module<'m, 'ctx>(
+    module: InferStageModule<'m, 'ctx>,
+    wraps: &[Option<WrapInfo>],
+    scope: &Scope<'m, 'ctx>,
+    symbols: &Symbols<'ctx>,
+) -> LoweredModule<'ctx> {
+    let mut out = LoweredModule::default();
+    let mut reporter = CompileErrorReporter::default();
+    let scope = scope.push(module.type_scope, module.func_scope);
+
+    for (file, path, resolved) in module.declarations {
+        out.declarations.push((file, path, resolved));
+    }
+
+    for class in module.classes {
+        let types = scope.types.push_scope(class.scope);
+        let cls_t = &symbols[class.id];
+
+        let class_type_args = cls_t
+            .params()
+            .iter()
+            .map(|param| Type::Ctx(param.clone()))
+            .collect::<Shared<_>>();
+        let this_t = PolyType::from_type(&Type::app(class.id, class_type_args));
+
+        let mut methods = IndexMap::default();
+        for item in class.methods {
+            let method = &symbols[MethodId::new(class.id, item.id)];
+            if !method.type_().is_valid() {
+                continue;
+            }
+            let func = function_builder()
+                .type_(method.type_())
+                .param_names(&item.param_names)
+                .body(&item.body)
+                .env(Env::new(&types.push_scope(item.scope), &scope.funcs))
+                .maybe_this_type(method.flags().is_static().not().then(|| this_t.clone()))
+                .context(class.id)
+                .symbols(symbols)
+                .reporter(&mut reporter)
+                .span(item.span)
+                .build();
+            methods.insert(item.id, func);
+        }
+
+        let mut defaults = Vec::new();
+        let mut own_order: IndexMap<FieldIndex, u32> = IndexMap::default();
+        for item in &class.fields {
+            if let Some(value) = &item.default {
+                own_order.insert(item.id, value.1.start);
+            }
+        }
+        // Name resolution has completed for every module before inference:
+        // even bases declared in later files now have their full fields.
+        for (input, input_span) in &class.defaults {
+            let Some((parent, (index, field))) = symbols
+                .base_iter_with_self(class.id)
+                .find_map(|(id, aggregate)| {
+                    Some((id, aggregate.fields().by_name(input.target.0)?))
+                })
+            else {
+                reporter.report(crate::LowerError::UnresolvedMember(
+                    class.id,
+                    input.target.0,
+                    input.target.1,
+                ));
+                continue;
+            };
+            if parent == class.id
+                && own_order
+                    .get(&index)
+                    .is_some_and(|&start| start < input_span.start)
+            {
+                continue;
+            }
+            let receiver = crate::lower::InferredTypeApp::from_type(&crate::TypeApp::new(
+                class.id,
+                cls_t
+                    .params()
+                    .iter()
+                    .cloned()
+                    .map(Type::Ctx)
+                    .collect::<Shared<_>>(),
+            ));
+            let Some(type_env) =
+                receiver.base_type_env::<crate::symbols::AnyBaseType>(parent, symbols)
+            else {
+                continue;
+            };
+            let expected = match PolyType::from_type_with_env(field.type_(), &type_env) {
+                Ok(expected) => expected,
+                Err(name) => {
+                    reporter.report(crate::LowerError::UnresolvedVar(name, input.target.1));
+                    continue;
+                }
+            };
+            let env = Env::new(&types, &scope.funcs);
+            let (value, errors) = supplemental_constant(&input.value, &env, expected, symbols);
+            reporter.report_many(errors);
+            if let Some(value) = value {
+                // Official own-field defaults are first-wins, whereas inherited
+                // overrides are last-wins. Keep the resolved entries in order;
+                // the backend merges inherited entries by supplying-class key.
+                if parent == class.id {
+                    own_order.insert(index, input_span.start);
+                }
+                defaults.push(LoweredFieldDefault {
+                    field: FieldId::new(parent, index),
+                    value,
+                    literal_text: input.literal_text,
+                    span: *input_span,
+                });
+            }
+        }
+        let mut fields = IndexMap::default();
+        for item in class.fields {
+            let Some(default) = item.default else {
+                continue;
+            };
+            if own_order
+                .get(&item.id)
+                .is_some_and(|&start| start < default.1.start)
+            {
+                continue;
+            }
+            let field_id = FieldId::new(class.id, item.id);
+            let env = Env::new(&types, &scope.funcs);
+            if let Some(expr) = lower_constant(field_id, &default, &env, symbols, &mut reporter) {
+                fields.insert(item.id, expr);
+            }
+        }
+
+        out.classes.push((
+            class.id,
+            LoweredClass {
+                methods,
+                fields,
+                defaults,
+                span: class.span,
+            },
+        ));
+    }
+
+    for enum_id in module.enums {
+        out.enums.push(enum_id);
+    }
+
+    for (index, func) in module.functions.into_iter().enumerate() {
+        match func {
+            FuncItemKind::FreeFunction(func) => {
+                if !symbols[func.id].type_().is_valid() {
+                    continue;
+                }
+                let value = function_builder()
+                    .type_(symbols[func.id].type_())
+                    .param_names(&func.param_names)
+                    .body(&func.body)
+                    .env(Env::new(&scope.types.push_scope(func.scope), &scope.funcs))
+                    .symbols(symbols)
+                    .reporter(&mut reporter)
+                    .span(func.span)
+                    .build();
+                out.functions.push((func.id, value));
+                if let Some((file, path)) = func.declaration {
+                    out.declarations
+                        .push((file, path, ResolvedDeclaration::Function(func.id)));
+                }
+            }
+            FuncItemKind::ReplaceMethod(func) => {
+                let sym = &symbols[func.id];
+                let this_t = sym
+                    .flags()
+                    .is_static()
+                    .not()
+                    .then(|| PolyType::nullary(func.id.parent()));
+                let lowered = function_builder()
+                    .type_(sym.type_())
+                    .maybe_properties(func.properties.as_ref())
+                    .param_names(&func.param_names)
+                    .body(&func.body)
+                    .env(Env::new(&scope.types.push_scope(func.scope), &scope.funcs))
+                    .maybe_this_type(this_t)
+                    .context(func.id.parent())
+                    .symbols(symbols)
+                    .reporter(&mut reporter)
+                    .span(func.span)
+                    .build();
+                out.method_replacements.push((func.id, lowered));
+                if let Some((file, path)) = func.declaration {
+                    out.declarations
+                        .push((file, path, ResolvedDeclaration::Replacement(func.id)));
+                }
+            }
+            FuncItemKind::AddMethod(func) => {
+                if !symbols[func.id].type_().is_valid() {
+                    continue;
+                }
+                let lowered = func.body.as_ref().map(|body| {
+                    let sym = &symbols[func.id];
+                    let this_t = sym
+                        .flags()
+                        .is_static()
+                        .not()
+                        .then(|| PolyType::nullary(func.id.parent()));
+                    function_builder()
+                        .type_(sym.type_())
+                        .param_names(&func.param_names)
+                        .body(body)
+                        .env(Env::new(&scope.types.push_scope(func.scope), &scope.funcs))
+                        .maybe_this_type(this_t)
+                        .context(func.id.parent())
+                        .symbols(symbols)
+                        .reporter(&mut reporter)
+                        .span(func.span)
+                        .build()
+                });
+                out.added_methods.push((func.id, lowered));
+                if let Some((file, path)) = func.declaration {
+                    out.declarations
+                        .push((file, path, ResolvedDeclaration::AddedMethod(func.id)));
+                }
+            }
+            FuncItemKind::WrapMethod(func) => {
+                let info = wraps[index].expect("wrap alias should be registered");
+                let mut funcs = scope.funcs.introduce_scope();
+                funcs.insert(ident::WRAPPED_METHOD, smallvec![info.alias]);
+
+                let sym = &symbols[func.id];
+                let this_t = sym
+                    .flags()
+                    .is_static()
+                    .not()
+                    .then(|| PolyType::nullary(func.id.parent()));
+                let lowered = function_builder()
+                    .type_(sym.type_())
+                    .maybe_properties(func.properties.as_ref())
+                    .param_names(&func.param_names)
+                    .body(&func.body)
+                    .env(Env::new(&scope.types.push_scope(func.scope), &funcs))
+                    .maybe_this_type(this_t)
+                    .context(func.id.parent())
+                    .symbols(symbols)
+                    .reporter(&mut reporter)
+                    .span(func.span)
+                    .build();
+                out.method_wrappers.push((func.id, lowered));
+                if let Some((file, path)) = func.declaration {
+                    out.declarations
+                        .push((file, path, ResolvedDeclaration::Wrapper(func.id, info.index)));
+                }
+            }
+        }
+    }
+
+    for item in module.fields {
+        let expr = item
+            .default
+            .and_then(|default| {
+                let env = Env::new(&scope.types, &scope.funcs);
+                lower_constant(item.id, &default, &env, symbols, &mut reporter)
+            })
+            .map(Box::new);
+
+        out.added_fields.push((item.id, expr));
+    }
+
+    if let Some(span) = module.span {
+        let scope = scope
+            .types
+            .pop_scope()
+            .into_iter()
+            .filter_map(|(k, v)| Some((k, v.force()?)))
+            .collect();
+        out.scope = Some((span.file, scope));
+    }
+
+    out.diagnostics = reporter.into_reported();
+    out
 }
 
 #[builder(finish_fn = build)]

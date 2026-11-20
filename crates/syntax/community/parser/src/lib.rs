@@ -65,38 +65,57 @@ pub fn parse_modules<'a>(
 pub fn parse_modules<'a>(
     it: impl IntoIterator<Item = (FileId, &'a str)>,
 ) -> (Vec<SourceModule<'a>>, Vec<Error>) {
-    use rayon::prelude::*;
+    let files = it.into_iter().collect::<Vec<_>>();
+    parallel_pool().install(|| {
+        use rayon::prelude::*;
 
-    let lexed = it
-        .into_iter()
-        .collect::<Vec<_>>()
-        .into_par_iter()
-        .map(|(file, src)| {
-            let (toks, errs) = lex(src, file);
-            (file, src.len() as u32, toks, errs)
-        })
-        .collect::<Vec<_>>();
+        let lexed = files
+            .into_par_iter()
+            .map(|(file, src)| {
+                let (toks, errs) = lex(src, file);
+                (file, src.len() as u32, toks, errs)
+            })
+            .collect::<Vec<_>>();
 
-    let mut errs = vec![];
-    let mut toks = vec![];
-    for (file, eof, file_toks, file_errs) in lexed {
-        errs.extend(file_errs);
-        if let Some(file_toks) = file_toks {
-            toks.push((file, eof, file_toks));
+        let mut errs = vec![];
+        let mut toks = vec![];
+        for (file, eof, file_toks, file_errs) in lexed {
+            errs.extend(file_errs);
+            if let Some(file_toks) = file_toks {
+                toks.push((file, eof, file_toks));
+            }
         }
-    }
 
-    let modules = toks
-        .into_par_iter()
-        .map(|(file, eof, toks)| parse_with_eof(parser::module(), &toks, file, eof))
-        .collect::<Vec<_>>()
-        .into_iter()
-        .filter_map(|(res, e)| {
-            errs.extend(e);
-            res
-        })
-        .collect::<Vec<_>>();
-    (modules, errs)
+        let modules = toks
+            .into_par_iter()
+            .map(|(file, eof, toks)| parse_with_eof(parser::module(), &toks, file, eof))
+            .collect::<Vec<_>>()
+            .into_iter()
+            .filter_map(|(res, e)| {
+                errs.extend(e);
+                res
+            })
+            .collect::<Vec<_>>();
+        (modules, errs)
+    })
+}
+
+/// Dedicated worker pool with generous stacks: deeply nested sources recurse
+/// during parsing, so the default 2 MiB worker stack can overflow where the
+/// sequential path (running on the caller's stack) would not.
+#[cfg(feature = "parallel")]
+fn parallel_pool() -> &'static rayon::ThreadPool {
+    use std::sync::OnceLock;
+
+    const STACK_SIZE: usize = 64 * 1024 * 1024;
+
+    static POOL: OnceLock<rayon::ThreadPool> = OnceLock::new();
+    POOL.get_or_init(|| {
+        rayon::ThreadPoolBuilder::new()
+            .stack_size(STACK_SIZE)
+            .build()
+            .expect("failed to build the parallel parser thread pool")
+    })
 }
 
 pub fn parse_module(src: &str, file: FileId) -> ParseResult<SourceModule<'_>> {
