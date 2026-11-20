@@ -759,10 +759,16 @@ impl<'ctx> LoweredCompilationUnit<'ctx> {
             return;
         }
 
-        for func in self.all_functions() {
+        let functions = self.all_functions().collect::<Vec<_>>();
+        let diagnostics = crate::parallel::map_ordered(functions, |func| {
+            let mut local = CompileErrorReporter::default();
             for pass in passes {
-                pass.run(func, reporter);
+                pass.run(func, &mut local);
             }
+            local.into_reported()
+        });
+        for diagnostics in diagnostics {
+            reporter.report_many(diagnostics);
         }
     }
 }

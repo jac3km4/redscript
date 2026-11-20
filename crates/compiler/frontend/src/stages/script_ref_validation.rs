@@ -11,23 +11,13 @@ pub(super) fn validate<'ctx>(
     symbols: &Symbols<'ctx>,
     reporter: &mut CompileErrorReporter<'ctx>,
 ) {
-    let mut check = |function: &LoweredFunction<'ctx>, func_type: &FunctionType<'ctx>| {
-        if func_type
-            .return_type()
-            .strip_ref()
-            .is_some_and(|(rt, _)| rt == RefType::Script)
-        {
-            reporter.report(Diagnostic::ScriptRefReturn(function.span));
-        }
-        ScriptRefValidator { symbols, reporter }.visit_block(&function.block);
-    };
-
+    let mut functions: Vec<(&LoweredFunction<'ctx>, &FunctionType<'ctx>)> = Vec::new();
     for (id, function) in &unit.functions {
-        check(function, symbols[*id].type_());
+        functions.push((function, symbols[*id].type_()));
     }
     for (id, class) in &unit.classes {
         for (method, function) in &class.methods {
-            check(function, symbols[MethodId::new(*id, *method)].type_());
+            functions.push((function, symbols[MethodId::new(*id, *method)].type_()));
         }
     }
     for (id, function) in unit
@@ -41,8 +31,36 @@ pub(super) fn validate<'ctx>(
                 .flat_map(|(id, fs)| fs.iter().map(move |f| (id, f))),
         )
     {
-        check(function, symbols[*id].type_());
+        functions.push((function, symbols[*id].type_()));
     }
+
+    let diagnostics = crate::parallel::map_ordered(functions, |(function, func_type)| {
+        check_function(function, func_type, symbols)
+    });
+    for diagnostics in diagnostics {
+        reporter.report_many(diagnostics);
+    }
+}
+
+fn check_function<'ctx>(
+    function: &LoweredFunction<'ctx>,
+    func_type: &FunctionType<'ctx>,
+    symbols: &Symbols<'ctx>,
+) -> Vec<Diagnostic<'ctx>> {
+    let mut reporter = CompileErrorReporter::default();
+    if func_type
+        .return_type()
+        .strip_ref()
+        .is_some_and(|(rt, _)| rt == RefType::Script)
+    {
+        reporter.report(Diagnostic::ScriptRefReturn(function.span));
+    }
+    ScriptRefValidator {
+        symbols,
+        reporter: &mut reporter,
+    }
+    .visit_block(&function.block);
+    reporter.into_reported()
 }
 
 struct ScriptRefValidator<'a, 'ctx> {

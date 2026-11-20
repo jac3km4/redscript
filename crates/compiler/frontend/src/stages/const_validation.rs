@@ -48,59 +48,76 @@ pub(super) fn validate<'policy, 'ctx>(
     policy: impl Fn(Span) -> &'policy SemanticPolicy,
     reporter: &mut CompileErrorReporter<'ctx>,
 ) {
-    let mut check =
-        |function: &crate::LoweredFunction<'ctx>, params: &[Param<'ctx>], is_const_method: bool| {
-            let func_policy = policy(function.span);
-            let mut readonly: HashMap<_, _> = params
-                .iter()
-                .enumerate()
-                .filter_map(|(i, p)| {
-                    p.flags()
-                        .is_const()
-                        .then_some((ir::Local::Param(i as u16), ConstRoot::Parameter))
-                })
-                .collect();
-            if is_const_method && !func_policy.relaxed_const_checks {
-                readonly.insert(ir::Local::This, ConstRoot::This);
-            }
-            add_const_locals(&mut readonly, &function.locals, symbols, func_policy);
-            let mut script_ref_locals: HashSet<_> = params
-                .iter()
-                .enumerate()
-                .filter_map(|(i, p)| {
-                    (p.type_().ref_type() == Some(RefType::Script))
-                        .then_some(ir::Local::Param(i as u16))
-                })
-                .collect();
-            add_script_ref_locals(&mut script_ref_locals, &function.locals, symbols);
-            let readonly_array_temps =
-                readonly_array_temps(&function.locals, &readonly, &HashMap::new());
-            ConstWrites {
-                symbols,
-                readonly,
-                captures: HashMap::new(),
-                readonly_array_temps,
-                script_ref_locals,
-                script_ref_captures: HashSet::new(),
-                initializers: declaration_initializers(&function.locals),
-                policy: func_policy,
-                reporter,
-            }
-            .visit_block(&function.block);
-        };
+    let mut functions = Vec::new();
     for (id, function) in unit.functions_with_ids() {
-        match id {
-            FunctionId::Free(id) => check(function, symbols[id].type_().params(), false),
+        let (params, is_const_method) = match id {
+            FunctionId::Free(id) => (symbols[id].type_().params(), false),
             FunctionId::Method(id) | FunctionId::Replacement(id) | FunctionId::Wrapper(id) => {
                 let sym = &symbols[id];
-                check(
-                    function,
+                (
                     sym.type_().params(),
                     sym.flags().is_const() && !sym.flags().is_static(),
-                );
+                )
             }
-        }
+        };
+        functions.push((function, params, is_const_method, policy(function.span)));
     }
+
+    let diagnostics = crate::parallel::map_ordered(
+        functions,
+        |(function, params, is_const_method, func_policy)| {
+            check_function(function, params, is_const_method, symbols, func_policy)
+        },
+    );
+    for diagnostics in diagnostics {
+        reporter.report_many(diagnostics);
+    }
+}
+
+fn check_function<'ctx>(
+    function: &crate::LoweredFunction<'ctx>,
+    params: &[Param<'ctx>],
+    is_const_method: bool,
+    symbols: &Symbols<'ctx>,
+    func_policy: &SemanticPolicy,
+) -> Vec<Diagnostic<'ctx>> {
+    let mut reporter = CompileErrorReporter::default();
+    let mut readonly: HashMap<_, _> = params
+        .iter()
+        .enumerate()
+        .filter_map(|(i, p)| {
+            p.flags()
+                .is_const()
+                .then_some((ir::Local::Param(i as u16), ConstRoot::Parameter))
+        })
+        .collect();
+    if is_const_method && !func_policy.relaxed_const_checks {
+        readonly.insert(ir::Local::This, ConstRoot::This);
+    }
+    add_const_locals(&mut readonly, &function.locals, symbols, func_policy);
+    let mut script_ref_locals: HashSet<_> = params
+        .iter()
+        .enumerate()
+        .filter_map(|(i, p)| {
+            (p.type_().ref_type() == Some(RefType::Script))
+                .then_some(ir::Local::Param(i as u16))
+        })
+        .collect();
+    add_script_ref_locals(&mut script_ref_locals, &function.locals, symbols);
+    let readonly_array_temps = readonly_array_temps(&function.locals, &readonly, &HashMap::new());
+    ConstWrites {
+        symbols,
+        readonly,
+        captures: HashMap::new(),
+        readonly_array_temps,
+        script_ref_locals,
+        script_ref_captures: HashSet::new(),
+        initializers: declaration_initializers(&function.locals),
+        policy: func_policy,
+        reporter: &mut reporter,
+    }
+    .visit_block(&function.block);
+    reporter.into_reported()
 }
 
 fn add_const_locals<'ctx>(
