@@ -142,7 +142,7 @@ negation were made separately. Assignments to script-reference destinations rema
 accepted with REDmod write-through semantics; preserving community rebinding
 remains future work.
 
-### Correctness: instantiated overload applicability and const forwarding
+### Correctness: instantiated overload applicability
 
 - **Receiver substitution in overload applicability (partially addressed).**
   Applicability filtering in `crates/compiler/frontend/src/lower/calls.rs` now
@@ -155,13 +155,6 @@ remains future work.
   (`reference_signature_score` / `reference_signature_dominates`) and to methods
   that declare their own type parameters, and cover method/free type arguments,
   declaration order and fresh inference variables explicitly.
-- **Instantiated const-forwarding checks.**
-  `crates/compiler/frontend/src/stages/const_validation.rs` classifies declared
-  parameter types. `Take<T>(value: T)` accepts a const array without the forwarding
-  diagnostic produced by an equivalent concrete array parameter. Use resolved
-  function and receiver type arguments when classifying parameter mutability.
-  Cover const parameters and locals, object/array arguments, and scalar/const
-  parameter controls. Preserve the file-local native policy exceptions.
 
 ### Correctness: target symbol names and literal-only field defaults
 
@@ -174,13 +167,14 @@ remains future work.
   Until the representation is verified, unsupported references should fail closed.
   Test same-module and dependency calls/types, conflicting simple names, overloads,
   and exact/wildcard imports through semantic roundtrips and optional official probes.
-- **Field-default formatting distinct from expressions.**
-  `crates/compiler/redmod/transpiler/src/declarations.rs` special-cases Uint32 but
-  otherwise uses expression formatting for literal-only field defaults. Int16,
-  Double and Int32 minimum values can become casts or arithmetic expressions.
-  Define an exhaustive field-default formatter with verified spellings or typed
-  rejection. Cover every constant kind and numeric boundary in fields separately
-  from local initializers, including added fields and official parser validation.
+- **Field-default formatting distinct from expressions (partially addressed).**
+  Literal-only field defaults now use an exhaustive
+  `crates/compiler/redmod/transpiler/src/target.rs::field_default_literal` instead
+  of expression formatting: verified spellings are accepted and
+  Int8/Int16/Int64/Uint8/Uint16/Uint64/Double, `i32::MIN` and non-finite Float are
+  typed-rejected rather than emitted as casts or arithmetic. Remaining work:
+  confirm every accepted spelling against the official parser and cover added
+  fields separately from local initializers.
 - **Community script-reference rebinding.**
   The transpiler emits assignments to `script_ref` destinations unchanged and does
   not diagnose the semantic difference: REDmod writes through the reference,
@@ -190,13 +184,8 @@ remains future work.
   subsequent reads; successful target compilation does not establish equivalence.
   Audit `out` reference forwarding under the same dialect distinction.
 
-### Array guard structure and safe static callees
+### Frontend structural guard scanning
 
-- Adapter `src/array_guard.rs` and transpiler `src/source.rs` reject member-shaped
-  callees with array arguments before resolution, including static `Host.Take([1])`.
-  Defer static-versus-runtime classification to resolved validation. Preserve the
-  runtime receiver/callee evaluation boundary; syntactic member access alone is
-  neither a safe exemption nor proof of observable receiver evaluation.
 - Frontend `src/lower.rs` recursively scans an expression subtree on each recursive
   lowering call. Run structural guards once per expression root rather than
   repeatedly scanning descendants, while retaining selected-overload/skip checks,
