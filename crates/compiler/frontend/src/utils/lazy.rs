@@ -58,8 +58,16 @@ impl<A, E> Lazy<A, Box<dyn Fn(&E) -> A>> {
 #[cfg(not(feature = "sync"))]
 impl<A: fmt::Debug, F> fmt::Debug for Lazy<A, F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Mirror the `sync` representation: `Some`/`None` for the slot value and
+        // `<borrowed>` while another evaluation holds the cell.
+        let Ok(value) = self.slot.0.try_borrow() else {
+            return f
+                .debug_struct("Lazy")
+                .field("value", &"<borrowed>")
+                .finish();
+        };
         f.debug_struct("Lazy")
-            .field("value", &self.slot.0.try_borrow())
+            .field("value", &value.as_ref())
             .finish()
     }
 }
