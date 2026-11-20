@@ -4,8 +4,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use redscript_community_ast::{self as ast, FileId, Item, SourceMap, SourceModule};
 use redscript_compiler_frontend::{
-    CompileErrorReporter, Evaluator, LoweredCompilationUnit, Symbols, TypeInterner, parse_file,
-    process_sources,
+    CompileErrorReporter, Evaluator, LoweredCompilationUnit, Symbols, TypeInterner,
+    parse_files_with_ids, process_sources,
 };
 
 use crate::{
@@ -40,10 +40,7 @@ pub fn analyze_sources<'ctx>(
     interner: &'ctx TypeInterner,
 ) -> std::result::Result<AnalyzedSources<'ctx>, Vec<TranspileDiagnostic>> {
     let mut reporter = CompileErrorReporter::default();
-    let modules: Vec<_> = sources
-        .files()
-        .filter_map(|(id, file)| parse_file(id, file, &mut reporter).map(|module| (id, module)))
-        .collect();
+    let modules = parse_files_with_ids(sources, &mut reporter);
     // Do not attempt semantic analysis of recovered syntax.
     if reporter
         .reported()

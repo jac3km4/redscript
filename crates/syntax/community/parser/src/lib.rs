@@ -30,6 +30,7 @@ macro_rules! parse {
     }};
 }
 
+#[cfg(not(feature = "parallel"))]
 pub fn parse_modules<'a>(
     it: impl IntoIterator<Item = (FileId, &'a str)>,
 ) -> (Vec<SourceModule<'a>>, Vec<Error>) {
@@ -48,6 +49,49 @@ pub fn parse_modules<'a>(
         .iter()
         .filter_map(|(file, toks, eof)| {
             let (res, e) = parse_with_eof(parser.clone(), toks, *file, *eof);
+            errs.extend(e);
+            res
+        })
+        .collect::<Vec<_>>();
+    (modules, errs)
+}
+
+/// Parallel counterpart of [`parse_modules`].
+///
+/// Lexing and parsing stay separate phases so all lexing diagnostics still
+/// precede all parsing diagnostics, and both phases keep input order. The
+/// parser is constructed per file because its type borrows the token lifetime.
+#[cfg(feature = "parallel")]
+pub fn parse_modules<'a>(
+    it: impl IntoIterator<Item = (FileId, &'a str)>,
+) -> (Vec<SourceModule<'a>>, Vec<Error>) {
+    use rayon::prelude::*;
+
+    let lexed = it
+        .into_iter()
+        .collect::<Vec<_>>()
+        .into_par_iter()
+        .map(|(file, src)| {
+            let (toks, errs) = lex(src, file);
+            (file, src.len() as u32, toks, errs)
+        })
+        .collect::<Vec<_>>();
+
+    let mut errs = vec![];
+    let mut toks = vec![];
+    for (file, eof, file_toks, file_errs) in lexed {
+        errs.extend(file_errs);
+        if let Some(file_toks) = file_toks {
+            toks.push((file, eof, file_toks));
+        }
+    }
+
+    let modules = toks
+        .into_par_iter()
+        .map(|(file, eof, toks)| parse_with_eof(parser::module(), &toks, file, eof))
+        .collect::<Vec<_>>()
+        .into_iter()
+        .filter_map(|(res, e)| {
             errs.extend(e);
             res
         })

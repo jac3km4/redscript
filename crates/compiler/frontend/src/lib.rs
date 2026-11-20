@@ -4,6 +4,7 @@ mod diagnostic;
 pub mod ir;
 mod lower;
 mod modules;
+mod parallel;
 mod query;
 mod stages;
 mod symbols;
@@ -78,6 +79,29 @@ pub fn parse_file<'ctx>(
     let (module, errs) = parser::parse_module(file.source(), id);
     reporter.report_many(errs);
     module
+}
+
+/// Parse every source file independently, retaining its [`ast::FileId`].
+///
+/// Each file is parsed exactly like [`parse_file`] (lexing then parsing), so a
+/// file's diagnostics stay adjacent and files keep their source order. Unlike
+/// [`parse_files`], empty files are retained because their `FileId` cannot be
+/// recovered from a module without a span.
+pub fn parse_files_with_ids<'ctx>(
+    sources: &'ctx ast::SourceMap,
+    reporter: &mut CompileErrorReporter<'ctx>,
+) -> Vec<(ast::FileId, ast::SourceModule<'ctx>)> {
+    let results = parallel::map_ordered(sources.files().collect(), |(id, file)| {
+        (id, parser::parse_module(file.source(), id))
+    });
+    let mut modules = Vec::new();
+    for (id, (module, errs)) in results {
+        reporter.report_many(errs);
+        if let Some(module) = module {
+            modules.push((id, module));
+        }
+    }
+    modules
 }
 
 pub fn process_sources<'ctx>(
