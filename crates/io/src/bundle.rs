@@ -83,7 +83,7 @@ impl<'i> BundleReader<'i> {
     /// Reads the raw definition header at `index`.
     ///
     /// The address is computed from the definitions table offset with checked
-    /// arithmetic and a fixed [`Definition::HEADER_SIZE`] stride. An out-of-bounds
+    /// arithmetic and a fixed `Definition::HEADER_SIZE` stride. An out-of-bounds
     /// index or an overflowing address is reported as an error.
     pub fn definition_header(&self, index: u32) -> byte::Result<DefinitionHeader> {
         if index >= self.header.definitions.count {
