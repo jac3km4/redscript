@@ -12,6 +12,7 @@
 //! when an `ast::Import` brings it in. `@using "M.Name"` imports the whole
 //! overload family named `M.Name`, matching the target grammar.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 use redscript_community_ast::{self as ast, Item, SourceModule};
@@ -63,15 +64,10 @@ impl TargetNamePlan {
         let (name, _) = symbols
             .get_free_function(index)
             .ok_or_else(|| error("missing resolved function", None))?;
-        // Root-scope functions have a single component; avoid formatting the
-        // qualified name only to split it again.
-        if let Some(simple) = name.as_single_component() {
-            return self.resolve(simple, simple);
-        }
-        let full = name.to_string();
-        let simple = full
-            .rsplit_once('.')
-            .map_or(full.as_str(), |(_, name)| name);
+        // Root-scope functions have a single component; `Cow::from` keeps that
+        // spelling borrowed instead of formatting the qualified name.
+        let full = Cow::from(name);
+        let simple = name.as_ref().last().copied().unwrap_or(full.as_ref());
         self.resolve(&full, simple)
     }
 
@@ -142,7 +138,8 @@ impl TargetNamePlan {
         // shadow one; same-level globals are unique in the frontend namespace.
         if !full.contains('.') {
             if let Some(providers) = self.imported.get(simple) {
-                return Err(collision_error(full, simple, providers));
+                let other = providers.iter().next().map_or("", String::as_str);
+                return Err(collision_error(full, simple, other));
             }
             return Ok(simple.to_owned());
         }
@@ -164,12 +161,7 @@ impl TargetNamePlan {
             .chain(imported.into_iter().flatten())
             .find(|provider| provider.as_str() != full);
         if let Some(other) = other {
-            return Err(error(
-                format!(
-                    "cannot emit `{full}` unqualified: the name `{simple}` collides with `{other}` in this module's scope"
-                ),
-                None,
-            ));
+            return Err(collision_error(full, simple, other));
         }
         Ok(simple.to_owned())
     }
@@ -188,8 +180,7 @@ fn matches_module(name: &[&str], target: &str) -> bool {
     !module.is_empty() && module.iter().copied().eq(target.split('.'))
 }
 
-fn collision_error(full: &str, simple: &str, providers: &BTreeSet<String>) -> TranspileDiagnostic {
-    let other = providers.iter().next().map_or("", String::as_str);
+fn collision_error(full: &str, simple: &str, other: &str) -> TranspileDiagnostic {
     error(
         format!(
             "cannot emit `{full}` unqualified: the name `{simple}` collides with `{other}` in this module's scope"
