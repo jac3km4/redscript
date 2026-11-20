@@ -43,12 +43,58 @@ jobs:
         with:
           key: check
           save-if: ${{ github.event_name == 'push' && github.ref_type == 'branch' }}
-      # Verify standalone compilation for feature-bearing crates without workspace feature unification.
-      - run: cargo check --no-default-features -p redscript-community-ast -p redscript-io -p redscript-compiler-api -p scc-core --locked
+      # Verify standalone compilation for feature-bearing crates without
+      # cross-crate feature unification (combining crates in one command lets
+      # downstream dependencies re-enable features on upstream crates).
+      - run: cargo check --no-default-features -p redscript-community-ast --locked
+      - run: cargo check --no-default-features -p redscript-community-parser --locked
+      - run: cargo check --no-default-features -p redscript-io --locked
+      - run: cargo check --no-default-features -p redscript-compiler-api --locked
+      - run: cargo check -p scc-core --locked
       - name: Check documentation
         env:
           RUSTDOCFLAGS: "-D warnings"
         run: cargo doc --workspace --no-deps --locked
+
+  test-features:
+    name: Test feature matrix (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Workspace binary crates unify `parallel` and `sync` across the whole
+          # workspace; exclude them here so the single-threaded default build
+          # (`Rc`/`RefCell`) is linted and tested alongside `sync` and `parallel`.
+          - name: no-sync
+            packages: --workspace --exclude redscript-cli --exclude scc-core --exclude scc-lib --exclude scc
+            features: ""
+          - name: sync
+            packages: >-
+              -p redscript-community-ast -p redscript-community-parser
+              -p redscript-compiler-frontend -p redscript-compiler-backend
+              -p redscript-compiler-api -p redscript-redmod-transpiler
+              -p redscript-redmod-adapter
+            features: --features redscript-compiler-api/sync,redscript-redmod-transpiler/sync,redscript-redmod-adapter/sync
+          - name: parallel
+            packages: >-
+              -p redscript-community-ast -p redscript-community-parser
+              -p redscript-compiler-frontend -p redscript-compiler-backend
+              -p redscript-compiler-api -p redscript-redmod-transpiler
+              -p redscript-redmod-adapter
+            features: --features redscript-compiler-api/parallel,redscript-redmod-transpiler/parallel,redscript-redmod-adapter/parallel
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install stable --profile minimal --component clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: features-${{ matrix.name }}
+          save-if: ${{ github.event_name == 'push' && github.ref_type == 'branch' }}
+      - run: cargo clippy ${{ matrix.packages }} ${{ matrix.features }} --all-targets --locked -- -D warnings
+      - run: cargo test ${{ matrix.packages }} ${{ matrix.features }} --bins --lib --tests --locked
 
   rustfmt:
     name: Check formatting
