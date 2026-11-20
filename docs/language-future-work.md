@@ -6,30 +6,31 @@ and focused semantic contracts, not in this list.
 
 ## Variant default initialization on repeated declarations
 
-`crates/compiler/backend/src/assemble.rs` skips `Stmt::InitDefault` when the type
-is `Variant`, relying on VM default construction of function-local storage.
-Function-entry VM initialization is not a reset when a declaration executes again
-on a loop back edge. A repeatedly executed declaration may therefore retain the
-previous iteration's payload instead of becoming an empty Variant.
+`crates/compiler/backend/src/assemble.rs` cannot reset a `Variant` with bytecode:
+the VM default-constructs function-local storage once at entry, which is not a
+reset when a declaration executes again on a loop back edge or after the local
+has already been used. Rather than emit code that could retain the previous
+iteration's payload, the backend now fails closed. A `Variant` default
+initialization is elided only when it provably runs once at function entry;
+otherwise assembly returns the spanned `UNSUPPORTED_REPEATED_VARIANT_DEFAULT`
+error, which prevents saving output. The same tracking forces an empty array
+literal to `ArrayClear` on every repeated execution instead of skipping it.
 
-This is a backend risk, not merely a REDmod transpiler limitation. Game-runtime
-behavior has **not been verified**. Do not treat successful compilation or a
-missing reset instruction as evidence that repeated initialization is correct.
-No semantics fix is included in this documentation change.
+This is a backend capability limit, not merely a REDmod transpiler limitation.
+Game-runtime reset behavior has **not** been verified.
 
-Required follow-up:
+Remaining work:
 
-- Establish an evidence-backed backend reset at each declaration execution point,
-  or reject unsupported repeated Variant default initialization before saving.
-- Add backend instruction/serialization tests for function-entry initialization
-  versus loop declarations, nested loops, and continue/back-edge paths. Store a
-  payload before the next declaration execution so the regression distinguishes
-  a real reset from entry-only initialization.
-- If rejection is necessary, test diagnostics and compiler API output preservation;
-  do not silently omit the reset or replace Variant with an unrelated value.
-- Verify the resulting behavior in the game separately from compiler tests.
-  Keep transpiler Variant default resets gated until their target semantics are
-  established too.
+- Establish an evidence-backed backend reset at each declaration execution point
+  (verified VM bytecode), or keep rejecting unsupported repeated Variant default
+  initialization before saving.
+- Extend backend instruction/serialization tests beyond entry-only versus loop,
+  nested-loop and continue/back-edge rejection. If a reset is implemented, store a
+  payload before the next declaration execution so the regression distinguishes a
+  real reset from entry-only initialization.
+- If a reset is implemented, verify the resulting behavior in the game separately
+  from compiler tests. Keep transpiler Variant default resets gated until their
+  target semantics are established too.
 
 ## Conversions and native bindings
 
@@ -143,15 +144,17 @@ remains future work.
 
 ### Correctness: instantiated overload applicability and const forwarding
 
-- **Receiver substitution in overload applicability.**
-  `crates/compiler/frontend/src/lower/calls.rs` tests candidates using declared
-  parameter types before applying the receiver environment. With `Base<T>.Pick(T)`
-  and `Child extends Base<Int32>` declaring `Pick(Bool)`, `Child.Pick(true)` reports
-  ambiguity against the inherited generic candidate. Static hiding substitution
-  does not solve this applicability problem. Instantiate candidate parameters
-  before applicability and specificity comparisons without mutating inference.
-  Test inherited and child selections, method/free type arguments, declaration
-  order, and fresh inference variables.
+- **Receiver substitution in overload applicability (partially addressed).**
+  Applicability filtering in `crates/compiler/frontend/src/lower/calls.rs` now
+  instantiates a candidate's declared parameters in the receiver's type
+  environment (`accepts_params` / `receiver_instantiated_params`). With
+  `Base<T>.Pick(T)` and `Child extends Base<Int32>` declaring `Pick(Bool)`,
+  `Child.Pick(true)` now selects `Pick(Bool)` instead of reporting ambiguity, and
+  `Child.Pick(1)` selects the instantiated inherited generic. Remaining work:
+  apply the same substitution to the specificity/dominance comparison
+  (`reference_signature_score` / `reference_signature_dominates`) and to methods
+  that declare their own type parameters, and cover method/free type arguments,
+  declaration order and fresh inference variables explicitly.
 - **Instantiated const-forwarding checks.**
   `crates/compiler/frontend/src/stages/const_validation.rs` classifies declared
   parameter types. `Take<T>(value: T)` accepts a const array without the forwarding
