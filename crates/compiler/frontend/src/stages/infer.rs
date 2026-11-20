@@ -336,24 +336,16 @@ fn lower_module<'m, 'ctx>(
                 }
             }
             FuncItemKind::ReplaceMethod(func) => {
-                let sym = &symbols[func.id];
-                let this_t = sym
-                    .flags()
-                    .is_static()
-                    .not()
-                    .then(|| PolyType::nullary(func.id.parent()));
-                let lowered = function_builder()
-                    .type_(sym.type_())
-                    .maybe_properties(func.properties.as_ref())
-                    .param_names(&func.param_names)
-                    .body(&func.body)
-                    .env(Env::new(&scope.types.push_scope(func.scope), &scope.funcs))
-                    .maybe_this_type(this_t)
-                    .context(func.id.parent())
-                    .symbols(symbols)
-                    .reporter(&mut reporter)
-                    .span(func.span)
-                    .build();
+                let lowered = lower_patch_method(
+                    func.id,
+                    func.properties.as_ref(),
+                    &func.param_names,
+                    &func.body,
+                    Env::new(&scope.types.push_scope(func.scope), &scope.funcs),
+                    symbols,
+                    func.span,
+                    &mut reporter,
+                );
                 out.method_replacements.push((func.id, lowered));
                 if let Some((file, path)) = func.declaration {
                     out.declarations
@@ -365,23 +357,16 @@ fn lower_module<'m, 'ctx>(
                     continue;
                 }
                 let lowered = func.body.as_ref().map(|body| {
-                    let sym = &symbols[func.id];
-                    let this_t = sym
-                        .flags()
-                        .is_static()
-                        .not()
-                        .then(|| PolyType::nullary(func.id.parent()));
-                    function_builder()
-                        .type_(sym.type_())
-                        .param_names(&func.param_names)
-                        .body(body)
-                        .env(Env::new(&scope.types.push_scope(func.scope), &scope.funcs))
-                        .maybe_this_type(this_t)
-                        .context(func.id.parent())
-                        .symbols(symbols)
-                        .reporter(&mut reporter)
-                        .span(func.span)
-                        .build()
+                    lower_patch_method(
+                        func.id,
+                        None,
+                        &func.param_names,
+                        body,
+                        Env::new(&scope.types.push_scope(func.scope), &scope.funcs),
+                        symbols,
+                        func.span,
+                        &mut reporter,
+                    )
                 });
                 out.added_methods.push((func.id, lowered));
                 if let Some((file, path)) = func.declaration {
@@ -394,24 +379,16 @@ fn lower_module<'m, 'ctx>(
                 let mut funcs = scope.funcs.introduce_scope();
                 funcs.insert(ident::WRAPPED_METHOD, smallvec![info.alias]);
 
-                let sym = &symbols[func.id];
-                let this_t = sym
-                    .flags()
-                    .is_static()
-                    .not()
-                    .then(|| PolyType::nullary(func.id.parent()));
-                let lowered = function_builder()
-                    .type_(sym.type_())
-                    .maybe_properties(func.properties.as_ref())
-                    .param_names(&func.param_names)
-                    .body(&func.body)
-                    .env(Env::new(&scope.types.push_scope(func.scope), &funcs))
-                    .maybe_this_type(this_t)
-                    .context(func.id.parent())
-                    .symbols(symbols)
-                    .reporter(&mut reporter)
-                    .span(func.span)
-                    .build();
+                let lowered = lower_patch_method(
+                    func.id,
+                    func.properties.as_ref(),
+                    &func.param_names,
+                    &func.body,
+                    Env::new(&scope.types.push_scope(func.scope), &funcs),
+                    symbols,
+                    func.span,
+                    &mut reporter,
+                );
                 out.method_wrappers.push((func.id, lowered));
                 if let Some((file, path)) = func.declaration {
                     out.declarations
@@ -445,6 +422,41 @@ fn lower_module<'m, 'ctx>(
 
     out.diagnostics = reporter.into_reported();
     out
+}
+
+/// Lowers a `@replaceMethod`/`@addMethod`/`@wrapMethod` patch, sharing the
+/// `this` typing and builder wiring across the three patch kinds. `env` already
+/// carries the patch's type and free-function scopes (a wrapper adds its
+/// `__wrapped` alias before calling).
+#[allow(clippy::too_many_arguments)]
+fn lower_patch_method<'ctx>(
+    id: MethodId<'ctx>,
+    properties: Option<&ast::FunctionProperties<'ctx>>,
+    param_names: &[&'ctx str],
+    body: &ast::SourceFunctionBody<'ctx>,
+    env: Env<'_, 'ctx>,
+    symbols: &Symbols<'ctx>,
+    span: Span,
+    reporter: &mut CompileErrorReporter<'ctx>,
+) -> LoweredFunction<'ctx> {
+    let sym = &symbols[id];
+    let this_t = sym
+        .flags()
+        .is_static()
+        .not()
+        .then(|| PolyType::nullary(id.parent()));
+    function_builder()
+        .type_(sym.type_())
+        .maybe_properties(properties)
+        .param_names(param_names)
+        .body(body)
+        .env(env)
+        .maybe_this_type(this_t)
+        .context(id.parent())
+        .symbols(symbols)
+        .reporter(reporter)
+        .span(span)
+        .build()
 }
 
 #[builder(finish_fn = build)]
