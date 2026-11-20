@@ -14,19 +14,26 @@ where
     pool().install(|| items.into_par_iter().map(f).collect())
 }
 
-/// Dedicated worker pool with generous stacks: lowering and validation recurse
-/// over nested source and IR, so the default 2 MiB worker stack can overflow
-/// where the sequential path (running on the caller's stack) would not.
+/// Runs parallel work on a pool whose worker stacks match the project's 8 MiB
+/// stack budget (see the `/STACK:8388608` flag in `.cargo/config.toml`).
+///
+/// Lowering and validation recurse over nested source and IR, so rayon's 2 MiB
+/// default can overflow where the sequential path — which runs on the caller's
+/// 8 MiB main stack — would not. Set `REDSCRIPT_STACK_SIZE` (bytes) to raise it
+/// for an unusually deep corpus.
 #[cfg(feature = "parallel")]
 fn pool() -> &'static rayon::ThreadPool {
+    use std::env;
     use std::sync::OnceLock;
-
-    const STACK_SIZE: usize = 64 * 1024 * 1024;
 
     static POOL: OnceLock<rayon::ThreadPool> = OnceLock::new();
     POOL.get_or_init(|| {
+        let stack_size = env::var("REDSCRIPT_STACK_SIZE")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(8 * 1024 * 1024);
         rayon::ThreadPoolBuilder::new()
-            .stack_size(STACK_SIZE)
+            .stack_size(stack_size)
             .build()
             .expect("failed to build the parallel compiler thread pool")
     })
