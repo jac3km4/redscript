@@ -3,9 +3,7 @@ use std::collections::HashSet;
 
 use redscript_community_ast::{FileId, Span};
 use redscript_compiler_frontend::ir::Visitor;
-use redscript_compiler_frontend::{
-    FieldId, FunctionId, LoweredCompilationUnit, RefType, Symbols, TypeId, ir,
-};
+use redscript_compiler_frontend::{FieldId, LoweredCompilationUnit, RefType, Symbols, TypeId, ir};
 
 use crate::{Error, SemanticError};
 
@@ -22,12 +20,7 @@ pub fn validate<'ctx>(
         errors,
     };
     for (id, function) in unit.functions_with_ids() {
-        validator.owner = match id {
-            FunctionId::Free(_) => None,
-            FunctionId::Method(id) | FunctionId::Replacement(id) | FunctionId::Wrapper(id) => {
-                Some(id.parent())
-            }
-        };
+        validator.owner = id.as_method().map(|method| method.parent());
         validator.visit_block(&function.block);
     }
 }

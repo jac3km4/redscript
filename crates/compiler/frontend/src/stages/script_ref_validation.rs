@@ -2,8 +2,8 @@ use redscript_community_ast::Span;
 
 use crate::ir::Visitor;
 use crate::{
-    CompileErrorReporter, Diagnostic, FunctionId, FunctionType, LoweredCompilationUnit,
-    LoweredFunction, RefType, Symbols, ir,
+    CompileErrorReporter, Diagnostic, FunctionType, LoweredCompilationUnit, LoweredFunction,
+    RefType, Symbols, ir,
 };
 
 pub(super) fn validate<'ctx>(
@@ -13,15 +13,7 @@ pub(super) fn validate<'ctx>(
 ) {
     let functions = unit
         .functions_with_ids()
-        .map(|(id, function)| {
-            let func_type = match id {
-                FunctionId::Free(id) => symbols[id].type_(),
-                FunctionId::Method(id) | FunctionId::Replacement(id) | FunctionId::Wrapper(id) => {
-                    symbols[id].type_()
-                }
-            };
-            (function, func_type)
-        })
+        .map(|(id, function)| (function, id.function_type(symbols)))
         .collect::<Vec<_>>();
 
     let diagnostics = crate::parallel::map_ordered(functions, |(function, func_type)| {

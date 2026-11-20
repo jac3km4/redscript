@@ -5,8 +5,8 @@ use redscript_community_ast::Span;
 use crate::diagnostic::ConstWriteAction;
 use crate::ir::Visitor;
 use crate::{
-    CompileErrorReporter, Diagnostic, FunctionId, LoweredCompilationUnit, Param, RefType,
-    SemanticPolicy, Shared, Symbols, Type, TypeApp, TypeId, ir, predef,
+    CompileErrorReporter, Diagnostic, LoweredCompilationUnit, Param, RefType, SemanticPolicy,
+    Shared, Symbols, Type, TypeApp, TypeId, ir, predef,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -50,16 +50,11 @@ pub(super) fn validate<'policy, 'ctx>(
 ) {
     let mut functions = Vec::new();
     for (id, function) in unit.functions_with_ids() {
-        let (params, is_const_method) = match id {
-            FunctionId::Free(id) => (symbols[id].type_().params(), false),
-            FunctionId::Method(id) | FunctionId::Replacement(id) | FunctionId::Wrapper(id) => {
-                let sym = &symbols[id];
-                (
-                    sym.type_().params(),
-                    sym.flags().is_const() && !sym.flags().is_static(),
-                )
-            }
-        };
+        let params = id.function_type(symbols).params();
+        let is_const_method = id.as_method().is_some_and(|method| {
+            let flags = symbols[method].flags();
+            flags.is_const() && !flags.is_static()
+        });
         functions.push((function, params, is_const_method, policy(function.span)));
     }
 

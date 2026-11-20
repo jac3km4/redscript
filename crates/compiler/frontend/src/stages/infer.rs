@@ -732,6 +732,26 @@ pub enum FunctionId<'ctx> {
     Wrapper(MethodId<'ctx>),
 }
 
+impl<'ctx> FunctionId<'ctx> {
+    /// The patched method this identity belongs to, or `None` for a free function.
+    #[inline]
+    pub fn as_method(self) -> Option<MethodId<'ctx>> {
+        match self {
+            Self::Free(_) => None,
+            Self::Method(id) | Self::Replacement(id) | Self::Wrapper(id) => Some(id),
+        }
+    }
+
+    /// The resolved signature of the underlying free function or method.
+    #[inline]
+    pub fn function_type<'s>(self, symbols: &'s Symbols<'ctx>) -> &'s FunctionType<'ctx> {
+        match self {
+            Self::Free(id) => symbols[id].type_(),
+            Self::Method(id) | Self::Replacement(id) | Self::Wrapper(id) => symbols[id].type_(),
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct LoweredCompilationUnit<'ctx> {
     pub classes: IndexMap<TypeId<'ctx>, LoweredClass<'ctx>, BuildIdentityHasher<usize>>,

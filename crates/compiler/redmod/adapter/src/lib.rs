@@ -18,8 +18,8 @@ pub use bridge::{CapabilityError, ParsedModule};
 pub use policy::{ArrayOperation, array_operations};
 use redscript_community_ast::{FileId, SourceModule, Span};
 use redscript_compiler_frontend::{
-    CompileErrorReporter, Diagnostic, Evaluator, FunctionId, LowerError, LoweredCompilationUnit,
-    Shared, Symbols, TypeInterner,
+    CompileErrorReporter, Diagnostic, Evaluator, LowerError, LoweredCompilationUnit, Shared,
+    Symbols, TypeInterner,
 };
 pub use semantic::SemanticError;
 pub use validate::validate as validate_module;
@@ -144,12 +144,9 @@ fn finish_events<'ctx>(
         }
     };
     for (id, function) in unit.functions_with_ids_mut() {
-        let is_callback = match id {
-            FunctionId::Free(_) => false,
-            FunctionId::Method(id) | FunctionId::Replacement(id) | FunctionId::Wrapper(id) => {
-                symbols[id].flags().is_callback()
-            }
-        };
+        let is_callback = id
+            .as_method()
+            .is_some_and(|method| symbols[method].flags().is_callback());
         if is_callback {
             finish(function);
         }
