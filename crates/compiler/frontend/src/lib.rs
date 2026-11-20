@@ -23,13 +23,15 @@ pub use lower::{
 pub use query::{QueryError, expr_type};
 pub use redscript_community_ast as ast;
 use redscript_community_parser as parser;
-pub use stages::{LoweredClass, LoweredCompilationUnit, LoweredFieldDefault, LoweredFunction};
+pub use stages::{
+    FunctionId, LoweredClass, LoweredCompilationUnit, LoweredFieldDefault, LoweredFunction,
+};
 use stages::{NameResolution, Scope};
 pub use symbols::{
     Aggregate, AggregateFlags, Enum, Field, FieldFlags, FieldId, FieldIndex, FieldMap,
     FreeFunction, FreeFunctionFlags, FreeFunctionIndex, FunctionIndex, FunctionKind, FunctionMap,
     FunctionType, Method, MethodFlags, MethodId, MethodMap, Param, ParamFlags, QualifiedName,
-    Symbols, TypeDef, TypeSchema, Visibility,
+    ReferenceSemantics, Symbols, TypeDef, TypeSchema, Visibility,
 };
 pub use types::{
     CtxVar, Immutable, Mono, MonoType, RefType, Type, TypeApp, TypeId, TypeIndex, TypeInterner,

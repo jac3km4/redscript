@@ -96,6 +96,25 @@ impl<'ctx> Symbols<'ctx> {
         })
     }
 
+    /// The aggregate schema for `id`, if it is a class or struct.
+    #[inline]
+    pub fn aggregate(&self, id: TypeId<'ctx>) -> Option<&Aggregate<'ctx>> {
+        self.get_type(id)?.schema().as_aggregate()
+    }
+
+    /// The aggregate flags for `id`, if it is a class or struct.
+    #[inline]
+    pub fn aggregate_flags(&self, id: TypeId<'ctx>) -> Option<AggregateFlags> {
+        self.aggregate(id).map(Aggregate::flags)
+    }
+
+    /// Whether `id` is an ordinary class with an implicit strong handle.
+    #[inline]
+    pub fn is_class_handle(&self, id: TypeId<'ctx>) -> bool {
+        self.aggregate_flags(id)
+            .is_some_and(AggregateFlags::is_class_handle)
+    }
+
     pub fn add_type(&mut self, id: TypeId<'ctx>, def: TypeDef<'ctx>) {
         debug_assert!(!id.is_static_array(), "static array types are built-in");
         self.types.insert(id, def);
@@ -315,7 +334,7 @@ impl<'ctx> Symbols<'ctx> {
                     self[typ.id()]
                         .schema()
                         .as_aggregate()
-                        .is_some_and(|agg| agg.flags().is_mixed_ref() || agg.flags().is_never_ref())
+                        .is_some_and(|agg| agg.flags().is_bare_reference_class())
                 })
         }) {
             return false;
@@ -1152,6 +1171,70 @@ pub struct AggregateFlags {
     pub is_test_only: bool,
     #[bits(7)]
     __: u8,
+}
+
+/// How an aggregate participates in reference semantics. Classified once here so
+/// the frontend, backend, REDmod adapter and transpiler agree on the exact flags.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReferenceSemantics {
+    /// Ordinary class: implicit strong class handle; `ref<T>`/`wref<T>` apply.
+    ClassHandle,
+    /// `@mixedRef` class: heap reference, but the strong wrapper is explicit.
+    MixedRefClass,
+    /// `@neverRef` class: value-like construction, no `ref<T>`/`wref<T>`.
+    NeverRefClass,
+    /// Value-typed struct.
+    StructValue,
+}
+
+impl AggregateFlags {
+    /// Classify the aggregate's reference semantics.
+    #[inline]
+    pub fn reference_semantics(self) -> ReferenceSemantics {
+        if self.is_struct() {
+            ReferenceSemantics::StructValue
+        } else if self.is_never_ref() {
+            ReferenceSemantics::NeverRefClass
+        } else if self.is_mixed_ref() {
+            ReferenceSemantics::MixedRefClass
+        } else {
+            ReferenceSemantics::ClassHandle
+        }
+    }
+
+    /// An ordinary class with an implicit strong handle:
+    /// `!struct && !neverRef && !mixedRef`.
+    #[inline]
+    pub fn is_class_handle(self) -> bool {
+        matches!(self.reference_semantics(), ReferenceSemantics::ClassHandle)
+    }
+
+    /// A heap-referenced aggregate that `ref<T>`/`wref<T>` may target: an
+    /// ordinary or `@mixedRef` class (`!struct && !neverRef`).
+    #[inline]
+    pub fn is_heap_reference(self) -> bool {
+        !self.is_struct() && !self.is_never_ref()
+    }
+
+    /// A value-typed aggregate that cannot be a reference target:
+    /// a struct or `@neverRef` class.
+    #[inline]
+    pub fn is_value_type(self) -> bool {
+        self.is_struct() || self.is_never_ref()
+    }
+
+    /// A class annotated `@neverRef` (never a `ref<T>`/`wref<T>` target).
+    #[inline]
+    pub fn is_never_ref_class(self) -> bool {
+        self.is_never_ref() && !self.is_struct()
+    }
+
+    /// A class that is neither a plain strong handle nor a struct
+    /// (`@mixedRef` or `@neverRef`).
+    #[inline]
+    pub fn is_bare_reference_class(self) -> bool {
+        self.is_mixed_ref() || self.is_never_ref()
+    }
 }
 
 #[bitfield(u8)]

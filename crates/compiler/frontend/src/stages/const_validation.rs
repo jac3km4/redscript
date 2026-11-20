@@ -6,7 +6,7 @@ use redscript_community_ast::Span;
 use crate::diagnostic::ConstWriteAction;
 use crate::ir::Visitor;
 use crate::{
-    CompileErrorReporter, Diagnostic, LoweredCompilationUnit, MethodId, Param, RefType,
+    CompileErrorReporter, Diagnostic, FunctionId, LoweredCompilationUnit, Param, RefType,
     SemanticPolicy, Symbols, Type, TypeApp, TypeId, ir, predef,
 };
 
@@ -89,36 +89,18 @@ pub(super) fn validate<'policy, 'ctx>(
             }
             .visit_block(&function.block);
         };
-    for (id, function) in &unit.functions {
-        check(function, symbols[*id].type_().params(), false);
-    }
-    for (id, class) in &unit.classes {
-        for (method, function) in &class.methods {
-            let sym = &symbols[MethodId::new(*id, *method)];
-            check(
-                function,
-                sym.type_().params(),
-                sym.flags().is_const() && !sym.flags().is_static(),
-            );
+    for (id, function) in unit.functions_with_ids() {
+        match id {
+            FunctionId::Free(id) => check(function, symbols[id].type_().params(), false),
+            FunctionId::Method(id) | FunctionId::Replacement(id) | FunctionId::Wrapper(id) => {
+                let sym = &symbols[id];
+                check(
+                    function,
+                    sym.type_().params(),
+                    sym.flags().is_const() && !sym.flags().is_static(),
+                );
+            }
         }
-    }
-    for (id, function) in unit
-        .added_methods
-        .iter()
-        .filter_map(|(id, f)| f.as_ref().map(|f| (id, f)))
-        .chain(unit.method_replacements.iter())
-        .chain(
-            unit.method_wrappers
-                .iter()
-                .flat_map(|(id, fs)| fs.iter().map(move |f| (id, f))),
-        )
-    {
-        let sym = &symbols[*id];
-        check(
-            function,
-            sym.type_().params(),
-            sym.flags().is_const() && !sym.flags().is_static(),
-        );
     }
 }
 
@@ -143,7 +125,7 @@ fn add_const_locals<'ctx>(
                     symbols
                         .get_type(typ.id())
                         .and_then(|def| def.schema().as_aggregate())
-                        .is_some_and(|agg| !agg.flags().is_struct() && !agg.flags().is_never_ref())
+                        .is_some_and(|agg| agg.flags().is_heap_reference())
                 })
             });
         roots.insert(local.id, ConstRoot::Local { rebindable });
@@ -369,7 +351,7 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
                         .symbols
                         .get_type(typ.id())
                         .and_then(|def| def.schema().as_aggregate())
-                        .is_some_and(|agg| !agg.flags().is_struct() && !agg.flags().is_never_ref())
+                        .is_some_and(|agg| agg.flags().is_heap_reference())
             })
     }
 

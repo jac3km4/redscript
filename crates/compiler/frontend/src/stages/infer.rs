@@ -579,6 +579,16 @@ impl<'ctx> LoweredFunction<'ctx> {
     }
 }
 
+/// Identity of a lowered function owned by a [`LoweredCompilationUnit`].
+/// `Method` covers both aggregate-declared methods and `@addMethod` patches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FunctionId<'ctx> {
+    Free(FreeFunctionIndex),
+    Method(MethodId<'ctx>),
+    Replacement(MethodId<'ctx>),
+    Wrapper(MethodId<'ctx>),
+}
+
 #[derive(Debug, Default)]
 pub struct LoweredCompilationUnit<'ctx> {
     pub classes: IndexMap<TypeId<'ctx>, LoweredClass<'ctx>, BuildIdentityHasher<usize>>,
@@ -602,6 +612,89 @@ impl<'ctx> LoweredCompilationUnit<'ctx> {
             .chain(self.added_methods.values().flatten())
             .chain(self.method_replacements.values())
             .chain(self.method_wrappers.values().flatten())
+    }
+
+    /// All lowered functions paired with their resolved identity, in a stable
+    /// order: free functions, then aggregate methods, added methods, replacements
+    /// and wrappers.
+    pub fn functions_with_ids(
+        &self,
+    ) -> impl Iterator<Item = (FunctionId<'ctx>, &LoweredFunction<'ctx>)> {
+        self.functions
+            .iter()
+            .map(|(&id, f)| (FunctionId::Free(id), f))
+            .chain(self.classes.iter().flat_map(|(&id, class)| {
+                class.methods.iter().map(move |(&idx, f)| {
+                    (FunctionId::Method(MethodId::new(id, idx)), f)
+                })
+            }))
+            .chain(
+                self.added_methods
+                    .iter()
+                    .filter_map(|(&id, f)| Some((FunctionId::Method(id), f.as_ref()?))),
+            )
+            .chain(
+                self.method_replacements
+                    .iter()
+                    .map(|(&id, f)| (FunctionId::Replacement(id), f)),
+            )
+            .chain(self.method_wrappers.iter().flat_map(|(&id, fs)| {
+                fs.iter().map(move |f| (FunctionId::Wrapper(id), f))
+            }))
+    }
+
+    /// Mutable counterpart of [`Self::functions_with_ids`] with the same order.
+    pub fn functions_with_ids_mut(
+        &mut self,
+    ) -> impl Iterator<Item = (FunctionId<'ctx>, &mut LoweredFunction<'ctx>)> {
+        let Self {
+            classes,
+            functions,
+            added_methods,
+            method_replacements,
+            method_wrappers,
+            ..
+        } = self;
+        functions
+            .iter_mut()
+            .map(|(&id, f)| (FunctionId::Free(id), f))
+            .chain(classes.iter_mut().flat_map(|(&id, class)| {
+                class.methods.iter_mut().map(move |(&idx, f)| {
+                    (FunctionId::Method(MethodId::new(id, idx)), f)
+                })
+            }))
+            .chain(
+                added_methods
+                    .iter_mut()
+                    .filter_map(|(&id, f)| Some((FunctionId::Method(id), f.as_mut()?))),
+            )
+            .chain(
+                method_replacements
+                    .iter_mut()
+                    .map(|(&id, f)| (FunctionId::Replacement(id), f)),
+            )
+            .chain(method_wrappers.iter_mut().flat_map(|(&id, fs)| {
+                fs.iter_mut().map(move |f| (FunctionId::Wrapper(id), f))
+            }))
+    }
+
+    /// All lowered functions mutably, in the same order as [`Self::all_functions`].
+    pub fn all_functions_mut(&mut self) -> impl Iterator<Item = &mut LoweredFunction<'ctx>> {
+        let Self {
+            classes,
+            functions,
+            added_methods,
+            method_replacements,
+            method_wrappers,
+            ..
+        } = self;
+        classes
+            .values_mut()
+            .flat_map(|class| class.methods.values_mut())
+            .chain(functions.values_mut())
+            .chain(added_methods.values_mut().flatten())
+            .chain(method_replacements.values_mut())
+            .chain(method_wrappers.values_mut().flatten())
     }
 
     pub fn run_diagnostics(
