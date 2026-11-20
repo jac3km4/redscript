@@ -67,11 +67,6 @@ impl<T> SharedCell<T> {
     pub(crate) fn try_borrow(&self) -> Result<Ref<'_, T>, BorrowError> {
         self.0.try_lock().map(Ref).map_err(|_| BorrowError)
     }
-
-    #[inline]
-    pub(crate) fn try_borrow_mut(&self) -> Result<RefMut<'_, T>, BorrowError> {
-        self.0.try_lock().map(RefMut).map_err(|_| BorrowError)
-    }
 }
 
 #[cfg(feature = "sync")]
