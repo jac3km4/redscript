@@ -100,13 +100,17 @@ pub fn parse_modules<'a>(
     })
 }
 
-/// Dedicated worker pool whose stacks match the project's 8 MiB stack budget
-/// (see the `/STACK:8388608` flag in `.cargo/config.toml`): parsing recurses
-/// over nested expressions, so rayon's 2 MiB default can overflow where the
-/// sequential path (on the caller's stack) would not. Override with
-/// `REDSCRIPT_STACK_SIZE` (bytes) for unusually deep sources.
+/// Shared worker pool whose stacks match the project's 8 MiB stack budget
+/// (see the `/STACK:8388608` flag in `.cargo/config.toml`).
+///
+/// Parsing and frontend lowering/validation both recurse over nested source and
+/// IR, so rayon's 2 MiB default can overflow where the sequential path (on the
+/// caller's stack) would not. Both phases borrow this single pool so a binary
+/// never spins up two worker pools. Override the stack size with
+/// `REDSCRIPT_STACK_SIZE` (bytes) for unusually deep corpora.
 #[cfg(feature = "parallel")]
-fn parallel_pool() -> &'static rayon::ThreadPool {
+#[doc(hidden)]
+pub fn parallel_pool() -> &'static rayon::ThreadPool {
     use std::env;
     use std::sync::OnceLock;
 
@@ -119,7 +123,7 @@ fn parallel_pool() -> &'static rayon::ThreadPool {
         rayon::ThreadPoolBuilder::new()
             .stack_size(stack_size)
             .build()
-            .expect("failed to build the parallel parser thread pool")
+            .expect("failed to build the shared parallel thread pool")
     })
 }
 
