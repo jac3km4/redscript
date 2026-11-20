@@ -5,11 +5,11 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-redscript-compiler-api = { workspace = true, features = ["ignore"] }
+redscript-compiler-api = { workspace = true, features = ["ignore", "parallel"] }
 redscript-decompiler.workspace = true
 redscript-community-formatter.workspace = true
 redscript-dotfile.workspace = true
-redscript-redmod-transpiler.workspace = true
+redscript-redmod-transpiler = { workspace = true, features = ["parallel"] }
 
 log.workspace = true
 anyhow.workspace = true
