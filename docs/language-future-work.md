@@ -6,31 +6,29 @@ and focused semantic contracts, not in this list.
 
 ## Variant default initialization on repeated declarations
 
-`crates/compiler/backend/src/assemble.rs` cannot reset a `Variant` with bytecode:
-the VM default-constructs function-local storage once at entry, which is not a
-reset when a declaration executes again on a loop back edge or after the local
-has already been used. Rather than emit code that could retain the previous
-iteration's payload, the backend now fails closed. A `Variant` default
-initialization is elided only when it provably runs once at function entry;
-otherwise assembly returns the spanned `UNSUPPORTED_REPEATED_VARIANT_DEFAULT`
-error, which prevents saving output. The same tracking forces an empty array
-literal to `ArrayClear` on every repeated execution instead of skipping it.
+`crates/compiler/backend/src/assemble/stmt.rs` skips `Stmt::InitDefault` when the
+type is `Variant`, relying on VM default construction of function-local storage.
+Function-entry VM initialization is not a reset when a declaration executes again
+on a loop back edge. A repeatedly executed declaration may therefore retain the
+previous iteration's payload instead of becoming an empty Variant.
 
-This is a backend capability limit, not merely a REDmod transpiler limitation.
-Game-runtime reset behavior has **not** been verified.
+This is a backend risk, not merely a REDmod transpiler limitation. Game-runtime
+behavior has **not** been verified. Do not treat successful compilation or a
+missing reset instruction as evidence that repeated initialization is correct.
 
-Remaining work:
+Required follow-up:
 
-- Establish an evidence-backed backend reset at each declaration execution point
-  (verified VM bytecode), or keep rejecting unsupported repeated Variant default
-  initialization before saving.
-- Extend backend instruction/serialization tests beyond entry-only versus loop,
-  nested-loop and continue/back-edge rejection. If a reset is implemented, store a
-  payload before the next declaration execution so the regression distinguishes a
-  real reset from entry-only initialization.
-- If a reset is implemented, verify the resulting behavior in the game separately
-  from compiler tests. Keep transpiler Variant default resets gated until their
-  target semantics are established too.
+- Establish an evidence-backed backend reset at each declaration execution point,
+  or reject unsupported repeated Variant default initialization before saving.
+- Add backend instruction/serialization tests for function-entry initialization
+  versus loop declarations, nested loops, and continue/back-edge paths. Store a
+  payload before the next declaration execution so the regression distinguishes
+  a real reset from entry-only initialization.
+- If rejection is necessary, test diagnostics and compiler API output preservation;
+  do not silently omit the reset or replace Variant with an unrelated value.
+- Verify the resulting behavior in the game separately from compiler tests.
+  Keep transpiler Variant default resets gated until their target semantics are
+  established too.
 
 ## Conversions and native bindings
 

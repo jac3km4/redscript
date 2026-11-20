@@ -251,10 +251,6 @@ pub enum AssembleError<'ctx> {
         "function type must be a class with a `Call` method; check the function type definitions"
     )]
     InvalidFunctionClass(Span),
-    #[error(
-        "`Variant` default initialization can only be elided when it runs once at function entry; this declaration can run repeatedly and repeated initialization needs VM reset bytecode that has not been verified"
-    )]
-    UnsupportedRepeatedVariantDefault(Span),
     #[error("{0}")]
     Coalesce(Box<CoalesceError<'ctx>>, Span),
     #[error("decoding error: {0}")]
@@ -271,7 +267,6 @@ impl AssembleError<'_> {
             Self::TemporaryReferenceArgument(..) => "TEMPORARY_REFERENCE_ARGUMENT",
             Self::InvalidIntrinsic(..) => "INVALID_INTRINSIC",
             Self::InvalidFunctionClass(_) => "INVALID_FUNCTION_CLASS",
-            Self::UnsupportedRepeatedVariantDefault(_) => "UNSUPPORTED_REPEATED_VARIANT_DEFAULT",
             Self::Coalesce(..) => "COALESCE_ERR",
             Self::Decoding(_) => "DECODING_ERR",
         }
@@ -285,7 +280,6 @@ impl AssembleError<'_> {
             | Self::TemporaryReferenceArgument(_, span)
             | Self::InvalidIntrinsic(_, span)
             | Self::InvalidFunctionClass(span)
-            | Self::UnsupportedRepeatedVariantDefault(span)
             | Self::Coalesce(_, span) => Some(*span),
             _ => None,
         }
@@ -340,13 +334,6 @@ mod diagnostic_tests {
         );
         assert_eq!(error.span(), Some(span));
         assert_eq!(error.code(), "TEMPORARY_REFERENCE_ARGUMENT");
-        let error = AssembleError::UnsupportedRepeatedVariantDefault(span);
-        assert_eq!(
-            error.to_string(),
-            "`Variant` default initialization can only be elided when it runs once at function entry; this declaration can run repeatedly and repeated initialization needs VM reset bytecode that has not been verified"
-        );
-        assert_eq!(error.span(), Some(span));
-        assert_eq!(error.code(), "UNSUPPORTED_REPEATED_VARIANT_DEFAULT");
         assert_eq!(
             AssembleError::LabelTooDistant.to_string(),
             "jump offset exceeds the signed 16-bit bytecode limit; reduce the size of this function"

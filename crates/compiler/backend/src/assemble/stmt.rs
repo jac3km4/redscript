@@ -203,15 +203,8 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
                     .expect("every local should be defined");
                 let typ = self.mono_type(typ, *span)?;
 
-                // The VM default-constructs function-local storage once at entry,
-                // which is not a reset when a declaration executes again. No verified
-                // bytecode resets a Variant, so a repeated initialization must fail
-                // closed rather than retain the previous payload.
+                // Variant locals are default-constructed by the VM, not by bytecode.
                 if typ.id() == predef::VARIANT {
-                    if self.in_loop || self.touched_locals.contains(&ir_local) {
-                        return Err(AssembleError::UnsupportedRepeatedVariantDefault(*span));
-                    }
-                    self.touched_locals.insert(ir_local);
                     return Ok(());
                 }
 
