@@ -20,6 +20,9 @@ pub(crate) fn constant<'ctx>(
     plan: Option<&TargetNamePlan>,
 ) -> Result<String> {
     use ir::Const as C;
+    if let Some(res) = target::direct_literal(c, symbols, plan) {
+        return res;
+    }
     let cast = |value: String| -> Result<String> {
         Ok(format!(
             "Cast<{}>({value})",
@@ -27,13 +30,6 @@ pub(crate) fn constant<'ctx>(
         ))
     };
     match c {
-        C::Str(s) => Ok(target::string(s)?.to_string()),
-        C::CName(s) => Ok(target::cname(s)?.to_string()),
-        C::ResRef(s) => Ok(format!("R{}", target::resource_path(s)?)),
-        C::TweakDbId(s) => Ok(format!("T{}", target::resource_string(s)?)),
-        C::EnumVariant(id) => target::enum_variant(*id, symbols, plan),
-        C::Bool(v) => Ok(v.to_string()),
-        C::I32(v) if *v != i32::MIN => Ok(v.to_string()),
         C::I32(_) => Ok("(-2147483647 - 1)".into()),
         C::I8(v) => cast(v.to_string()),
         C::I16(v) => cast(v.to_string()),
@@ -44,12 +40,12 @@ pub(crate) fn constant<'ctx>(
         // signed operand's bits, including the full upper half of the range.
         C::U32(v) => cast((*v as i32).to_string()),
         C::U64(v) if i32::try_from(*v).is_ok() => cast(v.to_string()),
-        C::F32(v) if v.is_finite() => Ok(float_literal(*v)),
         C::F64(v) if v.is_finite() && f64::from(*v as f32) == *v => cast(float_literal(*v as f32)),
         C::I64(_) | C::U64(_) | C::F32(_) | C::F64(_) => Err(error(
             "numeric literal needs unverified target range/precision support",
             None,
         )),
+        _ => unreachable!("direct_literal handled this constant"),
     }
 }
 

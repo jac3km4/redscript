@@ -133,6 +133,28 @@ pub(crate) fn enum_variant<'ctx>(
     Ok(format!("{parent}.{}", ident(name)?))
 }
 
+/// Spell a constant that has a direct target literal representation, shared by
+/// expression constants and field-default literals. Returns `None` for constants
+/// whose spelling differs by context or requires a `Cast<...>`.
+pub(crate) fn direct_literal<'ctx>(
+    c: &ir::Const<'ctx>,
+    symbols: &Symbols<'ctx>,
+    plan: Option<&crate::names::TargetNamePlan>,
+) -> Option<Result<String>> {
+    use ir::Const as C;
+    Some(match c {
+        C::Str(s) => string(s).map(|s| s.to_string()),
+        C::CName(s) => cname(s).map(|s| s.to_string()),
+        C::ResRef(s) => resource_path(s).map(|path| format!("R{path}")),
+        C::TweakDbId(s) => resource_string(s).map(|id| format!("T{id}")),
+        C::EnumVariant(id) => enum_variant(*id, symbols, plan),
+        C::Bool(v) => Ok(v.to_string()),
+        C::I32(v) if *v != i32::MIN => Ok(v.to_string()),
+        C::F32(v) if v.is_finite() => Ok(crate::body::float_literal(*v)),
+        _ => return None,
+    })
+}
+
 /// Spell a REDmod class/struct field-default value.
 ///
 /// Field defaults have a literal-only grammar: casts, arithmetic, and other
@@ -145,16 +167,11 @@ pub(crate) fn field_default_literal<'ctx>(
     plan: Option<&crate::names::TargetNamePlan>,
 ) -> Result<String> {
     use ir::Const as C;
+    if let Some(res) = direct_literal(c, symbols, plan) {
+        return res;
+    }
     match c {
-        C::Str(s) => Ok(string(s)?.to_string()),
-        C::CName(s) => Ok(cname(s)?.to_string()),
-        C::ResRef(s) => Ok(format!("R{}", resource_path(s)?)),
-        C::TweakDbId(s) => Ok(format!("T{}", resource_string(s)?)),
-        C::EnumVariant(id) => enum_variant(*id, symbols, plan),
-        C::Bool(v) => Ok(v.to_string()),
-        C::I32(v) if *v != i32::MIN => Ok(v.to_string()),
         C::U32(v) => Ok(v.to_string()),
-        C::F32(v) if v.is_finite() => Ok(crate::body::float_literal(*v)),
         C::I32(v) => Err(error(
             format!(
                 "field default {v} of type Int32 has no target literal spelling; \
@@ -177,6 +194,7 @@ pub(crate) fn field_default_literal<'ctx>(
                 None,
             ))
         }
+        _ => unreachable!("direct_literal handled this constant"),
     }
 }
 
