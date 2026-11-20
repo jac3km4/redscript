@@ -322,7 +322,8 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                         })?;
                     // Native field defaults have a literal-only grammar: casts,
                     // arithmetic and other expression forms are rejected.
-                    let value = target::field_default_literal(value, self.symbols)?;
+                    let value =
+                        target::field_default_literal(value, self.symbols, Some(self.plan))?;
                     self.output.text.push_str(&format!(" = {value}"));
                 }
                 self.output.text.push_str(";\n");

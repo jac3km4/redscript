@@ -200,6 +200,28 @@ fn unrelated_type_and_function_collisions_do_not_require_widening() {
 }
 
 #[test]
+fn module_scoped_enum_field_default_uses_the_import_plan() {
+    let sources = SourceMap::new();
+    sources.populate_boot_lib();
+    sources.push_back("models.reds", "module Models public enum Color { Red = 1 }");
+    let selected = sources.push_back(
+        "use.reds",
+        "import Models.Color class Widget { public let color: Color = Color.Red; }",
+    );
+    let interner = TypeInterner::default();
+    let output = transpile_sources(
+        &sources,
+        &[selected],
+        Symbols::with_default_types(),
+        &interner,
+    )
+    .unwrap();
+    let text = &output[0].module.text;
+    assert!(text.contains("@using \"Models.Color\"\n"), "{text}");
+    assert!(text.contains("var color: Color = Color.Red;"), "{text}");
+}
+
+#[test]
 fn private_conflicts_in_unselected_dependencies_do_not_block_imports() {
     let sources = SourceMap::new();
     sources.populate_boot_lib();

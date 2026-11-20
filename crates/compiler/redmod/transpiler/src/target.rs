@@ -1,6 +1,6 @@
 use std::fmt::{self, Write};
 
-use redscript_compiler_frontend::{Symbols, Type, TypeSchema, ir, predef};
+use redscript_compiler_frontend::{FieldId, Symbols, Type, TypeSchema, ir, predef};
 
 use crate::{Result, error};
 
@@ -114,6 +114,25 @@ pub(crate) fn typ_planned<'ctx>(
     }
 }
 
+/// Spells an enum variant literal as `Type.Variant`, resolving the type through
+/// the import-aware plan when one is available. Without a plan the simple name
+/// is emitted unchecked; with one, an unimported or colliding module-scoped enum
+/// fails closed instead of emitting an ambiguous name.
+pub(crate) fn enum_variant<'ctx>(
+    id: FieldId<'ctx>,
+    symbols: &Symbols<'ctx>,
+    plan: Option<&crate::names::TargetNamePlan>,
+) -> Result<String> {
+    let (name, _) = symbols
+        .get_enum_variant(id)
+        .ok_or_else(|| error("missing resolved enum variant", None))?;
+    let parent = match plan {
+        Some(plan) => plan.type_name(id.parent())?,
+        None => ident(&id.parent().simple_name())?.to_owned(),
+    };
+    Ok(format!("{parent}.{}", ident(name)?))
+}
+
 /// Spell a REDmod class/struct field-default value.
 ///
 /// Field defaults have a literal-only grammar: casts, arithmetic, and other
@@ -123,6 +142,7 @@ pub(crate) fn typ_planned<'ctx>(
 pub(crate) fn field_default_literal<'ctx>(
     c: &ir::Const<'ctx>,
     symbols: &Symbols<'ctx>,
+    plan: Option<&crate::names::TargetNamePlan>,
 ) -> Result<String> {
     use ir::Const as C;
     match c {
@@ -130,16 +150,7 @@ pub(crate) fn field_default_literal<'ctx>(
         C::CName(s) => Ok(cname(s)?.to_string()),
         C::ResRef(s) => Ok(format!("R{}", resource_path(s)?)),
         C::TweakDbId(s) => Ok(format!("T{}", resource_string(s)?)),
-        C::EnumVariant(id) => {
-            let (name, _) = symbols
-                .get_enum_variant(*id)
-                .ok_or_else(|| error("missing resolved enum variant", None))?;
-            Ok(format!(
-                "{}.{}",
-                ident(&id.parent().simple_name())?,
-                ident(name)?
-            ))
-        }
+        C::EnumVariant(id) => enum_variant(*id, symbols, plan),
         C::Bool(v) => Ok(v.to_string()),
         C::I32(v) if *v != i32::MIN => Ok(v.to_string()),
         C::U32(v) => Ok(v.to_string()),
@@ -369,7 +380,7 @@ mod tests {
             (C::F32(-0.0), "-0.0"),
         ] {
             assert_eq!(
-                field_default_literal(&value, &symbols).unwrap(),
+                field_default_literal(&value, &symbols, None).unwrap(),
                 expected,
                 "{value:?}"
             );
@@ -385,7 +396,7 @@ mod tests {
             (C::F64(1.0), "Double"),
             (C::F32(f32::INFINITY), "finite"),
         ] {
-            let error = field_default_literal(&value, &symbols).unwrap_err();
+            let error = field_default_literal(&value, &symbols, None).unwrap_err();
             assert!(
                 error.message.contains(needle),
                 "{value:?}: {}",

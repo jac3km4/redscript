@@ -31,16 +31,7 @@ pub(crate) fn constant<'ctx>(
         C::CName(s) => Ok(target::cname(s)?.to_string()),
         C::ResRef(s) => Ok(format!("R{}", target::resource_path(s)?)),
         C::TweakDbId(s) => Ok(format!("T{}", target::resource_string(s)?)),
-        C::EnumVariant(id) => {
-            let (name, _) = symbols
-                .get_enum_variant(*id)
-                .ok_or_else(|| error("missing resolved enum variant", None))?;
-            let parent = match plan {
-                Some(plan) => plan.type_name(id.parent())?,
-                None => target::ident(&id.parent().simple_name())?.to_owned(),
-            };
-            Ok(format!("{parent}.{}", target::ident(name)?))
-        }
+        C::EnumVariant(id) => target::enum_variant(*id, symbols, plan),
         C::Bool(v) => Ok(v.to_string()),
         C::I32(v) if *v != i32::MIN => Ok(v.to_string()),
         C::I32(_) => Ok("(-2147483647 - 1)".into()),
