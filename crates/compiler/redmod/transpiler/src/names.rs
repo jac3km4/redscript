@@ -63,6 +63,11 @@ impl TargetNamePlan {
         let (name, _) = symbols
             .get_free_function(index)
             .ok_or_else(|| error("missing resolved function", None))?;
+        // Root-scope functions have a single component; avoid formatting the
+        // qualified name only to split it again.
+        if let Some(simple) = name.as_single_component() {
+            return self.resolve(simple, simple);
+        }
         let full = name.to_string();
         let simple = full
             .rsplit_once('.')
@@ -116,9 +121,10 @@ impl TargetNamePlan {
             }
         }
         for entry in symbols.free_functions() {
-            let full = entry.name().to_string();
-            if module_of(&full) == Some(target) {
-                self.insert_import(&full);
+            // Compare the module prefix segment-by-segment instead of formatting
+            // every (including baseline/dependency) function name to split it.
+            if matches_module(entry.name().as_ref(), target) {
+                self.insert_import(&entry.name().to_string());
             }
         }
     }
@@ -171,6 +177,15 @@ impl TargetNamePlan {
 
 fn module_of(full: &str) -> Option<&str> {
     full.rsplit_once('.').map(|(module, _)| module)
+}
+
+/// Whether the module prefix of `name` (all but the final component) is exactly
+/// `target`, compared segment-by-segment without allocating the joined string.
+fn matches_module(name: &[&str], target: &str) -> bool {
+    let Some((_, module)) = name.split_last() else {
+        return false;
+    };
+    !module.is_empty() && module.iter().copied().eq(target.split('.'))
 }
 
 fn collision_error(full: &str, simple: &str, providers: &BTreeSet<String>) -> TranspileDiagnostic {
@@ -248,5 +263,15 @@ mod tests {
             error.message.contains("collides with `M.Int32`"),
             "{error:?}"
         );
+    }
+
+    #[test]
+    fn module_prefix_matching_is_segment_wise() {
+        assert!(matches_module(&["M", "Pick"], "M"));
+        assert!(matches_module(&["M", "N", "Pick"], "M.N"));
+        assert!(!matches_module(&["M", "N", "Pick"], "M"));
+        assert!(!matches_module(&["M", "N", "Pick"], "N"));
+        assert!(!matches_module(&["Pick"], "M"));
+        assert!(!matches_module(&[], "M"));
     }
 }
