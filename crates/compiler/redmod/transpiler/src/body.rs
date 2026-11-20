@@ -492,7 +492,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 .symbols
                 .get_type(id)
                 .and_then(|d| d.schema().as_aggregate())
-                .is_some_and(|a| !a.flags().is_struct() && !a.flags().is_never_ref())
+                .is_some_and(|a| a.flags().is_heap_reference())
         {
             return Ok("NULL".into());
         }
@@ -649,7 +649,14 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                         && self.type_of(arg)? == Type::nullary(predef::BOOL)
                         && self.type_of(expr)? == Type::nullary(predef::BOOL)
                     {
-                        self.expr(expr)?;
+                        // Validate the whole expression once; the operand below
+                        // is emitted exactly once.
+                        target::typ(&self.type_of(expr)?, self.symbols).map_err(|mut err| {
+                            if err.span.is_none() {
+                                err.span = Some(expr.span());
+                            }
+                            err
+                        })?;
                         return self.expr(arg);
                     }
                     None
@@ -671,7 +678,14 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 } else {
                     ast::BinOp::Eq
                 };
-                self.expr(expr)?;
+                // Validate the whole expression once; the inverted comparison
+                // below is emitted exactly once.
+                target::typ(&self.type_of(expr)?, self.symbols).map_err(|mut err| {
+                    if err.span.is_none() {
+                        err.span = Some(expr.span());
+                    }
+                    err
+                })?;
                 return self.binary(inverse, a, b);
             }
         }
@@ -878,11 +892,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                             .symbols
                             .get_type(app.id())
                             .and_then(|def| def.schema().as_aggregate())
-                            .is_some_and(|agg| {
-                                !agg.flags().is_struct()
-                                    && !agg.flags().is_never_ref()
-                                    && !agg.flags().is_mixed_ref()
-                            }) =>
+                            .is_some_and(|agg| agg.flags().is_class_handle()) =>
                     {
                         Some(RefType::Strong)
                     }
@@ -1501,7 +1511,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             .symbols
             .get_type(app.id())
             .and_then(|d| d.schema().as_aggregate())
-            .is_some_and(|a| !a.flags().is_struct() && !a.flags().is_never_ref())
+            .is_some_and(|a| a.flags().is_heap_reference())
         {
             return Err(error("IsDefined requires a class reference", None));
         }
@@ -1781,7 +1791,7 @@ fn unary_token(op: ast::UnOp) -> &'static str {
 // Float Display uses shortest round-tripping plain decimal notation. Keep a
 // decimal point even for integral values (and -0) so the target parses a Float,
 // not an Int32. Scientific notation is not accepted by the official target.
-fn float_literal(value: f32) -> String {
+pub(crate) fn float_literal(value: f32) -> String {
     let mut text = value.to_string();
     if !text.contains('.') {
         text.push_str(".0");

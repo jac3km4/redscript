@@ -3,7 +3,9 @@ use std::collections::HashSet;
 
 use redscript_community_ast::{FileId, Span};
 use redscript_compiler_frontend::ir::Visitor;
-use redscript_compiler_frontend::{FieldId, LoweredCompilationUnit, RefType, Symbols, TypeId, ir};
+use redscript_compiler_frontend::{
+    FieldId, FunctionId, LoweredCompilationUnit, RefType, Symbols, TypeId, ir,
+};
 
 use crate::{Error, SemanticError};
 
@@ -19,28 +21,13 @@ pub fn validate<'ctx>(
         files,
         errors,
     };
-    for (id, class) in &unit.classes {
-        validator.owner = Some(*id);
-        for function in class.methods.values() {
-            validator.visit_block(&function.block);
-        }
-    }
-    validator.owner = None;
-    for function in unit.functions.values() {
-        validator.visit_block(&function.block);
-    }
-    let patches = unit
-        .added_methods
-        .iter()
-        .filter_map(|(id, function)| function.as_ref().map(|function| (id, function)))
-        .chain(unit.method_replacements.iter())
-        .chain(
-            unit.method_wrappers
-                .iter()
-                .flat_map(|(id, functions)| functions.iter().map(move |function| (id, function))),
-        );
-    for (id, function) in patches {
-        validator.owner = Some(id.parent());
+    for (id, function) in unit.functions_with_ids() {
+        validator.owner = match id {
+            FunctionId::Free(_) => None,
+            FunctionId::Method(id) | FunctionId::Replacement(id) | FunctionId::Wrapper(id) => {
+                Some(id.parent())
+            }
+        };
         validator.visit_block(&function.block);
     }
 }

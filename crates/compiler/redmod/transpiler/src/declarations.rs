@@ -5,7 +5,7 @@ use redscript_compiler_frontend::{
     FunctionType, LoweredCompilationUnit, Symbols, Type, TypeSchema, ir, predef,
 };
 
-use crate::body::{Body, constant};
+use crate::body::Body;
 use crate::{
     DeclarationPath, ResolvedDeclaration as R, Result, SourceMapping, TranspileModule,
     TranspiledModule, error, target,
@@ -312,13 +312,9 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                         .ok_or_else(|| {
                             error("field initializer has no retained typed constant", None)
                         })?;
-                    // Native field defaults have a literal-only grammar. Unlike
-                    // expressions, a Uint32 default accepts the unsigned decimal
-                    // spelling directly and rejects Cast<Uint32>(...).
-                    let value = match value {
-                        ir::Const::U32(value) => value.to_string(),
-                        value => constant(value, self.symbols)?,
-                    };
+                    // Native field defaults have a literal-only grammar: casts,
+                    // arithmetic and other expression forms are rejected.
+                    let value = target::field_default_literal(value, self.symbols)?;
                     self.output.text.push_str(&format!(" = {value}"));
                 }
                 self.output.text.push_str(";\n");

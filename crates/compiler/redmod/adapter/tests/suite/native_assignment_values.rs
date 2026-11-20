@@ -473,23 +473,35 @@ fn invalid_places_types_readonly_writes_and_unsafe_array_prefixes_still_fail() {
         });
     }
     let source = "function Bad(const value: Int32): Int32 { return value = 1; }";
-    let sources = SourceMap::new();
     analyze(source, "", |_, _, codes| {
         assert_eq!(codes, ["CONST_PARAMETER_WRITE"]);
     });
+    // Resolved-IR array-prefix warnings are promoted to capability failures by
+    // the adapter's `process_sources`, not by pre-resolution parsing.
     for source in [
-        "function Bad(flag: Bool) { var a: array<Int32>; return flag ? (a = [1]) : a; }",
-        "function Bad() { var a: array<Int32>; Use(Before(), a = [1]); }",
+        "function Bad(flag: Bool) -> array<Int32> { var a: array<Int32>; return flag ? (a = [Effect()]) : a; }",
+        "function Bad() { var a: array<Int32>; Use(Before(), a = [Effect()]); }",
     ] {
-        let file = sources.push_back("prefix.script", source);
-        let (module, errors) = parse_file_with_metadata(source, file);
-        assert!(module.is_none());
-        assert!(matches!(
-            errors.as_slice(),
-            [Error::Capability {
-                kind: CapabilityError::UnsafeArrayEvaluation,
-                ..
-            }]
-        ));
+        let full = format!(
+            "import function Effect(): Int32; import function Before(): Int32; import function Use(value: Int32, values: array<Int32>); {source}"
+        );
+        let failures =
+            crate::support::analyze(&full, "prefix.script", &[], |_, _, _, errors, _| {
+                errors
+                    .iter()
+                    .filter_map(|error| match error {
+                        Error::Capability {
+                            kind: CapabilityError::UnsafeArrayEvaluation,
+                            ..
+                        } => Some(CapabilityError::UnsafeArrayEvaluation),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            });
+        assert_eq!(
+            failures,
+            [CapabilityError::UnsafeArrayEvaluation],
+            "{source}"
+        );
     }
 }

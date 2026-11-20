@@ -38,7 +38,18 @@ fn analyze(
         &mut reporter,
         &interner,
     );
-    assert!(errors.is_empty(), "{errors:?}");
+    // Resolved-IR array-prefix warnings are promoted to capability failures by
+    // the adapter; no other adapter diagnostic is expected here.
+    assert!(
+        errors.iter().all(|error| matches!(
+            error,
+            redscript_redmod_adapter::Error::Capability {
+                kind: redscript_redmod_adapter::bridge::CapabilityError::UnsafeArrayEvaluation,
+                ..
+            }
+        )),
+        "{errors:?}"
+    );
     for error in reporter.reported() {
         if error.code() == "IMPOSSIBLE_DYN_CAST" {
             let span = error.span();

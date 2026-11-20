@@ -34,9 +34,5 @@ pub(crate) fn class_handle<'ctx>(typ: &Type<'ctx>, symbols: &Symbols<'ctx>) -> b
         && symbols
             .get_type(class.id())
             .and_then(|def| def.schema().as_aggregate())
-            .is_some_and(|agg| {
-                !agg.flags().is_struct()
-                    && !agg.flags().is_never_ref()
-                    && !agg.flags().is_mixed_ref()
-            })
+            .is_some_and(|agg| agg.flags().is_class_handle())
 }

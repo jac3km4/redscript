@@ -34,7 +34,18 @@ fn analyze(
         &mut reporter,
         &interner,
     );
-    assert!(errors.is_empty(), "{errors:?}");
+    // Resolved-IR array-prefix warnings are promoted to capability failures by
+    // the adapter; no other adapter diagnostic is expected here.
+    assert!(
+        errors.iter().all(|error| matches!(
+            error,
+            Error::Capability {
+                kind: CapabilityError::UnsafeArrayEvaluation,
+                ..
+            }
+        )),
+        "{errors:?}"
+    );
 
     let codes = reporter
         .reported()

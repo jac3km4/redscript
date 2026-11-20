@@ -42,15 +42,7 @@ pub(crate) fn apply(
             provenance_error(plan.span, errors);
         }
     }
-    for function in unit
-        .classes
-        .values_mut()
-        .flat_map(|class| class.methods.values_mut())
-        .chain(unit.functions.values_mut())
-        .chain(unit.added_methods.values_mut().flatten())
-        .chain(unit.method_replacements.values_mut())
-        .chain(unit.method_wrappers.values_mut().flatten())
-    {
+    for function in unit.all_functions_mut() {
         fix_function(function, &indexed, errors);
     }
 }

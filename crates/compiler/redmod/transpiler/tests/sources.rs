@@ -466,18 +466,18 @@ fn eager_interpolation_and_switch_prefixes_are_rejected() {
     for (name, body, expected) in [
         (
             "lazy-array",
-            "func CheckArray(values: [Int32]) -> Bool = true func Test(flag: Bool) -> Bool = flag ? CheckArray([1]) : false",
-            "array literals are not supported here",
+            "func CheckArray(values: [Int32]) -> Bool = true func Test(flag: Bool, out x: Int32) -> Bool = flag ? CheckArray([Set(x)]) : false",
+            "this array literal may be evaluated earlier than expected",
         ),
         (
             "interpolation-prefix",
             r#"func Test(out x: Int32) -> String = s"\(Read(x)) \(Check([Set(x)]))";"#,
-            "this array may reorder string expressions",
+            "this array literal may be evaluated earlier than expected",
         ),
         (
             "switch-prefix",
             "func Test(out x: Int32) { switch Read(x) { case 0: break; case Check([Set(x)]): break; } }",
-            "case expressions",
+            "this array literal may be evaluated earlier than expected",
         ),
     ] {
         let sources = SourceMap::new();

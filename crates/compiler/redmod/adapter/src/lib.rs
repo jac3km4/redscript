@@ -1,7 +1,6 @@
 //! Strict, deliberately partial REDmod semantic adapter for parsed IDE inputs.
 //! Diagnostics belong to this crate; recovered syntax must not be treated as valid.
 
-mod array_guard;
 pub mod bridge;
 mod conditions;
 mod control_flow;
@@ -20,7 +19,8 @@ pub use bridge::{CapabilityError, ParsedModule};
 pub use policy::{ArrayOperation, array_operations};
 use redscript_community_ast::{FileId, SourceModule, Span};
 use redscript_compiler_frontend::{
-    CompileErrorReporter, Evaluator, LoweredCompilationUnit, Symbols, TypeInterner,
+    CompileErrorReporter, Diagnostic, Evaluator, FunctionId, LowerError, LoweredCompilationUnit,
+    Symbols, TypeInterner,
 };
 pub use semantic::SemanticError;
 pub use validate::validate as validate_module;
@@ -135,7 +135,7 @@ fn finish_events<'ctx>(
     symbols: &Symbols<'ctx>,
     files: &HashSet<FileId>,
 ) {
-    use redscript_compiler_frontend::{MethodId, ir};
+    use redscript_compiler_frontend::ir;
     let finish = |function: &mut redscript_compiler_frontend::LoweredFunction<'ctx>| {
         if files.contains(&function.span.file) {
             function
@@ -144,30 +144,15 @@ fn finish_events<'ctx>(
                 .push_back(ir::Stmt::Expr(Box::new(ir::Expr::Nop(function.span))));
         }
     };
-    for (id, class) in &mut unit.classes {
-        for (index, function) in &mut class.methods {
-            if symbols[MethodId::new(*id, *index)].flags().is_callback() {
-                finish(function);
+    for (id, function) in unit.functions_with_ids_mut() {
+        let is_callback = match id {
+            FunctionId::Free(_) => false,
+            FunctionId::Method(id) | FunctionId::Replacement(id) | FunctionId::Wrapper(id) => {
+                symbols[id].flags().is_callback()
             }
-        }
-    }
-    for (id, function) in &mut unit.added_methods {
-        if symbols[*id].flags().is_callback()
-            && let Some(function) = function
-        {
+        };
+        if is_callback {
             finish(function);
-        }
-    }
-    for (id, function) in &mut unit.method_replacements {
-        if symbols[*id].flags().is_callback() {
-            finish(function);
-        }
-    }
-    for (id, functions) in &mut unit.method_wrappers {
-        if symbols[*id].flags().is_callback() {
-            for function in functions {
-                finish(function);
-            }
         }
     }
 }
@@ -270,6 +255,25 @@ pub fn process_sources<'ctx>(
     let policies: Vec<_> = files.iter().map(|&file| (file, policy.clone())).collect();
     let (mut unit, symbols) = redscript_compiler_frontend::process_sources_with_policy(
         sources, symbols, evaluator, reporter, interner, &policies,
+    );
+    // Array-prefix safety is diagnosed once on resolved IR. Preserve the
+    // crate's distinct REDMOD_CAPABILITY contract by promoting the frontend
+    // warning for authored files to a capability failure.
+    errors.extend(
+        reporter
+            .reported()
+            .iter()
+            .filter_map(|diagnostic| match diagnostic {
+                Diagnostic::LoweringError(LowerError::UnsafeArrayEvaluation(span))
+                    if files.contains(&span.file) =>
+                {
+                    Some(Error::Capability {
+                        kind: CapabilityError::UnsafeArrayEvaluation,
+                        span: *span,
+                    })
+                }
+                _ => None,
+            }),
     );
     control_flow::apply(&mut unit, &control_flow, &mut errors);
     let files: HashSet<_> = files.into_iter().collect();

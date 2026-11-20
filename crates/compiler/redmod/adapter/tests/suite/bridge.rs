@@ -4,6 +4,52 @@ use redscript_redmod_adapter::{
     CapabilityError, Error, ParsedModule, parse_file, parse_file_with_metadata,
 };
 
+use crate::support;
+
+// Enough declarations to resolve array prefixes against the shared frontend.
+const ARRAY_PRELUDE: &str = "\
+import function Effect(): Int32;
+import function Earlier(): Int32;
+import function Later(): Int32;
+import function First(): Int32;
+import function Second(): Int32;
+import function Before(): Int32;
+import function Check(values: array<Int32>): Bool;
+import function Consume(values: array<Int32>): Int32;
+import function Nested(values: array<Int32>): Int32;
+import function Use(value: Int32, values: array<Int32>);
+import function Use(value: Int32, values: array<Int32>, extra: Int32);
+import function Use(value: Int32, nested: Int32);
+import function GetReceiver(): Receiver;
+import function OperatorLogicAnd(lhs: Bool, skip rhs: Bool): Bool;
+import function OperatorLogicOr(lhs: Bool, skip rhs: Bool): Bool;
+import function OperatorAdd(lhs: Int32, rhs: Int32): Int32;
+class Receiver { public var values: array<Int32>; public function Use(values: array<Int32>) {} }
+class Host { public static function Take(values: array<Int32>) {} }
+";
+
+fn with_params(statement: &str) -> String {
+    format!(
+        "{ARRAY_PRELUDE} function Run(flag: Bool, existing: array<Int32>, value: Int32, receiver: Receiver, values: array<Int32>) {{ {statement} }}"
+    )
+}
+
+/// Run the full adapter pipeline and keep only array-prefix capability failures.
+fn unsafe_array_failures(source: &str) -> Vec<CapabilityError> {
+    support::analyze(source, "bridge.script", &[], |_, _, _, errors, _| {
+        errors
+            .iter()
+            .filter_map(|error| match error {
+                Error::Capability {
+                    kind: CapabilityError::UnsafeArrayEvaluation,
+                    ..
+                } => Some(CapabilityError::UnsafeArrayEvaluation),
+                _ => None,
+            })
+            .collect()
+    })
+}
+
 fn file() -> FileId {
     ast::SourceMap::new().push_back("bridge.script", "")
 }
@@ -360,18 +406,17 @@ fn discarded_sequences_keep_written_spans_but_not_value_semantics() {
     for ((_, span), expected) in statements.iter().zip(["First()", "x = 1", "Last()"]) {
         assert_eq!(&source[span.start as usize..span.end as usize], expected);
     }
-    let (parsed, errors) =
-        parse_file_with_metadata("function Run() { First(), Use(Before(), [1]); }", file());
-    assert!(parsed.is_none());
-    assert!(
-        matches!(
-            errors.as_slice(),
-            [Error::Capability {
-                kind: CapabilityError::UnsafeArrayEvaluation,
-                ..
-            }]
-        ),
-        "{errors:?}"
+    let (parsed, errors) = parse_file_with_metadata(
+        "function Run() { First(), Use(Before(), [Effect()]); }",
+        file(),
+    );
+    assert!(parsed.is_some());
+    assert!(errors.is_empty(), "{errors:?}");
+    // The pre-resolution bridge accepts member-shaped callees; resolved IR
+    // diagnoses the eager array prefix instead.
+    assert_eq!(
+        unsafe_array_failures(&with_params("First(), Use(Before(), [Effect()]);")),
+        [CapabilityError::UnsafeArrayEvaluation]
     );
 }
 
@@ -574,56 +619,67 @@ fn unsafe_array_prefix_shapes_are_typed_capability_failures() {
         "receiver.Use([Effect()]);",
         "var x: Int32 = Earlier() + Consume([Effect()]);",
         "var x: Int32 = values[Consume([Effect()])];",
-        "receiver.value = [Effect()];",
+        "receiver.values = [flag ? Consume([Effect()]) : 0];",
         "var x: array<Int32> = [Earlier(), Consume([Effect()])];",
         "switch (value) { case Consume([Effect()]): break; }",
         "Use(1, true ? Consume([Effect()]) : 0);",
     ] {
-        let source = format!("function Run() {{ {statement} }}");
+        let source = with_params(statement);
         let (native, syntax_errors) = redscript_redmod_parser::parse_module(&source, file());
-        assert!(syntax_errors.is_empty(), "{source}: {syntax_errors:?}");
-        // Direct native bridge callers get the same guard as the parse API.
+        assert!(syntax_errors.is_empty(), "{statement}: {syntax_errors:?}");
+        // The pre-resolution bridge no longer guesses at member-shaped callees.
         assert!(
-            matches!(
-                redscript_redmod_adapter::bridge::lower(native.unwrap()),
-                Err((CapabilityError::UnsafeArrayEvaluation, _))
-            ),
-            "{source}"
+            redscript_redmod_adapter::bridge::lower(native.unwrap()).is_ok(),
+            "{statement}"
         );
         let (module, errors) = parse_file_with_metadata(&source, file());
-        assert!(module.is_none(), "{source}");
-        assert!(
-            matches!(
-                errors.as_slice(),
-                [Error::Capability {
-                    kind: CapabilityError::UnsafeArrayEvaluation,
-                    ..
-                }]
-            ),
-            "{source}: {errors:?}"
+        assert!(module.is_some(), "{statement}");
+        assert!(errors.is_empty(), "{statement}: {errors:?}");
+        assert_eq!(
+            unsafe_array_failures(&source),
+            [CapabilityError::UnsafeArrayEvaluation],
+            "{statement}"
         );
-        assert_eq!(errors[0].code(), "REDMOD_CAPABILITY");
-        assert_eq!(errors[0].span().file, file());
     }
+}
+
+#[test]
+fn type_qualified_static_callee_accepts_array_arguments() {
+    // A type-qualified static callee never evaluates a runtime receiver, so an
+    // eagerly constructed array argument is safe regardless of its elements.
+    for statement in ["Host.Take([1]);", "Host.Take([Effect()]);"] {
+        assert!(
+            unsafe_array_failures(&with_params(statement)).is_empty(),
+            "{statement}"
+        );
+    }
+    // A runtime receiver is still rejected when the array itself reads state.
+    assert_eq!(
+        unsafe_array_failures(&with_params("receiver.Use([Effect()]);")),
+        [CapabilityError::UnsafeArrayEvaluation]
+    );
+    // A constant array reorders nothing observable and is now accepted even for
+    // a runtime receiver; this is the precision the resolved IR pass restores.
+    assert!(unsafe_array_failures(&with_params("receiver.Use([1]);")).is_empty());
 }
 
 #[test]
 fn safe_array_initializers_and_eager_shapes_remain_supported() {
     for statement in [
-        "var values: array<Int32> = [1, 2];",
-        "var values: array<Int32> = [First(), Second()];",
+        "var values2: array<Int32> = [1, 2];",
+        "var values2: array<Int32> = [First(), Second()];",
         "values = [Effect()];",
-        "return [Effect()];",
         "Use([Effect()]);",
         "Use(1, [Effect()], Later());",
         "var x: Int32 = Consume([Effect()]) + Later();",
         "var x: Int32 = [Effect()][0];",
         "var x: Bool = Check([Effect()]) && Later();",
         "var x: Int32 = Check([Effect()]) ? First() : Second();",
-        "if (flag) { var values: array<Int32> = [Effect()]; }",
-        "switch (value) { case 1: var values: array<Int32> = [Effect()]; break; }",
+        "if (flag) { var values2: array<Int32> = [Effect()]; }",
+        "switch (value) { case 1: var values2: array<Int32> = [Effect()]; break; }",
     ] {
-        let source = format!("function Run() {{ {statement} }}");
+        let source = with_params(statement);
         parsed(&source);
+        assert!(unsafe_array_failures(&source).is_empty(), "{statement}");
     }
 }

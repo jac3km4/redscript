@@ -1,6 +1,4 @@
-use redscript_community_ast::SourceMap;
 use redscript_compiler_frontend::{LoweredCompilationUnit, Symbols, ir};
-use redscript_redmod_adapter::parse_file_with_metadata;
 
 use crate::support;
 
@@ -129,19 +127,14 @@ fn forwarder_checks_out_receiver_storage() {
 
 #[test]
 fn lazy_forwarder_receivers_do_not_hoist_array_initializers() {
-    let sources = SourceMap::new();
-    let source = "class Host { public static function Get(values: array<Int32>) -> Host { return NULL; } public static function Pick(skip self: Host) {} } function Run() { Host.Get([1]).Pick(); }";
-    let file = sources.push_back("lazy.script", source);
-    let (_, errors) = parse_file_with_metadata(source, file);
-    assert!(
-        matches!(
-            errors.as_slice(),
-            [redscript_redmod_adapter::Error::Capability {
-                kind: redscript_redmod_adapter::bridge::CapabilityError::UnsafeArrayEvaluation,
-                ..
-            }]
-        ),
-        "{errors:?}"
+    analyze(
+        "import function Effect(): Int32; class Host { public static function Get(values: array<Int32>) -> Host { return NULL; } public static function Pick(skip self: Host) {} } function Run() { Host.Get([Effect()]).Pick(); }",
+        |_, _, errors| {
+            assert!(
+                errors.iter().any(|error| error.contains("array literal")),
+                "{errors:?}"
+            );
+        },
     );
     analyze(
         "class Host { public static function Get() -> Host { return NULL; } public static function Pick(skip self: Host) {} } function Run() { Host.Get().Pick(); }",

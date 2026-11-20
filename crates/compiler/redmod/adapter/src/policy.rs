@@ -124,11 +124,7 @@ fn condition<'ctx>(typ: &PolyType<'ctx>, symbols: &Symbols<'ctx>) -> Option<ir::
             symbols
                 .get_type(t.id())
                 .and_then(|def| def.schema().as_aggregate())
-                .is_some_and(|agg| {
-                    !agg.flags().is_struct()
-                        && !agg.flags().is_mixed_ref()
-                        && !agg.flags().is_never_ref()
-                })
+                .is_some_and(|agg| agg.flags().is_class_handle())
         });
     object.then_some(ir::Intrinsic::IsDefined)
 }

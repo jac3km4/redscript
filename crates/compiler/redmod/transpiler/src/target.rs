@@ -1,6 +1,6 @@
 use std::fmt::{self, Write};
 
-use redscript_compiler_frontend::{Symbols, Type, TypeSchema, predef};
+use redscript_compiler_frontend::{Symbols, Type, TypeSchema, ir, predef};
 
 use crate::{Result, error};
 
@@ -51,7 +51,7 @@ pub fn typ<'ctx>(typ: &Type<'ctx>, symbols: &Symbols<'ctx>) -> Result<String> {
     if def
         .schema()
         .as_aggregate()
-        .is_some_and(|a| a.flags().is_never_ref() && !a.flags().is_struct())
+        .is_some_and(|a| a.flags().is_never_ref_class())
     {
         return Err(error(
             "neverRef classes are not supported by the transpiler",
@@ -67,7 +67,7 @@ pub fn typ<'ctx>(typ: &Type<'ctx>, symbols: &Symbols<'ctx>) -> Result<String> {
             if !symbols
                 .get_type(inner.id())
                 .and_then(|d| d.schema().as_aggregate())
-                .is_some_and(|a| !a.flags().is_struct() && !a.flags().is_never_ref())
+                .is_some_and(|a| a.flags().is_heap_reference())
             {
                 return Err(error(
                     "ref<T> requires a class type, not a struct or primitive",
@@ -99,6 +99,61 @@ pub fn typ<'ctx>(typ: &Type<'ctx>, symbols: &Symbols<'ctx>) -> Result<String> {
         return Err(error("Nothing has no target type", None));
     }
     ident(&id.simple_name()).map(str::to_owned)
+}
+
+/// Spell a REDmod class/struct field-default value.
+///
+/// Field defaults have a literal-only grammar: casts, arithmetic, and other
+/// expression forms are rejected by the target. Only constants with a faithful
+/// literal spelling are accepted; every other constant fails closed so callers
+/// can direct the author to initialize the field in a constructor or method.
+pub(crate) fn field_default_literal<'ctx>(
+    c: &ir::Const<'ctx>,
+    symbols: &Symbols<'ctx>,
+) -> Result<String> {
+    use ir::Const as C;
+    match c {
+        C::Str(s) => Ok(string(s)?.to_string()),
+        C::CName(s) => Ok(cname(s)?.to_string()),
+        C::ResRef(s) => Ok(format!("R{}", resource_path(s)?)),
+        C::TweakDbId(s) => Ok(format!("T{}", resource_string(s)?)),
+        C::EnumVariant(id) => {
+            let (name, _) = symbols
+                .get_enum_variant(*id)
+                .ok_or_else(|| error("missing resolved enum variant", None))?;
+            Ok(format!(
+                "{}.{}",
+                ident(&id.parent().simple_name())?,
+                ident(name)?
+            ))
+        }
+        C::Bool(v) => Ok(v.to_string()),
+        C::I32(v) if *v != i32::MIN => Ok(v.to_string()),
+        C::U32(v) => Ok(v.to_string()),
+        C::F32(v) if v.is_finite() => Ok(crate::body::float_literal(*v)),
+        C::I32(v) => Err(error(
+            format!(
+                "field default {v} of type Int32 has no target literal spelling; \
+                 initialize it in a constructor or method"
+            ),
+            None,
+        )),
+        C::F32(_) => Err(error(
+            "field default Float literals must be finite; \
+             initialize it in a constructor or method",
+            None,
+        )),
+        C::I8(_) | C::I16(_) | C::I64(_) | C::U8(_) | C::U16(_) | C::U64(_) | C::F64(_) => {
+            Err(error(
+                format!(
+                    "field defaults of type {} are not supported; \
+                     initialize it in a constructor or method",
+                    c.type_id().simple_name()
+                ),
+                None,
+            ))
+        }
+    }
 }
 
 /// A concrete failure to spell a literal faithfully in the verified target subset.
@@ -280,5 +335,49 @@ mod tests {
             resource_string("first\nsecond").unwrap_err().literal_error,
             Some(LiteralError::UnverifiedResource)
         );
+    }
+
+    #[test]
+    fn field_default_literals_accept_only_verified_spellings() {
+        use ir::Const as C;
+        let symbols = Symbols::with_default_types();
+        for (value, expected) in [
+            (C::Str("assets\\x".into()), "\"assets\\x\""),
+            (C::CName("Tag".into()), "'Tag'"),
+            (C::ResRef("base\\r".into()), "R\"base\\r\""),
+            (C::TweakDbId("Items.X".into()), "T\"Items.X\""),
+            (C::Bool(true), "true"),
+            (C::I32(0), "0"),
+            (C::I32(i32::MAX), "2147483647"),
+            (C::I32(-1), "-1"),
+            (C::U32(0), "0"),
+            (C::U32(u32::MAX), "4294967295"),
+            (C::F32(1.5), "1.5"),
+            (C::F32(-0.0), "-0.0"),
+        ] {
+            assert_eq!(
+                field_default_literal(&value, &symbols).unwrap(),
+                expected,
+                "{value:?}"
+            );
+        }
+        for (value, needle) in [
+            (C::I32(i32::MIN), "Int32"),
+            (C::I8(1), "Int8"),
+            (C::I16(1), "Int16"),
+            (C::I64(1), "Int64"),
+            (C::U8(1), "Uint8"),
+            (C::U16(1), "Uint16"),
+            (C::U64(1), "Uint64"),
+            (C::F64(1.0), "Double"),
+            (C::F32(f32::INFINITY), "finite"),
+        ] {
+            let error = field_default_literal(&value, &symbols).unwrap_err();
+            assert!(
+                error.message.contains(needle),
+                "{value:?}: {}",
+                error.message
+            );
+        }
     }
 }

@@ -2,8 +2,8 @@
 source: crates/compiler/redmod/transpiler/tests/sources.rs
 expression: "errors.iter().map(|e| e.display(&sources).to_string()).collect::<String>()"
 ---
-error[REDMOD_TRANSPILE]: array literals are not supported in case expressions; use if/else branches instead
- --> rejected.reds:1:64
+error[UNSAFE_ARRAY_EVALUATION]: this array literal may be evaluated earlier than expected; consider assigning it to a local variable first
+ --> rejected.reds:1:70
   |
 1 | func Test(out x: Int32) { switch Read(x) { case 0: break; case Check([Set(x)]): break; } }
-  |                                                                ^^^^^^^^^^^^^^^
+  |                                                                      ^^^^^^^^

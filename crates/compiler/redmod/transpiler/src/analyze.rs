@@ -157,9 +157,26 @@ impl<'ctx> AnalyzedSources<'ctx> {
         selected: &[FileId],
     ) -> std::result::Result<Vec<TranspiledSource>, Vec<TranspileDiagnostic>> {
         self.check_replacements().map_err(|e| vec![e])?;
+        // Array-prefix safety is diagnosed on resolved IR as a frontend warning.
+        // Emitting a selected file that carries one would silently change
+        // evaluation order, so fail closed for strictly selected output.
+        let selected_files: HashSet<_> = selected.iter().copied().collect();
+        let mut errors: Vec<_> = self
+            .warnings
+            .iter()
+            .filter(|warning| warning.code == Some("UNSAFE_ARRAY_EVALUATION"))
+            .filter(|warning| {
+                warning
+                    .span
+                    .is_some_and(|span| selected_files.contains(&span.file))
+            })
+            .map(|warning| TranspileDiagnostic {
+                is_error: true,
+                ..warning.clone()
+            })
+            .collect();
         let mut seen = HashSet::new();
         let mut requests = Vec::new();
-        let mut errors = Vec::new();
         for &file in selected {
             if !seen.insert(file) {
                 errors.push(error("duplicate selected FileId", None));
@@ -313,7 +330,7 @@ impl<'ctx> AnalyzedSources<'ctx> {
                         .and_then(|d| d.schema().as_aggregate())
                         .map(redscript_compiler_frontend::Aggregate::flags)
                         .unwrap_or_default();
-                    if flags.is_never_ref() || flags.is_mixed_ref() {
+                    if flags.is_bare_reference_class() {
                         return None;
                     }
                     return Some(arg.clone());
