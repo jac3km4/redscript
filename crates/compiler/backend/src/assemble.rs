@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use bon::{bon, builder};
 use closure::{CALL_METHOD, emit_closure};
 use redscript_compiler_frontend::ast::Span;
@@ -52,6 +54,12 @@ struct Assembler<'scope, 'ctx> {
 
     labels: Slab<u32>,
     virtual_offset: u32,
+
+    /// Whether assembly is currently inside a loop body, where an initialization
+    /// statement can execute more than once.
+    in_loop: bool,
+    /// Locals already read, written, initialized, or captured before this point.
+    touched_locals: HashSet<ir::Local>,
 
     symbols: &'scope Symbols<'ctx>,
     type_env: &'scope ScopedMap<'scope, &'ctx str, MonoType<'ctx>>,
@@ -123,6 +131,9 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
             labels: Slab::new(),
             virtual_offset: 0,
 
+            in_loop: false,
+            touched_locals: HashSet::new(),
+
             symbols,
             bundle,
             monomorph: monomorphizer,
@@ -180,13 +191,16 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
                 self.mark_label(start);
                 self.emit(Instr::JumpIfFalse(Jump::new(end)));
                 self.assemble_expr(&block.condition)?;
-                self.assemble_block(
+                let was_in_loop = std::mem::replace(&mut self.in_loop, true);
+                let result = self.assemble_block(
                     &block.block,
                     Some(BlockSpan {
                         continue_target: Some(start),
                         break_target: end,
                     }),
-                )?;
+                );
+                self.in_loop = was_in_loop;
+                result?;
                 self.emit(Instr::Jump(Jump::new(start)));
                 self.mark_label(end);
             }
@@ -295,13 +309,31 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
                 span,
                 ..
             } => {
-                if elements.is_empty() {
+                let ir_local = *local;
+                // Empty literals are only inert while the storage is freshly
+                // default-constructed. If this statement can execute more than once
+                // or the local already holds a value, its previous contents must be
+                // cleared.
+                let needs_reset = self.in_loop || self.touched_locals.contains(&ir_local);
+                self.touched_locals.insert(ir_local);
+
+                if elements.is_empty() && !needs_reset {
                     return Ok(());
                 }
 
                 let local = self
-                    .resolve_local(*local)
+                    .resolve_local(ir_local)
                     .expect("every local should be defined");
+
+                if elements.is_empty() {
+                    // Reuse the local's array type: it was already resolved when the
+                    // local was defined, unlike a possibly-fresh literal element type.
+                    let array_t = self.bundle[local].type_();
+                    self.emit(Instr::ArrayClear(array_t));
+                    self.emit(Instr::Local(local));
+                    return Ok(());
+                }
+
                 let element_t = self.mono_type(element_type, *span)?;
                 let array_t = MonoType::new(predef::ARRAY, [element_t]);
                 let array_t = self.monomorph.type_(&array_t, self.symbols, self.bundle);
@@ -322,15 +354,25 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
             ir::Stmt::InitDefault {
                 local, typ, span, ..
             } => {
+                let ir_local = *local;
                 let local = self
-                    .resolve_local(*local)
+                    .resolve_local(ir_local)
                     .expect("every local should be defined");
                 let typ = self.mono_type(typ, *span)?;
 
-                // Variant locals are default-constructed by the VM, not by bytecode.
+                // The VM default-constructs function-local storage once at entry,
+                // which is not a reset when a declaration executes again. No verified
+                // bytecode resets a Variant, so a repeated initialization must fail
+                // closed rather than retain the previous payload.
                 if typ.id() == predef::VARIANT {
+                    if self.in_loop || self.touched_locals.contains(&ir_local) {
+                        return Err(AssembleError::UnsupportedRepeatedVariantDefault(*span));
+                    }
+                    self.touched_locals.insert(ir_local);
                     return Ok(());
                 }
+
+                self.touched_locals.insert(ir_local);
 
                 if typ.id() == predef::ARRAY {
                     let array_t = self.monomorph.type_(&typ, self.symbols, self.bundle);
@@ -417,6 +459,7 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
                 }
             }
             ir::Expr::NewClosure { closure, span } => {
+                self.touched_locals.extend(closure.captures.iter().copied());
                 emit_closure(self, closure, *span)?;
             }
             ir::Expr::Assign { place, expr, .. } => {
@@ -500,12 +543,14 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
                 self.assemble_expr(expr)?;
             }
             ir::Expr::Local(local, _) => {
+                self.touched_locals.insert(*local);
                 let instr = self
                     .create_local_instr(*local)
                     .expect("every local should be defined");
                 self.emit(instr);
             }
             ir::Expr::Capture(local, _) => {
+                self.touched_locals.insert(*local);
                 let idx = self
                     .resolve_capture(*local)
                     .expect("every capture should be defined");
@@ -1034,6 +1079,10 @@ pub enum AssembleError<'ctx> {
         "function type must be a class with a `Call` method; check the function type definitions"
     )]
     InvalidFunctionClass(Span),
+    #[error(
+        "`Variant` default initialization can only be elided when it runs once at function entry; this declaration can run repeatedly and repeated initialization needs VM reset bytecode that has not been verified"
+    )]
+    UnsupportedRepeatedVariantDefault(Span),
     #[error("{0}")]
     Coalesce(Box<CoalesceError<'ctx>>, Span),
     #[error("decoding error: {0}")]
@@ -1050,6 +1099,7 @@ impl AssembleError<'_> {
             Self::TemporaryReferenceArgument(..) => "TEMPORARY_REFERENCE_ARGUMENT",
             Self::InvalidIntrinsic(..) => "INVALID_INTRINSIC",
             Self::InvalidFunctionClass(_) => "INVALID_FUNCTION_CLASS",
+            Self::UnsupportedRepeatedVariantDefault(_) => "UNSUPPORTED_REPEATED_VARIANT_DEFAULT",
             Self::Coalesce(..) => "COALESCE_ERR",
             Self::Decoding(_) => "DECODING_ERR",
         }
@@ -1063,6 +1113,7 @@ impl AssembleError<'_> {
             | Self::TemporaryReferenceArgument(_, span)
             | Self::InvalidIntrinsic(_, span)
             | Self::InvalidFunctionClass(span)
+            | Self::UnsupportedRepeatedVariantDefault(span)
             | Self::Coalesce(_, span) => Some(*span),
             _ => None,
         }
@@ -1117,6 +1168,13 @@ mod diagnostic_tests {
         );
         assert_eq!(error.span(), Some(span));
         assert_eq!(error.code(), "TEMPORARY_REFERENCE_ARGUMENT");
+        let error = AssembleError::UnsupportedRepeatedVariantDefault(span);
+        assert_eq!(
+            error.to_string(),
+            "`Variant` default initialization can only be elided when it runs once at function entry; this declaration can run repeatedly and repeated initialization needs VM reset bytecode that has not been verified"
+        );
+        assert_eq!(error.span(), Some(span));
+        assert_eq!(error.code(), "UNSUPPORTED_REPEATED_VARIANT_DEFAULT");
         assert_eq!(
             AssembleError::LabelTooDistant.to_string(),
             "jump offset exceeds the signed 16-bit bytecode limit; reduce the size of this function"

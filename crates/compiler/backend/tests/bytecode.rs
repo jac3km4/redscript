@@ -69,6 +69,50 @@ fn lazy_intrinsics_fail_closed() {
 }
 
 #[test]
+fn entry_only_variant_default_compiles() {
+    let path = data_path("repeated-variant/entry-only.reds");
+    let output = compile(&path, |_| {});
+    assert!(!output.contains("assembly error"), "{output}");
+}
+
+#[test]
+fn repeated_variant_default_fails_closed() {
+    for file in ["loop.reds", "nested-loop.reds", "continue.reds"] {
+        let path = data_path(&format!("repeated-variant/{file}"));
+        let output = compile(&path, |_| {});
+        assert!(
+            output.starts_with("assembly error: "),
+            "{file} should fail closed, got:\n{output}"
+        );
+        assert!(
+            output.contains(
+                "repeated initialization needs VM reset bytecode that has not been verified"
+            ),
+            "{file} reported the wrong error:\n{output}"
+        );
+        // A spanned error keeps the declaration site for the diagnostic.
+        assert!(
+            output.contains("\nat "),
+            "{file} lost its source span:\n{output}"
+        );
+    }
+}
+
+#[test]
+fn loop_empty_array_literal_clears_each_iteration() {
+    let path = data_path("loop-empty-array.reds");
+    let output = compile(&path, |_| {});
+    assert!(!output.contains("assembly error"), "{output}");
+    assert!(output.contains("array.clear"), "{output}");
+}
+
+fn data_path(relative: &str) -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/data")
+        .join(relative)
+}
+
+#[test]
 fn callback_overrides_added_method_and_reentrant_base() {
     let sources = SourceMap::new();
     sources.populate_boot_lib();

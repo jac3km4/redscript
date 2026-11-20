@@ -15,16 +15,3 @@ i32.const 7
 // DefaultThenReturn; (f1)
 return
 nop
-
-// DefaultInLoop;Bool (f2)
-jump.if_not 60
-param 0 "again": "Bool"
-assign
-local 2 "first$1": "Variant"
-variant.new 2 "String"
-string.const 0 "payload"
-assign
-local 3 "second$2": "Variant"
-variant.new 1 "Int32"
-i32.const 7
-jump -63

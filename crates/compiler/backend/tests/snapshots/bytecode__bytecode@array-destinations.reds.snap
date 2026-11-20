@@ -1,5 +1,6 @@
 ---
 source: crates/compiler/backend/tests/bytecode.rs
+assertion_line: 22
 expression: "compile(path, |_| {})"
 input_file: crates/compiler/backend/tests/data/array-destinations.reds
 ---
@@ -29,13 +30,15 @@ u64.const 0
 i32.const 3
 
 // Repeated;Bool (f3)
-jump.if_not 207
+jump.if_not 225
 param 0 "again": "Bool"
+array.clear 0 "array:Int32"
+local 2 "var$1": "array:Int32"
 assign
-local 2 "empty$2": "array:Int32"
-local 3 "var$1": "array:Int32"
+local 3 "empty$2": "array:Int32"
+local 2 "var$1": "array:Int32"
 array.push 0 "array:Int32"
-local 2 "empty$2": "array:Int32"
+local 3 "empty$2": "array:Int32"
 i32.one
 array.resize 0 "array:Int32"
 local 4 "var$3": "array:Int32"
@@ -58,7 +61,7 @@ local 4 "var$3": "array:Int32"
 array.push 0 "array:Int32"
 local 5 "filled$4": "array:Int32"
 i32.const 3
-jump -210
+jump -228
 
 // Shadowed; (f4)
 array.resize 0 "array:Int32"
@@ -184,7 +187,7 @@ assign
 local 15 "previous$2": "script_ref:array:Int32"
 as_ref 0 "array:Int32"
 local 14 "seed$1": "array:Int32"
-jump.if_not 266
+jump.if_not 284
 param 2 "again": "Bool"
 jump.if_not 213
 param 2 "again": "Bool"
@@ -217,14 +220,16 @@ local 15 "previous$2": "script_ref:array:Int32"
 as_ref 0 "array:Int32"
 local 17 "values$4": "array:Int32"
 jump 0
-jump 38
+jump 56
+array.clear 0 "array:Int32"
+local 18 "var$5": "array:Int32"
 assign
-local 18 "empty$6": "array:Int32"
-local 19 "var$5": "array:Int32"
+local 19 "empty$6": "array:Int32"
+local 18 "var$5": "array:Int32"
 array.push 0 "array:Int32"
-local 18 "empty$6": "array:Int32"
+local 19 "empty$6": "array:Int32"
 i32.one
-jump -269
+jump -287
 
 // RetainedAliasFor;Bool (f8)
 array.resize 0 "array:Int32"
@@ -247,7 +252,7 @@ local 20 "seed$1": "array:Int32"
 assign
 local 22 "var$3": "Int32"
 i32.zero
-jump.if_not 356
+jump.if_not 374
 invoke.static j43 l60 f9 OperatorLess;Int32Int32 0000000000000000
 local 22 "var$3": "Int32"
 array.size 0 "array:Int32"
@@ -262,11 +267,13 @@ invoke.static j26 l60 f10 OperatorAssignAdd;OutInt32Int32 0000000000000000
 local 22 "var$3": "Int32"
 i32.one
 param.end
+array.clear 0 "array:Int32"
+local 24 "var$5": "array:Int32"
 assign
-local 24 "empty$6": "array:Int32"
-local 25 "var$5": "array:Int32"
+local 25 "empty$6": "array:Int32"
+local 24 "var$5": "array:Int32"
 array.push 0 "array:Int32"
-local 24 "empty$6": "array:Int32"
+local 25 "empty$6": "array:Int32"
 local 23 "item$4": "Int32"
 jump.if_not 198
 param 3 "again": "Bool"
@@ -297,7 +304,7 @@ local 21 "previous$2": "script_ref:array:Int32"
 as_ref 0 "array:Int32"
 local 27 "values$8": "array:Int32"
 jump 0
-jump -359
+jump -377
 
 // First (f1)
 

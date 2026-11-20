@@ -1,0 +1,18 @@
+---
+source: crates/compiler/backend/tests/bytecode.rs
+assertion_line: 22
+expression: "compile(path, |_| {})"
+input_file: crates/compiler/backend/tests/data/loop-empty-array.reds
+---
+// LoopEmptyArray;Bool (f0)
+jump.if_not 68
+param 0 "again": "Bool"
+array.clear 0 "array:Int32"
+local 0 "var$1": "array:Int32"
+assign
+local 1 "empty$2": "array:Int32"
+local 0 "var$1": "array:Int32"
+array.push 0 "array:Int32"
+local 1 "empty$2": "array:Int32"
+i32.one
+jump -71
