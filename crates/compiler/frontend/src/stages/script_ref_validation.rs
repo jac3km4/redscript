@@ -2,8 +2,8 @@ use redscript_community_ast::Span;
 
 use crate::ir::Visitor;
 use crate::{
-    CompileErrorReporter, Diagnostic, FunctionType, LoweredCompilationUnit, LoweredFunction,
-    MethodId, RefType, Symbols, ir,
+    CompileErrorReporter, Diagnostic, FunctionId, FunctionType, LoweredCompilationUnit,
+    LoweredFunction, RefType, Symbols, ir,
 };
 
 pub(super) fn validate<'ctx>(
@@ -11,28 +11,18 @@ pub(super) fn validate<'ctx>(
     symbols: &Symbols<'ctx>,
     reporter: &mut CompileErrorReporter<'ctx>,
 ) {
-    let mut functions: Vec<(&LoweredFunction<'ctx>, &FunctionType<'ctx>)> = Vec::new();
-    for (id, function) in &unit.functions {
-        functions.push((function, symbols[*id].type_()));
-    }
-    for (id, class) in &unit.classes {
-        for (method, function) in &class.methods {
-            functions.push((function, symbols[MethodId::new(*id, *method)].type_()));
-        }
-    }
-    for (id, function) in unit
-        .added_methods
-        .iter()
-        .filter_map(|(id, f)| f.as_ref().map(|f| (id, f)))
-        .chain(unit.method_replacements.iter())
-        .chain(
-            unit.method_wrappers
-                .iter()
-                .flat_map(|(id, fs)| fs.iter().map(move |f| (id, f))),
-        )
-    {
-        functions.push((function, symbols[*id].type_()));
-    }
+    let functions = unit
+        .functions_with_ids()
+        .map(|(id, function)| {
+            let func_type = match id {
+                FunctionId::Free(id) => symbols[id].type_(),
+                FunctionId::Method(id) | FunctionId::Replacement(id) | FunctionId::Wrapper(id) => {
+                    symbols[id].type_()
+                }
+            };
+            (function, func_type)
+        })
+        .collect::<Vec<_>>();
 
     let diagnostics = crate::parallel::map_ordered(functions, |(function, func_type)| {
         check_function(function, func_type, symbols)
