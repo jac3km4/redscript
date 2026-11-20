@@ -4,10 +4,11 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use redscript_community_ast as ast;
 use redscript_compiler_frontend::utils::ScopedMap;
 use redscript_compiler_frontend::{
-    FunctionType, LoweredFunction, MethodId, PolyType, QueryError, RefType, Symbols, Type, TypeId,
-    TypeSchema, Variance, expr_type, ir, predef,
+    FreeFunctionIndex, FunctionType, LoweredFunction, MethodId, PolyType, QueryError, RefType,
+    Symbols, Type, TypeId, TypeSchema, Variance, expr_type, ir, predef,
 };
 
+use crate::names::TargetNamePlan;
 use crate::{Result, SourceMapping, error, target};
 
 pub(crate) struct Body<'a, 'ctx> {
@@ -15,6 +16,7 @@ pub(crate) struct Body<'a, 'ctx> {
     pub symbols: &'a Symbols<'ctx>,
     pub signature: &'a FunctionType<'ctx>,
     pub names: BTreeMap<ir::Local, String>,
+    pub plan: Option<&'a TargetNamePlan>,
 
     pub wrapper: Option<MethodId<'ctx>>,
     result_local: String,
@@ -144,6 +146,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             symbols,
             signature,
             names,
+            plan: None,
 
             wrapper,
             result_local,
@@ -151,6 +154,29 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             omitted_defaults,
             enum_defaults: RefCell::new(HashMap::new()),
         })
+    }
+
+    /// Attach the module's import-aware name plan. Bodies built without one keep
+    /// the unchecked simple-name spelling used only by isolated unit fixtures.
+    pub(crate) fn with_plan(mut self, plan: &'a TargetNamePlan) -> Self {
+        self.plan = Some(plan);
+        self
+    }
+
+    fn type_text(&self, typ: &Type<'ctx>) -> Result<String> {
+        target::typ_planned(typ, self.symbols, self.plan)
+    }
+
+    fn function_name(&self, index: FreeFunctionIndex) -> Result<String> {
+        if let Some(plan) = self.plan {
+            plan.free_function_name(index, self.symbols)
+        } else {
+            let (name, _) = self
+                .symbols
+                .get_free_function(index)
+                .ok_or_else(|| error("missing resolved function", None))?;
+            target::path(&name.to_string()).map(str::to_owned)
+        }
     }
 
     pub fn local(&self, local: ir::Local) -> Result<&str> {
@@ -167,11 +193,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             .ok_or_else(|| error("missing local identity", Some(self.function.span)))?
             .coalesce(self.symbols)
             .map_err(|e| error(e.to_string(), Some(self.function.span)))?;
-        Ok(format!(
-            "{}: {}",
-            self.local(local)?,
-            target::typ(&typ, self.symbols)?
-        ))
+        Ok(format!("{}: {}", self.local(local)?, self.type_text(&typ)?))
     }
 
     pub fn emit_at(mut self, depth: usize) -> Result<(String, Vec<SourceMapping>)> {
@@ -189,7 +211,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 text.push_str(&format!(
                     "{pad}var {}: {};\n",
                     self.local(local.id)?,
-                    target::typ(&typ, self.symbols)?
+                    self.type_text(&typ)?
                 ));
             }
         }
@@ -197,7 +219,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             text.push_str(&format!(
                 "{pad}var {}: {};\n",
                 self.result_local,
-                target::typ(self.signature.return_type(), self.symbols)?
+                self.type_text(self.signature.return_type())?
             ));
         }
         self.block(&self.function.block, depth + 1, &mut text, &mut mappings)?;
@@ -451,7 +473,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             ));
         };
         let id = app.id();
-        let type_text = target::typ(typ, self.symbols)?;
+        let type_text = self.type_text(typ)?;
         if id == predef::BOOL {
             return Ok("false".into());
         }
@@ -462,7 +484,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             return Ok(target::cname("")?.to_string());
         }
         if id == predef::TWEAK_DB_ID {
-            return constant(&ir::Const::TweakDbId("".into()), self.symbols);
+            return constant(&ir::Const::TweakDbId("".into()), self.symbols, self.plan);
         }
         if id == predef::FLOAT {
             return Ok("0.0".into());
@@ -518,11 +540,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     None,
                 )
             })?;
-            return Ok(format!(
-                "{}.{}",
-                target::ident(&id.simple_name())?,
-                target::ident(name)?
-            ));
+            return Ok(format!("{type_text}.{}", target::ident(name)?));
         }
         if let Some(aggregate) = self
             .symbols
@@ -714,35 +732,33 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             ));
         }
         if !matches!(e, ir::Expr::Null { .. }) {
-            target::typ(&self.type_of(e)?, self.symbols).map_err(|mut err| {
+            self.type_text(&self.type_of(e)?).map_err(|mut err| {
                 err.span = Some(e.span());
                 err
             })?;
         }
         let result = match e {
             ir::Expr::Local(id, _) => Ok(self.local(*id)?.to_owned()),
-            ir::Expr::Const(c, _) => constant(c, self.symbols),
+            ir::Expr::Const(c, _) => constant(c, self.symbols, self.plan),
             ir::Expr::Null { .. } => Ok("NULL".into()),
             ir::Expr::NewInstance { class_type, .. } => Ok(format!(
                 "new {}",
-                target::typ(
+                self.type_text(
                     &class_type
                         .coalesced(self.symbols)
                         .map_err(|e| error(e.to_string(), None))?
                         .into_type(),
-                    self.symbols
                 )?
             )),
             ir::Expr::Construct {
                 struct_type, args, ..
             } => Ok(format!(
                 "{}({})",
-                target::typ(
+                self.type_text(
                     &struct_type
                         .coalesced(self.symbols)
                         .map_err(|e| error(e.to_string(), None))?
                         .into_type(),
-                    self.symbols
                 )?,
                 self.args(args)?
             )),
@@ -813,11 +829,10 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             } => Ok(format!(
                 "{} as {}",
                 self.expr_at(expr, 12)?,
-                target::typ(
+                self.type_text(
                     &target_type
                         .coalesced(self.symbols)
-                        .map_err(|e| error(e.to_string(), None))?,
-                    self.symbols
+                        .map_err(|e| error(e.to_string(), None))?
                 )?
             )),
             ir::Expr::Call { call, .. } => self.call(call, e),
@@ -914,9 +929,9 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             // Validate both representations, and keep the operand at this exact
             // execution point. Ordinary expression emission still rejects any
             // inner conversion instead of cancelling a strong/weak round trip.
-            target::typ(&result, self.symbols)?;
-            target::typ(&source, self.symbols)?;
-            target::typ(expected, self.symbols)?;
+            self.type_text(&result)?;
+            self.type_text(&source)?;
+            self.type_text(expected)?;
             return self.expr_at(arg, 2);
         }
         self.expr(e)
@@ -1360,7 +1375,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     if name == "Cast" && args.len() == 1 {
                         return Ok(format!(
                             "Cast<{}>({})",
-                            target::typ(&self.type_of(whole)?, self.symbols)?,
+                            self.type_text(&self.type_of(whole)?)?,
                             self.expr_at(&args[0], 14)?
                         ));
                     }
@@ -1381,7 +1396,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
 
                 Ok(format!(
                     "{}({})",
-                    target::path(&name)?,
+                    self.function_name(*function)?,
                     self.call_args(def.type_(), args, call, def.flags().is_native())?
                 ))
             }
@@ -1414,7 +1429,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 }
                 Ok(format!(
                     "{}.{}({})",
-                    target::ident(&parent_id.simple_name())?,
+                    self.type_text(&Type::nullary(*parent_id))?,
                     target::ident(name)?,
                     self.call_args(def.type_(), args, call, def.flags().is_native())?
                 ))
@@ -1551,7 +1566,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             Ok(format!(
                 "{} as {}",
                 self.expr_at(unary()?, 12)?,
-                target::typ(&self.type_of(whole)?, self.symbols)?
+                self.type_text(&self.type_of(whole)?)?
             ))
         };
         let method = |name: &str| -> Result<String> {
@@ -1669,11 +1684,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                         && self.symbols[*function].intrinsic() == Some(I::WeakRefToRef)
                         && let [arg] = &args[..]
                     {
-                        format!(
-                            "({} as {})",
-                            self.expr_at(arg, 12)?,
-                            target::typ(&typ, self.symbols)?
-                        )
+                        format!("({} as {})", self.expr_at(arg, 12)?, self.type_text(&typ)?)
                     } else {
                         self.expr_at(operand, 12)?
                     };
@@ -1799,12 +1810,16 @@ pub(crate) fn float_literal(value: f32) -> String {
     text
 }
 
-pub(crate) fn constant<'ctx>(c: &ir::Const<'ctx>, symbols: &Symbols<'ctx>) -> Result<String> {
+pub(crate) fn constant<'ctx>(
+    c: &ir::Const<'ctx>,
+    symbols: &Symbols<'ctx>,
+    plan: Option<&TargetNamePlan>,
+) -> Result<String> {
     use ir::Const as C;
     let cast = |value: String| -> Result<String> {
         Ok(format!(
             "Cast<{}>({value})",
-            target::typ(&Type::nullary(c.type_id()), symbols)?
+            target::typ_planned(&Type::nullary(c.type_id()), symbols, plan)?
         ))
     };
     match c {
@@ -1816,11 +1831,11 @@ pub(crate) fn constant<'ctx>(c: &ir::Const<'ctx>, symbols: &Symbols<'ctx>) -> Re
             let (name, _) = symbols
                 .get_enum_variant(*id)
                 .ok_or_else(|| error("missing resolved enum variant", None))?;
-            Ok(format!(
-                "{}.{}",
-                target::ident(&id.parent().simple_name())?,
-                target::ident(name)?
-            ))
+            let parent = match plan {
+                Some(plan) => plan.type_name(id.parent())?,
+                None => target::ident(&id.parent().simple_name())?.to_owned(),
+            };
+            Ok(format!("{parent}.{}", target::ident(name)?))
         }
         C::Bool(v) => Ok(v.to_string()),
         C::I32(v) if *v != i32::MIN => Ok(v.to_string()),
@@ -1860,11 +1875,11 @@ mod float_tests {
             f32::MAX,
             -f32::MAX,
         ] {
-            let text = constant(&ir::Const::F32(value), &symbols).unwrap();
+            let text = constant(&ir::Const::F32(value), &symbols, None).unwrap();
             assert!(!text.contains(['e', 'E']), "{text}");
             assert!(text.contains('.'), "{text}");
             assert_eq!(text.parse::<f32>().unwrap().to_bits(), value.to_bits());
-            let double = constant(&ir::Const::F64(f64::from(value)), &symbols).unwrap();
+            let double = constant(&ir::Const::F64(f64::from(value)), &symbols, None).unwrap();
             assert_eq!(double, format!("Cast<Double>({text})"));
         }
         assert_eq!(float_literal(-0.0), "-0.0");

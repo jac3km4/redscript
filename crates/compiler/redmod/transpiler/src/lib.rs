@@ -14,6 +14,7 @@ mod defaults;
 mod effects;
 mod field_reads;
 mod locals;
+mod names;
 pub mod package;
 mod receivers;
 mod source;
@@ -169,7 +170,8 @@ pub fn transpile<'ctx>(
         }
     }
     for module in modules {
-        match declarations::emit(module, unit, symbols, &symbol_names, &target_modules) {
+        let plan = names::TargetNamePlan::new(module.source, symbols);
+        match declarations::emit(module, unit, symbols, &symbol_names, &target_modules, &plan) {
             Ok(module) => output.push(module),
             Err(error) => diagnostics.push(error),
         }

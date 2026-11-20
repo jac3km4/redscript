@@ -21,6 +21,16 @@ pub fn path(name: &str) -> Result<&str> {
 }
 
 pub fn typ<'ctx>(typ: &Type<'ctx>, symbols: &Symbols<'ctx>) -> Result<String> {
+    typ_planned(typ, symbols, None)
+}
+
+/// Plan-aware type spelling. `plan` resolves the unqualified name of a
+/// module-scoped type; without one the simple name is emitted unchecked.
+pub(crate) fn typ_planned<'ctx>(
+    typ: &Type<'ctx>,
+    symbols: &Symbols<'ctx>,
+    plan: Option<&crate::names::TargetNamePlan>,
+) -> Result<String> {
     let Type::Data(app) = typ else {
         return Err(error(
             "cannot emit this type; use a concrete, non-generic type",
@@ -59,7 +69,7 @@ pub fn typ<'ctx>(typ: &Type<'ctx>, symbols: &Symbols<'ctx>) -> Result<String> {
         ));
     }
     if let [inner] = args {
-        let inner_text = self::typ(inner, symbols)?;
+        let inner_text = typ_planned(inner, symbols, plan)?;
         if id == predef::REF {
             let Type::Data(inner) = inner else {
                 return Err(error("invalid strong reference", None));
@@ -98,7 +108,10 @@ pub fn typ<'ctx>(typ: &Type<'ctx>, symbols: &Symbols<'ctx>) -> Result<String> {
     if matches!(def.schema(), TypeSchema::Primitive) && id == predef::NOTHING {
         return Err(error("Nothing has no target type", None));
     }
-    ident(&id.simple_name()).map(str::to_owned)
+    match plan {
+        Some(plan) => plan.type_name(id),
+        None => ident(&id.simple_name()).map(str::to_owned),
+    }
 }
 
 /// Spell a REDmod class/struct field-default value.

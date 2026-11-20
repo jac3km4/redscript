@@ -77,7 +77,10 @@ fn select_imports_keep_each_symbol_and_the_whole_overload_family() {
     assert!(text.contains("@using \"Models.Choose\"\n"), "{text}");
     assert!(text.contains("@using \"Models.Value\"\n"), "{text}");
     assert!(!text.contains("@using \"Models\""), "{text}");
-    assert!(text.contains("Models.Choose(1)"), "{text}");
+    // A select import brings the overload family into unqualified scope, so the
+    // target spelling drops the module qualifier.
+    assert!(text.contains("Choose(1)"), "{text}");
+    assert!(!text.contains("Models.Choose("), "{text}");
     assert!(text.contains("value: Value"), "{text}");
 }
 
@@ -98,7 +101,9 @@ fn exact_import_selects_the_whole_overload_family() {
         &interner,
     )
     .unwrap();
-    assert!(output[0].module.text.contains("Helpers.Choose(\"chosen\")"));
+    // An exact import also brings the overload family into unqualified scope.
+    assert!(output[0].module.text.contains("Choose(\"chosen\")"));
+    assert!(!output[0].module.text.contains("Helpers.Choose("));
     assert!(
         output[0]
             .module
@@ -108,7 +113,10 @@ fn exact_import_selects_the_whole_overload_family() {
 }
 
 #[test]
-fn import_planning_does_not_revalidate_global_target_name_collisions() {
+fn colliding_local_and_imported_references_fail_closed() {
+    // A referenced symbol whose simple name is claimed by a second in-scope
+    // symbol must not be emitted: the target would bind the bare name to one of
+    // them arbitrarily.
     for (dependency, consumer) in [
         (
             "public struct Collision {}",
@@ -117,10 +125,6 @@ fn import_planning_does_not_revalidate_global_target_name_collisions() {
         (
             "public func Collision(value: String) -> String { return value; }",
             "public func Collision(value: Int32) -> Int32 { return value; } public func Run() -> Int32 { return Collision(1); }",
-        ),
-        (
-            "public struct Collision {}",
-            "public func Collision(value: Int32) -> Int32 { return value; }",
         ),
     ] {
         for import in ["import Models.Collision", "import Models.{Collision}"] {
@@ -132,15 +136,45 @@ fn import_planning_does_not_revalidate_global_target_name_collisions() {
             let interner = TypeInterner::default();
             let analysis =
                 analyze_sources(&sources, Symbols::with_default_types(), &interner).unwrap();
-            let output = analysis.transpile_selected(&[selected]).unwrap();
+            let errors = analysis.transpile_selected(&[selected]).unwrap_err();
             assert!(
-                output[0]
-                    .module
-                    .text
-                    .contains("@using \"Models.Collision\"\n")
+                errors[0].message.contains("collides with")
+                    && errors[0].message.contains("Collision"),
+                "{errors:?}"
             );
+            assert_eq!(errors[0].span.unwrap().file, selected);
         }
     }
+}
+
+#[test]
+fn unreferenced_import_name_overlap_is_not_revalidated() {
+    // Only referenced symbols pass through the name plan. A declaration that
+    // merely shares a simple name with an unused import is still emitted, so an
+    // unrelated import cannot silently block a module.
+    let sources = SourceMap::new();
+    sources.populate_boot_lib();
+    sources.push_back("models.reds", "module Models public struct Collision {}");
+    let selected = sources.push_back(
+        "use.reds",
+        "module Consumer import Models.Collision public func Collision(value: Int32) -> Int32 { return value; }",
+    );
+    let interner = TypeInterner::default();
+    let output = transpile_sources(
+        &sources,
+        &[selected],
+        Symbols::with_default_types(),
+        &interner,
+    )
+    .unwrap();
+    assert!(
+        output[0]
+            .module
+            .text
+            .contains("@using \"Models.Collision\"\n"),
+        "{}",
+        output[0].module.text
+    );
 }
 
 #[test]
@@ -160,7 +194,9 @@ fn unrelated_type_and_function_collisions_do_not_require_widening() {
     let text = &output[0].module.text;
     assert!(text.contains("@using \"Models.Wanted\"\n"), "{text}");
     assert!(!text.contains("@using \"Models\""), "{text}");
-    assert!(text.contains("Consumer.Choose(1)"), "{text}");
+    // The called function is declared in this module, so it stays unqualified.
+    assert!(text.contains("Choose(1)"), "{text}");
+    assert!(!text.contains("Consumer.Choose"), "{text}");
 }
 
 #[test]

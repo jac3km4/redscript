@@ -15,7 +15,7 @@ function Echo(value: Bool) -> Bool {
 }
 
 function Run() -> Int32 {
-    return Dependency.Value();
+    return Value();
 }
 
 class Widget extends IScriptable {

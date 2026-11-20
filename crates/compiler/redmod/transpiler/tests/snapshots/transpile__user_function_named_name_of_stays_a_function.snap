@@ -9,5 +9,5 @@ function NameOf(value: Int32) -> CName {
 }
 
 function Test() -> CName {
-    return Custom.NameOf(1);
+    return NameOf(1);
 }

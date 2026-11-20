@@ -6,6 +6,7 @@ use redscript_compiler_frontend::{
 };
 
 use crate::body::Body;
+use crate::names::TargetNamePlan;
 use crate::{
     DeclarationPath, ResolvedDeclaration as R, Result, SourceMapping, TranspileModule,
     TranspiledModule, error, target,
@@ -17,6 +18,7 @@ pub fn emit<'ctx>(
     symbols: &Symbols<'ctx>,
     symbol_names: &BTreeSet<String>,
     target_modules: &BTreeSet<String>,
+    plan: &TargetNamePlan,
 ) -> Result<TranspiledModule> {
     let mut emitter = Emitter {
         module,
@@ -24,6 +26,7 @@ pub fn emit<'ctx>(
         symbols,
         symbol_names,
         target_modules,
+        plan,
         output: TranspiledModule {
             text: String::new(),
             mappings: Vec::new(),
@@ -77,12 +80,17 @@ struct Emitter<'a, 'ctx> {
     symbols: &'a Symbols<'ctx>,
     symbol_names: &'a BTreeSet<String>,
     target_modules: &'a BTreeSet<String>,
+    plan: &'a TargetNamePlan,
     output: TranspiledModule,
     used: BTreeSet<DeclarationPath>,
     depth: usize,
 }
 
 impl<'a, 'ctx> Emitter<'a, 'ctx> {
+    fn type_text(&self, typ: &Type<'ctx>) -> Result<String> {
+        target::typ_planned(typ, self.symbols, Some(self.plan))
+    }
+
     fn decl(
         &mut self,
         decl: &SourceItemDecl<'ctx>,
@@ -213,7 +221,7 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                         None,
                     ));
                 }
-                target::typ(&Type::nullary(id), self.symbols)?;
+                target::typ_planned(&Type::nullary(id), self.symbols, Some(self.plan))?;
                 self.output
                     .text
                     .push_str(if matches!(decl.item, Item::Struct(_)) {
@@ -225,7 +233,7 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                 if let Some(base) = agg.base() {
                     self.output.text.push_str(&format!(
                         " extends {}",
-                        target::typ(&base.clone().into_type(), self.symbols)?
+                        self.type_text(&base.clone().into_type())?
                     ));
                 }
                 self.output.text.push_str(" {\n");
@@ -300,7 +308,7 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                 self.output.text.push_str(&format!(
                     "var {}: {}",
                     target::ident(name)?,
-                    target::typ(def.type_(), self.symbols)?
+                    self.type_text(def.type_())?
                 ));
                 if source.default.is_some() {
                     let value = self
@@ -375,6 +383,7 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                             &parent_members,
                             wrapper,
                         )
+                        .map(|body| body.with_plan(self.plan))
                     })
                     .transpose()?;
                 if override_ && !callback {
@@ -410,10 +419,9 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                     } else {
                         target::ident(param.name())?
                     };
-                    self.output.text.push_str(&format!(
-                        "{name}: {}",
-                        target::typ(param.type_(), self.symbols)?
-                    ));
+                    self.output
+                        .text
+                        .push_str(&format!("{name}: {}", self.type_text(param.type_())?));
                 }
                 self.output.text.push(')');
                 if !callback {
@@ -424,7 +432,7 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                         } else {
                             ""
                         },
-                        target::typ(signature.return_type(), self.symbols)?
+                        self.type_text(signature.return_type())?
                     ));
                 }
                 if source.body.is_some() != body.is_some() {
