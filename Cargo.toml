@@ -65,7 +65,7 @@ elsa = { version = "1", features = ["indexmap"] }
 serde = "1"
 toml = { version = "1", default-features = false }
 fern = "0.7"
-flexi_logger = { version = "0.31", default-features = false }
+flexi_logger = { version = "0.32", default-features = false }
 argh = "0.1"
 chumsky = { version = "1.0.0-alpha.7", features = ["label"] }
 crc32fast = "1"
