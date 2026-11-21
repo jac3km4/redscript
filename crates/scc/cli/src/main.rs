@@ -37,8 +37,12 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn run(r6_dir: &Path, args: Option<Arguments>) -> anyhow::Result<()> {
-    let api = capi::load()?;
+    run_with_api(r6_dir, args, &capi::load()?)
+}
 
+/// Runs the CLI against a loaded API. Kept separate from [`run`] so tests can
+/// substitute a mock API and observe settings/result ownership.
+fn run_with_api(r6_dir: &Path, args: Option<Arguments>, api: &raw::SccApi) -> anyhow::Result<()> {
     let settings_new = api.settings_new.context("missing 'settings_new'")?;
     let set_custom_cache_file = api
         .settings_set_custom_cache_file
@@ -164,6 +168,9 @@ mod tests {
     ) -> usize {
         let result = unsafe { &*result.cast::<MockResult>() };
         let error = result.error.as_ref().expect("must not copy on success");
+        if size == 0 {
+            return 0;
+        }
         // Mirror `scc_copy_error`: truncate to `size - 1` bytes but never split a
         // multi-byte character, so a truncated message can fall short of the
         // buffer length by up to 3 bytes.
@@ -214,5 +221,172 @@ mod tests {
                 format!("REDscript compilation failed: {error}")
             );
         }
+    }
+
+    // ---- Mock API for `run_with_api` ownership tests ------------------------
+
+    use std::cell::Cell;
+    use std::thread::LocalKey;
+
+    // Each test runs on its own thread, so these counters are isolated per test.
+    thread_local! {
+        static SETTINGS_CREATED: Cell<usize> = const { Cell::new(0) };
+        static SETTINGS_CONSUMED: Cell<usize> = const { Cell::new(0) };
+        static RESULTS_FREED: Cell<usize> = const { Cell::new(0) };
+        static COMPILE_FAILS: Cell<bool> = const { Cell::new(false) };
+    }
+
+    fn counter(key: &'static LocalKey<Cell<usize>>) -> usize {
+        key.with(Cell::get)
+    }
+
+    fn args() -> Arguments {
+        Arguments {
+            scripts_dirs: vec![PathBuf::from("/r6/scripts")],
+            optimize: false,
+            threads: 1,
+            warnings: Vec::new(),
+            no_testonly: false,
+            no_breakpoint: false,
+            profile: false,
+            script_paths_file: None,
+            cache_file: None,
+            no_exec: false,
+            no_debug: false,
+        }
+    }
+
+    unsafe extern "C" fn api_settings_new(_r6_dir: *const c_char) -> *mut raw::SccSettings {
+        SETTINGS_CREATED.with(|count| count.set(count.get() + 1));
+        ptr::dangling_mut()
+    }
+
+    unsafe extern "C" fn api_set_custom_cache_file(
+        _settings: *mut raw::SccSettings,
+        _path: *const c_char,
+    ) {
+    }
+
+    unsafe extern "C" fn api_add_script_path(_settings: *mut raw::SccSettings, _path: *const c_char) {}
+
+    unsafe extern "C" fn api_compile(_settings: *mut raw::SccSettings) -> *mut raw::SccResult {
+        SETTINGS_CONSUMED.with(|count| count.set(count.get() + 1));
+        ptr::dangling_mut()
+    }
+
+    unsafe extern "C" fn api_get_success(_result: *mut raw::SccResult) -> *mut raw::SccOutput {
+        if COMPILE_FAILS.with(Cell::get) {
+            ptr::null_mut()
+        } else {
+            ptr::dangling_mut()
+        }
+    }
+
+    unsafe extern "C" fn api_copy_error(
+        _result: *mut raw::SccResult,
+        buffer: *mut c_char,
+        size: usize,
+    ) -> usize {
+        if size == 0 {
+            return 0;
+        }
+        let message = b"mock failure";
+        let copied = message.len().min(size - 1);
+        unsafe {
+            ptr::copy_nonoverlapping(message.as_ptr(), buffer.cast(), copied);
+            buffer.add(copied).write(0);
+        }
+        copied
+    }
+
+    unsafe extern "C" fn api_free_result(_result: *mut raw::SccResult) {
+        RESULTS_FREED.with(|count| count.set(count.get() + 1));
+    }
+
+    fn mock_api() -> raw::SccApi {
+        raw::SccApi {
+            settings_new: Some(api_settings_new),
+            settings_set_custom_cache_file: Some(api_set_custom_cache_file),
+            settings_set_output_cache_file: None,
+            settings_add_script_path: Some(api_add_script_path),
+            settings_disable_error_popup: None,
+            settings_register_never_ref_type: None,
+            settings_register_mixed_ref_type: None,
+            compile: Some(api_compile),
+            free_result: Some(api_free_result),
+            get_success: Some(api_get_success),
+            copy_error: Some(api_copy_error),
+            output_get_source_ref: None,
+            output_source_ref_count: None,
+            source_ref_type: None,
+            source_ref_is_native: None,
+            source_ref_name: None,
+            source_ref_parent_name: None,
+            source_ref_path: None,
+            source_ref_line: None,
+        }
+    }
+
+    #[test]
+    fn early_input_failure_does_not_create_settings() {
+        let mut options = args();
+        options.script_paths_file = Some(PathBuf::from("/definitely/missing/script_paths.txt"));
+
+        let error = run_with_api(Path::new("/r6"), Some(options), &mock_api()).unwrap_err();
+
+        assert!(
+            error.to_string().contains("failed to open script paths file"),
+            "{error}"
+        );
+        assert_eq!(counter(&SETTINGS_CREATED), 0);
+        assert_eq!(counter(&RESULTS_FREED), 0);
+    }
+
+    #[test]
+    fn interior_nul_cache_file_is_rejected_before_settings() {
+        let mut options = args();
+        options.cache_file = Some(PathBuf::from("bad\0cache"));
+
+        let error = run_with_api(Path::new("/r6"), Some(options), &mock_api()).unwrap_err();
+
+        assert!(!error.to_string().is_empty());
+        assert_eq!(counter(&SETTINGS_CREATED), 0);
+        assert_eq!(counter(&RESULTS_FREED), 0);
+    }
+
+    #[test]
+    fn successful_run_balances_settings_and_result() {
+        let script_paths_file =
+            std::env::temp_dir().join(format!("scc-script-paths-{}.txt", std::process::id()));
+        std::fs::write(&script_paths_file, "/r6/scripts/a.reds\n/r6/scripts/b.reds\n").unwrap();
+
+        let mut options = args();
+        options.scripts_dirs = vec![
+            PathBuf::from("/r6/scripts"),
+            PathBuf::from("/r6/scripts-extra"),
+        ];
+        options.cache_file = Some(PathBuf::from("/r6/cache"));
+        options.script_paths_file = Some(script_paths_file.clone());
+
+        let outcome = run_with_api(Path::new("/r6"), Some(options), &mock_api());
+        std::fs::remove_file(&script_paths_file).ok();
+
+        outcome.unwrap();
+        assert_eq!(counter(&SETTINGS_CREATED), 1);
+        assert_eq!(counter(&SETTINGS_CONSUMED), 1);
+        assert_eq!(counter(&RESULTS_FREED), 1);
+    }
+
+    #[test]
+    fn failed_compile_frees_settings_and_result() {
+        COMPILE_FAILS.with(|flag| flag.set(true));
+
+        let error = run_with_api(Path::new("/r6"), Some(args()), &mock_api()).unwrap_err();
+
+        COMPILE_FAILS.with(|flag| flag.set(false));
+        assert!(error.to_string().contains("mock failure"), "{error}");
+        assert_eq!(counter(&SETTINGS_CREATED), 1);
+        assert_eq!(counter(&SETTINGS_CONSUMED), 1);
+        assert_eq!(counter(&RESULTS_FREED), 1);
     }
 }
