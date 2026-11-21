@@ -884,16 +884,17 @@ impl<'ctx> LoweredCompilationUnit<'ctx> {
         }
 
         let functions = self.all_functions().collect::<Vec<_>>();
-        let diagnostics = crate::parallel::map_ordered(functions, |func| {
-            let mut local = CompileErrorReporter::default();
-            for pass in passes {
-                pass.run(func, &mut local);
-            }
-            local.into_reported()
-        });
-        for diagnostics in diagnostics {
-            reporter.report_many(diagnostics);
-        }
+        crate::parallel::report_ordered(
+            functions,
+            |func| {
+                let mut local = CompileErrorReporter::default();
+                for pass in passes {
+                    pass.run(func, &mut local);
+                }
+                local.into_reported()
+            },
+            reporter,
+        );
     }
 }
 

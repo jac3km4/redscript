@@ -16,12 +16,11 @@ pub(super) fn validate<'ctx>(
         .map(|(id, function)| (function, id.function_type(symbols)))
         .collect::<Vec<_>>();
 
-    let diagnostics = crate::parallel::map_ordered(functions, |(function, func_type)| {
-        check_function(function, func_type, symbols)
-    });
-    for diagnostics in diagnostics {
-        reporter.report_many(diagnostics);
-    }
+    crate::parallel::report_ordered(
+        functions,
+        |(function, func_type)| check_function(function, func_type, symbols),
+        reporter,
+    );
 }
 
 fn check_function<'ctx>(

@@ -58,15 +58,13 @@ pub(super) fn validate<'policy, 'ctx>(
         functions.push((function, params, is_const_method, policy(function.span)));
     }
 
-    let diagnostics = crate::parallel::map_ordered(
+    crate::parallel::report_ordered(
         functions,
         |(function, params, is_const_method, func_policy)| {
             check_function(function, params, is_const_method, symbols, func_policy)
         },
+        reporter,
     );
-    for diagnostics in diagnostics {
-        reporter.report_many(diagnostics);
-    }
 }
 
 fn check_function<'ctx>(
