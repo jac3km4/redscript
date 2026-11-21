@@ -28,8 +28,10 @@ pub(crate) fn report_ordered<'ctx, T, F>(
 /// Runs `check` on every item, then drains each item's diagnostics into
 /// `reporter` in input order.
 ///
-/// With `parallel` disabled this runs sequentially in input order, so callers
-/// may capture single-threaded state directly in `check`.
+/// This sequential fallback carries no `Send`/`Sync` bounds, but a caller that
+/// must also compile with `parallel` enabled should still fold single-threaded
+/// state into `items` (as the parallel variant requires) rather than capturing
+/// it in `check`.
 #[cfg(not(feature = "parallel"))]
 pub(crate) fn report_ordered<'ctx, T, F>(
     items: Vec<T>,
