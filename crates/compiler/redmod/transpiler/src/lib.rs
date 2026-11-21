@@ -23,10 +23,11 @@ pub use target::LiteralError;
 pub mod validate;
 
 use std::borrow::Cow;
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::ops::Range;
 
+use hashbrown::HashSet;
 use redscript_community_ast::{SourceModule, Span};
 pub use redscript_compiler_frontend::{DeclarationPath, ResolvedDeclaration};
 use redscript_compiler_frontend::{LoweredCompilationUnit, Symbols};

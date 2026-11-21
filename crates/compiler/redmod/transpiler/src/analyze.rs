@@ -1,7 +1,8 @@
 //! Community analysis and conservative, span-independent declaration association.
 use std::borrow::Cow;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::BTreeMap;
 
+use hashbrown::{HashMap, HashSet};
 use redscript_community_ast::{self as ast, FileId, Item, SourceMap, SourceModule};
 use redscript_compiler_frontend::{
     CompileErrorReporter, Evaluator, LoweredCompilationUnit, Symbols, TypeInterner,

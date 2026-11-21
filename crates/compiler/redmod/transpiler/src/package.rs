@@ -1,11 +1,11 @@
 //! Stage generated scripts on the destination filesystem and publish a new mod.
 //! Existing mods are never replaced. Assets, tweaks and manifests are not converted.
-use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use hashbrown::HashSet;
 use redscript_community_ast::Span;
 
 use crate::validate::{OfficialValidator, ValidationReport};

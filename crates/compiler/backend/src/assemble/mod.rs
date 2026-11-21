@@ -1,6 +1,5 @@
-use std::collections::HashSet;
-
 use bon::{bon, builder};
+use hashbrown::HashSet;
 use redscript_compiler_frontend::ast::Span;
 use redscript_compiler_frontend::utils::ScopedMap;
 use redscript_compiler_frontend::{CoalesceError, MonoType, Symbols, ir};

@@ -1,6 +1,7 @@
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 
+use hashbrown::HashMap;
 use redscript_community_ast as ast;
 use redscript_compiler_frontend::{
     FreeFunctionIndex, FunctionType, LoweredFunction, MethodId, Symbols, Type, TypeId, TypeSchema,
