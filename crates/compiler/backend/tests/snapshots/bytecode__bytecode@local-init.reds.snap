@@ -26,35 +26,33 @@ cname.const 0 "None"
 assign
 local 6 "_$6": "TweakDBID"
 tweakdb.const 0 ""
-array.clear 1 "array:Int32"
-local 7 "_$7": "array:Int32"
 assign
-local 8 "_$8": "Int8"
+local 7 "_$8": "Int8"
 i8.const 0
 assign
-local 9 "_$9": "Int16"
+local 8 "_$9": "Int16"
 i16.const 0
 assign
-local 10 "_$10": "Int32"
+local 9 "_$10": "Int32"
 i32.zero
 assign
-local 11 "_$11": "Int64"
+local 10 "_$11": "Int64"
 i64.const 0
 assign
-local 12 "_$12": "Uint8"
+local 11 "_$12": "Uint8"
 u8.const 0
 assign
-local 13 "_$13": "Uint16"
+local 12 "_$13": "Uint16"
 u16.const 0
 assign
-local 14 "_$14": "Uint32"
+local 13 "_$14": "Uint32"
 u32.const 0
 assign
-local 15 "_$15": "Uint64"
+local 14 "_$15": "Uint64"
 u64.const 0
 assign
-local 16 "_$16": "Float"
+local 15 "_$16": "Float"
 f32.const 0
 assign
-local 17 "_$17": "Double"
+local 16 "_$17": "Double"
 f64.const 0

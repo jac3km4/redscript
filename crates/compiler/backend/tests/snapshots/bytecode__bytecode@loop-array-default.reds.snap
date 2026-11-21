@@ -1,0 +1,15 @@
+---
+source: crates/compiler/backend/tests/bytecode.rs
+assertion_line: 22
+expression: "compile(path, |_| {})"
+input_file: crates/compiler/backend/tests/data/loop-array-default.reds
+---
+// LoopArrayDefault;Bool (f0)
+jump.if_not 49
+param 0 "again": "Bool"
+array.clear 0 "array:Int32"
+local 0 "values$1": "array:Int32"
+array.push 0 "array:Int32"
+local 0 "values$1": "array:Int32"
+i32.one
+jump -52

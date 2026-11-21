@@ -76,6 +76,21 @@ fn loop_empty_array_literal_clears_each_iteration() {
     assert!(output.contains("array.clear"), "{output}");
 }
 
+#[test]
+fn array_default_initialization_clears_only_when_repeated() {
+    // The VM default-constructs function-local storage as an empty array, so an
+    // entry-only declaration needs no reset. A declaration that can run again on
+    // a loop back edge must clear the previous iteration's contents.
+    let entry = compile(&data_path("entry-array-default.reds"), |_| {});
+    assert!(!entry.contains("assembly error"), "{entry}");
+    assert!(entry.contains("array.push"), "{entry}");
+    assert!(!entry.contains("array.clear"), "{entry}");
+
+    let looped = compile(&data_path("loop-array-default.reds"), |_| {});
+    assert!(!looped.contains("assembly error"), "{looped}");
+    assert!(looped.contains("array.clear"), "{looped}");
+}
+
 fn data_path(relative: &str) -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/data")

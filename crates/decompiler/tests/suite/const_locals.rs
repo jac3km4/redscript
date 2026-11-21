@@ -151,7 +151,11 @@ fn read_only_default_const_variant_roundtrips() {
 
 #[test]
 fn expanded_const_array_initializers_warn_and_only_downgrade_affected_local() {
-    for value in ["[]", "[1, 2]"] {
+    // An empty literal is the VM default, so an entry-only `const` array keeps its
+    // declaration without an initializer and stays const. A non-empty literal
+    // expands into resize/element writes that cannot become an initializer, so only
+    // that local is downgraded to a mutable let with a warning.
+    for (value, expanded) in [("[]", false), ("[1, 2]", true)] {
         let bytes = compile(&format!(
             "func Probe() -> Int32 {{ const kept: Int32 = 7; const defaulted: Variant; const values: [Int32] = {value}; let mutable: Int32 = 1; ArraySize(values); mutable; return kept; }}"
         ));
@@ -178,21 +182,34 @@ fn expanded_const_array_initializers_warn_and_only_downgrade_affected_local() {
         for settings in [Settings::default(), Settings::default().verbose()] {
             let (item, warnings) =
                 with_warnings(|| decompile_function(function, &bundle, &settings).unwrap());
-            assert_eq!(warnings.len(), 1, "{warnings:?}");
-            assert!(warnings[0].contains(local_name("values$")), "{warnings:?}");
-            assert!(
-                warnings[0].contains(bundle[function.name()].as_ref()),
-                "{warnings:?}"
-            );
-            assert!(warnings[0].contains("emitting mutable let"), "{warnings:?}");
+            if expanded {
+                // Expanded element writes cannot become a const initializer, so
+                // only this local is downgraded to a mutable let with a warning.
+                assert_eq!(warnings.len(), 1, "{warnings:?}");
+                assert!(warnings[0].contains(local_name("values$")), "{warnings:?}");
+                assert!(
+                    warnings[0].contains(bundle[function.name()].as_ref()),
+                    "{warnings:?}"
+                );
+                assert!(warnings[0].contains("emitting mutable let"), "{warnings:?}");
+            } else {
+                // The empty literal needs no write, so the declaration keeps its
+                // const binding without an initializer or a warning.
+                assert!(warnings.is_empty(), "{warnings:?}");
+            }
             let output = item
                 .as_fmt(FormatCtx::new(
                     &FormatSettings::default(),
                     &HashMap::default(),
                 ))
                 .to_string();
+            let array_declaration = if expanded {
+                format!("let {}: [Int32];", local_name("values$"))
+            } else {
+                format!("const {}: [Int32];", local_name("values$"))
+            };
             for expected in [
-                format!("let {}: [Int32];", local_name("values$")),
+                array_declaration,
                 format!("const {}: Int32 = 7;", local_name("kept$")),
                 format!("const {}: Variant;", local_name("defaulted$")),
                 format!("let {}: Int32 = 1;", local_name("mutable$")),

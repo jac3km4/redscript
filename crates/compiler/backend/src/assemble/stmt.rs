@@ -198,9 +198,6 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
                 local, typ, span, ..
             } => {
                 let ir_local = *local;
-                let local = self
-                    .resolve_local(ir_local)
-                    .expect("every local should be defined");
                 let typ = self.mono_type(typ, *span)?;
 
                 // Variant locals are default-constructed by the VM, not by bytecode.
@@ -208,7 +205,20 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
                     return Ok(());
                 }
 
+                // An array local is only inert while its storage is freshly
+                // default-constructed. Skip the redundant reset at function entry,
+                // and clear it whenever the declaration can run again or the local
+                // already holds a value.
+                let needs_reset = self.in_loop || self.touched_locals.contains(&ir_local);
                 self.touched_locals.insert(ir_local);
+
+                if typ.id() == predef::ARRAY && !needs_reset {
+                    return Ok(());
+                }
+
+                let local = self
+                    .resolve_local(ir_local)
+                    .expect("every local should be defined");
 
                 if typ.id() == predef::ARRAY {
                     let array_t = self.monomorph.type_(&typ, self.symbols, self.bundle);

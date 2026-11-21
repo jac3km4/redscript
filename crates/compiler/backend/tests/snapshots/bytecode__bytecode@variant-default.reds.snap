@@ -5,11 +5,9 @@ expression: "compile(path, |_| {})"
 input_file: crates/compiler/backend/tests/data/variant-default.reds
 ---
 // DefaultThenArray; (f0)
-array.clear 0 "array:Int32"
-local 0 "values$1": "array:Int32"
 assign
-local 1 "value$0": "Variant"
-variant.new 1 "Int32"
+local 0 "value$0": "Variant"
+variant.new 0 "Int32"
 i32.const 7
 
 // DefaultThenReturn; (f1)
@@ -20,11 +18,11 @@ nop
 jump.if_not 60
 param 0 "again": "Bool"
 assign
-local 2 "first$1": "Variant"
-variant.new 2 "String"
+local 1 "first$1": "Variant"
+variant.new 1 "String"
 string.const 0 "payload"
 assign
-local 3 "second$2": "Variant"
-variant.new 1 "Int32"
+local 2 "second$2": "Variant"
+variant.new 0 "Int32"
 i32.const 7
 jump -63
