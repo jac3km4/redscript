@@ -202,11 +202,21 @@ impl TypeInterner {
         predef::ALL_TYPES.len()
     }
 
+    /// Looks up a predefined name's index without rescanning `predef::ALL_TYPES`.
+    ///
+    /// This runs on every interning and lookup, so the mapping is precomputed
+    /// once. It must not allocate per interner: predefined names stay in the
+    /// shared `&'static str` storage and keep their `0..predef_len` indices.
     fn predef_index(name: &str) -> Option<TypeIndex> {
-        predef::ALL_TYPES
-            .iter()
-            .position(|id| id.as_name() == Some(name))
-            .map(TypeIndex)
+        static PREDEF_INDEX: std::sync::LazyLock<hashbrown::HashMap<&'static str, TypeIndex>> =
+            std::sync::LazyLock::new(|| {
+                predef::ALL_TYPES
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, id)| Some((id.as_name()?, TypeIndex(index))))
+                    .collect()
+            });
+        PREDEF_INDEX.get(name).copied()
     }
 
     /// Maps a non-predefined [`TypeIndex`] to its interned name.
@@ -412,5 +422,18 @@ mod tests {
         assert_eq!(map.get(&TypeId::static_array(17)), Some(&17));
         assert_eq!(map.get(&TypeId::static_array(u32::MAX)), Some(&u32::MAX));
         assert_eq!(map.get(&named_array1), Some(&99));
+    }
+
+    #[test]
+    fn predefined_names_round_trip_with_their_indices() {
+        let interner = TypeInterner::default();
+        for (index, id) in predef::ALL_TYPES.iter().enumerate() {
+            let name = id.as_name().expect("predefined id has a name");
+            // Interning keeps the shared predefined handle instead of allocating.
+            assert_eq!(interner.intern(name), *id);
+            assert_eq!(interner.get(name), Some(*id));
+            assert_eq!(interner.get_index_of(name), Some(TypeIndex(index)));
+            assert_eq!(interner.get_index(TypeIndex(index)), Some(*id));
+        }
     }
 }
