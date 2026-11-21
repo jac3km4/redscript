@@ -82,9 +82,11 @@ pub unsafe extern "C" fn scc_settings_register_never_ref_type(
     settings: &mut SccSettings,
     name: *const c_char,
 ) {
-    match unsafe { c_str(name) } {
-        Ok(name) => settings.register_never_ref_type(name.to_owned()),
-        Err(err) => eprintln!("scc: ignoring @neverRef type with invalid name: {err}"),
+    unsafe {
+        with_c_str(name, |name| match name {
+            Ok(name) => settings.register_never_ref_type(name.to_owned()),
+            Err(err) => eprintln!("scc: ignoring @neverRef type with invalid name: {err}"),
+        });
     }
 }
 
@@ -97,9 +99,11 @@ pub unsafe extern "C" fn scc_settings_register_mixed_ref_type(
     settings: &mut SccSettings,
     name: *const c_char,
 ) {
-    match unsafe { c_str(name) } {
-        Ok(name) => settings.register_mixed_ref_type(name.to_owned()),
-        Err(err) => eprintln!("scc: ignoring @mixedRef type with invalid name: {err}"),
+    unsafe {
+        with_c_str(name, |name| match name {
+            Ok(name) => settings.register_mixed_ref_type(name.to_owned()),
+            Err(err) => eprintln!("scc: ignoring @mixedRef type with invalid name: {err}"),
+        });
     }
 }
 
@@ -236,13 +240,19 @@ pub extern "C" fn scc_source_ref_line(output: &SccOutput, link: &SourceRef) -> u
     output.line(link).unwrap_or(0)
 }
 
-/// Borrows a null-terminated C string as UTF-8. The borrow is valid only while
-/// the pointed-to string is, so callers must copy it if it must outlive the call.
+/// Borrows a null-terminated C string as UTF-8 and passes it to `f`.
+///
+/// The borrow cannot outlive the call: `f` receives a `&str` tied to the
+/// pointed-to string, so it must copy the value if it is to be retained.
 ///
 /// # Safety
-/// `str` must point to a valid null-terminated C string.
-unsafe fn c_str<'a>(str: *const c_char) -> Result<&'a str, std::str::Utf8Error> {
-    unsafe { CStr::from_ptr(str) }.to_str()
+/// `str` must point to a valid, non-null, null-terminated C string that stays
+/// valid and unmodified for the duration of the call.
+unsafe fn with_c_str<R>(
+    str: *const c_char,
+    f: impl FnOnce(Result<&str, std::str::Utf8Error>) -> R,
+) -> R {
+    f(unsafe { CStr::from_ptr(str) }.to_str())
 }
 
 unsafe fn c_path(r6_dir: *const c_char) -> PathBuf {
