@@ -34,8 +34,61 @@ pub(crate) struct TargetNamePlan {
     imported: BTreeMap<String, BTreeSet<String>>,
 }
 
+/// Every module's directly exported symbols, keyed by the module's dot-joined path.
+///
+/// A wildcard import (`import M.*`) otherwise rescans every type and free function
+/// in `Symbols` once per emitted module. Building this once per transpilation turns
+/// each wildcard import into a direct lookup.
+pub(crate) struct ModuleExportsIndex {
+    /// Module path -> fully qualified names exported directly by that module.
+    by_module: BTreeMap<String, BTreeSet<String>>,
+}
+
+impl ModuleExportsIndex {
+    pub(crate) fn new<'ctx>(symbols: &Symbols<'ctx>) -> Self {
+        let mut by_module: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+
+        for (id, _) in symbols.types() {
+            let full = id.as_str();
+            let module = module_of(&full).map(str::to_owned);
+            if let Some(module) = module {
+                by_module
+                    .entry(module)
+                    .or_default()
+                    .insert(full.into_owned());
+            }
+        }
+
+        // Overloads of one family share a `QualifiedName`; dedupe up front so the
+        // module path and full name are formatted once per family, not per overload.
+        let families = symbols
+            .free_functions()
+            .map(|entry| *entry.name())
+            .collect::<BTreeSet<_>>();
+        for name in families {
+            let Some((_, module)) = name.as_ref().split_last() else {
+                continue;
+            };
+            if module.is_empty() {
+                continue;
+            }
+            by_module
+                .entry(module.join("."))
+                .or_default()
+                .insert(name.to_string());
+        }
+
+        Self { by_module }
+    }
+
+    /// The exports of `target`, or `None` when no such module exports anything.
+    fn module(&self, target: &str) -> Option<&BTreeSet<String>> {
+        self.by_module.get(target)
+    }
+}
+
 impl TargetNamePlan {
-    pub(crate) fn new<'ctx>(module: &SourceModule<'ctx>, symbols: &Symbols<'ctx>) -> Self {
+    pub(crate) fn new<'ctx>(module: &SourceModule<'ctx>, exports: &ModuleExportsIndex) -> Self {
         let module_path: Vec<&'ctx str> = module
             .path
             .as_ref()
@@ -45,7 +98,7 @@ impl TargetNamePlan {
             imported: BTreeMap::new(),
         };
         plan.collect_own(module, &module_path);
-        plan.collect_imports(module, symbols);
+        plan.collect_imports(module, exports);
         plan
     }
 
@@ -84,7 +137,7 @@ impl TargetNamePlan {
         }
     }
 
-    fn collect_imports<'ctx>(&mut self, module: &SourceModule<'ctx>, symbols: &Symbols<'ctx>) {
+    fn collect_imports<'ctx>(&mut self, module: &SourceModule<'ctx>, exports: &ModuleExportsIndex) {
         for (decl, _) in &module.items {
             let Item::Import(import) = &decl.item else {
                 continue;
@@ -92,7 +145,7 @@ impl TargetNamePlan {
             match import {
                 ast::Import::All(path) => {
                     let target = path.segments.join(".");
-                    self.import_module(&target, symbols);
+                    self.import_module(&target, exports);
                 }
                 ast::Import::Exact(path) => {
                     self.insert_import(&path.segments.join("."));
@@ -107,21 +160,13 @@ impl TargetNamePlan {
         }
     }
 
-    /// `import M.*` exposes every exported type and free-function overload family
-    /// declared directly in `M` (not in nested modules).
-    fn import_module<'ctx>(&mut self, target: &str, symbols: &Symbols<'ctx>) {
-        for (id, _) in symbols.types() {
-            let full = id.as_str();
-            if module_of(&full) == Some(target) {
-                self.insert_import(full.as_ref());
-            }
-        }
-        for entry in symbols.free_functions() {
-            // Compare the module prefix segment-by-segment instead of formatting
-            // every (including baseline/dependency) function name to split it.
-            if matches_module(entry.name().as_ref(), target) {
-                self.insert_import(&entry.name().to_string());
-            }
+    /// `import M.*` exposes every export of `M` (not of nested modules).
+    fn import_module(&mut self, target: &str, exports: &ModuleExportsIndex) {
+        let Some(exported) = exports.module(target) else {
+            return;
+        };
+        for full in exported {
+            self.insert_import(full);
         }
     }
 
@@ -169,15 +214,6 @@ impl TargetNamePlan {
 
 fn module_of(full: &str) -> Option<&str> {
     full.rsplit_once('.').map(|(module, _)| module)
-}
-
-/// Whether the module prefix of `name` (all but the final component) is exactly
-/// `target`, compared segment-by-segment without allocating the joined string.
-fn matches_module(name: &[&str], target: &str) -> bool {
-    let Some((_, module)) = name.split_last() else {
-        return false;
-    };
-    !module.is_empty() && module.iter().copied().eq(target.split('.'))
 }
 
 fn collision_error(full: &str, simple: &str, other: &str) -> TranspileDiagnostic {
@@ -254,15 +290,5 @@ mod tests {
             error.message.contains("collides with `M.Int32`"),
             "{error:?}"
         );
-    }
-
-    #[test]
-    fn module_prefix_matching_is_segment_wise() {
-        assert!(matches_module(&["M", "Pick"], "M"));
-        assert!(matches_module(&["M", "N", "Pick"], "M.N"));
-        assert!(!matches_module(&["M", "N", "Pick"], "M"));
-        assert!(!matches_module(&["M", "N", "Pick"], "N"));
-        assert!(!matches_module(&["Pick"], "M"));
-        assert!(!matches_module(&[], "M"));
     }
 }

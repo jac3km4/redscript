@@ -152,8 +152,9 @@ pub fn transpile<'ctx>(
             }
         }
     }
+    let exports = names::ModuleExportsIndex::new(symbols);
     for module in modules {
-        let plan = names::TargetNamePlan::new(module.source, symbols);
+        let plan = names::TargetNamePlan::new(module.source, &exports);
         match declarations::emit(module, unit, symbols, &symbol_names, &target_modules, &plan) {
             Ok(module) => output.push(module),
             Err(error) => diagnostics.push(error),

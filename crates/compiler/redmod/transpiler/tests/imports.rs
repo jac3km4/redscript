@@ -340,6 +340,33 @@ fn wildcard_imports_keep_the_existing_contract() {
     assert!(output[0].module.text.contains("@using \"Models\"\n"));
 }
 
+#[test]
+fn wildcard_import_does_not_widen_to_nested_modules() {
+    // `import Models.*` exposes only `Models`' own exports. A nested module that
+    // exports the same simple name must not become a phantom collision, which
+    // would happen if the wildcard import scanned every module prefix loosely.
+    let sources = SourceMap::new();
+    sources.populate_boot_lib();
+    sources.push_back("models.reds", "module Models public struct Value {}");
+    sources.push_back("inner.reds", "module Models.Inner public struct Value {}");
+    let selected = sources.push_back(
+        "use.reds",
+        "import Models.* public func Run(value: Value) -> Value { return value; }",
+    );
+    let interner = TypeInterner::default();
+    let output = transpile_sources(
+        &sources,
+        &[selected],
+        Symbols::with_default_types(),
+        &interner,
+    )
+    .unwrap();
+    let text = &output[0].module.text;
+    assert!(text.contains("@using \"Models\"\n"), "{text}");
+    assert!(text.contains("value: Value) -> Value"), "{text}");
+    assert!(!text.contains("Models.Inner"), "{text}");
+}
+
 fn emitted_directive_sources(import: &str) -> Vec<String> {
     let sources = SourceMap::new();
     sources.populate_boot_lib();
