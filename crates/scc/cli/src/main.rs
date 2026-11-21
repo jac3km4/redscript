@@ -267,7 +267,11 @@ mod tests {
     ) {
     }
 
-    unsafe extern "C" fn api_add_script_path(_settings: *mut raw::SccSettings, _path: *const c_char) {}
+    unsafe extern "C" fn api_add_script_path(
+        _settings: *mut raw::SccSettings,
+        _path: *const c_char,
+    ) {
+    }
 
     unsafe extern "C" fn api_compile(_settings: *mut raw::SccSettings) -> *mut raw::SccResult {
         SETTINGS_CONSUMED.with(|count| count.set(count.get() + 1));
@@ -335,7 +339,9 @@ mod tests {
         let error = run_with_api(Path::new("/r6"), Some(options), &mock_api()).unwrap_err();
 
         assert!(
-            error.to_string().contains("failed to open script paths file"),
+            error
+                .to_string()
+                .contains("failed to open script paths file"),
             "{error}"
         );
         assert_eq!(counter(&SETTINGS_CREATED), 0);
@@ -358,7 +364,11 @@ mod tests {
     fn successful_run_balances_settings_and_result() {
         let script_paths_file =
             std::env::temp_dir().join(format!("scc-script-paths-{}.txt", std::process::id()));
-        std::fs::write(&script_paths_file, "/r6/scripts/a.reds\n/r6/scripts/b.reds\n").unwrap();
+        std::fs::write(
+            &script_paths_file,
+            "/r6/scripts/a.reds\n/r6/scripts/b.reds\n",
+        )
+        .unwrap();
 
         let mut options = args();
         options.scripts_dirs = vec![
