@@ -50,6 +50,10 @@ pub fn analyze_sources<'ctx>(
         return Err(analysis_errors(reporter.reported()));
     }
     let evaluator = Evaluator::from_modules(modules.iter().map(|(_, module)| module));
+    // Name resolution consumes the modules, but `AnalyzedSources` must retain the
+    // ASTs for `transpile_selected`, so each module is cloned once here. This is
+    // structurally required: name resolution moves each item into its own derived
+    // tables, so it cannot hand the original modules back.
     let (unit, symbols) = process_sources(
         modules.iter().map(|(_, module)| module.clone()),
         symbols,
