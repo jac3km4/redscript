@@ -107,14 +107,6 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                         && self.type_of(arg)? == Type::nullary(predef::BOOL)
                         && self.type_of(expr)? == Type::nullary(predef::BOOL)
                     {
-                        // Validate the whole expression once; the operand below
-                        // is emitted exactly once.
-                        target::typ(&self.type_of(expr)?, self.symbols).map_err(|mut err| {
-                            if err.span.is_none() {
-                                err.span = Some(expr.span());
-                            }
-                            err
-                        })?;
                         return self.expr(arg);
                     }
                     None
@@ -136,14 +128,6 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 } else {
                     ast::BinOp::Eq
                 };
-                // Validate the whole expression once; the inverted comparison
-                // below is emitted exactly once.
-                target::typ(&self.type_of(expr)?, self.symbols).map_err(|mut err| {
-                    if err.span.is_none() {
-                        err.span = Some(expr.span());
-                    }
-                    err
-                })?;
                 return self.binary(inverse, a, b);
             }
         }
