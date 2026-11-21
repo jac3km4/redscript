@@ -100,8 +100,10 @@ unsafe fn finish_result(
         let mut buffer = vec![0u8; 1024];
         let copied = loop {
             let copied = unsafe { copy_error(result, buffer.as_mut_ptr().cast(), buffer.len()) };
-            // A full buffer may be truncated: copy_error returns bytes copied, not required size.
-            if copied < buffer.len() - 1 {
+            // A full buffer may be truncated: copy_error returns bytes copied, not
+            // required size. `scc_copy_error` backs up to a character boundary, so
+            // a truncated message can report up to 3 bytes below the buffer length.
+            if copied.saturating_add(4) < buffer.len() {
                 break copied;
             }
             buffer.resize(buffer.len() * 2, 0);
@@ -150,7 +152,13 @@ mod tests {
     ) -> usize {
         let result = unsafe { &*result.cast::<MockResult>() };
         let error = result.error.as_ref().expect("must not copy on success");
-        let copied = error.len().min(size - 1);
+        // Mirror `scc_copy_error`: truncate to `size - 1` bytes but never split a
+        // multi-byte character, so a truncated message can fall short of the
+        // buffer length by up to 3 bytes.
+        let mut copied = error.len().min(size - 1);
+        while !error.is_char_boundary(copied) {
+            copied -= 1;
+        }
         unsafe {
             ptr::copy_nonoverlapping(error.as_ptr(), buffer.cast(), copied);
             buffer.add(copied).write(0);
@@ -185,6 +193,7 @@ mod tests {
         for error in [
             "context: underlying error".to_owned(),
             "é".repeat(2048),
+            "😀".repeat(2048),
             "x".repeat(1023),
         ] {
             let outcome = finish(Some(error.clone())).unwrap_err();

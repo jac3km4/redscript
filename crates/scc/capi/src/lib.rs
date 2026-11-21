@@ -136,7 +136,8 @@ pub extern "C" fn scc_get_success(output: &SccResult) -> Option<&SccOutput> {
 /// without consuming `output`.
 /// The copied bytes remain valid independently of the result.
 /// Returns the number of bytes copied excluding the null terminator.
-/// On error, a nonempty buffer is null-terminated and the message is truncated to fit.
+/// On error, a nonempty buffer is null-terminated and the message is truncated to fit,
+/// always ending on a UTF-8 character boundary so the copied bytes stay valid UTF-8.
 /// Returns zero without touching the buffer on success or when `buffer_size` is zero.
 ///
 /// # Safety
@@ -155,7 +156,9 @@ pub unsafe extern "C" fn scc_copy_error(
         SccResult::Success(_) => 0,
         SccResult::Error(error) => {
             let error = format!("{error:#}");
-            let max_len = error.len().min(buffer_size - 1);
+            // Never cut through a multi-byte character: byte slicing at an
+            // arbitrary offset would write invalid UTF-8 into the C buffer.
+            let max_len = error.floor_char_boundary(buffer_size - 1);
             unsafe {
                 ptr::copy_nonoverlapping(error.as_ptr(), buffer.cast(), max_len);
                 buffer.add(max_len).write(0);
@@ -330,6 +333,25 @@ mod tests {
         assert_eq!(copied, 4);
         assert_eq!(&buffer[..5], b"test\0");
         assert_eq!(buffer[5], 0xff);
+    }
+
+    #[test]
+    fn copy_error_truncates_on_character_boundaries() {
+        // `buffer_size - 1` lands inside a multi-byte character for every case
+        // below; the copied prefix must still be valid UTF-8.
+        for (text, size, expected) in [
+            ("é", 2, 0),  // 2-byte char, room for 1 byte
+            ("€", 3, 0),  // 3-byte char, room for 2 bytes
+            ("😀", 4, 0), // 4-byte char, room for 3 bytes
+            ("aé", 2, 1), // fit 'a', back off the 'é'
+        ] {
+            let result = SccResult::Error(anyhow::anyhow!(text));
+            let mut buffer = [0xffu8; 8];
+            let copied = unsafe { scc_copy_error(&result, buffer.as_mut_ptr().cast(), size) };
+            assert_eq!(copied, expected, "text {text:?}, size {size}");
+            assert_eq!(buffer[copied], 0, "null terminator after {text:?}");
+            std::str::from_utf8(&buffer[..copied]).unwrap();
+        }
     }
 
     #[test]
