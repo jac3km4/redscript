@@ -53,36 +53,48 @@ fn run(r6_dir: &Path, args: Option<Arguments>) -> anyhow::Result<()> {
 
     let root = c_path(r6_dir)?;
 
+    // Resolve every fallible input before creating `settings`. Once it exists,
+    // `compile` consumes it and an early `?` would leak it.
+    let mut custom_cache_file: Option<CString> = None;
+    let mut additional_script_dirs: Vec<CString> = Vec::new();
+    let mut script_paths: Vec<CString> = Vec::new();
+    if let Some(args) = args {
+        if let Some(cache_file) = args.cache_file {
+            custom_cache_file = Some(c_path(&cache_file)?);
+        }
+
+        for script_dir in args.scripts_dirs.into_iter().skip(1) {
+            additional_script_dirs.push(c_path(&script_dir)?);
+        }
+
+        if let Some(script_paths_file) = args.script_paths_file {
+            for script_path in
+                io::BufReader::new(File::open(&script_paths_file).with_context(|| {
+                    format!(
+                        "failed to open script paths file '{}'",
+                        script_paths_file.display()
+                    )
+                })?)
+                .lines()
+                .map(|line| Ok(PathBuf::from(line?)))
+                .collect::<io::Result<Vec<_>>>()?
+            {
+                script_paths.push(c_path(&script_path)?);
+            }
+        }
+    }
+
     unsafe {
         let settings = settings_new(root.as_ptr());
 
-        if let Some(args) = args {
-            if let Some(cache_file) = args.cache_file {
-                let cache_file = c_path(&cache_file)?;
-                set_custom_cache_file(settings, cache_file.as_ptr());
-            }
-
-            for script_dir in args.scripts_dirs.into_iter().skip(1) {
-                let script_dir = c_path(&script_dir)?;
-                add_script_path(settings, script_dir.as_ptr());
-            }
-
-            if let Some(script_paths_file) = args.script_paths_file {
-                for script_path in
-                    io::BufReader::new(File::open(&script_paths_file).with_context(|| {
-                        format!(
-                            "failed to open script paths file '{}'",
-                            script_paths_file.display()
-                        )
-                    })?)
-                    .lines()
-                    .map(|line| Ok(PathBuf::from(line?)))
-                    .collect::<io::Result<Vec<_>>>()?
-                {
-                    let script_path = c_path(&script_path)?;
-                    add_script_path(settings, script_path.as_ptr());
-                }
-            }
+        if let Some(custom_cache_file) = &custom_cache_file {
+            set_custom_cache_file(settings, custom_cache_file.as_ptr());
+        }
+        for script_dir in &additional_script_dirs {
+            add_script_path(settings, script_dir.as_ptr());
+        }
+        for script_path in &script_paths {
+            add_script_path(settings, script_path.as_ptr());
         }
 
         let res = compile(settings);
