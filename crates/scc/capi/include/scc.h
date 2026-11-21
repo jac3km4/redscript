@@ -13,8 +13,10 @@
  * Ownership contract for all API functions:
  *
  * - All handle arguments must be non-NULL and live. Settings mutations require
- *   exclusive access. Input strings must be valid NUL-terminated UTF-8; they are
- *   copied during the call and remain owned by the caller.
+ *   exclusive access. Input strings must be valid NUL-terminated strings; they
+ *   are copied during the call and remain owned by the caller. Unless a function
+ *   documents otherwise, they must also be valid UTF-8: the type_name setters
+ *   ignore non-UTF-8 input, and path inputs replace invalid UTF-8 sequences.
  * - settings_new returns owned settings. Setters only borrow them. compile
  *   consumes and frees settings on both success and failure: never reuse or free
  *   the settings pointer after calling compile.
@@ -164,12 +166,12 @@ typedef struct SccApi {
   /**
    * Copies the error message and its underlying causes, returning the number of
    * bytes copied, excluding the null terminator. On error, a nonempty buffer is
-   * null-terminated and the message is truncated to fit. Returns zero without
-   * touching the buffer on
-   * success or when buffer_size is zero. The buffer may be NULL when buffer_size
-   * is zero; otherwise it must be writable for at least buffer_size bytes.
-   * The result is only borrowed; copied bytes belong to the caller and remain
-   * valid after free_result.
+   * null-terminated and the message is truncated to fit, always ending on a
+   * UTF-8 character boundary so the copied bytes stay valid UTF-8. Returns zero
+   * without touching the buffer on success or when buffer_size is zero. The
+   * buffer may be NULL when buffer_size is zero; otherwise it must be writable
+   * for at least buffer_size bytes. The result is only borrowed; copied bytes
+   * belong to the caller and remain valid after free_result.
    */
   scc_copy_error *copy_error;
   /**
