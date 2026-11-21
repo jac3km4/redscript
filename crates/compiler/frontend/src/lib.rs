@@ -117,8 +117,8 @@ pub fn process_sources<'ctx>(
 ///
 /// Files absent from `policies` use [`SemanticPolicy::default`]. If a file occurs
 /// more than once, its first entry wins. Policies follow source spans rather than
-/// module processing order and never modify shared symbol flags. Reuse an `Rc`
-/// across files to share a policy, including runtime-configured policies. Analysis
+/// module processing order and never modify shared symbol flags. Reuse a `Shared`
+/// handle across files to share a policy, including runtime-configured policies. Analysis
 /// clones handles into a shared file index; lookups borrow policies without cloning.
 ///
 /// Callers must provide accurate file IDs on AST spans and perform any additional

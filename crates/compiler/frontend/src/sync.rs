@@ -147,66 +147,45 @@ pub(crate) struct BorrowError;
 // Atomics
 // ---------------------------------------------------------------------------
 
-#[cfg(not(feature = "sync"))]
-pub(crate) type SharedU16 = std::cell::Cell<u16>;
+/// Defines a shared counter: a plain `Cell` by default, an atomic under `sync`.
+///
+/// Both configurations expose `new`, `get`, and `set`, and the atomic `Debug`
+/// mirrors `Cell`'s output so diagnostics render identically.
+macro_rules! shared_atomic {
+    ($name:ident, $atomic:ident, $ty:ty) => {
+        #[cfg(not(feature = "sync"))]
+        pub(crate) type $name = std::cell::Cell<$ty>;
 
-#[cfg(feature = "sync")]
-pub(crate) struct SharedU16(std::sync::atomic::AtomicU16);
+        #[cfg(feature = "sync")]
+        pub(crate) struct $name(std::sync::atomic::$atomic);
 
-#[cfg(feature = "sync")]
-impl SharedU16 {
-    #[inline]
-    pub(crate) fn new(value: u16) -> Self {
-        Self(std::sync::atomic::AtomicU16::new(value))
-    }
+        #[cfg(feature = "sync")]
+        impl $name {
+            #[inline]
+            pub(crate) fn new(value: $ty) -> Self {
+                Self(std::sync::atomic::$atomic::new(value))
+            }
 
-    #[inline]
-    pub(crate) fn get(&self) -> u16 {
-        self.0.load(std::sync::atomic::Ordering::Relaxed)
-    }
+            #[inline]
+            pub(crate) fn get(&self) -> $ty {
+                self.0.load(std::sync::atomic::Ordering::Relaxed)
+            }
 
-    #[inline]
-    pub(crate) fn set(&self, value: u16) {
-        self.0.store(value, std::sync::atomic::Ordering::Relaxed);
-    }
+            #[inline]
+            pub(crate) fn set(&self, value: $ty) {
+                self.0.store(value, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+
+        #[cfg(feature = "sync")]
+        impl fmt::Debug for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                // Mirror `Cell`'s `Debug` output.
+                f.debug_struct("Cell").field("value", &self.get()).finish()
+            }
+        }
+    };
 }
 
-#[cfg(feature = "sync")]
-impl fmt::Debug for SharedU16 {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Mirror `Cell`'s `Debug` output.
-        f.debug_struct("Cell").field("value", &self.get()).finish()
-    }
-}
-
-#[cfg(not(feature = "sync"))]
-pub(crate) type SharedU32 = std::cell::Cell<u32>;
-
-#[cfg(feature = "sync")]
-pub(crate) struct SharedU32(std::sync::atomic::AtomicU32);
-
-#[cfg(feature = "sync")]
-impl SharedU32 {
-    #[inline]
-    pub(crate) fn new(value: u32) -> Self {
-        Self(std::sync::atomic::AtomicU32::new(value))
-    }
-
-    #[inline]
-    pub(crate) fn get(&self) -> u32 {
-        self.0.load(std::sync::atomic::Ordering::Relaxed)
-    }
-
-    #[inline]
-    pub(crate) fn set(&self, value: u32) {
-        self.0.store(value, std::sync::atomic::Ordering::Relaxed);
-    }
-}
-
-#[cfg(feature = "sync")]
-impl fmt::Debug for SharedU32 {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Mirror `Cell`'s `Debug` output.
-        f.debug_struct("Cell").field("value", &self.get()).finish()
-    }
-}
+shared_atomic!(SharedU16, AtomicU16, u16);
+shared_atomic!(SharedU32, AtomicU32, u32);

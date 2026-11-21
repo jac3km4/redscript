@@ -496,7 +496,6 @@ type LazyVarType<'scope, 'ctx> = Shared<
 pub enum TypeRef<'scope, 'ctx> {
     Id(TypeId<'ctx>),
     Var(Shared<CtxVar<'ctx>>),
-    #[allow(clippy::type_complexity)]
     LazyVar(LazyVarType<'scope, 'ctx>),
 }
 
