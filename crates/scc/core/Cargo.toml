@@ -11,7 +11,6 @@ redscript-code-edit.workspace = true
 log.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true
-chrono.workspace = true
 hashbrown = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
 toml = { workspace = true, features = ["parse", "serde"] }

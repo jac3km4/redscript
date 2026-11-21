@@ -1,6 +1,5 @@
 use std::path::{Path, PathBuf};
 
-use chrono::SecondsFormat;
 use flexi_logger::{
     Age, Cleanup, Criterion, Duplicate, FileSpec, FlexiLoggerError, LogSpecBuilder, Logger, Naming,
 };
@@ -25,10 +24,8 @@ pub fn setup(root_dir: &Path) {
             Cleanup::KeepLogFiles(4),
         )
         .format(|out, time, msg| {
-            let time = time
-                .now()
-                .with_timezone(&chrono::Utc)
-                .to_rfc3339_opts(SecondsFormat::Secs, true);
+            let now = time.now_utc_owned();
+            let time = now.strftime("%Y-%m-%dT%H:%M:%SZ");
             write!(out, "[{} - {time}] {}", msg.level(), msg.args())
         })
         .start();
