@@ -15,6 +15,13 @@ use crate::sync::SharedCell;
 /// (A cycle that crosses threads cannot be broken by a single cell and would
 /// still deadlock, which matches the lifetime-restricted nature of these lazy
 /// values.)
+///
+/// # Thread safety
+///
+/// Because a cross-thread cycle deadlocks instead of erroring, every shared
+/// `Lazy` must be forced on a single thread before work that might re-enter it
+/// is fanned out across threads (for example with `parallel::map_ordered`). See
+/// [`Lazy::get`].
 pub struct Lazy<A, F> {
     get: F,
     slot: Slot<A>,
@@ -37,6 +44,12 @@ impl<A, F> Lazy<A, F> {
         self.slot.ready()
     }
 
+    /// Forces the value, returning the cached one if it was already evaluated.
+    ///
+    /// A re-entrant evaluation on the same thread reports [`CycleError`]. Under
+    /// `sync` a concurrent evaluation on another thread is awaited instead, so a
+    /// cycle that crosses threads would deadlock: force shared lazy values on one
+    /// thread before fanning work out across threads.
     pub fn get<E>(&self, env: E) -> Result<A, CycleError>
     where
         A: Clone,
