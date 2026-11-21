@@ -11,7 +11,7 @@
 //! settings mutations require exclusive access. No handles or borrows may be used after being
 //! consumed or freed. See [`scc_copy_error`] for its zero-sized buffer exception.
 
-use std::ffi::{CStr, CString, c_char};
+use std::ffi::{CStr, c_char};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::ptr;
@@ -83,8 +83,8 @@ pub unsafe extern "C" fn scc_settings_register_never_ref_type(
 ) {
     settings.register_never_ref_type(
         unsafe { c_str(name) }
-            .into_string()
-            .expect("name should be valid UTF-8"),
+            .expect("name should be valid UTF-8")
+            .to_owned(),
     );
 }
 
@@ -98,8 +98,8 @@ pub unsafe extern "C" fn scc_settings_register_mixed_ref_type(
 ) {
     settings.register_mixed_ref_type(
         unsafe { c_str(name) }
-            .into_string()
-            .expect("name should be valid UTF-8"),
+            .expect("name should be valid UTF-8")
+            .to_owned(),
     );
 }
 
@@ -236,8 +236,13 @@ pub extern "C" fn scc_source_ref_line(output: &SccOutput, link: &SourceRef) -> u
     output.line(link).unwrap_or(0)
 }
 
-unsafe fn c_str(str: *const c_char) -> CString {
-    unsafe { CStr::from_ptr(str).to_owned() }
+/// Borrows a null-terminated C string as UTF-8. The borrow is valid only while
+/// the pointed-to string is, so callers must copy it if it must outlive the call.
+///
+/// # Safety
+/// `str` must point to a valid null-terminated C string.
+unsafe fn c_str<'a>(str: *const c_char) -> Result<&'a str, std::str::Utf8Error> {
+    unsafe { CStr::from_ptr(str) }.to_str()
 }
 
 unsafe fn c_path(r6_dir: *const c_char) -> PathBuf {
