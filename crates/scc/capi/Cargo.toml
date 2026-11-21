@@ -13,5 +13,8 @@ anyhow.workspace = true
 
 mimalloc.workspace = true
 
+[dev-dependencies]
+redscript-compiler-api.workspace = true
+
 [lints]
 workspace = true

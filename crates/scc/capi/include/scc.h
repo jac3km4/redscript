@@ -130,17 +130,17 @@ typedef struct SccApi {
   /**
    * Registers a type as @neverRef.
    *
-   * Added in redscript 1.0.0. It will be null if the loaded library version is
-   * older. The caller should do a null check if they want to maintain backward
-   * compatibility.
+   * A type_name that is not valid UTF-8 is ignored. Added in redscript 1.0.0. It
+   * will be null if the loaded library version is older. The caller should do a
+   * null check if they want to maintain backward compatibility.
    */
   scc_settings_register_never_ref_type *settings_register_never_ref_type;
   /**
    * Registers a type as @mixedRef.
    *
-   * Added in redscript 1.0.0. It will be null if the loaded library version is
-   * older. The caller should do a null check if they want to maintain backward
-   * compatibility.
+   * A type_name that is not valid UTF-8 is ignored. Added in redscript 1.0.0. It
+   * will be null if the loaded library version is older. The caller should do a
+   * null check if they want to maintain backward compatibility.
    */
   scc_settings_register_mixed_ref_type *settings_register_mixed_ref_type;
   /**
@@ -173,9 +173,10 @@ typedef struct SccApi {
    */
   scc_copy_error *copy_error;
   /**
-   * Returns a borrowed, read-only source reference at the given index, which
-   * must be less than output_source_ref_count(output). Do not free it separately;
-   * it remains valid only until the owning result is passed to free_result.
+   * Returns a borrowed, read-only source reference at the given index, or NULL
+   * when index is not less than output_source_ref_count(output). Do not free it
+   * separately; it remains valid only until the owning result is passed to
+   * free_result.
    */
   scc_output_get_source_ref *output_get_source_ref;
   /**

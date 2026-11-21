@@ -75,32 +75,32 @@ pub extern "C" fn scc_settings_disable_error_popup(settings: &mut SccSettings) {
 
 /// # Safety
 /// The caller must ensure that `settings` is a valid pointer to a `SccSettings` struct and
-/// `name` is a valid null-terminated UTF-8 string.
+/// `name` is a valid null-terminated string.
+/// A name that is not valid UTF-8 is logged and ignored rather than aborting the host.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn scc_settings_register_never_ref_type(
     settings: &mut SccSettings,
     name: *const c_char,
 ) {
-    settings.register_never_ref_type(
-        unsafe { c_str(name) }
-            .expect("name should be valid UTF-8")
-            .to_owned(),
-    );
+    match unsafe { c_str(name) } {
+        Ok(name) => settings.register_never_ref_type(name.to_owned()),
+        Err(err) => eprintln!("scc: ignoring @neverRef type with invalid name: {err}"),
+    }
 }
 
 /// # Safety
 /// The caller must ensure that `settings` is a valid pointer to a `SccSettings` struct and
-/// `name` is a valid null-terminated UTF-8 string.
+/// `name` is a valid null-terminated string.
+/// A name that is not valid UTF-8 is logged and ignored rather than aborting the host.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn scc_settings_register_mixed_ref_type(
     settings: &mut SccSettings,
     name: *const c_char,
 ) {
-    settings.register_mixed_ref_type(
-        unsafe { c_str(name) }
-            .expect("name should be valid UTF-8")
-            .to_owned(),
-    );
+    match unsafe { c_str(name) } {
+        Ok(name) => settings.register_mixed_ref_type(name.to_owned()),
+        Err(err) => eprintln!("scc: ignoring @mixedRef type with invalid name: {err}"),
+    }
 }
 
 /// Runs the compiler, consuming and freeing `settings` on both success and failure.
@@ -168,11 +168,11 @@ pub unsafe extern "C" fn scc_copy_error(
     }
 }
 
-/// Borrows the source reference at `i`, which must be less than the source reference count.
+/// Borrows the source reference at `i`, or returns NULL when `i` is out of bounds.
 /// The reference must not be modified or freed and is valid until [`scc_free_result`].
 #[unsafe(no_mangle)]
 pub extern "C" fn scc_output_get_source_ref(output: &SccOutput, i: usize) -> *const SourceRef {
-    &output.refs()[i]
+    output.refs().get(i).map_or(ptr::null(), ptr::from_ref)
 }
 
 /// Returns the source reference count for a live, borrowed output.
@@ -290,6 +290,9 @@ impl Default for StrWithLen<'_> {
 
 #[cfg(test)]
 mod tests {
+    use redscript_compiler_api::TypeInterner;
+    use redscript_compiler_api::ast::{SourceMap, Span};
+
     use super::*;
 
     #[test]
@@ -357,6 +360,30 @@ mod tests {
             assert_eq!(buffer[copied], 0, "null terminator after {text:?}");
             std::str::from_utf8(&buffer[..copied]).unwrap();
         }
+    }
+
+    #[test]
+    fn invalid_utf8_type_names_are_ignored() {
+        let mut settings = SccSettings::new(PathBuf::from("/"));
+        let name = [0xffu8, 0xfe, 0x00];
+        // A panic would unwind through `extern "C"` and abort the process, so
+        // simply reaching the end of this test is the assertion.
+        unsafe {
+            scc_settings_register_never_ref_type(&mut settings, name.as_ptr().cast());
+            scc_settings_register_mixed_ref_type(&mut settings, name.as_ptr().cast());
+        }
+    }
+
+    #[test]
+    fn source_ref_lookup_is_bounds_checked() {
+        let sources = SourceMap::new();
+        let file = sources.push_back("test.reds", "");
+        let ref_ = SourceRef::Function("f".to_owned(), Span::new(0, 0, file));
+        let output = SccOutput::new(sources, TypeInterner::default(), vec![ref_]);
+        let first = ptr::from_ref(&output.refs()[0]);
+        assert_eq!(scc_output_get_source_ref(&output, 0), first);
+        assert!(scc_output_get_source_ref(&output, 1).is_null());
+        assert!(scc_output_get_source_ref(&output, usize::MAX).is_null());
     }
 
     #[test]
