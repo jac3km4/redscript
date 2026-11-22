@@ -203,6 +203,32 @@ pub fn parse_file_with_metadata(
     (parsed, errors)
 }
 
+/// Promotes resolved-IR array-prefix warnings for authored files into the
+/// crate's distinct `REDMOD_CAPABILITY` contract.
+///
+/// Array-prefix safety is diagnosed once on resolved IR. Only the diagnostics
+/// emitted by the current analysis are considered, so reusing a
+/// [`CompileErrorReporter`] across calls cannot re-promote earlier failures.
+fn collect_unsafe_array_capabilities(
+    diagnostics: &[Diagnostic<'_>],
+    files: &[FileId],
+    errors: &mut Vec<Error>,
+) {
+    errors.extend(diagnostics.iter().filter_map(|diagnostic| {
+        match diagnostic {
+            Diagnostic::LoweringError(LowerError::UnsafeArrayEvaluation(span))
+                if files.contains(&span.file) =>
+            {
+                Some(Error::Capability {
+                    kind: CapabilityError::UnsafeArrayEvaluation,
+                    span: *span,
+                })
+            }
+            _ => None,
+        }
+    }));
+}
+
 /// Analyze REDmod modules alongside already parsed community dependencies.
 /// Capability failures exclude only the invalid module, rather than blocking
 /// unrelated files or enabling community extensions. Shared diagnostics use `reporter`.
@@ -249,28 +275,14 @@ pub fn process_sources<'ctx>(
     let evaluator = Evaluator::from_modules(&sources);
     let policy = Shared::new(policy::POLICY);
     let policies: Vec<_> = files.iter().map(|&file| (file, policy.clone())).collect();
+    let reported_start = reporter.reported().len();
     let (mut unit, symbols) = redscript_compiler_frontend::process_sources_with_policy(
         sources, symbols, evaluator, reporter, interner, &policies,
     );
     // Array-prefix safety is diagnosed once on resolved IR. Preserve the
     // crate's distinct REDMOD_CAPABILITY contract by promoting the frontend
     // warning for authored files to a capability failure.
-    errors.extend(
-        reporter
-            .reported()
-            .iter()
-            .filter_map(|diagnostic| match diagnostic {
-                Diagnostic::LoweringError(LowerError::UnsafeArrayEvaluation(span))
-                    if files.contains(&span.file) =>
-                {
-                    Some(Error::Capability {
-                        kind: CapabilityError::UnsafeArrayEvaluation,
-                        span: *span,
-                    })
-                }
-                _ => None,
-            }),
-    );
+    collect_unsafe_array_capabilities(&reporter.reported()[reported_start..], &files, &mut errors);
     control_flow::apply(&mut unit, &control_flow, &mut errors);
     let files: HashSet<_> = files.into_iter().collect();
     finish_events(&mut unit, &symbols, &files);
@@ -328,9 +340,13 @@ pub fn process_sources_for_query<'ctx>(
     let evaluator = Evaluator::from_modules(&sources);
     let policy = Shared::new(policy::POLICY);
     let policies: Vec<_> = files.iter().map(|&file| (file, policy.clone())).collect();
+    let reported_start = reporter.reported().len();
     let (mut unit, symbols) = redscript_compiler_frontend::process_sources_for_query_with_policy(
         sources, symbols, evaluator, reporter, interner, &policies, target,
     );
+    // Capability validation is retained in query mode: promote the frontend
+    // warning for authored files exactly like `process_sources`.
+    collect_unsafe_array_capabilities(&reporter.reported()[reported_start..], &files, &mut errors);
     control_flow::apply(&mut unit, &control_flow, &mut errors);
     (unit, symbols, errors)
 }
