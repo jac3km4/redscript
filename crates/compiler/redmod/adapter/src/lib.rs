@@ -229,6 +229,65 @@ fn collect_unsafe_array_capabilities(
     }));
 }
 
+/// Inputs shared by [`process_sources`] and [`process_sources_for_query`] after
+/// module validation, conditional selection and event normalization.
+struct PreparedSources<'ctx> {
+    /// Dependency modules followed by the surviving authored modules.
+    sources: Vec<SourceModule<'ctx>>,
+    /// Authored file IDs, in module order.
+    files: Vec<FileId>,
+    /// REDmod loop-header fixups from every authored module.
+    control_flow: Vec<control_flow::LoopPlan>,
+    /// Explicit `@override` spans from every authored module.
+    overrides: HashSet<Span>,
+}
+
+/// Validates, conditionally selects and normalizes authored modules, then
+/// assembles the shared source list and per-module metadata. Diagnostics are
+/// appended to `errors`.
+fn prepare_sources<'ctx>(
+    modules: impl IntoIterator<Item = ParsedModule<'ctx>>,
+    dependencies: impl IntoIterator<Item = SourceModule<'ctx>>,
+    errors: &mut Vec<Error>,
+) -> PreparedSources<'ctx> {
+    let mut modules: Vec<_> = modules
+        .into_iter()
+        .filter(|parsed| {
+            let diagnostics = validate::validate(&parsed.module);
+            let valid = diagnostics.is_empty();
+            errors.extend(diagnostics);
+            valid
+        })
+        .collect();
+    let dependencies: Vec<_> = dependencies.into_iter().collect();
+    conditions::select(&mut modules, &dependencies, errors);
+    for parsed in &mut modules {
+        normalize_events(&mut parsed.module.items, false);
+    }
+    let overrides = modules
+        .iter()
+        .flat_map(|parsed| parsed.overrides.iter().copied())
+        .collect();
+    let files = modules
+        .iter()
+        .filter_map(|parsed| parsed.module.span().map(|span| span.file))
+        .collect();
+    let control_flow = modules
+        .iter()
+        .flat_map(|parsed| parsed.control_flow.iter().cloned())
+        .collect();
+    let sources = dependencies
+        .into_iter()
+        .chain(modules.into_iter().map(|parsed| parsed.module))
+        .collect();
+    PreparedSources {
+        sources,
+        files,
+        control_flow,
+        overrides,
+    }
+}
+
 /// Analyze REDmod modules alongside already parsed community dependencies.
 /// Capability failures exclude only the invalid module, rather than blocking
 /// unrelated files or enabling community extensions. Shared diagnostics use `reporter`.
@@ -241,37 +300,12 @@ pub fn process_sources<'ctx>(
     interner: &'ctx TypeInterner,
 ) -> (LoweredCompilationUnit<'ctx>, Symbols<'ctx>, Vec<Error>) {
     let mut errors = Vec::new();
-    let mut modules: Vec<_> = modules
-        .into_iter()
-        .filter(|parsed| {
-            let diagnostics = validate::validate(&parsed.module);
-            let valid = diagnostics.is_empty();
-            errors.extend(diagnostics);
-            valid
-        })
-        .collect();
-    let dependencies: Vec<_> = dependencies.into_iter().collect();
-    conditions::select(&mut modules, &dependencies, &mut errors);
-    for parsed in &mut modules {
-        normalize_events(&mut parsed.module.items, false);
-    }
-    let overrides: HashSet<_> = modules
-        .iter()
-        .flat_map(|parsed| parsed.overrides.iter().copied())
-        .collect();
-    let files: Vec<_> = modules
-        .iter()
-        .filter_map(|parsed| parsed.module.span().map(|span| span.file))
-        .collect();
-    let control_flow: Vec<_> = modules
-        .iter()
-        .flat_map(|parsed| parsed.control_flow.iter().cloned())
-        .collect();
-
-    let sources: Vec<_> = dependencies
-        .into_iter()
-        .chain(modules.into_iter().map(|parsed| parsed.module))
-        .collect();
+    let PreparedSources {
+        sources,
+        files,
+        control_flow,
+        overrides,
+    } = prepare_sources(modules, dependencies, &mut errors);
     let evaluator = Evaluator::from_modules(&sources);
     let policy = Shared::new(policy::POLICY);
     let policies: Vec<_> = files.iter().map(|&file| (file, policy.clone())).collect();
@@ -307,35 +341,17 @@ pub fn process_sources_for_query<'ctx>(
     interner: &'ctx TypeInterner,
 ) -> (LoweredCompilationUnit<'ctx>, Symbols<'ctx>, Vec<Error>) {
     let mut errors = Vec::new();
-    let mut modules: Vec<_> = modules
-        .into_iter()
-        .filter(|parsed| {
-            let diagnostics = validate::validate(&parsed.module);
-            let valid = diagnostics.is_empty();
-            errors.extend(diagnostics);
-            valid
-        })
-        .collect();
-    let dependencies: Vec<_> = dependencies.into_iter().collect();
-    conditions::select(&mut modules, &dependencies, &mut errors);
-    for parsed in &mut modules {
-        normalize_events(&mut parsed.module.items, false);
-    }
-    let files: Vec<_> = modules
-        .iter()
-        .filter_map(|parsed| parsed.module.span().map(|span| span.file))
-        .collect();
+    let PreparedSources {
+        sources,
+        files,
+        control_flow,
+        ..
+    } = prepare_sources(modules, dependencies, &mut errors);
     // `control_flow::apply` only traverses the single lowered function, so the
     // plan set stays tiny; keep only the target file's headers.
-    let control_flow: Vec<_> = modules
-        .iter()
-        .flat_map(|parsed| parsed.control_flow.iter().cloned())
-        .filter(|plan| plan.span.file == target.file)
-        .collect();
-
-    let sources: Vec<_> = dependencies
+    let control_flow: Vec<_> = control_flow
         .into_iter()
-        .chain(modules.into_iter().map(|parsed| parsed.module))
+        .filter(|plan| plan.span.file == target.file)
         .collect();
     let evaluator = Evaluator::from_modules(&sources);
     let policy = Shared::new(policy::POLICY);
