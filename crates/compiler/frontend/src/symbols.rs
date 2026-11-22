@@ -134,15 +134,19 @@ impl<'ctx> Symbols<'ctx> {
         {
             return;
         }
-        for overloads in self.free_funcs.map.values_mut() {
-            for (_, func) in overloads.iter_mut() {
-                func.use_serializable_root();
-            }
-        }
+        // Check the base chain before touching `free_funcs`: once `IScriptable`
+        // reaches `ISerializable`, every intrinsic has already been adapted and
+        // re-walking `free_funcs` would force copy-on-write of the whole symbol
+        // table on every snapshot that reuses a base `Symbols`.
         let mut visited = HashSet::<TypeId<'ctx>>::default();
         for (id, _) in self.base_iter_with_self(predef::ISCRIPTABLE) {
             if !visited.insert(id) || id == predef::ISERIALIZABLE {
                 return;
+            }
+        }
+        for overloads in self.free_funcs.map.values_mut() {
+            for (_, func) in Shared::make_mut(overloads).iter_mut() {
+                func.use_serializable_root();
             }
         }
         if let Some(aggregate) = self[predef::ISCRIPTABLE].schema_mut().as_aggregate_mut() {
@@ -234,7 +238,11 @@ impl<'ctx> Symbols<'ctx> {
     }
 
     pub fn set_free_function(&mut self, index: FreeFunctionIndex, func: FreeFunction<'ctx>) {
-        self.free_funcs.map[index.0.item_index][index.0.overload_index] = func;
+        let (_, slot) = self
+            .free_funcs
+            .by_index_mut(index.0)
+            .expect("free function index should exist");
+        *slot = func;
     }
 
     pub fn free_functions(
@@ -587,8 +595,8 @@ impl<'ctx> TypeDef<'ctx> {
 
 #[derive(Debug, Clone)]
 pub enum TypeSchema<'ctx> {
-    Aggregate(Box<Aggregate<'ctx>>),
-    Enum(Box<Enum<'ctx>>),
+    Aggregate(Shared<Aggregate<'ctx>>),
+    Enum(Shared<Enum<'ctx>>),
     Primitive,
 }
 
@@ -609,7 +617,7 @@ impl<'ctx> TypeSchema<'ctx> {
     #[inline]
     pub fn as_aggregate_mut(&mut self) -> Option<&mut Aggregate<'ctx>> {
         match self {
-            Self::Aggregate(agg) => Some(agg),
+            Self::Aggregate(agg) => Some(Shared::make_mut(agg)),
             _ => None,
         }
     }
@@ -840,12 +848,13 @@ pub type FreeFunctionMap<'ctx> = FunctionMap<QualifiedName<'ctx>, FreeFunction<'
 
 #[derive(Debug, Clone)]
 pub struct FunctionMap<N, V> {
-    map: IndexMap<N, Slab<V>>,
+    map: IndexMap<N, Shared<Slab<V>>>,
 }
 
 impl<N, V> FunctionMap<N, V>
 where
     N: Eq + Hash,
+    V: Clone,
 {
     pub fn by_name<Q>(
         &self,
@@ -874,6 +883,7 @@ where
     #[inline]
     pub fn by_index_mut(&mut self, index: FunctionIndex) -> Option<(&N, &mut V)> {
         let (name, slab) = self.map.get_index_mut(index.item_index)?;
+        let slab = Shared::make_mut(slab);
         Some((name, slab.get_mut(index.overload_index)?))
     }
 
@@ -888,7 +898,7 @@ where
     {
         let entry = self.map.entry(name);
         let item_index = entry.index();
-        let slab = entry.or_default();
+        let slab = Shared::make_mut(entry.or_default());
         let index = FunctionIndex {
             item_index,
             overload_index: slab.vacant_key(),
@@ -1426,5 +1436,94 @@ impl BaseMode for AnySupertype {
     #[inline]
     fn base<'a, 'ctx>(agg: &'a Aggregate<'ctx>) -> Option<&'a TypeApp<'ctx>> {
         agg.supertype()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::TypeInterner;
+
+    /// `Symbols<'ctx>` is invariant in `'ctx`: `Type`/`TypeApp` hold their
+    /// arguments behind the `<K as TypeKind>::Type<'ctx>` associated type, and
+    /// associated-type projections are invariant. Base tables are therefore
+    /// reused by cloning at the *same* context lifetime (the base interner and
+    /// its borrow outlive every snapshot) rather than by shortening `'ctx`.
+    fn clone_at_same_lifetime<'ctx>(symbols: &Symbols<'ctx>) -> Symbols<'ctx> {
+        symbols.clone()
+    }
+
+    #[test]
+    fn symbols_clones_at_its_own_context_lifetime() {
+        let base = Symbols::with_default_types();
+        let _cloned: Symbols<'_> = clone_at_same_lifetime(&base);
+    }
+
+    #[test]
+    fn cloning_symbols_shares_aggregates_until_mutated() {
+        let interner = TypeInterner::default();
+        let id = interner.intern("Foo");
+        let mut symbols = Symbols::with_default_types();
+        symbols.add_type(
+            id,
+            TypeDef::new([], TypeSchema::Aggregate(Aggregate::default().into()), []),
+        );
+
+        let mut child = symbols.clone();
+        let original = match symbols.get_type(id).unwrap().schema() {
+            TypeSchema::Aggregate(agg) => agg.clone(),
+            _ => panic!("expected an aggregate"),
+        };
+        let shared = match child.get_type(id).unwrap().schema() {
+            TypeSchema::Aggregate(agg) => agg.clone(),
+            _ => panic!("expected an aggregate"),
+        };
+        assert!(Shared::ptr_eq(&original, &shared), "clone must share storage");
+
+        child[id]
+            .schema_mut()
+            .as_aggregate_mut()
+            .unwrap()
+            .set_base(Some(TypeApp::nullary(predef::ISERIALIZABLE)));
+
+        assert!(symbols[id].schema().as_aggregate().unwrap().base().is_none());
+        assert!(child[id].schema().as_aggregate().unwrap().base().is_some());
+        let after = match child.get_type(id).unwrap().schema() {
+            TypeSchema::Aggregate(agg) => agg.clone(),
+            _ => panic!("expected an aggregate"),
+        };
+        assert!(
+            !Shared::ptr_eq(&original, &after),
+            "mutation must copy-on-write"
+        );
+    }
+
+    #[test]
+    fn ensure_serializable_base_links_once_without_copying_free_functions() {
+        let mut symbols = Symbols::with_default_types();
+        symbols.add_type(
+            predef::ISERIALIZABLE,
+            TypeDef::new([], TypeSchema::Aggregate(Aggregate::default().into()), []),
+        );
+        symbols.add_free_function("Foo", FreeFunction::default());
+
+        symbols.ensure_serializable_base();
+        assert!(
+            symbols[predef::ISCRIPTABLE]
+                .schema()
+                .as_aggregate()
+                .unwrap()
+                .base()
+                .is_some()
+        );
+
+        let mut child = symbols.clone();
+        let before = symbols.free_funcs.map.values().next().unwrap().clone();
+        child.ensure_serializable_base();
+        let after = child.free_funcs.map.values().next().unwrap();
+        assert!(
+            Shared::ptr_eq(&before, after),
+            "an already-linked base must not copy free functions"
+        );
     }
 }
