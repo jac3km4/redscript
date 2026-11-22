@@ -2,8 +2,8 @@ use redscript_community_ast::{SourceMap, Span};
 use redscript_compiler_api::SourceMapExt;
 use redscript_compiler_frontend::{
     CompileErrorReporter, Evaluator, FieldId, LoweredCompilationUnit, LoweredFunction, PolyType,
-    QueryError, QueryTarget, RefType, Symbols, Type, TypeInterner, expr_type, infer_from_sources,
-    ir, parse_files, predef, process_sources_for_query,
+    QueryError, QueryTarget, RefType, Shared, Symbols, Type, TypeInterner, expr_type,
+    infer_from_sources, ir, parse_files, predef, process_sources_for_query,
 };
 
 fn lower<'ctx>(
@@ -649,7 +649,10 @@ impl<'ctx> ir::Visitor<'ctx> for FunctionShape {
     fn visit_new_closure(&mut self, closure: &ir::Closure<'ctx>, span: Span) {
         self.push(format_args!("closure@{}", span.start));
         for local in &closure.locals {
-            self.push(format_args!("closure_local:{:?}:{:?}", local.id, local.name));
+            self.push(format_args!(
+                "closure_local:{:?}:{:?}",
+                local.id, local.name
+            ));
         }
         self.push(format_args!("captures:{:?}", closure.captures));
         self.visit_block(&closure.block);
@@ -761,9 +764,7 @@ fn function_shape(function: &LoweredFunction<'_>) -> String {
     shape.tokens
 }
 
-fn maybe_return_expr<'a, 'ctx>(
-    function: &'a LoweredFunction<'ctx>,
-) -> Option<&'a ir::Expr<'ctx>> {
+fn maybe_return_expr<'a, 'ctx>(function: &'a LoweredFunction<'ctx>) -> Option<&'a ir::Expr<'ctx>> {
     match function.block.stmts.back() {
         Some(ir::Stmt::Return(Some(expr), _)) => Some(expr),
         _ => None,
@@ -791,7 +792,10 @@ fn assert_query_parity(sources: &SourceMap) {
     );
     assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
 
-    let spans = full_unit.all_functions().map(|f| f.span).collect::<Vec<_>>();
+    let spans = full_unit
+        .all_functions()
+        .map(|f| f.span)
+        .collect::<Vec<_>>();
     assert!(!spans.is_empty(), "fixture should lower some functions");
 
     for span in spans {
@@ -811,7 +815,11 @@ fn assert_query_parity(sources: &SourceMap) {
         assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
 
         let query_functions = query_unit.all_functions().collect::<Vec<_>>();
-        assert_eq!(query_functions.len(), 1, "expected one function at {span:?}");
+        assert_eq!(
+            query_functions.len(),
+            1,
+            "expected one function at {span:?}"
+        );
         let query_function = query_functions[0];
         assert_eq!(query_function.span, span);
 
@@ -827,7 +835,10 @@ fn assert_query_parity(sources: &SourceMap) {
         );
         assert_eq!(query_function.properties, full_function.properties);
 
-        match (maybe_return_expr(query_function), maybe_return_expr(full_function)) {
+        match (
+            maybe_return_expr(query_function),
+            maybe_return_expr(full_function),
+        ) {
             (Some(query_expr), Some(full_expr)) => assert_eq!(
                 format!(
                     "{:?}",
@@ -898,7 +909,12 @@ fn query_lowering_isolates_the_target_file() {
     let modules = parse_files(&sources, &mut reporter);
     assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
 
-    let alpha_pos = sources.get(file_a).unwrap().source().find("return 2").unwrap() as u32;
+    let alpha_pos = sources
+        .get(file_a)
+        .unwrap()
+        .source()
+        .find("return 2")
+        .unwrap() as u32;
     let mut reporter = CompileErrorReporter::default();
     let evaluator = Evaluator::from_modules(&modules);
     let (unit, _) = process_sources_for_query(
@@ -1005,4 +1021,121 @@ fn invalid_queries_return_errors() {
         expr_type(&index, &function, &symbols),
         Err(QueryError::InvalidArray(_))
     ));
+}
+
+fn query_at<'ctx>(
+    modules: &[redscript_compiler_frontend::ast::SourceModule<'ctx>],
+    symbols: Symbols<'ctx>,
+    interner: &'ctx TypeInterner,
+    target: QueryTarget,
+) -> (LoweredCompilationUnit<'ctx>, Symbols<'ctx>) {
+    let mut reporter = CompileErrorReporter::default();
+    let evaluator = Evaluator::from_modules(modules);
+    let result = process_sources_for_query(
+        modules.iter().cloned(),
+        symbols,
+        evaluator,
+        &mut reporter,
+        interner,
+        target,
+    );
+    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+    result
+}
+
+#[test]
+fn query_targets_respect_span_bounds_and_lower_enclosing_closures() {
+    let source = "\
+        func Outer() -> Int32 { let f = () -> 9; return f(); }\n\
+        \n\
+        func Other() -> Int32 { return 0; }\n";
+    let sources = SourceMap::new();
+    let file = sources.push_back("query.reds", source);
+    sources.populate_boot_lib();
+    let interner = TypeInterner::default();
+
+    let mut reporter = CompileErrorReporter::default();
+    let modules = parse_files(&sources, &mut reporter);
+    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+    let mut reporter = CompileErrorReporter::default();
+    let (full_unit, full_symbols) = infer_from_sources(
+        &sources,
+        Symbols::with_default_types(),
+        &mut reporter,
+        &interner,
+    );
+    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+
+    let outer = function(&full_unit, &full_symbols, "Outer").span;
+    let query = |pos: u32| {
+        query_at(
+            &modules,
+            Symbols::with_default_types(),
+            &interner,
+            QueryTarget { file, pos },
+        )
+        .0
+    };
+
+    for pos in [outer.start, outer.end - 1] {
+        let unit = query(pos);
+        let functions = unit.all_functions().collect::<Vec<_>>();
+        assert_eq!(functions.len(), 1, "position {pos} should lower Outer");
+        assert_eq!(functions[0].span, outer);
+    }
+
+    let closure_body = source.find("() -> 9").unwrap() as u32 + "() -> ".len() as u32;
+    let unit = query(closure_body);
+    let functions = unit.all_functions().collect::<Vec<_>>();
+    assert_eq!(
+        functions.len(),
+        1,
+        "closure body should lower its enclosing function"
+    );
+    assert_eq!(functions[0].span, outer);
+
+    let unit = query(outer.end);
+    assert_eq!(
+        unit.all_functions().count(),
+        0,
+        "the exclusive span end must lower nothing"
+    );
+}
+
+#[test]
+fn forked_interner_and_cloned_symbols_support_repeated_query_reuse() {
+    let base_sources = SourceMap::new();
+    base_sources.push_back("base.reds", "class Base { public let value: Int32; }");
+    base_sources.populate_boot_lib();
+    let base_interner = Shared::new(TypeInterner::default());
+    let mut reporter = CompileErrorReporter::default();
+    let (_, base_symbols) = infer_from_sources(
+        &base_sources,
+        Symbols::with_default_types(),
+        &mut reporter,
+        &base_interner,
+    );
+    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+
+    let snap_sources = SourceMap::new();
+    let snap_source = "class SnapshotLocal { public let value: Int32; }\n\
+        func Target(x: SnapshotLocal) -> Int32 { return x.value; }\n";
+    let snap_file = snap_sources.push_back("snap.reds", snap_source);
+    let target = QueryTarget {
+        file: snap_file,
+        pos: snap_source.find("return x.value").unwrap() as u32,
+    };
+
+    for _ in 0..2 {
+        let child_interner = TypeInterner::fork(&base_interner);
+        let mut reporter = CompileErrorReporter::default();
+        let modules = parse_files(&snap_sources, &mut reporter);
+        assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+        let (unit, _) = query_at(&modules, base_symbols.clone(), &child_interner, target);
+        let functions = unit.all_functions().collect::<Vec<_>>();
+        assert_eq!(functions.len(), 1);
+        assert_eq!(functions[0].span.file, snap_file);
+        assert!(child_interner.get("SnapshotLocal").is_some());
+        assert!(base_interner.get("SnapshotLocal").is_none());
+    }
 }

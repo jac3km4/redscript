@@ -4,8 +4,8 @@ use redscript_community_ast::{SourceMap, Span};
 use redscript_compiler_api::{SourceMapExt, TypeFlagRegistry};
 use redscript_compiler_backend::CompilationInputs;
 use redscript_compiler_frontend::{
-    CompileErrorReporter, FieldId, LoweredFunction, QueryTarget, RefType, Symbols, TypeInterner,
-    expr_type, ir,
+    CompileErrorReporter, FieldId, LoweredFunction, QueryTarget, RefType, Shared, Symbols,
+    TypeInterner, expr_type, ir,
 };
 use redscript_io::{
     Class, ClassFlags, Function, FunctionFlags, ScriptBundle, Type, TypeKind, Visibility,
@@ -40,15 +40,17 @@ fn native_bundle() -> ScriptBundle<'static> {
     let mut methods = Vec::new();
     for (name, return_type) in [("Base", int32_t), ("Run", void_t)] {
         let name = bundle.cnames_mut().add(name);
-        methods.push(bundle.define(
-            Function::new(
-                name,
-                Visibility::Public,
-                FunctionFlags::default().with_is_native(true),
-            )
-            .with_class(Some(parent))
-            .with_return_type(Some(return_type)),
-        ));
+        methods.push(
+            bundle.define(
+                Function::new(
+                    name,
+                    Visibility::Public,
+                    FunctionFlags::default().with_is_native(true),
+                )
+                .with_class(Some(parent))
+                .with_return_type(Some(return_type)),
+            ),
+        );
     }
     bundle[parent] = bundle[parent].clone().with_methods(methods);
     bundle
@@ -186,7 +188,10 @@ impl<'ctx> ir::Visitor<'ctx> for Shape {
     fn visit_new_closure(&mut self, closure: &ir::Closure<'ctx>, span: Span) {
         self.push(format_args!("closure@{}", span.start));
         for local in &closure.locals {
-            self.push(format_args!("closure_local:{:?}:{:?}", local.id, local.name));
+            self.push(format_args!(
+                "closure_local:{:?}:{:?}",
+                local.id, local.name
+            ));
         }
         self.visit_block(&closure.block);
     }
@@ -351,7 +356,10 @@ fn query_lowering_matches_full_for_patches_and_redmod_loops() {
     assert!(errors.is_empty(), "{errors:?}");
     assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
 
-    let spans = full_unit.all_functions().map(|f| f.span).collect::<Vec<_>>();
+    let spans = full_unit
+        .all_functions()
+        .map(|f| f.span)
+        .collect::<Vec<_>>();
     assert!(!spans.is_empty(), "fixture should lower some functions");
 
     for span in spans {
@@ -371,7 +379,11 @@ fn query_lowering_matches_full_for_patches_and_redmod_loops() {
         assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
 
         let query_functions = query_unit.all_functions().collect::<Vec<_>>();
-        assert_eq!(query_functions.len(), 1, "expected one function at {span:?}");
+        assert_eq!(
+            query_functions.len(),
+            1,
+            "expected one function at {span:?}"
+        );
         let query_function = query_functions[0];
         assert_eq!(query_function.span, span);
 
@@ -387,7 +399,10 @@ fn query_lowering_matches_full_for_patches_and_redmod_loops() {
 
         match (last_return(query_function), last_return(full_function)) {
             (Some(query_expr), Some(full_expr)) => assert_eq!(
-                format!("{:?}", expr_type(query_expr, query_function, &query_symbols)),
+                format!(
+                    "{:?}",
+                    expr_type(query_expr, query_function, &query_symbols)
+                ),
                 format!("{:?}", expr_type(full_expr, full_function, &full_symbols)),
                 "return type mismatch at {span:?}"
             ),
@@ -491,6 +506,10 @@ fn query_lowering_matches_full_across_multiple_files() {
           for (var i: Int32 = 0; Less(i, 3); i = Inc(i)) { total = Inc(total); }
           return total;
         }
+        @wrapMethod(Native)
+        function Run() {
+          Run();
+        }
     "#;
     let first_id = sources.push_back("first.script", first);
     let (first, errors) = parse_file_with_metadata(first, first_id);
@@ -531,7 +550,10 @@ fn query_lowering_matches_full_across_multiple_files() {
     assert!(errors.is_empty(), "{errors:?}");
     assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
 
-    let spans = full_unit.all_functions().map(|f| f.span).collect::<Vec<_>>();
+    let spans = full_unit
+        .all_functions()
+        .map(|f| f.span)
+        .collect::<Vec<_>>();
     assert!(!spans.is_empty(), "fixture should lower some functions");
 
     for span in spans {
@@ -551,7 +573,11 @@ fn query_lowering_matches_full_across_multiple_files() {
         assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
 
         let query_functions = query_unit.all_functions().collect::<Vec<_>>();
-        assert_eq!(query_functions.len(), 1, "expected one function at {span:?}");
+        assert_eq!(
+            query_functions.len(),
+            1,
+            "expected one function at {span:?}"
+        );
         let query_function = query_functions[0];
         assert_eq!(query_function.span, span);
 
@@ -567,7 +593,10 @@ fn query_lowering_matches_full_across_multiple_files() {
 
         match (last_return(query_function), last_return(full_function)) {
             (Some(query_expr), Some(full_expr)) => assert_eq!(
-                format!("{:?}", expr_type(query_expr, query_function, &query_symbols)),
+                format!(
+                    "{:?}",
+                    expr_type(query_expr, query_function, &query_symbols)
+                ),
                 format!("{:?}", expr_type(full_expr, full_function, &full_symbols)),
                 "return type mismatch at {span:?}"
             ),
@@ -576,5 +605,139 @@ fn query_lowering_matches_full_across_multiple_files() {
         }
 
         assert!(query_unit.scopes.contains_key(&span.file));
+    }
+}
+
+#[test]
+fn query_targets_at_span_edges_and_redmod_loop_headers_lower_one_function() {
+    let bundle = native_bundle();
+    let sources = SourceMap::new();
+    sources.populate_boot_lib();
+    let dependency = "native func Less(a: Int32, b: Int32) -> Bool; \
+        native func Inc(value: Int32) -> Int32; \
+        native func Once(value: Bool) -> Bool;";
+    let dep_id = sources.push_back("helpers.reds", dependency);
+    let (dependency, errors) = redscript_community_parser::parse_module(dependency, dep_id);
+    assert!(errors.is_empty(), "{errors:?}");
+    let dependency = dependency.unwrap();
+
+    let source = r#"
+        @replaceMethod(Native)
+        function Base() -> Int32 {
+          var total: Int32 = 0;
+          for (var i: Int32 = 0; Less(i, 3); i = Inc(i)) { total = Inc(total); }
+          do { total = Inc(total); } while (Once(false));
+          return total;
+        }
+    "#;
+    let file = sources.push_back("loop.script", source);
+    let (parsed, errors) = parse_file_with_metadata(source, file);
+    assert!(errors.is_empty(), "{errors:?}");
+    let parsed = parsed.unwrap();
+
+    let interner = TypeInterner::default();
+    let flags = TypeFlagRegistry::default();
+    let (symbols, _) = CompilationInputs::load(&bundle, &interner, &flags)
+        .unwrap()
+        .into_inner();
+
+    let mut reporter = CompileErrorReporter::default();
+    let (full_unit, _, errors) = process_sources(
+        [parsed.clone()],
+        [dependency.clone()],
+        symbols.clone(),
+        &mut reporter,
+        &interner,
+    );
+    assert!(errors.is_empty(), "{errors:?}");
+    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+
+    let full_function = full_unit
+        .all_functions()
+        .next()
+        .expect("fixture should lower a function");
+    let span = full_function.span;
+    let loop_pos = full_function
+        .block
+        .stmts
+        .iter()
+        .find_map(|stmt| match stmt {
+            ir::Stmt::While(_, span) => Some(span.start),
+            _ => None,
+        })
+        .expect("control-flow rewriting should leave a loop statement");
+
+    let query = |pos: u32| {
+        let mut reporter = CompileErrorReporter::default();
+        let (unit, _, errors) = process_sources_for_query(
+            [parsed.clone()],
+            [dependency.clone()],
+            symbols.clone(),
+            &mut reporter,
+            &interner,
+            QueryTarget {
+                file: span.file,
+                pos,
+            },
+        );
+        assert!(errors.is_empty(), "{errors:?}");
+        assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+        unit
+    };
+
+    for pos in [span.start, span.end - 1, loop_pos] {
+        let unit = query(pos);
+        let functions = unit.all_functions().collect::<Vec<_>>();
+        assert_eq!(functions.len(), 1, "position {pos} should lower Base");
+        assert_eq!(functions[0].span, span);
+    }
+
+    let unit = query(span.end);
+    assert_eq!(
+        unit.all_functions().count(),
+        0,
+        "the exclusive span end must lower nothing"
+    );
+}
+
+#[test]
+fn forked_interner_and_cloned_symbols_support_repeated_query_mode() {
+    let bundle = native_bundle();
+    let base_interner = Shared::new(TypeInterner::default());
+    let flags = TypeFlagRegistry::default();
+    let (base_symbols, _) = CompilationInputs::load(&bundle, &base_interner, &flags)
+        .unwrap()
+        .into_inner();
+
+    let sources = SourceMap::new();
+    let source = "class SnapshotLocal { public let value: Int32; }\n\
+        function Target(x: SnapshotLocal) -> Int32 { return x.value; }\n";
+    let file = sources.push_back("snapshot.script", source);
+    let (parsed, errors) = parse_file_with_metadata(source, file);
+    assert!(errors.is_empty(), "{errors:?}");
+    let parsed = parsed.unwrap();
+    let target = QueryTarget {
+        file,
+        pos: source.find("return x.value").unwrap() as u32,
+    };
+
+    let child_interner = TypeInterner::fork(&base_interner);
+    for _ in 0..2 {
+        let mut reporter = CompileErrorReporter::default();
+        let (unit, _, errors) = process_sources_for_query(
+            [parsed.clone()],
+            std::iter::empty(),
+            base_symbols.clone(),
+            &mut reporter,
+            &child_interner,
+            target,
+        );
+        assert!(errors.is_empty(), "{errors:?}");
+        assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+        let functions = unit.all_functions().collect::<Vec<_>>();
+        assert_eq!(functions.len(), 1);
+        assert_eq!(functions[0].span.file, file);
+        assert!(child_interner.get("SnapshotLocal").is_some());
+        assert!(base_interner.get("SnapshotLocal").is_none());
     }
 }
