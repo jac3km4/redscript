@@ -169,9 +169,7 @@ pub struct TypeInterner {
     count: Cell<usize>,
     /// Set when this interner is forked. Interning a *new* name afterwards would
     /// assign it the child's first local index, aliasing the two; the flag turns
-    /// that silent corruption into a loud failure. Debug-only: it exists to catch
-    /// misuse, not to change release behavior.
-    #[cfg(debug_assertions)]
+    /// that silent corruption into a loud failure in every build.
     forked: Cell<bool>,
 }
 
@@ -190,7 +188,6 @@ impl TypeInterner {
         if let Some(str) = self.names.get(key) {
             TypeId(TypeIdRepr::Named(str))
         } else {
-            #[cfg(debug_assertions)]
             assert!(
                 !self.forked.get(),
                 "cannot intern new type `{key}` into a TypeInterner after forking"
@@ -246,16 +243,14 @@ impl TypeInterner {
     /// interned afterwards. The parent must outlive the child and must not be
     /// interned into after forking, so a shared handle is required rather than
     /// an owned value. Interning a *new* name into the parent after forking
-    /// would alias the child's first local index; debug builds panic instead.
+    /// would alias the child's first local index; this panics instead.
     pub fn fork(parent: &Shared<Self>) -> Self {
-        #[cfg(debug_assertions)]
         parent.forked.set(true);
         Self {
             parent: Some(Shared::clone(parent)),
             base_len: predef::ALL_TYPES.len() + parent.local_len(),
             names: FrozenIndexSet::default(),
             count: Cell::new(0),
-            #[cfg(debug_assertions)]
             forked: Cell::new(false),
         }
     }
@@ -273,7 +268,6 @@ impl Default for TypeInterner {
             base_len: predef::ALL_TYPES.len(),
             names: FrozenIndexSet::default(),
             count: Cell::new(0),
-            #[cfg(debug_assertions)]
             forked: Cell::new(false),
         }
     }
@@ -297,9 +291,7 @@ pub struct TypeInterner {
     index: std::sync::RwLock<hashbrown::HashMap<Box<str>, TypeIndex>>,
     /// Set when this interner is forked. Interning a *new* name afterwards would
     /// assign it the child's first local index, aliasing the two; the flag turns
-    /// that silent corruption into a loud failure. Debug-only: it exists to catch
-    /// misuse, not to change release behavior.
-    #[cfg(debug_assertions)]
+    /// that silent corruption into a loud failure in every build.
     forked: std::sync::atomic::AtomicBool,
 }
 
@@ -356,11 +348,8 @@ impl TypeInterner {
         if let Some(&idx) = index.get(key) {
             return self.named(idx);
         }
-        #[cfg(debug_assertions)]
         assert!(
-            !self
-                .forked
-                .load(std::sync::atomic::Ordering::Acquire),
+            !self.forked.load(std::sync::atomic::Ordering::Acquire),
             "cannot intern new type `{key}` into a TypeInterner after forking"
         );
         let name: Box<str> = name.into().into_boxed_str();
@@ -422,7 +411,7 @@ impl TypeInterner {
     /// interned afterwards. The parent must outlive the child and must not be
     /// interned into after forking, so a shared handle is required rather than
     /// an owned value. Interning a *new* name into the parent after forking
-    /// would alias the child's first local index; debug builds panic instead.
+    /// would alias the child's first local index; this panics instead.
     ///
     /// Holding the parent's index write lock across the freeze and the local
     /// length read serializes this with [`Self::intern`]: an in-flight intern
@@ -433,7 +422,6 @@ impl TypeInterner {
             .index
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        #[cfg(debug_assertions)]
         parent
             .forked
             .store(true, std::sync::atomic::Ordering::Release);
@@ -444,7 +432,6 @@ impl TypeInterner {
             base_len,
             names: elsa::sync::FrozenVec::new(),
             index: std::sync::RwLock::new(hashbrown::HashMap::new()),
-            #[cfg(debug_assertions)]
             forked: std::sync::atomic::AtomicBool::new(false),
         }
     }
@@ -462,7 +449,6 @@ impl Default for TypeInterner {
             base_len: predef::ALL_TYPES.len(),
             names: elsa::sync::FrozenVec::new(),
             index: std::sync::RwLock::new(hashbrown::HashMap::new()),
-            #[cfg(debug_assertions)]
             forked: std::sync::atomic::AtomicBool::new(false),
         }
     }
@@ -663,9 +649,8 @@ mod tests {
     }
 
     /// Interning a new name into a forked parent would assign it the child's
-    /// first local index, so debug builds reject it; re-interning an existing
+    /// first local index, so every build rejects it; re-interning an existing
     /// name stays valid because it resolves to the same index.
-    #[cfg(debug_assertions)]
     #[test]
     #[should_panic(expected = "after forking")]
     fn interning_a_new_name_after_forking_panics() {
