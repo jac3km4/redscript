@@ -58,9 +58,66 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
 
         let symbols = &self.symbols;
         let lowered = crate::parallel::map_ordered(tasks, |(module, wraps)| {
-            lower_module(module, &wraps, scope, symbols)
+            lower_module(module, &wraps, scope, symbols, None)
         });
 
+        let compiled = self.merge_modules(lowered, reporter);
+        const_validation::validate(
+            &compiled,
+            &self.symbols,
+            |span| scope.types.policy(span),
+            reporter,
+        );
+        script_ref_validation::validate(&compiled, &self.symbols, reporter);
+        (compiled, self.symbols)
+    }
+
+    /// Lowers only the function enclosing `target`, for IDE queries that inspect
+    /// a single function.
+    ///
+    /// Name resolution has already populated every type, field, inheritance
+    /// link and signature, so the resulting [`Symbols`] is complete even though
+    /// only one function body is lowered. Wrapper aliases are still registered
+    /// across all modules first so their global indices match a full `finish`.
+    /// Whole-program validation passes (`const_validation`,
+    /// `script_ref_validation`) are skipped.
+    pub fn finish_for_query(
+        mut self,
+        scope: &'scope Scope<'_, 'ctx>,
+        target: QueryTarget,
+        reporter: &mut CompileErrorReporter<'ctx>,
+    ) -> (LoweredCompilationUnit<'ctx>, Symbols<'ctx>) {
+        let mut modules = mem::take(&mut self.modules);
+        // `@wrapMethod` aliases and their global indices span every module, so
+        // register them before filtering to keep indices identical to `finish`.
+        let wraps = self.register_wrap_aliases(&mut modules);
+        let tasks = modules
+            .into_iter()
+            .zip(wraps)
+            .filter(|(module, _)| module.contains_file(target.file))
+            .collect::<Vec<_>>();
+
+        let symbols = &self.symbols;
+        let lowered = crate::parallel::map_ordered(tasks, |(module, wraps)| {
+            lower_module(module, &wraps, scope, symbols, Some(target))
+        });
+
+        let compiled = self.merge_modules(lowered, reporter);
+        (compiled, self.symbols)
+    }
+
+    /// Merges per-module lowering output into the compilation unit, reporting
+    /// duplicate-`@replaceMethod` conflicts.
+    ///
+    /// Shared by [`Self::finish`] and [`Self::finish_for_query`]. Query modules
+    /// carry at most one replacement, so the conflict branch is inert there and
+    /// every other merge is a no-op for the module-level outputs query mode
+    /// leaves empty.
+    fn merge_modules(
+        &self,
+        lowered: Vec<LoweredModule<'ctx>>,
+        reporter: &mut CompileErrorReporter<'ctx>,
+    ) -> LoweredCompilationUnit<'ctx> {
         let mut compiled = LoweredCompilationUnit::default();
         for module in lowered {
             for (file, path, resolved) in module.declarations {
@@ -111,70 +168,7 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
                 compiled.scopes.insert(file, scope);
             }
         }
-
-        const_validation::validate(
-            &compiled,
-            &self.symbols,
-            |span| scope.types.policy(span),
-            reporter,
-        );
-        script_ref_validation::validate(&compiled, &self.symbols, reporter);
-        (compiled, self.symbols)
-    }
-
-    /// Lowers only the function enclosing `target`, for IDE queries that inspect
-    /// a single function.
-    ///
-    /// Name resolution has already populated every type, field, inheritance
-    /// link and signature, so the resulting [`Symbols`] is complete even though
-    /// only one function body is lowered. Wrapper aliases are still registered
-    /// across all modules first so their global indices match a full `finish`.
-    /// Whole-program validation passes (`const_validation`,
-    /// `script_ref_validation`) are skipped.
-    pub fn finish_for_query(
-        mut self,
-        scope: &'scope Scope<'_, 'ctx>,
-        target: QueryTarget,
-        reporter: &mut CompileErrorReporter<'ctx>,
-    ) -> (LoweredCompilationUnit<'ctx>, Symbols<'ctx>) {
-        let mut modules = mem::take(&mut self.modules);
-        // `@wrapMethod` aliases and their global indices span every module, so
-        // register them before filtering to keep indices identical to `finish`.
-        let wraps = self.register_wrap_aliases(&mut modules);
-        let tasks = modules
-            .into_iter()
-            .zip(wraps)
-            .filter(|(module, _)| module.contains_file(target.file))
-            .collect::<Vec<_>>();
-
-        let symbols = &self.symbols;
-        let lowered = crate::parallel::map_ordered(tasks, |(module, wraps)| {
-            lower_module_for_query(module, &wraps, scope, symbols, target)
-        });
-
-        let mut compiled = LoweredCompilationUnit::default();
-        for module in lowered {
-            for (id, class) in module.classes {
-                compiled.classes.insert(id, class);
-            }
-            for (id, func) in module.functions {
-                compiled.functions.insert(id, func);
-            }
-            for (id, func) in module.added_methods {
-                compiled.added_methods.insert(id, func);
-            }
-            for (id, func) in module.method_replacements {
-                compiled.method_replacements.insert(id, func);
-            }
-            for (id, func) in module.method_wrappers {
-                compiled.method_wrappers.entry(id).or_default().push(func);
-            }
-            if let Some((file, scope)) = module.scope {
-                compiled.scopes.insert(file, scope);
-            }
-            reporter.report_many(module.diagnostics);
-        }
-        (compiled, self.symbols)
+        compiled
     }
 
     /// Registers `@wrapMethod` aliases before lowering so `symbols` stays
@@ -233,21 +227,43 @@ struct LoweredModule<'ctx> {
     diagnostics: Vec<crate::Diagnostic<'ctx>>,
 }
 
+/// Whether `span` is the declaration the query selects. Full mode (`None`)
+/// selects every span.
+fn is_target(target: Option<QueryTarget>, span: Span) -> bool {
+    target.is_none_or(|target| span.file == target.file && span.contains(target.pos))
+}
+
+/// Lowers one source module. With `target` set, only the function enclosing the
+/// query is lowered and module-level outputs (declarations, enums, added fields)
+/// are omitted, for IDE queries that inspect a single function.
 fn lower_module<'m, 'ctx>(
     module: InferStageModule<'m, 'ctx>,
     wraps: &[Option<WrapInfo>],
     scope: &Scope<'m, 'ctx>,
     symbols: &Symbols<'ctx>,
+    target: Option<QueryTarget>,
 ) -> LoweredModule<'ctx> {
     let mut out = LoweredModule::default();
     let mut reporter = CompileErrorReporter::default();
     let scope = scope.push(module.type_scope, module.func_scope);
 
-    for (file, path, resolved) in module.declarations {
-        out.declarations.push((file, path, resolved));
+    if target.is_none() {
+        for (file, path, resolved) in module.declarations {
+            out.declarations.push((file, path, resolved));
+        }
     }
 
     for class in module.classes {
+        // In query mode, skip classes with no method under the cursor before
+        // pushing scopes or allocating `this`.
+        if let Some(target) = target
+            && !class
+                .methods
+                .iter()
+                .any(|item| is_target(Some(target), item.span))
+        {
+            continue;
+        }
         let types = scope.types.push_scope(class.scope);
         let cls_t = &symbols[class.id];
 
@@ -260,6 +276,9 @@ fn lower_module<'m, 'ctx>(
 
         let mut methods = IndexMap::default();
         for item in class.methods {
+            if !is_target(target, item.span) {
+                continue;
+            }
             let method = &symbols[MethodId::new(class.id, item.id)];
             if !method.type_().is_valid() {
                 continue;
@@ -277,17 +296,29 @@ fn lower_module<'m, 'ctx>(
                 .build();
             methods.insert(item.id, func);
         }
+        // Query mode emits a class only when the cursor is inside one of its
+        // methods; a matching method with an invalid signature yields none.
+        if target.is_some() && methods.is_empty() {
+            continue;
+        }
 
+        // Query mode drops field defaults entirely; iterating empty vectors
+        // keeps the lowering below identical across modes.
+        let (class_fields, class_defaults) = if target.is_none() {
+            (class.fields, class.defaults)
+        } else {
+            (Vec::new(), Vec::new())
+        };
         let mut defaults = Vec::new();
         let mut own_order: IndexMap<FieldIndex, u32> = IndexMap::default();
-        for item in &class.fields {
+        for item in &class_fields {
             if let Some(value) = &item.default {
                 own_order.insert(item.id, value.1.start);
             }
         }
         // Name resolution has completed for every module before inference:
         // even bases declared in later files now have their full fields.
-        for (input, input_span) in &class.defaults {
+        for (input, input_span) in &class_defaults {
             let Some((parent, (index, field))) =
                 symbols
                     .base_iter_with_self(class.id)
@@ -349,7 +380,7 @@ fn lower_module<'m, 'ctx>(
             }
         }
         let mut fields = IndexMap::default();
-        for item in class.fields {
+        for item in class_fields {
             let Some(default) = item.default else {
                 continue;
             };
@@ -377,11 +408,16 @@ fn lower_module<'m, 'ctx>(
         ));
     }
 
-    for enum_id in module.enums {
-        out.enums.push(enum_id);
+    if target.is_none() {
+        for enum_id in module.enums {
+            out.enums.push(enum_id);
+        }
     }
 
     for (index, func) in module.functions.into_iter().enumerate() {
+        if !is_target(target, func.span()) {
+            continue;
+        }
         match func {
             FuncItemKind::FreeFunction(func) => {
                 if !symbols[func.id].type_().is_valid() {
@@ -397,7 +433,9 @@ fn lower_module<'m, 'ctx>(
                     .span(func.span)
                     .build();
                 out.functions.push((func.id, value));
-                if let Some((file, path)) = func.declaration {
+                if let Some((file, path)) = func.declaration
+                    && target.is_none()
+                {
                     out.declarations
                         .push((file, path, ResolvedDeclaration::Function(func.id)));
                 }
@@ -414,7 +452,9 @@ fn lower_module<'m, 'ctx>(
                     &mut reporter,
                 );
                 out.method_replacements.push((func.id, lowered));
-                if let Some((file, path)) = func.declaration {
+                if let Some((file, path)) = func.declaration
+                    && target.is_none()
+                {
                     out.declarations
                         .push((file, path, ResolvedDeclaration::Replacement(func.id)));
                 }
@@ -436,7 +476,9 @@ fn lower_module<'m, 'ctx>(
                     )
                 });
                 out.added_methods.push((func.id, lowered));
-                if let Some((file, path)) = func.declaration {
+                if let Some((file, path)) = func.declaration
+                    && target.is_none()
+                {
                     out.declarations
                         .push((file, path, ResolvedDeclaration::AddedMethod(func.id)));
                 }
@@ -457,7 +499,9 @@ fn lower_module<'m, 'ctx>(
                     &mut reporter,
                 );
                 out.method_wrappers.push((func.id, lowered));
-                if let Some((file, path)) = func.declaration {
+                if let Some((file, path)) = func.declaration
+                    && target.is_none()
+                {
                     out.declarations.push((
                         file,
                         path,
@@ -468,162 +512,17 @@ fn lower_module<'m, 'ctx>(
         }
     }
 
-    for item in module.fields {
-        let expr = item
-            .default
-            .and_then(|default| {
-                let env = Env::new(&scope.types, &scope.funcs);
-                lower_constant(item.id, &default, &env, symbols, &mut reporter)
-            })
-            .map(Box::new);
+    if target.is_none() {
+        for item in module.fields {
+            let expr = item
+                .default
+                .and_then(|default| {
+                    let env = Env::new(&scope.types, &scope.funcs);
+                    lower_constant(item.id, &default, &env, symbols, &mut reporter)
+                })
+                .map(Box::new);
 
-        out.added_fields.push((item.id, expr));
-    }
-
-    if let Some(span) = module.span {
-        let scope = scope
-            .types
-            .pop_scope()
-            .into_iter()
-            .filter_map(|(k, v)| Some((k, v.force()?)))
-            .collect();
-        out.scope = Some((span.file, scope));
-    }
-
-    out.diagnostics = reporter.into_reported();
-    out
-}
-
-/// Query-mode counterpart of [`lower_module`]: lowers only the function that
-/// contains `target` while still emitting the module type scope so IDE
-/// type-name lookups keep working. Field defaults, enums, declarations and
-/// unrelated functions are skipped.
-fn lower_module_for_query<'m, 'ctx>(
-    module: InferStageModule<'m, 'ctx>,
-    wraps: &[Option<WrapInfo>],
-    scope: &Scope<'m, 'ctx>,
-    symbols: &Symbols<'ctx>,
-    target: QueryTarget,
-) -> LoweredModule<'ctx> {
-    let mut out = LoweredModule::default();
-    let mut reporter = CompileErrorReporter::default();
-    let scope = scope.push(module.type_scope, module.func_scope);
-
-    for class in module.classes {
-        let types = scope.types.push_scope(class.scope);
-        let cls_t = &symbols[class.id];
-
-        let class_type_args = cls_t
-            .params()
-            .iter()
-            .map(|param| Type::Ctx(param.clone()))
-            .collect::<Shared<_>>();
-        let this_t = PolyType::from_type(&Type::app(class.id, class_type_args));
-
-        let mut methods = IndexMap::default();
-        for item in class.methods {
-            if item.span.file != target.file || !item.span.contains(target.pos) {
-                continue;
-            }
-            let method = &symbols[MethodId::new(class.id, item.id)];
-            if !method.type_().is_valid() {
-                continue;
-            }
-            let func = function_builder()
-                .type_(method.type_())
-                .param_names(&item.param_names)
-                .body(&item.body)
-                .env(Env::new(&types.push_scope(item.scope), &scope.funcs))
-                .maybe_this_type(method.flags().is_static().not().then(|| this_t.clone()))
-                .context(class.id)
-                .symbols(symbols)
-                .reporter(&mut reporter)
-                .span(item.span)
-                .build();
-            methods.insert(item.id, func);
-        }
-        if methods.is_empty() {
-            continue;
-        }
-        out.classes.push((
-            class.id,
-            LoweredClass {
-                methods,
-                fields: IndexMap::default(),
-                defaults: Vec::new(),
-                span: class.span,
-            },
-        ));
-    }
-
-    for (index, func) in module.functions.into_iter().enumerate() {
-        if func.span().file != target.file || !func.span().contains(target.pos) {
-            continue;
-        }
-        match func {
-            FuncItemKind::FreeFunction(func) => {
-                if !symbols[func.id].type_().is_valid() {
-                    continue;
-                }
-                let value = function_builder()
-                    .type_(symbols[func.id].type_())
-                    .param_names(&func.param_names)
-                    .body(&func.body)
-                    .env(Env::new(&scope.types.push_scope(func.scope), &scope.funcs))
-                    .symbols(symbols)
-                    .reporter(&mut reporter)
-                    .span(func.span)
-                    .build();
-                out.functions.push((func.id, value));
-            }
-            FuncItemKind::ReplaceMethod(func) => {
-                let lowered = lower_patch_method(
-                    func.id,
-                    func.properties.as_ref(),
-                    &func.param_names,
-                    &func.body,
-                    Env::new(&scope.types.push_scope(func.scope), &scope.funcs),
-                    symbols,
-                    func.span,
-                    &mut reporter,
-                );
-                out.method_replacements.push((func.id, lowered));
-            }
-            FuncItemKind::AddMethod(func) => {
-                if !symbols[func.id].type_().is_valid() {
-                    continue;
-                }
-                let lowered = func.body.as_ref().map(|body| {
-                    lower_patch_method(
-                        func.id,
-                        None,
-                        &func.param_names,
-                        body,
-                        Env::new(&scope.types.push_scope(func.scope), &scope.funcs),
-                        symbols,
-                        func.span,
-                        &mut reporter,
-                    )
-                });
-                out.added_methods.push((func.id, lowered));
-            }
-            FuncItemKind::WrapMethod(func) => {
-                let info = wraps[index].expect("wrap alias should be registered");
-                let mut funcs = scope.funcs.introduce_scope();
-                funcs.insert(ident::WRAPPED_METHOD, smallvec![info.alias]);
-
-                let lowered = lower_patch_method(
-                    func.id,
-                    func.properties.as_ref(),
-                    &func.param_names,
-                    &func.body,
-                    Env::new(&scope.types.push_scope(func.scope), &funcs),
-                    symbols,
-                    func.span,
-                    &mut reporter,
-                );
-                out.method_wrappers.push((func.id, lowered));
-            }
+            out.added_fields.push((item.id, expr));
         }
     }
 
