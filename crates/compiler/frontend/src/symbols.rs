@@ -1299,8 +1299,28 @@ pub struct FieldFlags {
     __: u8,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct QualifiedName<'ctx>(Box<[&'ctx str]>);
+/// A module-qualified function or type name.
+///
+/// A single segment is stored inline; longer paths (and the empty path) live in
+/// a heap slice. Keeping the representation covariant in `'ctx` is what lets
+/// [`Symbols`] stay covariant, which a `SmallVec` would forfeit through the raw
+/// pointer inside its inline variant. The variants are hidden so callers must go
+/// through the constructors, keeping slice semantics the single source of truth.
+#[derive(Clone)]
+pub struct QualifiedName<'ctx>(NameRepr<'ctx>);
+
+#[derive(Clone)]
+enum NameRepr<'ctx> {
+    Single(&'ctx str),
+    Multi(Box<[&'ctx str]>),
+}
+
+impl<'ctx> Default for QualifiedName<'ctx> {
+    #[inline]
+    fn default() -> Self {
+        Self(NameRepr::Multi(Box::default()))
+    }
+}
 
 impl<'ctx> QualifiedName<'ctx> {
     pub fn from_base_and_name<I>(base: &I, name: &'ctx str) -> Self
@@ -1315,7 +1335,7 @@ impl<'ctx> QualifiedName<'ctx> {
     }
 
     pub fn as_single_component(&self) -> Option<&'ctx str> {
-        match &self.0[..] {
+        match self.as_ref() {
             [name] => Some(name),
             _ => None,
         }
@@ -1323,8 +1343,9 @@ impl<'ctx> QualifiedName<'ctx> {
 }
 
 impl<'ctx> From<&'ctx str> for QualifiedName<'ctx> {
+    #[inline]
     fn from(value: &'ctx str) -> Self {
-        QualifiedName(Box::from([value]))
+        Self(NameRepr::Single(value))
     }
 }
 
@@ -1339,7 +1360,10 @@ impl<'ctx> From<&QualifiedName<'ctx>> for Cow<'ctx, str> {
 impl<'ctx> AsRef<[&'ctx str]> for QualifiedName<'ctx> {
     #[inline]
     fn as_ref(&self) -> &[&'ctx str] {
-        &self.0
+        match &self.0 {
+            NameRepr::Single(name) => std::slice::from_ref(name),
+            NameRepr::Multi(names) => names,
+        }
     }
 }
 
@@ -1348,19 +1372,64 @@ impl<'a, 'ctx> IntoIterator for &'a QualifiedName<'ctx> {
     type Item = &'ctx str;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.iter().copied()
+        self.as_ref().iter().copied()
     }
 }
 
 impl<'ctx> FromIterator<&'ctx str> for QualifiedName<'ctx> {
     fn from_iter<T: IntoIterator<Item = &'ctx str>>(iter: T) -> Self {
-        Self(iter.into_iter().collect())
+        let names = iter.into_iter().collect::<Box<[&'ctx str]>>();
+        if names.len() == 1 {
+            Self(NameRepr::Single(names[0]))
+        } else {
+            Self(NameRepr::Multi(names))
+        }
+    }
+}
+
+// Equality, ordering and hashing all delegate to the borrowed slice, so the
+// inline and heap representations of the same path compare and hash identically.
+impl PartialEq for QualifiedName<'_> {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.as_ref() == other.as_ref()
+    }
+}
+
+impl Eq for QualifiedName<'_> {}
+
+impl PartialOrd for QualifiedName<'_> {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for QualifiedName<'_> {
+    #[inline]
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.as_ref().cmp(other.as_ref())
+    }
+}
+
+impl Hash for QualifiedName<'_> {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.as_ref().hash(state);
+    }
+}
+
+impl fmt::Debug for QualifiedName<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("QualifiedName")
+            .field(&self.as_ref())
+            .finish()
     }
 }
 
 impl fmt::Display for QualifiedName<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", sep_by(&self.0, "."))
+        write!(f, "{}", sep_by(self.as_ref(), "."))
     }
 }
 
@@ -1534,6 +1603,65 @@ mod tests {
         assert!(
             Shared::ptr_eq(&before, after),
             "an already-linked base must not copy free functions"
+        );
+    }
+
+    #[test]
+    fn qualified_names_store_single_segments_inline() {
+        let single = QualifiedName::from("foo");
+        assert!(matches!(&single.0, NameRepr::Single("foo")));
+        assert_eq!(single.as_single_component(), Some("foo"));
+        assert_eq!(single.as_ref(), ["foo"]);
+        assert_eq!(single.to_string(), "foo");
+        // The manual `Debug` keeps the previous newtype-over-slice rendering.
+        assert_eq!(format!("{single:?}"), "QualifiedName([\"foo\"])");
+
+        // The empty path and multi-segment paths take the heap representation.
+        assert!(matches!(&QualifiedName::default().0, NameRepr::Multi(_)));
+        assert!(QualifiedName::default().as_ref().is_empty());
+
+        let multi = QualifiedName::from_base_and_name(&["a", "b"], "c");
+        assert!(matches!(&multi.0, NameRepr::Multi(_)));
+        assert_eq!(multi.as_single_component(), None);
+        assert_eq!(multi.to_string(), "a.b.c");
+
+        // A single base segment still collapses to the inline representation.
+        let one = QualifiedName::from_base_and_name(&[] as &[&str], "solo");
+        assert!(matches!(&one.0, NameRepr::Single("solo")));
+        assert_eq!(one.as_ref(), ["solo"]);
+    }
+
+    #[test]
+    fn qualified_name_representations_compare_and_hash_identically() {
+        use std::hash::{Hash, Hasher};
+
+        let hash = |name: &QualifiedName<'_>| {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            name.hash(&mut hasher);
+            hasher.finish()
+        };
+
+        let from = QualifiedName::from("solo");
+        let collected = ["solo"].into_iter().collect::<QualifiedName<'_>>();
+        assert!(matches!(&collected.0, NameRepr::Single("solo")));
+        assert_eq!(from, collected);
+        assert_eq!(hash(&from), hash(&collected));
+
+        let empty = QualifiedName::default();
+        let collected_empty = [].into_iter().collect::<QualifiedName<'_>>();
+        assert_eq!(empty, collected_empty);
+        assert_eq!(hash(&empty), hash(&collected_empty));
+
+        // Ordering follows the borrowed slice, matching the previous `Box<[..]>`.
+        let mut names = [
+            QualifiedName::from("b"),
+            QualifiedName::from_base_and_name(&["a"], "b"),
+            QualifiedName::from("a"),
+        ];
+        names.sort();
+        assert_eq!(
+            names.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            ["a", "a.b", "b"]
         );
     }
 }
