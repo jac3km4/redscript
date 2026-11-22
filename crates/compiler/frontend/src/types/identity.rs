@@ -4,6 +4,11 @@ use std::{fmt, ptr};
 
 use identity_hash::IdentityHashable;
 
+use crate::Shared;
+
+#[cfg(not(feature = "sync"))]
+use std::cell::Cell;
+
 #[cfg(not(feature = "sync"))]
 use crate::FrozenIndexSet;
 
@@ -136,35 +141,111 @@ impl fmt::Display for TypeId<'_> {
     }
 }
 
+/// Looks up a predefined name's index without rescanning `predef::ALL_TYPES`.
+///
+/// This runs on every interning and lookup, so the mapping is precomputed once
+/// and shared by both feature configurations. Predefined names are never copied:
+/// they keep the exact `&'static str` addresses used by [`predef`], so pointer
+/// identity is preserved against `Symbols::with_default_types`.
+fn predef_index(name: &str) -> Option<TypeIndex> {
+    static PREDEF_INDEX: std::sync::LazyLock<hashbrown::HashMap<&'static str, TypeIndex>> =
+        std::sync::LazyLock::new(|| {
+            predef::ALL_TYPES
+                .iter()
+                .enumerate()
+                .filter_map(|(index, id)| Some((id.as_name()?, TypeIndex(index))))
+                .collect()
+        });
+    PREDEF_INDEX.get(name).copied()
+}
+
 #[cfg(not(feature = "sync"))]
 pub struct TypeInterner {
+    parent: Option<Shared<TypeInterner>>,
+    /// Number of indices reserved by `predef` and the parent chain.
+    base_len: usize,
     names: FrozenIndexSet<Cow<'static, str>>,
+    /// Number of names interned into `names`; `FrozenIndexSet` has no `len`.
+    count: Cell<usize>,
 }
 
 #[cfg(not(feature = "sync"))]
 impl TypeInterner {
     pub fn intern(&self, name: impl AsRef<str> + Into<String>) -> TypeId<'_> {
-        match self.names.get(name.as_ref()) {
-            Some(str) => TypeId(TypeIdRepr::Named(str)),
-            None => TypeId(TypeIdRepr::Named(
-                self.names.insert(Cow::Owned(name.into())),
-            )),
+        let key = name.as_ref();
+        if let Some(idx) = predef_index(key) {
+            return predef::ALL_TYPES[idx.0];
+        }
+        if let Some(parent) = &self.parent
+            && let Some(id) = parent.get(key)
+        {
+            return id;
+        }
+        if let Some(str) = self.names.get(key) {
+            TypeId(TypeIdRepr::Named(str))
+        } else {
+            let interned = self.names.insert(Cow::Owned(name.into()));
+            self.count.set(self.count.get() + 1);
+            TypeId(TypeIdRepr::Named(interned))
         }
     }
 
     /// Looks up a canonical type ID without interning a new name.
     pub fn get(&self, name: &str) -> Option<TypeId<'_>> {
+        if let Some(idx) = predef_index(name) {
+            return Some(predef::ALL_TYPES[idx.0]);
+        }
+        if let Some(parent) = &self.parent
+            && let Some(id) = parent.get(name)
+        {
+            return Some(id);
+        }
         self.names.get(name).map(|s| TypeId(TypeIdRepr::Named(s)))
     }
 
     pub fn get_index_of(&self, name: impl AsRef<str>) -> Option<TypeIndex> {
-        self.names.get_index_of(name.as_ref()).map(TypeIndex)
+        let key = name.as_ref();
+        if let Some(idx) = predef_index(key) {
+            return Some(idx);
+        }
+        if let Some(parent) = &self.parent
+            && let Some(idx) = parent.get_index_of(key)
+        {
+            return Some(idx);
+        }
+        self.names
+            .get_index_of(key)
+            .map(|index| TypeIndex(self.base_len + index))
     }
 
     pub fn get_index(&self, index: TypeIndex) -> Option<TypeId<'_>> {
+        if index.0 < predef::ALL_TYPES.len() {
+            return Some(predef::ALL_TYPES[index.0]);
+        }
+        if index.0 < self.base_len {
+            return self.parent.as_ref()?.get_index(index);
+        }
         self.names
-            .get_index(index.0)
+            .get_index(index.0 - self.base_len)
             .map(|s| TypeId(TypeIdRepr::Named(s)))
+    }
+
+    /// Creates a child interner that shares every name interned in `parent`
+    /// (returning the exact same [`TypeId`] pointers) while isolating names
+    /// interned afterwards. The parent must outlive the child and must not be
+    /// interned into after forking, so a shared handle is required rather than
+    /// an owned value.
+    pub fn fork(parent: &Shared<Self>) -> Self {
+        Self {
+            parent: Some(Shared::clone(parent)),
+            base_len: predef::ALL_TYPES.len() + parent.local_len(),
+            names: FrozenIndexSet::default(),
+            count: Cell::new(0),
+        }
+    }
+
+    fn local_len(&self) -> usize {
+        self.parent.as_ref().map_or(0, |parent| parent.local_len()) + self.count.get()
     }
 }
 
@@ -172,10 +253,10 @@ impl TypeInterner {
 impl Default for TypeInterner {
     fn default() -> Self {
         Self {
-            names: predef::ALL_TYPES
-                .iter()
-                .filter_map(|id| id.as_name().map(Cow::Borrowed))
-                .collect(),
+            parent: None,
+            base_len: predef::ALL_TYPES.len(),
+            names: FrozenIndexSet::default(),
+            count: Cell::new(0),
         }
     }
 }
@@ -191,48 +272,45 @@ impl Default for TypeInterner {
 /// prefix as the default `FrozenIndexSet`.
 #[cfg(feature = "sync")]
 pub struct TypeInterner {
+    parent: Option<Shared<TypeInterner>>,
+    /// Number of indices reserved by `predef` and the parent chain.
+    base_len: usize,
     names: elsa::sync::FrozenVec<Box<str>>,
     index: std::sync::RwLock<hashbrown::HashMap<Box<str>, TypeIndex>>,
 }
 
 #[cfg(feature = "sync")]
 impl TypeInterner {
-    #[inline]
-    fn predef_len() -> usize {
-        predef::ALL_TYPES.len()
-    }
-
-    /// Looks up a predefined name's index without rescanning `predef::ALL_TYPES`.
-    ///
-    /// This runs on every interning and lookup, so the mapping is precomputed
-    /// once. It must not allocate per interner: predefined names stay in the
-    /// shared `&'static str` storage and keep their `0..predef_len` indices.
-    fn predef_index(name: &str) -> Option<TypeIndex> {
-        static PREDEF_INDEX: std::sync::LazyLock<hashbrown::HashMap<&'static str, TypeIndex>> =
-            std::sync::LazyLock::new(|| {
-                predef::ALL_TYPES
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(index, id)| Some((id.as_name()?, TypeIndex(index))))
-                    .collect()
-            });
-        PREDEF_INDEX.get(name).copied()
-    }
-
-    /// Maps a non-predefined [`TypeIndex`] to its interned name.
+    /// Maps an index to its interned name, walking the parent chain for indices
+    /// reserved before this interner was forked.
     #[inline]
     fn named(&self, index: TypeIndex) -> TypeId<'_> {
+        if index.0 < predef::ALL_TYPES.len() {
+            return predef::ALL_TYPES[index.0];
+        }
+        if index.0 < self.base_len {
+            return self
+                .parent
+                .as_ref()
+                .and_then(|parent| parent.get_index(index))
+                .expect("parent index");
+        }
         TypeId(TypeIdRepr::Named(
             self.names
-                .get(index.0 - Self::predef_len())
+                .get(index.0 - self.base_len)
                 .expect("interned name"),
         ))
     }
 
     pub fn intern(&self, name: impl AsRef<str> + Into<String>) -> TypeId<'_> {
         let key = name.as_ref();
-        if let Some(idx) = Self::predef_index(key) {
+        if let Some(idx) = predef_index(key) {
             return predef::ALL_TYPES[idx.0];
+        }
+        if let Some(parent) = &self.parent
+            && let Some(id) = parent.get(key)
+        {
+            return id;
         }
         // Fast path: the common case is looking up an already-interned name, so
         // try a shared read lock before taking the exclusive write lock.
@@ -256,15 +334,20 @@ impl TypeInterner {
         }
         let name: Box<str> = name.into().into_boxed_str();
         let local = self.names.push_get_index(name.clone());
-        let idx = TypeIndex(Self::predef_len() + local);
+        let idx = TypeIndex(self.base_len + local);
         index.insert(name, idx);
         self.named(idx)
     }
 
     /// Looks up a canonical type ID without interning a new name.
     pub fn get(&self, name: &str) -> Option<TypeId<'_>> {
-        if let Some(idx) = Self::predef_index(name) {
+        if let Some(idx) = predef_index(name) {
             return Some(predef::ALL_TYPES[idx.0]);
+        }
+        if let Some(parent) = &self.parent
+            && let Some(id) = parent.get(name)
+        {
+            return Some(id);
         }
         let index = self
             .index
@@ -275,23 +358,50 @@ impl TypeInterner {
     }
 
     pub fn get_index_of(&self, name: impl AsRef<str>) -> Option<TypeIndex> {
-        if let Some(idx) = Self::predef_index(name.as_ref()) {
+        let key = name.as_ref();
+        if let Some(idx) = predef_index(key) {
+            return Some(idx);
+        }
+        if let Some(parent) = &self.parent
+            && let Some(idx) = parent.get_index_of(key)
+        {
             return Some(idx);
         }
         self.index
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .get(name.as_ref())
+            .get(key)
             .copied()
     }
 
     pub fn get_index(&self, index: TypeIndex) -> Option<TypeId<'_>> {
-        if index.0 < Self::predef_len() {
+        if index.0 < predef::ALL_TYPES.len() {
             return Some(predef::ALL_TYPES[index.0]);
         }
+        if index.0 < self.base_len {
+            return self.parent.as_ref()?.get_index(index);
+        }
         self.names
-            .get(index.0 - Self::predef_len())
+            .get(index.0 - self.base_len)
             .map(|s| TypeId(TypeIdRepr::Named(s)))
+    }
+
+    /// Creates a child interner that shares every name interned in `parent`
+    /// (returning the exact same [`TypeId`] pointers) while isolating names
+    /// interned afterwards. The parent must outlive the child and must not be
+    /// interned into after forking, so a shared handle is required rather than
+    /// an owned value.
+    pub fn fork(parent: &Shared<Self>) -> Self {
+        Self {
+            parent: Some(Shared::clone(parent)),
+            base_len: predef::ALL_TYPES.len() + parent.local_len(),
+            names: elsa::sync::FrozenVec::new(),
+            index: std::sync::RwLock::new(hashbrown::HashMap::new()),
+        }
+    }
+
+    fn local_len(&self) -> usize {
+        self.parent.as_ref().map_or(0, |parent| parent.local_len()) + self.names.len()
     }
 }
 
@@ -299,6 +409,8 @@ impl TypeInterner {
 impl Default for TypeInterner {
     fn default() -> Self {
         Self {
+            parent: None,
+            base_len: predef::ALL_TYPES.len(),
             names: elsa::sync::FrozenVec::new(),
             index: std::sync::RwLock::new(hashbrown::HashMap::new()),
         }
@@ -435,5 +547,67 @@ mod tests {
             assert_eq!(interner.get_index_of(name), Some(TypeIndex(index)));
             assert_eq!(interner.get_index(TypeIndex(index)), Some(*id));
         }
+    }
+
+    #[test]
+    fn forked_interners_share_base_names_and_isolate_locals() {
+        let base = Shared::new(TypeInterner::default());
+        let shared = base.intern("SharedName");
+
+        let child_a = TypeInterner::fork(&base);
+        let child_b = TypeInterner::fork(&base);
+
+        // Predefined and base names keep their identity across forks.
+        assert_eq!(child_a.intern("SharedName"), shared);
+        assert_eq!(child_b.get("SharedName"), Some(shared));
+        assert_eq!(child_a.intern("String"), predef::STRING);
+        assert_eq!(
+            child_a.get_index_of("SharedName"),
+            base.get_index_of("SharedName")
+        );
+        assert_eq!(child_a.get_index_of("String"), base.get_index_of("String"));
+
+        // Names interned in a child do not leak into its parent or siblings.
+        let a_local = child_a.intern("OnlyInA");
+        assert!(child_b.get("OnlyInA").is_none());
+        assert!(base.get("OnlyInA").is_none());
+        assert_eq!(child_a.get("OnlyInA"), Some(a_local));
+
+        // Index lookups agree across `predef`, parent and child entries.
+        let a_index = child_a.get_index_of("OnlyInA").unwrap();
+        assert_eq!(child_a.get_index(a_index), Some(a_local));
+        assert!(a_index.0 >= predef::ALL_TYPES.len());
+
+        let b_local = child_b.intern("OnlyInB");
+        assert_ne!(a_local, b_local);
+        assert!(child_a.get("OnlyInB").is_none());
+        assert_eq!(
+            child_b.get_index(child_b.get_index_of("OnlyInB").unwrap()),
+            Some(b_local)
+        );
+    }
+
+    #[test]
+    fn nested_forks_resolve_parent_entries() {
+        let base = Shared::new(TypeInterner::default());
+        let child = Shared::new(TypeInterner::fork(&base));
+        let mid = child.intern("MidLevel");
+        let grandchild = TypeInterner::fork(&child);
+
+        assert_eq!(grandchild.get("MidLevel"), Some(mid));
+        assert_eq!(grandchild.intern("MidLevel"), mid);
+        assert_eq!(grandchild.get("String"), Some(predef::STRING));
+
+        let mid_index = grandchild.get_index_of("MidLevel").unwrap();
+        assert_eq!(child.get_index_of("MidLevel"), Some(mid_index));
+        assert_eq!(grandchild.get_index(mid_index), Some(mid));
+
+        let leaf = grandchild.intern("LeafOnly");
+        assert_eq!(grandchild.get("LeafOnly"), Some(leaf));
+        assert!(child.get("LeafOnly").is_none());
+        assert_eq!(
+            grandchild.get_index_of("LeafOnly").map(|i| i.0),
+            Some(mid_index.0 + 1)
+        );
     }
 }
