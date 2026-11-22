@@ -214,19 +214,21 @@ fn collect_unsafe_array_capabilities(
     files: &[FileId],
     errors: &mut Vec<Error>,
 ) {
-    errors.extend(diagnostics.iter().filter_map(|diagnostic| {
-        match diagnostic {
-            Diagnostic::LoweringError(LowerError::UnsafeArrayEvaluation(span))
-                if files.contains(&span.file) =>
-            {
-                Some(Error::Capability {
-                    kind: CapabilityError::UnsafeArrayEvaluation,
-                    span: *span,
-                })
-            }
-            _ => None,
-        }
-    }));
+    errors.extend(
+        diagnostics
+            .iter()
+            .filter_map(|diagnostic| match diagnostic {
+                Diagnostic::LoweringError(LowerError::UnsafeArrayEvaluation(span))
+                    if files.contains(&span.file) =>
+                {
+                    Some(Error::Capability {
+                        kind: CapabilityError::UnsafeArrayEvaluation,
+                        span: *span,
+                    })
+                }
+                _ => None,
+            }),
+    );
 }
 
 /// Inputs shared by [`process_sources`] and [`process_sources_for_query`] after
@@ -336,9 +338,9 @@ pub fn process_sources_for_query<'ctx>(
     modules: impl IntoIterator<Item = ParsedModule<'ctx>>,
     dependencies: impl IntoIterator<Item = SourceModule<'ctx>>,
     symbols: Symbols<'ctx>,
-    target: QueryTarget,
     reporter: &mut CompileErrorReporter<'ctx>,
     interner: &'ctx TypeInterner,
+    target: QueryTarget,
 ) -> (LoweredCompilationUnit<'ctx>, Symbols<'ctx>, Vec<Error>) {
     let mut errors = Vec::new();
     let PreparedSources {

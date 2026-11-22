@@ -360,12 +360,12 @@ fn query_lowering_matches_full_for_patches_and_redmod_loops() {
             [parsed.clone()],
             [dependency.clone()],
             symbols.clone(),
+            &mut reporter,
+            &interner,
             QueryTarget {
                 file: span.file,
                 pos: span.start,
             },
-            &mut reporter,
-            &interner,
         );
         assert!(errors.is_empty(), "{errors:?}");
         assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
@@ -457,12 +457,12 @@ fn query_mode_promotes_unsafe_array_evaluation_like_full_mode() {
         [parsed.clone()],
         [dependency.clone()],
         Symbols::with_default_types(),
+        &mut reporter,
+        &interner,
         QueryTarget {
             file: span.file,
             pos: span.start,
         },
-        &mut reporter,
-        &interner,
     );
     assert_eq!(
         unsafe_array_spans(&query_errors),
@@ -540,12 +540,12 @@ fn query_lowering_matches_full_across_multiple_files() {
             [first.clone(), second.clone()],
             [dependency.clone()],
             symbols.clone(),
+            &mut reporter,
+            &interner,
             QueryTarget {
                 file: span.file,
                 pos: span.start,
             },
-            &mut reporter,
-            &interner,
         );
         assert!(errors.is_empty(), "{errors:?}");
         assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
