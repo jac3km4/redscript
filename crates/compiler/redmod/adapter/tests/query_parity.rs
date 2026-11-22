@@ -4,14 +4,14 @@ use redscript_community_ast::{SourceMap, Span};
 use redscript_compiler_api::{SourceMapExt, TypeFlagRegistry};
 use redscript_compiler_backend::CompilationInputs;
 use redscript_compiler_frontend::{
-    CompileErrorReporter, FieldId, LoweredFunction, QueryTarget, RefType, TypeInterner, expr_type,
-    ir,
+    CompileErrorReporter, FieldId, LoweredFunction, QueryTarget, RefType, Symbols, TypeInterner,
+    expr_type, ir,
 };
 use redscript_io::{
     Class, ClassFlags, Function, FunctionFlags, ScriptBundle, Type, TypeKind, Visibility,
 };
 use redscript_redmod_adapter::{
-    parse_file_with_metadata, process_sources, process_sources_for_query,
+    CapabilityError, Error, parse_file_with_metadata, process_sources, process_sources_for_query,
 };
 
 /// A native class `Native` with `Base() -> Int32` and `Run() -> Void` slots for
@@ -358,6 +358,186 @@ fn query_lowering_matches_full_for_patches_and_redmod_loops() {
         let mut reporter = CompileErrorReporter::default();
         let (query_unit, query_symbols, errors) = process_sources_for_query(
             [parsed.clone()],
+            [dependency.clone()],
+            symbols.clone(),
+            QueryTarget {
+                file: span.file,
+                pos: span.start,
+            },
+            &mut reporter,
+            &interner,
+        );
+        assert!(errors.is_empty(), "{errors:?}");
+        assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+
+        let query_functions = query_unit.all_functions().collect::<Vec<_>>();
+        assert_eq!(query_functions.len(), 1, "expected one function at {span:?}");
+        let query_function = query_functions[0];
+        assert_eq!(query_function.span, span);
+
+        let full_function = full_unit
+            .all_functions()
+            .find(|function| function.span == span)
+            .expect("full unit should contain the queried function");
+        assert_eq!(
+            shape(query_function),
+            shape(full_function),
+            "shape mismatch at {span:?}"
+        );
+
+        match (last_return(query_function), last_return(full_function)) {
+            (Some(query_expr), Some(full_expr)) => assert_eq!(
+                format!("{:?}", expr_type(query_expr, query_function, &query_symbols)),
+                format!("{:?}", expr_type(full_expr, full_function, &full_symbols)),
+                "return type mismatch at {span:?}"
+            ),
+            (None, None) => {}
+            _ => panic!("return shape mismatch at {span:?}"),
+        }
+
+        assert!(query_unit.scopes.contains_key(&span.file));
+    }
+}
+
+/// Collects the spans of promoted `UnsafeArrayEvaluation` capabilities.
+fn unsafe_array_spans(errors: &[Error]) -> Vec<Span> {
+    errors
+        .iter()
+        .filter_map(|error| match error {
+            Error::Capability {
+                kind: CapabilityError::UnsafeArrayEvaluation,
+                span,
+            } => Some(*span),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn query_mode_promotes_unsafe_array_evaluation_like_full_mode() {
+    let sources = SourceMap::new();
+    sources.populate_boot_lib();
+    let dependency = "native func Earlier() -> Int32; \
+        native func Effect() -> Int32; \
+        native func Use(value: Int32, values: array<Int32>);";
+    let dep_id = sources.push_back("helpers.reds", dependency);
+    let (dependency, errors) = redscript_community_parser::parse_module(dependency, dep_id);
+    assert!(errors.is_empty(), "{errors:?}");
+    let dependency = dependency.unwrap();
+
+    // `Earlier()` is evaluated before the array-literal argument, reordering
+    // observable calls, so the resolved-IR pass rejects the prefix.
+    let source = "function Bad() { Use(Earlier(), [Effect()]); }";
+    let file = sources.push_back("prefix.script", source);
+    let (parsed, errors) = parse_file_with_metadata(source, file);
+    assert!(errors.is_empty(), "{errors:?}");
+    let parsed = parsed.unwrap();
+
+    let interner = TypeInterner::default();
+
+    let mut reporter = CompileErrorReporter::default();
+    let (full_unit, _, full_errors) = process_sources(
+        [parsed.clone()],
+        [dependency.clone()],
+        Symbols::with_default_types(),
+        &mut reporter,
+        &interner,
+    );
+    let full_spans = unsafe_array_spans(&full_errors);
+    assert_eq!(full_spans.len(), 1, "{full_errors:?}");
+
+    let span = full_unit
+        .all_functions()
+        .next()
+        .expect("fixture should lower a function")
+        .span;
+
+    let mut reporter = CompileErrorReporter::default();
+    let (_, _, query_errors) = process_sources_for_query(
+        [parsed.clone()],
+        [dependency.clone()],
+        Symbols::with_default_types(),
+        QueryTarget {
+            file: span.file,
+            pos: span.start,
+        },
+        &mut reporter,
+        &interner,
+    );
+    assert_eq!(
+        unsafe_array_spans(&query_errors),
+        full_spans,
+        "{query_errors:?}"
+    );
+}
+
+#[test]
+fn query_lowering_matches_full_across_multiple_files() {
+    let bundle = native_bundle();
+    let sources = SourceMap::new();
+    sources.populate_boot_lib();
+    let dependency = "native func Less(a: Int32, b: Int32) -> Bool; \
+        native func Inc(value: Int32) -> Int32; \
+        native func Once(value: Bool) -> Bool;";
+    let dep_id = sources.push_back("helpers.reds", dependency);
+    let (dependency, errors) = redscript_community_parser::parse_module(dependency, dep_id);
+    assert!(errors.is_empty(), "{errors:?}");
+    let dependency = dependency.unwrap();
+
+    let first = r#"
+        @replaceMethod(Native)
+        function Base() -> Int32 {
+          var total: Int32 = 0;
+          for (var i: Int32 = 0; Less(i, 3); i = Inc(i)) { total = Inc(total); }
+          return total;
+        }
+    "#;
+    let first_id = sources.push_back("first.script", first);
+    let (first, errors) = parse_file_with_metadata(first, first_id);
+    assert!(errors.is_empty(), "{errors:?}");
+    let first = first.unwrap();
+
+    let second = r#"
+        @wrapMethod(Native)
+        function Run() {
+          Run();
+          do { } while (Once(false));
+        }
+        @addMethod(Native)
+        function Extra(value: Int32) -> Int32 {
+          do { value = Inc(value); } while (Once(false));
+          return value;
+        }
+    "#;
+    let second_id = sources.push_back("second.script", second);
+    let (second, errors) = parse_file_with_metadata(second, second_id);
+    assert!(errors.is_empty(), "{errors:?}");
+    let second = second.unwrap();
+
+    let interner = TypeInterner::default();
+    let flags = TypeFlagRegistry::default();
+    let (symbols, _) = CompilationInputs::load(&bundle, &interner, &flags)
+        .unwrap()
+        .into_inner();
+
+    let mut reporter = CompileErrorReporter::default();
+    let (full_unit, full_symbols, errors) = process_sources(
+        [first.clone(), second.clone()],
+        [dependency.clone()],
+        symbols.clone(),
+        &mut reporter,
+        &interner,
+    );
+    assert!(errors.is_empty(), "{errors:?}");
+    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+
+    let spans = full_unit.all_functions().map(|f| f.span).collect::<Vec<_>>();
+    assert!(!spans.is_empty(), "fixture should lower some functions");
+
+    for span in spans {
+        let mut reporter = CompileErrorReporter::default();
+        let (query_unit, query_symbols, errors) = process_sources_for_query(
+            [first.clone(), second.clone()],
             [dependency.clone()],
             symbols.clone(),
             QueryTarget {

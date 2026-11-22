@@ -922,6 +922,46 @@ fn query_lowering_isolates_the_target_file() {
 }
 
 #[test]
+fn querying_outside_any_function_lowers_nothing() {
+    let sources = SourceMap::new();
+    let file = sources.push_back(
+        "query.reds",
+        r#"
+        class Holder {
+          public let value: Int32;
+          public func Get() -> Int32 { return this.value; }
+        }
+        func Free() -> Int32 { return 1; }
+        "#,
+    );
+    sources.populate_boot_lib();
+    let interner = TypeInterner::default();
+
+    let mut reporter = CompileErrorReporter::default();
+    let modules = parse_files(&sources, &mut reporter);
+    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+
+    // The class header is outside every function body, so nothing is lowered.
+    let header_pos = sources.get(file).unwrap().source().find("Holder").unwrap() as u32;
+    let mut reporter = CompileErrorReporter::default();
+    let evaluator = Evaluator::from_modules(&modules);
+    let (unit, _) = process_sources_for_query(
+        modules.clone(),
+        Symbols::with_default_types(),
+        evaluator,
+        &mut reporter,
+        &interner,
+        QueryTarget {
+            file,
+            pos: header_pos,
+        },
+    );
+    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+    assert_eq!(unit.all_functions().count(), 0);
+    assert!(unit.scopes.contains_key(&file));
+}
+
+#[test]
 fn invalid_queries_return_errors() {
     let sources = SourceMap::new();
     let file = sources.push_back("query.reds", " ");
