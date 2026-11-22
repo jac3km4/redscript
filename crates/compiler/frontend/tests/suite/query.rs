@@ -803,7 +803,6 @@ fn assert_query_parity(sources: &SourceMap) {
             evaluator,
             &mut reporter,
             &interner,
-            &[],
             QueryTarget {
                 file: span.file,
                 pos: span.start,
@@ -908,7 +907,6 @@ fn query_lowering_isolates_the_target_file() {
         evaluator,
         &mut reporter,
         &interner,
-        &[],
         QueryTarget {
             file: file_a,
             pos: alpha_pos,

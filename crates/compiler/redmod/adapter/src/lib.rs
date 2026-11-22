@@ -328,7 +328,7 @@ pub fn process_sources_for_query<'ctx>(
     let evaluator = Evaluator::from_modules(&sources);
     let policy = Shared::new(policy::POLICY);
     let policies: Vec<_> = files.iter().map(|&file| (file, policy.clone())).collect();
-    let (mut unit, symbols) = redscript_compiler_frontend::process_sources_for_query(
+    let (mut unit, symbols) = redscript_compiler_frontend::process_sources_for_query_with_policy(
         sources, symbols, evaluator, reporter, interner, &policies, target,
     );
     control_flow::apply(&mut unit, &control_flow, &mut errors);

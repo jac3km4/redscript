@@ -132,22 +132,48 @@ pub fn process_sources_with_policy<'ctx>(
     interner: &'ctx TypeInterner,
     policies: &[(ast::FileId, Shared<SemanticPolicy>)],
 ) -> (LoweredCompilationUnit<'ctx>, Symbols<'ctx>) {
-    let mut scope = Scope::new(&symbols);
-    scope.set_policies(policies);
-    let mut resolution = NameResolution::new(modules, evaluator, symbols, reporter, interner);
-
-    resolution.populate_globals(&mut scope);
-    resolution.progress(&scope).finish(&scope, reporter)
+    analyze(
+        modules,
+        symbols,
+        evaluator,
+        reporter,
+        interner,
+        policies,
+        Finish::Full,
+    )
 }
 
 /// Analyze source AST modules for a single IDE query, lowering only the function
 /// that encloses `target`.
 ///
-/// This performs the same name resolution as [`process_sources_with_policy`]
-/// (every type, field, inheritance link and signature is available in the
-/// returned [`Symbols`]) but skips lowering unrelated bodies and whole-program
-/// validation. Policies follow [`process_sources_with_policy`].
+/// This performs the same name resolution as [`process_sources`] (every type,
+/// field, inheritance link and signature is available in the returned
+/// [`Symbols`]) but skips lowering unrelated bodies and whole-program
+/// validation. Equivalent to calling
+/// [`process_sources_for_query_with_policy`] with an empty policy slice.
 pub fn process_sources_for_query<'ctx>(
+    modules: impl IntoIterator<Item = ast::SourceModule<'ctx>>,
+    symbols: Symbols<'ctx>,
+    evaluator: Evaluator<'ctx>,
+    reporter: &mut CompileErrorReporter<'ctx>,
+    interner: &'ctx TypeInterner,
+    target: QueryTarget,
+) -> (LoweredCompilationUnit<'ctx>, Symbols<'ctx>) {
+    process_sources_for_query_with_policy(
+        modules,
+        symbols,
+        evaluator,
+        reporter,
+        interner,
+        &[],
+        target,
+    )
+}
+
+/// Query-mode counterpart of [`process_sources_with_policy`]. Policies follow the
+/// same rules, and the returned [`Symbols`] is complete even though only the
+/// function enclosing `target` is lowered.
+pub fn process_sources_for_query_with_policy<'ctx>(
     modules: impl IntoIterator<Item = ast::SourceModule<'ctx>>,
     symbols: Symbols<'ctx>,
     evaluator: Evaluator<'ctx>,
@@ -156,12 +182,45 @@ pub fn process_sources_for_query<'ctx>(
     policies: &[(ast::FileId, Shared<SemanticPolicy>)],
     target: QueryTarget,
 ) -> (LoweredCompilationUnit<'ctx>, Symbols<'ctx>) {
+    analyze(
+        modules,
+        symbols,
+        evaluator,
+        reporter,
+        interner,
+        policies,
+        Finish::Query(target),
+    )
+}
+
+/// How the shared name-resolution pipeline should finish.
+enum Finish {
+    /// Lower every body and run whole-program validation.
+    Full,
+    /// Lower only the function enclosing the target, skipping whole-program
+    /// validation.
+    Query(QueryTarget),
+}
+
+/// Runs name resolution and inference, shared by every `process_sources*` entry
+/// point so the setup stays identical across full and query mode.
+fn analyze<'ctx>(
+    modules: impl IntoIterator<Item = ast::SourceModule<'ctx>>,
+    symbols: Symbols<'ctx>,
+    evaluator: Evaluator<'ctx>,
+    reporter: &mut CompileErrorReporter<'ctx>,
+    interner: &'ctx TypeInterner,
+    policies: &[(ast::FileId, Shared<SemanticPolicy>)],
+    finish: Finish,
+) -> (LoweredCompilationUnit<'ctx>, Symbols<'ctx>) {
     let mut scope = Scope::new(&symbols);
     scope.set_policies(policies);
     let mut resolution = NameResolution::new(modules, evaluator, symbols, reporter, interner);
 
     resolution.populate_globals(&mut scope);
-    resolution
-        .progress(&scope)
-        .finish_for_query(&scope, target, reporter)
+    let inference = resolution.progress(&scope);
+    match finish {
+        Finish::Full => inference.finish(&scope, reporter),
+        Finish::Query(target) => inference.finish_for_query(&scope, target, reporter),
+    }
 }
