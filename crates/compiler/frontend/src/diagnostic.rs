@@ -5,12 +5,11 @@ use redscript_community_ast::Span;
 use redscript_community_parser as parser;
 use thiserror::Error;
 
-use crate::lower::{LowerResult, Poly, TypeError};
+use crate::lower::{LowerResult, PolyType, TypeError};
 use crate::stages::FunctionAnnotation;
 use crate::symbols::Visibility;
-use crate::types::Immutable;
 use crate::utils::fmt::{DisplayFn, lowercase, sep_by, surrounded_by};
-use crate::{BoxedError, CoalesceError, LowerError, Param, Type, TypeId, TypeKind, Variance, cte};
+use crate::{BoxedError, CoalesceError, LowerError, Param, Type, TypeId, Variance, cte};
 
 pub mod pass;
 
@@ -59,7 +58,7 @@ pub enum Diagnostic<'ctx> {
     #[error("the annotations on this function are incompatible with each other")]
     IncompatibleAnnotations(Span),
     #[error("this class is missing required method implementations:\n{}", sep_by(&*.0, "\n"))]
-    MissingMethodImpls(Box<[FunctionSignature<'ctx, Poly>]>, Span),
+    MissingMethodImpls(Box<[FunctionSignature<'ctx, PolyType<'ctx>>]>, Span),
     #[error("this class contains a duplicated implementation of the `{0}` method")]
     DuplicateMethod(&'ctx str, Span, Option<Span>),
     #[error("this method overrides the final method `{0}`")]
@@ -114,12 +113,7 @@ pub enum Diagnostic<'ctx> {
         params = sep_by(&.1.params, ", "),
         return_type = .1.return_type
     )]
-    ReplaceMethodConflict(
-        TypeId<'ctx>,
-        Box<FunctionSignature<'ctx, Immutable>>,
-        Span,
-        Span,
-    ),
+    ReplaceMethodConflict(TypeId<'ctx>, Box<FunctionSignature<'ctx>>, Span, Span),
     #[error("structs cannot have variance annotations")]
     InvalidStructVariance(Span),
     #[error("method overrides cannot be less visible than the method they override ({0})")]
@@ -480,17 +474,17 @@ impl<'ctx> ConstWriteAction<'ctx> {
 }
 
 #[derive(Debug)]
-pub struct FunctionSignature<'ctx, K: TypeKind> {
+pub struct FunctionSignature<'ctx, T = Type<'ctx>> {
     name: &'ctx str,
-    params: Box<[Param<'ctx, K>]>,
-    return_type: K::Type<'ctx>,
+    params: Box<[Param<'ctx, T>]>,
+    return_type: T,
 }
 
-impl<'ctx, K: TypeKind> FunctionSignature<'ctx, K> {
+impl<'ctx, T> FunctionSignature<'ctx, T> {
     pub fn new(
         name: &'ctx str,
-        params: impl Into<Box<[Param<'ctx, K>]>>,
-        return_type: impl Into<K::Type<'ctx>>,
+        params: impl Into<Box<[Param<'ctx, T>]>>,
+        return_type: impl Into<T>,
     ) -> Self {
         Self {
             name,
@@ -500,7 +494,7 @@ impl<'ctx, K: TypeKind> FunctionSignature<'ctx, K> {
     }
 }
 
-impl<K: TypeKind> fmt::Display for FunctionSignature<'_, K> {
+impl<T: fmt::Display> fmt::Display for FunctionSignature<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,

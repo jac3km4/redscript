@@ -36,8 +36,7 @@ pub use symbols::{
 };
 pub use sync::{BoxedError, Shared};
 pub use types::{
-    CtxVar, Immutable, Mono, MonoType, RefType, Type, TypeApp, TypeId, TypeIndex, TypeInterner,
-    TypeKind, Variance, predef,
+    CtxVar, MonoType, RefType, Type, TypeApp, TypeId, TypeIndex, TypeInterner, Variance, predef,
 };
 
 type IndexMap<K, V, S = hashbrown::DefaultHashBuilder> = indexmap::IndexMap<K, V, S>;

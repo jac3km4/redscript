@@ -1,11 +1,10 @@
 use std::fmt;
 
-use derive_where::derive_where;
 use redscript_community_ast::{FunctionProperties, Span};
 
 use super::{FreeFunctionFlags, MethodFlags, MethodId, ParamFlags};
 use crate::types::{CtxVar, Type};
-use crate::{Immutable, Shared, TypeKind, ir, predef};
+use crate::{Shared, ir, predef};
 
 #[derive(Debug, Clone)]
 pub struct FunctionType<'ctx> {
@@ -355,16 +354,16 @@ impl<'ctx, A: FunctionKind<'ctx>> FunctionKind<'ctx> for &A {
     }
 }
 
-#[derive_where(Debug, Clone)]
-pub struct Param<'ctx, K: TypeKind = Immutable> {
+#[derive(Debug, Clone)]
+pub struct Param<'ctx, T = Type<'ctx>> {
     name: &'ctx str,
     flags: ParamFlags,
-    typ: K::Type<'ctx>,
+    typ: T,
     span: Option<Span>,
 }
 
-impl<'ctx, K: TypeKind> Param<'ctx, K> {
-    pub fn new(name: &'ctx str, flags: ParamFlags, typ: K::Type<'ctx>, span: Option<Span>) -> Self {
+impl<'ctx, T> Param<'ctx, T> {
+    pub fn new(name: &'ctx str, flags: ParamFlags, typ: T, span: Option<Span>) -> Self {
         Self {
             name,
             flags,
@@ -384,7 +383,7 @@ impl<'ctx, K: TypeKind> Param<'ctx, K> {
     }
 
     #[inline]
-    pub fn type_(&self) -> &K::Type<'ctx> {
+    pub fn type_(&self) -> &T {
         &self.typ
     }
 
@@ -394,7 +393,7 @@ impl<'ctx, K: TypeKind> Param<'ctx, K> {
     }
 }
 
-impl<K: TypeKind> fmt::Display for Param<'_, K> {
+impl<T: fmt::Display> fmt::Display for Param<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.flags.is_optional() {
             write!(f, "opt ")?;

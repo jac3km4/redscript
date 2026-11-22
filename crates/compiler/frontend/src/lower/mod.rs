@@ -10,7 +10,7 @@ pub use error::{CoalesceError, Error, LowerResult, TypeError};
 use redscript_community_ast as ast;
 use redscript_community_ast::{Span, Spanned};
 use types::Coercion;
-pub use types::{InferredTypeApp, Poly, PolyType};
+pub use types::{InferredType, InferredTypeApp, PolyType};
 
 use crate::diagnostic::{ErrorWithSpan, FunctionSignature};
 use crate::lower::error::InaccessibleMember;

@@ -68,7 +68,7 @@ impl<'sym, 'ctx> Simplifier<'sym, 'ctx> {
                 let typ = loop {
                     let (lower, upper) = (var.lower(), var.upper());
                     let bound = match (&lower, &upper) {
-                        (bound, None) | (Type::Nothing, Some(bound)) => bound,
+                        (bound, None) | (InferredType::Nothing, Some(bound)) => bound,
                         (_, Some(upper))
                             if variance == Variance::Contravariant
                                 && !self.covariant.contains(&key) =>
@@ -135,9 +135,9 @@ impl<'sym, 'ctx> Simplifier<'sym, 'ctx> {
         var: Variance,
     ) -> Result<Type<'ctx>, CoalesceError<'ctx>> {
         let res = match typ {
-            Type::Data(typ) => Type::Data(self.simplify_app(typ, var)?),
-            Type::Ctx(var) => Type::Ctx(self.simplify_ctx_var(var)?.into()),
-            Type::Nothing => Type::Nothing,
+            InferredType::Data(typ) => Type::Data(self.simplify_app(typ, var)?),
+            InferredType::Ctx(var) => Type::Ctx(self.simplify_ctx_var(var)?.into()),
+            InferredType::Nothing => Type::Nothing,
         };
         Ok(res)
     }
@@ -167,7 +167,7 @@ impl<'sym, 'ctx> Simplifier<'sym, 'ctx> {
 
     #[inline]
     fn analyze(&mut self, typ: &InferredType<'ctx>, variance: Variance) {
-        if let Type::Data(typ) = typ {
+        if let InferredType::Data(typ) = typ {
             self.analyze_app(typ, variance);
         }
     }

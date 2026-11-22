@@ -366,7 +366,7 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
     fn call_type_env(&self, call: &ir::Call<'ctx>) -> HashMap<&'ctx str, Type<'ctx>> {
         let mut env = HashMap::new();
         let bind_args = |env: &mut HashMap<&'ctx str, Type<'ctx>>,
-                         params: &[Shared<crate::CtxVar<'ctx, crate::Immutable>>],
+                         params: &[Shared<crate::CtxVar<'ctx>>],
                          args: &[ir::Type<'ctx>]| {
             for (var, arg) in params.iter().zip(args) {
                 if let Ok(typ) = arg.coalesced(self.symbols) {

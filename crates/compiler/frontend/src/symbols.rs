@@ -1300,7 +1300,7 @@ pub struct FieldFlags {
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct QualifiedName<'ctx>(SmallVec<[&'ctx str; 1]>);
+pub struct QualifiedName<'ctx>(Box<[&'ctx str]>);
 
 impl<'ctx> QualifiedName<'ctx> {
     pub fn from_base_and_name<I>(base: &I, name: &'ctx str) -> Self
@@ -1324,7 +1324,7 @@ impl<'ctx> QualifiedName<'ctx> {
 
 impl<'ctx> From<&'ctx str> for QualifiedName<'ctx> {
     fn from(value: &'ctx str) -> Self {
-        QualifiedName(SmallVec::from_slice(&[value]))
+        QualifiedName(Box::from([value]))
     }
 }
 
@@ -1444,19 +1444,19 @@ mod tests {
     use super::*;
     use crate::TypeInterner;
 
-    /// `Symbols<'ctx>` is invariant in `'ctx`: `Type`/`TypeApp` hold their
-    /// arguments behind the `<K as TypeKind>::Type<'ctx>` associated type, and
-    /// associated-type projections are invariant. Base tables are therefore
-    /// reused by cloning at the *same* context lifetime (the base interner and
-    /// its borrow outlive every snapshot) rather than by shortening `'ctx`.
-    fn clone_at_same_lifetime<'ctx>(symbols: &Symbols<'ctx>) -> Symbols<'ctx> {
-        symbols.clone()
+    /// `Symbols<'ctx>` is covariant in `'ctx`: every borrowed field is stored
+    /// directly rather than behind an associated-type projection, so a base
+    /// table can be shortened to a snapshot lifetime without `unsafe`. This
+    /// function is the compile-time proof: it only type-checks if
+    /// `Symbols<'long>` coerces to `Symbols<'short>`.
+    fn shorten_lifetime<'long: 'short, 'short>(symbols: Symbols<'long>) -> Symbols<'short> {
+        symbols
     }
 
     #[test]
-    fn symbols_clones_at_its_own_context_lifetime() {
+    fn symbols_are_covariant_in_their_context_lifetime() {
         let base = Symbols::with_default_types();
-        let _cloned: Symbols<'_> = clone_at_same_lifetime(&base);
+        let _shortened: Symbols<'_> = shorten_lifetime(base);
     }
 
     #[test]
@@ -1478,7 +1478,10 @@ mod tests {
             TypeSchema::Aggregate(agg) => agg.clone(),
             _ => panic!("expected an aggregate"),
         };
-        assert!(Shared::ptr_eq(&original, &shared), "clone must share storage");
+        assert!(
+            Shared::ptr_eq(&original, &shared),
+            "clone must share storage"
+        );
 
         child[id]
             .schema_mut()
@@ -1486,7 +1489,14 @@ mod tests {
             .unwrap()
             .set_base(Some(TypeApp::nullary(predef::ISERIALIZABLE)));
 
-        assert!(symbols[id].schema().as_aggregate().unwrap().base().is_none());
+        assert!(
+            symbols[id]
+                .schema()
+                .as_aggregate()
+                .unwrap()
+                .base()
+                .is_none()
+        );
         assert!(child[id].schema().as_aggregate().unwrap().base().is_some());
         let after = match child.get_type(id).unwrap().schema() {
             TypeSchema::Aggregate(agg) => agg.clone(),

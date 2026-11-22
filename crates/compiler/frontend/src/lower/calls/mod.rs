@@ -1,5 +1,7 @@
 use super::*;
 
+use crate::lower::types::InferredType as Type;
+
 mod resolve;
 
 #[bon]
@@ -919,7 +921,12 @@ fn same_static_parameter_signature<'ctx>(
                 .type_()
                 .type_params()
                 .iter()
-                .map(|var| (var.name(), PolyType::from_type(&Type::Ctx(var.clone()))))
+                .map(|var| {
+                    (
+                        var.name(),
+                        PolyType::from_type(&crate::types::Type::Ctx(var.clone())),
+                    )
+                })
                 .collect(),
         );
         entry
@@ -950,7 +957,7 @@ fn reference_signature_score<'ctx>(
                 None => typ,
                 _ => return None,
             };
-            let Type::Data(typ) = typ else {
+            let crate::types::Type::Data(typ) = typ else {
                 return None;
             };
             (typ.args().is_empty()
@@ -1013,7 +1020,8 @@ fn reference_signature_dominates<'ctx>(
             (None, None) => (left.type_(), right.type_()),
             _ => return false,
         };
-        let (Type::Data(left), Type::Data(right)) = (left, right) else {
+        let (crate::types::Type::Data(left), crate::types::Type::Data(right)) = (left, right)
+        else {
             return false;
         };
         if !left.args().is_empty()

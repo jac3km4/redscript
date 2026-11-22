@@ -7,9 +7,9 @@ use redscript_compiler_frontend::ast::SourceMap;
 use redscript_compiler_frontend::utils::fmt::{DisplayFn, sep_by};
 use redscript_compiler_frontend::{
     Aggregate, AggregateFlags, Enum, Field, FieldFlags, FieldMap, FreeFunction, FreeFunctionFlags,
-    FreeFunctionIndex, FunctionIndex, FunctionMap, FunctionType, Immutable, Method, MethodFlags,
-    MethodId, Mono, MonoType, Param, ParamFlags, RefType, Shared, Symbols, Type, TypeApp, TypeDef,
-    TypeId, TypeInterner, TypeKind, TypeSchema, Visibility, predef,
+    FreeFunctionIndex, FunctionIndex, FunctionMap, FunctionType, Method, MethodFlags, MethodId,
+    MonoType, Param, ParamFlags, RefType, Shared, Symbols, Type, TypeApp, TypeDef, TypeId,
+    TypeInterner, TypeSchema, Visibility, predef,
 };
 use redscript_io::{
     CNameIndex, ClassIndex as PoolClassIndex, EnumIndex as PoolEnumIndex, Function as PoolFunction,
@@ -69,7 +69,7 @@ impl<'ctx> CompilationInputs<'ctx> {
                         inputs.symbols.add_type_if_none(type_id, def);
                     }
                     let LoadedType { typ, unsupported } =
-                        load_type::<Mono>(typ, bundle, interner, type_flags)?;
+                        load_type::<MonoType<'_>>(typ, bundle, interner, type_flags)?;
 
                     if LOAD_MAPPING && !unsupported {
                         inputs.mapping.types.insert(typ, index);
@@ -110,7 +110,7 @@ impl<'ctx> CompilationInputs<'ctx> {
                             Error::MissingPoolItem("field type", field.type_().into())
                         })?;
                         let LoadedType { typ, .. } =
-                            load_type::<Immutable>(typ, bundle, interner, type_flags)?;
+                            load_type::<Type<'_>>(typ, bundle, interner, type_flags)?;
                         let flags = FieldFlags::new()
                             .with_is_native(field.flags().is_native())
                             .with_is_editable(field.flags().is_editable())
@@ -215,7 +215,7 @@ impl<'ctx> CompilationInputs<'ctx> {
                         inputs
                             .mapping
                             .classes
-                            .insert(TypeApp::nullary(cls_id), mappings);
+                            .insert(MonoType::nullary(cls_id), mappings);
                     }
 
                     virtual_map.insert(cls_id, virtuals);
@@ -389,12 +389,15 @@ impl<'ctx, A> Signature<'ctx, A> {
     }
 }
 
-fn load_type<'ctx, K: TypeKind>(
+fn load_type<'ctx, T>(
     typ: &PoolType,
     bundle: &ScriptBundle<'ctx>,
     interner: &'ctx TypeInterner,
     flags: &TypeFlagRegistry,
-) -> Result<LoadedType<'ctx, K>, Error> {
+) -> Result<LoadedType<T>, Error>
+where
+    T: From<(TypeId<'ctx>, Shared<[T]>)>,
+{
     let (id, arg) = match typ.kind() {
         PoolTypeKind::Class | PoolTypeKind::Primitive => {
             let name = bundle
@@ -402,14 +405,14 @@ fn load_type<'ctx, K: TypeKind>(
                 .ok_or_else(|| Error::MissingPoolItem("type name", typ.name().into()))?;
             let unsupported = typ.kind() == PoolTypeKind::Class
                 && flags.get(name.as_ref()).is_mixed_or_never_ref();
-            let typ = K::Type::from((interner.intern(name.as_ref()), Shared::new([])));
+            let typ = T::from((interner.intern(name.as_ref()), Shared::new([])));
             return Ok(LoadedType { typ, unsupported });
         }
         PoolTypeKind::Ref(inner) => {
             let arg = bundle
                 .get_item(inner)
                 .ok_or_else(|| Error::MissingPoolItem("referenced type", inner.into()))?;
-            let LoadedType { typ, unsupported } = load_type::<K>(arg, bundle, interner, flags)?;
+            let LoadedType { typ, unsupported } = load_type::<T>(arg, bundle, interner, flags)?;
 
             let name = bundle
                 .get_item(arg.name())
@@ -418,7 +421,7 @@ fn load_type<'ctx, K: TypeKind>(
                 return Ok(LoadedType { typ, unsupported });
             }
             return Ok(LoadedType {
-                typ: K::Type::from((predef::REF, Shared::new([typ]))),
+                typ: T::from((predef::REF, Shared::new([typ]))),
                 unsupported,
             });
         }
@@ -432,9 +435,9 @@ fn load_type<'ctx, K: TypeKind>(
     let arg = bundle
         .get_item(arg)
         .ok_or_else(|| Error::MissingPoolItem("type argument", arg.into()))?;
-    let LoadedType { typ, unsupported } = load_type::<K>(arg, bundle, interner, flags)?;
+    let LoadedType { typ, unsupported } = load_type::<T>(arg, bundle, interner, flags)?;
     Ok(LoadedType {
-        typ: K::Type::from((id, Shared::new([typ]))),
+        typ: T::from((id, Shared::new([typ]))),
         unsupported,
     })
 }
@@ -451,7 +454,7 @@ fn load_function_type<'ctx>(
             let typ = bundle
                 .get_item(typ)
                 .ok_or_else(|| Error::MissingPoolItem("function return type", typ.into()))?;
-            let LoadedType { typ, .. } = load_type::<Immutable>(typ, bundle, interner, flags)?;
+            let LoadedType { typ, .. } = load_type::<Type<'_>>(typ, bundle, interner, flags)?;
             Ok(typ)
         })
         .transpose()?;
@@ -494,7 +497,7 @@ fn load_param<'ctx>(
     let typ = bundle
         .get_item(param.type_())
         .ok_or_else(|| Error::MissingPoolItem("parameter type", param.type_().into()))?;
-    let LoadedType { typ, .. } = load_type::<Immutable>(typ, bundle, interner, flags)?;
+    let LoadedType { typ, .. } = load_type::<Type<'_>>(typ, bundle, interner, flags)?;
     let flags = ParamFlags::new()
         .with_is_short_circuit(param.flags().is_short_circuit())
         .with_is_optional(param.flags().is_optional())
@@ -515,8 +518,8 @@ fn demangled_name(name: &str) -> &str {
     name.split_once(';').map_or(name, |(name, _)| name)
 }
 
-struct LoadedType<'ctx, K: TypeKind> {
-    typ: K::Type<'ctx>,
+struct LoadedType<T> {
+    typ: T,
     unsupported: bool,
 }
 

@@ -3,7 +3,6 @@ use std::fmt::Display;
 use std::hash::Hash;
 use std::{fmt, ops};
 
-use derive_where::derive_where;
 use redscript_community_ast as ast;
 
 use crate::utils::ScopedMap;
@@ -17,41 +16,52 @@ pub use identity::{TypeId, TypeIndex, TypeInterner, predef};
 pub(super) const MAX_FN_ARITY: usize = 8;
 pub(super) const MAX_STATIC_ARRAY_SIZE: usize = u32::MAX as usize;
 
-pub type MonoType<'ctx> = TypeApp<'ctx, Mono>;
+/// A fully monomorphized type application.
+///
+/// This is a nominal wrapper rather than a type alias because its arguments
+/// refer back to the wrapper itself. It remains covariant in `'ctx`.
+#[derive(Clone, PartialEq, Eq)]
+pub struct MonoType<'ctx>(TypeApp<'ctx, MonoType<'ctx>>);
 
-#[derive_where(Debug, Clone)]
-pub enum Type<'ctx, K: TypeKind = Immutable> {
+/// An immutable source type: either bottom (`Nothing`), a data application, or
+/// an inference variable imported from a generic context.
+///
+/// Nested children are stored directly instead of behind a type-level
+/// projection. Every field is covariant in `'ctx`, which makes [`crate::Symbols`]
+/// covariant and lets a base symbol table shorten to a snapshot lifetime.
+#[derive(Debug, Clone)]
+pub enum Type<'ctx> {
     Nothing,
-    Data(TypeApp<'ctx, K>),
-    Ctx(Shared<CtxVar<'ctx, K>>),
+    Data(TypeApp<'ctx>),
+    Ctx(Shared<CtxVar<'ctx>>),
 }
 
-impl<'ctx, K: TypeKind> Type<'ctx, K> {
+impl<'ctx> Type<'ctx> {
     #[inline]
     pub fn nullary(id: TypeId<'ctx>) -> Self {
         Self::Data(TypeApp::nullary(id))
     }
 
     #[inline]
-    pub fn app(id: TypeId<'ctx>, args: impl Into<Shared<[K::Type<'ctx>]>>) -> Self {
+    pub fn app(id: TypeId<'ctx>, args: impl Into<Shared<[Type<'ctx>]>>) -> Self {
         Self::Data(TypeApp::new(id, args))
     }
 
-    pub fn upper_bound(&self) -> Option<&TypeApp<'ctx, K>> {
+    pub fn upper_bound(&self) -> Option<&TypeApp<'ctx>> {
         match self {
             Self::Ctx(v) => v.upper().and_then(Self::upper_bound),
             Self::Data(t) => Some(t),
-            _ => None,
+            Self::Nothing => None,
         }
     }
 
     #[inline]
-    pub fn unwrap_ref(&self) -> Option<&K::Type<'ctx>> {
+    pub fn unwrap_ref(&self) -> Option<&Type<'ctx>> {
         Some(self.strip_ref()?.1)
     }
 
     #[inline]
-    pub fn strip_ref(&self) -> Option<(RefType, &K::Type<'ctx>)> {
+    pub fn strip_ref(&self) -> Option<(RefType, &Type<'ctx>)> {
         self.upper_bound().and_then(TypeApp::strip_ref)
     }
 
@@ -71,11 +81,11 @@ impl<'ctx, K: TypeKind> Type<'ctx, K> {
     }
 
     #[inline]
-    pub fn display_compact(&self) -> impl fmt::Display + use<'_, 'ctx, K> {
+    pub fn display_compact(&self) -> impl fmt::Display + use<'_, 'ctx> {
         self.display(true)
     }
 
-    fn display(&self, compact: bool) -> impl fmt::Display + use<'_, 'ctx, K> {
+    fn display(&self, compact: bool) -> impl fmt::Display + use<'_, 'ctx> {
         DisplayFn::new(move |f: &mut fmt::Formatter<'_>| match self {
             Self::Nothing => write!(f, "Nothing"),
             Self::Data(t) => t.display(compact).fmt(f),
@@ -118,7 +128,7 @@ impl<'ctx> From<(TypeId<'ctx>, Shared<[Type<'ctx>]>)> for Type<'ctx> {
     }
 }
 
-impl<K: TypeKind> PartialEq for Type<'_, K> {
+impl PartialEq for Type<'_> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Nothing, Self::Nothing) => true,
@@ -129,7 +139,7 @@ impl<K: TypeKind> PartialEq for Type<'_, K> {
     }
 }
 
-impl<K: TypeKind> Eq for Type<'_, K> {}
+impl Eq for Type<'_> {}
 
 impl<'ctx> From<(TypeId<'ctx>, Shared<[MonoType<'ctx>]>)> for MonoType<'ctx> {
     #[inline]
@@ -138,45 +148,22 @@ impl<'ctx> From<(TypeId<'ctx>, Shared<[MonoType<'ctx>]>)> for MonoType<'ctx> {
     }
 }
 
-impl<K: TypeKind> fmt::Display for Type<'_, K> {
+impl fmt::Display for Type<'_> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.display(false).fmt(f)
     }
 }
 
-pub trait TypeKind {
-    type Type<'ctx>: fmt::Debug
-        + fmt::Display
-        + Clone
-        + PartialEq
-        + Eq
-        + From<(TypeId<'ctx>, Shared<[Self::Type<'ctx>]>)>;
-}
-
-#[derive(Debug)]
-pub struct Immutable;
-
-impl TypeKind for Immutable {
-    type Type<'ctx> = Type<'ctx>;
-}
-
-#[derive(Debug)]
-pub struct Mono;
-
-impl TypeKind for Mono {
-    type Type<'ctx> = MonoType<'ctx>;
-}
-
-#[derive_where(Debug, Clone, PartialEq, Eq)]
-pub struct TypeApp<'ctx, K: TypeKind = Immutable> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeApp<'ctx, T = Type<'ctx>> {
     id: TypeId<'ctx>,
-    args: Shared<[K::Type<'ctx>]>,
+    args: Shared<[T]>,
 }
 
-impl<'ctx, K: TypeKind> TypeApp<'ctx, K> {
+impl<'ctx, T> TypeApp<'ctx, T> {
     #[inline]
-    pub fn new(id: TypeId<'ctx>, args: impl Into<Shared<[K::Type<'ctx>]>>) -> Self {
+    pub fn new(id: TypeId<'ctx>, args: impl Into<Shared<[T]>>) -> Self {
         Self {
             id,
             args: args.into(),
@@ -189,22 +176,17 @@ impl<'ctx, K: TypeKind> TypeApp<'ctx, K> {
     }
 
     #[inline]
-    pub fn into_type(self) -> Type<'ctx, K> {
-        Type::Data(self)
-    }
-
-    #[inline]
     pub fn id(&self) -> TypeId<'ctx> {
         self.id
     }
 
     #[inline]
-    pub fn args(&self) -> &[K::Type<'ctx>] {
+    pub fn args(&self) -> &[T] {
         &self.args
     }
 
     #[inline]
-    pub fn strip_ref(&self) -> Option<(RefType, &K::Type<'ctx>)> {
+    pub fn strip_ref(&self) -> Option<(RefType, &T)> {
         match (self.ref_type(), &*self.args) {
             (Some(rt), [arg]) => Some((rt, arg)),
             _ => None,
@@ -219,18 +201,19 @@ impl<'ctx, K: TypeKind> TypeApp<'ctx, K> {
             _ => None,
         }
     }
+}
 
-    pub fn type_env<'scope>(
-        &self,
-        symbols: &Symbols<'ctx>,
-    ) -> ScopedMap<'scope, &'ctx str, K::Type<'ctx>> {
+impl<'ctx, T: Clone> TypeApp<'ctx, T> {
+    pub fn type_env<'scope>(&self, symbols: &Symbols<'ctx>) -> ScopedMap<'scope, &'ctx str, T> {
         symbols[self.id()]
             .vars()
             .zip(self.args().iter().cloned())
             .collect()
     }
+}
 
-    pub(super) fn display(&self, compact: bool) -> impl fmt::Display + use<'_, 'ctx, K> {
+impl<'ctx, T: fmt::Display> TypeApp<'ctx, T> {
+    pub(super) fn display(&self, compact: bool) -> impl fmt::Display + use<'_, 'ctx, T> {
         let sep = if compact { "," } else { ", " };
         DisplayFn::new(move |f: &mut fmt::Formatter<'_>| {
             write!(f, "{}", self.id)?;
@@ -243,6 +226,11 @@ impl<'ctx, K: TypeKind> TypeApp<'ctx, K> {
 }
 
 impl<'ctx> TypeApp<'ctx> {
+    #[inline]
+    pub fn into_type(self) -> Type<'ctx> {
+        Type::Data(self)
+    }
+
     pub fn mono(
         &self,
         env: &ScopedMap<'_, &'ctx str, MonoType<'ctx>>,
@@ -262,6 +250,16 @@ impl<'ctx> TypeApp<'ctx> {
 }
 
 impl<'ctx> MonoType<'ctx> {
+    #[inline]
+    pub fn new(id: TypeId<'ctx>, args: impl Into<Shared<[MonoType<'ctx>]>>) -> Self {
+        Self(TypeApp::new(id, args))
+    }
+
+    #[inline]
+    pub fn nullary(id: TypeId<'ctx>) -> Self {
+        Self::new(id, [])
+    }
+
     pub fn instantiate_as(
         &self,
         target: TypeId<'ctx>,
@@ -287,6 +285,22 @@ impl<'ctx> MonoType<'ctx> {
     }
 }
 
+impl<'ctx> ops::Deref for MonoType<'ctx> {
+    type Target = TypeApp<'ctx, MonoType<'ctx>>;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl fmt::Debug for MonoType<'_> {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 impl fmt::Display for TypeApp<'_> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -297,33 +311,28 @@ impl fmt::Display for TypeApp<'_> {
 impl fmt::Display for MonoType<'_> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.display(true).fmt(f)
+        self.0.display(true).fmt(f)
     }
 }
 
 impl Hash for MonoType<'_> {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.id.hash(state);
-        self.args.hash(state);
+        self.0.id.hash(state);
+        self.0.args.hash(state);
     }
 }
 
-#[derive_where(Debug)]
-pub struct CtxVar<'ctx, K: TypeKind = Immutable> {
+#[derive(Debug)]
+pub struct CtxVar<'ctx, B = Type<'ctx>> {
     name: &'ctx str,
     variance: Variance,
-    lower: Option<Type<'ctx, K>>,
-    upper: Option<Type<'ctx, K>>,
+    lower: Option<B>,
+    upper: Option<B>,
 }
 
-impl<'ctx, K: TypeKind> CtxVar<'ctx, K> {
-    pub fn new(
-        name: &'ctx str,
-        variance: Variance,
-        lower: Option<Type<'ctx, K>>,
-        upper: Option<Type<'ctx, K>>,
-    ) -> Self {
+impl<'ctx, B> CtxVar<'ctx, B> {
+    pub fn new(name: &'ctx str, variance: Variance, lower: Option<B>, upper: Option<B>) -> Self {
         Self {
             name,
             variance,
@@ -343,24 +352,24 @@ impl<'ctx, K: TypeKind> CtxVar<'ctx, K> {
     }
 
     #[inline]
-    pub fn lower(&self) -> Option<&Type<'ctx, K>> {
+    pub fn lower(&self) -> Option<&B> {
         self.lower.as_ref()
     }
 
     #[inline]
-    pub fn upper(&self) -> Option<&Type<'ctx, K>> {
+    pub fn upper(&self) -> Option<&B> {
         self.upper.as_ref()
     }
 }
 
-impl<K: TypeKind> Hash for CtxVar<'_, K> {
+impl<B> Hash for CtxVar<'_, B> {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.name.hash(state);
     }
 }
 
-impl<K: TypeKind> fmt::Display for CtxVar<'_, K> {
+impl<B> fmt::Display for CtxVar<'_, B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.name)
     }

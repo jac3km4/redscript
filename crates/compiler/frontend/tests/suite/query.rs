@@ -251,7 +251,7 @@ fn constants_locals_and_assignment() {
     let assignment = || ir::Expr::Assign {
         place: ir::Expr::Local(*local, *span).into(),
         expr: ir::Expr::Const(ir::Const::I32(1), *span).into(),
-        typ: Type::nullary(predef::INT32).into_poly().into(),
+        typ: PolyType::nullary(predef::INT32).into(),
         span: *span,
     };
     let conditional = ir::Expr::Conditional {

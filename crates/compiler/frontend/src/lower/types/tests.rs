@@ -2,6 +2,8 @@ use super::*;
 use crate::symbols::{Aggregate, TypeDef, TypeSchema};
 use crate::types::TypeInterner;
 
+use super::InferredType as Type;
+
 fn hierarchy(interner: &TypeInterner) -> Symbols<'_> {
     let mut symbols = Symbols::with_default_types();
     for (name, base) in [
@@ -23,7 +25,8 @@ fn hierarchy(interner: &TypeInterner) -> Symbols<'_> {
 fn applicability_respects_directional_and_partial_bounds_without_selecting() {
     let interner = TypeInterner::default();
     let symbols = hierarchy(&interner);
-    let types = ["Leaf", "Middle", "Base"].map(|name| Type::nullary(interner.intern(name)));
+    let types =
+        ["Leaf", "Middle", "Base"].map(|name| crate::types::Type::nullary(interner.intern(name)));
     for (lower, upper) in [
         (Some(0), Some(0)),
         (Some(1), Some(1)),
@@ -74,8 +77,8 @@ fn applicability_respects_directional_and_partial_bounds_without_selecting() {
 fn applicability_composes_nested_variance_and_preserves_unknowns() {
     let interner = TypeInterner::default();
     let mut symbols = hierarchy(&interner);
-    let leaf = Type::nullary(interner.intern("Leaf"));
-    let base = Type::nullary(interner.intern("Base"));
+    let leaf = crate::types::Type::nullary(interner.intern("Leaf"));
+    let base = crate::types::Type::nullary(interner.intern("Base"));
     let fixed = PolyType::with_bounds((&leaf).into(), Some((&leaf).into()));
     for variance in [
         Variance::Covariant,
@@ -98,14 +101,14 @@ fn applicability_composes_nested_variance_and_preserves_unknowns() {
         let inferred = Type::app(id, [fixed.clone()]).into_poly();
         assert_eq!(
             inferred.is_subtype_compatible(
-                &Type::app(id, [base.clone()]),
+                &crate::types::Type::app(id, [base.clone()]),
                 Variance::Covariant,
                 &symbols,
             ),
             variance == Variance::Covariant
         );
         assert!(inferred.is_subtype_compatible(
-            &Type::app(id, [leaf.clone()]),
+            &crate::types::Type::app(id, [leaf.clone()]),
             Variance::Covariant,
             &symbols,
         ));
@@ -319,11 +322,11 @@ fn exact_variables_allow_directional_subtype_constraints() {
         lhs.constrain_base(&rhs, &symbols).unwrap();
         assert_eq!(
             lhs.coalesce(&symbols).unwrap(),
-            Type::nullary(interner.intern("Leaf"))
+            crate::types::Type::nullary(interner.intern("Leaf"))
         );
         assert_eq!(
             rhs.coalesce(&symbols).unwrap(),
-            Type::nullary(interner.intern("Base"))
+            crate::types::Type::nullary(interner.intern("Base"))
         );
     }
 }
@@ -353,17 +356,17 @@ fn directional_cycles_merge_only_the_strong_component() {
         for var in [&a, &b, &c] {
             assert_eq!(
                 var.coalesce(&symbols).unwrap(),
-                Type::nullary(interner.intern("Leaf"))
+                crate::types::Type::nullary(interner.intern("Leaf"))
             );
         }
         assert_eq!(
             outside.coalesce(&symbols).unwrap(),
-            Type::nullary(interner.intern("Base"))
+            crate::types::Type::nullary(interner.intern("Base"))
         );
     }
 }
 
-fn coalesce_var<'ctx>(var: &Var<'ctx>, symbols: &Symbols<'ctx>) -> Type<'ctx> {
+fn coalesce_var<'ctx>(var: &Var<'ctx>, symbols: &Symbols<'ctx>) -> crate::types::Type<'ctx> {
     PolyType::Var(var.clone()).coalesce(symbols).unwrap()
 }
 
@@ -459,7 +462,7 @@ fn nested_predecessors_remain_open_to_late_lower_bounds() {
                 };
                 assert_eq!(
                     coalesce_var(var, &symbols),
-                    Type::nullary(expected),
+                    crate::types::Type::nullary(expected),
                     "{insertion:?} {solve:?}"
                 );
             }
@@ -494,7 +497,7 @@ fn coalescing_rechecks_bounds_tightened_by_nested_dependencies() {
                 // enough for a subsequent call to succeed.
                 assert_eq!(
                     coalesce_var(vars[index], &symbols),
-                    Type::Nothing,
+                    crate::types::Type::Nothing,
                     "{insertion:?} {solve:?}"
                 );
             }
@@ -518,9 +521,15 @@ fn mixed_component_coalescing_is_independent_of_root_and_insertion_order() {
             let weak = vars.each_ref().map(|var| Shared::downgrade(&var.0));
             link_mixed_component(&vars, insertion, &symbols);
             let expected = [
-                Type::Nothing,
-                Type::app(predef::ARRAY, [Type::Nothing]),
-                Type::app(predef::ARRAY, [Type::app(predef::ARRAY, [Type::Nothing])]),
+                crate::types::Type::Nothing,
+                crate::types::Type::app(predef::ARRAY, [crate::types::Type::Nothing]),
+                crate::types::Type::app(
+                    predef::ARRAY,
+                    [crate::types::Type::app(
+                        predef::ARRAY,
+                        [crate::types::Type::Nothing],
+                    )],
+                ),
             ];
             for index in solve {
                 assert_eq!(
@@ -553,7 +562,7 @@ fn exported_nested_bounds_retain_their_inference_component() {
     assert!(weak.iter().all(|var| var.upgrade().is_some()));
     assert_eq!(
         bound.into_poly().coalesce(&symbols).unwrap(),
-        Type::app(predef::ARRAY, [Type::Nothing])
+        crate::types::Type::app(predef::ARRAY, [crate::types::Type::Nothing])
     );
     assert!(weak.iter().all(|var| var.upgrade().is_none()));
 }
@@ -604,10 +613,10 @@ fn mixed_directional_nested_cycles_have_finite_solutions_and_drop() {
                     y.add_upper(&array_nothing, &symbols).unwrap();
                     assert_eq!(
                         coalesce_var(y, &symbols),
-                        Type::app(predef::ARRAY, [Type::Nothing]),
+                        crate::types::Type::app(predef::ARRAY, [crate::types::Type::Nothing]),
                         "nodes={nodes}, edge_first={edge_first}"
                     );
-                    assert_eq!(coalesce_var(x, &symbols), Type::Nothing);
+                    assert_eq!(coalesce_var(x, &symbols), crate::types::Type::Nothing);
                 }
                 drop((array_x, vars));
                 assert!(weak.iter().all(|var| var.upgrade().is_none()));
@@ -630,7 +639,7 @@ fn coalescing_guard_rejects_recursive_bounds_without_recursing() {
     assert!(!var.0.borrow().updating);
     assert_eq!(
         PolyType::Var(var).coalesce(&symbols).unwrap(),
-        Type::Nothing
+        crate::types::Type::Nothing
     );
 }
 
@@ -783,9 +792,9 @@ fn application_lattice_operations_respect_all_variances() {
             b.constrain_invariant(&base, &symbols).unwrap();
             assert_eq!(
                 joined.into_poly().coalesce(&symbols).unwrap(),
-                Type::app(
+                crate::types::Type::app(
                     id,
-                    [Type::nullary(interner.intern(
+                    [crate::types::Type::nullary(interner.intern(
                         if variance == Variance::Covariant {
                             "Base"
                         } else {
@@ -814,7 +823,10 @@ fn inherited_application_meet_refines_arguments() {
         ),
     );
     let mut aggregate = Aggregate::default();
-    aggregate.set_base(Some(TypeApp::new(parent, [Type::Ctx(param.clone())])));
+    aggregate.set_base(Some(TypeApp::new(
+        parent,
+        [crate::types::Type::Ctx(param.clone())],
+    )));
     symbols.add_type(
         child,
         TypeDef::new([param], TypeSchema::Aggregate(aggregate.into()), []),
@@ -828,7 +840,10 @@ fn inherited_application_meet_refines_arguments() {
                 .into_poly()
                 .coalesce(&symbols)
                 .unwrap(),
-            Type::app(child, [Type::nullary(interner.intern("Leaf"))])
+            crate::types::Type::app(
+                child,
+                [crate::types::Type::nullary(interner.intern("Leaf"))]
+            )
         );
     }
 }
@@ -865,15 +880,15 @@ fn variable_lattice_operations_do_not_equate_operands() {
             .unwrap();
             assert_eq!(
                 result.coalesce(&symbols).unwrap(),
-                Type::nullary(interner.intern(if join { "Base" } else { "Leaf" }))
+                crate::types::Type::nullary(interner.intern(if join { "Base" } else { "Leaf" }))
             );
             assert_eq!(
                 a.coalesce(&symbols).unwrap(),
-                Type::nullary(interner.intern("Leaf"))
+                crate::types::Type::nullary(interner.intern("Leaf"))
             );
             assert_eq!(
                 b.coalesce(&symbols).unwrap(),
-                Type::nullary(interner.intern("Base"))
+                crate::types::Type::nullary(interner.intern("Base"))
             );
         }
     }
@@ -902,7 +917,7 @@ fn nested_edges_retain_inference_and_reject_occurs_cycles() {
         x.constrain_invariant(&leaf, &symbols).unwrap();
         assert_eq!(
             y.coalesce(&symbols).unwrap(),
-            Type::nullary(interner.intern("Leaf"))
+            crate::types::Type::nullary(interner.intern("Leaf"))
         );
         assert!(base.constrain_base(&x, &symbols).is_err());
     }

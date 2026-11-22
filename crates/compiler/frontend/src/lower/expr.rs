@@ -1,5 +1,7 @@
 use super::*;
 
+use crate::lower::types::InferredType as Type;
+
 impl<'scope, 'ctx> Lower<'scope, 'ctx> {
     #[inline]
     pub(super) fn lower_expr(
@@ -332,7 +334,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         span: Span,
     ) -> LowerResult<'ctx, (ir::Expr<'ctx>, PolyType<'ctx>)> {
         let resolved = env.types().resolve(typ, self.symbols, *type_span)?;
-        let Type::Data(typ) = resolved else {
+        let crate::types::Type::Data(typ) = resolved else {
             let id = resolved.upper_bound().map_or(predef::NOTHING, TypeApp::id);
             return Err(Error::InvalidNewType(id, *type_span));
         };
@@ -555,7 +557,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         else {
             return Err(Error::InvalidDynCastType(expr_t, resolved, *type_span));
         };
-        let generic_target = matches!(resolved, Type::Ctx(_));
+        let generic_target = matches!(resolved, crate::types::Type::Ctx(_));
         if generic_target && agg.flags().is_value_type() {
             return Err(Error::InvalidDynCastType(expr_t, resolved, *type_span));
         }

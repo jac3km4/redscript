@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::fmt::Display;
 use std::{fmt, iter};
 
 use smallvec::SmallVec;
@@ -8,7 +9,7 @@ use crate::lower::simplify::Simplifier;
 use crate::symbols::{AnyBaseType, AnySupertype, BaseMode};
 use crate::types::{CtxVar, RefType, Type, TypeApp, TypeId, Variance, predef};
 use crate::utils::ScopedMap;
-use crate::{Shared, Symbols, TypeKind};
+use crate::{Shared, Symbols};
 
 mod solver;
 
@@ -17,18 +18,106 @@ mod tests;
 
 pub use solver::{Var, VarKey};
 
-#[derive(Debug)]
-pub struct Poly;
-
-impl TypeKind for Poly {
-    type Type<'ctx> = PolyType<'ctx>;
+/// An inference-time type, punned as `Type` throughout `lower`.
+///
+/// It mirrors [`Type`] but its applications carry [`PolyType`] arguments and
+/// its context-variable bounds refer back to itself. Keeping it nominal (rather
+/// than aliasing a generic `Type`) preserves the printed `Nothing` / `Data` /
+/// `Ctx` shape used by snapshots and keeps every nesting position covariant.
+#[derive(Debug, Clone)]
+pub enum InferredType<'ctx> {
+    Nothing,
+    Data(InferredTypeApp<'ctx>),
+    Ctx(Shared<InferredCtxVar<'ctx>>),
 }
 
-pub type InferredType<'ctx> = Type<'ctx, Poly>;
-pub type InferredTypeApp<'ctx> = TypeApp<'ctx, Poly>;
-pub type InferredCtxVar<'ctx> = CtxVar<'ctx, Poly>;
+pub type InferredTypeApp<'ctx> = TypeApp<'ctx, PolyType<'ctx>>;
+pub type InferredCtxVar<'ctx> = CtxVar<'ctx, InferredType<'ctx>>;
+
+impl<'ctx> InferredType<'ctx> {
+    #[inline]
+    pub fn nullary(id: TypeId<'ctx>) -> Self {
+        Self::Data(InferredTypeApp::nullary(id))
+    }
+
+    #[inline]
+    pub fn app(id: TypeId<'ctx>, args: impl Into<Shared<[PolyType<'ctx>]>>) -> Self {
+        Self::Data(InferredTypeApp::new(id, args))
+    }
+
+    pub fn upper_bound(&self) -> Option<&InferredTypeApp<'ctx>> {
+        match self {
+            Self::Ctx(v) => v.upper().and_then(Self::upper_bound),
+            Self::Data(t) => Some(t),
+            Self::Nothing => None,
+        }
+    }
+
+    #[inline]
+    pub fn unwrap_ref(&self) -> Option<&PolyType<'ctx>> {
+        Some(self.strip_ref()?.1)
+    }
+
+    #[inline]
+    pub fn strip_ref(&self) -> Option<(RefType, &PolyType<'ctx>)> {
+        self.upper_bound().and_then(TypeApp::strip_ref)
+    }
+
+    #[inline]
+    pub fn ref_type(&self) -> Option<RefType> {
+        self.upper_bound().and_then(TypeApp::ref_type)
+    }
+
+    pub fn is_primitive(&self, symbols: &Symbols<'ctx>) -> bool {
+        match self {
+            Self::Data(typ) => matches!(
+                symbols[typ.id()].schema(),
+                crate::TypeSchema::Primitive | crate::TypeSchema::Enum(_)
+            ),
+            _ => false,
+        }
+    }
+
+    #[inline]
+    pub fn display_compact(&self) -> impl fmt::Display + use<'_, 'ctx> {
+        self.display(true)
+    }
+
+    fn display(&self, compact: bool) -> impl fmt::Display + use<'_, 'ctx> {
+        crate::utils::fmt::DisplayFn::new(move |f: &mut fmt::Formatter<'_>| match self {
+            Self::Nothing => write!(f, "Nothing"),
+            Self::Data(t) => t.display(compact).fmt(f),
+            Self::Ctx(v) => write!(f, "{}", v.name()),
+        })
+    }
+}
+
+impl PartialEq for InferredType<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Nothing, Self::Nothing) => true,
+            (Self::Data(a), Self::Data(b)) => a == b,
+            (Self::Ctx(a), Self::Ctx(b)) => a.name() == b.name(),
+            _ => false,
+        }
+    }
+}
+
+impl Eq for InferredType<'_> {}
+
+impl fmt::Display for InferredType<'_> {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.display(false).fmt(f)
+    }
+}
 
 impl<'ctx> InferredTypeApp<'ctx> {
+    #[inline]
+    pub fn into_type(self) -> InferredType<'ctx> {
+        InferredType::Data(self)
+    }
+
     fn from_type_with_env(
         typ: &TypeApp<'ctx>,
         env: &ScopedMap<'_, &'ctx str, PolyType<'ctx>>,
@@ -343,8 +432,8 @@ impl<'ctx> From<&Type<'ctx>> for InferredType<'ctx> {
 
 impl<'ctx> InferredCtxVar<'ctx> {
     pub fn from_var(var: &CtxVar<'ctx>) -> Self {
-        let lower = var.lower().map(Type::from);
-        let upper = var.upper().map(Type::from);
+        let lower = var.lower().map(InferredType::from);
+        let upper = var.upper().map(InferredType::from);
         Self::new(var.name(), var.variance(), lower, upper)
     }
 }
@@ -358,13 +447,13 @@ pub enum PolyType<'ctx> {
 impl<'ctx> PolyType<'ctx> {
     #[inline]
     pub fn nullary(id: TypeId<'ctx>) -> Self {
-        Type::nullary(id).into_poly()
+        InferredType::nullary(id).into_poly()
     }
 
     /// Create a new `PolyType` from a `Type` within the same environment.
     #[inline]
     pub fn from_type(typ: &Type<'ctx>) -> Self {
-        Type::from(typ).into_poly()
+        InferredType::from(typ).into_poly()
     }
 
     /// Create a new `PolyType` from a `Type` within the provided environment.
@@ -373,8 +462,8 @@ impl<'ctx> PolyType<'ctx> {
         env: &ScopedMap<'_, &'ctx str, PolyType<'ctx>>,
     ) -> Result<PolyType<'ctx>, &'ctx str> {
         let result = match typ {
-            Type::Nothing => Type::Nothing,
-            Type::Data(typ) => Type::Data(InferredTypeApp::from_type_with_env(typ, env)?),
+            Type::Nothing => InferredType::Nothing,
+            Type::Data(typ) => InferredType::Data(InferredTypeApp::from_type_with_env(typ, env)?),
             Type::Ctx(var) => return env.get(var.name()).cloned().ok_or(var.name()),
         };
         Ok(result.into_poly())
@@ -421,7 +510,7 @@ impl<'ctx> PolyType<'ctx> {
                 };
                 bound
                     .as_ref()
-                    .and_then(Type::upper_bound)
+                    .and_then(InferredType::upper_bound)
                     .cloned()
                     .map(Cow::Owned)
             }
@@ -508,8 +597,8 @@ impl<'ctx> PolyType<'ctx> {
             (_, Self::Var(var)) if var.upper().as_ref() == Some(&var.lower()) => {
                 self.proves_subtype::<Mode>(&var.lower().into_poly(), symbols)
             }
-            (Self::Mono(Type::Nothing), _) => true,
-            (Self::Mono(Type::Ctx(var)), _)
+            (Self::Mono(InferredType::Nothing), _) => true,
+            (Self::Mono(InferredType::Ctx(var)), _)
                 if var.upper().is_some_and(|upper| {
                     upper
                         .clone()
@@ -519,10 +608,10 @@ impl<'ctx> PolyType<'ctx> {
             {
                 true
             }
-            (_, Self::Mono(Type::Ctx(var))) => var.lower().is_some_and(|lower| {
+            (_, Self::Mono(InferredType::Ctx(var))) => var.lower().is_some_and(|lower| {
                 self.proves_subtype::<Mode>(&lower.clone().into_poly(), symbols)
             }),
-            (Self::Mono(Type::Data(lhs)), Self::Mono(Type::Data(rhs))) => {
+            (Self::Mono(InferredType::Data(lhs)), Self::Mono(InferredType::Data(rhs))) => {
                 let Some(lhs) = lhs.clone().instantiate_as::<Mode>(rhs.id(), symbols) else {
                     return false;
                 };
@@ -630,7 +719,7 @@ impl<'ctx> PolyType<'ctx> {
 impl<'ctx> From<(TypeId<'ctx>, Shared<[PolyType<'ctx>]>)> for PolyType<'ctx> {
     #[inline]
     fn from((id, args): (TypeId<'ctx>, Shared<[PolyType<'ctx>]>)) -> Self {
-        Type::app(id, args).into_poly()
+        InferredType::app(id, args).into_poly()
     }
 }
 

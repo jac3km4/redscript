@@ -1,7 +1,7 @@
 use redscript_community_ast::Span;
 use thiserror::Error;
 
-use crate::lower::InferredTypeApp;
+use crate::lower::{InferredType, InferredTypeApp};
 use crate::symbols::AnyBaseType;
 use crate::utils::ScopedMap;
 use crate::visitor::Visitor;
@@ -202,10 +202,12 @@ fn conditional_type<'ctx>(
 ) -> Result<PolyType<'ctx>, QueryError<'ctx>> {
     match expr {
         ir::Expr::Null { is_weak, .. } => {
-            let typ =
-                PolyType::with_bounds(Type::Nothing, Some(Type::nullary(predef::ISCRIPTABLE)));
+            let typ = PolyType::with_bounds(
+                InferredType::Nothing,
+                Some(InferredType::nullary(predef::ISCRIPTABLE)),
+            );
             Ok(if *is_weak {
-                Type::app(predef::WREF, [typ]).into_poly()
+                InferredType::app(predef::WREF, [typ]).into_poly()
             } else {
                 typ
             })

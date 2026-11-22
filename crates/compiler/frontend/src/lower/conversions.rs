@@ -5,7 +5,7 @@ use super::*;
 pub(super) fn fixed_id<'ctx>(typ: &PolyType<'ctx>) -> Option<TypeId<'ctx>> {
     fn nullary<'ctx>(typ: &types::InferredType<'ctx>) -> Option<TypeId<'ctx>> {
         match typ {
-            Type::Data(app) if app.args().is_empty() => Some(app.id()),
+            types::InferredType::Data(app) if app.args().is_empty() => Some(app.id()),
             _ => None,
         }
     }
@@ -137,6 +137,7 @@ pub(super) fn unsupported_implicit<'ctx>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lower::types::InferredType as Type;
 
     #[test]
     fn fixed_evidence_requires_equal_nullary_bounds_and_does_not_freeze() {
