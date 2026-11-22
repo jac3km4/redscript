@@ -1,16 +1,14 @@
 use std::borrow::Cow;
+#[cfg(not(feature = "sync"))]
+use std::cell::Cell;
 use std::hash::Hash;
 use std::{fmt, ptr};
 
 use identity_hash::IdentityHashable;
 
-use crate::Shared;
-
-#[cfg(not(feature = "sync"))]
-use std::cell::Cell;
-
 #[cfg(not(feature = "sync"))]
 use crate::FrozenIndexSet;
+use crate::Shared;
 
 #[derive(Clone, Copy)]
 pub struct TypeId<'id>(TypeIdRepr<'id>);

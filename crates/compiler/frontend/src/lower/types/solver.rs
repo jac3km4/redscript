@@ -4,8 +4,7 @@ use std::marker::PhantomData;
 use identity_hash::IdentityHashable;
 use smallvec::SmallVec;
 
-use super::InferredType as Type;
-use super::{InferredType, PolyType};
+use super::{InferredType as Type, InferredType, PolyType};
 use crate::lower::error::{InferResult, TypeError};
 use crate::symbols::AnySupertype;
 use crate::sync::{SharedCell, SharedWeak};

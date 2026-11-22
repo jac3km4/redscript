@@ -1,8 +1,6 @@
-use super::*;
+use super::{InferredType as Type, *};
 use crate::symbols::{Aggregate, TypeDef, TypeSchema};
 use crate::types::TypeInterner;
-
-use super::InferredType as Type;
 
 fn hierarchy(interner: &TypeInterner) -> Symbols<'_> {
     let mut symbols = Symbols::with_default_types();

@@ -1,5 +1,4 @@
 use super::*;
-
 use crate::lower::types::InferredType as Type;
 
 impl<'scope, 'ctx> Lower<'scope, 'ctx> {
