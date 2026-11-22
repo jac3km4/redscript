@@ -24,6 +24,18 @@ mod const_validation;
 #[path = "script_ref_validation.rs"]
 mod script_ref_validation;
 
+/// A single `(file, position)` IDE query used to lower only the function that
+/// encloses the cursor, skipping unrelated bodies and whole-program validation.
+///
+/// `pos` must be the position used to select the enclosing function: callers
+/// pass the position immediately preceding the cursor, matching
+/// `LoweredFunction::span.contains(pos)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct QueryTarget {
+    pub file: FileId,
+    pub pos: u32,
+}
+
 #[derive(Debug)]
 pub struct TypeInference<'scope, 'ctx> {
     modules: Vec<InferStageModule<'scope, 'ctx>>,
@@ -107,6 +119,61 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
             reporter,
         );
         script_ref_validation::validate(&compiled, &self.symbols, reporter);
+        (compiled, self.symbols)
+    }
+
+    /// Lowers only the function enclosing `target`, for IDE queries that inspect
+    /// a single function.
+    ///
+    /// Name resolution has already populated every type, field, inheritance
+    /// link and signature, so the resulting [`Symbols`] is complete even though
+    /// only one function body is lowered. Wrapper aliases are still registered
+    /// across all modules first so their global indices match a full `finish`.
+    /// Whole-program validation passes (`const_validation`,
+    /// `script_ref_validation`) are skipped.
+    pub fn finish_for_query(
+        mut self,
+        scope: &'scope Scope<'_, 'ctx>,
+        target: QueryTarget,
+        reporter: &mut CompileErrorReporter<'ctx>,
+    ) -> (LoweredCompilationUnit<'ctx>, Symbols<'ctx>) {
+        let mut modules = mem::take(&mut self.modules);
+        // `@wrapMethod` aliases and their global indices span every module, so
+        // register them before filtering to keep indices identical to `finish`.
+        let wraps = self.register_wrap_aliases(&mut modules);
+        let tasks = modules
+            .into_iter()
+            .zip(wraps)
+            .filter(|(module, _)| module.contains_file(target.file))
+            .collect::<Vec<_>>();
+
+        let symbols = &self.symbols;
+        let lowered = crate::parallel::map_ordered(tasks, |(module, wraps)| {
+            lower_module_for_query(module, &wraps, scope, symbols, target)
+        });
+
+        let mut compiled = LoweredCompilationUnit::default();
+        for module in lowered {
+            for (id, class) in module.classes {
+                compiled.classes.insert(id, class);
+            }
+            for (id, func) in module.functions {
+                compiled.functions.insert(id, func);
+            }
+            for (id, func) in module.added_methods {
+                compiled.added_methods.insert(id, func);
+            }
+            for (id, func) in module.method_replacements {
+                compiled.method_replacements.insert(id, func);
+            }
+            for (id, func) in module.method_wrappers {
+                compiled.method_wrappers.entry(id).or_default().push(func);
+            }
+            if let Some((file, scope)) = module.scope {
+                compiled.scopes.insert(file, scope);
+            }
+            reporter.report_many(module.diagnostics);
+        }
         (compiled, self.symbols)
     }
 
@@ -427,6 +494,153 @@ fn lower_module<'m, 'ctx>(
     out
 }
 
+/// Query-mode counterpart of [`lower_module`]: lowers only the function that
+/// contains `target` while still emitting the module type scope so IDE
+/// type-name lookups keep working. Field defaults, enums, declarations and
+/// unrelated functions are skipped.
+fn lower_module_for_query<'m, 'ctx>(
+    module: InferStageModule<'m, 'ctx>,
+    wraps: &[Option<WrapInfo>],
+    scope: &Scope<'m, 'ctx>,
+    symbols: &Symbols<'ctx>,
+    target: QueryTarget,
+) -> LoweredModule<'ctx> {
+    let mut out = LoweredModule::default();
+    let mut reporter = CompileErrorReporter::default();
+    let scope = scope.push(module.type_scope, module.func_scope);
+
+    for class in module.classes {
+        let types = scope.types.push_scope(class.scope);
+        let cls_t = &symbols[class.id];
+
+        let class_type_args = cls_t
+            .params()
+            .iter()
+            .map(|param| Type::Ctx(param.clone()))
+            .collect::<Shared<_>>();
+        let this_t = PolyType::from_type(&Type::app(class.id, class_type_args));
+
+        let mut methods = IndexMap::default();
+        for item in class.methods {
+            if item.span.file != target.file || !item.span.contains(target.pos) {
+                continue;
+            }
+            let method = &symbols[MethodId::new(class.id, item.id)];
+            if !method.type_().is_valid() {
+                continue;
+            }
+            let func = function_builder()
+                .type_(method.type_())
+                .param_names(&item.param_names)
+                .body(&item.body)
+                .env(Env::new(&types.push_scope(item.scope), &scope.funcs))
+                .maybe_this_type(method.flags().is_static().not().then(|| this_t.clone()))
+                .context(class.id)
+                .symbols(symbols)
+                .reporter(&mut reporter)
+                .span(item.span)
+                .build();
+            methods.insert(item.id, func);
+        }
+        if methods.is_empty() {
+            continue;
+        }
+        out.classes.push((
+            class.id,
+            LoweredClass {
+                methods,
+                fields: IndexMap::default(),
+                defaults: Vec::new(),
+                span: class.span,
+            },
+        ));
+    }
+
+    for (index, func) in module.functions.into_iter().enumerate() {
+        if func.span().file != target.file || !func.span().contains(target.pos) {
+            continue;
+        }
+        match func {
+            FuncItemKind::FreeFunction(func) => {
+                if !symbols[func.id].type_().is_valid() {
+                    continue;
+                }
+                let value = function_builder()
+                    .type_(symbols[func.id].type_())
+                    .param_names(&func.param_names)
+                    .body(&func.body)
+                    .env(Env::new(&scope.types.push_scope(func.scope), &scope.funcs))
+                    .symbols(symbols)
+                    .reporter(&mut reporter)
+                    .span(func.span)
+                    .build();
+                out.functions.push((func.id, value));
+            }
+            FuncItemKind::ReplaceMethod(func) => {
+                let lowered = lower_patch_method(
+                    func.id,
+                    func.properties.as_ref(),
+                    &func.param_names,
+                    &func.body,
+                    Env::new(&scope.types.push_scope(func.scope), &scope.funcs),
+                    symbols,
+                    func.span,
+                    &mut reporter,
+                );
+                out.method_replacements.push((func.id, lowered));
+            }
+            FuncItemKind::AddMethod(func) => {
+                if !symbols[func.id].type_().is_valid() {
+                    continue;
+                }
+                let lowered = func.body.as_ref().map(|body| {
+                    lower_patch_method(
+                        func.id,
+                        None,
+                        &func.param_names,
+                        body,
+                        Env::new(&scope.types.push_scope(func.scope), &scope.funcs),
+                        symbols,
+                        func.span,
+                        &mut reporter,
+                    )
+                });
+                out.added_methods.push((func.id, lowered));
+            }
+            FuncItemKind::WrapMethod(func) => {
+                let info = wraps[index].expect("wrap alias should be registered");
+                let mut funcs = scope.funcs.introduce_scope();
+                funcs.insert(ident::WRAPPED_METHOD, smallvec![info.alias]);
+
+                let lowered = lower_patch_method(
+                    func.id,
+                    func.properties.as_ref(),
+                    &func.param_names,
+                    &func.body,
+                    Env::new(&scope.types.push_scope(func.scope), &funcs),
+                    symbols,
+                    func.span,
+                    &mut reporter,
+                );
+                out.method_wrappers.push((func.id, lowered));
+            }
+        }
+    }
+
+    if let Some(span) = module.span {
+        let scope = scope
+            .types
+            .pop_scope()
+            .into_iter()
+            .filter_map(|(k, v)| Some((k, v.force()?)))
+            .collect();
+        out.scope = Some((span.file, scope));
+    }
+
+    out.diagnostics = reporter.into_reported();
+    out
+}
+
 /// Lowers a `@replaceMethod`/`@addMethod`/`@wrapMethod` patch, sharing the
 /// `this` typing and builder wiring across the three patch kinds. `env` already
 /// carries the patch's type and free-function scopes (a wrapper adds its
@@ -595,6 +809,15 @@ impl<'scope, 'ctx> InferStageModule<'scope, 'ctx> {
     pub fn fields(&self) -> &[FieldItem<'ctx, FieldId<'ctx>>] {
         &self.fields
     }
+
+    /// Whether this module declares anything in `file`. Each module corresponds
+    /// to a single source file, so the merged span is enough for any non-empty
+    /// file; the member checks cover recovery cases where the span is absent.
+    pub fn contains_file(&self, file: FileId) -> bool {
+        self.span.is_some_and(|span| span.file == file)
+            || self.classes.iter().any(|class| class.span.file == file)
+            || self.functions.iter().any(|func| func.span().file == file)
+    }
 }
 
 #[derive(Debug)]
@@ -706,6 +929,21 @@ pub enum FuncItemKind<'scope, 'ctx> {
     ReplaceMethod(FuncItem<'scope, 'ctx, MethodId<'ctx>>),
     WrapMethod(FuncItem<'scope, 'ctx, MethodId<'ctx>>),
     AddMethod(FuncItem<'scope, 'ctx, MethodId<'ctx>, Option<ast::SourceFunctionBody<'ctx>>>),
+}
+
+impl FuncItemKind<'_, '_> {
+    /// The declaration span, identical to the lowered function's `span`.
+    // Each variant wraps a differently-typed `FuncItem`, so the arms cannot be
+    // merged even though the bodies are the same.
+    #[allow(clippy::match_same_arms)]
+    fn span(&self) -> Span {
+        match self {
+            Self::FreeFunction(item) => item.span,
+            Self::ReplaceMethod(item) => item.span,
+            Self::WrapMethod(item) => item.span,
+            Self::AddMethod(item) => item.span,
+        }
+    }
 }
 
 #[derive(Debug)]

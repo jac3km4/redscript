@@ -25,7 +25,7 @@ pub use redscript_community_ast as ast;
 use redscript_community_parser as parser;
 pub use stages::{
     DeclarationPath, FunctionId, LoweredClass, LoweredCompilationUnit, LoweredFieldDefault,
-    LoweredFunction, ResolvedDeclaration,
+    LoweredFunction, QueryTarget, ResolvedDeclaration,
 };
 use stages::{NameResolution, Scope};
 pub use symbols::{
@@ -138,4 +138,30 @@ pub fn process_sources_with_policy<'ctx>(
 
     resolution.populate_globals(&mut scope);
     resolution.progress(&scope).finish(&scope, reporter)
+}
+
+/// Analyze source AST modules for a single IDE query, lowering only the function
+/// that encloses `target`.
+///
+/// This performs the same name resolution as [`process_sources_with_policy`]
+/// (every type, field, inheritance link and signature is available in the
+/// returned [`Symbols`]) but skips lowering unrelated bodies and whole-program
+/// validation. Policies follow [`process_sources_with_policy`].
+pub fn process_sources_for_query<'ctx>(
+    modules: impl IntoIterator<Item = ast::SourceModule<'ctx>>,
+    symbols: Symbols<'ctx>,
+    evaluator: Evaluator<'ctx>,
+    reporter: &mut CompileErrorReporter<'ctx>,
+    interner: &'ctx TypeInterner,
+    policies: &[(ast::FileId, Shared<SemanticPolicy>)],
+    target: QueryTarget,
+) -> (LoweredCompilationUnit<'ctx>, Symbols<'ctx>) {
+    let mut scope = Scope::new(&symbols);
+    scope.set_policies(policies);
+    let mut resolution = NameResolution::new(modules, evaluator, symbols, reporter, interner);
+
+    resolution.populate_globals(&mut scope);
+    resolution
+        .progress(&scope)
+        .finish_for_query(&scope, target, reporter)
 }
