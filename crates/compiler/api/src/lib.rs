@@ -11,9 +11,9 @@ use redscript_compiler_frontend::pass::{DiagnosticPass, UnusedLocals};
 pub use redscript_compiler_frontend::{
     Aggregate, CompileErrorReporter, Diagnostic, DiagnosticLevel, Enum, Evaluator, Field, FieldId,
     FunctionType, LowerError, LoweredCompilationUnit, LoweredFunction, MethodId, PolyType,
-    QueryError, Symbols, TypeError, TypeId, TypeIndex, TypeInterner, TypeSchema, TypeScope,
-    UnknownSource, expr_type, infer_from_sources, ir, parse_file, parse_files, pass,
-    process_sources, types,
+    QueryError, QueryTarget, Symbols, TypeError, TypeId, TypeIndex, TypeInterner, TypeSchema,
+    TypeScope, UnknownSource, expr_type, infer_from_sources, ir, parse_file, parse_files, pass,
+    process_sources, process_sources_for_query, types,
 };
 use redscript_io::byte;
 pub use redscript_io::{SaveError, ScriptBundle, WriteableBundle};

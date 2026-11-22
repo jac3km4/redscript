@@ -18,8 +18,8 @@ pub use bridge::{CapabilityError, ParsedModule};
 pub use policy::{ArrayOperation, array_operations};
 use redscript_community_ast::{FileId, SourceModule, Span};
 use redscript_compiler_frontend::{
-    CompileErrorReporter, Diagnostic, Evaluator, LowerError, LoweredCompilationUnit, Shared,
-    Symbols, TypeInterner,
+    CompileErrorReporter, Diagnostic, Evaluator, LowerError, LoweredCompilationUnit, QueryTarget,
+    Shared, Symbols, TypeInterner,
 };
 pub use semantic::SemanticError;
 pub use validate::validate as validate_module;
@@ -276,5 +276,61 @@ pub fn process_sources<'ctx>(
     finish_events(&mut unit, &symbols, &files);
     validate::overrides(&unit, &symbols, &files, &overrides, &mut errors);
     persistent::validate(&unit, &symbols, &files, &mut errors);
+    (unit, symbols, errors)
+}
+
+/// Query-mode counterpart of [`process_sources`] for IDE requests that inspect a
+/// single function.
+///
+/// Conditional selection, capability validation, event normalization and the
+/// REDmod loop-header fixups are retained, but only the function enclosing
+/// `target` is lowered. Bytecode-only passes (`finish_events`), override
+/// ownership and persistent validation are skipped.
+pub fn process_sources_for_query<'ctx>(
+    modules: impl IntoIterator<Item = ParsedModule<'ctx>>,
+    dependencies: impl IntoIterator<Item = SourceModule<'ctx>>,
+    symbols: Symbols<'ctx>,
+    target: QueryTarget,
+    reporter: &mut CompileErrorReporter<'ctx>,
+    interner: &'ctx TypeInterner,
+) -> (LoweredCompilationUnit<'ctx>, Symbols<'ctx>, Vec<Error>) {
+    let mut errors = Vec::new();
+    let mut modules: Vec<_> = modules
+        .into_iter()
+        .filter(|parsed| {
+            let diagnostics = validate::validate(&parsed.module);
+            let valid = diagnostics.is_empty();
+            errors.extend(diagnostics);
+            valid
+        })
+        .collect();
+    let dependencies: Vec<_> = dependencies.into_iter().collect();
+    conditions::select(&mut modules, &dependencies, &mut errors);
+    for parsed in &mut modules {
+        normalize_events(&mut parsed.module.items, false);
+    }
+    let files: Vec<_> = modules
+        .iter()
+        .filter_map(|parsed| parsed.module.span().map(|span| span.file))
+        .collect();
+    // `control_flow::apply` only traverses the single lowered function, so the
+    // plan set stays tiny; keep only the target file's headers.
+    let control_flow: Vec<_> = modules
+        .iter()
+        .flat_map(|parsed| parsed.control_flow.iter().cloned())
+        .filter(|plan| plan.span.file == target.file)
+        .collect();
+
+    let sources: Vec<_> = dependencies
+        .into_iter()
+        .chain(modules.into_iter().map(|parsed| parsed.module))
+        .collect();
+    let evaluator = Evaluator::from_modules(&sources);
+    let policy = Shared::new(policy::POLICY);
+    let policies: Vec<_> = files.iter().map(|&file| (file, policy.clone())).collect();
+    let (mut unit, symbols) = redscript_compiler_frontend::process_sources_for_query(
+        sources, symbols, evaluator, reporter, interner, &policies, target,
+    );
+    control_flow::apply(&mut unit, &control_flow, &mut errors);
     (unit, symbols, errors)
 }
