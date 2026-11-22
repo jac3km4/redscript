@@ -423,14 +423,25 @@ impl TypeInterner {
     /// interned into after forking, so a shared handle is required rather than
     /// an owned value. Interning a *new* name into the parent after forking
     /// would alias the child's first local index; debug builds panic instead.
+    ///
+    /// Holding the parent's index write lock across the freeze and the local
+    /// length read serializes this with [`Self::intern`]: an in-flight intern
+    /// either finishes before `base_len` is computed or observes the frozen
+    /// flag and panics without extending `names`.
     pub fn fork(parent: &Shared<Self>) -> Self {
+        let guard = parent
+            .index
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         #[cfg(debug_assertions)]
         parent
             .forked
             .store(true, std::sync::atomic::Ordering::Release);
+        let base_len = predef::ALL_TYPES.len() + parent.local_len();
+        drop(guard);
         Self {
             parent: Some(Shared::clone(parent)),
-            base_len: predef::ALL_TYPES.len() + parent.local_len(),
+            base_len,
             names: elsa::sync::FrozenVec::new(),
             index: std::sync::RwLock::new(hashbrown::HashMap::new()),
             #[cfg(debug_assertions)]
