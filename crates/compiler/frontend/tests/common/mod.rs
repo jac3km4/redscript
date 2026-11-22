@@ -4,6 +4,8 @@ use redscript_compiler_frontend::{
     CompileErrorReporter, LoweredCompilationUnit, Symbols, TypeInterner, infer_from_sources,
 };
 
+pub mod ir_shape;
+
 pub fn analyze(
     path: &str,
     source: &str,
