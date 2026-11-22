@@ -167,6 +167,12 @@ pub struct TypeInterner {
     names: FrozenIndexSet<Cow<'static, str>>,
     /// Number of names interned into `names`; `FrozenIndexSet` has no `len`.
     count: Cell<usize>,
+    /// Set when this interner is forked. Interning a *new* name afterwards would
+    /// assign it the child's first local index, aliasing the two; the flag turns
+    /// that silent corruption into a loud failure. Debug-only: it exists to catch
+    /// misuse, not to change release behavior.
+    #[cfg(debug_assertions)]
+    forked: Cell<bool>,
 }
 
 #[cfg(not(feature = "sync"))]
@@ -184,6 +190,11 @@ impl TypeInterner {
         if let Some(str) = self.names.get(key) {
             TypeId(TypeIdRepr::Named(str))
         } else {
+            #[cfg(debug_assertions)]
+            assert!(
+                !self.forked.get(),
+                "cannot intern new type `{key}` into a TypeInterner after forking"
+            );
             let interned = self.names.insert(Cow::Owned(name.into()));
             self.count.set(self.count.get() + 1);
             TypeId(TypeIdRepr::Named(interned))
@@ -234,13 +245,18 @@ impl TypeInterner {
     /// (returning the exact same [`TypeId`] pointers) while isolating names
     /// interned afterwards. The parent must outlive the child and must not be
     /// interned into after forking, so a shared handle is required rather than
-    /// an owned value.
+    /// an owned value. Interning a *new* name into the parent after forking
+    /// would alias the child's first local index; debug builds panic instead.
     pub fn fork(parent: &Shared<Self>) -> Self {
+        #[cfg(debug_assertions)]
+        parent.forked.set(true);
         Self {
             parent: Some(Shared::clone(parent)),
             base_len: predef::ALL_TYPES.len() + parent.local_len(),
             names: FrozenIndexSet::default(),
             count: Cell::new(0),
+            #[cfg(debug_assertions)]
+            forked: Cell::new(false),
         }
     }
 
@@ -257,6 +273,8 @@ impl Default for TypeInterner {
             base_len: predef::ALL_TYPES.len(),
             names: FrozenIndexSet::default(),
             count: Cell::new(0),
+            #[cfg(debug_assertions)]
+            forked: Cell::new(false),
         }
     }
 }
@@ -277,6 +295,12 @@ pub struct TypeInterner {
     base_len: usize,
     names: elsa::sync::FrozenVec<Box<str>>,
     index: std::sync::RwLock<hashbrown::HashMap<Box<str>, TypeIndex>>,
+    /// Set when this interner is forked. Interning a *new* name afterwards would
+    /// assign it the child's first local index, aliasing the two; the flag turns
+    /// that silent corruption into a loud failure. Debug-only: it exists to catch
+    /// misuse, not to change release behavior.
+    #[cfg(debug_assertions)]
+    forked: std::sync::atomic::AtomicBool,
 }
 
 #[cfg(feature = "sync")]
@@ -332,6 +356,13 @@ impl TypeInterner {
         if let Some(&idx) = index.get(key) {
             return self.named(idx);
         }
+        #[cfg(debug_assertions)]
+        assert!(
+            !self
+                .forked
+                .load(std::sync::atomic::Ordering::Acquire),
+            "cannot intern new type `{key}` into a TypeInterner after forking"
+        );
         let name: Box<str> = name.into().into_boxed_str();
         let local = self.names.push_get_index(name.clone());
         let idx = TypeIndex(self.base_len + local);
@@ -390,13 +421,20 @@ impl TypeInterner {
     /// (returning the exact same [`TypeId`] pointers) while isolating names
     /// interned afterwards. The parent must outlive the child and must not be
     /// interned into after forking, so a shared handle is required rather than
-    /// an owned value.
+    /// an owned value. Interning a *new* name into the parent after forking
+    /// would alias the child's first local index; debug builds panic instead.
     pub fn fork(parent: &Shared<Self>) -> Self {
+        #[cfg(debug_assertions)]
+        parent
+            .forked
+            .store(true, std::sync::atomic::Ordering::Release);
         Self {
             parent: Some(Shared::clone(parent)),
             base_len: predef::ALL_TYPES.len() + parent.local_len(),
             names: elsa::sync::FrozenVec::new(),
             index: std::sync::RwLock::new(hashbrown::HashMap::new()),
+            #[cfg(debug_assertions)]
+            forked: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -413,6 +451,8 @@ impl Default for TypeInterner {
             base_len: predef::ALL_TYPES.len(),
             names: elsa::sync::FrozenVec::new(),
             index: std::sync::RwLock::new(hashbrown::HashMap::new()),
+            #[cfg(debug_assertions)]
+            forked: std::sync::atomic::AtomicBool::new(false),
         }
     }
 }
@@ -609,5 +649,22 @@ mod tests {
             grandchild.get_index_of("LeafOnly").map(|i| i.0),
             Some(mid_index.0 + 1)
         );
+    }
+
+    /// Interning a new name into a forked parent would assign it the child's
+    /// first local index, so debug builds reject it; re-interning an existing
+    /// name stays valid because it resolves to the same index.
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "after forking")]
+    fn interning_a_new_name_after_forking_panics() {
+        let base = Shared::new(TypeInterner::default());
+        let existing = base.intern("Existing");
+        let _child = TypeInterner::fork(&base);
+
+        assert_eq!(base.intern("Existing"), existing);
+        assert_eq!(base.get("Existing"), Some(existing));
+
+        base.intern("BrandNew");
     }
 }
