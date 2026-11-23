@@ -918,7 +918,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-cli"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "anyhow",
  "argh",
@@ -938,7 +938,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-code-edit"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "anyhow",
  "insta",
@@ -947,7 +947,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-community-ast"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "bitflags",
  "chumsky",
@@ -959,7 +959,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-community-formatter"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "hashbrown 0.17.1",
  "insta",
@@ -970,7 +970,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-community-parser"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "chumsky",
  "insta",
@@ -981,7 +981,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-compiler-api"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "bon",
  "insta",
@@ -996,7 +996,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-compiler-backend"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "bitfield-struct",
  "bon",
@@ -1015,7 +1015,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-compiler-frontend"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "bitfield-struct",
  "bon",
@@ -1038,7 +1038,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-decompiler"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "hashbrown 0.17.1",
  "insta",
@@ -1054,7 +1054,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-dotfile"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "anyhow",
  "hashbrown 0.17.1",
@@ -1065,7 +1065,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-io"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "argh",
  "bitfield-struct",
@@ -1079,7 +1079,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-redmod-adapter"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "insta",
  "redscript-community-ast",
@@ -1095,14 +1095,14 @@ dependencies = [
 
 [[package]]
 name = "redscript-redmod-ast"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "redscript-community-ast",
 ]
 
 [[package]]
 name = "redscript-redmod-formatter"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "insta",
  "redscript-community-ast",
@@ -1112,7 +1112,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-redmod-parser"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "chumsky",
  "insta",
@@ -1124,7 +1124,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-redmod-transpiler"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "byte",
  "hashbrown 0.17.1",
@@ -1142,7 +1142,7 @@ dependencies = [
 
 [[package]]
 name = "redscript-test-support"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "byte",
  "redscript-io",
@@ -1231,7 +1231,7 @@ dependencies = [
 
 [[package]]
 name = "scc"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "anyhow",
  "bindgen",
@@ -1242,7 +1242,7 @@ dependencies = [
 
 [[package]]
 name = "scc-core"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "anyhow",
  "file-id",
@@ -1261,7 +1261,7 @@ dependencies = [
 
 [[package]]
 name = "scc-lib"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "anyhow",
  "mimalloc",
