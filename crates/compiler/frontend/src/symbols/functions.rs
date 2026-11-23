@@ -192,7 +192,7 @@ impl<'ctx> FreeFunction<'ctx> {
         if self.intrinsic.is_none() {
             return;
         }
-        for param in self.type_.params.iter_mut() {
+        for param in &mut self.type_.params {
             if param.typ == Type::nullary(predef::ISCRIPTABLE) {
                 param.typ = Type::nullary(predef::ISERIALIZABLE);
             }
