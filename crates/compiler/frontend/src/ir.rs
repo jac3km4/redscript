@@ -692,7 +692,9 @@ impl fmt::Debug for Type<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Keep the historical `Type(RefCell { value: Uninit/Init(..) })` shape
         // so diagnostics and snapshots do not change.
-        f.debug_tuple("Type").field(&TypeCellDebug(&self.0)).finish()
+        f.debug_tuple("Type")
+            .field(&TypeCellDebug(&self.0))
+            .finish()
     }
 }
 
