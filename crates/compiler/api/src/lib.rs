@@ -139,16 +139,52 @@ impl<'ctx> Compilation<'ctx> {
         #[builder(default = DiagnosticLevel::ErrorAllowedAtRuntime)]
         fatal_diagnostic_level: DiagnosticLevel,
     ) -> Result<Self, Error> {
-        let bundle = ScriptBundle::from_bytes(bundle)?;
-        let (symbols, mappings) =
-            CompilationInputs::load(&bundle, type_interner, &type_flags)?.into_inner();
-        let checked = CheckedSources::builder()
-            .sources(sources)
-            .symbols(symbols)
-            .type_interner(type_interner)
-            .diagnostics(diagnostics)
-            .fatal_diagnostic_level(fatal_diagnostic_level)
-            .check();
+        // Bundle decoding and symbol loading are independent of source parsing.
+        // Under `sync` the loaded types are `Send`, so run the loader on a
+        // scoped thread while this thread parses sources, hiding most of the
+        // load behind the parse phase. The sequential configuration keeps the
+        // original order (the types are `Rc`-based and not `Send`).
+        #[cfg(feature = "sync")]
+        let (bundle, mappings, checked) = std::thread::scope(|scope| {
+            let loaded = scope.spawn(|| -> Result<_, Error> {
+                let bundle = ScriptBundle::from_bytes(bundle)?;
+                let (symbols, mappings) =
+                    CompilationInputs::load(&bundle, type_interner, &type_flags)?.into_inner();
+                Ok((bundle, symbols, mappings))
+            });
+
+            let mut reporter = CompileErrorReporter::default();
+            let modules = parse_files(sources, &mut reporter);
+            let parse_diagnostics = reporter.into_reported();
+
+            let (bundle, symbols, mappings) =
+                loaded.join().expect("bundle symbol loader panicked")?;
+            let checked = CheckedSources::from_modules()
+                .modules(modules)
+                .parse_diagnostics(parse_diagnostics)
+                .symbols(symbols)
+                .type_interner(type_interner)
+                .diagnostics(diagnostics)
+                .fatal_diagnostic_level(fatal_diagnostic_level)
+                .check();
+
+            Ok::<_, Error>((bundle, mappings, checked))
+        })?;
+
+        #[cfg(not(feature = "sync"))]
+        let (bundle, mappings, checked) = {
+            let bundle = ScriptBundle::from_bytes(bundle)?;
+            let (symbols, mappings) =
+                CompilationInputs::load(&bundle, type_interner, &type_flags)?.into_inner();
+            let checked = CheckedSources::builder()
+                .sources(sources)
+                .symbols(symbols)
+                .type_interner(type_interner)
+                .diagnostics(diagnostics)
+                .fatal_diagnostic_level(fatal_diagnostic_level)
+                .check();
+            (bundle, mappings, checked)
+        };
 
         Ok(Self {
             sources,
