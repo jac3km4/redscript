@@ -29,12 +29,11 @@ tutorials are available on the [REDscript wiki](https://wiki.redmodding.org/reds
   - [Conversion declarations](#conversion-declarations)
 - [Constness and initialization](#constness-and-initialization)
   - [Const parameters and locals](#const-parameters-and-locals)
-  - [Const locals](#const-locals)
   - [Export and decompilation](#export-and-decompilation)
   - [Analysis bounds](#analysis-bounds)
   - [Allocation vs execution-site initialization](#allocation-vs-execution-site-initialization)
 - [Evaluation and control flow](#evaluation-and-control-flow)
-  - [Switch order and overloaded indexing](#switch-order-and-overloaded-indexing)
+  - [Ordered switch defaults](#ordered-switch-defaults)
   - [Lazy evaluation limitations](#lazy-evaluation-limitations)
 - [Lookup, inference, and diagnostic recovery](#lookup-inference-and-diagnostic-recovery)
   - [Call lookup, overloads, and inheritance](#call-lookup-overloads-and-inheritance)
@@ -70,7 +69,7 @@ Community REDscript defines three distinct reference handles:
 
 Wrapping and unwrapping script references compose with other coercions (for example, unwrapping before converting to a value, or converting to the pointee type before wrapping). Member, method, and index receivers unwrap script references automatically.
 
-Community reference assignment (`refVar = otherRef`) and `out` parameter passing rebind the reference variable itself, using community reference-storage rules rather than native write-through policy (see [Native REDmod Guide](redmod-language.md#declarations-and-references)).
+Community reference assignment (`refVar = otherRef`) and `out` parameter passing rebind the reference variable itself, using community reference-storage rules rather than native write-through policy (see [Native REDmod Guide](redmod-language.md#native-ref-is-a-script-reference)).
 
 ### Explicit enum storage
 
@@ -98,9 +97,9 @@ Consequently:
 - Re-emission preserves loaded widths instead of recomputing them.
 - **Decompilation:** Prints explicit storage to preserve width. It chooses the signed type when all member values fit, otherwise the unsigned type of the same width. This is a canonical representable declaration, not recovery of the original authored signedness.
 
-#### Official characterization (2026-10-30)
+#### Official characterization
 
-Local REDmod `REDscript Compiler v1.2.2` accepted all seven legal storage types and their boundaries (Int64 through +/-9223372036854775807), including Uint32's 4294967295. It rejected Uint64, Float, Bool and CName storage, negative Uint8 and Uint32 values, Int8 128, Uint8 256, and incrementing Uint8 255. It rejected the Int64 minimum spelling `-9223372036854775808` during token conversion. Inspection of compiled bundles confirmed widths 1/2/4/8 as declared, 4 for omitted storage, and identical enum payload metadata for Int8 and Uint8 with the same value.
+Local REDmod `REDscript Compiler v1.2.2` accepted all seven legal storage types and their boundaries (including Uint32's 4294967295) but rejected `Uint64`, Float, Bool and CName storage, out-of-range values, and incrementing past a type's maximum. It rejected the Int64 minimum spelling `-9223372036854775808` during token conversion. Compiled bundles confirmed widths 1/2/4/8 as declared, 4 for omitted storage, and identical enum payload metadata for `Int8` and `Uint8` with the same value. Full probe details are in the [investigation archive](language-investigations.md#official-evidence-worth-preserving).
 
 ### Opaque engine primitives
 
@@ -209,31 +208,30 @@ native explicit func Cast(value: MyType) -> Int32;
 
 ### Const parameters and locals
 
-Const qualifiers are enforced by frontend analysis after function bodies are lowered and calls resolved:
-
-- **Direct writes:** Assigning to a `const` parameter, modifying its fields, passing it to an explicit `out` parameter, or calling mutating array intrinsics are hard errors (`CONST_PARAMETER_WRITE`).
-- **Const locals:** A const local's declaration initializer is permitted exactly once. Subsequent binding assignments are rejected, even after an uninitialized declaration:
-  ```redscript
-  const limit: Int32 = 100; // Allowed: declaration assignment
-  // limit = 200;           // ERROR: cannot assign to const local
-  ```
-  Mutating referent fields, indexing as a writable place, and passing const locals as `out` arguments are hard errors (`CONST_LOCAL_WRITE`).
-- **Uncertain non-`out` forwarding:** Forwarding a const reference or container to an uncertain non-`out` parameter or function value is diagnosed with `ErrorAllowedAtRuntime` severity (`CONST_PARAMETER_FORWARD`, `CONST_LOCAL_FORWARD`). In default strict mode, this is rejected; `--runtime-compatible` and SCC tolerate it.
-- **Receivers:** Calling non-const instance methods on const local referents is rejected; calling const methods is allowed.
-
-Provenance tracks through inherited fields, script-reference `Deref`/`AsRef`, strong/weak conversions (`WeakRefToRef`/`RefToWeakRef`), dynamic casts, and both arms of conditional expressions. Array reads and scalar by-value arguments are always permitted.
-
-### Const locals
-
 Community syntax permits:
 ```redscript
 const name: Type;
 const name = value;
 const name: Type = value;
 ```
-The qualifier `ir::LocalInfo::is_const` survives lowering and hoisting. `LocalInfo::initializer` records the exact declaration-store span during lowering. Validation matches both local ID and span, consuming the initialization exemption once per local per closure scope.
 
-Nested binding writes, captured writes, and referent mutation inside the initializer receive no exemption.
+Const qualifiers are enforced by frontend analysis after function bodies are lowered and calls resolved:
+
+- **Direct writes:** Assigning to a `const` parameter, modifying its fields, passing it to an explicit `out` parameter, or calling mutating array intrinsics is reported as a warning (`CONST_PARAMETER_WRITE`; receiver and field writes use `CONST_RECEIVER_WRITE` / `CONST_FIELD_WRITE`).
+- **Const locals:** A const local's declaration initializer is permitted exactly once. Subsequent binding assignments are hard errors, even after an uninitialized declaration:
+  ```redscript
+  const limit: Int32 = 100; // Allowed: declaration assignment
+  // limit = 200;           // ERROR: cannot assign to const local
+  ```
+  Mutating referent fields, indexing as a writable place, and passing const locals as `out` arguments are hard errors (`CONST_LOCAL_WRITE`).
+- **Uncertain non-`out` forwarding:** Forwarding a const reference or container to an uncertain non-`out` parameter or function value is reported as a warning (`CONST_FORWARDING`).
+- **Receivers:** Calling non-const instance methods on const local referents is reported as a warning; calling const methods is allowed.
+
+Warnings are reported but never fatal, so they do not fail `compile` or `lint` in any mode. Only hard errors (`CONST_LOCAL_WRITE`, `CONST_RETURN_WRITE`) fail the build.
+
+Provenance tracks through inherited fields, script-reference `Deref`/`AsRef`, strong/weak conversions (`WeakRefToRef`/`RefToWeakRef`), dynamic casts, and both arms of conditional expressions. Array reads and scalar by-value arguments are always permitted.
+
+The qualifier `ir::LocalInfo::is_const` survives lowering and hoisting. `LocalInfo::initializer` records the exact declaration-store span during lowering. Validation matches both local ID and span, consuming the initialization exemption once per local per closure scope. Nested binding writes, captured writes, and referent mutation inside the initializer receive no exemption.
 
 ### Export and decompilation
 
@@ -257,9 +255,7 @@ Declaration execution and storage allocation are separate:
 
 ## Evaluation and control flow
 
-### Switch order and overloaded indexing
-
-#### Ordered switch defaults
+### Ordered switch defaults
 
 Shared AST and IR retain case bodies and `default_index` (the count of case labels preceding `default`):
 - Both parsers reject duplicate defaults.
@@ -314,7 +310,7 @@ Symbols retain immediate override predecessors and expose the canonical original
 
 ### Type inference safeguards and hardening
 
-The solver (`crates/compiler/frontend/src/lower/types.rs`) maintains variable bounds and directed subtype edges:
+The solver (`crates/compiler/frontend/src/lower/types/`) maintains variable bounds and directed subtype edges:
 - Variable-to-variable subtyping does not equate unrelated variables.
 - Strongly connected components merge without collapsing unrelated variables.
 - Invariant constraints enforce equality on both bounds.
@@ -351,8 +347,8 @@ When a parameter or return type fails to resolve in a function declaration:
 ### Diagnostic modes
 
 The CLI commands `compile` and `lint` enforce strict validation by default:
-- **Default (Strict):** Fatal threshold is `DiagnosticLevel::ErrorAllowedAtRuntime`. Any access/visibility violations or uncertain const forwarding fail the build.
-- **`--runtime-compatible`:** Fatal threshold is `DiagnosticLevel::Error`, matching official SCC compiler behavior. Runtime-tolerated errors are reported as diagnostics without failing the compilation or preventing output bundle generation. Hard errors (syntax errors, definite const writes, unresolvable overloads) still fail the build.
+- **Default (Strict):** Fatal threshold is `DiagnosticLevel::ErrorAllowedAtRuntime`. Access/visibility violations and other `ErrorAllowedAtRuntime` diagnostics fail the build. Warnings (including const parameter/field/receiver writes and uncertain const forwarding) are reported but do not fail.
+- **`--runtime-compatible`:** Fatal threshold is `DiagnosticLevel::Error`, matching official SCC compiler behavior. `ErrorAllowedAtRuntime` diagnostics are reported without failing the compilation or preventing output bundle generation. Hard errors (syntax errors, const-local writes, unresolvable overloads) still fail the build.
 
 ### Compiler API
 

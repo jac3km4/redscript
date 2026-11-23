@@ -26,12 +26,11 @@ acceptance is broader than semantic or backend support.
   - [Enum storage and engine primitives](#enum-storage-and-engine-primitives)
 - [Modules and imports](#modules-and-imports)
   - [REDmod transpiler imports](#redmod-transpiler-imports)
-  - [Native evidence (2026-11-02)](#native-evidence-2026-11-02)
 - [Events and callbacks](#events-and-callbacks)
   - [REDmod event return contract](#redmod-event-return-contract)
   - [Normalization and metadata](#normalization-and-metadata)
   - [Export and decompilation boundaries](#export-and-decompilation-boundaries)
-  - [Historical official evidence](#historical-official-evidence)
+  - [Official event evidence](#official-event-evidence)
 - [Storage access, receivers, and arrays](#storage-access-receivers-and-arrays)
   - [REDmod dynamic-array Grow and Count](#redmod-dynamic-array-grow-and-count)
   - [Bounded compound field reads](#bounded-compound-field-reads)
@@ -52,8 +51,7 @@ acceptance is broader than semantic or backend support.
   - [Bounded REDmod strong/weak coercions](#bounded-redmod-strongweak-coercions)
   - [Bounded native and scripted script-reference borrows](#bounded-native-and-scripted-script-reference-borrows)
   - [Lifetime contract](#lifetime-contract)
-  - [Validation and evidence](#validation-and-evidence)
-  - [MarkToSell](#marktosell)
+  - [Borrow lifetime evidence](#borrow-lifetime-evidence)
 - [Community source export compatibility](#community-source-export-compatibility)
 
 ---
@@ -129,14 +127,7 @@ The community-to-REDmod transpiler converts module imports as follows:
 - Module paths and selected names must be valid target identifiers. Root-level exact imports and empty selections are rejected.
 - **Prefix overlap guard:** If a selected symbol path coincides with a module (or ancestor module) in the output, the transpiler rejects it instead of risking ambiguous scope widening.
 - Analysis-only dependencies do not emit output modules or cause global name collision errors.
-
-### Native evidence (2026-11-02)
-
-Official compiler v1.2.2 testing established:
-- `@using "First.Pick"` allows calling all overloads of `Pick`, while calling `First.Other` is rejected as unused module.
-- If module `First.Pick` also contains function `Extra`, `@using "First.Pick"` permits `Extra(1)`. The prefix-overlap guard is therefore required.
-- `First.Pick(1)` is rejected as an invalid global identifier `First`.
-- Emitted directives without semicolons compiled with 0 errors across module-only, exact, select, and wildcard test suites.
+- Official compiler v1.2.2 accepts `@using "First.Pick"` for calling all `Pick` overloads but rejects `First.Other` as an unused module; if module `First.Pick` also contains function `Extra`, `@using "First.Pick"` permits `Extra(1)`, which is why the prefix-overlap guard is required. Qualified calls such as `First.Pick(1)` are rejected as an invalid global identifier `First`. Emitted directives without semicolons compiled with no errors across module-only, exact, select, and wildcard test suites.
 
 ---
 
@@ -149,7 +140,7 @@ Native REDmod events follow an **implicit `Bool` contract**, not `Void` or an in
 ```redscript
 // Native event: implicit Bool return contract
 public class MyCustomComponent extends ScriptableComponent {
-  private cb func OnAction(evt: ref<ActionEvent>) -> Bool {
+  protected event OnAction(evt: ref<ActionEvent>) {
     // Fallthrough is legal and emits bytecode Nop
   }
 }
@@ -168,23 +159,15 @@ public class MyCustomComponent extends ScriptableComponent {
 - Export requires a non-const `Bool` contract and preserves `Bool` return expressions. Void or non-Bool callbacks fail closed.
 - Decompiler reconstructs non-final defaults and switch dispatch independently of event return contracts.
 
-### Historical official evidence
+### Official event evidence
 
-Probes using official compiler v1.2.2 established:
+Official compiler v1.2.2 probes established the behavioral contract above:
+- An empty event body compiles to `Bool` metadata with a `Profile` then `Nop`, and no default false return.
+- `Bool` returns and conditional `Bool` returns with fallthrough are accepted; the latter emits a trailing `Nop`. Bare `return;` is rejected as a Void-to-Bool mismatch.
+- `Int32` returns are accepted via native `Cast;Int32;Bool`; `Float` and `String` returns are rejected for lack of a conversion to `Bool`.
+- Derived/imported callback implementations carry `Bool` metadata and an inherited base link. Semicolon events are accepted on script classes but rejected on `importonly` classes.
 
-| Fixture | Official result |
-| :--- | :--- |
-| Empty event body | `Bool` metadata; Profile then `Nop`, no default false return |
-| `Bool` return | Accepted; `Return` instruction with `Bool` expression |
-| Conditional `Bool` return with fallthrough | Accepted, trailing `Nop` emitted |
-| Bare `return;` | Rejected (Void-to-Bool error) |
-| `Int32` return | Accepted via native `Cast;Int32;Bool` |
-| `Float` / `String` return | Rejected (no conversion to Bool) |
-| Derived/imported callback implementation | `Bool` metadata and inherited base link |
-| Semicolon event on script class | Accepted |
-| Semicolon event on importonly class | Rejected |
-
-Across 7,372 native event bodies in official `scripts/`: 6,940 use fallthrough (no `return`), 393 return `true`/`false`, and 46 use `return <expr>;` (strictly `0`, `NULL`, or Bool expressions).
+The shared adapter is stricter than official here: it has no implicit `Int32`-to-`Bool` return conversion and rejects such returns rather than emitting `Cast;Int32;Bool`.
 
 ---
 
@@ -317,7 +300,7 @@ Native fixed-size arrays use `Type[N]` on fields, locals, parameters, and return
 
 ### Mutable fields
 
-The `mutable` modifier is accepted on verified aggregate dynamic array fields (matching 28 array fields in native scripts) and on a single bounded Float field configuration (`instanceeditable inlined`). It is never combined with `const` and does not represent a general mutable-scalar keyword.
+The `mutable` modifier is accepted on verified aggregate dynamic array fields and on a single bounded Float field configuration (`instanceeditable inlined`). It is never combined with `const` and does not represent a general mutable-scalar keyword.
 
 ### Aggregate and struct defaults
 
@@ -358,13 +341,9 @@ StrContains(GetLocalizedText(key), "pattern");
 - Variable-rooted fields and array elements retain place identity and do not require invocation temporary bits.
 - Nonlocal `AsRef` in returns, variable initializers, assignments, or ambiguous overloads remains rejected.
 
-### Validation and evidence
+### Borrow lifetime evidence
 
-Official compiler v1.2.2 testing verified:
-- Temporary localization arguments set mask 1 immediately followed by `AsRef`.
-- Local arguments use mask 0.
-- Nested string interpolations and scalar/struct function results set expected temporary bits.
-- Bytecode inspection confirmed absence of synthesized local variables or spilled assignments.
+Official compiler v1.2.2 confirmed the mask behavior above: direct `AsRef(prvalue)` temporaries set the corresponding bit, local arguments use mask 0, and nested interpolations and scalar/struct results set the expected bits. Bytecode inspection found no synthesized locals or spilled assignments.
 
 ---
 

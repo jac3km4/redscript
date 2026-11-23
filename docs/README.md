@@ -41,7 +41,8 @@ The compiler supports two distinct language dialects:
 | **Enum storage & widths** | Shared | [Community Guide: Enum storage](community-language.md#explicit-enum-storage) |
 | **Conversion declarations** | Shared / REDmod | [Community Guide: Conversions](community-language.md#conversion-declarations) & [REDmod Guide: Conversions](redmod-language.md#conversion-declarations-and-bounded-native-selection) |
 | **Call lookup & overloads** | Shared | [Community Guide: Call lookup](community-language.md#call-lookup-overloads-and-inheritance) |
-| **Switches & indexing** | Shared | [Community Guide: Control flow](community-language.md#switch-order-and-overloaded-indexing) |
+| **Ordered switch defaults** | Shared | [Community Guide: Switch defaults](community-language.md#ordered-switch-defaults) |
+| **Overloaded indexing** | Shared | [Community Guide: Indexing](community-language.md#array-and-overloaded-indexing) |
 | **Lazy evaluation & array safety** | Shared | [Community Guide: Lazy evaluation](community-language.md#lazy-evaluation-limitations) |
 | **Type inference & rollback** | Shared | [Community Guide: Type inference](community-language.md#type-inference-safeguards-and-hardening) |
 | **Invalid signatures** | Shared | [Community Guide: Invalid signatures](community-language.md#invalid-signature-recovery) |

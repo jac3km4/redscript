@@ -30,12 +30,9 @@ were made for this consolidation.
 
 ### Language investigation summary
 
-**Archive, not current support or validation.** This condenses the 2026-10-29
-through 2026-11-02 REDmod roadmap, semantic-parity and follow-up investigations.
-Use the [language guide](README.md) for current contracts and
-[future work](language-future-work.md) for remaining work. Full original logs and
-superseded plans remain in Git history; disposable local artifacts are not
-portable test dependencies.
+This condenses the 2026-10-29 through 2026-11-02 REDmod roadmap, semantic-parity
+and follow-up investigations. Full original logs and superseded plans remain in
+Git history; disposable local artifacts are not portable test dependencies.
 
 #### What the corpus investigations established
 
@@ -105,12 +102,14 @@ These were bounded official compiler v1.2.2 observations, not runtime tests:
   community initializer rule.
 - [Events](redmod-language.md#redmod-event-return-contract): implicit Bool metadata, legal fallthrough without a
   synthetic false return, and Int32-to-Bool via `Cast;Int32;Bool`, not generic
-  truthiness. Some invented native bindings and isolated patch probes failed;
-  they did not establish official patch parity.
+  truthiness. Across 7,372 native event bodies in official `scripts/`, 6,940 use
+  fallthrough, 393 return `true`/`false`, and 46 use `return <expr>;`. Some invented
+  native bindings and isolated patch probes failed; they did not establish official
+  patch parity.
 - [Overloads/inheritance](community-language.md#call-lookup-overloads-and-inheritance): child specificity, real-method
   preference over generated aliases, optional-tail ambiguity, original-slot return
   contracts and declaring-class persistent access.
-- [Indexing](community-language.md#switch-order-and-overloaded-indexing): OperatorArray is an ordinary call-shaped
+- [Indexing](community-language.md#array-and-overloaded-indexing): OperatorArray is an ordinary call-shaped
   result, not a writable array slot. Non-final switch defaults permit fallthrough.
 - Mutable Float: the observed `instanceeditable inlined` non-imported class field
   required no extra flag; explicit const stayed set. No universal mutable-scalar
@@ -119,6 +118,15 @@ These were bounded official compiler v1.2.2 observations, not runtime tests:
   spellings were not interchangeable with native literals. Inline scalar/call,
   array-copy and object-reference initializers compiled officially, but that did
   not establish repeated loop initialization or runtime side-effect order.
+- [Struct defaults](redmod-language.md#aggregate-and-struct-defaults): generated
+  positional defaults for nested structs (Int32, Bool, Float, String, CName and
+  strong/weak references) and zero-argument construction of `Vector2`, `ResRef`,
+  `ItemID`, `inkAnimOptions` and `stimInvestigateData` compiled, with reset
+  assignments retained in loops and branches. This is compilation evidence, not
+  proof of runtime defaults or native layout completeness.
+- Uint32 literals: exact constants for 0, 1, 2147483647, 2147483648, 3670998070
+  and 4294967295 decoded from official bundles; expressions emit `Cast<Uint32>`
+  and field defaults use unsigned decimal literals.
 
 Some official validation bundles contain external type placeholders or profiling
 records that the full reader cannot decode. Bounded record/opcode inspection is
@@ -144,11 +152,9 @@ compiler or runtime measurements were made for this documentation consolidation.
 
 ### Conversion investigation archive
 
-**Historical evidence, not the current contract or a validation log.** See
-[conversion declarations and bounded selection](redmod-language.md#conversion-declarations-and-bounded-native-selection) for
-implemented semantics, [future work](language-future-work.md#conversions-and-native-bindings)
-for missing capabilities and the [investigation summary](language-investigations.md)
-for corpus/evidence limits.
+See [conversion declarations and bounded selection](redmod-language.md#conversion-declarations-and-bounded-native-selection)
+for implemented semantics, [future work](language-future-work.md#conversions-and-native-bindings)
+for missing capabilities, and the corpus/evidence limits above.
 
 #### Removed broad prototype
 

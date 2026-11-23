@@ -143,7 +143,7 @@ remains future work.
 ### Correctness: instantiated overload applicability
 
 - **Receiver substitution in overload applicability (partially addressed).**
-  Applicability filtering in `crates/compiler/frontend/src/lower/calls.rs` now
+  Applicability filtering in `crates/compiler/frontend/src/lower/calls/mod.rs` now
   instantiates a candidate's declared parameters in the receiver's type
   environment (`accepts_params` / `receiver_instantiated_params`). With
   `Base<T>.Pick(T)` and `Child extends Base<Int32>` declaring `Pick(Bool)`,
@@ -184,7 +184,7 @@ remains future work.
 
 ### Frontend structural guard scanning
 
-- Frontend `src/lower.rs` recursively scans an expression subtree on each recursive
+- Frontend `src/lower/mod.rs` recursively scans an expression subtree on each recursive
   lowering call. Run structural guards once per expression root rather than
   repeatedly scanning descendants, while retaining selected-overload/skip checks,
   closure execution boundaries and diagnostic deduplication. Add a deep-expression
@@ -222,21 +222,19 @@ remains future work.
 ## Evidence needed for parity claims
 
 Use the optional [semantic corpus survey](../crates/compiler/redmod/adapter/CORPUS.md)
-with explicit source/dependency inputs and compiler/report fingerprints. Rerun
-unchanged inputs after major slices and classify newly exposed failures. Historical
-diagnostic counts are not current results or accuracy percentages.
-
-Measure declaration, clean body/type and binding coverage separately, including
-unsupported, dependency-blocked, recovered, failed and unvisited sites. Record
-source-role/origin edges, selected declarations/substitutions/dispatch and per-argument
-recovery before IR loss. Returned types and exact-span mappings are not proof that
-an expression was fully checked. Keep provisional observations separate.
+with explicit source/dependency inputs and compiler/report fingerprints; rerun
+unchanged inputs after major slices. Measure declaration, clean body/type and
+binding coverage separately (including unsupported, dependency-blocked, recovered,
+failed and unvisited sites), and record source-role/origin edges, selected
+declarations/substitutions/dispatch and per-argument recovery before IR loss.
+Returned types and exact-span mappings are not proof that an expression was fully
+checked.
 
 A stratified positive/negative official differential audit must inspect emitted
-call/override targets and metadata, not just acceptance. Include high-risk and
-unmapped/error strata, disclose denominators and oracle limits, and account for
-sampling uncertainty. Official bundle inspection can be partial (external type
-placeholders and Profile records); it is not full decoding or runtime validation.
-Keep installation-dependent probes optional and reduce findings to authored
-portable fixtures; do not commit installed game scripts or require local artifacts.
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for code-validation requirements.
+call/override targets and metadata, not just acceptance, and must disclose
+denominators, oracle limits and sampling uncertainty. Official bundle inspection
+can be partial (external type placeholders and Profile records); it is not full
+decoding or runtime validation. Keep installation-dependent probes optional and
+reduce findings to authored portable fixtures; do not commit installed game
+scripts or require local artifacts. See [CONTRIBUTING.md](../CONTRIBUTING.md) for
+code-validation requirements.

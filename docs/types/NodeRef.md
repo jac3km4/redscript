@@ -1,1 +1,1 @@
-An opaque engine primitive identifying a node reference. Its identity is distinct from integer and string types; no literal syntax, conversions, or default value are supplied by this builtin.
+An opaque engine primitive named `NodeRef` that identifies a node reference, distinct from integer and string types. No literal syntax, conversions, or default value are supplied by this builtin.

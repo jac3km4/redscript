@@ -49,7 +49,7 @@ adapter-specific support list:
 | Readonly locals, parameter policies and bounded native relaxations | [Const semantics](../../../../docs/community-language.md#const-parameters-and-locals) |
 | Enum widths, ranges and erased signedness | [Enum storage](../../../../docs/community-language.md#explicit-enum-storage) |
 | Bool callback contracts and event/patch boundaries | [Native events](../../../../docs/redmod-language.md#redmod-event-return-contract) |
-| Switch ordering and overloaded indexing | [Control flow/operators](../../../../docs/community-language.md#switch-order-and-overloaded-indexing) |
+| Switch ordering and overloaded indexing | [Control flow/operators](../../../../docs/community-language.md#ordered-switch-defaults) |
 | Invalid signature slots, unavailable bodies and recovery | [Signature recovery](../../../../docs/community-language.md#invalid-signature-recovery) |
 
 In particular, conversion dispatch is **not universally unsupported**. Unique
