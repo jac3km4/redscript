@@ -173,14 +173,29 @@ impl<'ctx> FreeFunction<'ctx> {
         }
     }
 
+    /// Whether this intrinsic still has a parameter explicitly typed
+    /// `IScriptable`, i.e. whether [`Self::use_serializable_root`] would change
+    /// its signature.
+    pub(super) fn needs_serializable_root(&self) -> bool {
+        self.intrinsic.is_some()
+            && self
+                .type_
+                .params
+                .iter()
+                .any(|param| param.typ == Type::nullary(predef::ISCRIPTABLE))
+    }
+
+    /// Point explicitly `IScriptable`-typed intrinsic parameters at the engine
+    /// root. Intrinsic signatures are compiler-owned, so this cannot rewrite a
+    /// user-written annotation or a generic bound.
     pub(super) fn use_serializable_root(&mut self) {
-        if self.intrinsic != Some(ir::Intrinsic::IsDefined) {
+        if self.intrinsic.is_none() {
             return;
         }
-        if let [param] = &mut *self.type_.params
-            && param.typ == Type::nullary(predef::ISCRIPTABLE)
-        {
-            param.typ = Type::nullary(predef::ISERIALIZABLE);
+        for param in self.type_.params.iter_mut() {
+            if param.typ == Type::nullary(predef::ISCRIPTABLE) {
+                param.typ = Type::nullary(predef::ISERIALIZABLE);
+            }
         }
     }
 

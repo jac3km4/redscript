@@ -415,3 +415,33 @@ fn roots_can_be_split_between_source_and_binary() {
         assert_is_defined_parameter(&symbols, predef::ISERIALIZABLE);
     }
 }
+
+#[test]
+fn boot_intrinsics_follow_roots_linked_while_loading_a_binary() {
+    // Both roots come from the bundle, so `CompilationInputs::load` links
+    // `IScriptable -> ISerializable` before the boot library is resolved and
+    // adds `IsDefined(a: IScriptable)`. The later resolution pass must still
+    // adapt that intrinsic to the engine root.
+    let mut bundle = ScriptBundle::default();
+    for name in ["ISerializable", "IScriptable"] {
+        let name = bundle.cnames_mut().add(name);
+        bundle.define(Class::new(name, Visibility::Public, ClassFlags::default()));
+    }
+    let interner = TypeInterner::default();
+    let symbols =
+        CompilationInputs::load_without_mapping(&bundle, &interner, &TypeFlagRegistry::default())
+            .unwrap();
+
+    let sources = SourceMap::new();
+    sources.populate_boot_lib();
+    sources.push_back(
+        "check.reds",
+        "func Check(value: ISerializable) -> Bool = IsDefined(value);",
+    );
+
+    let mut reporter = CompileErrorReporter::default();
+    let (_, symbols) = infer_from_sources(&sources, symbols, &mut reporter, &interner);
+    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+    assert_root(&symbols);
+    assert_is_defined_parameter(&symbols, predef::ISERIALIZABLE);
+}

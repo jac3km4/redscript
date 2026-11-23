@@ -134,19 +134,29 @@ impl<'ctx> Symbols<'ctx> {
         {
             return;
         }
-        // Check the base chain before touching `free_funcs`: once `IScriptable`
-        // reaches `ISerializable`, every intrinsic has already been adapted and
-        // re-walking `free_funcs` would force copy-on-write of the whole symbol
-        // table on every snapshot that reuses a base `Symbols`.
+        // Per-overload slabs can be added after the base chain was linked, e.g.
+        // `IsDefined` from `boot.reds` resolved after the binary roots are
+        // loaded, so adapt any still-`IScriptable` intrinsic regardless of the
+        // chain state. Scanning immutably first keeps the copy-on-write win for
+        // snapshots that reuse an already-adapted base `Symbols`.
+        for overloads in self.free_funcs.map.values_mut() {
+            if !overloads
+                .iter()
+                .any(|(_, func)| func.needs_serializable_root())
+            {
+                continue;
+            }
+            for (_, func) in Shared::make_mut(overloads).iter_mut() {
+                func.use_serializable_root();
+            }
+        }
+        // Check the base chain before mutating `IScriptable`: once it reaches
+        // `ISerializable`, re-setting the base would needlessly copy-on-write
+        // the aggregate on every snapshot that reuses a base `Symbols`.
         let mut visited = HashSet::<TypeId<'ctx>>::default();
         for (id, _) in self.base_iter_with_self(predef::ISCRIPTABLE) {
             if !visited.insert(id) || id == predef::ISERIALIZABLE {
                 return;
-            }
-        }
-        for overloads in self.free_funcs.map.values_mut() {
-            for (_, func) in Shared::make_mut(overloads).iter_mut() {
-                func.use_serializable_root();
             }
         }
         if let Some(aggregate) = self[predef::ISCRIPTABLE].schema_mut().as_aggregate_mut() {
@@ -1512,7 +1522,7 @@ impl BaseMode for ClassSupertype {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::TypeInterner;
+    use crate::{TypeInterner, ir};
 
     /// `Symbols<'ctx>` is covariant in `'ctx`: every borrowed field is stored
     /// directly rather than behind an associated-type projection, so a base
@@ -1604,6 +1614,50 @@ mod tests {
         assert!(
             Shared::ptr_eq(&before, after),
             "an already-linked base must not copy free functions"
+        );
+    }
+
+    #[test]
+    fn ensure_serializable_base_adapts_is_defined_added_after_linking() {
+        let mut symbols = Symbols::with_default_types();
+        symbols.add_type(
+            predef::ISERIALIZABLE,
+            TypeDef::new([], TypeSchema::Aggregate(Aggregate::default().into()), []),
+        );
+
+        // Loading a binary bundle links the roots before `boot.reds` is resolved.
+        symbols.ensure_serializable_base();
+
+        let typ = FunctionType::new(
+            [],
+            [Param::new(
+                "a",
+                ParamFlags::default(),
+                Type::nullary(predef::ISCRIPTABLE),
+                None,
+            )],
+            Type::nullary(predef::BOOL),
+        );
+        let index = symbols.add_free_function(
+            "IsDefined",
+            FreeFunction::new_intrinsic(typ, ir::Intrinsic::IsDefined, [], None),
+        );
+
+        symbols.ensure_serializable_base();
+
+        let (_, func) = symbols.get_free_function(index).unwrap();
+        assert_eq!(
+            func.type_().params()[0].type_(),
+            &Type::nullary(predef::ISERIALIZABLE),
+            "late-resolved `IsDefined` must follow the engine root"
+        );
+        assert!(
+            symbols[predef::ISCRIPTABLE]
+                .schema()
+                .as_aggregate()
+                .unwrap()
+                .base()
+                .is_some()
         );
     }
 
