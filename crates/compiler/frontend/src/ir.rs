@@ -1,11 +1,11 @@
 use std::borrow::Cow;
 use std::collections::VecDeque;
+use std::fmt;
 
 use redscript_community_ast::{self as ast, Span};
 
 use crate::lower::{InferredTypeApp, PolyType};
 use crate::symbols::{FieldId, FreeFunctionIndex, MethodId};
-use crate::sync::SharedCell;
 use crate::types::{self, TypeId, predef};
 use crate::{CoalesceError, RefType, Symbols};
 
@@ -681,88 +681,165 @@ impl<'ctx> Closure<'ctx> {
     }
 }
 
-#[derive(Debug)]
-pub struct Type<'ctx>(Box<SharedCell<TypeState<'ctx>>>);
+pub struct Type<'ctx>(Box<TypeCell<'ctx>>);
+
+struct TypeCell<'ctx> {
+    poly: PolyType<'ctx>,
+    coalesced: std::sync::OnceLock<types::Type<'ctx>>,
+}
+
+impl fmt::Debug for Type<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Keep the historical `Type(RefCell { value: Uninit/Init(..) })` shape
+        // so diagnostics and snapshots do not change.
+        f.debug_tuple("Type").field(&TypeCellDebug(&self.0)).finish()
+    }
+}
 
 impl<'ctx> Type<'ctx> {
     pub fn coalesced(
         &self,
         symbols: &Symbols<'ctx>,
     ) -> Result<types::Type<'ctx>, CoalesceError<'ctx>> {
-        let Self(state) = self;
-        // Read the uninitialized payload in a scoped borrow and drop the guard
-        // before coalescing, so a re-entrant access cannot deadlock under `sync`.
-        let poly = match &*state.borrow() {
-            TypeState::Uninit(poly) => poly.clone(),
-            TypeState::Init(t) => return Ok(t.clone()),
-        };
-        let typ = poly.coalesce(symbols)?;
-        *state.borrow_mut() = TypeState::Init(typ.clone());
-        Ok(typ)
+        // Compute outside any lock; concurrent callers race harmlessly because
+        // coalescing is deterministic and the first stored value wins.
+        if let Some(typ) = self.0.coalesced.get() {
+            return Ok(typ.clone());
+        }
+        let typ = self.0.poly.coalesce(symbols)?;
+        match self.0.coalesced.set(typ.clone()) {
+            Ok(()) => Ok(typ),
+            Err(_) => Ok(self
+                .0
+                .coalesced
+                .get()
+                .expect("coalesced value set by racing thread")
+                .clone()),
+        }
     }
 
     pub fn arg_ref_type(&self, symbols: &Symbols<'ctx>, index: usize) -> Option<crate::RefType> {
-        let Self(state) = self;
-        match &*state.borrow() {
-            TypeState::Uninit(poly) => poly
-                .upper_bound(symbols)
-                .and_then(|app| app.args().get(index)?.ref_type(symbols)),
-            TypeState::Init(types::Type::Data(app)) => {
-                app.args().get(index).and_then(types::Type::ref_type)
-            }
-            TypeState::Init(_) => None,
+        if let Some(typ) = self.0.coalesced.get() {
+            return match typ {
+                types::Type::Data(app) => app.args().get(index).and_then(types::Type::ref_type),
+                _ => None,
+            };
         }
+        self.0
+            .poly
+            .upper_bound(symbols)
+            .and_then(|app| app.args().get(index)?.ref_type(symbols))
     }
 }
 
 impl<'ctx> From<PolyType<'ctx>> for Type<'ctx> {
     #[inline]
     fn from(poly: PolyType<'ctx>) -> Self {
-        Self(Box::new(SharedCell::new(TypeState::Uninit(poly))))
+        Self(Box::new(TypeCell {
+            poly,
+            coalesced: std::sync::OnceLock::new(),
+        }))
     }
 }
 
-#[derive(Debug)]
-enum TypeState<'ctx> {
-    Uninit(PolyType<'ctx>),
-    Init(types::Type<'ctx>),
+pub struct TypeApp<'ctx>(Box<TypeAppCell<'ctx>>);
+
+struct TypeAppCell<'ctx> {
+    inferred: InferredTypeApp<'ctx>,
+    coalesced: std::sync::OnceLock<types::TypeApp<'ctx>>,
 }
 
-#[derive(Debug)]
-pub struct TypeApp<'ctx>(Box<SharedCell<TypeAppState<'ctx>>>);
+impl fmt::Debug for TypeApp<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Keep the historical `TypeApp(RefCell { value: Uninit/Init(..) })` shape.
+        f.debug_tuple("TypeApp")
+            .field(&TypeAppCellDebug(&self.0))
+            .finish()
+    }
+}
 
 impl<'ctx> TypeApp<'ctx> {
     pub fn coalesced(
         &self,
         symbols: &Symbols<'ctx>,
     ) -> Result<types::TypeApp<'ctx>, CoalesceError<'ctx>> {
-        let Self(state) = self;
-        // Read the uninitialized payload in a scoped borrow and drop the guard
-        // before coalescing, so a re-entrant access cannot deadlock under `sync`.
-        let inferred = match &*state.borrow() {
-            TypeAppState::Uninit(inferred) => inferred.clone(),
-            TypeAppState::Init(t) => return Ok(t.clone()),
-        };
-        let typ = inferred.coalesce(symbols)?;
-        *state.borrow_mut() = TypeAppState::Init(typ.clone());
-        Ok(typ)
+        if let Some(typ) = self.0.coalesced.get() {
+            return Ok(typ.clone());
+        }
+        let typ = self.0.inferred.coalesce(symbols)?;
+        match self.0.coalesced.set(typ.clone()) {
+            Ok(()) => Ok(typ),
+            Err(_) => Ok(self
+                .0
+                .coalesced
+                .get()
+                .expect("coalesced value set by racing thread")
+                .clone()),
+        }
     }
 
     pub fn last_arg_ref_type(&self, symbols: &Symbols<'ctx>) -> Option<crate::RefType> {
-        let Self(state) = self;
-        match &*state.borrow() {
-            TypeAppState::Uninit(inferred) => {
-                inferred.args().last().and_then(|t| t.ref_type(symbols))
-            }
-            TypeAppState::Init(t) => t.args().last().and_then(types::Type::ref_type),
+        if let Some(typ) = self.0.coalesced.get() {
+            return typ.args().last().and_then(types::Type::ref_type);
         }
+        self.0
+            .inferred
+            .args()
+            .last()
+            .and_then(|t| t.ref_type(symbols))
     }
 }
 
 impl<'ctx> From<InferredTypeApp<'ctx>> for TypeApp<'ctx> {
     #[inline]
     fn from(inferred: InferredTypeApp<'ctx>) -> Self {
-        Self(Box::new(SharedCell::new(TypeAppState::Uninit(inferred))))
+        Self(Box::new(TypeAppCell {
+            inferred,
+            coalesced: std::sync::OnceLock::new(),
+        }))
+    }
+}
+
+/// Renders an IR type cell in the pre-`OnceLock` `RefCell` shape.
+struct TypeCellDebug<'a, 'ctx>(&'a TypeCell<'ctx>);
+
+impl fmt::Debug for TypeCellDebug<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self.0.coalesced.get() {
+            Some(typ) => CellStateDebug::Init(typ),
+            None => CellStateDebug::Uninit(&self.0.poly),
+        };
+        f.debug_struct("RefCell").field("value", &value).finish()
+    }
+}
+
+struct TypeAppCellDebug<'a, 'ctx>(&'a TypeAppCell<'ctx>);
+
+impl fmt::Debug for TypeAppCellDebug<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self.0.coalesced.get() {
+            Some(typ) => CellStateDebug::InitApp(typ),
+            None => CellStateDebug::Inferred(&self.0.inferred),
+        };
+        f.debug_struct("RefCell").field("value", &value).finish()
+    }
+}
+
+enum CellStateDebug<'a, 'ctx> {
+    Uninit(&'a PolyType<'ctx>),
+    Inferred(&'a InferredTypeApp<'ctx>),
+    Init(&'a types::Type<'ctx>),
+    InitApp(&'a types::TypeApp<'ctx>),
+}
+
+impl fmt::Debug for CellStateDebug<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Uninit(poly) => f.debug_tuple("Uninit").field(poly).finish(),
+            Self::Inferred(inferred) => f.debug_tuple("Uninit").field(inferred).finish(),
+            Self::Init(typ) => f.debug_tuple("Init").field(typ).finish(),
+            Self::InitApp(typ) => f.debug_tuple("Init").field(typ).finish(),
+        }
     }
 }
 
@@ -771,12 +848,6 @@ pub enum CallMode {
     #[default]
     Normal,
     ForceStatic,
-}
-
-#[derive(Debug)]
-enum TypeAppState<'ctx> {
-    Uninit(InferredTypeApp<'ctx>),
-    Init(types::TypeApp<'ctx>),
 }
 
 #[cfg(test)]
