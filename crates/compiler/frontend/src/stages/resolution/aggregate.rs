@@ -196,7 +196,10 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         ResolvedDeclaration::Method(MethodId::new(id, func_idx)),
                     ));
                     if let Some(forwarder) = forwarder {
-                        methods.add(name, forwarder.with_aliased(MethodId::new(id, func_idx)));
+                        methods.add(
+                            name,
+                            forwarder.with_forwarded_static_method(MethodId::new(id, func_idx)),
+                        );
                     }
                     let params = func.param_names().collect::<Box<[_]>>();
                     let Some(body) = func.body else {

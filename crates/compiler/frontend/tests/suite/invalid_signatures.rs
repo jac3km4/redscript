@@ -139,7 +139,7 @@ fn invalid_methods_do_not_become_overrides_duplicates_or_forwarders() {
             assert_eq!(methods.iter().count(), 3);
             for entry in methods.iter() {
                 assert!(!entry.func().type_().is_valid());
-                assert!(entry.func().overriden().is_none());
+                assert!(entry.func().overridden().is_none());
             }
             assert_eq!(
                 unit.classes
@@ -263,7 +263,7 @@ fn invalid_generic_applications_do_not_reach_inference_or_inheritance() {
             // A synthesized static forwarder must also remain invalid.
             for entry in methods.iter() {
                 assert!(!entry.func().type_().is_valid());
-                assert!(entry.func().overriden().is_none());
+                assert!(entry.func().overridden().is_none());
             }
             assert_eq!(
                 unit.classes
@@ -294,7 +294,7 @@ fn invalid_generic_base_signatures_are_not_override_candidates() {
                 .find(|(id, _)| id.to_string() == "Child")
                 .unwrap();
             for entry in child.schema().as_aggregate().unwrap().methods().iter() {
-                assert!(entry.func().overriden().is_none());
+                assert!(entry.func().overridden().is_none());
             }
         });
     }

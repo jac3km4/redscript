@@ -8,7 +8,7 @@ use crate::lower::error::{Error, LowerResult};
 use crate::lower::types::PolyType;
 use crate::symbols::{FreeFunctionIndex, FreeFunctionIndexes, FunctionEntry, Symbols};
 use crate::sync::{SharedU16, SharedU32};
-use crate::types::{CtxVar, Type, TypeId, predef};
+use crate::types::{Type, TypeId, TypeParamVar, predef};
 use crate::utils::{Lazy, ScopedMap};
 use crate::{Aggregate, FreeFunction, IndexMap, Shared, ir};
 
@@ -295,7 +295,7 @@ impl<'scope, 'ctx> TypeEnv<'scope, 'ctx> {
             ast::Type::StaticArray(elem, size) => {
                 let (elem, elem_span) = &**elem;
                 let elem = self.resolve(elem, symbols, *elem_span)?;
-                let id = TypeId::array_with_size(*size)
+                let id = TypeId::try_static_array(*size)
                     .ok_or(Error::UnsupportedStaticArraySize(*size, span))?;
                 Ok(Type::app(id, [elem]))
             }
@@ -319,7 +319,7 @@ impl<'scope, 'ctx> TypeEnv<'scope, 'ctx> {
         &self,
         param: &ast::SourceTypeParam<'ctx>,
         symbols: &Symbols<'ctx>,
-    ) -> LowerResult<'ctx, CtxVar<'ctx>> {
+    ) -> LowerResult<'ctx, TypeParamVar<'ctx>> {
         let (name, _) = param.name;
         let variance = param.variance.into();
         let upper = param
@@ -327,7 +327,7 @@ impl<'scope, 'ctx> TypeEnv<'scope, 'ctx> {
             .as_deref()
             .map(|(typ, span)| self.resolve(typ, symbols, *span))
             .transpose()?;
-        Ok(CtxVar::new(name, variance, None, upper))
+        Ok(TypeParamVar::new(name, variance, None, upper))
     }
 }
 
@@ -389,7 +389,7 @@ impl<'scope, 'ctx> Locals<'scope, 'ctx> {
             .locals
             .binary_search_by_key(&id, |local| local.id)
             .expect("initializer belongs to a local in this scope");
-        self.locals[index].initializer = Some(span);
+        self.locals[index].initializer_span = Some(span);
     }
 
     pub fn associate_temp(
@@ -471,9 +471,11 @@ impl Capture {
 #[cfg(not(feature = "sync"))]
 type LazyVarType<'scope, 'ctx> = Shared<
     Lazy<
-        LowerResult<'ctx, Shared<CtxVar<'ctx>>>,
+        LowerResult<'ctx, Shared<TypeParamVar<'ctx>>>,
         Box<
-            dyn Fn((&TypeEnv<'_, 'ctx>, &Symbols<'ctx>)) -> LowerResult<'ctx, Shared<CtxVar<'ctx>>>
+            dyn Fn(
+                    (&TypeEnv<'_, 'ctx>, &Symbols<'ctx>),
+                ) -> LowerResult<'ctx, Shared<TypeParamVar<'ctx>>>
                 + 'scope,
         >,
     >,
@@ -482,9 +484,11 @@ type LazyVarType<'scope, 'ctx> = Shared<
 #[cfg(feature = "sync")]
 type LazyVarType<'scope, 'ctx> = Shared<
     Lazy<
-        LowerResult<'ctx, Shared<CtxVar<'ctx>>>,
+        LowerResult<'ctx, Shared<TypeParamVar<'ctx>>>,
         Box<
-            dyn Fn((&TypeEnv<'_, 'ctx>, &Symbols<'ctx>)) -> LowerResult<'ctx, Shared<CtxVar<'ctx>>>
+            dyn Fn(
+                    (&TypeEnv<'_, 'ctx>, &Symbols<'ctx>),
+                ) -> LowerResult<'ctx, Shared<TypeParamVar<'ctx>>>
                 + Send
                 + Sync
                 + 'scope,
@@ -495,7 +499,7 @@ type LazyVarType<'scope, 'ctx> = Shared<
 #[derive(Debug, Clone)]
 pub enum TypeRef<'scope, 'ctx> {
     Id(TypeId<'ctx>),
-    Var(Shared<CtxVar<'ctx>>),
+    Var(Shared<TypeParamVar<'ctx>>),
     LazyVar(LazyVarType<'scope, 'ctx>),
 }
 
@@ -567,7 +571,7 @@ mod tests {
         let file = sources.push_back("test.reds", "T");
         let span = Span::new(0, 1, file);
         let symbols = Symbols::with_default_types();
-        let var = Shared::new(CtxVar::new("T", Variance::Invariant, None, None));
+        let var = Shared::new(TypeParamVar::new("T", Variance::Invariant, None, None));
         let lazy_var = var.clone();
         let refs = [
             TypeRef::Var(var.clone()),
@@ -591,7 +595,7 @@ mod tests {
         let span = Span::new(0, 4, file);
         let arg_span = Span::new(2, 3, file);
         let symbols = Symbols::with_default_types();
-        let var = Shared::new(CtxVar::new("T", Variance::Invariant, None, None));
+        let var = Shared::new(TypeParamVar::new("T", Variance::Invariant, None, None));
         let refs = [
             TypeRef::Var(var),
             TypeRef::LazyVar(Shared::new(Lazy::new(Box::new(|_| {

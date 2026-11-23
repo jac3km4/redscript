@@ -171,9 +171,10 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
         compiled
     }
 
-    /// Registers `@wrapMethod` aliases before lowering so `symbols` stays
-    /// immutable during the parallel phase. Returns, per module, the alias and
-    /// global wrapper index of every `@wrapMethod`, in source order.
+    /// Registers `@wrapMethod` free functions before lowering so `symbols` stays
+    /// immutable during the parallel phase. Returns, per module, the synthesized
+    /// wrapped-method function and global wrapper index of every `@wrapMethod`,
+    /// in source order.
     fn register_wrap_aliases(
         &mut self,
         modules: &mut [InferStageModule<'scope, 'ctx>],
@@ -186,13 +187,14 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
                 for (index, func) in module.functions.iter_mut().enumerate() {
                     if let FuncItemKind::WrapMethod(item) = func {
                         let typ = self.symbols[item.id].type_().clone();
-                        let free_func = FreeFunction::new_alias(typ, item.id, Some(item.name_span));
-                        let alias = self
+                        let free_func =
+                            FreeFunction::new_wrap_target(typ, item.id, Some(item.name_span));
+                        let wrapped_method = self
                             .symbols
                             .add_free_function(ident::WRAPPED_METHOD, free_func);
                         let next = counts.entry(item.id).or_insert(0);
                         wraps[index] = Some(WrapInfo {
-                            alias,
+                            wrapped_method,
                             index: *next,
                         });
                         *next += 1;
@@ -204,10 +206,11 @@ impl<'scope, 'ctx> TypeInference<'scope, 'ctx> {
     }
 }
 
-/// The alias and global index of a single `@wrapMethod` declaration.
+/// The synthesized wrapped-method free function and global index of a single
+/// `@wrapMethod` declaration.
 #[derive(Debug, Clone, Copy)]
 struct WrapInfo {
-    alias: FreeFunctionIndex,
+    wrapped_method: FreeFunctionIndex,
     index: usize,
 }
 
@@ -484,9 +487,9 @@ fn lower_module<'m, 'ctx>(
                 }
             }
             FuncItemKind::WrapMethod(func) => {
-                let info = wraps[index].expect("wrap alias should be registered");
+                let info = wraps[index].expect("wrap target should be registered");
                 let mut funcs = scope.funcs.introduce_scope();
-                funcs.insert(ident::WRAPPED_METHOD, smallvec![info.alias]);
+                funcs.insert(ident::WRAPPED_METHOD, smallvec![info.wrapped_method]);
 
                 let lowered = lower_patch_method(
                     func.id,

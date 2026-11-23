@@ -651,7 +651,7 @@ impl<Ctx: Endianess> TryWrite<Ctx> for WriteableBundle<'_> {
             bytes.write(offset, def, ctx)?;
             let size = *offset - pos;
 
-            let header = DefinitionHeader::from_defintion(def, size as _, pos as _);
+            let header = DefinitionHeader::from_definition(def, size as _, pos as _);
             bytes.write(&mut headers_offset, &header, ctx)?;
         }
 

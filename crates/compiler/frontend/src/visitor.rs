@@ -12,7 +12,7 @@ pub trait Visitor<'ctx> {
         self.visit_block(&while_loop.block);
     }
 
-    fn visit_branches(
+    fn visit_if(
         &mut self,
         branches: &[ir::ConditionalBlock<'ctx>],
         default: Option<&ir::Block<'ctx>>,
@@ -74,11 +74,11 @@ pub trait Visitor<'ctx> {
             ir::Stmt::Expr(expr) => self.visit_expr(expr),
             ir::Stmt::Block(block, _) => self.visit_block(block),
             ir::Stmt::While(while_loop, span) => self.visit_while(while_loop, *span),
-            ir::Stmt::Branches {
+            ir::Stmt::If {
                 branches,
                 default,
                 span,
-            } => self.visit_branches(branches, default.as_ref(), *span),
+            } => self.visit_if(branches, default.as_ref(), *span),
             ir::Stmt::Switch {
                 scrutinee,
                 scrutinee_type,
@@ -112,9 +112,9 @@ pub trait Visitor<'ctx> {
         }
     }
 
-    fn visit_new_class(&mut self, _class: &ir::TypeApp<'ctx>, _span: Span) {}
+    fn visit_new_instance(&mut self, _class: &ir::TypeApp<'ctx>, _span: Span) {}
 
-    fn visit_new_struct(
+    fn visit_construct(
         &mut self,
         _struct_: &ir::TypeApp<'ctx>,
         args: &[ir::Expr<'ctx>],
@@ -192,12 +192,14 @@ pub trait Visitor<'ctx> {
 
     fn visit_expr(&mut self, expr: &ir::Expr<'ctx>) {
         match expr {
-            ir::Expr::NewInstance { class_type, span } => self.visit_new_class(class_type, *span),
+            ir::Expr::NewInstance { class_type, span } => {
+                self.visit_new_instance(class_type, *span);
+            }
             ir::Expr::Construct {
                 struct_type,
                 args,
                 span,
-            } => self.visit_new_struct(struct_type, args, *span),
+            } => self.visit_construct(struct_type, args, *span),
             ir::Expr::NewClosure { closure, span } => self.visit_new_closure(closure, *span),
             ir::Expr::Call { call, span } => self.visit_call(call, *span),
             ir::Expr::Assign {

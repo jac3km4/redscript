@@ -98,7 +98,7 @@ fn check_block_with<'ctx>(
                 visit(&cb.condition, pending, symbols, reporter, false);
                 check_block(&cb.block, symbols, reporter);
             }
-            ir::Stmt::Branches {
+            ir::Stmt::If {
                 branches, default, ..
             } => {
                 for (index, branch) in branches.iter().enumerate() {

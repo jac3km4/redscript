@@ -368,7 +368,7 @@ impl CompilationInputs {
             .type_interner(&self.interner)
             .diagnostics(&passes)
             .fatal_diagnostic_level(fatal_diagnostic_level(runtime_compatible))
-            .compile()
+            .analyze()
             .with_context(|| {
                 format!(
                     "failed to {action} with baseline bundle {}",

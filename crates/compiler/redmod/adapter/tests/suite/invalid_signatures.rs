@@ -43,7 +43,7 @@ fn invalid_override_signatures_and_base_candidates_do_not_generate_adapter_casca
 
 #[test]
 fn invalid_generic_arity_does_not_validate_override_or_body_contracts() {
-    use redscript_compiler_frontend::{CtxVar, TypeDef, TypeSchema, Variance};
+    use redscript_compiler_frontend::{TypeDef, TypeParamVar, TypeSchema, Variance};
 
     for (base_return, child_return) in [("GenericType", "Int32"), ("Int32", "GenericType")] {
         let source = format!(
@@ -58,7 +58,7 @@ fn invalid_generic_arity_does_not_validate_override_or_body_contracts() {
         symbols.add_type(
             interner.intern("GenericType"),
             TypeDef::new(
-                [CtxVar::new("T", Variance::Invariant, None, None).into()],
+                [TypeParamVar::new("T", Variance::Invariant, None, None).into()],
                 TypeSchema::Primitive,
                 [],
             ),

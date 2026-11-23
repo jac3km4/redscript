@@ -23,7 +23,7 @@ struct Analysis {
 /// `first` contains declarations with no earlier occurrence, outside branches and
 /// loops. Restricting elision to these sites avoids extending an earlier value's
 /// lifetime or changing a reset observed through an escaped script reference.
-pub(crate) fn overwritten_defaults(
+pub(crate) fn omitted_defaults(
     block: &ir::Block<'_>,
     first: &BTreeSet<ir::Local>,
 ) -> BTreeSet<(ir::Local, Span)> {
@@ -100,7 +100,7 @@ impl Analysis {
                 ir::Stmt::Block(block, _) => {
                     live = self.block(block, live, on_break, on_continue, first);
                 }
-                ir::Stmt::Branches {
+                ir::Stmt::If {
                     branches, default, ..
                 } => {
                     let after = live;

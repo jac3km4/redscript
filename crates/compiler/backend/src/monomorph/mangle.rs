@@ -221,8 +221,8 @@ impl fmt::Display for MangledConstant<'_, '_> {
 #[cfg(test)]
 mod tests {
     use redscript_compiler_frontend::{
-        CtxVar, FreeFunctionFlags, FunctionType, MethodFlags, Param, ParamFlags, Type, TypeId,
-        Variance,
+        FreeFunctionFlags, FunctionType, MethodFlags, Param, ParamFlags, Type, TypeId,
+        TypeParamVar, Variance,
     };
     use similar_asserts::assert_eq;
 
@@ -411,6 +411,6 @@ mod tests {
     }
 
     fn ctx<'ctx>(name: &'ctx str) -> Type<'ctx> {
-        Type::Ctx(CtxVar::new(name, Variance::Invariant, None, None).into())
+        Type::Ctx(TypeParamVar::new(name, Variance::Invariant, None, None).into())
     }
 }

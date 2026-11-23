@@ -20,7 +20,7 @@ fn assert_locals(body: &str, expected: &[(Option<&str>, Option<Purpose>)]) {
             .iter()
             .filter(|info| matches!(info.id, Local::Var(_)))
             .map(|info| {
-                assert!(info.span.is_some());
+                assert!(info.name_span.is_some());
                 (info.name, info.temporary_purpose)
             })
             .collect();

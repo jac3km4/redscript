@@ -187,7 +187,7 @@ fn script_ref_pattern_as_cast_is_rejected() {
         .find(|e| e.name().to_string() == "Read")
         .unwrap();
     let read_stmts = &unit.functions[read_fn.key()].block.stmts;
-    let redscript_compiler_frontend::ir::Stmt::Branches { branches, .. } = &read_stmts[1] else {
+    let redscript_compiler_frontend::ir::Stmt::If { branches, .. } = &read_stmts[1] else {
         panic!("expected branches in Read");
     };
     let redscript_compiler_frontend::ir::Expr::Call { call, .. } = &*branches[0].condition else {
@@ -234,7 +234,7 @@ fn script_ref_pattern_as_cast_is_rejected() {
         .free_functions()
         .find(|e| e.name().to_string() == "ReadArray")
         .unwrap();
-    let redscript_compiler_frontend::ir::Stmt::Branches { branches, .. } =
+    let redscript_compiler_frontend::ir::Stmt::If { branches, .. } =
         &unit.functions[read_array_fn.key()].block.stmts[1]
     else {
         panic!("expected branches in ReadArray");

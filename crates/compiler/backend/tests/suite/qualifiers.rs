@@ -300,7 +300,7 @@ fn covariant_const_script_ref_struct_overrides_roundtrip() {
         .unwrap();
     let sub_method = sub.methods().by_name("GetInnerNode").next().unwrap();
     assert_eq!(
-        sub_method.func().overriden().unwrap().parent(),
+        sub_method.func().overridden().unwrap().parent(),
         interner.intern("BaseNode")
     );
 }

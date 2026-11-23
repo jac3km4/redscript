@@ -24,7 +24,7 @@ fn unsupported_provider_bindings_do_not_replace_output() {
             .bundle(&bytes)
             .sources(&sources)
             .type_interner(&interner)
-            .compile()
+            .analyze()
             .unwrap();
         assert_output_preserved(compilation);
     }
@@ -41,7 +41,7 @@ fn unsupported_enum_cast_does_not_replace_output() {
         .bundle(&bytes)
         .sources(&sources)
         .type_interner(&interner)
-        .compile()
+        .analyze()
         .unwrap();
     assert_output_preserved(compilation);
 }
@@ -57,7 +57,7 @@ fn unsupported_implicit_provider_does_not_replace_output() {
         .bundle(&bytes)
         .sources(&sources)
         .type_interner(&interner)
-        .compile()
+        .analyze()
         .unwrap();
     assert_output_preserved(compilation);
 }

@@ -397,8 +397,7 @@ fn condition_callbacks_only_select_the_exact_intrinsic() {
         );
         if annotated {
             assert!(diagnostics.is_empty(), "{diagnostics:?}");
-            let ir::Stmt::Branches { branches, .. } =
-                &function(&unit, &symbols, "Test").block.stmts[0]
+            let ir::Stmt::If { branches, .. } = &function(&unit, &symbols, "Test").block.stmts[0]
             else {
                 panic!("expected branches")
             };
@@ -548,7 +547,7 @@ fn hoisting_preserves_initializer_sites_and_local_identity() {
         *id
     };
     assert_eq!(assignment_local(&function.block.stmts[1]), local);
-    let ir::Stmt::Branches { branches, .. } = &function.block.stmts[2] else {
+    let ir::Stmt::If { branches, .. } = &function.block.stmts[2] else {
         panic!("expected branches")
     };
     assert_eq!(assignment_local(&branches[0].block.stmts[0]), local);

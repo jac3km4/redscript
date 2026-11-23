@@ -91,7 +91,7 @@ fn applicability_composes_nested_variance_and_preserves_unknowns() {
         symbols.add_type(
             id,
             TypeDef::new(
-                [Shared::new(CtxVar::new("T", variance, None, None))],
+                [Shared::new(TypeParamVar::new("T", variance, None, None))],
                 TypeSchema::Aggregate(Aggregate::default().into()),
                 [],
             ),
@@ -152,9 +152,9 @@ fn invariant_constraints_reject_later_widening_and_narrowing() {
                 }
                 let incompatible = PolyType::nullary(interner.intern(name));
                 let result = if widen {
-                    incompatible.constrain::<AnySupertype>(&var, &symbols)
+                    incompatible.constrain::<ClassSupertype>(&var, &symbols)
                 } else {
-                    var.constrain::<AnySupertype>(&incompatible, &symbols)
+                    var.constrain::<ClassSupertype>(&incompatible, &symbols)
                 };
                 assert!(
                     result.is_err(),
@@ -175,8 +175,8 @@ fn invariant_mixed_constraints_accept_compatible_bounds() {
 
     for mono_first in [true, false] {
         let var = PolyType::fresh();
-        leaf.constrain::<AnySupertype>(&var, &symbols).unwrap();
-        var.constrain::<AnySupertype>(&base, &symbols).unwrap();
+        leaf.constrain::<ClassSupertype>(&var, &symbols).unwrap();
+        var.constrain::<ClassSupertype>(&base, &symbols).unwrap();
         let (lhs, rhs) = if mono_first {
             (&middle, &var)
         } else {
@@ -184,10 +184,10 @@ fn invariant_mixed_constraints_accept_compatible_bounds() {
         };
         lhs.constrain_invariant(rhs, &symbols).unwrap();
 
-        middle.constrain::<AnySupertype>(&var, &symbols).unwrap();
-        var.constrain::<AnySupertype>(&middle, &symbols).unwrap();
-        leaf.constrain::<AnySupertype>(&var, &symbols).unwrap();
-        var.constrain::<AnySupertype>(&base, &symbols).unwrap();
+        middle.constrain::<ClassSupertype>(&var, &symbols).unwrap();
+        var.constrain::<ClassSupertype>(&middle, &symbols).unwrap();
+        leaf.constrain::<ClassSupertype>(&var, &symbols).unwrap();
+        var.constrain::<ClassSupertype>(&base, &symbols).unwrap();
         rhs.constrain_invariant(lhs, &symbols).unwrap();
     }
 }
@@ -198,7 +198,7 @@ fn rigid_bounds_follow_lower_bounds_without_equating_upper_bounds() {
     let symbols = hierarchy(&interner);
     let base = Type::nullary(interner.intern("Base"));
     let leaf = PolyType::nullary(interner.intern("Leaf"));
-    let with_lower = Type::Ctx(Shared::new(CtxVar::new(
+    let with_lower = Type::Ctx(Shared::new(TypeParamVar::new(
         "T",
         Variance::Invariant,
         Some(base.clone()),
@@ -207,14 +207,14 @@ fn rigid_bounds_follow_lower_bounds_without_equating_upper_bounds() {
     .into_poly();
     assert!(leaf.satisfies_bound(&with_lower, &symbols));
 
-    let first = Type::Ctx(Shared::new(CtxVar::new(
+    let first = Type::Ctx(Shared::new(TypeParamVar::new(
         "T",
         Variance::Invariant,
         None,
         Some(base.clone()),
     )))
     .into_poly();
-    let second = Type::Ctx(Shared::new(CtxVar::new(
+    let second = Type::Ctx(Shared::new(TypeParamVar::new(
         "U",
         Variance::Invariant,
         None,
@@ -416,7 +416,7 @@ fn nested_predecessors_remain_open_to_late_lower_bounds() {
     symbols.add_type(
         p,
         TypeDef::new(
-            [Shared::new(CtxVar::new(
+            [Shared::new(TypeParamVar::new(
                 "T",
                 Variance::Covariant,
                 None,
@@ -702,7 +702,7 @@ fn rigid_lattice_bounds_preserve_identity_and_reject_unknown_meets() {
     let symbols = hierarchy(&interner);
     let base = Type::nullary(interner.intern("Base"));
     let leaf = Type::nullary(interner.intern("Leaf"));
-    let rigid = Type::Ctx(Shared::new(CtxVar::new(
+    let rigid = Type::Ctx(Shared::new(TypeParamVar::new(
         "T",
         Variance::Invariant,
         None,
@@ -718,7 +718,7 @@ fn rigid_lattice_bounds_preserve_identity_and_reject_unknown_meets() {
     }
     assert_eq!(rigid.lub(&rigid, &symbols).unwrap(), rigid);
     assert_eq!(rigid.glb(&rigid, &symbols).unwrap(), rigid);
-    let lower_bounded = Type::Ctx(Shared::new(CtxVar::new(
+    let lower_bounded = Type::Ctx(Shared::new(TypeParamVar::new(
         "U",
         Variance::Invariant,
         Some(base.clone()),
@@ -728,7 +728,7 @@ fn rigid_lattice_bounds_preserve_identity_and_reject_unknown_meets() {
         assert_eq!(l.lub(r, &symbols).unwrap(), lower_bounded);
         assert_eq!(l.glb(r, &symbols).unwrap(), leaf);
     }
-    let unbounded = Type::Ctx(Shared::new(CtxVar::new(
+    let unbounded = Type::Ctx(Shared::new(TypeParamVar::new(
         "V",
         Variance::Invariant,
         None,
@@ -757,7 +757,7 @@ fn application_lattice_operations_respect_all_variances() {
         symbols.add_type(
             id,
             TypeDef::new(
-                [Shared::new(CtxVar::new("T", variance, None, None))],
+                [Shared::new(TypeParamVar::new("T", variance, None, None))],
                 TypeSchema::Aggregate(Aggregate::default().into()),
                 [],
             ),
@@ -811,7 +811,7 @@ fn inherited_application_meet_refines_arguments() {
     let mut symbols = hierarchy(&interner);
     let parent = interner.intern("Parent");
     let child = interner.intern("Child");
-    let param = Shared::new(CtxVar::new("T", Variance::Covariant, None, None));
+    let param = Shared::new(TypeParamVar::new("T", Variance::Covariant, None, None));
     symbols.add_type(
         parent,
         TypeDef::new(

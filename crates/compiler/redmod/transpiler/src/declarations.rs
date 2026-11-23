@@ -8,12 +8,12 @@ use redscript_compiler_frontend::{
 use crate::body::Body;
 use crate::names::TargetNamePlan;
 use crate::{
-    DeclarationPath, ResolvedDeclaration as R, Result, SourceMapping, TranspileModule,
+    DeclarationPath, ResolvedDeclaration as R, Result, SourceMapping, TranspileInput,
     TranspiledModule, error, target,
 };
 
 pub fn emit<'ctx>(
-    module: &TranspileModule<'_, 'ctx>,
+    module: &TranspileInput<'_, 'ctx>,
     unit: &LoweredCompilationUnit<'ctx>,
     symbols: &Symbols<'ctx>,
     symbol_names: &BTreeSet<String>,
@@ -75,7 +75,7 @@ type FunctionBinding<'a, 'ctx> = (
 );
 
 struct Emitter<'a, 'ctx> {
-    module: &'a TranspileModule<'a, 'ctx>,
+    module: &'a TranspileInput<'a, 'ctx>,
     unit: &'a LoweredCompilationUnit<'ctx>,
     symbols: &'a Symbols<'ctx>,
     symbol_names: &'a BTreeSet<String>,
@@ -329,7 +329,7 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
                 self.output.text.push_str(";\n");
             }
             Item::Function(source) => {
-                crate::source::validate(source)?;
+                crate::const_locals::check_const_locals(source)?;
                 if !source.type_params.is_empty() {
                     return Err(error(
                         "custom generic declarations are not supported; use concrete parameter and field types",
@@ -640,7 +640,7 @@ impl<'a, 'ctx> Emitter<'a, 'ctx> {
             name,
             def.type_(),
             body,
-            matches!(resolved, R::Method(_)) && def.overriden().is_some(),
+            matches!(resolved, R::Method(_)) && def.overridden().is_some(),
             matches!(resolved, R::Wrapper(..)).then_some(id),
         ))
     }

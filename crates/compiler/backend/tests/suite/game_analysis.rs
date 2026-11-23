@@ -67,7 +67,7 @@ fn analyze(root: &Path) {
         assert_eq!(methods.len(), 1, "{name}: {methods:?}");
         assert!(methods[0].func().flags().is_final());
         assert_eq!(
-            methods[0].func().overriden().unwrap().parent(),
+            methods[0].func().overridden().unwrap().parent(),
             predef::ISERIALIZABLE
         );
     }

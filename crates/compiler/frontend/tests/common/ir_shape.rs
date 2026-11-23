@@ -40,7 +40,7 @@ impl<'ctx> ir::Visitor<'ctx> for FunctionShape {
         self.visit_block(&while_loop.block);
     }
 
-    fn visit_branches(
+    fn visit_if(
         &mut self,
         branches: &[ir::ConditionalBlock<'ctx>],
         default: Option<&ir::Block<'ctx>>,
@@ -125,11 +125,11 @@ impl<'ctx> ir::Visitor<'ctx> for FunctionShape {
         }
     }
 
-    fn visit_new_class(&mut self, _class: &ir::TypeApp<'ctx>, span: Span) {
+    fn visit_new_instance(&mut self, _class: &ir::TypeApp<'ctx>, span: Span) {
         self.push(format_args!("new@{}", span.start));
     }
 
-    fn visit_new_struct(
+    fn visit_construct(
         &mut self,
         _struct_: &ir::TypeApp<'ctx>,
         args: &[ir::Expr<'ctx>],
@@ -248,12 +248,12 @@ pub fn function_shape(function: &LoweredFunction<'_>) -> String {
             "local {:?} const={} init={:?} decl={:?} name={:?} purpose={:?} owner={:?} span={:?}",
             local.id,
             local.is_const,
-            local.initializer,
+            local.initializer_span,
             local.declaration,
             local.name,
             local.temporary_purpose,
             local.temporary_owner,
-            local.span,
+            local.name_span,
         ));
     }
     ir::Visitor::visit_block(&mut shape, &function.block);

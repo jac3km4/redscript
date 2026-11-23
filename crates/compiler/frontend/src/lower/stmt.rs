@@ -381,7 +381,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                         if index == 0 {
                             self.push_prefix(prefix);
                         } else {
-                            let branch = ir::Stmt::Branches {
+                            let branch = ir::Stmt::If {
                                 branches: mem::take(&mut branches).into(),
                                 default: default.take(),
                                 span,
@@ -390,7 +390,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                         }
                     }
                 }
-                ir::Stmt::Branches {
+                ir::Stmt::If {
                     branches: branches.into(),
                     default,
                     span,
@@ -409,7 +409,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
                     ir::Expr::Const(ir::Const::Bool(true), span),
                     ir::Block::new([
                         prefix,
-                        ir::Stmt::Branches {
+                        ir::Stmt::If {
                             branches: [block].into(),
                             default: Some(ir::Block::new([ir::Stmt::Break(span)])),
                             span,

@@ -28,7 +28,7 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
         type_hint: Option<&PolyType<'ctx>>,
         env: &Env<'_, 'ctx>,
         span: Span,
-    ) -> LowerResult<'ctx, FunctionResultWithArgs<'ctx, Key>>
+    ) -> LowerResult<'ctx, FunctionResolutionWithArgs<'ctx, Key>>
     where
         'ctx: 'a,
         Key: FunctionKey<'ctx> + Copy,

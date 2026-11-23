@@ -10,7 +10,7 @@ use redscript_compiler_frontend::{
 };
 
 use crate::{
-    DeclarationPath, ResolvedDeclaration as R, Result, TranspileDiagnostic, TranspileModule,
+    DeclarationPath, ResolvedDeclaration as R, Result, TranspileDiagnostic, TranspileInput,
     TranspiledModule, error,
 };
 
@@ -178,7 +178,7 @@ impl<'ctx> AnalyzedSources<'ctx> {
             let source = &self.modules[index].1;
             let mut bindings = BTreeMap::new();
             match self.associate(file, &source.items, &mut bindings) {
-                Ok(()) => requests.push(TranspileModule { source, bindings }),
+                Ok(()) => requests.push(TranspileInput { source, bindings }),
                 Err(e) => errors.push(e),
             }
         }

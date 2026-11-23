@@ -272,7 +272,7 @@ fn ast_defaults_clone_with_their_original_expression_and_source_spans() {
     let (parsed, errors) = parse_file_with_metadata(source, file);
     assert!(errors.is_empty(), "{errors:?}");
     let parsed = parsed.unwrap().clone();
-    // Processing a cloned ParsedModule is the same path used by IDE snapshots.
+    // Processing a cloned AdaptedModule is the same path used by IDE snapshots.
     // The directive and its retained spelling live in the shared tree.
     let interner = TypeInterner::default();
     let mut reporter = CompileErrorReporter::default();
@@ -293,7 +293,7 @@ fn ast_defaults_clone_with_their_original_expression_and_source_spans() {
     );
     let (native, errors) = redscript_redmod_parser::parse_module(source, file);
     assert!(errors.is_empty(), "{errors:?}");
-    let lowered = redscript_redmod_adapter::bridge::lower(native.unwrap()).unwrap();
+    let lowered = redscript_redmod_adapter::bridge::adapt(native.unwrap()).unwrap();
     // The declaration remains a field without an injected initializer.
     let redscript_community_ast::Item::Class(class) = &lowered.module.items[0].0.item else {
         panic!()

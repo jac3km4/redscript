@@ -90,7 +90,7 @@ fn assign<'ctx>(local: ir::Local, value: bool, source: Span) -> ir::Stmt<'ctx> {
 }
 
 fn header_matches(stmt: &ir::Stmt<'_>, source: Span) -> bool {
-    matches!(stmt, ir::Stmt::Branches { branches, default: None, span }
+    matches!(stmt, ir::Stmt::If { branches, default: None, span }
         if *span == source && matches!(&**branches, [header]
             if matches!(&*header.condition, ir::Expr::Const(ir::Const::Bool(true), span)
                 if *span == generated_span(source))))
@@ -135,7 +135,7 @@ fn fix_block<'ctx>(
                         continue;
                     }
                     // Validation above leaves the original header intact on failure.
-                    if let Some(ir::Stmt::Branches { branches, .. }) = header {
+                    if let Some(ir::Stmt::If { branches, .. }) = header {
                         let local = ir::Local::Var(*next_local as u16);
                         *next_local += 1;
                         locals.push(ir::LocalInfo::generated(
@@ -158,7 +158,7 @@ fn fix_block<'ctx>(
                 }
             }
             ir::Stmt::Block(block, _) => fix_block(block, locals, next_local, plans, errors),
-            ir::Stmt::Branches {
+            ir::Stmt::If {
                 branches, default, ..
             } => {
                 for branch in branches {

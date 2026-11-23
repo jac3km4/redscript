@@ -9,8 +9,8 @@ use crate::stages::infer::{ClassItem, InferStageModule};
 use crate::symbols::AnyBaseType;
 use crate::utils::ScopedMap;
 use crate::{
-    CtxVar, Diagnostic, FreeFunction, FunctionIndex, FunctionType, IndexMap, Method, MethodId,
-    Param, PolyType, RefType, Shared, Type, TypeApp, TypeId, TypeSchema, Variance,
+    Diagnostic, FreeFunction, FunctionIndex, FunctionType, IndexMap, Method, MethodId, Param,
+    PolyType, RefType, Shared, Type, TypeApp, TypeId, TypeParamVar, TypeSchema, Variance,
 };
 
 impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
@@ -59,8 +59,8 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                 let typ = func.type_().clone().with_invalid_signature(true);
                 let invalid = if let Some(intrinsic) = func.intrinsic() {
                     FreeFunction::new_intrinsic(typ, intrinsic, func.doc(), Some(span))
-                } else if let Some(alias) = func.method_alias() {
-                    FreeFunction::new_alias(typ, alias, Some(span))
+                } else if let Some(target) = func.wrap_target() {
+                    FreeFunction::new_wrap_target(typ, target, Some(span))
                 } else {
                     FreeFunction::new(func.flags(), typ, func.doc(), Some(span))
                 };
@@ -88,21 +88,21 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
         let mut methods = vec![];
         for (id, method, span) in candidates {
             let signature = method
-                .aliased_method()
+                .forwarded_static_method()
                 .map_or(method.type_(), |id| self.symbols[id].type_());
             if let Err(error) = self.check_func_type(signature, span) {
-                if method.aliased_method().is_none() {
+                if method.forwarded_static_method().is_none() {
                     self.reporter.report(error);
                 }
                 let mut invalid = Method::new(
                     method.flags(),
                     method.type_().clone().with_invalid_signature(true),
-                    method.overriden(),
+                    method.overridden(),
                     method.doc(),
                     Some(span),
                 );
-                if let Some(alias) = method.aliased_method() {
-                    invalid = invalid.with_aliased(alias);
+                if let Some(method) = method.forwarded_static_method() {
+                    invalid = invalid.with_forwarded_static_method(method);
                 }
                 methods.push((id, invalid));
             }
@@ -396,7 +396,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                         overridden_span,
                     ));
                 }
-                method.set_overriden(overridden_id);
+                method.set_overridden(overridden_id);
             }
         }
     }
@@ -420,7 +420,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
 
     fn check_var(
         &self,
-        var: &CtxVar<'ctx>,
+        var: &TypeParamVar<'ctx>,
         typ: &Type<'ctx>,
         env: &ScopedMap<'_, &'ctx str, PolyType<'ctx>>,
         span: Span,

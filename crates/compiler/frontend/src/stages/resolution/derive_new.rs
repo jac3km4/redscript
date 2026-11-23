@@ -4,13 +4,13 @@ use redscript_community_ast::{self as ast, Span};
 use crate::stages::infer::FuncItem;
 use crate::symbols::{FieldEntry, Visibility};
 use crate::{
-    CtxVar, FunctionIndex, FunctionType, Method, MethodFlags, Param, ParamFlags, Shared, Type,
-    TypeId,
+    FunctionIndex, FunctionType, Method, MethodFlags, Param, ParamFlags, Shared, Type, TypeId,
+    TypeParamVar,
 };
 
 pub(super) fn derive_new_method<'e, 'ctx: 'e>(
     cls_id: TypeId<'ctx>,
-    vars: &[Shared<CtxVar<'ctx>>],
+    vars: &[Shared<TypeParamVar<'ctx>>],
     fields: impl IntoIterator<Item = FieldEntry<'e, 'ctx>>,
     span: Span,
 ) -> Method<'ctx> {

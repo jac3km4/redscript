@@ -21,7 +21,7 @@ pub enum Stmt<'ctx> {
     Expr(Box<Expr<'ctx>>),
     Block(Block<'ctx>, Span),
     While(ConditionalBlock<'ctx>, Span),
-    Branches {
+    If {
         branches: Box<[ConditionalBlock<'ctx>]>,
         default: Option<Block<'ctx>>,
         span: Span,
@@ -63,7 +63,7 @@ impl<'ctx> Stmt<'ctx> {
             Self::Expr(expr) => expr.span(),
             Self::Block(_, span)
             | Self::While(_, span)
-            | Self::Branches { span, .. }
+            | Self::If { span, .. }
             | Self::Switch { span, .. }
             | Self::InitArray { span, .. }
             | Self::InitDefault { span, .. }
@@ -80,7 +80,7 @@ impl<'ctx> Stmt<'ctx> {
             }
             Stmt::Block(block, span) if span.contains(pos) => block.find_at(pos),
             Stmt::While(cond_block, span) if span.contains(pos) => cond_block.find_at(pos),
-            Stmt::Branches {
+            Stmt::If {
                 branches,
                 default,
                 span,
@@ -615,13 +615,14 @@ pub struct LocalInfo<'ctx> {
     /// Source const qualification, independent of whether handle storage can rebind.
     pub is_const: bool,
     /// Exact declaration-initializer assignment site, not a later binding write.
-    pub initializer: Option<Span>,
+    pub initializer_span: Option<Span>,
     pub declaration: Option<LocalDeclaration>,
     pub name: Option<&'ctx str>,
     pub temporary_purpose: Option<TemporaryPurpose>,
     pub temporary_owner: Option<TemporaryOwner>,
     pub typ: PolyType<'ctx>,
-    pub span: Option<Span>,
+    /// Source span of the local's name, when it has one.
+    pub name_span: Option<Span>,
 }
 
 impl<'ctx> LocalInfo<'ctx> {
@@ -634,13 +635,13 @@ impl<'ctx> LocalInfo<'ctx> {
         Self {
             id,
             is_const: false,
-            initializer: None,
+            initializer_span: None,
             declaration: None,
             name,
             temporary_purpose: None,
             temporary_owner: None,
             typ,
-            span,
+            name_span: span,
         }
     }
 
@@ -898,12 +899,12 @@ mod query_tests {
             )
         };
         let block = Block::new([
-            Stmt::Branches {
+            Stmt::If {
                 branches: vec![empty()].into(),
                 default: None,
                 span: span(0, 100),
             },
-            Stmt::Branches {
+            Stmt::If {
                 branches: vec![
                     empty(),
                     ConditionalBlock::new(value(80), Block::new([value(10).into()])),

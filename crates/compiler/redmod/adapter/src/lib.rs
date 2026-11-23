@@ -14,7 +14,7 @@ mod validate;
 use std::collections::HashSet;
 use std::fmt;
 
-pub use bridge::{CapabilityError, ParsedModule};
+pub use bridge::{AdaptedModule, CapabilityError};
 pub use policy::{ArrayOperation, array_operations};
 use redscript_community_ast::{FileId, SourceModule, Span};
 use redscript_compiler_frontend::{
@@ -180,14 +180,14 @@ pub fn parse_file(source: &str, file: FileId) -> (Option<SourceModule<'_>>, Vec<
 pub fn parse_file_with_metadata(
     source: &str,
     file: FileId,
-) -> (Option<ParsedModule<'_>>, Vec<Error>) {
+) -> (Option<AdaptedModule<'_>>, Vec<Error>) {
     let (native, errors) = redscript_redmod_parser::parse_module(source, file);
     let mut errors: Vec<_> = errors.into_iter().map(Error::Parse).collect();
     // Never expose a recovered module to the shared compiler.
     if !errors.is_empty() {
         return (None, errors);
     }
-    let parsed = native.and_then(|module| match bridge::lower(module) {
+    let parsed = native.and_then(|module| match bridge::adapt(module) {
         Ok(mut parsed) => {
             defaults::retain_literal_text(&mut parsed.module.items, source);
             Some(parsed)
@@ -248,7 +248,7 @@ struct PreparedSources<'ctx> {
 /// assembles the shared source list and per-module metadata. Diagnostics are
 /// appended to `errors`.
 fn prepare_sources<'ctx>(
-    modules: impl IntoIterator<Item = ParsedModule<'ctx>>,
+    modules: impl IntoIterator<Item = AdaptedModule<'ctx>>,
     dependencies: impl IntoIterator<Item = SourceModule<'ctx>>,
     errors: &mut Vec<Error>,
 ) -> PreparedSources<'ctx> {
@@ -295,7 +295,7 @@ fn prepare_sources<'ctx>(
 /// unrelated files or enabling community extensions. Shared diagnostics use `reporter`.
 /// Callers must also retain/check diagnostics returned during parsing.
 pub fn process_sources<'ctx>(
-    modules: impl IntoIterator<Item = ParsedModule<'ctx>>,
+    modules: impl IntoIterator<Item = AdaptedModule<'ctx>>,
     dependencies: impl IntoIterator<Item = SourceModule<'ctx>>,
     symbols: Symbols<'ctx>,
     reporter: &mut CompileErrorReporter<'ctx>,
@@ -335,7 +335,7 @@ pub fn process_sources<'ctx>(
 /// `target` is lowered. Bytecode-only passes (`finish_events`), override
 /// ownership and persistent validation are skipped.
 pub fn process_sources_for_query<'ctx>(
-    modules: impl IntoIterator<Item = ParsedModule<'ctx>>,
+    modules: impl IntoIterator<Item = AdaptedModule<'ctx>>,
     dependencies: impl IntoIterator<Item = SourceModule<'ctx>>,
     symbols: Symbols<'ctx>,
     reporter: &mut CompileErrorReporter<'ctx>,

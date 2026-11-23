@@ -3,9 +3,9 @@ use identity_hash::BuildIdentityHasher;
 
 use crate::Shared;
 use crate::lower::error::CoalesceError;
-use crate::lower::types::{InferredCtxVar, InferredType, InferredTypeApp, PolyType, VarKey};
+use crate::lower::types::{InferredType, InferredTypeApp, InferredTypeParamVar, PolyType, VarKey};
 use crate::symbols::Symbols;
-use crate::types::{CtxVar, Type, TypeApp, Variance};
+use crate::types::{Type, TypeApp, TypeParamVar, Variance};
 
 #[derive(Debug)]
 pub struct Simplifier<'sym, 'ctx> {
@@ -116,8 +116,8 @@ impl<'sym, 'ctx> Simplifier<'sym, 'ctx> {
 
     fn simplify_ctx_var(
         &mut self,
-        var: &InferredCtxVar<'ctx>,
-    ) -> Result<CtxVar<'ctx>, CoalesceError<'ctx>> {
+        var: &InferredTypeParamVar<'ctx>,
+    ) -> Result<TypeParamVar<'ctx>, CoalesceError<'ctx>> {
         let lower = var
             .lower()
             .map(|typ| self.simplify(typ, var.variance()))
@@ -126,7 +126,7 @@ impl<'sym, 'ctx> Simplifier<'sym, 'ctx> {
             .upper()
             .map(|typ| self.simplify(typ, var.variance()))
             .transpose()?;
-        Ok(CtxVar::new(var.name(), var.variance(), lower, upper))
+        Ok(TypeParamVar::new(var.name(), var.variance(), lower, upper))
     }
 
     fn simplify(

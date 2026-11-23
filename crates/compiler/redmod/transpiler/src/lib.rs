@@ -9,6 +9,7 @@ mod analyze;
 mod body;
 
 pub use analyze::{AnalyzedSources, TranspiledSource, analyze_sources, transpile_sources};
+mod const_locals;
 mod declarations;
 mod defaults;
 mod effects;
@@ -17,7 +18,6 @@ mod locals;
 mod names;
 pub mod package;
 mod receivers;
-mod source;
 mod target;
 pub use target::LiteralError;
 pub mod validate;
@@ -35,7 +35,7 @@ use redscript_compiler_frontend::{LoweredCompilationUnit, Symbols};
 /// A retained module and its declaration associations. Imports require no binding.
 /// Every other declaration must have exactly one binding, including inactive
 /// conditional variants: unavailable variants must be analyzed separately or rejected.
-pub struct TranspileModule<'a, 'ctx> {
+pub struct TranspileInput<'a, 'ctx> {
     pub source: &'a SourceModule<'ctx>,
     pub bindings: BTreeMap<DeclarationPath, ResolvedDeclaration<'ctx>>,
 }
@@ -120,7 +120,7 @@ pub struct TranspiledModule {
 /// are never emitted implicitly. Failure returns no partial artifacts and performs
 /// no filesystem writes. Inputs must originate from the same successful compilation.
 pub fn transpile<'ctx>(
-    modules: &[TranspileModule<'_, 'ctx>],
+    modules: &[TranspileInput<'_, 'ctx>],
     unit: &LoweredCompilationUnit<'ctx>,
     symbols: &Symbols<'ctx>,
 ) -> std::result::Result<Vec<TranspiledModule>, Vec<TranspileDiagnostic>> {

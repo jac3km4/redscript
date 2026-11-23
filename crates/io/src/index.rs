@@ -140,7 +140,7 @@ impl<A> NzPoolIndex<A> {
 
 impl<A> fmt::Debug for NzPoolIndex<A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("DefIndex").field(&self.0).finish()
+        f.debug_tuple("NzPoolIndex").field(&self.0).finish()
     }
 }
 

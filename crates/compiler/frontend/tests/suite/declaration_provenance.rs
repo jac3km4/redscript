@@ -84,7 +84,7 @@ fn lexical_values_defaults_and_direct_arrays_keep_distinct_initialization_kinds(
                     declaration
                 );
                 assert_eq!(
-                    local.initializer,
+                    local.initializer_span,
                     (kind == Kind::AuthoredValue).then_some(provenance.initialization.site)
                 );
                 assert_eq!(
@@ -95,7 +95,7 @@ fn lexical_values_defaults_and_direct_arrays_keep_distinct_initialization_kinds(
             assert!(matches!(block.stmts[2], Stmt::InitArray { .. }));
             assert!(matches!(block.stmts[3], Stmt::InitDefault { .. }));
             assert_ne!(
-                named(locals, "value").initializer,
+                named(locals, "value").initializer_span,
                 Some(block.stmts[4].span())
             );
         },
@@ -138,7 +138,7 @@ fn hoisted_defaults_at_entry_are_separate_from_authored_initializers() {
         |locals, block, source| {
             let value = named(locals, "value");
             let defaulted = named(locals, "defaulted");
-            let Stmt::Branches { branches, .. } = &block.stmts[2] else {
+            let Stmt::If { branches, .. } = &block.stmts[2] else {
                 panic!("{block:?}")
             };
             for (index, local) in [value, defaulted].into_iter().enumerate() {
@@ -161,11 +161,14 @@ fn hoisted_defaults_at_entry_are_separate_from_authored_initializers() {
                         branches[0].block.stmts[0].span()
                     );
                     assert_ne!(default_site, declaration.initialization.site);
-                    assert_eq!(local.initializer, Some(declaration.initialization.site));
+                    assert_eq!(
+                        local.initializer_span,
+                        Some(declaration.initialization.site)
+                    );
                 } else {
                     assert_eq!(declaration.initialization.kind, Kind::Default);
                     assert_eq!(declaration.initialization.site, default_site);
-                    assert_eq!(local.initializer, None);
+                    assert_eq!(local.initializer_span, None);
                 }
             }
             let inferred = named(locals, "inferred").declaration.unwrap();
@@ -190,7 +193,7 @@ fn pattern_and_iteration_sites_identify_their_binding_assignments() {
                 assert_eq!(declaration.initialization.kind, Kind::Pattern);
                 assert_eq!(text(source, declaration.initialization.site), name);
                 assert!(text(source, declaration.span).contains(name));
-                assert_eq!(local.initializer, None);
+                assert_eq!(local.initializer_span, None);
             }
             assert_eq!(
                 named(locals, "bound").declaration.unwrap().scope,
@@ -208,7 +211,7 @@ fn pattern_and_iteration_sites_identify_their_binding_assignments() {
                 text(source, declaration.initialization.site),
                 "item in input"
             );
-            assert_eq!(item.initializer, None);
+            assert_eq!(item.initializer_span, None);
             assert_eq!(
                 declaration.scope,
                 named(locals, "body").declaration.unwrap().scope
@@ -245,7 +248,7 @@ fn destructured_patterns_share_the_declaration_but_not_identity_or_initializatio
             assert_eq!(text(source, a.span), "[first, second]");
             assert_eq!(a.scope, b.scope);
             assert_ne!(a.initialization.site, b.initialization.site);
-            let Stmt::Branches { branches, .. } = &block.stmts[1] else {
+            let Stmt::If { branches, .. } = &block.stmts[1] else {
                 panic!("{block:?}")
             };
             for (local, stmt) in [first, second].into_iter().zip(&branches[0].block.stmts) {
@@ -295,14 +298,17 @@ fn hoisted_closure_storage_belongs_to_the_closure_not_the_enclosing_function() {
             assert_ne!(scope, outer_scope);
             assert_ne!(scope, declaration.scope);
             assert_eq!(closure.block.stmts[0].span(), default_site);
-            let Stmt::Branches { branches, .. } = &closure.block.stmts[1] else {
+            let Stmt::If { branches, .. } = &closure.block.stmts[1] else {
                 panic!("{closure:?}")
             };
             assert_eq!(
                 declaration.initialization.site,
                 branches[0].block.stmts[0].span()
             );
-            assert_eq!(inner.initializer, Some(declaration.initialization.site));
+            assert_eq!(
+                inner.initializer_span,
+                Some(declaration.initialization.site)
+            );
         },
     );
 }

@@ -29,7 +29,7 @@ fn analyze_native(
     assert!(errors.is_empty(), "{errors:?}");
     let mut native = native.unwrap();
     rewrite(&mut native);
-    let parsed = redscript_redmod_adapter::bridge::lower(native).unwrap();
+    let parsed = redscript_redmod_adapter::bridge::adapt(native).unwrap();
     let interner = TypeInterner::default();
     let mut reporter = CompileErrorReporter::default();
     let (unit, symbols, errors) = process_sources(
@@ -79,7 +79,7 @@ fn loop_entry_temporaries_have_target_independent_metadata() {
             );
             assert_eq!(flag.name, None);
             assert!(matches!(flag.id, ir::Local::Var(_)));
-            let span = flag.span.unwrap();
+            let span = flag.name_span.unwrap();
             assert_eq!(span.start, span.end);
         });
     }
@@ -184,7 +184,7 @@ impl<'a, 'ctx> Machine<'a, 'ctx> {
                     }
                     Flow::Next
                 }
-                ir::Stmt::Branches {
+                ir::Stmt::If {
                     branches, default, ..
                 } => {
                     if let Some(branch) = branches
@@ -707,7 +707,7 @@ fn assert_written_queries(source: &str, unit: &LoweredCompilationUnit<'_>, symbo
         .iter()
         .filter(|info| info.name.is_none())
         .map(|info| {
-            let span = info.span.expect("generated local location");
+            let span = info.name_span.expect("generated local location");
             assert_eq!(span.start, span.end);
             info.id
         })
@@ -847,7 +847,7 @@ fn changed_provenance_returns_a_typed_error_without_consuming_the_header() {
         let ir::Stmt::While(loop_, _) = &function.block.stmts[0] else {
             panic!()
         };
-        assert!(matches!(loop_.block.stmts[0], ir::Stmt::Branches { .. }));
+        assert!(matches!(loop_.block.stmts[0], ir::Stmt::If { .. }));
     }
 }
 

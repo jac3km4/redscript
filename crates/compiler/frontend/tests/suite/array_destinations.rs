@@ -60,7 +60,7 @@ fn fresh_literals_initialize_only_the_authored_local() {
                 };
                 let info = locals.iter().find(|info| info.id == *local).unwrap();
                 assert_eq!(info.name, Some(name));
-                assert!(info.initializer.is_some());
+                assert!(info.initializer_span.is_some());
                 assert_eq!(info.is_const, name == "b");
                 assert_eq!(elements.len(), if name == "a" { 2 } else { 1 });
                 if name == "a" {
@@ -83,7 +83,7 @@ fn shadowed_initializer_reads_the_outer_binding() {
                 .collect();
             assert_eq!(bindings.len(), 2);
             assert!(locals.iter().all(|info| info.temporary_purpose.is_none()));
-            let Stmt::Branches { branches, .. } = &block.stmts[1] else {
+            let Stmt::If { branches, .. } = &block.stmts[1] else {
                 panic!("{block:?}")
             };
             let Stmt::InitArray {
@@ -107,7 +107,7 @@ fn collect_statements<'a, 'ctx>(block: &'a Block<'ctx>, statements: &mut Vec<&'a
         match stmt {
             Stmt::Block(block, _) => collect_statements(block, statements),
             Stmt::While(loop_, _) => collect_statements(&loop_.block, statements),
-            Stmt::Branches {
+            Stmt::If {
                 branches, default, ..
             } => {
                 for branch in branches {
@@ -164,7 +164,7 @@ fn assert_array_copy<'a, 'ctx>(
     };
     assert!(matches!(&**place, Expr::Local(local, _) if *local == destination.id));
     assert!(matches!(&**expr, Expr::Local(local, _) if *local == temp.id));
-    assert_eq!(destination.initializer, Some(*span));
+    assert_eq!(destination.initializer_span, Some(*span));
     elements
 }
 

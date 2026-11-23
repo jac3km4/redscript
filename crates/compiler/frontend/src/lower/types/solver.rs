@@ -6,9 +6,9 @@ use smallvec::SmallVec;
 
 use super::{InferredType as Type, InferredType, PolyType};
 use crate::lower::error::{InferResult, TypeError};
-use crate::symbols::AnySupertype;
+use crate::symbols::ClassSupertype;
 use crate::sync::{SharedCell, SharedWeak};
-use crate::types::CtxVar;
+use crate::types::TypeParamVar;
 use crate::{Shared, Symbols};
 
 // External handles own the component; handles stored in nodes have no owner.
@@ -127,7 +127,7 @@ impl<'ctx> Var<'ctx> {
                     })
                     .collect::<Shared<_>>(),
             ),
-            Type::Ctx(ctx) => Type::Ctx(Shared::new(CtxVar::new(
+            Type::Ctx(ctx) => Type::Ctx(Shared::new(TypeParamVar::new(
                 ctx.name(),
                 ctx.variance(),
                 ctx.lower().map(|t| Self::map_type(t, map)),
@@ -307,10 +307,10 @@ impl<'ctx> Var<'ctx> {
         }
         if repr.0.borrow().updating {
             let implied = if lower {
-                bound.proves_subtype::<AnySupertype>(&repr.lower(), symbols)
+                bound.proves_subtype::<ClassSupertype>(&repr.lower(), symbols)
             } else {
                 repr.upper()
-                    .is_some_and(|u| u.proves_subtype::<AnySupertype>(bound, symbols))
+                    .is_some_and(|u| u.proves_subtype::<ClassSupertype>(bound, symbols))
             };
             return if implied {
                 Ok(())
@@ -357,7 +357,7 @@ impl<'ctx> Var<'ctx> {
             });
         }
         if let Some(upper) = &new_upper {
-            new_lower.constrain::<AnySupertype>(upper, symbols)?;
+            new_lower.constrain::<ClassSupertype>(upper, symbols)?;
         }
         self.store_bounds(&new_lower, new_upper.as_ref());
         Ok(if lower { new_lower } else { new_upper.unwrap() })

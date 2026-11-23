@@ -56,7 +56,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 ) {
                     12
                 } else if def.intrinsic().is_none()
-                    && def.method_alias().is_none()
+                    && def.wrap_target().is_none()
                     && def.flags().is_native()
                 {
                     let name = name.to_string();
@@ -100,7 +100,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             let op = match def.intrinsic() {
                 Some(ir::Intrinsic::Equals) => Some(ast::BinOp::Eq),
                 Some(ir::Intrinsic::NotEquals) => Some(ast::BinOp::Ne),
-                None if def.flags().is_native() && def.method_alias().is_none() => {
+                None if def.flags().is_native() && def.wrap_target().is_none() => {
                     let name = name.to_string();
                     if ast::UnOp::from_name(&name) == Some(ast::UnOp::Not)
                         && let [arg] = &args[..]
@@ -337,17 +337,17 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     return self.intrinsic(intrinsic, type_args, args, whole);
                 }
                 self.check_out(def.type_(), args)?;
-                if let Some(alias) = def.method_alias() {
-                    if self.wrapper != Some(alias) {
+                if let Some(target) = def.wrap_target() {
+                    if self.wrapper != Some(target) {
                         return Err(error(
-                            "original-call alias outside its resolved wrapper",
+                            "wrapped method call outside its resolved wrapper",
                             None,
                         ));
                     }
                     let (name, _) = self
                         .symbols
-                        .get_method(alias)
-                        .ok_or_else(|| error("missing wrapper alias", None))?;
+                        .get_method(target)
+                        .ok_or_else(|| error("missing wrapped method", None))?;
                     return Ok(format!("{}({})", target::ident(name)?, self.args(args)?));
                 }
                 let name = name.to_string();

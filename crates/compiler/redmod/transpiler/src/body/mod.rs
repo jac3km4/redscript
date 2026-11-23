@@ -30,7 +30,7 @@ pub(crate) struct Body<'a, 'ctx> {
 
     pub wrapper: Option<MethodId<'ctx>>,
     pub(super) result_local: String,
-    pub(super) inline_declarations: BTreeSet<ir::Local>,
+    pub(super) fused_declarations: BTreeSet<ir::Local>,
     pub(super) omitted_defaults: BTreeSet<(ir::Local, ast::Span)>,
     pub(super) enum_defaults: RefCell<HashMap<TypeId<'ctx>, Option<&'ctx str>>>,
 }
@@ -84,14 +84,14 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 &local
                     .typ
                     .coalesce(symbols)
-                    .map_err(|e| error(e.to_string(), local.span))?,
+                    .map_err(|e| error(e.to_string(), local.name_span))?,
                 symbols,
             )?;
             if local.id == ir::Local::This {
                 continue;
             }
             if names.contains_key(&local.id) {
-                return Err(error("duplicate local identity", local.span));
+                return Err(error("duplicate local identity", local.name_span));
             }
             let source_name = preferred(local).filter(|name| target::ident(name).is_ok());
             let candidate = preferred(local).and_then(authored_name);
@@ -129,11 +129,11 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         {
             result_local.push('_');
         }
-        let mut inline_declarations = crate::locals::inline_declarations(&function.block, symbols)?;
+        let mut fused_declarations = crate::locals::fused_declarations(&function.block, symbols)?;
         let omitted_defaults =
-            crate::defaults::overwritten_defaults(&function.block, &inline_declarations);
+            crate::defaults::omitted_defaults(&function.block, &fused_declarations);
         for (local, _) in &omitted_defaults {
-            inline_declarations.remove(local);
+            fused_declarations.remove(local);
         }
         Ok(Self {
             function,
@@ -144,7 +144,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
 
             wrapper,
             result_local,
-            inline_declarations,
+            fused_declarations,
             omitted_defaults,
             enum_defaults: RefCell::new(HashMap::new()),
         })
@@ -195,13 +195,12 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         let mut text = String::from("{\n");
         let mut mappings = Vec::new();
         for local in &self.function.locals {
-            if matches!(local.id, ir::Local::Var(_))
-                && !self.inline_declarations.contains(&local.id)
+            if matches!(local.id, ir::Local::Var(_)) && !self.fused_declarations.contains(&local.id)
             {
                 let typ = local
                     .typ
                     .coalesce(self.symbols)
-                    .map_err(|e| error(e.to_string(), local.span))?;
+                    .map_err(|e| error(e.to_string(), local.name_span))?;
                 text.push_str(&format!(
                     "{pad}var {}: {};\n",
                     self.local(local.id)?,
@@ -262,7 +261,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
         text: &mut String,
         mappings: &mut Vec<SourceMapping>,
     ) -> Result<()> {
-        let Some(ir::Stmt::Branches {
+        let Some(ir::Stmt::If {
             branches,
             default: Some(default),
             span,
@@ -318,7 +317,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
             ir::Stmt::Expr(e) => {
                 if let ir::Expr::Assign { place, expr, .. } = &**e
                     && let ir::Expr::Local(local, _) = &**place
-                    && self.inline_declarations.remove(local)
+                    && self.fused_declarations.remove(local)
                 {
                     text.push_str(&format!(
                         "var {} = {};\n",
@@ -347,7 +346,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                 }
                 text.push_str(&format!("{pad}}}\n"));
             }
-            ir::Stmt::Branches {
+            ir::Stmt::If {
                 branches, default, ..
             } => {
                 for (i, branch) in branches.iter().enumerate() {
@@ -414,7 +413,7 @@ impl<'a, 'ctx> Body<'a, 'ctx> {
                     text.truncate(text.len() - pad.len());
                     return Ok(());
                 }
-                let inline = self.inline_declarations.remove(local);
+                let inline = self.fused_declarations.remove(local);
                 let name = self.local(*local)?;
                 let typ = typ
                     .coalesced(self.symbols)

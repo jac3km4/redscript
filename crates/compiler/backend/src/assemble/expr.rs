@@ -175,11 +175,11 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
                     return Ok(());
                 }
 
-                let (idx, mode) = if let Some(method) = free_function.method_alias() {
+                let (idx, mode) = if let Some(method) = free_function.wrap_target() {
                     let idx = self
                         .monomorph
-                        .existing_alias(method)
-                        .expect("method alias should be defined");
+                        .existing_wrapper_target(method)
+                        .expect("wrapper target should be defined");
                     (idx, ir::CallMode::ForceStatic)
                 } else {
                     let sig = Signature::new(*function, type_args);

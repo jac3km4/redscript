@@ -206,7 +206,7 @@ fn identical_final_native_is_a_methods_on_both_roots_are_unambiguous() {
                 let method = &methods[0];
                 assert_eq!(method.key().parent(), predef::ISCRIPTABLE);
                 assert!(method.func().flags().is_final());
-                let base = method.func().overriden().unwrap();
+                let base = method.func().overridden().unwrap();
                 assert_eq!(base.parent(), predef::ISERIALIZABLE);
                 assert!(symbols[base].flags().is_final());
                 assert_eq!(method.func().type_().params()[0].name(), "className");
@@ -271,7 +271,7 @@ fn root_reconciliation_does_not_hide_distinct_overloads_or_static_methods() {
         assert!(
             methods
                 .iter()
-                .all(|entry| entry.func().overriden().is_none())
+                .all(|entry| entry.func().overridden().is_none())
         );
     }
 }

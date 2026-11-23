@@ -1,7 +1,7 @@
 use redscript_community_ast::{self as ast, FileId};
 use redscript_compiler_frontend::{CompileErrorReporter, Symbols, TypeInterner, ir};
 use redscript_redmod_adapter::{
-    CapabilityError, Error, ParsedModule, parse_file, parse_file_with_metadata,
+    AdaptedModule, CapabilityError, Error, parse_file, parse_file_with_metadata,
 };
 
 use crate::support;
@@ -54,13 +54,13 @@ fn file() -> FileId {
     ast::SourceMap::new().push_back("bridge.script", "")
 }
 
-fn parsed(source: &str) -> ParsedModule<'_> {
+fn parsed(source: &str) -> AdaptedModule<'_> {
     let (module, errors) = parse_file_with_metadata(source, file());
     assert!(errors.is_empty(), "{source}: {errors:?}");
     module.unwrap()
 }
 
-fn body<'a, 'src>(module: &'a ParsedModule<'src>) -> &'a ast::SourceBlock<'src> {
+fn body<'a, 'src>(module: &'a AdaptedModule<'src>) -> &'a ast::SourceBlock<'src> {
     let ast::Item::Function(function) = &module.module.items[0].0.item else {
         panic!()
     };
@@ -213,7 +213,7 @@ fn native_only_declarations_and_expressions_are_checked_without_placeholders() {
             )],
         };
         assert!(matches!(
-            redscript_redmod_adapter::bridge::lower(module),
+            redscript_redmod_adapter::bridge::adapt(module),
             Err((
                 CapabilityError::InvalidOperatorSignature(_)
                     | CapabilityError::InvalidConversionSignature(_),
@@ -247,7 +247,7 @@ fn native_only_declarations_and_expressions_are_checked_without_placeholders() {
             span,
         ));
         assert!(
-            matches!(redscript_redmod_adapter::bridge::lower(module), Err((kind, _)) if kind == expected)
+            matches!(redscript_redmod_adapter::bridge::adapt(module), Err((kind, _)) if kind == expected)
         );
     }
 }
@@ -309,7 +309,7 @@ fn custom_generic_like_native_types_reach_validation() {
         name: "Custom",
         args: vec![(redscript_redmod_ast::Type::plain("Int32"), span)],
     };
-    let module = redscript_redmod_adapter::bridge::lower(native).unwrap();
+    let module = redscript_redmod_adapter::bridge::adapt(native).unwrap();
     let errors = redscript_redmod_adapter::validate_module(&module.module);
     assert!(matches!(
         errors.as_slice(),
@@ -629,7 +629,7 @@ fn unsafe_array_prefix_shapes_are_typed_capability_failures() {
         assert!(syntax_errors.is_empty(), "{statement}: {syntax_errors:?}");
         // The pre-resolution bridge no longer guesses at member-shaped callees.
         assert!(
-            redscript_redmod_adapter::bridge::lower(native.unwrap()).is_ok(),
+            redscript_redmod_adapter::bridge::adapt(native.unwrap()).is_ok(),
             "{statement}"
         );
         let (module, errors) = parse_file_with_metadata(&source, file());

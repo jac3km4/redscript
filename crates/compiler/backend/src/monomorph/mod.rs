@@ -171,7 +171,7 @@ impl<'ctx> Monomorphizer<'ctx> {
                         let method = class.methods()[entry.key()];
                         let func = entry.func();
                         let base = func
-                            .overriden()
+                            .overridden()
                             .filter(|_| func.flags().is_callback())
                             .and_then(|base| {
                                 let base_type =
@@ -321,7 +321,7 @@ impl<'ctx> Monomorphizer<'ctx> {
         env.extend(method.type_().type_vars().zip(sig.types().iter().cloned()));
 
         let base = method
-            .overriden()
+            .overridden()
             .map(|id| &symbols[symbols.override_slot(id)]);
         let mangled = MangledMethod::new(name, &sig, method, base, &env).to_string();
         let func_idx = self.add_method_to_pool(mangled, method, parent_idx, &env, symbols, bundle);
@@ -639,7 +639,7 @@ impl<'ctx> Monomorphizer<'ctx> {
                 });
                 bundle[cls_idx].add_method(next);
 
-                self.classes[&parent_t].set_alias(id.index(), next);
+                self.classes[&parent_t].set_wrapper_target(id.index(), next);
                 self.function_body(index, func, &env, symbols, bundle)?;
 
                 index = next;
@@ -747,7 +747,7 @@ impl<'ctx> Monomorphizer<'ctx> {
 
             let sig = Signature::new((), []);
             let base = func
-                .overriden()
+                .overridden()
                 .map(|id| &symbols[symbols.override_slot(id)]);
             let mangled = MangledMethod::new(entry.name(), &sig, func, base, &cls_env).to_string();
             let method = self.add_method_to_pool(mangled, func, cls_idx, &cls_env, symbols, bundle);
@@ -910,10 +910,10 @@ impl<'ctx> Monomorphizer<'ctx> {
         self.types.get(typ).copied()
     }
 
-    pub fn existing_alias(&self, id: MethodId<'ctx>) -> Option<PoolFunctionIndex> {
+    pub fn existing_wrapper_target(&self, id: MethodId<'ctx>) -> Option<PoolFunctionIndex> {
         self.classes
             .get(&MonoType::nullary(id.parent()))?
-            .aliases()
+            .wrapper_targets()
             .get(&id.index())
             .copied()
     }

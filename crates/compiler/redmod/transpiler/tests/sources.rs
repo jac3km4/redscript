@@ -69,7 +69,7 @@ fn bool_callbacks_roundtrip_through_adapter_semantics() {
         matches!(&body.stmts[1], ir::Stmt::Return(Some(value), _) if matches!(&**value, ir::Expr::Local(..))),
         "{body:?}"
     );
-    let ir::Stmt::Branches { branches, .. } = &body.stmts[0] else {
+    let ir::Stmt::If { branches, .. } = &body.stmts[0] else {
         panic!("{body:?}")
     };
     assert!(
@@ -394,7 +394,7 @@ fn competing_dependency_replacements_cannot_supply_selected_body() {
         Aggregate, FunctionType, Method, MethodFlags, Type, TypeDef, TypeSchema, predef,
     };
     use redscript_redmod_transpiler::{
-        DeclarationPath, ResolvedDeclaration, TranspileModule, transpile,
+        DeclarationPath, ResolvedDeclaration, TranspileInput, transpile,
     };
     let sources = SourceMap::new();
     let selected = sources.push_back(
@@ -440,7 +440,7 @@ fn competing_dependency_replacements_cannot_supply_selected_body() {
         ResolvedDeclaration::Replacement(redscript_compiler_frontend::MethodId::new(owner, index));
     let requests: Vec<_> = [selected, dependency]
         .iter()
-        .map(|file| TranspileModule {
+        .map(|file| TranspileInput {
             source: &analysis
                 .modules()
                 .iter()

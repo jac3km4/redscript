@@ -47,7 +47,7 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
                 self.emit(Instr::Jump(Jump::new(start)));
                 self.mark_label(end);
             }
-            ir::Stmt::Branches {
+            ir::Stmt::If {
                 branches, default, ..
             } => {
                 let mut next_branch = self.new_label();

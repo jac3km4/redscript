@@ -151,7 +151,7 @@ Block {
                 ),
                 block: Block {
                     stmts: [
-                        Branches {
+                        If {
                             branches: [
                                 ConditionalBlock {
                                     condition: Local(
@@ -337,7 +337,7 @@ Block {
                                 },
                             },
                         ),
-                        Branches {
+                        If {
                             branches: [
                                 ConditionalBlock {
                                     condition: Call {
@@ -386,7 +386,7 @@ Block {
                                     },
                                     block: Block {
                                         stmts: [
-                                            Branches {
+                                            If {
                                                 branches: [
                                                     ConditionalBlock {
                                                         condition: Const(
@@ -539,7 +539,7 @@ Block {
                 ),
                 block: Block {
                     stmts: [
-                        Branches {
+                        If {
                             branches: [
                                 ConditionalBlock {
                                     condition: Local(
@@ -556,7 +556,7 @@ Block {
                                     ),
                                     block: Block {
                                         stmts: [
-                                            Branches {
+                                            If {
                                                 branches: [
                                                     ConditionalBlock {
                                                         condition: Const(

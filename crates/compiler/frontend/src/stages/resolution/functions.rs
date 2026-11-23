@@ -99,7 +99,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                 let func_idx = methods.add(name, member);
                 let method_id = MethodId::new(cls_id, func_idx);
                 if let Some(forwarder) = forwarder {
-                    methods.add(name, forwarder.with_aliased(method_id));
+                    methods.add(name, forwarder.with_forwarded_static_method(method_id));
                 }
 
                 let item = FuncItem::new(
@@ -355,7 +355,7 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
         &mut self,
         types: &'a TypeEnv<'a, 'ctx>,
         params: &'a [ast::SourceTypeParam<'ctx>],
-    ) -> (TypeEnv<'a, 'ctx>, Box<[Shared<CtxVar<'ctx>>]>) {
+    ) -> (TypeEnv<'a, 'ctx>, Box<[Shared<TypeParamVar<'ctx>>]>) {
         let mut types = types.introduce_scope();
 
         for param in params {

@@ -375,7 +375,7 @@ impl<K: AstKind> Formattable for LetCondition<'_, K> {
 
 impl<K: AstKind> Formattable for Pattern<'_, K> {
     fn format(&self, f: &mut fmt::Formatter<'_>, ctx: FormatCtx<'_>) -> fmt::Result {
-        write!(f, "{}", ctx.node_prefix(NodeId::condition(self), None))?;
+        write!(f, "{}", ctx.node_prefix(NodeId::pattern(self), None))?;
         match self {
             Self::Name(name) => write!(f, "{}", name.as_wrapped()),
             Self::As(inner, typ) => write!(

@@ -416,7 +416,7 @@ impl<K: AstKind> AstNode<'_, '_, K> {
             Self::ItemDecl(item_decl) => NodeId::item_decl::<K>(item_decl.as_wrapped()),
             Self::Stmt(stmt) => NodeId::stmt::<K>(stmt.as_wrapped()),
             Self::Expr(stmt) => NodeId::expr::<K>(stmt.as_wrapped()),
-            Self::Pattern(pat) => NodeId::condition::<K>(pat.as_wrapped()),
+            Self::Pattern(pat) => NodeId::pattern::<K>(pat.as_wrapped()),
         }
     }
 }
@@ -452,7 +452,7 @@ impl NodeId {
     }
 
     #[inline]
-    pub fn condition<K: AstKind>(condition: &Pattern<'_, K>) -> Self {
-        Self(ptr::from_ref(condition).cast())
+    pub fn pattern<K: AstKind>(pattern: &Pattern<'_, K>) -> Self {
+        Self(ptr::from_ref(pattern).cast())
     }
 }

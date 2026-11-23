@@ -173,7 +173,7 @@ fn readonly_array_temps(
 fn declaration_initializers(locals: &[ir::LocalInfo<'_>]) -> HashMap<ir::Local, Span> {
     locals
         .iter()
-        .filter_map(|local| local.initializer.map(|span| (local.id, span)))
+        .filter_map(|local| local.initializer_span.map(|span| (local.id, span)))
         .collect()
 }
 
@@ -366,7 +366,7 @@ impl<'ctx> ConstWrites<'_, 'ctx> {
     fn call_type_env(&self, call: &ir::Call<'ctx>) -> HashMap<&'ctx str, Type<'ctx>> {
         let mut env = HashMap::new();
         let bind_args = |env: &mut HashMap<&'ctx str, Type<'ctx>>,
-                         params: &[Shared<crate::CtxVar<'ctx>>],
+                         params: &[Shared<crate::TypeParamVar<'ctx>>],
                          args: &[ir::Type<'ctx>]| {
             for (var, arg) in params.iter().zip(args) {
                 if let Ok(typ) = arg.coalesced(self.symbols) {
@@ -504,7 +504,7 @@ impl<'ctx> Visitor<'ctx> for ConstWrites<'_, 'ctx> {
         }
     }
 
-    fn visit_new_struct(
+    fn visit_construct(
         &mut self,
         _struct_: &ir::TypeApp<'ctx>,
         args: &[ir::Expr<'ctx>],

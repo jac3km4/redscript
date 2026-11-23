@@ -3,12 +3,12 @@ use std::fmt;
 use redscript_community_ast::{FunctionProperties, Span};
 
 use super::{FreeFunctionFlags, MethodFlags, MethodId, ParamFlags};
-use crate::types::{CtxVar, Type};
+use crate::types::{Type, TypeParamVar};
 use crate::{Shared, ir, predef};
 
 #[derive(Debug, Clone)]
 pub struct FunctionType<'ctx> {
-    type_params: Box<[Shared<CtxVar<'ctx>>]>,
+    type_params: Box<[Shared<TypeParamVar<'ctx>>]>,
     params: Box<[Param<'ctx>]>,
     return_type: Type<'ctx>,
     properties: FunctionProperties<'ctx>,
@@ -18,7 +18,7 @@ pub struct FunctionType<'ctx> {
 impl<'ctx> FunctionType<'ctx> {
     #[inline]
     pub fn new(
-        type_params: impl Into<Box<[Shared<CtxVar<'ctx>>]>>,
+        type_params: impl Into<Box<[Shared<TypeParamVar<'ctx>>]>>,
         params: impl Into<Box<[Param<'ctx>]>>,
         ret_t: Type<'ctx>,
     ) -> Self {
@@ -75,7 +75,7 @@ impl<'ctx> FunctionType<'ctx> {
     }
 
     #[inline]
-    pub fn type_params(&self) -> &[Shared<CtxVar<'ctx>>] {
+    pub fn type_params(&self) -> &[Shared<TypeParamVar<'ctx>>] {
         &self.type_params
     }
 
@@ -137,7 +137,7 @@ pub struct FreeFunction<'ctx> {
     flags: FreeFunctionFlags,
     type_: FunctionType<'ctx>,
     intrinsic: Option<ir::Intrinsic>,
-    method_alias: Option<MethodId<'ctx>>,
+    wrap_target: Option<MethodId<'ctx>>,
     doc: Box<[&'ctx str]>,
     span: Option<Span>,
 }
@@ -184,11 +184,15 @@ impl<'ctx> FreeFunction<'ctx> {
         }
     }
 
-    pub fn new_alias(type_: FunctionType<'ctx>, alias: MethodId<'ctx>, span: Option<Span>) -> Self {
+    pub fn new_wrap_target(
+        type_: FunctionType<'ctx>,
+        target: MethodId<'ctx>,
+        span: Option<Span>,
+    ) -> Self {
         Self {
             type_,
             span,
-            method_alias: Some(alias),
+            wrap_target: Some(target),
             ..Default::default()
         }
     }
@@ -209,8 +213,8 @@ impl<'ctx> FreeFunction<'ctx> {
     }
 
     #[inline]
-    pub fn method_alias(&self) -> Option<MethodId<'ctx>> {
-        self.method_alias
+    pub fn wrap_target(&self) -> Option<MethodId<'ctx>> {
+        self.wrap_target
     }
 
     #[inline]
@@ -228,10 +232,10 @@ impl<'ctx> FreeFunction<'ctx> {
 pub struct Method<'ctx> {
     flags: MethodFlags,
     typ: FunctionType<'ctx>,
-    overriden: Option<MethodId<'ctx>>,
+    overridden: Option<MethodId<'ctx>>,
     doc: Box<[&'ctx str]>,
     span: Option<Span>,
-    aliased_method: Option<MethodId<'ctx>>,
+    forwarded_static_method: Option<MethodId<'ctx>>,
 }
 
 impl<'ctx> Method<'ctx> {
@@ -245,15 +249,15 @@ impl<'ctx> Method<'ctx> {
         Self {
             flags,
             typ,
-            overriden: overridden,
+            overridden,
             doc: doc.into(),
             span,
-            aliased_method: None,
+            forwarded_static_method: None,
         }
     }
 
-    pub fn with_aliased(mut self, alias: MethodId<'ctx>) -> Self {
-        self.aliased_method = Some(alias);
+    pub fn with_forwarded_static_method(mut self, method: MethodId<'ctx>) -> Self {
+        self.forwarded_static_method = Some(method);
         self
     }
 
@@ -273,12 +277,12 @@ impl<'ctx> Method<'ctx> {
     }
 
     #[inline]
-    pub fn overriden(&self) -> Option<MethodId<'ctx>> {
-        self.overriden
+    pub fn overridden(&self) -> Option<MethodId<'ctx>> {
+        self.overridden
     }
 
-    pub fn set_overriden(&mut self, overridden: MethodId<'ctx>) {
-        self.overriden = Some(overridden);
+    pub fn set_overridden(&mut self, overridden: MethodId<'ctx>) {
+        self.overridden = Some(overridden);
     }
 
     #[inline]
@@ -296,8 +300,8 @@ impl<'ctx> Method<'ctx> {
     }
 
     #[inline]
-    pub fn aliased_method(&self) -> Option<MethodId<'ctx>> {
-        self.aliased_method
+    pub fn forwarded_static_method(&self) -> Option<MethodId<'ctx>> {
+        self.forwarded_static_method
     }
 }
 

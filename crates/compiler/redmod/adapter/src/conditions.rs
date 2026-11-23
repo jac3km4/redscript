@@ -5,10 +5,10 @@ use std::collections::{BTreeMap, HashSet};
 use redscript_community_ast::{self as ast, Span};
 use redscript_compiler_frontend::Evaluator;
 
-use crate::{ConditionError, Error, ParsedModule};
+use crate::{AdaptedModule, ConditionError, Error};
 
 pub fn select<'src>(
-    modules: &mut [ParsedModule<'src>],
+    modules: &mut [AdaptedModule<'src>],
     dependencies: &[ast::SourceModule<'src>],
     errors: &mut Vec<Error>,
 ) {

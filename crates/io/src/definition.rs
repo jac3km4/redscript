@@ -26,7 +26,7 @@ pub struct DefinitionHeader {
 
 impl DefinitionHeader {
     #[inline]
-    pub(crate) fn from_defintion(def: &Definition<'_>, size: u32, offset: u32) -> Self {
+    pub(crate) fn from_definition(def: &Definition<'_>, size: u32, offset: u32) -> Self {
         DefinitionHeader {
             name: def.name(),
             parent: def.parent(),
@@ -347,7 +347,7 @@ pub enum TypeKind {
 pub struct Class {
     #[byte(skip)]
     name: CNameIndex,
-    visiblity: Visibility,
+    visibility: Visibility,
     flags: ClassFlags,
     #[byte(ctx = OptionalIndex(ctx))]
     base: Option<ClassIndex>,
@@ -361,10 +361,10 @@ pub struct Class {
 
 impl Class {
     /// Creates a new instance.
-    pub fn new(name: CNameIndex, visiblity: Visibility, flags: ClassFlags) -> Self {
+    pub fn new(name: CNameIndex, visibility: Visibility, flags: ClassFlags) -> Self {
         Self {
             name,
-            visiblity,
+            visibility,
             flags,
             base: None,
             methods: vec![],
@@ -382,7 +382,7 @@ impl Class {
     #[inline]
     /// Gets the visibility.
     pub fn visibility(&self) -> Visibility {
-        self.visiblity
+        self.visibility
     }
 
     #[inline]
@@ -538,7 +538,7 @@ impl From<EnumMember> for Definition<'_> {
 pub struct Enum {
     #[byte(skip)]
     name: CNameIndex,
-    visiblity: Visibility,
+    visibility: Visibility,
     size: u8,
     #[byte(ctx = Prefixed(ctx))]
     values: Vec<EnumValueIndex>,
@@ -547,10 +547,10 @@ pub struct Enum {
 
 impl Enum {
     /// Creates a new instance.
-    pub fn new(name: CNameIndex, visiblity: Visibility, size: u8) -> Self {
+    pub fn new(name: CNameIndex, visibility: Visibility, size: u8) -> Self {
         Self {
             name,
-            visiblity,
+            visibility,
             size,
             values: vec![],
             is_native: false,
@@ -566,7 +566,7 @@ impl Enum {
     #[inline]
     /// Gets the visibility.
     pub fn visibility(&self) -> Visibility {
-        self.visiblity
+        self.visibility
     }
 
     #[inline]
@@ -1726,7 +1726,7 @@ mod tests {
     fn roundtrip(def: &Definition<'_>) -> Definition<'static> {
         let mut bytes = vec![0; def.measure(ENDIANESS)];
         let size = def.try_write(&mut bytes, ENDIANESS).unwrap();
-        let header = DefinitionHeader::from_defintion(def, size as u32, 0);
+        let header = DefinitionHeader::from_definition(def, size as u32, 0);
         Definition::try_read(&bytes, (ENDIANESS, header))
             .unwrap()
             .0

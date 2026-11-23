@@ -7,7 +7,7 @@ use redscript_compiler_frontend::{
     parse_files, process_sources,
 };
 use redscript_redmod_transpiler::{
-    DeclarationPath, ResolvedDeclaration as R, TranspileModule, transpile,
+    DeclarationPath, ResolvedDeclaration as R, TranspileInput, transpile,
 };
 
 fn analyze<'ctx>(
@@ -184,7 +184,7 @@ fn convert_mapped(source: &str) -> redscript_redmod_transpiler::TranspiledModule
     let interner = TypeInterner::default();
     let (modules, unit, symbols) = analyze(&sources, &interner);
     let module = &modules[0];
-    let request = TranspileModule {
+    let request = TranspileInput {
         source: module,
         bindings: bindings(module, &symbols),
     };
@@ -381,7 +381,7 @@ fn value_assignments_are_exported_as_nested_expressions_with_source_mappings() {
         &[],
     );
     assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
-    let request = TranspileModule {
+    let request = TranspileInput {
         source: &module,
         bindings: bindings(&module, &symbols),
     };
@@ -617,7 +617,7 @@ fn unhandled_qualifiers_are_rejected_instead_of_silently_dropped() {
         let interner = TypeInterner::default();
         let (modules, unit, symbols) = analyze(&sources, &interner);
         let diagnostics = transpile(
-            &[TranspileModule {
+            &[TranspileInput {
                 source: &modules[0],
                 bindings: bindings(&modules[0], &symbols),
             }],
@@ -661,7 +661,7 @@ fn unsupported_intrinsic_reports_source_and_no_artifacts() {
     let interner = TypeInterner::default();
     let (modules, unit, symbols) = analyze(&sources, &interner);
     let result = transpile(
-        &[TranspileModule {
+        &[TranspileInput {
             source: &modules[0],
             bindings: bindings(&modules[0], &symbols),
         }],
@@ -686,7 +686,7 @@ fn missing_identity_is_not_recovered_from_spans() {
     let interner = TypeInterner::default();
     let (modules, unit, symbols) = analyze(&sources, &interner);
     let errors = transpile(
-        &[TranspileModule {
+        &[TranspileInput {
             source: &modules[0],
             bindings: BTreeMap::new(),
         }],
@@ -695,11 +695,11 @@ fn missing_identity_is_not_recovered_from_spans() {
     )
     .unwrap_err();
     assert!(errors[0].message.contains("explicit declaration binding"));
-    let valid = TranspileModule {
+    let valid = TranspileInput {
         source: &modules[0],
         bindings: bindings(&modules[0], &symbols),
     };
-    let invalid = TranspileModule {
+    let invalid = TranspileInput {
         source: &modules[0],
         bindings: BTreeMap::new(),
     };
@@ -933,7 +933,7 @@ fn wrapper_original_uses_resolved_alias_and_hygienic_names() {
     assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
     let source = &modules[0];
     let output = transpile(
-        &[TranspileModule {
+        &[TranspileInput {
             source,
             bindings: bindings(source, &symbols),
         }],
@@ -980,7 +980,7 @@ fn rejected_features_have_source_diagnostics() {
         let interner = TypeInterner::default();
         let (modules, unit, symbols) = analyze(&sources, &interner);
         let result = transpile(
-            &[TranspileModule {
+            &[TranspileInput {
                 source: &modules[0],
                 bindings: bindings(&modules[0], &symbols),
             }],
@@ -1019,7 +1019,7 @@ fn enum_return_uses_typed_intermediate() {
         .unwrap()
         .key();
     let output = transpile(
-        &[TranspileModule {
+        &[TranspileInput {
             source: &modules[0],
             bindings: [
                 (DeclarationPath(vec![0]), R::Type(enum_id)),
@@ -1053,7 +1053,7 @@ fn embedded_string_quote_is_a_typed_transpile_error() {
     let interner = TypeInterner::default();
     let (modules, unit, symbols) = analyze(&sources, &interner);
     let diagnostics = transpile(
-        &[TranspileModule {
+        &[TranspileInput {
             source: &modules[0],
             bindings: bindings(&modules[0], &symbols),
         }],

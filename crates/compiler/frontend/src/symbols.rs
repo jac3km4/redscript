@@ -10,7 +10,7 @@ use redscript_community_ast::Span;
 use slab::Slab;
 use smallvec::SmallVec;
 
-use crate::types::{CtxVar, Type, TypeApp, TypeId};
+use crate::types::{Type, TypeApp, TypeId, TypeParamVar};
 use crate::utils::fmt::sep_by;
 use crate::{IndexMap, MonoType, RefType, Shared, Variance, predef};
 
@@ -31,7 +31,7 @@ impl<'ctx> Symbols<'ctx> {
                 [$((
                     paste::paste!(predef::[<$id:snake:upper>]),
                     TypeDef::new(
-                        [$(CtxVar::new(stringify!($arg), Variance::$var, None, None).into()),*],
+                        [$(TypeParamVar::new(stringify!($arg), Variance::$var, None, None).into()),*],
                         TypeSchema::Primitive,
                         [include_str!(concat!("../../../../docs/types/", stringify!($id), ".md"))],
                     )
@@ -186,7 +186,7 @@ impl<'ctx> Symbols<'ctx> {
         let mut links = vec![];
         for entry in scriptable.methods().iter() {
             let method = entry.func();
-            if !eligible(method) || method.overriden().is_some() {
+            if !eligible(method) || method.overridden().is_some() {
                 continue;
             }
             let signature = method.type_();
@@ -216,7 +216,7 @@ impl<'ctx> Symbols<'ctx> {
             self.get_method_mut(method)
                 .expect("root method should exist")
                 .1
-                .set_overriden(base);
+                .set_overridden(base);
         }
     }
 
@@ -284,10 +284,10 @@ impl<'ctx> Symbols<'ctx> {
             .map(|(&name, val)| (name, val))
     }
 
-    /// The original virtual slot, retaining `Method::overriden` as the immediate
+    /// The original virtual slot, retaining `Method::overridden` as the immediate
     /// predecessor for lookup, visibility inheritance and implementation tracking.
     pub fn override_slot(&self, mut id: MethodId<'ctx>) -> MethodId<'ctx> {
-        while let Some(base) = self[id].overriden() {
+        while let Some(base) = self[id].overridden() {
             id = base;
         }
         id
@@ -402,13 +402,13 @@ impl<'ctx> Symbols<'ctx> {
         if lhs == rhs {
             Some(lhs)
         } else {
-            let count_left = self.supertype_iter_with_self(lhs).count();
-            let count_right = self.supertype_iter_with_self(rhs).count();
+            let count_left = self.class_supertype_iter_with_self(lhs).count();
+            let count_right = self.class_supertype_iter_with_self(rhs).count();
 
-            self.supertype_iter_with_self(lhs)
+            self.class_supertype_iter_with_self(lhs)
                 .skip(count_left.saturating_sub(count_right))
                 .zip(
-                    self.supertype_iter_with_self(rhs)
+                    self.class_supertype_iter_with_self(rhs)
                         .skip(count_right.saturating_sub(count_left)),
                 )
                 .find(|((l, _), (r, _))| l == r)
@@ -431,7 +431,8 @@ impl<'ctx> Symbols<'ctx> {
     }
 
     pub(super) fn is_subtype(&self, lhs: TypeId<'ctx>, rhs: TypeId<'ctx>) -> bool {
-        self.supertype_iter_with_self(lhs).any(|(t, _)| t == rhs)
+        self.class_supertype_iter_with_self(lhs)
+            .any(|(t, _)| t == rhs)
     }
 
     fn base_iter_with_self_with_mode<Mode: BaseMode>(
@@ -451,11 +452,11 @@ impl<'ctx> Symbols<'ctx> {
     }
 
     #[inline]
-    pub fn supertype_iter_with_self(
+    pub fn class_supertype_iter_with_self(
         &self,
         typ: TypeId<'ctx>,
     ) -> impl Iterator<Item = (TypeId<'ctx>, &Aggregate<'ctx>)> + Clone + use<'_, 'ctx> {
-        self.base_iter_with_self_with_mode::<AnySupertype>(typ)
+        self.base_iter_with_self_with_mode::<ClassSupertype>(typ)
     }
 
     pub fn query_methods_by_name<'a>(
@@ -534,7 +535,7 @@ impl<'ctx> ops::Index<FieldId<'ctx>> for Symbols<'ctx> {
 
 #[derive(Debug, Clone)]
 pub struct TypeDef<'ctx> {
-    params: Box<[Shared<CtxVar<'ctx>>]>,
+    params: Box<[Shared<TypeParamVar<'ctx>>]>,
     schema: TypeSchema<'ctx>,
     doc: Box<[&'ctx str]>,
 }
@@ -549,7 +550,7 @@ impl<'ctx> TypeDef<'ctx> {
     }
 
     pub fn new(
-        params: impl Into<Box<[Shared<CtxVar<'ctx>>]>>,
+        params: impl Into<Box<[Shared<TypeParamVar<'ctx>>]>>,
         schema: TypeSchema<'ctx>,
         doc: impl Into<Box<[&'ctx str]>>,
     ) -> Self {
@@ -561,7 +562,7 @@ impl<'ctx> TypeDef<'ctx> {
     }
 
     #[inline]
-    pub fn params(&self) -> &[Shared<CtxVar<'ctx>>] {
+    pub fn params(&self) -> &[Shared<TypeParamVar<'ctx>>] {
         &self.params
     }
 
@@ -736,7 +737,7 @@ impl<'ctx> Aggregate<'ctx> {
     }
 
     #[inline]
-    pub fn supertype(&self) -> Option<&TypeApp<'ctx>> {
+    pub fn class_supertype(&self) -> Option<&TypeApp<'ctx>> {
         self.base.as_ref().filter(|_| !self.flags.is_struct())
     }
 
@@ -1441,7 +1442,7 @@ fn method_dedup<'ctx: 'a, 'a>()
 -> impl FnMut(MethodEntry<'a, 'ctx>) -> Option<MethodEntry<'a, 'ctx>> + Clone {
     let mut dedup = HashSet::new();
     move |entry| {
-        if let Some(overridden) = entry.func().overriden() {
+        if let Some(overridden) = entry.func().overridden() {
             dedup.insert(overridden);
         }
         dedup.remove(entry.key()).not().then_some(entry)
@@ -1499,12 +1500,12 @@ impl BaseMode for AnyBaseType {
     }
 }
 
-pub struct AnySupertype;
+pub struct ClassSupertype;
 
-impl BaseMode for AnySupertype {
+impl BaseMode for ClassSupertype {
     #[inline]
     fn base<'a, 'ctx>(agg: &'a Aggregate<'ctx>) -> Option<&'a TypeApp<'ctx>> {
-        agg.supertype()
+        agg.class_supertype()
     }
 }
 

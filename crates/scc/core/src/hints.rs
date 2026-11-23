@@ -24,7 +24,7 @@ impl UserHint {
         &self.message
     }
 
-    pub fn does_match(&self, file_name: Option<&OsStr>, source: &str, source_line: &str) -> bool {
+    pub fn matches(&self, file_name: Option<&OsStr>, source: &str, source_line: &str) -> bool {
         self.file_name
             .as_ref()
             .is_none_or(|p| Some(p.as_os_str()) == file_name)

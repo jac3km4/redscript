@@ -58,7 +58,7 @@ impl TypeId<'_> {
     }
 
     #[inline]
-    pub fn array_with_size(size: usize) -> Option<Self> {
+    pub fn try_static_array(size: usize) -> Option<Self> {
         u32::try_from(size).ok().map(Self::static_array)
     }
 
@@ -541,10 +541,10 @@ mod tests {
         assert_ne!(a1, named_array1);
         assert_ne!(a0, a1);
         assert_ne!(a17, a_max);
-        assert_eq!(TypeId::array_with_size(17), Some(a17));
-        assert_eq!(TypeId::array_with_size(u32::MAX as usize), Some(a_max));
+        assert_eq!(TypeId::try_static_array(17), Some(a17));
+        assert_eq!(TypeId::try_static_array(u32::MAX as usize), Some(a_max));
         #[cfg(target_pointer_width = "64")]
-        assert_eq!(TypeId::array_with_size(u32::MAX as usize + 1), None);
+        assert_eq!(TypeId::try_static_array(u32::MAX as usize + 1), None);
 
         assert!(a17.is_static_array());
         assert_eq!(a17.static_array_size(), Some(17));

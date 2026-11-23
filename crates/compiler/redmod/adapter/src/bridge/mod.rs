@@ -11,7 +11,7 @@ use redscript_redmod_ast as native;
 /// Pass this value intact to REDmod `process_sources`: extracting `module` alone
 /// discards the typed loop-header fixup plan.
 #[derive(Debug, Clone)]
-pub struct ParsedModule<'src> {
+pub struct AdaptedModule<'src> {
     pub module: ast::SourceModule<'src>,
     pub overrides: Vec<Span>,
     pub(crate) control_flow: Vec<crate::control_flow::LoopPlan>,
@@ -105,7 +105,7 @@ impl fmt::Display for CapabilityError {
                 "processing this loop exceeds the local variable limit; split the function into smaller functions"
             }
             Self::ControlFlowProvenance => {
-                "internal error: loop information was lost; integrations must pass the complete ParsedModule to process_sources"
+                "internal error: loop information was lost; integrations must pass the complete AdaptedModule to process_sources"
             }
             Self::RecoveredExpression => {
                 "fix the reported syntax errors before analyzing this code"
@@ -124,7 +124,7 @@ type HeaderCondition<'src> = (
 );
 
 /// No partial module or recovery placeholders escape a failed conversion.
-pub fn lower(module: native::Module<'_>) -> Result<ParsedModule<'_>> {
+pub fn adapt(module: native::Module<'_>) -> Result<AdaptedModule<'_>> {
     let mut bridge = Bridge {
         overrides: vec![],
         wrapper: None,
@@ -132,7 +132,7 @@ pub fn lower(module: native::Module<'_>) -> Result<ParsedModule<'_>> {
         control_flow: vec![],
     };
     let items = bridge.items(module.items, false)?;
-    Ok(ParsedModule {
+    Ok(AdaptedModule {
         module: ast::Module::new(module.path.map(|path| ast::Path::new(path.segments)), items),
         overrides: bridge.overrides,
         control_flow: bridge.control_flow,

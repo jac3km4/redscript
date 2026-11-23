@@ -33,7 +33,7 @@ pub struct MonoType<'ctx>(TypeApp<'ctx, MonoType<'ctx>>);
 pub enum Type<'ctx> {
     Nothing,
     Data(TypeApp<'ctx>),
-    Ctx(Shared<CtxVar<'ctx>>),
+    Ctx(Shared<TypeParamVar<'ctx>>),
 }
 
 impl<'ctx> Type<'ctx> {
@@ -370,14 +370,14 @@ impl Hash for MonoType<'_> {
 }
 
 #[derive(Debug)]
-pub struct CtxVar<'ctx, B = Type<'ctx>> {
+pub struct TypeParamVar<'ctx, B = Type<'ctx>> {
     name: &'ctx str,
     variance: Variance,
     lower: Option<B>,
     upper: Option<B>,
 }
 
-impl<'ctx, B> CtxVar<'ctx, B> {
+impl<'ctx, B> TypeParamVar<'ctx, B> {
     pub fn new(name: &'ctx str, variance: Variance, lower: Option<B>, upper: Option<B>) -> Self {
         Self {
             name,
@@ -408,14 +408,14 @@ impl<'ctx, B> CtxVar<'ctx, B> {
     }
 }
 
-impl<B> Hash for CtxVar<'_, B> {
+impl<B> Hash for TypeParamVar<'_, B> {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.name.hash(state);
     }
 }
 
-impl<B> fmt::Display for CtxVar<'_, B> {
+impl<B> fmt::Display for TypeParamVar<'_, B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.name)
     }

@@ -338,7 +338,7 @@ pub fn overrides<'ctx>(
                 continue;
             }
             let base = method
-                .overriden()
+                .overridden()
                 .map(|base| &symbols[base])
                 .filter(|base| !base.flags().is_callback());
             match base {

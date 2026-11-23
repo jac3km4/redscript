@@ -93,7 +93,7 @@ impl SccSettings {
         }
     }
 
-    pub fn does_have_separate_output_cache(&self) -> io::Result<bool> {
+    pub fn has_separate_output_cache(&self) -> io::Result<bool> {
         let Some(output) = self.output_cache_file.as_ref() else {
             return Ok(false);
         };

@@ -217,7 +217,7 @@ fn nonfield_targets_and_nonstring_values_fail_with_typed_capability_errors() {
         let file = sources.push_back("metadata.script", source);
         let (native, errors) = redscript_redmod_parser::parse_module(source, file);
         assert!(errors.is_empty(), "{source}: {errors:?}");
-        let (kind, span) = redscript_redmod_adapter::bridge::lower(native.unwrap()).unwrap_err();
+        let (kind, span) = redscript_redmod_adapter::bridge::adapt(native.unwrap()).unwrap_err();
         assert_eq!(kind, CapabilityError::Metadata, "{source}");
         assert_eq!(&source[span.start as usize..span.end as usize], rejected);
         let (parsed, errors) = parse_file_with_metadata(source, file);

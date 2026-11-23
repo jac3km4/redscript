@@ -18,7 +18,7 @@ impl<'ctx> ir::Visitor<'ctx> for Occurrences {
 /// Only unconditional statements (including flattened plain blocks) qualify.
 /// Every earlier occurrence counts, even in a branch, receiver, or out argument.
 /// A local is selected at most once; emission consumes it at its first initializer.
-pub(crate) fn inline_declarations<'ctx>(
+pub(crate) fn fused_declarations<'ctx>(
     block: &ir::Block<'ctx>,
     symbols: &Symbols<'ctx>,
 ) -> Result<BTreeSet<ir::Local>> {
@@ -103,7 +103,7 @@ mod tests {
             ir::Block::new([assign(local, read(), span)]),
             ir::Block::new([read().into(), assign(local, value(), span)]),
             ir::Block::new([
-                ir::Stmt::Branches {
+                ir::Stmt::If {
                     branches: [ir::ConditionalBlock::new(
                         ir::Expr::Const(ir::Const::Bool(true), span),
                         ir::Block::new([assign(local, value(), span)]),
@@ -125,7 +125,7 @@ mod tests {
                 assign(local, value(), span),
             ]),
         ] {
-            assert!(inline_declarations(&block, &symbols).unwrap().is_empty());
+            assert!(fused_declarations(&block, &symbols).unwrap().is_empty());
         }
     }
 
@@ -205,7 +205,7 @@ mod tests {
         ] {
             let block = ir::Block::new([prior.into(), assign(local, value(), span)]);
             assert!(
-                inline_declarations(&block, &symbols).unwrap().is_empty(),
+                fused_declarations(&block, &symbols).unwrap().is_empty(),
                 "{name}"
             );
         }
@@ -227,7 +227,7 @@ mod tests {
             span,
         };
         let block = ir::Block::new([assign(local, rhs, span), assign(local, value(), span)]);
-        assert!(inline_declarations(&block, &symbols).unwrap().is_empty());
+        assert!(fused_declarations(&block, &symbols).unwrap().is_empty());
     }
 
     #[test]
@@ -240,7 +240,7 @@ mod tests {
         let value = || ir::Expr::Const(ir::Const::I32(1), span);
         for occurrence in 0..6 {
             let prior = match occurrence {
-                0 => ir::Stmt::Branches {
+                0 => ir::Stmt::If {
                     branches: [ir::ConditionalBlock::new(read(), ir::Block::default())].into(),
                     default: None,
                     span,
@@ -269,7 +269,7 @@ mod tests {
             };
             let block = ir::Block::new([prior, assign(local, value(), span)]);
             assert!(
-                inline_declarations(&block, &symbols).unwrap().is_empty(),
+                fused_declarations(&block, &symbols).unwrap().is_empty(),
                 "occurrence {occurrence}"
             );
         }
@@ -304,7 +304,7 @@ mod tests {
             assign(fresh, value(), span),
         ]);
         assert_eq!(
-            inline_declarations(&block, &symbols).unwrap(),
+            fused_declarations(&block, &symbols).unwrap(),
             BTreeSet::from([fresh])
         );
         let function = LoweredFunction {
@@ -381,7 +381,7 @@ mod tests {
             assign(scalar, ir::Expr::Const(ir::Const::I32(2), span), span),
         ]);
         assert_eq!(
-            inline_declarations(&block, &symbols).unwrap(),
+            fused_declarations(&block, &symbols).unwrap(),
             BTreeSet::from([scalar])
         );
     }

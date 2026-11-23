@@ -586,14 +586,14 @@ impl<'scope, 'ctx> Lower<'scope, 'ctx> {
             ));
         }
 
-        let (call, call_t) = if let Some(aliased) = method.aliased_method()
+        let (call, call_t) = if let Some(aliased) = method.forwarded_static_method()
             && method.flags().is_static_forwarder()
         {
             let param = self.symbols[aliased]
                 .type_()
                 .params()
                 .first()
-                .expect("static alias must at least accept a receiver");
+                .expect("forwarded static method must at least accept a receiver");
             let span = ir.span();
             self.lower_arg(
                 &mut ir,
@@ -1173,8 +1173,8 @@ impl<'ctx, K> FunctionResolution<'ctx, K> {
     pub(super) fn with_args(
         self,
         args: impl Into<Box<[ir::Expr<'ctx>]>>,
-    ) -> FunctionResultWithArgs<'ctx, K> {
-        FunctionResultWithArgs {
+    ) -> FunctionResolutionWithArgs<'ctx, K> {
+        FunctionResolutionWithArgs {
             resolution: self,
             args: args.into(),
         }
@@ -1182,12 +1182,12 @@ impl<'ctx, K> FunctionResolution<'ctx, K> {
 }
 
 #[derive(Debug)]
-pub(super) struct FunctionResultWithArgs<'ctx, K> {
+pub(super) struct FunctionResolutionWithArgs<'ctx, K> {
     resolution: FunctionResolution<'ctx, K>,
     args: Box<[ir::Expr<'ctx>]>,
 }
 
-impl<'ctx> FunctionResultWithArgs<'ctx, FreeFunctionIndex> {
+impl<'ctx> FunctionResolutionWithArgs<'ctx, FreeFunctionIndex> {
     #[inline]
     pub(super) fn into_call(self) -> (ir::Call<'ctx>, PolyType<'ctx>) {
         let call = ir::Call::FreeFunction {
@@ -1199,7 +1199,7 @@ impl<'ctx> FunctionResultWithArgs<'ctx, FreeFunctionIndex> {
     }
 }
 
-impl<'ctx> FunctionResultWithArgs<'ctx, MethodId<'ctx>> {
+impl<'ctx> FunctionResolutionWithArgs<'ctx, MethodId<'ctx>> {
     pub fn with_method(self, method: MethodId<'ctx>) -> Self {
         Self {
             resolution: self.resolution.with_function(method),

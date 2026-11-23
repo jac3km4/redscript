@@ -17,10 +17,10 @@ use crate::modules::{Export, ImportError, ModuleMap};
 use crate::symbols::{FreeFunctionIndexes, FunctionEntry, Visibility};
 use crate::utils::{Lazy, ScopedMap};
 use crate::{
-    Aggregate, AggregateFlags, CompileErrorReporter, CtxVar, Diagnostic, Enum, Field, FieldId,
+    Aggregate, AggregateFlags, CompileErrorReporter, Diagnostic, Enum, Field, FieldId,
     FreeFunction, FreeFunctionFlags, FreeFunctionIndex, FunctionType, IndexMap, LowerError, Method,
     MethodId, Param, ParamFlags, QualifiedName, Shared, Symbols, Type, TypeDef, TypeId,
-    TypeInterner, TypeRef, TypeSchema, TypeScope, ir, predef,
+    TypeInterner, TypeParamVar, TypeRef, TypeSchema, TypeScope, ir, predef,
 };
 
 mod aggregate;

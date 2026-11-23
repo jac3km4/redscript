@@ -6,8 +6,8 @@ use smallvec::SmallVec;
 
 use crate::lower::error::{CoalesceError, InferResult, TypeError};
 use crate::lower::simplify::Simplifier;
-use crate::symbols::{AnyBaseType, AnySupertype, BaseMode};
-use crate::types::{CtxVar, RefType, Type, TypeApp, TypeId, Variance, predef};
+use crate::symbols::{AnyBaseType, BaseMode, ClassSupertype};
+use crate::types::{RefType, Type, TypeApp, TypeId, TypeParamVar, Variance, predef};
 use crate::utils::ScopedMap;
 use crate::{Shared, Symbols};
 
@@ -28,11 +28,11 @@ pub use solver::{Var, VarKey};
 pub enum InferredType<'ctx> {
     Nothing,
     Data(InferredTypeApp<'ctx>),
-    Ctx(Shared<InferredCtxVar<'ctx>>),
+    Ctx(Shared<InferredTypeParamVar<'ctx>>),
 }
 
 pub type InferredTypeApp<'ctx> = TypeApp<'ctx, PolyType<'ctx>>;
-pub type InferredCtxVar<'ctx> = CtxVar<'ctx, InferredType<'ctx>>;
+pub type InferredTypeParamVar<'ctx> = TypeParamVar<'ctx, InferredType<'ctx>>;
 
 impl<'ctx> InferredType<'ctx> {
     #[inline]
@@ -351,8 +351,8 @@ impl<'ctx> InferredType<'ctx> {
                     .zip(l0.args().iter().zip(r0.args()))
                 {
                     let res = match v.variance() {
-                        Variance::Covariant => l.constrain::<AnySupertype>(r, symbols),
-                        Variance::Contravariant => r.constrain::<AnySupertype>(l, symbols),
+                        Variance::Covariant => l.constrain::<ClassSupertype>(r, symbols),
+                        Variance::Contravariant => r.constrain::<ClassSupertype>(l, symbols),
                         Variance::Invariant => l.constrain_invariant(r, symbols),
                     };
                     res.map_err(|err| TypeError::Nested(err.into(), self.clone(), other.clone()))?;
@@ -425,13 +425,13 @@ impl<'ctx> From<&Type<'ctx>> for InferredType<'ctx> {
         match typ {
             Type::Nothing => Self::Nothing,
             Type::Data(typ) => Self::Data(InferredTypeApp::from_type(typ)),
-            Type::Ctx(var) => Self::Ctx(InferredCtxVar::from_var(var).into()),
+            Type::Ctx(var) => Self::Ctx(InferredTypeParamVar::from_var(var).into()),
         }
     }
 }
 
-impl<'ctx> InferredCtxVar<'ctx> {
-    pub fn from_var(var: &CtxVar<'ctx>) -> Self {
+impl<'ctx> InferredTypeParamVar<'ctx> {
+    pub fn from_var(var: &TypeParamVar<'ctx>) -> Self {
         let lower = var.lower().map(InferredType::from);
         let upper = var.upper().map(InferredType::from);
         Self::new(var.name(), var.variance(), lower, upper)
@@ -523,8 +523,8 @@ impl<'ctx> PolyType<'ctx> {
             _ if self == other => self.clone(),
             _ => {
                 let result = Self::fresh();
-                result.constrain::<AnySupertype>(self, symbols)?;
-                result.constrain::<AnySupertype>(other, symbols)?;
+                result.constrain::<ClassSupertype>(self, symbols)?;
+                result.constrain::<ClassSupertype>(other, symbols)?;
                 result
             }
         };
@@ -537,8 +537,8 @@ impl<'ctx> PolyType<'ctx> {
             _ if self == other => self.clone(),
             _ => {
                 let result = Self::fresh();
-                self.constrain::<AnySupertype>(&result, symbols)?;
-                other.constrain::<AnySupertype>(&result, symbols)?;
+                self.constrain::<ClassSupertype>(&result, symbols)?;
+                other.constrain::<ClassSupertype>(&result, symbols)?;
                 result
             }
         };
@@ -624,8 +624,10 @@ impl<'ctx> PolyType<'ctx> {
                         .zip(rhs.args())
                         .zip(params)
                         .all(|((l, r), param)| match param.variance() {
-                            Variance::Covariant => l.proves_subtype::<AnySupertype>(r, symbols),
-                            Variance::Contravariant => r.proves_subtype::<AnySupertype>(l, symbols),
+                            Variance::Covariant => l.proves_subtype::<ClassSupertype>(r, symbols),
+                            Variance::Contravariant => {
+                                r.proves_subtype::<ClassSupertype>(l, symbols)
+                            }
                             Variance::Invariant => {
                                 l.proves_subtype::<AnyBaseType>(r, symbols)
                                     && r.proves_subtype::<AnyBaseType>(l, symbols)

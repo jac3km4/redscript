@@ -111,7 +111,7 @@ impl CompilationFailure {
             let line_source = file.line_contents(line)?;
             candidates
                 .iter()
-                .find(|hint| hint.does_match(file.path().file_name(), source, line_source))
+                .find(|hint| hint.matches(file.path().file_name(), source, line_source))
         }) {
             hints
                 .entry(hint.id())

@@ -86,7 +86,7 @@ pub fn emit_closure<'ctx>(
     let call =
         PoolFunction::new(call_name, Visibility::Public, call_flags).with_source(Some(source_ref));
     let call = assembler.bundle.define_and_init(call, |bundle, idx, func| {
-        apply_method_builder()
+        call_method_builder()
             .function_index(idx)
             .function(func)
             .class_index(class)
@@ -140,7 +140,7 @@ pub fn emit_closure<'ctx>(
 }
 
 #[builder(finish_fn = build)]
-fn apply_method_builder<'ctx>(
+fn call_method_builder<'ctx>(
     function_index: PoolFunctionIndex,
     function: PoolFunction<'ctx>,
     class_index: PoolClassIndex,
@@ -154,7 +154,7 @@ fn apply_method_builder<'ctx>(
         .split_last()
         .expect("lambda should have at least one type argument");
 
-    let apply_params = param_types
+    let call_params = param_types
         .iter()
         .enumerate()
         .map(|(i, typ)| {
@@ -173,7 +173,7 @@ fn apply_method_builder<'ctx>(
 
     function
         .with_class(Some(class_index))
-        .with_parameters(apply_params)
+        .with_parameters(call_params)
         .with_return_type(return_t_idx)
 }
 

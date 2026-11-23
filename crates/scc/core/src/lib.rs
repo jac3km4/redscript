@@ -133,7 +133,7 @@ fn lock_and_compile(
         .diagnostics(&[])
         .type_flags(Cow::Borrowed(settings.type_flags()))
         .fatal_diagnostic_level(FATAL_DIAGNOSTIC_LEVEL)
-        .compile()?
+        .analyze()?
         .flush(&output_file)
     {
         Err(FlushError::Write(SaveError::Mmap(err)))
@@ -237,16 +237,13 @@ fn prepare_input_cache(settings: &SccSettings, ts_file: &mut fs::File) -> anyhow
         )
     })?;
 
-    if settings
-        .does_have_separate_output_cache()
-        .with_context(|| {
-            format!(
-                "failed to compare output cache '{}' with input cache '{}'",
-                settings.output_cache_file_path().display(),
-                cache_file.display()
-            )
-        })?
-    {
+    if settings.has_separate_output_cache().with_context(|| {
+        format!(
+            "failed to compare output cache '{}' with input cache '{}'",
+            settings.output_cache_file_path().display(),
+            cache_file.display()
+        )
+    })? {
         match saved_ts {
             saved_ts if saved_ts != Some(write_ts) && backup_file.exists() => {
                 log::info!(

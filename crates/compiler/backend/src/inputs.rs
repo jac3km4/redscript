@@ -172,7 +172,7 @@ impl<'ctx> CompilationInputs<'ctx> {
                                 let flags =
                                     flags.with_is_static(false).with_is_static_forwarder(true);
                                 let method = Method::new(flags, func_t, base, [], None)
-                                    .with_aliased(MethodId::new(cls_id, idx));
+                                    .with_forwarded_static_method(MethodId::new(cls_id, idx));
                                 script_ref_receiver_methods.push((name, method));
                             }
 
@@ -187,7 +187,7 @@ impl<'ctx> CompilationInputs<'ctx> {
                     }
 
                     for (name, method) in script_ref_receiver_methods {
-                        // Avoid adding an alias when it could conflict with an existing method.
+                        // Avoid adding a wrapper target when it could conflict with an existing method.
                         if methods.by_name(name).count() > 1 {
                             continue;
                         }
@@ -318,7 +318,7 @@ impl<'ctx> PoolMappings<'ctx> {
 pub struct ClassMappings {
     index: PoolClassIndex,
     methods: IndexMap<FunctionIndex, PoolFunctionIndex>,
-    aliases: IndexMap<FunctionIndex, PoolFunctionIndex>,
+    wrapper_targets: IndexMap<FunctionIndex, PoolFunctionIndex>,
 }
 
 impl ClassMappings {
@@ -326,7 +326,7 @@ impl ClassMappings {
         Self {
             index,
             methods,
-            aliases: IndexMap::default(),
+            wrapper_targets: IndexMap::default(),
         }
     }
 
@@ -346,12 +346,12 @@ impl ClassMappings {
     }
 
     #[inline]
-    pub fn aliases(&self) -> &IndexMap<FunctionIndex, PoolFunctionIndex> {
-        &self.aliases
+    pub fn wrapper_targets(&self) -> &IndexMap<FunctionIndex, PoolFunctionIndex> {
+        &self.wrapper_targets
     }
 
-    pub fn set_alias(&mut self, index: FunctionIndex, alias: PoolFunctionIndex) {
-        self.aliases.insert(index, alias);
+    pub fn set_wrapper_target(&mut self, index: FunctionIndex, target: PoolFunctionIndex) {
+        self.wrapper_targets.insert(index, target);
     }
 }
 

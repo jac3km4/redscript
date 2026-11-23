@@ -129,7 +129,7 @@ pub struct Compilation<'ctx> {
 
 #[bon]
 impl<'ctx> Compilation<'ctx> {
-    #[builder(finish_fn = compile)]
+    #[builder(finish_fn = analyze)]
     pub fn new(
         bundle: &'ctx [u8],
         sources: &'ctx SourceMap,

@@ -362,7 +362,7 @@ fn bundle_symbols_and_boot_intrinsics_are_available_without_dependencies() {
         .bundle(&baseline)
         .sources(&sources)
         .type_interner(&interner)
-        .compile()
+        .analyze()
         .unwrap()
         .emit()
         .unwrap();

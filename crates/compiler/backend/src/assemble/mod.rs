@@ -90,7 +90,7 @@ impl<'scope, 'ctx> Assembler<'scope, 'ctx> {
                         .map_err(|e| {
                             AssembleError::Coalesce(
                                 e.into(),
-                                local.span.expect("non-spanned local should coalesce"),
+                                local.name_span.expect("non-spanned local should coalesce"),
                             )
                         })?
                         .assume_mono(type_env);

@@ -35,7 +35,7 @@ impl<'ctx> UnusedLocalVisitor<'ctx> {
     }
 
     fn register_local(&mut self, local: &ir::LocalInfo<'ctx>) {
-        if let Some(span) = local.span {
+        if let Some(span) = local.name_span {
             self.locals.insert(local.id, (local.name, span));
         }
     }

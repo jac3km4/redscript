@@ -719,7 +719,7 @@ impl<L: fmt::Display> fmt::Display for Instr<L> {
             Instr::StaticArrayLast(idx) => write!(f, "static_array.last {idx}"),
             Instr::StaticArrayElement(idx) => write!(f, "static_array.element {idx}"),
             Instr::RefToBool => write!(f, "ref.to_bool"),
-            Instr::WeakRefToBool => write!(f, "wref_to_bool"),
+            Instr::WeakRefToBool => write!(f, "wref.to_bool"),
             Instr::EnumToI32 { enum_type, size } => write!(f, "enum.to_int {enum_type} {size}"),
             Instr::I32ToEnum { enum_type, size } => {
                 write!(f, "enum.from_int {enum_type} {size}")
@@ -878,7 +878,7 @@ impl SwitchLabel<Offset> {
     }
 
     #[inline]
-    /// Gets the function body.
+    /// Gets the offset of this switch case's body.
     pub fn body(&self) -> Offset {
         self.body + 5
     }

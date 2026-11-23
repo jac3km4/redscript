@@ -8,7 +8,7 @@ use redscript_community_ast::{self as ast, AstVisitor, WithSpan};
 
 use crate::{Result, TranspileDiagnostic, error};
 
-pub fn validate(function: &ast::SourceFunction<'_>) -> Result<()> {
+pub fn check_const_locals(function: &ast::SourceFunction<'_>) -> Result<()> {
     Guard.visit_function(function)
 }
 
