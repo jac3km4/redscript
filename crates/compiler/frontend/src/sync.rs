@@ -1,9 +1,9 @@
 //! Synchronization primitives selected by the additive `sync` feature.
 //!
 //! With `sync` disabled (the default) these are plain single-threaded
-//! primitives: `Rc`, `RefCell` and `Cell`. Enabling `sync` swaps them for
-//! thread-safe counterparts (`Arc`, `Mutex`, atomics) so the public analysis
-//! types become `Send + Sync`.
+//! primitives: `Rc`, `RefCell`, `Cell` and `OnceCell`. Enabling `sync` swaps
+//! them for thread-safe counterparts (`Arc`, `Mutex`, atomics, `OnceLock`) so
+//! the public analysis types become `Send + Sync`.
 //!
 //! The default configuration must stay behaviorally identical, including
 //! `Debug` output, so the single-threaded variants are exact type aliases to
@@ -28,6 +28,21 @@ pub(crate) type SharedWeak<T> = std::sync::Weak<T>;
 pub type BoxedError<'ctx> = Box<dyn std::error::Error + 'ctx>;
 #[cfg(feature = "sync")]
 pub type BoxedError<'ctx> = Box<dyn std::error::Error + Send + Sync + 'ctx>;
+
+// ---------------------------------------------------------------------------
+// OnceCell
+// ---------------------------------------------------------------------------
+
+/// A value written at most once: a plain `OnceCell` by default, an atomic
+/// `OnceLock` under `sync`.
+///
+/// Both expose the same `new`, `get` and `set` signatures, so call sites are
+/// unchanged; callers may race under `sync` (the first stored value wins), while
+/// the default configuration avoids the atomic traffic entirely.
+#[cfg(not(feature = "sync"))]
+pub(crate) type OnceCell<T> = std::cell::OnceCell<T>;
+#[cfg(feature = "sync")]
+pub(crate) type OnceCell<T> = std::sync::OnceLock<T>;
 
 // ---------------------------------------------------------------------------
 // SharedCell

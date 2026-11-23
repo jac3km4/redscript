@@ -6,6 +6,7 @@ use redscript_community_ast::{self as ast, Span};
 
 use crate::lower::{InferredTypeApp, PolyType};
 use crate::symbols::{FieldId, FreeFunctionIndex, MethodId};
+use crate::sync::OnceCell;
 use crate::types::{self, TypeId, predef};
 use crate::{CoalesceError, RefType, Symbols};
 
@@ -685,7 +686,7 @@ pub struct Type<'ctx>(Box<TypeCell<'ctx>>);
 
 struct TypeCell<'ctx> {
     poly: PolyType<'ctx>,
-    coalesced: std::sync::OnceLock<types::Type<'ctx>>,
+    coalesced: OnceCell<types::Type<'ctx>>,
 }
 
 impl fmt::Debug for Type<'_> {
@@ -703,7 +704,7 @@ impl<'ctx> Type<'ctx> {
         &self,
         symbols: &Symbols<'ctx>,
     ) -> Result<types::Type<'ctx>, CoalesceError<'ctx>> {
-        // Compute outside any lock; concurrent callers race harmlessly because
+        // Compute outside the cell; concurrent callers race harmlessly because
         // coalescing is deterministic and the first stored value wins.
         if let Some(typ) = self.0.coalesced.get() {
             return Ok(typ.clone());
@@ -715,7 +716,7 @@ impl<'ctx> Type<'ctx> {
                 .0
                 .coalesced
                 .get()
-                .expect("coalesced value set by racing thread")
+                .expect("coalesced value stored by a racing or re-entrant caller")
                 .clone()),
         }
     }
@@ -739,7 +740,7 @@ impl<'ctx> From<PolyType<'ctx>> for Type<'ctx> {
     fn from(poly: PolyType<'ctx>) -> Self {
         Self(Box::new(TypeCell {
             poly,
-            coalesced: std::sync::OnceLock::new(),
+            coalesced: OnceCell::new(),
         }))
     }
 }
@@ -748,7 +749,7 @@ pub struct TypeApp<'ctx>(Box<TypeAppCell<'ctx>>);
 
 struct TypeAppCell<'ctx> {
     inferred: InferredTypeApp<'ctx>,
-    coalesced: std::sync::OnceLock<types::TypeApp<'ctx>>,
+    coalesced: OnceCell<types::TypeApp<'ctx>>,
 }
 
 impl fmt::Debug for TypeApp<'_> {
@@ -775,7 +776,7 @@ impl<'ctx> TypeApp<'ctx> {
                 .0
                 .coalesced
                 .get()
-                .expect("coalesced value set by racing thread")
+                .expect("coalesced value stored by a racing or re-entrant caller")
                 .clone()),
         }
     }
@@ -797,7 +798,7 @@ impl<'ctx> From<InferredTypeApp<'ctx>> for TypeApp<'ctx> {
     fn from(inferred: InferredTypeApp<'ctx>) -> Self {
         Self(Box::new(TypeAppCell {
             inferred,
-            coalesced: std::sync::OnceLock::new(),
+            coalesced: OnceCell::new(),
         }))
     }
 }
