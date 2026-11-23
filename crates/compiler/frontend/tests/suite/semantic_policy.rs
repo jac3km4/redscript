@@ -184,7 +184,7 @@ fn reject_int_to_variant<'ctx>(
 fn native_script_reference_places_are_file_local_in_both_orders() {
     for reverse in [false, true] {
         let sources = SourceMap::new();
-        sources.push_back("intrinsics.reds", "@intrinsic(AsRef) func AsRef<T>(value: T) -> script_ref<T>\n@intrinsic(Deref) func Deref<T>(value: script_ref<T>) -> T");
+        sources.push_boot("intrinsics.reds", "@intrinsic(AsRef) func AsRef<T>(value: T) -> script_ref<T>\n@intrinsic(Deref) func Deref<T>(value: script_ref<T>) -> T");
         let hooked = sources.push_back(
             "native.reds",
             "func Native(value: script_ref<Int32>) { let other = 7; value = other; }",
@@ -268,7 +268,7 @@ fn default_policy_matches_the_original_entry_point() {
 fn every_hook_is_file_local_in_both_module_orders() {
     for reverse in [false, true] {
         let sources = SourceMap::new();
-        sources.push_back(
+        sources.push_boot(
             "declarations.reds",
             "@intrinsic(VariantIsDefined) func VariantIsDefined(value: Variant) -> Bool\n\
              @intrinsic(ArraySize) func ArraySize<T>(out value: [T]) -> Int32\n\
@@ -369,7 +369,7 @@ fn policies_survive_nested_type_scopes() {
 fn condition_callbacks_only_select_the_exact_intrinsic() {
     for annotated in [false, true] {
         let sources = SourceMap::new();
-        sources.push_back(
+        sources.push_boot(
             "declarations.reds",
             if annotated {
                 "@intrinsic(VariantIsDefined) func VariantIsDefined(value: Variant) -> Bool\n\
@@ -421,7 +421,7 @@ fn condition_callbacks_only_select_the_exact_intrinsic() {
 #[test]
 fn condition_intrinsics_must_return_bool() {
     let sources = SourceMap::new();
-    sources.push_back(
+    sources.push_boot(
         "declarations.reds",
         "@intrinsic(VariantIsDefined) func VariantIsDefined(value: Variant) -> Int32",
     );
@@ -449,7 +449,7 @@ fn condition_intrinsics_must_return_bool() {
 #[test]
 fn member_callbacks_cannot_bind_an_unannotated_same_name_overload() {
     let sources = SourceMap::new();
-    sources.push_back(
+    sources.push_boot(
         "declarations.reds",
         "func ArraySize(out value: [Int32]) -> Int32 = 0;\n\
          @intrinsic(ArraySize) func ArraySize(value: Bool) -> Int32",
@@ -478,7 +478,7 @@ fn member_callbacks_cannot_bind_an_unannotated_same_name_overload() {
 #[test]
 fn explicit_filter_uses_intrinsic_identity_not_the_function_name() {
     let sources = SourceMap::new();
-    sources.push_back(
+    sources.push_boot(
         "declarations.reds",
         "@intrinsic(ArraySize) func Measure(out value: [Int32]) -> Int32\n\
          func ArraySize(value: Bool) -> Int32 = 0;",
@@ -646,7 +646,7 @@ fn hoist_does_not_collect_closure_locals_into_the_parent() {
 #[test]
 fn condition_conversion_covers_control_flow_and_logical_expressions() {
     let sources = SourceMap::new();
-    sources.push_back(
+    sources.push_boot(
         "declarations.reds",
         "@intrinsic(VariantIsDefined) func VariantIsDefined(value: Variant) -> Bool
          native func OperatorLogicAnd(lhs: Bool, rhs: Bool) -> Bool
@@ -703,7 +703,7 @@ fn callbacks_cannot_bypass_standard_type_constraints() {
 #[test]
 fn explicit_filter_does_not_reject_generated_intrinsics() {
     let sources = SourceMap::new();
-    sources.push_back(
+    sources.push_boot(
         "declarations.reds",
         "@intrinsic(ArraySize) func ArraySize<T>(out value: [T]) -> Int32
          @intrinsic(VariantIsDefined) func VariantIsDefined(value: Variant) -> Bool",
@@ -757,7 +757,7 @@ fn member_hook_checks_receiver_place_and_type_arguments() {
         ("values.count<Int32>()", Some("INVALID_TYPE_ARG_COUNT")),
     ] {
         let sources = SourceMap::new();
-        sources.push_back(
+        sources.push_boot(
             "declarations.reds",
             "@intrinsic(ArraySize) func ArraySize<T>(out value: [T]) -> Int32
              native func Make() -> [Int32]",

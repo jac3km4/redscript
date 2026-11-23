@@ -181,6 +181,20 @@ impl<'scope, 'ctx> NameResolution<'scope, 'ctx> {
                     }
                 }
                 ast::Item::Function(mut function) => {
+                    // `@intrinsic` maps a declaration straight onto assembler
+                    // instructions, so it stays reserved for the compiler-owned
+                    // boot library. Rejecting the whole item keeps a half-built
+                    // symbol out of `Symbols` and avoids cascading diagnostics.
+                    if !file.is_boot()
+                        && let Some((_, ann_span)) = item_meta
+                            .annotations
+                            .iter()
+                            .find(|(ann, _)| ann.name == annotation::INTRINSIC)
+                    {
+                        self.reporter
+                            .report(Diagnostic::IntrinsicOutsideBoot(*ann_span));
+                        continue;
+                    }
                     extract_function_properties(
                         &mut item_meta.annotations,
                         &mut function.properties,

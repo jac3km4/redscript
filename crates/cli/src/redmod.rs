@@ -8,7 +8,8 @@ use anyhow::{Context, ensure};
 use argh::FromArgs;
 use redscript_compiler_api::ast::{FileId, SourceMap};
 use redscript_compiler_api::{
-    CompilationInputs, ScriptBundle, SourceMapExt, Symbols, TypeFlagRegistry, TypeInterner,
+    BOOT_LIBRARY, CompilationInputs, ScriptBundle, SourceMapExt, Symbols, TypeFlagRegistry,
+    TypeInterner,
 };
 use redscript_dotfile::Dotfile;
 use redscript_redmod_transpiler::package::{ScriptArtifact, publish_mod, publish_mod_with_root};
@@ -228,8 +229,10 @@ fn load_roots(
             let mut files: Vec<_> = loaded.files().map(|(_, file)| file).collect();
             files.sort_by_key(|file| file.path());
             for file in files {
-                // Boot is already an unselected dependency, even when supplied explicitly.
-                if file.source() == include_str!("../../../assets/reds/boot.reds") {
+                // Boot is already an unselected dependency, even when supplied
+                // explicitly. It stays a user file here, so it must be skipped
+                // by content: only `populate_boot_lib` may register boot.
+                if file.source() == BOOT_LIBRARY {
                     continue;
                 }
                 let canonical = fs::canonicalize(file.path())?;

@@ -39,6 +39,8 @@ pub enum Diagnostic<'ctx> {
     UnusedItemQualifiers(ast::ItemQualifiers, Span),
     #[error("`{0}` is not a known intrinsic")]
     UnknownIntrinsic(&'ctx str, Span),
+    #[error("`@intrinsic` may only be declared in the boot library")]
+    IntrinsicOutsideBoot(Span),
     #[error("{0}")]
     UnexpectedItem(&'static str, Span),
     #[error("base type must be a class or struct type")]
@@ -202,6 +204,7 @@ impl<'ctx> Diagnostic<'ctx> {
             | Self::UnexpectedFunctionBody(span)
             | Self::UnusedItemQualifiers(_, span)
             | Self::UnknownIntrinsic(_, span)
+            | Self::IntrinsicOutsideBoot(span)
             | Self::UnexpectedItem(_, span)
             | Self::InvalidBaseType(span)
             | Self::UnknownAnnotation(_, span)
@@ -263,6 +266,7 @@ impl<'ctx> Diagnostic<'ctx> {
             Self::UnexpectedFunctionBody(_) => "UNEXPECTED_BODY",
             Self::UnusedItemQualifiers(_, _) => "UNUSED_ITEM_QUALIFIERS",
             Self::UnknownIntrinsic(_, _) => "INVALID_INTRINSIC",
+            Self::IntrinsicOutsideBoot(_) => "BOOT_ONLY_ANNOTATION",
             Self::UnexpectedItem(_, _) => "UNEXPECTED_ITEM",
             Self::InvalidBaseType(_)
             | Self::CircularInheritance(_)

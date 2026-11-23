@@ -123,6 +123,66 @@ func Value() -> Int32 { return 3; }",
     insta::assert_snapshot!(DisplayDiagnostics(reporter.into_reported(), &sources));
 }
 
+#[test]
+fn intrinsic_annotations_are_reserved_for_the_boot_library() {
+    // The annotation is reserved by file identity, not by path or content: a
+    // user file that copies the boot path is still rejected.
+    for path in ["user.reds", "boot.reds"] {
+        let sources = SourceMap::new();
+        sources.populate_boot_lib();
+        let file = sources.push_back(
+            path,
+            "@intrinsic(IsDefined)
+func Fake(a: IScriptable) -> Bool",
+        );
+        let interner = TypeInterner::default();
+        let mut reporter = CompileErrorReporter::default();
+        let (_, symbols) = infer_from_sources(
+            &sources,
+            annotation_symbols(&interner),
+            &mut reporter,
+            &interner,
+        );
+
+        let reported = reporter.reported();
+        assert_eq!(reported.len(), 1, "{path}: {reported:?}");
+        assert_eq!(reported[0].code(), "BOOT_ONLY_ANNOTATION");
+        assert_eq!(reported[0].span().file, file);
+        // The rejected item contributes no symbol, so callers cannot bind it.
+        assert!(
+            symbols
+                .free_functions()
+                .all(|entry| entry.name().as_single_component() != Some("Fake")),
+            "{path}: rejected intrinsic must not be registered"
+        );
+    }
+}
+
+#[test]
+fn intrinsic_annotations_are_accepted_in_the_boot_library() {
+    let sources = SourceMap::new();
+    let boot = sources.populate_boot_lib();
+    let interner = TypeInterner::default();
+    let mut reporter = CompileErrorReporter::default();
+    let (_, symbols) = infer_from_sources(
+        &sources,
+        annotation_symbols(&interner),
+        &mut reporter,
+        &interner,
+    );
+
+    assert!(reporter.reported().is_empty(), "{:?}", reporter.reported());
+    let is_defined = symbols
+        .free_functions()
+        .find(|entry| entry.name().as_single_component() == Some("IsDefined"))
+        .expect("boot library declares IsDefined");
+    assert_eq!(
+        is_defined.func().intrinsic(),
+        Some(ir::Intrinsic::IsDefined)
+    );
+    assert_eq!(is_defined.func().span().unwrap().file, boot);
+}
+
 fn annotation_symbols(interner: &TypeInterner) -> Symbols<'_> {
     let mut symbols = Symbols::with_default_types();
     for (name, flags) in [

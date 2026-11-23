@@ -186,8 +186,8 @@ impl<'ctx> FreeFunction<'ctx> {
     }
 
     /// Point explicitly `IScriptable`-typed intrinsic parameters at the engine
-    /// root. Intrinsic signatures are compiler-owned, so this cannot rewrite a
-    /// user-written annotation or a generic bound.
+    /// root. Only the boot library can declare `@intrinsic`, so these signatures
+    /// are always compiler-owned.
     pub(super) fn use_serializable_root(&mut self) {
         if self.intrinsic.is_none() {
             return;

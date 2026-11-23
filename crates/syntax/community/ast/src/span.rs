@@ -124,6 +124,22 @@ impl chumsky::span::Span for Span {
 pub struct FileId(pub(super) i32);
 
 impl FileId {
+    /// The compiler-provided boot library.
+    ///
+    /// This identifier is handed out only by
+    /// [`SourceMap::push_boot`](crate::SourceMap::push_boot), never by the
+    /// ordinary insertion methods, so no source file can claim boot privileges
+    /// by name or content. `i32::MIN` cannot collide with the ids allocated by
+    /// [`SourceMap::push_front`](crate::SourceMap::push_front), which counts
+    /// down from `-1`.
+    pub const BOOT: Self = Self(i32::MIN);
+
+    /// Whether this file belongs to the compiler-provided boot library.
+    #[inline]
+    pub const fn is_boot(self) -> bool {
+        self.0 == Self::BOOT.0
+    }
+
     #[cfg(feature = "testing")]
     pub fn from_i32(id: i32) -> Self {
         Self(id)

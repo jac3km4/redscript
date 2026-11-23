@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::{fmt, fs, io};
 
 #[cfg(not(feature = "sync"))]
@@ -11,6 +12,7 @@ use crate::span::FileId;
 
 #[derive(Default)]
 pub struct SourceMap {
+    boot: OnceLock<File>,
     files: StableDeque<File>,
 }
 
@@ -54,21 +56,45 @@ impl SourceMap {
         FileId(self.files.push_back(File::new(path, source)))
     }
 
-    #[inline]
-    pub fn get(&self, id: FileId) -> Option<&File> {
-        self.files.get(id.0)
+    /// Registers the compiler-provided boot library.
+    ///
+    /// This is the only way to obtain [`FileId::BOOT`]. Sources loaded through
+    /// [`Self::push_front`], [`Self::push_back`] or [`Self::from_files`] are
+    /// always untrusted, so a file cannot claim boot privileges by name or
+    /// content.
+    #[track_caller]
+    pub fn push_boot(&self, path: impl Into<PathBuf>, source: impl Into<String>) -> FileId {
+        assert!(
+            self.boot.set(File::new(path, source)).is_ok(),
+            "the boot library is registered at most once"
+        );
+        FileId::BOOT
     }
 
+    #[inline]
+    pub fn get(&self, id: FileId) -> Option<&File> {
+        if id.is_boot() {
+            self.boot.get()
+        } else {
+            self.files.get(id.0)
+        }
+    }
+
+    /// Iterates over the boot library first, then source files in insertion order.
     pub fn files(&self) -> impl Iterator<Item = (FileId, &File)> {
-        self.files.iter().map(|(id, file)| (FileId(id), file))
+        self.boot
+            .get()
+            .map(|file| (FileId::BOOT, file))
+            .into_iter()
+            .chain(self.files.iter().map(|(id, file)| (FileId(id), file)))
     }
 
     pub fn len(&self) -> usize {
-        self.files.len()
+        self.boot.get().map_or(0, |_| 1) + self.files.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.files.len() == 0
+        self.len() == 0
     }
 
     pub fn display_at<'a>(&'a self, root: &'a Path) -> DisplaySourceMap<'a> {
@@ -166,7 +192,67 @@ impl File {
 
 #[cfg(test)]
 mod tests {
-    use super::File;
+    use std::path::Path;
+
+    use super::{File, SourceMap};
+    use crate::FileId;
+
+    #[test]
+    fn boot_files_occupy_their_own_identity_namespace() {
+        let sources = SourceMap::new();
+        let boot = sources.push_boot("boot.reds", "func Boot() {}");
+        let front = sources.push_front("front.reds", "");
+        let back = sources.push_back("back.reds", "");
+
+        assert_eq!(boot, FileId::BOOT);
+        assert!(boot.is_boot());
+        assert!(!front.is_boot() && !back.is_boot());
+        assert_ne!(front, boot);
+
+        assert_eq!(
+            sources
+                .files()
+                .map(|(id, file)| (id, file.path().to_owned()))
+                .collect::<Vec<_>>(),
+            [
+                (boot, Path::new("boot.reds").to_owned()),
+                (front, Path::new("front.reds").to_owned()),
+                (back, Path::new("back.reds").to_owned()),
+            ]
+        );
+        assert_eq!(sources.len(), 3);
+        assert!(!sources.is_empty());
+        assert_eq!(sources.get(boot).unwrap().path(), Path::new("boot.reds"));
+        assert_eq!(sources.get(back).unwrap().path(), Path::new("back.reds"));
+    }
+
+    #[test]
+    #[should_panic(expected = "the boot library is registered at most once")]
+    fn boot_files_are_registered_once() {
+        let sources = SourceMap::new();
+        sources.push_boot("boot.reds", "");
+        sources.push_boot("other.reds", "");
+    }
+
+    #[test]
+    fn boot_files_sort_before_source_files() {
+        let sources = SourceMap::new();
+        let boot = sources.push_boot("boot.reds", "");
+        let front = sources.push_front("front.reds", "");
+        let back = sources.push_back("back.reds", "");
+
+        let mut ids = [back, front, boot];
+        ids.sort_unstable();
+        assert_eq!(ids, [boot, front, back]);
+    }
+
+    #[test]
+    fn no_boot_file_is_registered_by_default() {
+        let sources = SourceMap::new();
+        assert!(sources.is_empty());
+        assert!(sources.get(FileId::BOOT).is_none());
+        assert_eq!(sources.files().count(), 0);
+    }
 
     #[test]
     fn empty_source_location() {

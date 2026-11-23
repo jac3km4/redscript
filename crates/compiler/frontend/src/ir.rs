@@ -930,7 +930,7 @@ mod prvalue_tests {
     #[test]
     fn deref_and_struct_fields_propagate_prvalue_status() {
         let sources = ast::SourceMap::new();
-        let intrinsics = sources.push_back(
+        let intrinsics = sources.push_boot(
             "intrinsics.reds",
             "@intrinsic(AsRef) func AsRef<T>(a: T) -> script_ref<T>\n@intrinsic(Deref) func Deref<T>(a: script_ref<T>) -> T",
         );

@@ -486,16 +486,27 @@ impl<'ctx> From<AssembleError<'ctx>> for FlushError<'ctx> {
     }
 }
 
+/// The embedded boot library: the only source allowed to declare `@intrinsic`.
+pub const BOOT_LIBRARY: &str = include_str!("../../../../assets/reds/boot.reds");
+
 pub trait SourceMapExt {
-    fn populate_boot_lib(&self);
+    /// Registers [`BOOT_LIBRARY`] as a compiler-provided file.
+    ///
+    /// Callers may invoke this more than once; the first registration wins and
+    /// its [`ast::FileId`] is returned.
+    fn populate_boot_lib(&self) -> ast::FileId;
 }
 
 impl SourceMapExt for SourceMap {
-    fn populate_boot_lib(&self) {
-        self.push_front(
-            "boot.reds",
-            include_str!("../../../../assets/reds/boot.reds"),
-        );
+    fn populate_boot_lib(&self) -> ast::FileId {
+        let registered = self
+            .get(ast::FileId::BOOT)
+            .is_some_and(|file| file.source() == BOOT_LIBRARY);
+        if registered {
+            ast::FileId::BOOT
+        } else {
+            self.push_boot("boot.reds", BOOT_LIBRARY)
+        }
     }
 }
 

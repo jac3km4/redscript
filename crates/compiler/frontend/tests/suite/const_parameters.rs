@@ -24,8 +24,37 @@ fn check_forwarding(source: &str, expected: &[&str]) {
 }
 
 fn check_level(source: &str, expected: &[&str], level: DiagnosticLevel, message: &str) {
+    check_level_with_boot(None, source, expected, level, message);
+}
+
+/// Checks a source against compiler-provided declarations instead of the
+/// embedded boot library.
+fn check_boot(source: &str, boot: &str, expected: &[&str]) {
+    check_level_with_boot(
+        Some(boot),
+        source,
+        expected,
+        DiagnosticLevel::Warning,
+        "a `const` parameter",
+    );
+}
+
+fn check_level_with_boot(
+    boot: Option<&str>,
+    source: &str,
+    expected: &[&str],
+    level: DiagnosticLevel,
+    message: &str,
+) {
     let sources = SourceMap::new();
-    sources.populate_boot_lib();
+    match boot {
+        Some(boot) => {
+            sources.push_boot("boot.reds", boot);
+        }
+        None => {
+            sources.populate_boot_lib();
+        }
+    }
     let file = sources.push_back("const.reds", source);
     let interner = TypeInterner::default();
     let mut reporter = CompileErrorReporter::default();
@@ -150,8 +179,11 @@ fn array_mutation_and_reference_wrappers_are_checked() {
         "func OperatorAssignAdd(out lhs: Int32, rhs: Int32) {} func Write(const value: Int32) { value += 1; }",
         &["value"],
     );
-    check(
-        "@intrinsic(ArrayPush) func Push<T>(out array: [T], value: T)\nfunc Write(const value: [Int32]) { Push(value, 1); }",
+    // Intrinsic identity is irrelevant: the resolved `out` parameter is checked
+    // no matter which name the intrinsic was declared under.
+    check_boot(
+        "func Write(const value: [Int32]) { Push(value, 1); }",
+        "@intrinsic(ArrayPush) func Push<T>(out array: [T], value: T)",
         &["value"],
     );
     check_forwarding(
@@ -251,7 +283,14 @@ fn const_relaxations_are_independent_and_file_local_in_both_orders() {
     for reverse in [false, true] {
         for (elements, forwarding) in [(false, false), (true, false), (false, true), (true, true)] {
             let sources = SourceMap::new();
-            sources.push_back("calls.reds", "func Take(value: [Int32]) {} func Out(out value: [Int32]) {} @intrinsic(ArrayClear) func Clear<T>(out value: [T])");
+            sources.push_boot(
+                "intrinsics.reds",
+                "@intrinsic(ArrayClear) func Clear<T>(out value: [T])",
+            );
+            sources.push_back(
+                "calls.reds",
+                "func Take(value: [Int32]) {} func Out(out value: [Int32]) {}",
+            );
             let body =
                 "(const value: [Int32]) { value[0] = 1; Take(value); Out(value); Clear(value); }";
             let relaxed = sources.push_back("relaxed.reds", format!("func Relaxed{body}"));

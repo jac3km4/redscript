@@ -60,10 +60,14 @@ fn source_short_circuit() {
 
 #[test]
 fn lazy_intrinsics_fail_closed() {
+    // `@intrinsic` is reserved for the boot library, so the fixture is
+    // registered as compiler-provided declarations rather than as a source file.
     let path =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/short-circuit/intrinsic.reds");
+    let sources = SourceMap::new();
+    sources.push_boot("intrinsic.reds", std::fs::read_to_string(&path).unwrap());
     assert!(
-        compile(&path, |_| {})
+        compile_sources(&sources, |_| {}, &path)
             .starts_with("assembly error: cannot generate code for intrinsic `Equals`")
     );
 }
@@ -182,7 +186,14 @@ fn callback_overrides_added_method_and_reentrant_base() {
 fn compile(path: &Path, seed: impl FnOnce(&mut ScriptBundle<'_>)) -> String {
     let sources = SourceMap::from_files([path]).unwrap();
     sources.populate_boot_lib();
+    compile_sources(&sources, seed, path)
+}
 
+fn compile_sources(
+    sources: &SourceMap,
+    seed: impl FnOnce(&mut ScriptBundle<'_>),
+    path: &Path,
+) -> String {
     let interner = TypeInterner::default();
     let mut bundle = ScriptBundle::default();
     seed(&mut bundle);
@@ -206,7 +217,7 @@ fn compile(path: &Path, seed: impl FnOnce(&mut ScriptBundle<'_>)) -> String {
 
     let bundle_len = bundle.definitions().len();
     match mappings
-        .into_monomorphizer(&sources)
+        .into_monomorphizer(sources)
         .monomorphize(&unit, &symbols, &mut bundle)
     {
         Ok(()) => BytecodePrinter::new(&bundle, bundle_len).to_string(),
