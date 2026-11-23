@@ -155,10 +155,52 @@ impl fmt::Display for Type<'_> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct TypeApp<'ctx, T = Type<'ctx>> {
     id: TypeId<'ctx>,
-    args: Shared<[T]>,
+    args: Args<T>,
+}
+
+/// Type arguments with an allocation-free empty representation.
+///
+/// Most applications (`Int32`, `String`, non-generic classes) are nullary. Under
+/// the `sync` feature every `Shared<[T]>` clone is an atomic refcount update, so
+/// keeping the empty case as a tag avoids an allocation and two atomic
+/// operations per clone for the common case.
+#[derive(Clone, PartialEq, Eq)]
+enum Args<T> {
+    Empty,
+    Filled(Shared<[T]>),
+}
+
+impl<T> Args<T> {
+    #[inline]
+    fn as_slice(&self) -> &[T] {
+        match self {
+            Self::Empty => &[],
+            Self::Filled(args) => args,
+        }
+    }
+}
+
+impl<T> From<Shared<[T]>> for Args<T> {
+    #[inline]
+    fn from(args: Shared<[T]>) -> Self {
+        if args.is_empty() {
+            Self::Empty
+        } else {
+            Self::Filled(args)
+        }
+    }
+}
+
+impl<T: fmt::Debug> fmt::Debug for TypeApp<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TypeApp")
+            .field("id", &self.id)
+            .field("args", &self.args.as_slice())
+            .finish()
+    }
 }
 
 impl<'ctx, T> TypeApp<'ctx, T> {
@@ -166,13 +208,16 @@ impl<'ctx, T> TypeApp<'ctx, T> {
     pub fn new(id: TypeId<'ctx>, args: impl Into<Shared<[T]>>) -> Self {
         Self {
             id,
-            args: args.into(),
+            args: Args::from(args.into()),
         }
     }
 
     #[inline]
     pub fn nullary(id: TypeId<'ctx>) -> Self {
-        Self::new(id, [])
+        Self {
+            id,
+            args: Args::Empty,
+        }
     }
 
     #[inline]
@@ -182,12 +227,12 @@ impl<'ctx, T> TypeApp<'ctx, T> {
 
     #[inline]
     pub fn args(&self) -> &[T] {
-        &self.args
+        self.args.as_slice()
     }
 
     #[inline]
     pub fn strip_ref(&self) -> Option<(RefType, &T)> {
-        match (self.ref_type(), &*self.args) {
+        match (self.ref_type(), self.args.as_slice()) {
             (Some(rt), [arg]) => Some((rt, arg)),
             _ => None,
         }
@@ -217,8 +262,9 @@ impl<'ctx, T: fmt::Display> TypeApp<'ctx, T> {
         let sep = if compact { "," } else { ", " };
         DisplayFn::new(move |f: &mut fmt::Formatter<'_>| {
             write!(f, "{}", self.id)?;
-            if !self.args.is_empty() {
-                write!(f, "<{}>", sep_by(&self.args[..], sep))?;
+            let args = self.args.as_slice();
+            if !args.is_empty() {
+                write!(f, "<{}>", sep_by(args, sep))?;
             }
             Ok(())
         })
@@ -319,7 +365,7 @@ impl Hash for MonoType<'_> {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.0.id.hash(state);
-        self.0.args.hash(state);
+        self.0.args().hash(state);
     }
 }
 
