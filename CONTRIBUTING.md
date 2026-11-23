@@ -2,36 +2,41 @@
 
 ## Validation
 
-Use stable Rust for builds, tests, and Clippy. Use the pinned nightly rustfmt
-to honor the repository's formatting configuration:
+Use stable Rust for builds, tests, and Clippy. Use the pinned nightly rustfmt to
+honor the repository's formatting configuration:
 
 ```sh
-cargo check --no-default-features -p redscript-community-ast -p redscript-io -p redscript-compiler-api -p scc-core --locked
 cargo test --workspace --bins --lib --tests --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
-cargo doc --workspace --no-deps --locked
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked
 rustup toolchain install nightly-2026-11-13 --profile minimal --component rustfmt
 cargo +nightly-2026-11-13 fmt --all -- --check
-```
-
-Stable rustfmt does not honor all repository formatting options. To apply
-formatting rather than check it, run:
-
-```sh
-cargo +nightly-2026-11-13 fmt --all
 ```
 
 Keep `--all-targets` in the Clippy commands: CI lints test code too, so plain
 `cargo clippy` is not equivalent.
 
-Also validate the release build:
+Check feature-bearing crates standalone. Combining crates in one command lets
+downstream dependencies re-enable features on upstream crates, hiding missing
+dependency features in standalone builds, so run each check separately:
+
+```sh
+cargo check --no-default-features -p redscript-community-ast --locked
+cargo check --no-default-features -p redscript-community-parser --locked
+cargo check --no-default-features -p redscript-io --locked
+cargo check --no-default-features -p redscript-compiler-api --locked
+cargo check -p scc-core --locked
+```
+
+CI also lints and tests the single-threaded default (`Rc`/`RefCell`) build
+alongside the `sync` and `parallel` feature builds. To apply formatting rather
+than check it, run `cargo +nightly-2026-11-13 fmt --all`.
+
+Validate the release build:
 
 ```sh
 cargo build --release --locked -p redscript-cli -p scc -p scc-lib
 ```
-
-Standalone `cargo check` for feature-bearing crates verifies that workspace
-feature unification does not hide missing dependency features in standalone builds.
 
 ## Regression tests
 
@@ -69,6 +74,15 @@ than accepting them blindly. Bytecode snapshots do not verify game-runtime behav
 - Release builds abort on panic. C API ownership, borrowed lifetimes, and buffer
   contracts are documented in `crates/scc/capi/include/scc.h`; keep those contracts
   and the Rust API documentation consistent.
+
+## Documentation
+
+- Keep the language guides (`docs/`) consistent with compiler behavior, and prefer
+  linking to a single canonical section over restating a rule in several files.
+- `docs/types/*.md` filenames are embedded by `include_str!` in
+  `crates/compiler/frontend/src/symbols.rs`; do not rename or remove them.
+- Date-stamped probe logs and historical corpus counts belong in
+  `docs/language-investigations.md`, not in the current-contract guides.
 
 ## Commits
 

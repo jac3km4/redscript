@@ -38,22 +38,22 @@ The `redscript-cli` binary provides commands for compiling, decompiling, checkin
 
 ```sh
 # Compile scripts into a script bundle
-redscript-cli compile -s <source_dir> -b <bundle_path>
+redscript-cli compile -s <source_dir> -b <baseline_bundle> -o <output_bundle>
 
 # Validate scripts without generating output
-redscript-cli lint -s <source_dir> -b <bundle_path>
+redscript-cli lint -s <source_dir> -b <baseline_bundle>
 
-# Decompile an existing .redscripts bundle into source code
-redscript-cli decompile -b <bundle_path> -o <output_dir>
+# Decompile an existing .redscripts bundle into a source file
+redscript-cli decompile -b <bundle_path> -o <output_file>
 
-# Format REDscript source files in-place
-redscript-cli format <source_path>
+# Format REDscript source files (writes to stdout unless --save is given)
+redscript-cli format -s <source_path> --save
 
 # Transpile community REDscript to native REDmod scripts
-redscript-cli transpile-redmod -s <source_dir> -o <output_dir>
+redscript-cli transpile-redmod -s <source_dir> -o <mod_dir>
 ```
 
-Add `--runtime-compatible` to `compile` or `lint` to match SCC's fatal-error threshold when building legacy mod scripts.
+`compile` and `lint` are strict by default; `--runtime-compatible` matches SCC's fatal-error threshold while still reporting diagnostics. See the [diagnostic mode contract](docs/community-language.md#diagnostics-and-tool-boundaries).
 
 ## Language Documentation
 
@@ -63,8 +63,6 @@ Detailed technical specifications, semantic contracts, and reference materials a
 - **[Community REDscript Guide](docs/community-language.md)**: Current syntax, types, evaluation semantics, and compiler behavior.
 - **[Native REDmod Guide](docs/redmod-language.md)**: Native REDmod dialect support, transpilation, and interop boundaries.
 - **[Future Work & Known Limitations](docs/language-future-work.md)**: Unresolved behavior, open risks, and tracked backlog items.
-
-CLI `compile` and `lint` are strict by default; `--runtime-compatible` matches SCC's fatal threshold while still reporting diagnostics. See the [diagnostic mode contract](docs/community-language.md#diagnostics-and-tool-boundaries).
 
 ## Contributing
 
